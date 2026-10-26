@@ -31,6 +31,14 @@
 #include <string.h>
 #include "vulkan.h"
 
+#if VK_USE_64_BIT_PTR_DEFINES == 1
+#define HANDLE_OUT(handle) ((uint64_t)(uintptr_t)(handle))
+#define HANDLE_IN(type, value) ((type)(uintptr_t)(value))
+#else
+#define HANDLE_OUT(handle) ((uint64_t)(handle))
+#define HANDLE_IN(type, value) ((type)(value))
+#endif
+
 #define VULKAN_GLOBAL_FUNCS(X) \
 	X(vkCreateInstance) \
 	X(vkEnumerateInstanceExtensionProperties) \
@@ -205,63 +213,12 @@ static struct {
 	int32_t validation;
 } s_vk;
 
-typedef struct {
-	uint32_t generation;
-	uint32_t live;
-} VulkanSlot;
-
-typedef struct {
-	uint8_t *bytes;
-	uint32_t capacity;
-	uint32_t stride;
-	const char *kind;
-} VulkanTable;
-
-typedef struct {
-	VulkanSlot slot;
-	VkDeviceMemory memory;
-	void *mapped;
-	uint64_t size;
-	uint32_t typeIndex;
-} VulkanBlock;
-
-typedef struct {
-	VulkanSlot slot;
-	VkBuffer buffer;
-} VulkanBuffer;
-
-typedef struct {
-	VulkanSlot slot;
-	VkImage image;
-	VkImageAspectFlags aspect;
-	uint32_t mipLevels;
-	uint32_t layers;
-	uint32_t borrowed;
-} VulkanImage;
-
-typedef struct {
-	VulkanSlot slot;
-	VkImageView view;
-} VulkanView;
-
-typedef struct {
-	VulkanSlot slot;
-	VkSampler sampler;
-} VulkanSampler;
-
 #define MAX_COLOR_ATTACHMENTS 8
 #define COLOR_KEY_WORDS 5
 #define DEPTH_KEY_WORDS 8
 #define MAX_KEY_WORDS (1 + MAX_COLOR_ATTACHMENTS * COLOR_KEY_WORDS + DEPTH_KEY_WORDS)
 #define MAX_PASS_ATTACHMENTS (2 * MAX_COLOR_ATTACHMENTS + 1)
 #define MAX_FRAMES 8
-
-typedef struct {
-	VulkanSlot slot;
-	VkRenderPass pass;
-	uint32_t key[MAX_KEY_WORDS];
-	uint32_t words;
-} VulkanRenderPass;
 
 typedef struct {
 	VkFence fence;
@@ -281,20 +238,10 @@ typedef struct {
 } VulkanFrame;
 
 typedef struct {
-	uint32_t image;
-	uint32_t view;
+	VkImage image;
+	VkImageView view;
 	VkSemaphore presentReady;
 } VulkanSwapImage;
-
-#define SLOT_BITS 16
-#define SLOT_MASK 0xFFFFu
-
-static VulkanTable s_blocks = { .stride = sizeof(VulkanBlock), .kind = "block" };
-static VulkanTable s_buffers = { .stride = sizeof(VulkanBuffer), .kind = "buffer" };
-static VulkanTable s_images = { .stride = sizeof(VulkanImage), .kind = "image" };
-static VulkanTable s_views = { .stride = sizeof(VulkanView), .kind = "image view" };
-static VulkanTable s_samplers = { .stride = sizeof(VulkanSampler), .kind = "sampler" };
-static VulkanTable s_renderPasses = { .stride = sizeof(VulkanRenderPass), .kind = "render pass" };
 
 static struct {
 	VkSurfaceCapabilitiesKHR capabilities;
@@ -346,7 +293,10 @@ static int32_t fail(int32_t code, const char *format, ...) {
 }
 
 static int32_t failCall(const char *call, VkResult result) {
-	return fail(VULKAN_ERROR_CALL, "%s returned VkResult %d", call, (int)result);
+	int32_t code = result == VK_ERROR_DEVICE_LOST ? VULKAN_DEVICE_LOST
+		: result == VK_ERROR_OUT_OF_HOST_MEMORY || result == VK_ERROR_OUT_OF_DEVICE_MEMORY ? VULKAN_OUT_OF_MEMORY
+		: VULKAN_ERROR_CALL;
+	return fail(code, "%s returned VkResult %d", call, (int)result);
 }
 
 static PFN_vkVoidFunction required(PFN_vkVoidFunction address, const char *name) {
@@ -635,7 +585,7 @@ int32_t vulkanSurfaceQuery(void) {
 		vki.vkGetPhysicalDeviceSurfaceFormatsKHR(device, s_vk.surface, &formats, NULL));
 	if (status != VULKAN_OK) return status;
 	VkSurfaceFormatKHR *formatList = realloc(s_surfaceInfo.formats, sizeof *formatList * (formats > 0 ? formats : 1));
-	if (formatList == NULL) return fail(VULKAN_ERROR_CALL, "out of memory listing %u surface formats", formats);
+	if (formatList == NULL) return fail(VULKAN_OUT_OF_MEMORY, "out of memory listing %u surface formats", formats);
 	s_surfaceInfo.formats = formatList;
 	status = surfaceList("vkGetPhysicalDeviceSurfaceFormatsKHR",
 		vki.vkGetPhysicalDeviceSurfaceFormatsKHR(device, s_vk.surface, &formats, formatList));
@@ -647,7 +597,7 @@ int32_t vulkanSurfaceQuery(void) {
 		vki.vkGetPhysicalDeviceSurfacePresentModesKHR(device, s_vk.surface, &modes, NULL));
 	if (status != VULKAN_OK) return status;
 	VkPresentModeKHR *modeList = realloc(s_surfaceInfo.presentModes, sizeof *modeList * (modes > 0 ? modes : 1));
-	if (modeList == NULL) return fail(VULKAN_ERROR_CALL, "out of memory listing %u present modes", modes);
+	if (modeList == NULL) return fail(VULKAN_OUT_OF_MEMORY, "out of memory listing %u present modes", modes);
 	s_surfaceInfo.presentModes = modeList;
 	status = surfaceList("vkGetPhysicalDeviceSurfacePresentModesKHR",
 		vki.vkGetPhysicalDeviceSurfacePresentModesKHR(device, s_vk.surface, &modes, modeList));
@@ -969,58 +919,6 @@ uint64_t vulkanMemoryHeapSize(int32_t heap) {
 	return s_vk.memory.memoryHeaps[heap].size;
 }
 
-static VulkanSlot *slotAt(VulkanTable *table, uint32_t index) {
-	return (VulkanSlot *)(table->bytes + (size_t)index * table->stride);
-}
-
-static void *slotAcquire(VulkanTable *table, const char *caller, uint32_t *id) {
-	uint32_t index = 0;
-	while (index < table->capacity && slotAt(table, index)->live) index++;
-	if (index == SLOT_MASK) {
-		fail(VULKAN_ERROR_ORDER, "%s: all %u %s slots are live", caller, SLOT_MASK, table->kind);
-		return NULL;
-	}
-	if (index == table->capacity) {
-		uint32_t capacity = table->capacity > 0 ? table->capacity * 2 : 64;
-		if (capacity > SLOT_MASK) capacity = SLOT_MASK;
-		uint8_t *grown = realloc(table->bytes, (size_t)table->stride * capacity);
-		if (grown == NULL) {
-			fail(VULKAN_ERROR_CALL, "%s: out of memory growing the %s table to %u", caller, table->kind, capacity);
-			return NULL;
-		}
-		memset(grown + (size_t)table->stride * table->capacity, 0, (size_t)table->stride * (capacity - table->capacity));
-		table->bytes = grown;
-		table->capacity = capacity;
-	}
-	VulkanSlot *slot = slotAt(table, index);
-	uint32_t generation = (slot->generation + 1) & SLOT_MASK;
-	memset(slot, 0, table->stride);
-	slot->generation = generation;
-	slot->live = 1;
-	*id = (generation << SLOT_BITS) | (index + 1);
-	return slot;
-}
-
-static void *slotLive(VulkanTable *table, uint32_t id, const char *caller) {
-	uint32_t index = (id & SLOT_MASK) - 1;
-	if ((id & SLOT_MASK) == 0 || index >= table->capacity || !slotAt(table, index)->live ||
-		slotAt(table, index)->generation != id >> SLOT_BITS) {
-		fail(VULKAN_ERROR_ORDER, "%s: %s %u is not live", caller, table->kind, id);
-		return NULL;
-	}
-	return slotAt(table, index);
-}
-
-static void tableDrain(VulkanTable *table, void (*release)(VulkanSlot *)) {
-	for (uint32_t i = 0; i < table->capacity; i++) {
-		VulkanSlot *slot = slotAt(table, i);
-		if (slot->live) release(slot);
-	}
-	free(table->bytes);
-	table->bytes = NULL;
-	table->capacity = 0;
-}
-
 static int32_t deviceReady(const char *caller) {
 	if (s_vk.device == NULL) return fail(VULKAN_ERROR_ORDER, "%s before vulkanDeviceCreate", caller);
 	return VULKAN_OK;
@@ -1036,154 +934,106 @@ uint32_t vulkanFormatOptimalFeatures(int32_t format) {
 	return properties.optimalTilingFeatures;
 }
 
-uint32_t vulkanBlockAllocate(int32_t typeIndex, uint64_t size, uint32_t dedicatedBuffer, uint32_t dedicatedImage) {
-	if (deviceReady("vulkanBlockAllocate") != VULKAN_OK) return 0;
+int32_t vulkanMemoryAllocate(
+	int32_t typeIndex,
+	uint64_t size,
+	uint64_t dedicatedBuffer,
+	uint64_t dedicatedImage,
+	uint64_t *memory) {
+	*memory = 0;
+	if (deviceReady("vulkanMemoryAllocate") != VULKAN_OK) return VULKAN_ERROR_ORDER;
 	if (typeIndex < 0 || (uint32_t)typeIndex >= s_vk.memory.memoryTypeCount || size == 0) {
-		fail(VULKAN_ERROR_ORDER, "vulkanBlockAllocate of %llu bytes on memory type %d of %u",
+		return fail(VULKAN_ERROR_ORDER, "vulkanMemoryAllocate of %llu bytes on memory type %d of %u",
 			(unsigned long long)size, (int)typeIndex, s_vk.memory.memoryTypeCount);
-		return 0;
+	}
+	if (dedicatedBuffer != 0 && dedicatedImage != 0) {
+		return fail(VULKAN_ERROR_ORDER, "vulkanMemoryAllocate dedicated to a buffer and an image at once");
 	}
 	VkMemoryDedicatedAllocateInfo dedicated = { .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO };
-	if (dedicatedBuffer != 0 && dedicatedImage != 0) {
-		fail(VULKAN_ERROR_ORDER, "vulkanBlockAllocate dedicated to buffer %u and image %u at once",
-			dedicatedBuffer, dedicatedImage);
-		return 0;
-	}
-	if (dedicatedBuffer != 0) {
-		VulkanBuffer *owner = slotLive(&s_buffers, dedicatedBuffer, "vulkanBlockAllocate");
-		if (owner == NULL) return 0;
-		dedicated.buffer = owner->buffer;
-	}
-	if (dedicatedImage != 0) {
-		VulkanImage *owner = slotLive(&s_images, dedicatedImage, "vulkanBlockAllocate");
-		if (owner == NULL) return 0;
-		dedicated.image = owner->image;
-	}
-	uint32_t id = 0;
-	VulkanBlock *fresh = slotAcquire(&s_blocks, "vulkanBlockAllocate", &id);
-	if (fresh == NULL) return 0;
+	dedicated.buffer = HANDLE_IN(VkBuffer, dedicatedBuffer);
+	dedicated.image = HANDLE_IN(VkImage, dedicatedImage);
 	VkMemoryAllocateInfo info = { .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
 	info.pNext = dedicatedBuffer != 0 || dedicatedImage != 0 ? &dedicated : NULL;
 	info.allocationSize = size;
 	info.memoryTypeIndex = (uint32_t)typeIndex;
-	VkResult result = vkd.vkAllocateMemory(s_vk.device, &info, NULL, &fresh->memory);
-	if (result != VK_SUCCESS) {
-		fresh->slot.live = 0;
-		failCall("vkAllocateMemory", result);
-		return 0;
-	}
-	fresh->size = size;
-	fresh->typeIndex = (uint32_t)typeIndex;
-	return id;
+	VkDeviceMemory fresh = VK_NULL_HANDLE;
+	VkResult result = vkd.vkAllocateMemory(s_vk.device, &info, NULL, &fresh);
+	if (result != VK_SUCCESS) return failCall("vkAllocateMemory", result);
+	*memory = HANDLE_OUT(fresh);
+	return VULKAN_OK;
 }
 
-static void *blockMapped(VulkanBlock *block, uint32_t id, const char *caller) {
-	if (block->mapped != NULL) return block->mapped;
-	VkMemoryPropertyFlags flags = s_vk.memory.memoryTypes[block->typeIndex].propertyFlags;
-	if ((flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == 0) {
-		fail(VULKAN_ERROR_ORDER, "%s: block %u is on memory type %u, which is not host-visible",
-			caller, id, block->typeIndex);
-		return NULL;
-	}
-	VkResult result = vkd.vkMapMemory(s_vk.device, block->memory, 0, VK_WHOLE_SIZE, 0, &block->mapped);
-	if (result != VK_SUCCESS) {
-		block->mapped = NULL;
-		failCall("vkMapMemory", result);
-	}
-	return block->mapped;
+int32_t vulkanMemoryMap(uint64_t memory, uint64_t *address) {
+	void *mapped = NULL;
+	VkResult result = vkd.vkMapMemory(s_vk.device, HANDLE_IN(VkDeviceMemory, memory), 0, VK_WHOLE_SIZE, 0, &mapped);
+	*address = result == VK_SUCCESS ? (uint64_t)(uintptr_t)mapped : 0;
+	return result == VK_SUCCESS ? VULKAN_OK : failCall("vkMapMemory", result);
 }
 
-void *vulkanBlockMap(uint32_t block) {
-	VulkanBlock *live = slotLive(&s_blocks, block, "vulkanBlockMap");
-	return live != NULL ? blockMapped(live, block, "vulkanBlockMap") : NULL;
+void vulkanMemoryFree(uint64_t memory) {
+	vkd.vkFreeMemory(s_vk.device, HANDLE_IN(VkDeviceMemory, memory), NULL);
 }
 
-static VkMappedMemoryRange atomRange(VulkanBlock *block, uint64_t offset, uint64_t bytes) {
-	uint64_t atom = s_vk.properties.limits.nonCoherentAtomSize;
+static VkMappedMemoryRange mappedRange(uint64_t memory, uint64_t offset, uint64_t size) {
 	VkMappedMemoryRange range = { .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE };
-	range.memory = block->memory;
-	range.offset = offset / atom * atom;
-	uint64_t end = (offset + bytes + atom - 1) / atom * atom;
-	range.size = end >= block->size ? VK_WHOLE_SIZE : end - range.offset;
+	range.memory = HANDLE_IN(VkDeviceMemory, memory);
+	range.offset = offset;
+	range.size = size;
 	return range;
 }
 
-static int32_t coherent(VulkanBlock *block) {
-	return (s_vk.memory.memoryTypes[block->typeIndex].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
-}
-
 int32_t vulkanMappedWrite(
-	uint32_t block,
+	uint64_t memory,
+	uint64_t address,
 	uint64_t offset,
 	void *data,
 	uint64_t dataOffset,
 	uint64_t rowBytes,
 	uint64_t sourcePitch,
 	uint64_t targetPitch,
-	uint32_t rows) {
-	VulkanBlock *live = slotLive(&s_blocks, block, "vulkanMappedWrite");
-	if (live == NULL) return VULKAN_ERROR_ORDER;
+	uint32_t rows,
+	uint64_t flushOffset,
+	uint64_t flushSize) {
+	if (address == 0) return fail(VULKAN_ERROR_ORDER, "vulkanMappedWrite to memory that is not mapped");
 	if (rows == 0 || rowBytes == 0) return VULKAN_OK;
-	uint64_t bytes = (uint64_t)(rows - 1) * targetPitch + rowBytes;
 	if (rowBytes > targetPitch && rows > 1) {
 		return fail(VULKAN_ERROR_ORDER, "vulkanMappedWrite: rows of %llu bytes overlap at a pitch of %llu",
 			(unsigned long long)rowBytes, (unsigned long long)targetPitch);
 	}
-	if (offset + bytes > live->size) {
-		return fail(VULKAN_ERROR_ORDER, "vulkanMappedWrite of %llu bytes at %llu runs past block %u of %llu bytes",
-			(unsigned long long)bytes, (unsigned long long)offset, block, (unsigned long long)live->size);
-	}
-	uint8_t *target = blockMapped(live, block, "vulkanMappedWrite");
-	if (target == NULL) return VULKAN_ERROR_ORDER;
+	uint8_t *target = (uint8_t *)(uintptr_t)address + offset;
 	const uint8_t *source = (const uint8_t *)data + dataOffset;
 	if (sourcePitch == rowBytes && targetPitch == rowBytes) {
-		memcpy(target + offset, source, bytes);
+		memcpy(target, source, (uint64_t)(rows - 1) * targetPitch + rowBytes);
 	} else {
 		for (uint32_t row = 0; row < rows; row++) {
-			memcpy(target + offset + row * targetPitch, source + row * sourcePitch, rowBytes);
+			memcpy(target + row * targetPitch, source + row * sourcePitch, rowBytes);
 		}
 	}
-	if (coherent(live)) return VULKAN_OK;
-	VkMappedMemoryRange range = atomRange(live, offset, bytes);
+	if (flushSize == 0) return VULKAN_OK;
+	VkMappedMemoryRange range = mappedRange(memory, flushOffset, flushSize);
 	VkResult result = vkd.vkFlushMappedMemoryRanges(s_vk.device, 1, &range);
 	return result == VK_SUCCESS ? VULKAN_OK : failCall("vkFlushMappedMemoryRanges", result);
 }
 
-int32_t vulkanMappedRead(uint32_t block, uint64_t offset, void *out, uint64_t bytes) {
-	VulkanBlock *live = slotLive(&s_blocks, block, "vulkanMappedRead");
-	if (live == NULL) return VULKAN_ERROR_ORDER;
-	if (offset + bytes > live->size) {
-		return fail(VULKAN_ERROR_ORDER, "vulkanMappedRead of %llu bytes at %llu runs past block %u of %llu bytes",
-			(unsigned long long)bytes, (unsigned long long)offset, block, (unsigned long long)live->size);
-	}
-	uint8_t *source = blockMapped(live, block, "vulkanMappedRead");
-	if (source == NULL) return VULKAN_ERROR_ORDER;
-	if (!coherent(live)) {
-		VkMappedMemoryRange range = atomRange(live, offset, bytes);
+int32_t vulkanMappedRead(
+	uint64_t memory,
+	uint64_t address,
+	uint64_t offset,
+	void *out,
+	uint64_t bytes,
+	uint64_t invalidateOffset,
+	uint64_t invalidateSize) {
+	if (address == 0) return fail(VULKAN_ERROR_ORDER, "vulkanMappedRead from memory that is not mapped");
+	if (invalidateSize != 0) {
+		VkMappedMemoryRange range = mappedRange(memory, invalidateOffset, invalidateSize);
 		VkResult result = vkd.vkInvalidateMappedMemoryRanges(s_vk.device, 1, &range);
 		if (result != VK_SUCCESS) return failCall("vkInvalidateMappedMemoryRanges", result);
 	}
-	memcpy(out, source + offset, bytes);
+	memcpy(out, (const uint8_t *)(uintptr_t)address + offset, bytes);
 	return VULKAN_OK;
 }
 
-static void blockRelease(VulkanSlot *slot) {
-	VulkanBlock *block = (VulkanBlock *)slot;
-	if (block->mapped != NULL) vkd.vkUnmapMemory(s_vk.device, block->memory);
-	vkd.vkFreeMemory(s_vk.device, block->memory, NULL);
-	block->memory = VK_NULL_HANDLE;
-	block->mapped = NULL;
-	slot->live = 0;
-}
-
-int32_t vulkanBlockFree(uint32_t block) {
-	VulkanBlock *live = slotLive(&s_blocks, block, "vulkanBlockFree");
-	if (live == NULL) return VULKAN_ERROR_ORDER;
-	blockRelease(&live->slot);
-	return VULKAN_OK;
-}
-
-static int32_t requirementsOut(
+static void requirementsOut(
 	const VkMemoryRequirements2 *requirements,
 	const VkMemoryDedicatedRequirements *dedicated,
 	uint64_t *size,
@@ -1196,65 +1046,44 @@ static int32_t requirementsOut(
 	*dedication = dedicated->requiresDedicatedAllocation ? VULKAN_DEDICATED_REQUIRED
 		: dedicated->prefersDedicatedAllocation ? VULKAN_DEDICATED_PREFERRED
 		: VULKAN_DEDICATED_NONE;
-	return VULKAN_OK;
 }
 
-uint32_t vulkanBufferCreate(uint64_t size, uint32_t usage) {
-	if (deviceReady("vulkanBufferCreate") != VULKAN_OK) return 0;
-	if (size == 0) {
-		fail(VULKAN_ERROR_ORDER, "vulkanBufferCreate of 0 bytes");
-		return 0;
-	}
-	uint32_t id = 0;
-	VulkanBuffer *fresh = slotAcquire(&s_buffers, "vulkanBufferCreate", &id);
-	if (fresh == NULL) return 0;
+int32_t vulkanBufferCreate(uint64_t size, uint32_t usage, uint64_t *buffer) {
+	*buffer = 0;
+	if (deviceReady("vulkanBufferCreate") != VULKAN_OK) return VULKAN_ERROR_ORDER;
+	if (size == 0) return fail(VULKAN_ERROR_ORDER, "vulkanBufferCreate of 0 bytes");
 	VkBufferCreateInfo info = { .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 	info.size = size;
 	info.usage = usage;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	VkResult result = vkd.vkCreateBuffer(s_vk.device, &info, NULL, &fresh->buffer);
-	if (result != VK_SUCCESS) {
-		fresh->slot.live = 0;
-		failCall("vkCreateBuffer", result);
-		return 0;
-	}
-	return id;
+	VkBuffer fresh = VK_NULL_HANDLE;
+	VkResult result = vkd.vkCreateBuffer(s_vk.device, &info, NULL, &fresh);
+	if (result != VK_SUCCESS) return failCall("vkCreateBuffer", result);
+	*buffer = HANDLE_OUT(fresh);
+	return VULKAN_OK;
 }
 
-int32_t vulkanBufferRequirements(uint32_t buffer, uint64_t *size, uint64_t *alignment, uint32_t *typeBits, int32_t *dedication) {
-	VulkanBuffer *live = slotLive(&s_buffers, buffer, "vulkanBufferRequirements");
-	if (live == NULL) return VULKAN_ERROR_ORDER;
+void vulkanBufferRequirements(uint64_t buffer, uint64_t *size, uint64_t *alignment, uint32_t *typeBits, int32_t *dedication) {
 	VkBufferMemoryRequirementsInfo2 info = { .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2 };
-	info.buffer = live->buffer;
+	info.buffer = HANDLE_IN(VkBuffer, buffer);
 	VkMemoryDedicatedRequirements dedicated = { .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS };
 	VkMemoryRequirements2 requirements = { .sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
 	requirements.pNext = &dedicated;
 	vkd.vkGetBufferMemoryRequirements2(s_vk.device, &info, &requirements);
-	return requirementsOut(&requirements, &dedicated, size, alignment, typeBits, dedication);
+	requirementsOut(&requirements, &dedicated, size, alignment, typeBits, dedication);
 }
 
-int32_t vulkanBufferBind(uint32_t buffer, uint32_t block, uint64_t offset) {
-	VulkanBuffer *live = slotLive(&s_buffers, buffer, "vulkanBufferBind");
-	if (live == NULL) return VULKAN_ERROR_ORDER;
-	VulkanBlock *memory = slotLive(&s_blocks, block, "vulkanBufferBind");
-	if (memory == NULL) return VULKAN_ERROR_ORDER;
-	VkResult result = vkd.vkBindBufferMemory(s_vk.device, live->buffer, memory->memory, offset);
+int32_t vulkanBufferBind(uint64_t buffer, uint64_t memory, uint64_t offset) {
+	VkResult result = vkd.vkBindBufferMemory(
+		s_vk.device, HANDLE_IN(VkBuffer, buffer), HANDLE_IN(VkDeviceMemory, memory), offset);
 	return result == VK_SUCCESS ? VULKAN_OK : failCall("vkBindBufferMemory", result);
 }
 
-static void bufferRelease(VulkanSlot *slot) {
-	vkd.vkDestroyBuffer(s_vk.device, ((VulkanBuffer *)slot)->buffer, NULL);
-	slot->live = 0;
+void vulkanBufferDestroy(uint64_t buffer) {
+	vkd.vkDestroyBuffer(s_vk.device, HANDLE_IN(VkBuffer, buffer), NULL);
 }
 
-int32_t vulkanBufferDestroy(uint32_t buffer) {
-	VulkanBuffer *live = slotLive(&s_buffers, buffer, "vulkanBufferDestroy");
-	if (live == NULL) return VULKAN_ERROR_ORDER;
-	bufferRelease(&live->slot);
-	return VULKAN_OK;
-}
-
-uint32_t vulkanImageCreate(
+int32_t vulkanImageCreate(
 	int32_t imageType,
 	int32_t format,
 	uint32_t width,
@@ -1265,11 +1094,9 @@ uint32_t vulkanImageCreate(
 	uint32_t samples,
 	uint32_t usage,
 	uint32_t flags,
-	uint32_t aspect) {
-	if (deviceReady("vulkanImageCreate") != VULKAN_OK) return 0;
-	uint32_t id = 0;
-	VulkanImage *fresh = slotAcquire(&s_images, "vulkanImageCreate", &id);
-	if (fresh == NULL) return 0;
+	uint64_t *image) {
+	*image = 0;
+	if (deviceReady("vulkanImageCreate") != VULKAN_OK) return VULKAN_ERROR_ORDER;
 	VkImageCreateInfo info = { .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
 	info.flags = flags;
 	info.imageType = (VkImageType)imageType;
@@ -1284,70 +1111,47 @@ uint32_t vulkanImageCreate(
 	info.usage = usage;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	VkResult result = vkd.vkCreateImage(s_vk.device, &info, NULL, &fresh->image);
-	if (result != VK_SUCCESS) {
-		fresh->slot.live = 0;
-		failCall("vkCreateImage", result);
-		return 0;
-	}
-	fresh->aspect = aspect;
-	fresh->mipLevels = mipLevels;
-	fresh->layers = layers;
-	return id;
+	VkImage fresh = VK_NULL_HANDLE;
+	VkResult result = vkd.vkCreateImage(s_vk.device, &info, NULL, &fresh);
+	if (result != VK_SUCCESS) return failCall("vkCreateImage", result);
+	*image = HANDLE_OUT(fresh);
+	return VULKAN_OK;
 }
 
-int32_t vulkanImageRequirements(uint32_t image, uint64_t *size, uint64_t *alignment, uint32_t *typeBits, int32_t *dedication) {
-	VulkanImage *live = slotLive(&s_images, image, "vulkanImageRequirements");
-	if (live == NULL) return VULKAN_ERROR_ORDER;
+void vulkanImageRequirements(uint64_t image, uint64_t *size, uint64_t *alignment, uint32_t *typeBits, int32_t *dedication) {
 	VkImageMemoryRequirementsInfo2 info = { .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2 };
-	info.image = live->image;
+	info.image = HANDLE_IN(VkImage, image);
 	VkMemoryDedicatedRequirements dedicated = { .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS };
 	VkMemoryRequirements2 requirements = { .sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
 	requirements.pNext = &dedicated;
 	vkd.vkGetImageMemoryRequirements2(s_vk.device, &info, &requirements);
-	return requirementsOut(&requirements, &dedicated, size, alignment, typeBits, dedication);
+	requirementsOut(&requirements, &dedicated, size, alignment, typeBits, dedication);
 }
 
-int32_t vulkanImageBind(uint32_t image, uint32_t block, uint64_t offset) {
-	VulkanImage *live = slotLive(&s_images, image, "vulkanImageBind");
-	if (live == NULL) return VULKAN_ERROR_ORDER;
-	VulkanBlock *memory = slotLive(&s_blocks, block, "vulkanImageBind");
-	if (memory == NULL) return VULKAN_ERROR_ORDER;
-	VkResult result = vkd.vkBindImageMemory(s_vk.device, live->image, memory->memory, offset);
+int32_t vulkanImageBind(uint64_t image, uint64_t memory, uint64_t offset) {
+	VkResult result = vkd.vkBindImageMemory(
+		s_vk.device, HANDLE_IN(VkImage, image), HANDLE_IN(VkDeviceMemory, memory), offset);
 	return result == VK_SUCCESS ? VULKAN_OK : failCall("vkBindImageMemory", result);
 }
 
-static void imageRelease(VulkanSlot *slot) {
-	if (!((VulkanImage *)slot)->borrowed) vkd.vkDestroyImage(s_vk.device, ((VulkanImage *)slot)->image, NULL);
-	slot->live = 0;
+void vulkanImageDestroy(uint64_t image) {
+	vkd.vkDestroyImage(s_vk.device, HANDLE_IN(VkImage, image), NULL);
 }
 
-int32_t vulkanImageDestroy(uint32_t image) {
-	VulkanImage *live = slotLive(&s_images, image, "vulkanImageDestroy");
-	if (live == NULL) return VULKAN_ERROR_ORDER;
-	if (live->borrowed) return fail(VULKAN_ERROR_ORDER, "vulkanImageDestroy: image %u belongs to the swapchain", image);
-	imageRelease(&live->slot);
-	return VULKAN_OK;
-}
-
-uint32_t vulkanViewCreate(
-	uint32_t image,
-	int32_t viewType,
-	int32_t format,
-	uint32_t aspect,
+static int32_t viewMake(
+	VkImage image,
+	VkImageViewType viewType,
+	VkFormat format,
+	VkImageAspectFlags aspect,
 	uint32_t baseMip,
 	uint32_t mipCount,
 	uint32_t baseLayer,
-	uint32_t layerCount) {
-	VulkanImage *source = slotLive(&s_images, image, "vulkanViewCreate");
-	if (source == NULL) return 0;
-	uint32_t id = 0;
-	VulkanView *fresh = slotAcquire(&s_views, "vulkanViewCreate", &id);
-	if (fresh == NULL) return 0;
+	uint32_t layerCount,
+	VkImageView *view) {
 	VkImageViewCreateInfo info = { .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-	info.image = source->image;
-	info.viewType = (VkImageViewType)viewType;
-	info.format = (VkFormat)format;
+	info.image = image;
+	info.viewType = viewType;
+	info.format = format;
 	info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
 	info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
 	info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -1357,28 +1161,36 @@ uint32_t vulkanViewCreate(
 	info.subresourceRange.levelCount = mipCount;
 	info.subresourceRange.baseArrayLayer = baseLayer;
 	info.subresourceRange.layerCount = layerCount;
-	VkResult result = vkd.vkCreateImageView(s_vk.device, &info, NULL, &fresh->view);
+	VkResult result = vkd.vkCreateImageView(s_vk.device, &info, NULL, view);
 	if (result != VK_SUCCESS) {
-		fresh->slot.live = 0;
-		failCall("vkCreateImageView", result);
-		return 0;
+		*view = VK_NULL_HANDLE;
+		return failCall("vkCreateImageView", result);
 	}
-	return id;
-}
-
-static void viewRelease(VulkanSlot *slot) {
-	vkd.vkDestroyImageView(s_vk.device, ((VulkanView *)slot)->view, NULL);
-	slot->live = 0;
-}
-
-int32_t vulkanViewDestroy(uint32_t view) {
-	VulkanView *live = slotLive(&s_views, view, "vulkanViewDestroy");
-	if (live == NULL) return VULKAN_ERROR_ORDER;
-	viewRelease(&live->slot);
 	return VULKAN_OK;
 }
 
-uint32_t vulkanSamplerCreate(
+int32_t vulkanViewCreate(
+	uint64_t image,
+	int32_t viewType,
+	int32_t format,
+	uint32_t aspect,
+	uint32_t baseMip,
+	uint32_t mipCount,
+	uint32_t baseLayer,
+	uint32_t layerCount,
+	uint64_t *view) {
+	VkImageView fresh = VK_NULL_HANDLE;
+	int32_t status = viewMake(HANDLE_IN(VkImage, image), (VkImageViewType)viewType, (VkFormat)format, aspect,
+		baseMip, mipCount, baseLayer, layerCount, &fresh);
+	*view = HANDLE_OUT(fresh);
+	return status;
+}
+
+void vulkanViewDestroy(uint64_t view) {
+	vkd.vkDestroyImageView(s_vk.device, HANDLE_IN(VkImageView, view), NULL);
+}
+
+int32_t vulkanSamplerCreate(
 	int32_t magFilter,
 	int32_t minFilter,
 	int32_t mipmapMode,
@@ -1388,11 +1200,10 @@ uint32_t vulkanSamplerCreate(
 	float lodMin,
 	float lodMax,
 	int32_t compareOp,
-	uint32_t maxAnisotropy) {
-	if (deviceReady("vulkanSamplerCreate") != VULKAN_OK) return 0;
-	uint32_t id = 0;
-	VulkanSampler *fresh = slotAcquire(&s_samplers, "vulkanSamplerCreate", &id);
-	if (fresh == NULL) return 0;
+	uint32_t maxAnisotropy,
+	uint64_t *sampler) {
+	*sampler = 0;
+	if (deviceReady("vulkanSamplerCreate") != VULKAN_OK) return VULKAN_ERROR_ORDER;
 	VkSamplerCreateInfo info = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
 	info.magFilter = (VkFilter)magFilter;
 	info.minFilter = (VkFilter)minFilter;
@@ -1409,66 +1220,46 @@ uint32_t vulkanSamplerCreate(
 	info.maxLod = lodMax;
 	info.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
 	info.unnormalizedCoordinates = VK_FALSE;
-	VkResult result = vkd.vkCreateSampler(s_vk.device, &info, NULL, &fresh->sampler);
-	if (result != VK_SUCCESS) {
-		fresh->slot.live = 0;
-		failCall("vkCreateSampler", result);
-		return 0;
-	}
-	return id;
-}
-
-static void samplerRelease(VulkanSlot *slot) {
-	vkd.vkDestroySampler(s_vk.device, ((VulkanSampler *)slot)->sampler, NULL);
-	slot->live = 0;
-}
-
-int32_t vulkanSamplerDestroy(uint32_t sampler) {
-	VulkanSampler *live = slotLive(&s_samplers, sampler, "vulkanSamplerDestroy");
-	if (live == NULL) return VULKAN_ERROR_ORDER;
-	samplerRelease(&live->slot);
+	VkSampler fresh = VK_NULL_HANDLE;
+	VkResult result = vkd.vkCreateSampler(s_vk.device, &info, NULL, &fresh);
+	if (result != VK_SUCCESS) return failCall("vkCreateSampler", result);
+	*sampler = HANDLE_OUT(fresh);
 	return VULKAN_OK;
 }
 
-static VkCommandBuffer recording(const char *caller) {
-	if (s_passOpen) {
-		fail(VULKAN_ERROR_ORDER, "%s inside a render pass", caller);
-		return NULL;
-	}
-	if (s_recording != NULL) return s_recording;
-	if (s_vk.commandPool == VK_NULL_HANDLE) {
-		fail(VULKAN_ERROR_ORDER, "%s before vulkanDeviceCreate", caller);
-		return NULL;
-	}
+void vulkanSamplerDestroy(uint64_t sampler) {
+	vkd.vkDestroySampler(s_vk.device, HANDLE_IN(VkSampler, sampler), NULL);
+}
+
+static int32_t recording(const char *caller, VkCommandBuffer *commands) {
+	*commands = s_recording;
+	if (s_passOpen) return fail(VULKAN_ERROR_ORDER, "%s inside a render pass", caller);
+	if (s_recording != NULL) return VULKAN_OK;
+	if (s_vk.commandPool == VK_NULL_HANDLE) return fail(VULKAN_ERROR_ORDER, "%s before vulkanDeviceCreate", caller);
 	VkCommandBufferAllocateInfo info = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 	info.commandPool = s_vk.commandPool;
 	info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	info.commandBufferCount = 1;
-	VkCommandBuffer commands = NULL;
-	VkResult result = vkd.vkAllocateCommandBuffers(s_vk.device, &info, &commands);
-	if (result != VK_SUCCESS) {
-		failCall("vkAllocateCommandBuffers", result);
-		return NULL;
-	}
+	VkCommandBuffer fresh = NULL;
+	VkResult result = vkd.vkAllocateCommandBuffers(s_vk.device, &info, &fresh);
+	if (result != VK_SUCCESS) return failCall("vkAllocateCommandBuffers", result);
 	VkCommandBufferBeginInfo begin = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	result = vkd.vkBeginCommandBuffer(commands, &begin);
+	result = vkd.vkBeginCommandBuffer(fresh, &begin);
 	if (result != VK_SUCCESS) {
-		vkd.vkFreeCommandBuffers(s_vk.device, s_vk.commandPool, 1, &commands);
-		failCall("vkBeginCommandBuffer", result);
-		return NULL;
+		vkd.vkFreeCommandBuffers(s_vk.device, s_vk.commandPool, 1, &fresh);
+		return failCall("vkBeginCommandBuffer", result);
 	}
-	s_recording = commands;
-	return commands;
+	s_recording = fresh;
+	*commands = fresh;
+	return VULKAN_OK;
 }
 
-int32_t vulkanBarrierImage(uint32_t image, uint32_t sourceAccess, uint32_t targetAccess, int32_t oldLayout, int32_t newLayout) {
-	VulkanImage *live = slotLive(&s_images, image, "vulkanBarrierImage");
-	if (live == NULL) return VULKAN_ERROR_ORDER;
+int32_t vulkanBarrierImage(uint64_t image, uint32_t aspect, uint32_t sourceAccess, uint32_t targetAccess, int32_t oldLayout, int32_t newLayout) {
 	if (s_imageBarrierCount == s_imageBarrierCapacity) {
 		uint32_t capacity = s_imageBarrierCapacity > 0 ? s_imageBarrierCapacity * 2 : 16;
 		VkImageMemoryBarrier *grown = realloc(s_imageBarriers, sizeof *grown * capacity);
-		if (grown == NULL) return fail(VULKAN_ERROR_CALL, "out of memory growing the image barrier list to %u", capacity);
+		if (grown == NULL) return fail(VULKAN_OUT_OF_MEMORY, "out of memory growing the image barrier list to %u", capacity);
 		s_imageBarriers = grown;
 		s_imageBarrierCapacity = capacity;
 	}
@@ -1481,12 +1272,12 @@ int32_t vulkanBarrierImage(uint32_t image, uint32_t sourceAccess, uint32_t targe
 	barrier->newLayout = (VkImageLayout)newLayout;
 	barrier->srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	barrier->dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier->image = live->image;
-	barrier->subresourceRange.aspectMask = live->aspect;
+	barrier->image = HANDLE_IN(VkImage, image);
+	barrier->subresourceRange.aspectMask = aspect;
 	barrier->subresourceRange.baseMipLevel = 0;
-	barrier->subresourceRange.levelCount = live->mipLevels;
+	barrier->subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
 	barrier->subresourceRange.baseArrayLayer = 0;
-	barrier->subresourceRange.layerCount = live->layers;
+	barrier->subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
 	return VULKAN_OK;
 }
 
@@ -1497,8 +1288,9 @@ int32_t vulkanBarrierFlush(uint32_t sourceStages, uint32_t targetStages, uint32_
 	if (targetStages == 0) {
 		return fail(VULKAN_ERROR_ORDER, "vulkanBarrierFlush with %u image barriers and no target stage", images);
 	}
-	VkCommandBuffer commands = recording("vulkanBarrierFlush");
-	if (commands == NULL) return VULKAN_ERROR_CALL;
+	VkCommandBuffer commands = NULL;
+	int32_t status = recording("vulkanBarrierFlush", &commands);
+	if (status != VULKAN_OK) return status;
 	VkMemoryBarrier memory = { .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER };
 	memory.srcAccessMask = sourceAccess;
 	memory.dstAccessMask = targetAccess;
@@ -1516,15 +1308,12 @@ int32_t vulkanBarrierFlush(uint32_t sourceStages, uint32_t targetStages, uint32_
 	return VULKAN_OK;
 }
 
-int32_t vulkanCopyBuffer(uint32_t source, uint64_t sourceOffset, uint32_t target, uint64_t targetOffset, uint64_t bytes) {
-	VulkanBuffer *from = slotLive(&s_buffers, source, "vulkanCopyBuffer");
-	if (from == NULL) return VULKAN_ERROR_ORDER;
-	VulkanBuffer *to = slotLive(&s_buffers, target, "vulkanCopyBuffer");
-	if (to == NULL) return VULKAN_ERROR_ORDER;
-	VkCommandBuffer commands = recording("vulkanCopyBuffer");
-	if (commands == NULL) return VULKAN_ERROR_CALL;
+int32_t vulkanCopyBuffer(uint64_t source, uint64_t sourceOffset, uint64_t target, uint64_t targetOffset, uint64_t bytes) {
+	VkCommandBuffer commands = NULL;
+	int32_t status = recording("vulkanCopyBuffer", &commands);
+	if (status != VULKAN_OK) return status;
 	VkBufferCopy region = { .srcOffset = sourceOffset, .dstOffset = targetOffset, .size = bytes };
-	vkd.vkCmdCopyBuffer(commands, from->buffer, to->buffer, 1, &region);
+	vkd.vkCmdCopyBuffer(commands, HANDLE_IN(VkBuffer, source), HANDLE_IN(VkBuffer, target), 1, &region);
 	return VULKAN_OK;
 }
 
@@ -1557,11 +1346,11 @@ static VkBufferImageCopy imageRegion(
 }
 
 int32_t vulkanCopyBufferToImage(
-	uint32_t buffer,
+	uint64_t buffer,
 	uint64_t offset,
 	uint32_t rowLength,
 	uint32_t imageHeight,
-	uint32_t image,
+	uint64_t image,
 	uint32_t aspect,
 	uint32_t mip,
 	int32_t x,
@@ -1572,24 +1361,22 @@ int32_t vulkanCopyBufferToImage(
 	uint32_t width,
 	uint32_t height,
 	uint32_t depth) {
-	VulkanBuffer *from = slotLive(&s_buffers, buffer, "vulkanCopyBufferToImage");
-	if (from == NULL) return VULKAN_ERROR_ORDER;
-	VulkanImage *to = slotLive(&s_images, image, "vulkanCopyBufferToImage");
-	if (to == NULL) return VULKAN_ERROR_ORDER;
-	VkCommandBuffer commands = recording("vulkanCopyBufferToImage");
-	if (commands == NULL) return VULKAN_ERROR_CALL;
+	VkCommandBuffer commands = NULL;
+	int32_t status = recording("vulkanCopyBufferToImage", &commands);
+	if (status != VULKAN_OK) return status;
 	VkBufferImageCopy region = imageRegion(offset, rowLength, imageHeight, aspect, mip, x, y, z, baseLayer, layerCount,
 		width, height, depth);
-	vkd.vkCmdCopyBufferToImage(commands, from->buffer, to->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+	vkd.vkCmdCopyBufferToImage(
+		commands, HANDLE_IN(VkBuffer, buffer), HANDLE_IN(VkImage, image), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 	return VULKAN_OK;
 }
 
 int32_t vulkanCopyImageToBuffer(
-	uint32_t buffer,
+	uint64_t buffer,
 	uint64_t offset,
 	uint32_t rowLength,
 	uint32_t imageHeight,
-	uint32_t image,
+	uint64_t image,
 	uint32_t aspect,
 	uint32_t mip,
 	int32_t x,
@@ -1600,15 +1387,13 @@ int32_t vulkanCopyImageToBuffer(
 	uint32_t width,
 	uint32_t height,
 	uint32_t depth) {
-	VulkanBuffer *to = slotLive(&s_buffers, buffer, "vulkanCopyImageToBuffer");
-	if (to == NULL) return VULKAN_ERROR_ORDER;
-	VulkanImage *from = slotLive(&s_images, image, "vulkanCopyImageToBuffer");
-	if (from == NULL) return VULKAN_ERROR_ORDER;
-	VkCommandBuffer commands = recording("vulkanCopyImageToBuffer");
-	if (commands == NULL) return VULKAN_ERROR_CALL;
+	VkCommandBuffer commands = NULL;
+	int32_t status = recording("vulkanCopyImageToBuffer", &commands);
+	if (status != VULKAN_OK) return status;
 	VkBufferImageCopy region = imageRegion(offset, rowLength, imageHeight, aspect, mip, x, y, z, baseLayer, layerCount,
 		width, height, depth);
-	vkd.vkCmdCopyImageToBuffer(commands, from->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, to->buffer, 1, &region);
+	vkd.vkCmdCopyImageToBuffer(
+		commands, HANDLE_IN(VkImage, image), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, HANDLE_IN(VkBuffer, buffer), 1, &region);
 	return VULKAN_OK;
 }
 
@@ -1620,14 +1405,21 @@ static int32_t validSamples(uint32_t samples) {
 	return samples >= 1 && samples <= 64 && (samples & (samples - 1)) == 0;
 }
 
-uint32_t vulkanRenderPassCreate(const uint32_t *key, uint32_t words) {
-	if (deviceReady("vulkanRenderPassCreate") != VULKAN_OK) return 0;
+static int32_t keyValid(const char *caller, const uint32_t *key, uint32_t words) {
 	uint32_t colors = words > 0 ? key[0] : 0;
 	if (words == 0 || colors > MAX_COLOR_ATTACHMENTS || words != 1 + colors * COLOR_KEY_WORDS + DEPTH_KEY_WORDS) {
-		fail(VULKAN_ERROR_ORDER, "vulkanRenderPassCreate: a key of %u words does not hold %u color attachments and a depth one",
-			words, colors);
-		return 0;
+		return fail(VULKAN_ERROR_ORDER, "%s: a key of %u words does not hold %u color attachments and a depth one",
+			caller, words, colors);
 	}
+	return VULKAN_OK;
+}
+
+int32_t vulkanRenderPassCreate(const uint32_t *key, uint32_t words, uint64_t *renderPass) {
+	*renderPass = 0;
+	if (deviceReady("vulkanRenderPassCreate") != VULKAN_OK) return VULKAN_ERROR_ORDER;
+	int32_t valid = keyValid("vulkanRenderPassCreate", key, words);
+	if (valid != VULKAN_OK) return valid;
+	uint32_t colors = key[0];
 	VkAttachmentDescription attachments[MAX_PASS_ATTACHMENTS];
 	VkAttachmentReference colorRefs[MAX_COLOR_ATTACHMENTS];
 	VkAttachmentReference resolveRefs[MAX_COLOR_ATTACHMENTS];
@@ -1636,9 +1428,8 @@ uint32_t vulkanRenderPassCreate(const uint32_t *key, uint32_t words) {
 	for (uint32_t i = 0; i < colors; i++) {
 		const uint32_t *c = key + 1 + i * COLOR_KEY_WORDS;
 		if (!validLoadStore(c[2], c[3]) || !validSamples(c[1])) {
-			fail(VULKAN_ERROR_ORDER, "vulkanRenderPassCreate: color %u has load op %u, store op %u and %u samples",
+			return fail(VULKAN_ERROR_ORDER, "vulkanRenderPassCreate: color %u has load op %u, store op %u and %u samples",
 				i, c[2], c[3], c[1]);
-			return 0;
 		}
 		VkAttachmentDescription color = { .format = (VkFormat)c[0], .samples = (VkSampleCountFlagBits)c[1] };
 		color.loadOp = (VkAttachmentLoadOp)c[2];
@@ -1665,9 +1456,8 @@ uint32_t vulkanRenderPassCreate(const uint32_t *key, uint32_t words) {
 	VkAttachmentReference depthRef = { VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_UNDEFINED };
 	if (d[0] != 0) {
 		if (!validLoadStore(d[3], d[4]) || !validLoadStore(d[5], d[6]) || !validSamples(d[2])) {
-			fail(VULKAN_ERROR_ORDER, "vulkanRenderPassCreate: the depth attachment has ops %u/%u, stencil ops %u/%u and %u samples",
+			return fail(VULKAN_ERROR_ORDER, "vulkanRenderPassCreate: the depth attachment has ops %u/%u, stencil ops %u/%u and %u samples",
 				d[3], d[4], d[5], d[6], d[2]);
-			return 0;
 		}
 		VkImageLayout layout = d[7] ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		VkAttachmentDescription depth = { .format = (VkFormat)d[1], .samples = (VkSampleCountFlagBits)d[2] };
@@ -1691,23 +1481,15 @@ uint32_t vulkanRenderPassCreate(const uint32_t *key, uint32_t words) {
 	info.subpassCount = 1;
 	info.pSubpasses = &subpass;
 
-	uint32_t id = 0;
-	VulkanRenderPass *fresh = slotAcquire(&s_renderPasses, "vulkanRenderPassCreate", &id);
-	if (fresh == NULL) return 0;
-	VkResult result = vkd.vkCreateRenderPass(s_vk.device, &info, NULL, &fresh->pass);
-	if (result != VK_SUCCESS) {
-		fresh->slot.live = 0;
-		failCall("vkCreateRenderPass", result);
-		return 0;
-	}
-	memcpy(fresh->key, key, sizeof *key * words);
-	fresh->words = words;
-	return id;
+	VkRenderPass fresh = VK_NULL_HANDLE;
+	VkResult result = vkd.vkCreateRenderPass(s_vk.device, &info, NULL, &fresh);
+	if (result != VK_SUCCESS) return failCall("vkCreateRenderPass", result);
+	*renderPass = HANDLE_OUT(fresh);
+	return VULKAN_OK;
 }
 
-static void renderPassRelease(VulkanSlot *slot) {
-	vkd.vkDestroyRenderPass(s_vk.device, ((VulkanRenderPass *)slot)->pass, NULL);
-	slot->live = 0;
+void vulkanRenderPassDestroy(uint64_t renderPass) {
+	vkd.vkDestroyRenderPass(s_vk.device, HANDLE_IN(VkRenderPass, renderPass), NULL);
 }
 
 static VkClearValue colorClear(VkFormat format, const float *rgba) {
@@ -1736,7 +1518,7 @@ static int32_t framebufferKeep(VkFramebuffer framebuffer) {
 	if (s_framebufferCount == s_framebufferCapacity) {
 		uint32_t capacity = s_framebufferCapacity > 0 ? s_framebufferCapacity * 2 : 16;
 		VkFramebuffer *grown = realloc(s_framebuffers, sizeof *grown * capacity);
-		if (grown == NULL) return fail(VULKAN_ERROR_CALL, "out of memory growing the framebuffer list to %u", capacity);
+		if (grown == NULL) return fail(VULKAN_OUT_OF_MEMORY, "out of memory growing the framebuffer list to %u", capacity);
 		s_framebuffers = grown;
 		s_framebufferCapacity = capacity;
 	}
@@ -1749,8 +1531,10 @@ static void framebuffersDestroy(VkFramebuffer *framebuffers, uint32_t count) {
 }
 
 int32_t vulkanPassBegin(
-	uint32_t renderPass,
-	const uint32_t *views,
+	uint64_t renderPass,
+	const uint32_t *key,
+	uint32_t words,
+	const uint64_t *views,
 	uint32_t viewCount,
 	uint32_t width,
 	uint32_t height,
@@ -1760,30 +1544,26 @@ int32_t vulkanPassBegin(
 	if (s_imageBarrierCount != 0) {
 		return fail(VULKAN_ERROR_ORDER, "vulkanPassBegin with %u image barriers never flushed", s_imageBarrierCount);
 	}
-	VulkanRenderPass *pass = slotLive(&s_renderPasses, renderPass, "vulkanPassBegin");
-	if (pass == NULL) return VULKAN_ERROR_ORDER;
+	int32_t valid = keyValid("vulkanPassBegin", key, words);
+	if (valid != VULKAN_OK) return valid;
 	if (width == 0 || height == 0) return fail(VULKAN_ERROR_ORDER, "vulkanPassBegin with a %ux%u render area", width, height);
-	uint32_t colors = pass->key[0];
-	const uint32_t *depth = pass->key + 1 + colors * COLOR_KEY_WORDS;
+	uint32_t colors = key[0];
+	const uint32_t *depth = key + 1 + colors * COLOR_KEY_WORDS;
 	uint32_t attachmentCount = colors + (depth[0] != 0 ? 1 : 0);
 	for (uint32_t i = 0; i < colors; i++) {
-		if (pass->key[1 + i * COLOR_KEY_WORDS + 4] != VK_FORMAT_UNDEFINED) attachmentCount++;
+		if (key[1 + i * COLOR_KEY_WORDS + 4] != VK_FORMAT_UNDEFINED) attachmentCount++;
 	}
 	uint32_t clearWords = colors * 4 + (depth[0] != 0 ? 2 : 0);
 	if (viewCount != attachmentCount || clearCount != clearWords) {
-		return fail(VULKAN_ERROR_ORDER, "vulkanPassBegin: render pass %u takes %u views and %u clear words, given %u and %u",
-			renderPass, attachmentCount, clearWords, viewCount, clearCount);
+		return fail(VULKAN_ERROR_ORDER, "vulkanPassBegin: the render pass takes %u views and %u clear words, given %u and %u",
+			attachmentCount, clearWords, viewCount, clearCount);
 	}
 	VkImageView attachments[MAX_PASS_ATTACHMENTS];
-	for (uint32_t i = 0; i < viewCount; i++) {
-		VulkanView *view = slotLive(&s_views, views[i], "vulkanPassBegin");
-		if (view == NULL) return VULKAN_ERROR_ORDER;
-		attachments[i] = view->view;
-	}
+	for (uint32_t i = 0; i < viewCount; i++) attachments[i] = HANDLE_IN(VkImageView, views[i]);
 	VkClearValue values[MAX_PASS_ATTACHMENTS];
 	uint32_t valueCount = 0;
 	for (uint32_t i = 0; i < colors; i++) {
-		const uint32_t *c = pass->key + 1 + i * COLOR_KEY_WORDS;
+		const uint32_t *c = key + 1 + i * COLOR_KEY_WORDS;
 		values[valueCount++] = colorClear((VkFormat)c[0], clears + i * 4);
 		if (c[4] != VK_FORMAT_UNDEFINED) values[valueCount++] = colorClear((VkFormat)c[4], (const float[4]){ 0, 0, 0, 0 });
 	}
@@ -1792,11 +1572,12 @@ int32_t vulkanPassBegin(
 		values[valueCount].depthStencil.stencil = (uint32_t)clears[colors * 4 + 1];
 		valueCount++;
 	}
-	VkCommandBuffer commands = recording("vulkanPassBegin");
-	if (commands == NULL) return VULKAN_ERROR_CALL;
+	VkCommandBuffer commands = NULL;
+	int32_t status = recording("vulkanPassBegin", &commands);
+	if (status != VULKAN_OK) return status;
 
 	VkFramebufferCreateInfo framebufferInfo = { .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
-	framebufferInfo.renderPass = pass->pass;
+	framebufferInfo.renderPass = HANDLE_IN(VkRenderPass, renderPass);
 	framebufferInfo.attachmentCount = viewCount;
 	framebufferInfo.pAttachments = attachments;
 	framebufferInfo.width = width;
@@ -1805,14 +1586,15 @@ int32_t vulkanPassBegin(
 	VkFramebuffer framebuffer = VK_NULL_HANDLE;
 	VkResult result = vkd.vkCreateFramebuffer(s_vk.device, &framebufferInfo, NULL, &framebuffer);
 	if (result != VK_SUCCESS) return failCall("vkCreateFramebuffer", result);
-	if (framebufferKeep(framebuffer) != VULKAN_OK) {
+	status = framebufferKeep(framebuffer);
+	if (status != VULKAN_OK) {
 		vkd.vkDestroyFramebuffer(s_vk.device, framebuffer, NULL);
-		return VULKAN_ERROR_CALL;
+		return status;
 	}
 
 	VkRect2D area = { .offset = { 0, 0 }, .extent = { width, height } };
 	VkRenderPassBeginInfo begin = { .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
-	begin.renderPass = pass->pass;
+	begin.renderPass = HANDLE_IN(VkRenderPass, renderPass);
 	begin.framebuffer = framebuffer;
 	begin.renderArea = area;
 	begin.clearValueCount = valueCount;
@@ -1843,7 +1625,7 @@ static int32_t waitThrough(uint64_t serial) {
 	while (count < s_submissionCount && s_submissions[count].serial <= serial) count++;
 	if (count == 0) return VULKAN_OK;
 	VkFence *fences = malloc(sizeof *fences * count);
-	if (fences == NULL) return fail(VULKAN_ERROR_CALL, "out of memory waiting on %u submissions", count);
+	if (fences == NULL) return fail(VULKAN_OUT_OF_MEMORY, "out of memory waiting on %u submissions", count);
 	for (uint32_t i = 0; i < count; i++) fences[i] = s_submissions[i].fence;
 	VkResult result = vkd.vkWaitForFences(s_vk.device, count, fences, VK_TRUE, UINT64_MAX);
 	free(fences);
@@ -1861,8 +1643,7 @@ static int32_t idle(void) {
 static void swapImagesRelease(void) {
 	for (uint32_t i = 0; i < s_swap.imageCount; i++) {
 		VulkanSwapImage *image = &s_swap.images[i];
-		if (image->view != 0) viewRelease(slotAt(&s_views, (image->view & SLOT_MASK) - 1));
-		if (image->image != 0) imageRelease(slotAt(&s_images, (image->image & SLOT_MASK) - 1));
+		if (image->view != VK_NULL_HANDLE) vkd.vkDestroyImageView(s_vk.device, image->view, NULL);
 		if (image->presentReady != VK_NULL_HANDLE) vkd.vkDestroySemaphore(s_vk.device, image->presentReady, NULL);
 	}
 	free(s_swap.images);
@@ -1873,33 +1654,11 @@ static void swapImagesRelease(void) {
 }
 
 static int32_t swapImageMake(VulkanSwapImage *slot, VkImage image, VkFormat format) {
-	VulkanImage *wrapped = slotAcquire(&s_images, "vulkanSwapchainCreate", &slot->image);
-	if (wrapped == NULL) return VULKAN_ERROR_CALL;
-	wrapped->image = image;
-	wrapped->aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-	wrapped->mipLevels = 1;
-	wrapped->layers = 1;
-	wrapped->borrowed = 1;
-	VulkanView *view = slotAcquire(&s_views, "vulkanSwapchainCreate", &slot->view);
-	if (view == NULL) {
-		slot->view = 0;
-		return VULKAN_ERROR_CALL;
-	}
-	VkImageViewCreateInfo info = { .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-	info.image = image;
-	info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	info.format = format;
-	info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	info.subresourceRange.levelCount = 1;
-	info.subresourceRange.layerCount = 1;
-	VkResult result = vkd.vkCreateImageView(s_vk.device, &info, NULL, &view->view);
-	if (result != VK_SUCCESS) {
-		view->slot.live = 0;
-		slot->view = 0;
-		return failCall("vkCreateImageView", result);
-	}
+	slot->image = image;
+	int32_t status = viewMake(image, VK_IMAGE_VIEW_TYPE_2D, format, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1, &slot->view);
+	if (status != VULKAN_OK) return status;
 	VkSemaphoreCreateInfo semaphore = { .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-	result = vkd.vkCreateSemaphore(s_vk.device, &semaphore, NULL, &slot->presentReady);
+	VkResult result = vkd.vkCreateSemaphore(s_vk.device, &semaphore, NULL, &slot->presentReady);
 	if (result != VK_SUCCESS) {
 		slot->presentReady = VK_NULL_HANDLE;
 		return failCall("vkCreateSemaphore", result);
@@ -1915,7 +1674,7 @@ static int32_t swapchainImagesTake(VkFormat format) {
 	s_swap.images = calloc(count > 0 ? count : 1, sizeof *s_swap.images);
 	if (images == NULL || s_swap.images == NULL) {
 		free(images);
-		return fail(VULKAN_ERROR_CALL, "out of memory taking %u swapchain images", count);
+		return fail(VULKAN_OUT_OF_MEMORY, "out of memory taking %u swapchain images", count);
 	}
 	result = vkd.vkGetSwapchainImagesKHR(s_vk.device, s_swap.swapchain, &count, images);
 	int32_t status = result == VK_SUCCESS ? VULKAN_OK : failCall("vkGetSwapchainImagesKHR", result);
@@ -1981,20 +1740,20 @@ int32_t vulkanSwapchainCreate(
 
 uint32_t vulkanSwapchainImageCount(void) { return s_swap.imageCount; }
 
-uint32_t vulkanSwapchainImage(uint32_t index) {
+uint64_t vulkanSwapchainImage(uint32_t index) {
 	if (index >= s_swap.imageCount) {
 		fail(VULKAN_ERROR_ORDER, "vulkanSwapchainImage %u is not below the %u swapchain images", index, s_swap.imageCount);
 		return 0;
 	}
-	return s_swap.images[index].image;
+	return HANDLE_OUT(s_swap.images[index].image);
 }
 
-uint32_t vulkanSwapchainView(uint32_t index) {
+uint64_t vulkanSwapchainView(uint32_t index) {
 	if (index >= s_swap.imageCount) {
 		fail(VULKAN_ERROR_ORDER, "vulkanSwapchainView %u is not below the %u swapchain images", index, s_swap.imageCount);
 		return 0;
 	}
-	return s_swap.images[index].view;
+	return HANDLE_OUT(s_swap.images[index].view);
 }
 
 int32_t vulkanSwapchainAcquire(uint32_t *index) {
@@ -2145,7 +1904,7 @@ static int32_t submissionRoom(void) {
 	if (s_submissionCount < s_submissionCapacity) return VULKAN_OK;
 	uint32_t capacity = s_submissionCapacity > 0 ? s_submissionCapacity * 2 : 8;
 	VulkanSubmission *grown = realloc(s_submissions, sizeof *grown * capacity);
-	if (grown == NULL) return fail(VULKAN_ERROR_CALL, "out of memory growing the submission list to %u", capacity);
+	if (grown == NULL) return fail(VULKAN_OUT_OF_MEMORY, "out of memory growing the submission list to %u", capacity);
 	s_submissions = grown;
 	s_submissionCapacity = capacity;
 	return VULKAN_OK;
@@ -2179,14 +1938,14 @@ int32_t vulkanSubmit(uint64_t *serial) {
 	}
 	if (submissionRoom() != VULKAN_OK) {
 		recordingDrop(commands, frame);
-		return VULKAN_ERROR_CALL;
+		return VULKAN_OUT_OF_MEMORY;
 	}
 	VkFramebuffer *framebuffers = NULL;
 	if (s_framebufferCount != 0) {
 		framebuffers = malloc(sizeof *framebuffers * s_framebufferCount);
 		if (framebuffers == NULL) {
 			recordingDrop(commands, frame);
-			return fail(VULKAN_ERROR_CALL, "out of memory keeping %u framebuffers", s_framebufferCount);
+			return fail(VULKAN_OUT_OF_MEMORY, "out of memory keeping %u framebuffers", s_framebufferCount);
 		}
 		memcpy(framebuffers, s_framebuffers, sizeof *framebuffers * s_framebufferCount);
 	}
@@ -2289,12 +2048,6 @@ void vulkanShutdown(void) {
 		framebuffersDestroy(s_framebuffers, s_framebufferCount);
 		swapchainRelease();
 		framesRelease();
-		tableDrain(&s_renderPasses, renderPassRelease);
-		tableDrain(&s_views, viewRelease);
-		tableDrain(&s_samplers, samplerRelease);
-		tableDrain(&s_buffers, bufferRelease);
-		tableDrain(&s_images, imageRelease);
-		tableDrain(&s_blocks, blockRelease);
 		if (s_vk.commandPool != VK_NULL_HANDLE) vkd.vkDestroyCommandPool(s_vk.device, s_vk.commandPool, NULL);
 		vkd.vkDestroyDevice(s_vk.device, NULL);
 	}

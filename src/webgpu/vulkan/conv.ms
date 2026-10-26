@@ -169,7 +169,8 @@ export function bufferRest(usage: int32): BufferRest {
 	return { stages: stages, access: access };
 }
 
-export function textureRest(usage: int32, depth: boolean): TextureRest {
+export function textureRest(usage: int32, aspect: uint32): TextureRest {
+	const depth = aspect != ASPECT_COLOR;
 	const shader = has(usage, GPUTextureUsage.TEXTURE_BINDING as int32) || has(usage, GPUTextureUsage.STORAGE_BINDING as int32);
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
 	let stages: uint32 = 0;
@@ -196,11 +197,11 @@ export function textureRest(usage: int32, depth: boolean): TextureRest {
 	} else if (attachment) {
 		layout = depth ? LAYOUT_DEPTH_STENCIL_ATTACHMENT : LAYOUT_COLOR_ATTACHMENT;
 	}
-	return { stages: stages, access: access, layout: layout };
+	return { stages: stages, access: access, layout: layout, aspect: aspect };
 }
 
 export function swapchainRest(): TextureRest {
-	return { stages: STAGE_COLOR_ATTACHMENT_OUTPUT, access: 0, layout: LAYOUT_PRESENT };
+	return { stages: STAGE_COLOR_ATTACHMENT_OUTPUT, access: 0, layout: LAYOUT_PRESENT, aspect: ASPECT_COLOR };
 }
 
 export function loadOp(op: GPULoadOp, member: string): uint32 {

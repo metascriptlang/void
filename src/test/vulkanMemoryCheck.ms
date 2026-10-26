@@ -11,7 +11,9 @@ import {
 	MemoryRequest,
 	OffsetAllocation,
 	OffsetAllocator,
+	OpenedBlock,
 	Tiling,
+	WHOLE_SIZE,
 	memoryAllocate,
 	memoryFree,
 	memoryPropertiesOf,
@@ -23,7 +25,7 @@ const MB: uint64 = 1024 * 1024;
 const GB: uint64 = 1024 * MB;
 const ALL_TYPES: uint32 = 0xFFFFFFFF;
 
-let nextBlock: uint32 = 0;
+let nextBlock: uint64 = 0;
 let openBlocks: int32 = 0;
 let openedSizes: Vec<uint64> = [];
 let openedOwners: Vec<DedicatedOwner> = [];
@@ -39,14 +41,14 @@ function deviceOf(
 		heapSizes: [],
 		nonCoherentAtomSize: 64,
 		maxAllocationCount: cap,
-		openBlock: (typeIndex: int32, size: uint64, owner: DedicatedOwner): uint32 => {
+		openBlock: (typeIndex: int32, size: uint64, owner: DedicatedOwner, map: boolean): OpenedBlock => {
 			nextBlock += 1;
 			openBlocks += 1;
 			openedSizes.push(size);
 			openedOwners.push(owner);
-			return nextBlock;
+			return { memory: nextBlock, mapped: map ? 0x1000 * nextBlock : 0 };
 		},
-		closeBlock: (block: uint32): void => {
+		closeBlock: (memory: uint64): void => {
 			openBlocks -= 1;
 		},
 	};
@@ -123,7 +125,7 @@ function take(ref m: MemoryAllocator, r: MemoryRequest): MemoryAllocation {
 function give(ref m: MemoryAllocator, allocation: MemoryAllocation): void {
 	const result = memoryFree(m, allocation);
 	if (!result.ok) {
-		console.log(`memoryFree refused block ${allocation.block}: ${result.error.toString()}`);
+		console.log(`memoryFree refused block ${allocation.memory}: ${result.error.toString()}`);
 		unreachable;
 	}
 }
@@ -320,13 +322,13 @@ test "freed neighbours coalesce so the whole block fits again" {
 	const first = take(m, request(10 * MB, 1, MemoryKind.DeviceLocal, Tiling.Linear));
 	const second = take(m, request(20 * MB, 1, MemoryKind.DeviceLocal, Tiling.Linear));
 	const third = take(m, request(30 * MB, 1, MemoryKind.DeviceLocal, Tiling.Linear));
-	assert first.block == keep.block && second.block == keep.block && third.block == keep.block;
+	assert first.memory == keep.memory && second.memory == keep.memory && third.memory == keep.memory;
 	give(m, second);
 	give(m, first);
 	give(m, third);
 	assert m.groups[keep.group].blocks[keep.slot].offsets.allocated() == 1;
 	const rest = take(m, request(48 * MB, 1, MemoryKind.DeviceLocal, Tiling.Linear));
-	assert rest.block == keep.block;
+	assert rest.memory == keep.memory;
 	assert rest.offset == 1;
 	give(m, keep);
 	give(m, rest);
@@ -338,7 +340,7 @@ test "every offset honours the requested alignment" {
 	const odd = take(m, request(100, 1, MemoryKind.DeviceLocal, Tiling.Optimal));
 	assert odd.offset == 0;
 	const image = take(m, request(4096, 65536, MemoryKind.DeviceLocal, Tiling.Optimal));
-	assert image.block == odd.block;
+	assert image.memory == odd.memory;
 	assert image.offset % 65536 == 0;
 	assert image.offset >= 100;
 	const uniform = take(m, request(17, 256, MemoryKind.DeviceLocal, Tiling.Optimal));
@@ -360,12 +362,41 @@ test "non-coherent host memory aligns to nonCoherentAtomSize as Dawn does" {
 	give(m, second);
 }
 
+test "a host-visible block is mapped once and a non-coherent range widens to whole atoms" {
+	let m = MemoryAllocator.forDevice(nonCoherentHost());
+	const local = take(m, request(64, 1, MemoryKind.DeviceLocal, Tiling.Linear));
+	assert local.mapped == 0;
+	const first = take(m, request(3, 1, MemoryKind.ReadMappable, Tiling.Linear));
+	const second = take(m, request(5, 4, MemoryKind.ReadMappable, Tiling.Linear));
+	assert first.mapped != 0 && second.mapped == first.mapped;
+	const head = m.mappedRange(first, 0, 3);
+	assert head.offset == 0 && head.size == 64;
+	const inner = m.mappedRange(second, 1, 2);
+	assert inner.offset == second.offset && inner.size == 64;
+	const huge = take(m, request(300 * MB, 1, MemoryKind.ReadMappable, Tiling.Linear));
+	const tail = m.mappedRange(huge, 300 * MB - 10, 10);
+	assert tail.offset == 300 * MB - 64 && tail.size == WHOLE_SIZE;
+	give(m, local);
+	give(m, first);
+	give(m, second);
+	give(m, huge);
+}
+
+test "a coherent block needs no flush range" {
+	let m = MemoryAllocator.forDevice(lavapipe());
+	const mapped = take(m, request(100, 1, MemoryKind.ReadMappable, Tiling.Linear));
+	assert mapped.mapped != 0;
+	const range = m.mappedRange(mapped, 10, 20);
+	assert range.offset == 0 && range.size == 0;
+	give(m, mapped);
+}
+
 test "a request larger than a block gets a dedicated block of its own size" {
 	openedSizes = [];
 	let m = MemoryAllocator.forDevice(nvidia(4096));
 	const small = take(m, request(1 * MB, 256, MemoryKind.DeviceLocal, Tiling.Linear));
 	const huge = take(m, request(300 * MB, 256, MemoryKind.DeviceLocal, Tiling.Linear));
-	assert huge.block != small.block;
+	assert huge.memory != small.memory;
 	assert huge.offset == 0;
 	assert openedSizes.length == 2;
 	assert openedSizes[0] == 256 * MB;
@@ -385,7 +416,7 @@ test "exhausting a block opens a new one and an emptied slot is reused" {
 	const first = take(m, request(40 * MB, 1, MemoryKind.WriteMappable, Tiling.Linear));
 	const second = take(m, request(40 * MB, 1, MemoryKind.WriteMappable, Tiling.Linear));
 	assert first.typeIndex == 2;
-	assert second.block != first.block;
+	assert second.memory != first.memory;
 	assert second.slot == first.slot + 1;
 	assert openedSizes[0] == 64 * MB && openedSizes[1] == 64 * MB;
 	assert m.blockCount == 2;
@@ -393,7 +424,7 @@ test "exhausting a block opens a new one and an emptied slot is reused" {
 	assert m.blockCount == 1;
 	const third = take(m, request(40 * MB, 1, MemoryKind.WriteMappable, Tiling.Linear));
 	assert third.slot == first.slot;
-	assert third.block != first.block;
+	assert third.memory != first.memory;
 	give(m, second);
 	give(m, third);
 	assert m.blockCount == 0;
@@ -407,7 +438,7 @@ test "the allocation-count cap refuses the block past it by name" {
 	assert !third.ok;
 	if (!third.ok) { assert third.error == MemoryError.AllocationCountExceeded; }
 	const fits = take(m, request(1 * MB, 1, MemoryKind.DeviceLocal, Tiling.Linear));
-	assert fits.block == second.block;
+	assert fits.memory == second.memory;
 	assert m.blockCount == 2;
 	give(m, first);
 	give(m, second);
@@ -420,8 +451,8 @@ test "linear and optimal resources never share a block" {
 	const image = take(m, request(4096, 65536, MemoryKind.DeviceLocal, Tiling.Optimal));
 	const another = take(m, request(4096, 256, MemoryKind.DeviceLocal, Tiling.Linear));
 	assert buffer.typeIndex == image.typeIndex;
-	assert image.block != buffer.block;
-	assert another.block == buffer.block;
+	assert image.memory != buffer.memory;
+	assert another.memory == buffer.memory;
 	give(m, buffer);
 	give(m, image);
 	give(m, another);
@@ -443,7 +474,7 @@ test "a required dedication opens a block of the resource's own size handed its 
 	let m = MemoryAllocator.forDevice(nvidia(4096));
 	const shared = take(m, request(4096, 256, MemoryKind.DeviceLocal, Tiling.Optimal));
 	const own = take(m, dedicatedTo(7, Dedication.Required));
-	assert own.block != shared.block;
+	assert own.memory != shared.memory;
 	assert own.offset == 0;
 	assert m.groups[own.group].blocks[own.slot].dedicated;
 	assert openedSizes[1] == 4096;
@@ -465,7 +496,7 @@ test "a preferred dedication is dropped above three quarters of the allocation c
 	assert m.groups[third.group].blocks[third.slot].dedicated;
 	assert m.blockCount == 4;
 	const fourth = take(m, dedicatedTo(4, Dedication.Preferred));
-	assert fourth.block == shared.block;
+	assert fourth.memory == shared.memory;
 	const required = memoryAllocate(m, dedicatedTo(5, Dedication.Required));
 	assert !required.ok;
 	if (!required.ok) { assert required.error == MemoryError.AllocationCountExceeded; }

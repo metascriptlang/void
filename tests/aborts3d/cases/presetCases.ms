@@ -274,7 +274,8 @@ function forwardCase(name: string): boolean {
 	} else if (name == "outline.settingsWidth") {
 		setOutlineSettings(openForward(false), { ...ForwardOutlineSettings.defaults(), pixelWidth: 0.0 });
 	} else if (name == "outline.uniformBudget") {
-		setOutlineBlend(openForward(false), 1.0);
+		let context: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
+		setOutlineBlend(forwardOn(context), 1.0);
 	} else {
 		return false;
 	}

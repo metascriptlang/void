@@ -12,8 +12,14 @@ import {
 	vulkanValidationWarnings,
 } from "../../src/webgpu/vulkan/vulkan.h";
 import { vulkanHostWindowClose, vulkanHostWindowOpen, vulkanHostWindowResize } from "./vulkanSwapchainHost.h";
-import { VulkanResources, openResources } from "../../src/webgpu/vulkan/resources";
-import { RenderPassCache, beginRenderPass, endRenderPass, newRenderPassCache } from "../../src/webgpu/vulkan/pass";
+import { VulkanResources, closeResources, openResources } from "../../src/webgpu/vulkan/resources";
+import {
+	RenderPassCache,
+	beginRenderPass,
+	closeRenderPasses,
+	endRenderPass,
+	newRenderPassCache,
+} from "../../src/webgpu/vulkan/pass";
 import { FRAMES_IN_FLIGHT, FrameRing, beginFrame, endFrame, openFrames } from "../../src/webgpu/vulkan/frame";
 import {
 	Swapchain,
@@ -78,8 +84,7 @@ function frame(
 		descriptor.depthStencilAttachment.depthStoreOp = "store";
 		const begin = beginRenderPass(r, cache, descriptor);
 		if (!begin.ok) { return refused(`beginRenderPass ${index}`, begin.error.toString()); }
-		const end = endRenderPass();
-		if (!end.ok) { return refused(`endRenderPass ${index}`, end.error.toString()); }
+		endRenderPass();
 	}
 	const ended = endFrame(r, ring);
 	if (!ended.ok) { return refused(`endFrame ${index}`, ended.error.toString()); }
@@ -129,9 +134,11 @@ function frames(ref r: VulkanResources): int32 {
 	if (!released.ok) { return refused("releaseSwapchain", released.error.toString()); }
 	const dropped = releaseSurface(r, chain);
 	if (!dropped.ok) { return refused("releaseSurface", dropped.error.toString()); }
+	const cached = cache.passes.length;
+	closeRenderPasses(cache);
 	console.log(`frames: ${FRAMES} presented on ${FRAMES_IN_FLIGHT} frames in flight, ${firstWidth}x${firstHeight} ` +
 		`recreated ${recreated} time(s) to ${RESIZED_WIDTH}x${RESIZED_HEIGHT}; the last frame presented unrendered; ` +
-		`${cache.passes.length} render pass(es) cached`);
+		`${cached} render pass(es) cached`);
 	return 0;
 }
 
@@ -144,6 +151,8 @@ function main(): int32 {
 	console.log(`adapter ${vulkanAdapterName()}`);
 	let r = openResources();
 	if (frames(r) != 0) { return 1; }
+	const closed = closeResources(r);
+	if (!closed.ok) { return refused("closeResources", closed.error.toString()); }
 	const validated: boolean = vulkanValidationEnabled() != 0;
 	vulkanShutdown();
 	vulkanHostWindowClose();

@@ -214,6 +214,9 @@ static int s_doorSamples;
 static bool s_doorDepth;
 
 static void deviceRemoved(const char *what, HRESULT hr) {
+#if defined(VOID_GLCORE)
+	voidFail("%s failed: 0x%08lx in a GL core build, whose host views are refused", what, (unsigned long)hr);
+#else
 	if (voidD3d11RemovalAction((int32_t)hr) == REMOVAL_NONE) voidFail("%s failed: 0x%08lx", what, (unsigned long)hr);
 	HRESULT reason = ID3D11Device_GetDeviceRemovedReason(s_device);
 	if (voidD3d11RemovalAction((int32_t)reason) != REMOVAL_RECOVER) {
@@ -226,6 +229,7 @@ static void deviceRemoved(const char *what, HRESULT hr) {
 	}
 	s_deviceRemoved = 1;
 	voidLoseContext();
+#endif
 }
 
 void *voidD3d11Device(void) { return s_device; }

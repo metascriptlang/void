@@ -37,6 +37,7 @@ export enum MemoryError {
 }
 
 export const NO_NODE: uint32 = 0xFFFFFFFF;
+export const WHOLE_SIZE: uint64 = 0xFFFFFFFFFFFFFFFF;
 export const DEFAULT_MAX_ALLOCATIONS: uint32 = 128 * 1024;
 
 const NUM_TOP_BINS: int32 = 32;
@@ -84,8 +85,18 @@ export struct AllocationSizes {
 }
 
 export struct DedicatedOwner {
-	buffer: uint32;
-	image: uint32;
+	buffer: uint64;
+	image: uint64;
+}
+
+export struct OpenedBlock {
+	memory: uint64;
+	mapped: uint64;
+}
+
+export struct MappedRange {
+	offset: uint64;
+	size: uint64;
 }
 
 export struct MemoryType {
@@ -98,12 +109,13 @@ export struct MemoryDevice {
 	heapSizes: Vec<uint64>;
 	nonCoherentAtomSize: uint64;
 	maxAllocationCount: uint32;
-	openBlock: (typeIndex: int32, size: uint64, owner: DedicatedOwner) => uint32;
-	closeBlock: (block: uint32) => void;
+	openBlock: (typeIndex: int32, size: uint64, owner: DedicatedOwner, map: boolean) => OpenedBlock;
+	closeBlock: (memory: uint64) => void;
 }
 
 struct MemoryBlock {
-	id: uint32;
+	memory: uint64;
+	mapped: uint64;
 	size: uint64;
 	dedicated: boolean;
 	dedicatedAllocated: uint64;
@@ -134,7 +146,8 @@ export struct MemoryRequest {
 }
 
 export struct MemoryAllocation {
-	block: uint32;
+	memory: uint64;
+	mapped: uint64;
 	offset: uint64;
 	size: uint64;
 	typeIndex: int32;
@@ -465,7 +478,7 @@ function blockSizeOf(this m: MemoryAllocator, typeIndex: int32): uint64 {
 }
 
 function emptyBlock(): MemoryBlock {
-	return { id: 0, size: 0, dedicated: false, dedicatedAllocated: 0, offsets: emptyOffsets() };
+	return { memory: 0, mapped: 0, size: 0, dedicated: false, dedicatedAllocated: 0, offsets: emptyOffsets() };
 }
 
 function addBlock(
@@ -479,11 +492,14 @@ function addBlock(
 	if (m.blockCount >= m.device.maxAllocationCount) {
 		return Result.err(MemoryError.AllocationCountExceeded);
 	}
-	const id = m.device.openBlock(m.groups[group].typeIndex, size, owner);
-	if (id == 0) { return Result.err(MemoryError.BlockAllocationFailed); }
+	const typeIndex = m.groups[group].typeIndex;
+	const map = m.device.types[typeIndex].properties.has(MemoryProperty.HostVisible);
+	const opened = m.device.openBlock(typeIndex, size, owner, map);
+	if (opened.memory == 0) { return Result.err(MemoryError.BlockAllocationFailed); }
 	m.blockCount += 1;
 	const block: MemoryBlock = {
-		id: id,
+		memory: opened.memory,
+		mapped: opened.mapped,
 		size: size,
 		dedicated: dedicated,
 		dedicatedAllocated: 0,
@@ -524,7 +540,8 @@ function placed(
 	alignment: uint64,
 ): MemoryAllocation {
 	return {
-		block: m.groups[group].blocks[slot].id,
+		memory: m.groups[group].blocks[slot].memory,
+		mapped: m.groups[group].blocks[slot].mapped,
 		offset: alignUp(inBlock.offset as uint64, alignment),
 		size: request.size,
 		typeIndex: m.groups[group].typeIndex,
@@ -562,7 +579,7 @@ export function memoryAllocate(
 	if (padded > blockSize || m.wantsDedicated(request.dedication)) {
 		let free: int32 = -1;
 		for (let i: int32 = 0; i < m.groups[group].blocks.length && free < 0; i++) {
-			if (m.groups[group].blocks[i].id == 0) { free = i; }
+			if (m.groups[group].blocks[i].memory == 0) { free = i; }
 		}
 		const slot = try addBlock(m, group, request.size, request.owner, true, free);
 		const whole = try blockAllocate(m.groups[group].blocks[slot], request.size);
@@ -571,7 +588,7 @@ export function memoryAllocate(
 
 	let empty: int32 = -1;
 	for (let i: int32 = 0; i < m.groups[group].blocks.length; i++) {
-		if (m.groups[group].blocks[i].id == 0) {
+		if (m.groups[group].blocks[i].memory == 0) {
 			if (empty < 0) { empty = i; }
 			continue;
 		}
@@ -593,7 +610,7 @@ export function memoryFree(
 		slot < 0 || slot >= m.groups[group].blocks.length) {
 		return Result.err(MemoryError.InvalidAllocation);
 	}
-	if (m.groups[group].blocks[slot].id != allocation.block || allocation.block == 0) {
+	if (m.groups[group].blocks[slot].memory != allocation.memory || allocation.memory == 0) {
 		return Result.err(MemoryError.InvalidAllocation);
 	}
 	if (m.groups[group].blocks[slot].dedicated) {
@@ -606,9 +623,18 @@ export function memoryFree(
 		? m.groups[group].blocks[slot].dedicatedAllocated == 0
 		: m.groups[group].blocks[slot].offsets.allocated() == 0;
 	if (emptied) {
-		m.device.closeBlock(allocation.block);
+		m.device.closeBlock(allocation.memory);
 		m.groups[group].blocks[slot] = emptyBlock();
 		m.blockCount -= 1;
 	}
 	return Result.ok(null);
+}
+
+export function mappedRange(this m: MemoryAllocator, allocation: MemoryAllocation, offset: uint64, bytes: uint64): MappedRange {
+	if (m.device.types[allocation.typeIndex].properties.has(MemoryProperty.HostCoherent)) { return { offset: 0, size: 0 }; }
+	const atom = m.device.nonCoherentAtomSize;
+	const start = (allocation.offset + offset) / atom * atom;
+	const end = alignUp(allocation.offset + offset + bytes, atom);
+	const blockSize = m.groups[allocation.group].blocks[allocation.slot].size;
+	return { offset: start, size: end >= blockSize ? WHOLE_SIZE : end - start };
 }
