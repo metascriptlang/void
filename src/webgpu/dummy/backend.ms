@@ -73,6 +73,15 @@ import {
 	checkedTexelWritePitch,
 	featureBit,
 	linearFilter,
+	TextureFormatFacts,
+	compareIndex,
+	blendFactorIndex,
+	blendOperationIndex,
+	stencilOperationIndex,
+	vertexFormatIndex,
+	addressModeIndex,
+	topologyNative,
+	textureFormatFacts,
 } from "../types.ms";
 import {
 	cachedCanvas,
@@ -127,12 +136,6 @@ enum ViewDimension {
 	Cube,
 	CubeArray,
 	ThreeD,
-}
-
-struct FormatInfo {
-	bytesPerPixel: int32;
-	depth: boolean;
-	stencil: boolean;
 }
 
 struct BufferSlot {
@@ -213,100 +216,27 @@ let querySets: Vec<QuerySetSlot> = [{}];
 	unreachable;
 }
 
-@noinline function stopOnFormat(member: string, value: string): FormatInfo {
-	console.log(`webgpu dummy: ${member} '${value}' is not supported`);
-	unreachable;
-}
-
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
 
-function colorInfo(bytesPerPixel: int32): FormatInfo {
-	return { bytesPerPixel: bytesPerPixel, depth: false, stencil: false };
+function formatInfo(format: GPUTextureFormat, member: string): TextureFormatFacts {
+	return textureFormatFacts(format, member, "dummy");
 }
 
-function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
-	const value: string = format;
-	return match (value) {
-		"r8unorm" => colorInfo(1),
-		"rg8unorm" => colorInfo(2),
-		"rgba8unorm" | "rgba8unorm-srgb" | "bgra8unorm" | "bgra8unorm-srgb" => colorInfo(4),
-		"rgba8uint" | "rgba8sint" => colorInfo(4),
-		"r16float" => colorInfo(2),
-		"rg16float" => colorInfo(4),
-		"rgba16float" => colorInfo(8),
-		"rgba16uint" => colorInfo(8),
-		"r32float" => colorInfo(4),
-		"rg32float" => colorInfo(8),
-		"rgba32float" => colorInfo(16),
-		"rgba32uint" => colorInfo(16),
-		"r32uint" => colorInfo(4),
-		"rgb10a2unorm" | "rg11b10ufloat" => colorInfo(4),
-		"depth16unorm" => ({ bytesPerPixel: 2, depth: true, stencil: false }),
-		"depth32float" => ({ bytesPerPixel: 4, depth: true, stencil: false }),
-		"depth24plus-stencil8" => ({ bytesPerPixel: 8, depth: true, stencil: true }),
-		_ => stopOnFormat(member, value),
-	};
-}
+function compareFunction(compare: string, member: string): int32 { return compareIndex(compare, member, "dummy"); }
 
-function compareFunction(compare: string, member: string): int32 {
-	return match (compare) {
-		"" | "never" | "less" | "equal" | "less-equal" | "greater" | "not-equal" | "greater-equal" | "always" => 0,
-		_ => stopOnMember(member, compare),
-	};
-}
+function blendFactor(factor: string, member: string): int32 { return blendFactorIndex(factor, member, "dummy"); }
 
-function blendFactor(factor: string, member: string): int32 {
-	return match (factor) {
-		"" | "zero" | "one" | "src" | "one-minus-src" | "src-alpha" | "one-minus-src-alpha" => 0,
-		"dst" | "one-minus-dst" | "dst-alpha" | "one-minus-dst-alpha" | "src-alpha-saturated" => 0,
-		"constant" | "one-minus-constant" => 0,
-		_ => stopOnMember(member, factor),
-	};
-}
+function blendOperation(operation: string, member: string): int32 { return blendOperationIndex(operation, member, "dummy"); }
 
-function blendOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "add" | "subtract" | "reverse-subtract" | "min" | "max" => 0,
-		_ => stopOnMember(member, operation),
-	};
-}
+function stencilOperation(operation: string, member: string): int32 { return stencilOperationIndex(operation, member, "dummy"); }
 
-function stencilOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "keep" | "zero" | "replace" | "invert" => 0,
-		"increment-clamp" | "decrement-clamp" | "increment-wrap" | "decrement-wrap" => 0,
-		_ => stopOnMember(member, operation),
-	};
-}
+function vertexFormat(format: string): int32 { return vertexFormatIndex(format, "vertex attribute format", "dummy"); }
 
-function vertexFormat(format: string): int32 {
-	return match (format) {
-		"uint8x2" | "uint8x4" | "sint8x2" | "sint8x4" | "unorm8x2" | "unorm8x4" | "snorm8x2" | "snorm8x4" => 0,
-		"uint16x2" | "uint16x4" | "sint16x2" | "sint16x4" | "unorm16x2" | "unorm16x4" => 0,
-		"snorm16x2" | "snorm16x4" | "float16x2" | "float16x4" => 0,
-		"float32" | "float32x2" | "float32x3" | "float32x4" => 0,
-		"sint32" | "sint32x2" | "sint32x3" | "sint32x4" | "uint32" | "uint32x2" | "uint32x3" | "uint32x4" => 0,
-		_ => stopOnMember("vertex attribute format", format),
-	};
-}
+function addressMode(mode: string, member: string): int32 { return addressModeIndex(mode, member, "dummy"); }
 
-function addressMode(mode: string, member: string): int32 {
-	return match (mode) {
-		"" | "clamp-to-edge" | "repeat" | "mirror-repeat" => 0,
-		_ => stopOnMember(member, mode),
-	};
-}
+const PRIMITIVE_TYPES: int32[] = [0, 1, PRIMITIVE_LINE_STRIP, 3, PRIMITIVE_TRIANGLE_STRIP];
 
-function primitiveType(topology: string): int32 {
-	return match (topology) {
-		"point-list" => 0,
-		"line-list" => 1,
-		"line-strip" => PRIMITIVE_LINE_STRIP,
-		"" | "triangle-list" => 3,
-		"triangle-strip" => PRIMITIVE_TRIANGLE_STRIP,
-		_ => stopOnMember("primitive.topology", topology),
-	};
-}
+function primitiveType(topology: string): int32 { return topologyNative(PRIMITIVE_TYPES, topology, "primitive.topology", "dummy"); }
 
 function indexSize(format: GPUIndexFormat): int32 {
 	const value: string = format;

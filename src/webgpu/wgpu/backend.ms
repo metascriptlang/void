@@ -2,6 +2,16 @@ import "./lost";
 import {
 	BindingKind,
 	bindingKind,
+	compareNative,
+	blendFactorNative,
+	blendOperationNative,
+	stencilOperationNative,
+	vertexFormatNative,
+	addressModeNative,
+	topologyNative,
+	FORMAT_COUNT,
+	nativeAt,
+	textureFormatFacts,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_SHADER_BINDINGS,
@@ -517,74 +527,30 @@ let bindGroups: Vec<BindGroupSlot> = [{}];
 	unreachable;
 }
 
-@noinline function stopOnFormat(member: string, value: string): FormatInfo {
-	console.log(`webgpu wgpu: ${member} '${value}' is not supported`);
-	unreachable;
-}
-
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
 
-function colorFormat(native: int32, bytesPerPixel: int32): FormatInfo {
-	return { native: native, bytesPerPixel: bytesPerPixel, depth: false, stencil: false };
-}
+const NATIVE_FORMATS: int32[] = [
+	FORMAT_R8_UNORM, FORMAT_RG8_UNORM, FORMAT_RGBA8_UNORM, FORMAT_RGBA8_UNORM_SRGB,
+	FORMAT_BGRA8_UNORM, FORMAT_BGRA8_UNORM_SRGB, FORMAT_RGBA8_UINT, FORMAT_RGBA8_SINT,
+	FORMAT_R16_FLOAT, FORMAT_RG16_FLOAT, FORMAT_RGBA16_FLOAT, FORMAT_RGBA16_UINT,
+	FORMAT_R32_FLOAT, FORMAT_RG32_FLOAT, FORMAT_RGBA32_FLOAT, FORMAT_RGBA32_UINT, FORMAT_R32_UINT,
+	FORMAT_RGB10A2_UNORM, FORMAT_RG11B10_UFLOAT,
+	FORMAT_DEPTH16_UNORM, FORMAT_DEPTH32_FLOAT, FORMAT_DEPTH24_PLUS_STENCIL8,
+];
 
 function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
-	const value: string = format;
-	return match (value) {
-		"r8unorm" => colorFormat(FORMAT_R8_UNORM, 1),
-		"rg8unorm" => colorFormat(FORMAT_RG8_UNORM, 2),
-		"rgba8unorm" => colorFormat(FORMAT_RGBA8_UNORM, 4),
-		"rgba8unorm-srgb" => colorFormat(FORMAT_RGBA8_UNORM_SRGB, 4),
-		"bgra8unorm" => colorFormat(FORMAT_BGRA8_UNORM, 4),
-		"bgra8unorm-srgb" => colorFormat(FORMAT_BGRA8_UNORM_SRGB, 4),
-		"rgba8uint" => colorFormat(FORMAT_RGBA8_UINT, 4),
-		"rgba8sint" => colorFormat(FORMAT_RGBA8_SINT, 4),
-		"r16float" => colorFormat(FORMAT_R16_FLOAT, 2),
-		"rg16float" => colorFormat(FORMAT_RG16_FLOAT, 4),
-		"rgba16float" => colorFormat(FORMAT_RGBA16_FLOAT, 8),
-		"rgba16uint" => colorFormat(FORMAT_RGBA16_UINT, 8),
-		"r32float" => colorFormat(FORMAT_R32_FLOAT, 4),
-		"rg32float" => colorFormat(FORMAT_RG32_FLOAT, 8),
-		"rgba32float" => colorFormat(FORMAT_RGBA32_FLOAT, 16),
-		"rgba32uint" => colorFormat(FORMAT_RGBA32_UINT, 16),
-		"r32uint" => colorFormat(FORMAT_R32_UINT, 4),
-		"rgb10a2unorm" => colorFormat(FORMAT_RGB10A2_UNORM, 4),
-		"rg11b10ufloat" => colorFormat(FORMAT_RG11B10_UFLOAT, 4),
-		"depth16unorm" => ({
-			native: FORMAT_DEPTH16_UNORM,
-			bytesPerPixel: 2,
-			depth: true,
-			stencil: false,
-		}),
-		"depth32float" => ({
-			native: FORMAT_DEPTH32_FLOAT,
-			bytesPerPixel: 4,
-			depth: true,
-			stencil: false,
-		}),
-		"depth24plus-stencil8" => ({
-			native: FORMAT_DEPTH24_PLUS_STENCIL8,
-			bytesPerPixel: 4,
-			depth: true,
-			stencil: true,
-		}),
-		_ => stopOnFormat(member, value),
+	const facts = textureFormatFacts(format, member, "wgpu");
+	return {
+		native: nativeAt(NATIVE_FORMATS, FORMAT_COUNT, facts.index, "wgpu", "native format"),
+		bytesPerPixel: facts.bytesPerPixel,
+		depth: facts.depth,
+		stencil: facts.stencil,
 	};
 }
 
-function compareFunction(compare: string, member: string): int32 {
-	return match (compare) {
-		"never" => COMPARE_NEVER,
-		"less" => COMPARE_LESS,
-		"equal" => COMPARE_EQUAL,
-		"less-equal" => COMPARE_LESS_EQUAL,
-		"greater" => COMPARE_GREATER,
-		"not-equal" => COMPARE_NOT_EQUAL,
-		"greater-equal" => COMPARE_GREATER_EQUAL,
-		"" | "always" => COMPARE_ALWAYS,
-		_ => stopOnMember(member, compare),
-	};
-}
+const COMPARE_FUNCTIONS: int32[] = [COMPARE_NEVER, COMPARE_LESS, COMPARE_EQUAL, COMPARE_LESS_EQUAL, COMPARE_GREATER, COMPARE_NOT_EQUAL, COMPARE_GREATER_EQUAL, COMPARE_ALWAYS];
+
+function compareFunction(compare: string, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "wgpu"); }
 
 function cullMode(cull: string): int32 {
 	return match (cull) {
@@ -603,24 +569,12 @@ function frontFace(face: string): int32 {
 	};
 }
 
-function blendFactor(factor: string, member: string): int32 {
-	return match (factor) {
-		"zero" => BLEND_ZERO,
-		"" | "one" => BLEND_ONE,
-		"src" => BLEND_SRC,
-		"one-minus-src" => BLEND_ONE_MINUS_SRC,
-		"src-alpha" => BLEND_SRC_ALPHA,
-		"one-minus-src-alpha" => BLEND_ONE_MINUS_SRC_ALPHA,
-		"dst" => BLEND_DST,
-		"one-minus-dst" => BLEND_ONE_MINUS_DST,
-		"dst-alpha" => BLEND_DST_ALPHA,
-		"one-minus-dst-alpha" => BLEND_ONE_MINUS_DST_ALPHA,
-		"src-alpha-saturated" => BLEND_SRC_ALPHA_SATURATED,
-		"constant" => BLEND_CONSTANT,
-		"one-minus-constant" => BLEND_ONE_MINUS_CONSTANT,
-		_ => stopOnMember(member, factor),
-	};
-}
+const BLEND_FACTORS: int32[] = [
+	BLEND_ZERO, BLEND_ONE, BLEND_SRC, BLEND_ONE_MINUS_SRC, BLEND_SRC_ALPHA, BLEND_ONE_MINUS_SRC_ALPHA, BLEND_DST, BLEND_ONE_MINUS_DST,
+	BLEND_DST_ALPHA, BLEND_ONE_MINUS_DST_ALPHA, BLEND_SRC_ALPHA_SATURATED, BLEND_CONSTANT, BLEND_ONE_MINUS_CONSTANT,
+];
+
+function blendFactor(factor: string, member: string): int32 { return blendFactorNative(BLEND_FACTORS, factor, member, "wgpu"); }
 
 function destinationFactor(factor: string, member: string): int32 {
 	const value: string = factor;
@@ -628,77 +582,26 @@ function destinationFactor(factor: string, member: string): int32 {
 	return blendFactor(value, member);
 }
 
-function blendOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "add" => BLEND_OP_ADD,
-		"subtract" => BLEND_OP_SUBTRACT,
-		"reverse-subtract" => BLEND_OP_REVERSE_SUBTRACT,
-		"min" => BLEND_OP_MIN,
-		"max" => BLEND_OP_MAX,
-		_ => stopOnMember(member, operation),
-	};
-}
+const BLEND_OPERATIONS: int32[] = [BLEND_OP_ADD, BLEND_OP_SUBTRACT, BLEND_OP_REVERSE_SUBTRACT, BLEND_OP_MIN, BLEND_OP_MAX];
 
-function vertexFormat(format: string): int32 {
-	return match (format) {
-		"float32" => VERTEX_FLOAT32,
-		"float32x2" => VERTEX_FLOAT32X2,
-		"float32x3" => VERTEX_FLOAT32X3,
-		"float32x4" => VERTEX_FLOAT32X4,
-		"uint32" => VERTEX_UINT32,
-		"uint32x2" => VERTEX_UINT32X2,
-		"uint32x3" => VERTEX_UINT32X3,
-		"uint32x4" => VERTEX_UINT32X4,
-		"sint32" => VERTEX_SINT32,
-		"sint32x2" => VERTEX_SINT32X2,
-		"sint32x3" => VERTEX_SINT32X3,
-		"sint32x4" => VERTEX_SINT32X4,
-		"uint8x2" => VERTEX_UINT8X2,
-		"uint8x4" => VERTEX_UINT8X4,
-		"sint8x2" => VERTEX_SINT8X2,
-		"sint8x4" => VERTEX_SINT8X4,
-		"unorm8x2" => VERTEX_UNORM8X2,
-		"unorm8x4" => VERTEX_UNORM8X4,
-		"snorm8x2" => VERTEX_SNORM8X2,
-		"snorm8x4" => VERTEX_SNORM8X4,
-		"uint16x2" => VERTEX_UINT16X2,
-		"uint16x4" => VERTEX_UINT16X4,
-		"sint16x2" => VERTEX_SINT16X2,
-		"sint16x4" => VERTEX_SINT16X4,
-		"unorm16x2" => VERTEX_UNORM16X2,
-		"unorm16x4" => VERTEX_UNORM16X4,
-		"snorm16x2" => VERTEX_SNORM16X2,
-		"snorm16x4" => VERTEX_SNORM16X4,
-		"float16x2" => VERTEX_FLOAT16X2,
-		"float16x4" => VERTEX_FLOAT16X4,
-		_ => stopOnMember("vertex attribute format", format),
-	};
-}
+function blendOperation(operation: string, member: string): int32 { return blendOperationNative(BLEND_OPERATIONS, operation, member, "wgpu"); }
 
-function primitiveTopology(topology: string): int32 {
-	return match (topology) {
-		"point-list" => TOPOLOGY_POINT_LIST,
-		"line-list" => TOPOLOGY_LINE_LIST,
-		"line-strip" => TOPOLOGY_LINE_STRIP,
-		"" | "triangle-list" => TOPOLOGY_TRIANGLE_LIST,
-		"triangle-strip" => TOPOLOGY_TRIANGLE_STRIP,
-		_ => stopOnMember("primitive.topology", topology),
-	};
-}
+const VERTEX_FORMATS: int32[] = [
+	VERTEX_UINT8X2, VERTEX_UINT8X4, VERTEX_SINT8X2, VERTEX_SINT8X4, VERTEX_UNORM8X2, VERTEX_UNORM8X4, VERTEX_SNORM8X2, VERTEX_SNORM8X4,
+	VERTEX_UINT16X2, VERTEX_UINT16X4, VERTEX_SINT16X2, VERTEX_SINT16X4, VERTEX_UNORM16X2, VERTEX_UNORM16X4, VERTEX_SNORM16X2, VERTEX_SNORM16X4,
+	VERTEX_FLOAT16X2, VERTEX_FLOAT16X4, VERTEX_FLOAT32, VERTEX_FLOAT32X2, VERTEX_FLOAT32X3, VERTEX_FLOAT32X4, VERTEX_UINT32, VERTEX_UINT32X2,
+	VERTEX_UINT32X3, VERTEX_UINT32X4, VERTEX_SINT32, VERTEX_SINT32X2, VERTEX_SINT32X3, VERTEX_SINT32X4,
+];
 
-function stencilOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "keep" => STENCIL_OP_KEEP,
-		"zero" => STENCIL_OP_ZERO,
-		"replace" => STENCIL_OP_REPLACE,
-		"invert" => STENCIL_OP_INVERT,
-		"increment-clamp" => STENCIL_OP_INCREMENT_CLAMP,
-		"decrement-clamp" => STENCIL_OP_DECREMENT_CLAMP,
-		"increment-wrap" => STENCIL_OP_INCREMENT_WRAP,
-		"decrement-wrap" => STENCIL_OP_DECREMENT_WRAP,
-		_ => stopOnMember(member, operation),
-	};
-}
+function vertexFormat(format: string): int32 { return vertexFormatNative(VERTEX_FORMATS, format, "vertex attribute format", "wgpu"); }
+
+const PRIMITIVE_TOPOLOGIES: int32[] = [TOPOLOGY_POINT_LIST, TOPOLOGY_LINE_LIST, TOPOLOGY_LINE_STRIP, TOPOLOGY_TRIANGLE_LIST, TOPOLOGY_TRIANGLE_STRIP];
+
+function primitiveTopology(topology: string): int32 { return topologyNative(PRIMITIVE_TOPOLOGIES, topology, "primitive.topology", "wgpu"); }
+
+const STENCIL_OPERATIONS: int32[] = [STENCIL_OP_KEEP, STENCIL_OP_ZERO, STENCIL_OP_REPLACE, STENCIL_OP_INVERT, STENCIL_OP_INCREMENT_CLAMP, STENCIL_OP_DECREMENT_CLAMP, STENCIL_OP_INCREMENT_WRAP, STENCIL_OP_DECREMENT_WRAP];
+
+function stencilOperation(operation: string, member: string): int32 { return stencilOperationNative(STENCIL_OPERATIONS, operation, member, "wgpu"); }
 
 function mipmapFilterMode(filter: string): int32 {
 	return match (filter) {
@@ -716,14 +619,9 @@ function stepMode(mode: string): int32 {
 	};
 }
 
-function addressMode(mode: string, member: string): int32 {
-	return match (mode) {
-		"" | "clamp-to-edge" => ADDRESS_CLAMP,
-		"repeat" => ADDRESS_REPEAT,
-		"mirror-repeat" => ADDRESS_MIRROR,
-		_ => stopOnMember(member, mode),
-	};
-}
+const ADDRESS_MODES: int32[] = [ADDRESS_CLAMP, ADDRESS_REPEAT, ADDRESS_MIRROR];
+
+function addressMode(mode: string, member: string): int32 { return addressModeNative(ADDRESS_MODES, mode, member, "wgpu"); }
 
 function filterMode(filter: string, member: string): int32 {
 	return match (filter) {

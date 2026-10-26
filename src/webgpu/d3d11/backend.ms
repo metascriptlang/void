@@ -3,7 +3,17 @@ import {
 	GPU_MAX_ANISOTROPY,
 	BindingKind,
 	bindingKind,
+	compareNative,
+	blendFactorNative,
+	blendOperationNative,
+	stencilOperationNative,
+	vertexFormatNative,
+	addressModeNative,
+	topologyNative,
 	linearFilter,
+	FORMAT_COUNT,
+	nativeAt,
+	textureFormatFacts,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_UNIFORM_BLOCKS,
@@ -539,11 +549,6 @@ let bindGroups: Vec<BindGroupSlot> = [{}];
 	unreachable;
 }
 
-@noinline function stopOnFormat(member: string, value: string): FormatInfo {
-	console.log(`webgpu d3d11: ${member} '${value}' is not supported`);
-	unreachable;
-}
-
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
 
 @inline function roundUp16(bytes: int64): int64 { return (bytes + 15) & ~(15 as int64); }
@@ -556,96 +561,68 @@ function forgetAppliedUniforms(): void {
 	for (let u = 0; u < GPU_MAX_UNIFORM_BLOCKS; u++) { bound.uniformBuffer[u] = 0; }
 }
 
-function colorInfo(format: int32, bytesPerPixel: int32): FormatInfo {
-	return {
-		texture: format,
-		shaderResource: format,
-		renderTarget: format,
-		depthStencil: DXGI_UNKNOWN,
-		bytesPerPixel: bytesPerPixel,
-		depth: false,
-		stencil: false,
-	};
+struct DxgiFormats {
+	texture: int32;
+	shaderResource: int32;
+	renderTarget: int32;
+	depthStencil: int32;
 }
 
-function srgbInfo(typeless: int32, format: int32): FormatInfo {
-	return {
-		texture: typeless,
-		shaderResource: format,
-		renderTarget: format,
-		depthStencil: DXGI_UNKNOWN,
-		bytesPerPixel: 4,
-		depth: false,
-		stencil: false,
-	};
+function dxgiColor(format: int32): DxgiFormats {
+	return { texture: format, shaderResource: format, renderTarget: format, depthStencil: DXGI_UNKNOWN };
 }
+
+function dxgiSrgb(typeless: int32, format: int32): DxgiFormats {
+	return { texture: typeless, shaderResource: format, renderTarget: format, depthStencil: DXGI_UNKNOWN };
+}
+
+const DXGI_FORMATS: DxgiFormats[] = [
+	dxgiColor(DXGI_R8_UNORM),
+	dxgiColor(DXGI_R8G8_UNORM),
+	dxgiColor(DXGI_R8G8B8A8_UNORM),
+	dxgiSrgb(DXGI_R8G8B8A8_TYPELESS, DXGI_R8G8B8A8_UNORM_SRGB),
+	dxgiColor(DXGI_B8G8R8A8_UNORM),
+	dxgiSrgb(DXGI_B8G8R8A8_TYPELESS, DXGI_B8G8R8A8_UNORM_SRGB),
+	dxgiColor(DXGI_R8G8B8A8_UINT),
+	dxgiColor(DXGI_R8G8B8A8_SINT),
+	dxgiColor(DXGI_R16_FLOAT),
+	dxgiColor(DXGI_R16G16_FLOAT),
+	dxgiColor(DXGI_R16G16B16A16_FLOAT),
+	dxgiColor(DXGI_R16G16B16A16_UINT),
+	dxgiColor(DXGI_R32_FLOAT),
+	dxgiColor(DXGI_R32G32_FLOAT),
+	dxgiColor(DXGI_R32G32B32A32_FLOAT),
+	dxgiColor(DXGI_R32G32B32A32_UINT),
+	dxgiColor(DXGI_R32_UINT),
+	dxgiColor(DXGI_R10G10B10A2_UNORM),
+	dxgiColor(DXGI_R11G11B10_FLOAT),
+	{ texture: DXGI_R16_TYPELESS, shaderResource: DXGI_R16_UNORM, renderTarget: DXGI_R16_UNORM, depthStencil: DXGI_D16_UNORM },
+	{ texture: DXGI_R32_TYPELESS, shaderResource: DXGI_R32_FLOAT, renderTarget: DXGI_R32_FLOAT, depthStencil: DXGI_D32_FLOAT },
+	{
+		texture: DXGI_R32G8X24_TYPELESS,
+		shaderResource: DXGI_R32_FLOAT_X8X24_TYPELESS,
+		renderTarget: DXGI_R32_FLOAT_X8X24_TYPELESS,
+		depthStencil: DXGI_D32_FLOAT_S8X24_UINT,
+	},
+];
 
 function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
-	const value: string = format;
-	return match (value) {
-		"r8unorm" => colorInfo(DXGI_R8_UNORM, 1),
-		"rg8unorm" => colorInfo(DXGI_R8G8_UNORM, 2),
-		"rgba8unorm" => colorInfo(DXGI_R8G8B8A8_UNORM, 4),
-		"rgba8unorm-srgb" => srgbInfo(DXGI_R8G8B8A8_TYPELESS, DXGI_R8G8B8A8_UNORM_SRGB),
-		"bgra8unorm" => colorInfo(DXGI_B8G8R8A8_UNORM, 4),
-		"bgra8unorm-srgb" => srgbInfo(DXGI_B8G8R8A8_TYPELESS, DXGI_B8G8R8A8_UNORM_SRGB),
-		"rgba8uint" => colorInfo(DXGI_R8G8B8A8_UINT, 4),
-		"rgba8sint" => colorInfo(DXGI_R8G8B8A8_SINT, 4),
-		"r16float" => colorInfo(DXGI_R16_FLOAT, 2),
-		"rg16float" => colorInfo(DXGI_R16G16_FLOAT, 4),
-		"rgba16float" => colorInfo(DXGI_R16G16B16A16_FLOAT, 8),
-		"rgba16uint" => colorInfo(DXGI_R16G16B16A16_UINT, 8),
-		"r32float" => colorInfo(DXGI_R32_FLOAT, 4),
-		"rg32float" => colorInfo(DXGI_R32G32_FLOAT, 8),
-		"rgba32float" => colorInfo(DXGI_R32G32B32A32_FLOAT, 16),
-		"rgba32uint" => colorInfo(DXGI_R32G32B32A32_UINT, 16),
-		"r32uint" => colorInfo(DXGI_R32_UINT, 4),
-		"rgb10a2unorm" => colorInfo(DXGI_R10G10B10A2_UNORM, 4),
-		"rg11b10ufloat" => colorInfo(DXGI_R11G11B10_FLOAT, 4),
-		"depth16unorm" => ({
-			texture: DXGI_R16_TYPELESS,
-			shaderResource: DXGI_R16_UNORM,
-			renderTarget: DXGI_R16_UNORM,
-			depthStencil: DXGI_D16_UNORM,
-			bytesPerPixel: 2,
-			depth: true,
-			stencil: false,
-		}),
-		"depth32float" => ({
-			texture: DXGI_R32_TYPELESS,
-			shaderResource: DXGI_R32_FLOAT,
-			renderTarget: DXGI_R32_FLOAT,
-			depthStencil: DXGI_D32_FLOAT,
-			bytesPerPixel: 4,
-			depth: true,
-			stencil: false,
-		}),
-		"depth24plus-stencil8" => ({
-			texture: DXGI_R32G8X24_TYPELESS,
-			shaderResource: DXGI_R32_FLOAT_X8X24_TYPELESS,
-			renderTarget: DXGI_R32_FLOAT_X8X24_TYPELESS,
-			depthStencil: DXGI_D32_FLOAT_S8X24_UINT,
-			bytesPerPixel: 8,
-			depth: true,
-			stencil: true,
-		}),
-		_ => stopOnFormat(member, value),
+	const facts = textureFormatFacts(format, member, "d3d11");
+	const dxgi = nativeAt(DXGI_FORMATS, FORMAT_COUNT, facts.index, "d3d11", "DXGI format");
+	return {
+		texture: dxgi.texture,
+		shaderResource: dxgi.shaderResource,
+		renderTarget: dxgi.renderTarget,
+		depthStencil: dxgi.depthStencil,
+		bytesPerPixel: facts.bytesPerPixel,
+		depth: facts.depth,
+		stencil: facts.stencil,
 	};
 }
 
-function compareFunction(compare: string, member: string): int32 {
-	return match (compare) {
-		"never" => 1,
-		"less" => 2,
-		"equal" => 3,
-		"less-equal" => 4,
-		"greater" => 5,
-		"not-equal" => 6,
-		"greater-equal" => 7,
-		"" | "always" => 8,
-		_ => stopOnMember(member, compare),
-	};
-}
+const COMPARE_FUNCTIONS: int32[] = [1, 2, 3, 4, 5, 6, 7, 8];
+
+function compareFunction(compare: string, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "d3d11"); }
 
 function cullMode(cull: string): int32 {
 	return match (cull) {
@@ -664,24 +641,17 @@ function frontCounterClockwise(face: string): int32 {
 	};
 }
 
-function blendFactor(factor: string, alpha: boolean, member: string): int32 {
-	return match (factor) {
-		"zero" => BLEND_ZERO,
-		"" | "one" => BLEND_ONE,
-		"src" => alpha ? BLEND_SRC_ALPHA : BLEND_SRC_COLOR,
-		"one-minus-src" => alpha ? BLEND_INV_SRC_ALPHA : BLEND_INV_SRC_COLOR,
-		"src-alpha" => BLEND_SRC_ALPHA,
-		"one-minus-src-alpha" => BLEND_INV_SRC_ALPHA,
-		"dst" => alpha ? BLEND_DEST_ALPHA : BLEND_DEST_COLOR,
-		"one-minus-dst" => alpha ? BLEND_INV_DEST_ALPHA : BLEND_INV_DEST_COLOR,
-		"dst-alpha" => BLEND_DEST_ALPHA,
-		"one-minus-dst-alpha" => BLEND_INV_DEST_ALPHA,
-		"src-alpha-saturated" => BLEND_SRC_ALPHA_SAT,
-		"constant" => BLEND_BLEND_FACTOR,
-		"one-minus-constant" => BLEND_INV_BLEND_FACTOR,
-		_ => stopOnMember(member, factor),
-	};
-}
+const BLEND_FACTORS: int32[] = [
+	BLEND_ZERO, BLEND_ONE, BLEND_SRC_COLOR, BLEND_INV_SRC_COLOR, BLEND_SRC_ALPHA, BLEND_INV_SRC_ALPHA, BLEND_DEST_COLOR, BLEND_INV_DEST_COLOR,
+	BLEND_DEST_ALPHA, BLEND_INV_DEST_ALPHA, BLEND_SRC_ALPHA_SAT, BLEND_BLEND_FACTOR, BLEND_INV_BLEND_FACTOR,
+];
+
+const ALPHA_BLEND_FACTORS: int32[] = [
+	BLEND_ZERO, BLEND_ONE, BLEND_SRC_ALPHA, BLEND_INV_SRC_ALPHA, BLEND_SRC_ALPHA, BLEND_INV_SRC_ALPHA, BLEND_DEST_ALPHA, BLEND_INV_DEST_ALPHA,
+	BLEND_DEST_ALPHA, BLEND_INV_DEST_ALPHA, BLEND_SRC_ALPHA_SAT, BLEND_BLEND_FACTOR, BLEND_INV_BLEND_FACTOR,
+];
+
+function blendFactor(factor: string, alpha: boolean, member: string): int32 { return blendFactorNative(alpha ? ALPHA_BLEND_FACTORS : BLEND_FACTORS, factor, member, "d3d11"); }
 
 function destinationFactor(factor: string, alpha: boolean, member: string): int32 {
 	const value: string = factor;
@@ -689,86 +659,30 @@ function destinationFactor(factor: string, alpha: boolean, member: string): int3
 	return blendFactor(value, alpha, member);
 }
 
-function blendOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "add" => 1,
-		"subtract" => 2,
-		"reverse-subtract" => 3,
-		"min" => 4,
-		"max" => 5,
-		_ => stopOnMember(member, operation),
-	};
-}
+const BLEND_OPERATIONS: int32[] = [1, 2, 3, 4, 5];
 
-function vertexFormat(format: string): int32 {
-	return match (format) {
-		"float32" => DXGI_R32_FLOAT,
-		"float32x2" => DXGI_R32G32_FLOAT,
-		"float32x3" => DXGI_R32G32B32_FLOAT,
-		"float32x4" => DXGI_R32G32B32A32_FLOAT,
-		"uint32" => DXGI_R32_UINT,
-		"uint32x2" => DXGI_R32G32_UINT,
-		"uint32x3" => DXGI_R32G32B32_UINT,
-		"uint32x4" => DXGI_R32G32B32A32_UINT,
-		"sint32" => DXGI_R32_SINT,
-		"sint32x2" => DXGI_R32G32_SINT,
-		"sint32x3" => DXGI_R32G32B32_SINT,
-		"sint32x4" => DXGI_R32G32B32A32_SINT,
-		"uint8x2" => DXGI_R8G8_UINT,
-		"sint8x2" => DXGI_R8G8_SINT,
-		"unorm8x2" => DXGI_R8G8_UNORM,
-		"snorm8x2" => DXGI_R8G8_SNORM,
-		"uint8x4" => DXGI_R8G8B8A8_UINT,
-		"sint8x4" => DXGI_R8G8B8A8_SINT,
-		"unorm8x4" => DXGI_R8G8B8A8_UNORM,
-		"snorm8x4" => DXGI_R8G8B8A8_SNORM,
-		"uint16x2" => DXGI_R16G16_UINT,
-		"sint16x2" => DXGI_R16G16_SINT,
-		"unorm16x2" => DXGI_R16G16_UNORM,
-		"snorm16x2" => DXGI_R16G16_SNORM,
-		"float16x2" => DXGI_R16G16_FLOAT,
-		"uint16x4" => DXGI_R16G16B16A16_UINT,
-		"sint16x4" => DXGI_R16G16B16A16_SINT,
-		"unorm16x4" => DXGI_R16G16B16A16_UNORM,
-		"snorm16x4" => DXGI_R16G16B16A16_SNORM,
-		"float16x4" => DXGI_R16G16B16A16_FLOAT,
-		_ => stopOnMember("vertex attribute format", format),
-	};
-}
+function blendOperation(operation: string, member: string): int32 { return blendOperationNative(BLEND_OPERATIONS, operation, member, "d3d11"); }
 
-function primitiveTopology(topology: string): int32 {
-	return match (topology) {
-		"point-list" => TOPOLOGY_POINT_LIST,
-		"line-list" => TOPOLOGY_LINE_LIST,
-		"line-strip" => TOPOLOGY_LINE_STRIP,
-		"" | "triangle-list" => TOPOLOGY_TRIANGLE_LIST,
-		"triangle-strip" => TOPOLOGY_TRIANGLE_STRIP,
-		_ => stopOnMember("primitive.topology", topology),
-	};
-}
+const VERTEX_FORMATS: int32[] = [
+	DXGI_R8G8_UINT, DXGI_R8G8B8A8_UINT, DXGI_R8G8_SINT, DXGI_R8G8B8A8_SINT, DXGI_R8G8_UNORM, DXGI_R8G8B8A8_UNORM, DXGI_R8G8_SNORM, DXGI_R8G8B8A8_SNORM,
+	DXGI_R16G16_UINT, DXGI_R16G16B16A16_UINT, DXGI_R16G16_SINT, DXGI_R16G16B16A16_SINT, DXGI_R16G16_UNORM, DXGI_R16G16B16A16_UNORM, DXGI_R16G16_SNORM, DXGI_R16G16B16A16_SNORM,
+	DXGI_R16G16_FLOAT, DXGI_R16G16B16A16_FLOAT, DXGI_R32_FLOAT, DXGI_R32G32_FLOAT, DXGI_R32G32B32_FLOAT, DXGI_R32G32B32A32_FLOAT, DXGI_R32_UINT, DXGI_R32G32_UINT,
+	DXGI_R32G32B32_UINT, DXGI_R32G32B32A32_UINT, DXGI_R32_SINT, DXGI_R32G32_SINT, DXGI_R32G32B32_SINT, DXGI_R32G32B32A32_SINT,
+];
 
-function stencilOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "keep" => 1,
-		"zero" => 2,
-		"replace" => 3,
-		"increment-clamp" => 4,
-		"decrement-clamp" => 5,
-		"invert" => 6,
-		"increment-wrap" => 7,
-		"decrement-wrap" => 8,
-		_ => stopOnMember(member, operation),
-	};
-}
+function vertexFormat(format: string): int32 { return vertexFormatNative(VERTEX_FORMATS, format, "vertex attribute format", "d3d11"); }
 
-function addressMode(mode: string, member: string): int32 {
-	return match (mode) {
-		"" | "clamp-to-edge" => ADDRESS_CLAMP,
-		"repeat" => ADDRESS_WRAP,
-		"mirror-repeat" => ADDRESS_MIRROR,
-		_ => stopOnMember(member, mode),
-	};
-}
+const PRIMITIVE_TOPOLOGIES: int32[] = [TOPOLOGY_POINT_LIST, TOPOLOGY_LINE_LIST, TOPOLOGY_LINE_STRIP, TOPOLOGY_TRIANGLE_LIST, TOPOLOGY_TRIANGLE_STRIP];
+
+function primitiveTopology(topology: string): int32 { return topologyNative(PRIMITIVE_TOPOLOGIES, topology, "primitive.topology", "d3d11"); }
+
+const STENCIL_OPERATIONS: int32[] = [1, 2, 3, 6, 4, 5, 7, 8];
+
+function stencilOperation(operation: string, member: string): int32 { return stencilOperationNative(STENCIL_OPERATIONS, operation, member, "d3d11"); }
+
+const ADDRESS_MODES: int32[] = [ADDRESS_CLAMP, ADDRESS_WRAP, ADDRESS_MIRROR];
+
+function addressMode(mode: string, member: string): int32 { return addressModeNative(ADDRESS_MODES, mode, member, "d3d11"); }
 
 function indexFormat(format: GPUIndexFormat): int32 {
 	const value: string = format;
