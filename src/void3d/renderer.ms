@@ -193,8 +193,10 @@ export interface Renderer {
 	// The last frame drew a material whose UV transform scrolls.
 	readsTime: boolean;
 	preset: Preset;
-	// Per item of the frame, the key drawn for its material's.
+	// Per material, the key the last accepted frame draws it with, indexed like the context's.
 	drawn: Vec<ProgramKey>;
+	// The keys beginFrame's checks resolve, kept apart from `drawn` until the frame is accepted.
+	pairs: Vec<ProgramKey>;
 	shadow: DirShadowMap | null;
 	spotShadow: DirShadowMap | null;
 	cubeShadow: DirShadowMap | null;
@@ -347,6 +349,7 @@ export function createDrawing(
 		readsTime: false,
 		preset: preset,
 		drawn: [],
+		pairs: [],
 		shadow: null,
 		spotShadow: null,
 		cubeShadow: null,
@@ -634,6 +637,13 @@ export function beginFrame(
 	let checked: ProgramKey = ProgramKey.of(Program.Lit);
 	let checkedTotal: int32 = 0;
 	let lodItems: int32 = 0;
+	let readsTime: boolean = false;
+	let opaque: boolean = false;
+	let alpha: boolean = false;
+	let additive: boolean = false;
+	while ((renderer.pairs.length as int32) < (context.materials.length as int32)) {
+		renderer.pairs.push(ProgramKey.of(Program.Lit));
+	}
 	for (let i = 0; i < (items.length as int32); i++) {
 		const mesh: MeshId = items[i].mesh;
 		const material: MaterialId = items[i].material;
@@ -651,6 +661,12 @@ export function beginFrame(
 			checked = pair.value;
 			checkedMesh = mesh;
 			checkedMaterial = material;
+			renderer.pairs[material.index] = checked;
+			readsTime = readsTime || scrolls(context, material.index, checked);
+			const phase: Phase = context.materials[material.index].phase;
+			opaque = opaque || phase == Phase.Opaque;
+			alpha = alpha || phase == Phase.Alpha;
+			additive = additive || phase == Phase.Additive;
 		}
 		if (!items[i].validSkin(checked)) { return Result.err(RendererError.SkinPose); }
 		if (!items[i].validInstances(context, checked)) {
@@ -767,31 +783,11 @@ export function beginFrame(
 	}
 	writeEnvironment(renderer);
 	if (!writeUniforms(context, renderer.frameBlock, renderer.frameValues).ok) { unreachable; }
-	while ((renderer.drawn.length as int32) < (items.length as int32)) {
+	while ((renderer.drawn.length as int32) < (renderer.pairs.length as int32)) {
 		renderer.drawn.push(ProgramKey.of(Program.Lit));
 	}
-	let readsTime: boolean = false;
-	let resolvedMaterial: int32 = -1;
-	let resolvedKey: ProgramKey = ProgramKey.of(Program.Lit);
-	let opaque: boolean = false;
-	let alpha: boolean = false;
-	let additive: boolean = false;
-	for (let i = 0; i < (items.length as int32); i++) {
-		const material: int32 = items[i].material.index;
-		if (material != resolvedMaterial) {
-			const resolved: Result<ProgramKey, ProgramError> =
-				drawnIn(context.materials[material].program, renderer.preset, shadowed,
-					renderer.normalMrt && context.materials[material].phase == Phase.Opaque);
-			if (!resolved.ok) { unreachable; }
-			resolvedKey = resolved.value;
-			resolvedMaterial = material;
-			readsTime = readsTime || scrolls(context, material, resolvedKey);
-			const phase: Phase = context.materials[material].phase;
-			opaque = opaque || phase == Phase.Opaque;
-			alpha = alpha || phase == Phase.Alpha;
-			additive = additive || phase == Phase.Additive;
-		}
-		renderer.drawn[i] = resolvedKey;
+	for (let i = 0; i < (renderer.pairs.length as int32); i++) {
+		renderer.drawn[i] = renderer.pairs[i];
 	}
 	renderer.readsTime = readsTime;
 	const generation: int32 = contextGeneration();
