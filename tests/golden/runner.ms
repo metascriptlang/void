@@ -34,6 +34,9 @@ import { presentAt } from "../../src/void2d/scene";
 import { gfxSetup } from "../../src/sokol/gpu";
 import { setup2d, drawCallCount } from "../../src/void2d/draw";
 import { renderTargetsAlive } from "../../src/void2d/render";
+when (voidProfiler) {
+	import { profilerCollect, lastFrameCoverage, overdraw } from "../../src/void2d/frameMarks";
+}
 import { init2d, step2d, present2d } from "../../src/examples/renderer2d";
 import {
 	voidCaptureBackend,
@@ -127,6 +130,14 @@ function finish(): void {
 		voidCaptureExit(EXIT_FAILED);
 	}
 
+	when (voidProfiler) {
+		profilerCollect();
+		const c = lastFrameCoverage();
+		console.log(
+			`COVERAGE ${row.name} overdraw ${overdraw(c)} covered ${c.coveredPixels}`
+			+ ` opaque ${c.opaquePixels} targets ${c.targetPixels} frame ${c.framePixels}`,
+		);
+	}
 	const draws: int32 = drawCallCount();
 	const targets: int32 = renderTargetsAlive();
 	if (draws != expectedDraws[index] || targets != expectedRenderTargets[index]) {
