@@ -90,6 +90,7 @@ function probePath(name: string, target: ShaderTarget, stage: string): string {
 		ShaderTarget.Glsl430 => base + ".430." + stage,
 		ShaderTarget.Glsl300es => base + ".es." + stage,
 		ShaderTarget.Msl => base + "." + stage + ".metal",
+		ShaderTarget.Spirv => base + "." + stage + ".spv",
 	};
 }
 
