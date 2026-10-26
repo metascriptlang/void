@@ -48,6 +48,7 @@ export struct StateTracker {
 	writtenBuffers: Vec<BufferWrite>;
 	copyBuffers: Vec<uint64>;
 	writtenTextures: Vec<TextureWrite>;
+	settledTextures: Vec<TextureWrite>;
 	copyTextures: Vec<TextureCopy>;
 	images: Vec<ImageBarrier>;
 	sourceStages: uint32;
@@ -61,6 +62,7 @@ export function newTracker(): StateTracker {
 		writtenBuffers: [],
 		copyBuffers: [],
 		writtenTextures: [],
+		settledTextures: [],
 		copyTextures: [],
 		images: [],
 		sourceStages: 0,
@@ -89,6 +91,20 @@ function writtenTexture(this t: StateTracker, id: uint64): int32 {
 		if (t.writtenTextures[i].id == id) { return i; }
 	}
 	return -1;
+}
+
+function settledTexture(this t: StateTracker, id: uint64): int32 {
+	for (let i: int32 = 0; i < t.settledTextures.length; i++) {
+		if (t.settledTextures[i].id == id) { return i; }
+	}
+	return -1;
+}
+
+function restingAccess(ref t: StateTracker, id: uint64): uint32 {
+	const settled = t.settledTexture(id);
+	if (settled < 0) { return 0; }
+	t.sourceStages |= t.settledTextures[settled].stages;
+	return t.settledTextures[settled].access;
 }
 
 function copiedTexture(this t: StateTracker, id: uint64): int32 {
@@ -175,6 +191,7 @@ export function writeToTexture(
 		t.copyTextures.splice(copied, 1);
 	} else {
 		t.sourceStages |= rest.stages;
+		if (oldLayout != layout) { sourceAccess = restingAccess(t, id); }
 	}
 	t.targetStages |= stages;
 	textureDependency(t, id, rest.aspect, sourceAccess, access, oldLayout, layout);
@@ -223,6 +240,7 @@ export function readFromTexture(
 		t.copyTextures.splice(copied, 1);
 	} else if (oldLayout != layout) {
 		t.sourceStages |= rest.stages;
+		sourceAccess = restingAccess(t, id);
 	}
 	t.targetStages |= stages;
 	textureDependency(t, id, rest.aspect, sourceAccess, access, oldLayout, layout);
@@ -252,6 +270,7 @@ export function cleared(ref t: StateTracker): void {
 	t.sourceAccess = 0;
 	t.targetAccess = 0;
 	t.images.length = 0;
+	t.settledTextures.length = 0;
 }
 
 export function endPass(ref t: StateTracker): void {
@@ -267,6 +286,7 @@ export function endPass(ref t: StateTracker): void {
 		t.sourceStages |= write.stages;
 		t.targetStages |= write.rest.stages;
 		textureDependency(t, write.id, write.rest.aspect, write.access, write.rest.access, write.layout, write.rest.layout);
+		if (write.layout == write.rest.layout) { t.settledTextures.push(write); }
 	}
 	t.writtenTextures.length = 0;
 	for (const copy of t.copyTextures) {
