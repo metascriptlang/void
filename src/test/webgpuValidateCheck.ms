@@ -530,6 +530,16 @@ test "a render pipeline takes its vertex and fragment stages from one module" {
 	assert renderPipelineRefusal(pipeline) == "primitive.stripIndexFormat 'uint16' needs a strip topology";
 }
 
+test "a render pipeline blends only a target whose format is not an integer one" {
+	let pipeline: GPURenderPipelineDescriptor = { vertex: { module: { id: 3 } }, fragment: { module: { id: 3 } } };
+	pipeline.fragment.targets[1] = { format: "rgba8unorm", blendEnabled: true };
+	assert renderPipelineRefusal(pipeline) == "";
+	pipeline.fragment.targets[2] = { format: "r32uint" };
+	assert renderPipelineRefusal(pipeline) == "";
+	pipeline.fragment.targets[2].blendEnabled = true;
+	assert renderPipelineRefusal(pipeline) == "fragment.targets[2] blends r32uint, an integer format";
+}
+
 test "a stripIndexFormat needs a strip topology" {
 	assert isStripTopology("line-strip");
 	assert isStripTopology("triangle-strip");

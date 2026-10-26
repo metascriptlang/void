@@ -138,7 +138,6 @@ struct FormatInfo {
 	bytesPerPixel: int32;
 	depth: boolean;
 	stencil: boolean;
-	integer: boolean;
 }
 
 struct BufferSlot {
@@ -234,30 +233,30 @@ let querySets: Vec<QuerySetSlot> = [{}];
 
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
 
-function colorInfo(bytesPerPixel: int32, integer: boolean): FormatInfo {
-	return { bytesPerPixel: bytesPerPixel, depth: false, stencil: false, integer: integer };
+function colorInfo(bytesPerPixel: int32): FormatInfo {
+	return { bytesPerPixel: bytesPerPixel, depth: false, stencil: false };
 }
 
 function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 	const value: string = format;
 	return match (value) {
-		"r8unorm" => colorInfo(1, false),
-		"rg8unorm" => colorInfo(2, false),
-		"rgba8unorm" | "rgba8unorm-srgb" | "bgra8unorm" | "bgra8unorm-srgb" => colorInfo(4, false),
-		"rgba8uint" | "rgba8sint" => colorInfo(4, true),
-		"r16float" => colorInfo(2, false),
-		"rg16float" => colorInfo(4, false),
-		"rgba16float" => colorInfo(8, false),
-		"rgba16uint" => colorInfo(8, true),
-		"r32float" => colorInfo(4, false),
-		"rg32float" => colorInfo(8, false),
-		"rgba32float" => colorInfo(16, false),
-		"rgba32uint" => colorInfo(16, true),
-		"r32uint" => colorInfo(4, true),
-		"rgb10a2unorm" | "rg11b10ufloat" => colorInfo(4, false),
-		"depth16unorm" => ({ bytesPerPixel: 2, depth: true, stencil: false, integer: false }),
-		"depth32float" => ({ bytesPerPixel: 4, depth: true, stencil: false, integer: false }),
-		"depth24plus-stencil8" => ({ bytesPerPixel: 8, depth: true, stencil: true, integer: false }),
+		"r8unorm" => colorInfo(1),
+		"rg8unorm" => colorInfo(2),
+		"rgba8unorm" | "rgba8unorm-srgb" | "bgra8unorm" | "bgra8unorm-srgb" => colorInfo(4),
+		"rgba8uint" | "rgba8sint" => colorInfo(4),
+		"r16float" => colorInfo(2),
+		"rg16float" => colorInfo(4),
+		"rgba16float" => colorInfo(8),
+		"rgba16uint" => colorInfo(8),
+		"r32float" => colorInfo(4),
+		"rg32float" => colorInfo(8),
+		"rgba32float" => colorInfo(16),
+		"rgba32uint" => colorInfo(16),
+		"r32uint" => colorInfo(4),
+		"rgb10a2unorm" | "rg11b10ufloat" => colorInfo(4),
+		"depth16unorm" => ({ bytesPerPixel: 2, depth: true, stencil: false }),
+		"depth32float" => ({ bytesPerPixel: 4, depth: true, stencil: false }),
+		"depth24plus-stencil8" => ({ bytesPerPixel: 8, depth: true, stencil: true }),
 		_ => stopOnFormat(member, value),
 	};
 }
@@ -609,8 +608,6 @@ function describeColorTargets(descriptor: GPURenderPipelineDescriptor): void {
 		if (format == "") { continue; }
 		const info = formatInfo(descriptor.fragment.targets[i].format, `fragment.targets[${i}].format`);
 		if (info.depth) { stopOnMember(`fragment.targets[${i}].format`, format); }
-		const enabled = descriptor.fragment.targets[i].blendEnabled;
-		if (enabled && info.integer) { stop(`fragment.targets[${i}] blends ${format}, an integer format`); }
 		const color: GPUBlendComponent = descriptor.fragment.targets[i].blend.color;
 		const alpha: GPUBlendComponent = descriptor.fragment.targets[i].blend.alpha;
 		blendFactor(color.srcFactor, "blend.color.srcFactor");

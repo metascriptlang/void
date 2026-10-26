@@ -317,6 +317,10 @@ export function isDepthFormat(format: string): boolean {
 	return format == "depth16unorm" || format == "depth32float" || format == "depth24plus-stencil8";
 }
 
+export function isIntegerFormat(format: string): boolean {
+	return format == "r32uint" || format == "rgba8uint" || format == "rgba8sint" || format == "rgba16uint" || format == "rgba32uint";
+}
+
 // `limits` is the backend's own query. The rules run in the order a descriptor is read: size,
 // layers, the mip chain the largest side allows, multisample, then format against dimension.
 export function textureRefusal(descriptor: GPUTextureDescriptor, limits: GPUSupportedLimits): string {
@@ -491,6 +495,10 @@ export function resolvedRenderPipeline(descriptor: GPURenderPipelineDescriptor):
 export function renderPipelineRefusal(descriptor: GPURenderPipelineDescriptor): string {
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		return "vertex and fragment stages come from one GPUShaderModule in Void";
+	}
+	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
+		const format: string = descriptor.fragment.targets[i].format;
+		if (descriptor.fragment.targets[i].blendEnabled && isIntegerFormat(format)) { return `fragment.targets[${i}] blends ${format}, an integer format`; }
 	}
 	return primitiveRefusal(descriptor.primitive);
 }
