@@ -264,7 +264,11 @@ The Vulkan backend ports Mach's `src/sysgpu/vulkan.zig`:
 - Vulkan 1.1 with a negative viewport height (vulkan.zig:14, 3320);
 - the render-pass key cache (vulkan.zig:726-863);
 - the barrier tracker's hazard rules with resting layouts (vulkan.zig:2755-3088);
-- the swapchain handoff through `oldSwapchain` (vulkan.zig:1001, 1117).
+- the swapchain handoff through `oldSwapchain` (vulkan.zig:1001, 1117);
+- one swapchain per surface, so a window and every host view present on their own
+  (vulkan.zig:388, 983). The adapter's queue family must present to the surface named at
+  `vulkanAdapterSelect`, and a surface made later is refused when that family cannot present to
+  it, as Dawn checks a configured surface (`SwapChainVk.cpp:168`); Mach checks neither.
 
 The port leaves Mach where Mach's code is wrong, each case pinned by `vulkanResourcesCheck.ms`,
 `vulkanMemoryCheck.ms` or `webgpuVulkanCheck.ms`:
