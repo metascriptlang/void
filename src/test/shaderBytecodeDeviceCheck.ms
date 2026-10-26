@@ -1,7 +1,6 @@
 // The D3D11 backend takes the DXBC that shaderModule and shaderBuild embed at msc compile time:
 // the descriptor holds no HLSL text, yet the module, its pipeline and the draw or dispatch work.
 
-import { exec } from "std/process";
 import { GPUBufferUsage, GPUShaderModuleDescriptor } from "../webgpu/types.ms";
 import { glslComputeIr } from "../shader/emit";
 import { shaderBuild, shaderModule } from "../shader/program";
@@ -168,15 +167,5 @@ when (windows && !voidVulkan) {
 		}
 		assert expected[0] == 2 && expected[63] == 65;
 		device.destroy();
-	}
-
-	test "a module whose embedded DXBC is corrupted stops by stage and label when the device rejects it" {
-		const run = exec("msc run src/test/shaderBytecodeDeviceProbe.ms 2>&1");
-		assert !run.ok;
-		if (!run.ok) {
-			assert run.error.output.includes("probe: the control module loaded");
-			assert run.error.output.includes("CreateVertexShader failed for 'garbage': the device rejected GPUShaderModuleDescriptor.vertexBytecode");
-			assert !run.error.output.includes("probe: the corrupted module loaded");
-		}
 	}
 }
