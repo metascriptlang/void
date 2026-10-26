@@ -5935,6 +5935,23 @@ Pinned by `gltfCheck.ms`: both media types load the same vertices as the bytes s
 wrong type, missing `;base64`, a malformed payload or bytes alongside are refused; a short
 payload is out of range.
 
+### glTF files with several buffers, as built (2026-10-26)
+
+A `.gltf` or `.glb` may declare more than one buffer, and each buffer view reads the buffer it
+names, as Bevy's `load_buffers` builds one byte vector per buffer
+(`bevy_gltf/src/loader/mod.rs:2094-2134`) and every accessor reads through its view's buffer.
+The first buffer is the GLB `BIN` chunk or the caller's bytes, or a `data:` URI; every buffer
+after it must be a `data:` URI. A file URI past the first is refused as `BufferByUri` at
+`$.buffers[i].uri`, because reading it needs a resolver contract (where relative paths resolve,
+whether a load may touch the filesystem or network), which is the person's decision. Every view
+is checked when the file loads, not on first use: a view naming a missing buffer is
+`BadReference` and one past its buffer's end is `OutOfRange`, both at `$.bufferViews`. Embedded
+images read their view's buffer the same way.
+
+Pinned by `gltfCheck.ms`: positions in buffer 0 and normals in buffer 1 load the same vertices
+whether buffer 0 is supplied or embedded; a second buffer given by file name, a view naming a
+buffer that does not exist, and a second buffer shorter than its view are refused.
+
 ### A second uv set for the occlusion map, as built (2026-10-24)
 
 A glTF occlusion map at `texCoord` 1 is read at the primitive's `TEXCOORD_1`, as Bevy reads it:
