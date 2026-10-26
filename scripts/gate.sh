@@ -112,6 +112,7 @@ for jsStage in off on; do
 	fi
 done
 for target in "--os=windows" "--os=windows -d:voidGlCore" "--os=linux" "--os=android" "--os=ios" \
+		"--os=windows -d:voidVulkan" "--os=linux -d:voidVulkan" "--os=android -d:voidVulkan" \
 		"--os=emcc -d:webgpu" "--os=emcc -d:webgl2" "-d:voidDummy"; do
 	log="out/gate-backend-check$(echo "$target" | tr -c 'a-zA-Z0-9\n' '-').log"
 	if "$MSC" check $target src/examples/mainSokol2d.ms > "$log" 2>&1; then
@@ -698,6 +699,7 @@ case "$(uname -s)" in
 		backend_check "d3d11 backend on WARP" webgpu-d3d11 src/test/webgpuD3d11Check.ms
 		backend_check "door handle 0 on WARP" door-zero-handle src/test/doorZeroHandleCheck.ms
 		backend_check "gl core backend on the system device" webgpu-gl -d:voidGlCore src/test/webgpuGlCheck.ms
+		backend_check "vulkan backend on the system device" webgpu-vulkan -d:voidVulkan src/test/webgpuVulkanCheck.ms
 		;;
 esac
 if [ "$(uname -s)" = Darwin ]; then
