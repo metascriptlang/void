@@ -2,10 +2,11 @@
 // decal's box, the depth fade across the box and the overlay's color and alpha.
 
 import { Vec3, Mat4, vec3, identity, scaling, translation } from "../math/math3d";
-import { Mat4x4f, Vec3f, Vec4f, mat4x4f, vec2f, vec4f } from "../shader/std";
+import { Mat4x4f, Vec3f, Vec4f, mat4x4f, vec2f, vec3f, vec4f } from "../shader/std";
 import { Camera3D, CameraError, CameraView, ProjectionKind } from "../void3d/camera";
 import {
-	decalFade, decalLocalAt, decalOverlayColor, ndcDepthOf, outsideDecal,
+	decalFade, decalLocalAt, decalNormalFade, decalOverlayColor, decalSurfaceNormal, ndcDepthOf,
+	outsideDecal,
 } from "../void3d/shader3d";
 import { DecalOverlay, DecalError, DecalPass, decalBlock } from "../void3d/decal";
 import { Material, Phase } from "../void3d/material";
@@ -101,7 +102,9 @@ test "a decal's block holds DecalOverlay's defaults, and an empty fade range is 
 	const overlay: DecalOverlay = DecalOverlay.defaults();
 	const block: Result<Vec<float32>, DecalError> = decalBlock(overlay, DecalPass.BeforeToneMap);
 	if (!block.ok) { unreachable; }
-	const expected: Vec<float32> = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0];
+	const expected: Vec<float32> = [
+		1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
+	];
 	assert block.value.length == expected.length;
 	for (let i = 0; i < expected.length; i++) { assert block.value[i] == expected[i]; }
 	const after: Result<Vec<float32>, DecalError> = decalBlock(overlay, DecalPass.AfterToneMap);
@@ -110,6 +113,36 @@ test "a decal's block holds DecalOverlay's defaults, and an empty fade range is 
 		decalBlock({ ...overlay, fadeEnd: 0.0 }, DecalPass.BeforeToneMap);
 	assert !empty.ok;
 	if (!empty.ok) { assert empty.error == DecalError.FadeRange; }
+	const normal: DecalOverlay = { ...overlay, normalFade: true, normalFadeStart: 0.25 };
+	const faded: Result<Vec<float32>, DecalError> = decalBlock(normal, DecalPass.BeforeToneMap);
+	assert faded.ok && faded.value[12] == 0.25 && faded.value[13] == 1.0 && faded.value[14] == 1.0;
+	const flat: Result<Vec<float32>, DecalError> =
+		decalBlock({ ...normal, normalFadeEnd: 0.25 }, DecalPass.BeforeToneMap);
+	assert !flat.ok;
+	if (!flat.ok) { assert flat.error == DecalError.NormalFadeRange; }
+	assert decalBlock({ ...overlay, normalFadeEnd: 0.0 }, DecalPass.BeforeToneMap).ok;
+}
+
+test "the surface normal from three rebuilt points faces the eye whichever way the rows run" {
+	const at: Vec3f = vec3f(1.0, 0.0, 2.0);
+	const eye: Vec3f = vec3f(1.0, 5.0, 2.0);
+	const up: Vec3f = decalSurfaceNormal(at, vec3f(1.1, 0.0, 2.0), vec3f(1.0, 0.0, 1.9), eye);
+	assert nearVec3(up, 0.0, 1.0, 0.0);
+	const flipped: Vec3f = decalSurfaceNormal(at, vec3f(1.1, 0.0, 2.0), vec3f(1.0, 0.0, 2.1), eye);
+	assert nearVec3(flipped, 0.0, 1.0, 0.0);
+	const slope: Vec3f = decalSurfaceNormal(at, vec3f(1.1, 0.1, 2.0), vec3f(1.0, 0.0, 1.9), eye);
+	assert nearVec3(slope, -0.707107, 0.707107, 0.0);
+}
+
+test "the normal fade is 1 along the box's z, a half across it, 0 against it, over its range" {
+	const z: Vec3f = vec3f(0.0, 0.0, 1.0);
+	assert approx(decalNormalFade(z, z, 0.0, 1.0), 1.0);
+	assert approx(decalNormalFade(z, vec3f(1.0, 0.0, 0.0), 0.0, 1.0), 0.5);
+	assert approx(decalNormalFade(z, vec3f(0.0, 0.0, -1.0), 0.0, 1.0), 0.0);
+	assert approx(decalNormalFade(z, vec3f(1.0, 0.0, 0.0), 0.25, 0.75), 0.5);
+	assert approx(decalNormalFade(z, vec3f(0.0, 0.707107, 0.707107), 0.5, 1.0), 0.5);
+	assert decalNormalFade(z, vec3f(1.0, 0.0, 0.0), 0.75, 1.0) == 0.0;
+	assert decalNormalFade(z, vec3f(0.0, 0.0, 1.0000001), 0.0, 1.0) == 1.0;
 }
 
 test "a decal material draws in its pass's phase with no depth and its back faces" {

@@ -1,6 +1,6 @@
 import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
 import {
-	Vec3, Vec4, vec3, scaling, translation, srgbToLinear, linearToSrgb,
+	Vec3, Vec4, vec3, scaling, rotationX, translation, srgbToLinear, linearToSrgb,
 } from "../../src/math/math3d";
 import { RenderState, FilterMode, Wrap } from "../../src/gpu/state";
 import { MeshData, MeshError, Rgba, addQuad, addTexturedQuad } from "../../src/void3d/meshData";
@@ -41,58 +41,54 @@ const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const RED: Rgba = { red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0 };
 const BACKDROP_Z: float32 = -1.0;
 const HALF: float32 = 0.5;
+const NORMAL_FADE_START: float32 = 0.25;
+const NORMAL_FADE_END: float32 = 0.75;
+const HALF_TURN: float32 = 1.5707963;
 
-// Each stage's box: its centre's z, its depth, and the fade its backdrop pixel takes; its decal:
-// the red of its tint, its alpha (the tint's red under AUTO_ALPHA, else the texel's 1) and its
-// pass; and the frame's exposure and target. A half red tells the passes apart under an exposure
-// of two: before the tone map it is exposed with the backdrop, after it the byte stays 127.5.
+// Each stage's box: its centre's z, its depth, whether it is turned to project along -y, and the
+// fade its backdrop pixel takes; its decal: the red of its tint, its alpha (the tint's red under
+// AUTO_ALPHA, else the texel's 1), its fadeStart, its normal fade and its pass; and the frame's
+// exposure and target. A half red tells the passes apart under an exposure of two: before the
+// tone map it is exposed with the backdrop, after it the byte stays 127.5. The backdrop faces the
+// camera, along an upright box's z and across a turned one's, which the normal fade halves.
 struct Stage {
 	centerZ: float32;
 	depth: float32;
+	turned: boolean;
 	fade: float32;
 	red: float32;
 	autoAlpha: boolean;
+	fadeStart: float32;
+	normalFade: boolean;
 	pass: DecalPass;
 	multiplier: float32;
 	hdr: boolean;
 	name: string;
 }
 
+const OUTSIDE: Stage = {
+	centerZ: BACKDROP_Z, depth: 4.0, turned: false, fade: 1.0, red: 1.0, autoAlpha: true,
+	fadeStart: 0.0, normalFade: false, pass: DecalPass.BeforeToneMap, multiplier: 1.0,
+	hdr: false, name: "camera outside the box",
+};
+const BEFORE: Stage = {
+	...OUTSIDE, red: HALF, autoAlpha: false, multiplier: 2.0,
+	name: "before the tone map, exposed",
+};
+const AFTER: Stage = { ...BEFORE, pass: DecalPass.AfterToneMap, name: "after the tone map, as is" };
+
 const STAGES: Vec<Stage> = [
+	OUTSIDE,
+	{ ...OUTSIDE, depth: 12.0, name: "camera inside the box" },
+	{ ...OUTSIDE, centerZ: -1.5, fade: 0.75, name: "backdrop off the box's centre" },
+	BEFORE,
+	AFTER,
+	{ ...BEFORE, hdr: true, name: "before the HDR tone map, exposed" },
+	{ ...AFTER, hdr: true, name: "after the HDR tone map, as is" },
+	{ ...OUTSIDE, normalFade: true, name: "the normal fade along the box's z" },
 	{
-		centerZ: BACKDROP_Z, depth: 4.0, fade: 1.0, red: 1.0, autoAlpha: true,
-		pass: DecalPass.BeforeToneMap, multiplier: 1.0, hdr: false,
-		name: "camera outside the box",
-	},
-	{
-		centerZ: BACKDROP_Z, depth: 12.0, fade: 1.0, red: 1.0, autoAlpha: true,
-		pass: DecalPass.BeforeToneMap, multiplier: 1.0, hdr: false,
-		name: "camera inside the box",
-	},
-	{
-		centerZ: -1.5, depth: 4.0, fade: 0.75, red: 1.0, autoAlpha: true,
-		pass: DecalPass.BeforeToneMap, multiplier: 1.0, hdr: false,
-		name: "backdrop off the box's centre",
-	},
-	{
-		centerZ: BACKDROP_Z, depth: 4.0, fade: 1.0, red: HALF, autoAlpha: false,
-		pass: DecalPass.BeforeToneMap, multiplier: 2.0, hdr: false,
-		name: "before the tone map, exposed",
-	},
-	{
-		centerZ: BACKDROP_Z, depth: 4.0, fade: 1.0, red: HALF, autoAlpha: false,
-		pass: DecalPass.AfterToneMap, multiplier: 2.0, hdr: false,
-		name: "after the tone map, as is",
-	},
-	{
-		centerZ: BACKDROP_Z, depth: 4.0, fade: 1.0, red: HALF, autoAlpha: false,
-		pass: DecalPass.BeforeToneMap, multiplier: 2.0, hdr: true,
-		name: "before the HDR tone map, exposed",
-	},
-	{
-		centerZ: BACKDROP_Z, depth: 4.0, fade: 1.0, red: HALF, autoAlpha: false,
-		pass: DecalPass.AfterToneMap, multiplier: 2.0, hdr: true,
-		name: "after the HDR tone map, as is",
+		...OUTSIDE, turned: true, fade: 0.5, fadeStart: 0.5, normalFade: true,
+		name: "the normal fade across the box's z",
 	},
 ];
 
@@ -196,6 +192,8 @@ function backdrop(texture: TextureId): MaterialId {
 function decal(texture: TextureId, at: Stage): MaterialId {
 	const overlay: DecalOverlay = {
 		...DecalOverlay.defaults(), color: { ...RED, red: at.red }, autoAlpha: at.autoAlpha,
+		fadeStart: at.fadeStart, normalFade: at.normalFade,
+		normalFadeStart: NORMAL_FADE_START, normalFadeEnd: NORMAL_FADE_END,
 	};
 	const block: Result<Vec<float32>, DecalError> = decalBlock(overlay, at.pass);
 	if (!block.ok) { unreachable; }
@@ -297,7 +295,8 @@ function frame(): void {
 		const at: Stage = STAGES[stage];
 		items[1] = {
 			...items[1], material: decals[stage],
-			world: scaling(2.0, 2.0, at.depth) * translation(0.0, 0.0, at.centerZ),
+			world: scaling(2.0, 2.0, at.depth) * rotationX(at.turned ? HALF_TURN : 0.0) *
+				translation(0.0, 0.0, at.centerZ),
 		};
 		const view: CameraView = viewOf();
 		view.writeCameraBlock(cameraValues);
@@ -313,8 +312,8 @@ function frame(): void {
 	}
 	const skipped: string = hdrSkipped ? " (HDR stages skipped: no renderable Rgba16f)" : "";
 	console.log("PASS decal: the box tints the backdrop under it from outside and inside, " +
-		"fades by the depth it reads, leaves the rest alone, and goes through the tone map " +
-		`only before it${skipped}`);
+		"fades by the depth it reads and the surface's normal, leaves the rest alone, and goes " +
+		`through the tone map only before it${skipped}`);
 	voidCaptureExit(0);
 }
 
