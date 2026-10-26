@@ -101,6 +101,7 @@ import "./gltfPoseCheck";
 import "./unicodeTablesPortCheck";
 import "./floatBitsPortCheck";
 import "./mat4PortCheck";
+import "./mikkTangentsPortCheck";
 import "./gltfComposeSceneCheck";
 import "./gltfAccessorCheck";
 import "./gltfColourCheck";
