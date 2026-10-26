@@ -2011,3 +2011,42 @@ export function shadowUnlitTexturedFs(
 		}
 	}
 }
+
+// Heaps' DecalOverlay (h3d/shader/pbr/VolumeDecal.hx:86-106): the scene depth under a fragment
+// back through the camera into the decal's own box, which spans -0.5..0.5 on each axis.
+export function decalLocalAt(
+	screen: Vec2f,
+	depth: float32,
+	inverseViewProj: Mat4x4f,
+	worldToLocal: Mat4x4f,
+): Vec3f {
+	const local = worldToLocal * (inverseViewProj * vec4f(screen.x, screen.y, depth, 1.0));
+	return local.xyz / local.w;
+}
+
+export function outsideDecal(local: Vec3f): boolean {
+	return abs(local.x) > 0.5 || abs(local.y) > 0.5 || abs(local.z) > 0.5;
+}
+
+export function decalFade(z: float32, start: float32, end: float32, power: float32): float32 {
+	return 1.0 - clamp(pow(max(0.0, abs(z * 2.0) - start) / (end - start), power), 0.0, 1.0);
+}
+
+// DecalOverlay.fragment (VolumeDecal.hx:108-123): the tint times the texel, squared under
+// GAMMA_CORRECT, lifted by the emissive; AUTO_ALPHA takes the alpha from the brightest channel.
+export function decalOverlayColor(
+	tint: Vec4f,
+	texel: Vec4f,
+	emissive: float32,
+	gammaCorrect: boolean,
+	autoAlpha: boolean,
+	fade: float32,
+): Vec4f {
+	let rgb = tint.rgb * texel.rgb;
+	if (gammaCorrect) {
+		rgb = rgb * rgb;
+	}
+	rgb = rgb + rgb * emissive;
+	const alpha: float32 = autoAlpha ? clamp(max(max(rgb.r, rgb.g), rgb.b), 0.0, 1.0) : texel.a;
+	return vec4f(rgb, alpha * fade);
+}
