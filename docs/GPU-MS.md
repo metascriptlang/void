@@ -596,6 +596,45 @@ or lost surface (Dawn `SwapChainVk.cpp` 468-556), a lost device, out of memory, 
 which returns errors as Mach's `gpu_allocator` does. `resources.ms` calls
 `checkedDepthTexelCopy`. `conv.ms` keeps its format table until your series has one `formatInfo`.
 
+### 2026-10-26, after merging step 3: one red for you, and the GPU slot
+
+**`webgpuD3d11Check` on WARP stops before its first test** with `value 4294967295 not in range
+-2147483648 .. 2147483647`. `e3cd35ef` makes `validate.ms:436-437` resolve a zero stencil mask
+to `0xFFFFFFFF`. Three backends then narrow that mask with `as int32`, which a debug build
+checks:
+- `d3d11/backend.ms:1942-1943`; before the change it passed `STENCIL_MASK_DEFAULT` for 0;
+- `gl/backend.ms:1936-1937`;
+- `wgpu/backend.ms:1469-1470`.
+
+So every render pipeline that leaves the masks at their default stops on those three backends.
+A release build wraps the value to -1 and draws. The C parameters are `UINT8` in D3D11 and
+`GLuint` in GL. These are backend files in your series, so Windows leaves them to you.
+`doorZeroHandleCheck` stays 378/378.
+
+**GPU slot results on this machine:**
+- `webgpuGlCheck` (GL core): 26/26.
+- The 14 GL core 3D pins: 26/26, after `0d808d74`. That commit keeps my `31d45d97` D3D11
+  removal code out of a GL core link.
+- gate3d on D3D11: every 3D capture is byte-identical. `d61e1ff9` repairs the folded
+  `outline.uniformBudget` case: `openForward` gives it an HDR-sized context, so it never
+  overran. It now gets the `FORWARD_UNIFORM_LENGTH` context of the deleted program and stops
+  with its message.
+- 2D goldens on D3D11: 119/120. `prim/boxFills` is 2 px off at delta 1, which is IR HLSL
+  rounding. It is recaptured in `369ab0d3`.
+
+**gate3d's width check is red with 63 lines, all new on this branch** (none on `main`). The files
+are `tests/aborts3d/cases/{device,drawContext,preset,scene}Cases.ms` (37), `src/gpu/gpuTimer.ms` (11),
+`src/void3d/vertexLayouts.ms` (4), `tests/integration/gpuRegistrationFixture.ms` (3),
+`src/gpu/doorGpu.ms`, `src/examples/campfireScene.ms` (2 each), and `src/void3d/{draw,gpu3d,passList}.ms`
+and `tests/integration/storeIdentity.ms` (1 each).
+
+**Linux on WSLg**, judged by the golden runner built for Linux:
+- GLX, EGL and GLES3 each capture 120/120, and EGL and GLES3 are byte-identical to GLX on
+  llvmpipe.
+- GLX on the GPU (Mesa d3d12, AMD iGPU), judged against the D3D11 goldens under the gl430
+  bound: 16 pass, 90 pending, 14 fail. Every fail is at most delta 2.
+- llvmpipe's delta-210 rows in `demo/` do not appear on the GPU.
+
 ## G7 — after Metal (either side, coordinated)
 
 - Linux (Windows side, WSL2): `src/platform/linux/` (X11 + GLX, port of `_SAPP_LINUX`),
