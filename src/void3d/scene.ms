@@ -270,6 +270,7 @@ export interface Scene3D {
 	stack: Vec<int32>;
 	root: int32;
 	structureChanged: boolean;
+	posChanged: boolean;
 	closed: boolean;
 }
 
@@ -362,6 +363,7 @@ function newSlot(scene: Scene3D, node: Object3D): NodeId3D {
 	} else {
 		scene.nodes[index] = node;
 	}
+	scene.posChanged = true;
 	return scene.nodeIdAt(index);
 }
 
@@ -392,6 +394,7 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 		stack: [],
 		root: NO_NODE_3D,
 		structureChanged: true,
+		posChanged: true,
 		closed: false,
 	};
 	const root: NodeId3D = newSlot(scene, {
@@ -1007,6 +1010,7 @@ function placeNode(
 	scene.nodes[under].children[position] = row;
 	scene.nodes[row].parent = under;
 	scene.nodes[row].flags = scene.nodes[row].flags.incl(NodeFlag.PosChanged);
+	scene.posChanged = true;
 	if (!connectedRow(scene, under)) {
 		const count: int32 = collectSubtree(scene, row);
 		for (let i = 0; i < count; i++) {
@@ -1160,6 +1164,7 @@ export function setLocal(scene: Scene3D, id: NodeId3D, local: Transform3D): void
 	const row: int32 = scene.liveRow(id, "setLocal");
 	scene.nodes[row].local = local;
 	scene.nodes[row].flags = scene.nodes[row].flags.incl(NodeFlag.PosChanged);
+	scene.posChanged = true;
 }
 
 export function setVisible(scene: Scene3D, id: NodeId3D, visible: boolean): void {
@@ -1421,7 +1426,8 @@ export function worldOf(this scene: Scene3D, id: NodeId3D): Result<Mat4, SceneEr
 // Allocates nothing: the descent stack is `scene.stack`, sized when nodes were added.
 export function syncWorld(scene: Scene3D): int32 {
 	if (scene.closed) { stopOnClosed("syncWorld"); }
-	if (scene.root == NO_NODE_3D) { return 0; }
+	if (scene.root == NO_NODE_3D || !scene.posChanged) { return 0; }
+	scene.posChanged = false;
 	let synced: int32 = 0;
 	let top: int32 = 0;
 	scene.stack[top] = scene.root;
