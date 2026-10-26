@@ -45,6 +45,9 @@ import {
 	LIGHT_UNIFORM_SLOT,
 	LIGHT_UNIFORM_LENGTH,
 	MATERIAL_UNIFORM_SLOT,
+	DECAL_UNIFORM_LENGTH,
+	SCENE_DEPTH_VIEW_SLOT,
+	SCENE_DEPTH_SAMPLER_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
 	PBR_MATERIAL_UNIFORM_LENGTH,
 	BILLBOARD_UNIFORM_SLOT,
@@ -194,7 +197,7 @@ const EVERY_PROGRAM: Vec<Program> = [
 	Program.Lit, Program.Particle, Program.Billboard, Program.Copy, Program.Post, Program.Blit,
 	Program.LitTextured, Program.UnlitTextured, Program.BloomDownsampleFirst,
 	Program.BloomDownsample, Program.BloomUpsample, Program.OutlineMask, Program.OutlineMix,
-	Program.OutlineWidth, Program.ParticleVisual,
+	Program.OutlineWidth, Program.ParticleVisual, Program.Decal,
 ];
 
 const SCENE_PROGRAMS: Vec<Program> = [
@@ -213,6 +216,7 @@ function layoutFor(key: ProgramKey): VertexLayout {
 		Program.Particle => VertexLayout.Particle,
 		Program.Billboard => VertexLayout.Billboard,
 		Program.ParticleVisual => VertexLayout.ParticleVisual,
+		Program.Decal => VertexLayout.Lit,
 		Program.Copy => VertexLayout.Fullscreen,
 		Program.Post => VertexLayout.Fullscreen,
 		Program.Blit => VertexLayout.Fullscreen,
@@ -265,7 +269,18 @@ test "every key packs to bits of its own, and each declared one reads its progra
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 174 + 6;
+	assert declared == 174 + 6 + 1;
+}
+
+test "the decal program is the core's alone, on the Lit layout, and reads the scene depth" {
+	const key: ProgramKey = ProgramKey.of(Program.Decal);
+	assert (Program.Decal as int32) == 15 && declares(key);
+	assert !declares(key.withPreset(Preset.PixelArt)) && !declares(key.withPreset(Preset.Shadow));
+	assert vertexLayoutOf(key) == VertexLayout.Lit;
+	assert uniformBlockLength(key, MATERIAL_UNIFORM_SLOT) == DECAL_UNIFORM_LENGTH;
+	assert uniformBlockLength(key, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
+	assert textureSlotMask(key) == 1 + (1 << (SCENE_DEPTH_VIEW_SLOT as uint32));
+	assert samplerSlotMask(key) == 1 + (1 << (SCENE_DEPTH_SAMPLER_SLOT as uint32));
 }
 
 test "skin programs own slot7 and keep matching colour/shadow layouts" {

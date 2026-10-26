@@ -4,7 +4,13 @@
 import { Vec3, Mat4, vec3, identity, scaling, translation } from "../math/math3d";
 import { Mat4x4f, Vec3f, Vec4f, mat4x4f, vec2f, vec4f } from "../shader/std";
 import { Camera3D, CameraError, CameraView, ProjectionKind } from "../void3d/camera";
-import { decalFade, decalLocalAt, decalOverlayColor, outsideDecal } from "../void3d/shader3d";
+import {
+	decalFade, decalLocalAt, decalOverlayColor, ndcDepthOf, outsideDecal,
+} from "../void3d/shader3d";
+import { DecalOverlay, DecalError, decalBlock } from "../void3d/decal";
+import { Material, Phase } from "../void3d/material";
+import { Program } from "../void3d/gpu3d";
+import { Compare, Face } from "../gpu/state";
 import { approx } from "./helpers";
 
 function asMat4x4f(m: Mat4): Mat4x4f {
@@ -45,14 +51,15 @@ function localUnder(view: CameraView, p: Vec3): Vec3f {
 	const y: float32 = p.x * m.m12 + p.y * m.m22 + p.z * m.m32 + m.m42;
 	const z: float32 = p.x * m.m13 + p.y * m.m23 + p.z * m.m33 + m.m43;
 	const w: float32 = p.x * m.m14 + p.y * m.m24 + p.z * m.m34 + m.m44;
-	return decalLocalAt(vec2f(x / w, y / w), z / w, asMat4x4f(view.inverseViewProj), boxToLocal());
+	const screenToLocal: Mat4x4f = boxToLocal() * asMat4x4f(view.inverseViewProj);
+	return decalLocalAt(vec2f(x / w, y / w), z / w, screenToLocal);
 }
 
 test "a depth under the identity camera lands in the box's local space" {
-	const toLocal: Mat4x4f = boxToLocal();
-	const inside: Vec3f = decalLocalAt(vec2f(1.0, 0.25), 0.5, asMat4x4f(identity()), toLocal);
+	const toLocal: Mat4x4f = boxToLocal() * asMat4x4f(identity());
+	const inside: Vec3f = decalLocalAt(vec2f(1.0, 0.25), 0.5, toLocal);
 	assert nearVec3(inside, 0.25, 0.25, 0.375) && !outsideDecal(inside);
-	const beside: Vec3f = decalLocalAt(vec2f(1.7, 0.0), 0.0, asMat4x4f(identity()), toLocal);
+	const beside: Vec3f = decalLocalAt(vec2f(1.7, 0.0), 0.0, toLocal);
 	assert approx(beside.x, 0.6) && outsideDecal(beside);
 }
 
@@ -82,4 +89,29 @@ test "the overlay multiplies the tint, squares under gamma, lifts by the emissiv
 	assert nearVec4(
 		decalOverlayColor(tint, texel, 0.0, true, true, 1.0), 0.0625, 0.25, 0.0625, 0.25);
 	assert nearVec4(decalOverlayColor(tint, texel, 3.0, false, true, 1.0), 1.0, 2.0, 1.0, 1.0);
+}
+
+test "a stored depth is NDC as is on a 0..1 backend and mapped from 0..1 to -1..1 otherwise" {
+	assert ndcDepthOf(0.25, 1.0) == 0.25;
+	assert ndcDepthOf(0.25, 0.0) == -0.5;
+	assert ndcDepthOf(1.0, 0.0) == 1.0;
+}
+
+test "a decal's block holds DecalOverlay's defaults, and an empty fade range is refused" {
+	const overlay: DecalOverlay = DecalOverlay.defaults();
+	const block: Result<Vec<float32>, DecalError> = decalBlock(overlay);
+	if (!block.ok) { unreachable; }
+	const expected: Vec<float32> = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0];
+	assert block.value.length == expected.length;
+	for (let i = 0; i < expected.length; i++) { assert block.value[i] == expected[i]; }
+	const empty: Result<Vec<float32>, DecalError> = decalBlock({ ...overlay, fadeEnd: 0.0 });
+	assert !empty.ok;
+	if (!empty.ok) { assert empty.error == DecalError.FadeRange; }
+}
+
+test "a decal material draws in the Decal phase with no depth and its back faces" {
+	const material: Material = Material.decal();
+	assert material.program.program == Program.Decal && material.phase == Phase.Decal;
+	assert !material.pass.depthWrite && material.pass.depthTest == Compare.Always;
+	assert material.pass.culling == Face.Front;
 }
