@@ -607,12 +607,11 @@ export function primitiveRefusal(primitive: GPUPrimitiveState): string {
 export function resolvedRenderPipeline(descriptor: GPURenderPipelineDescriptor): GPURenderPipelineDescriptor {
 	let resolved = descriptor;
 	if (resolved.multisample.count == 0) { resolved.multisample.count = 1; }
-	if (resolved.depthStencil.stencilReadMask == 0) { resolved.depthStencil.stencilReadMask = 0xFFFFFFFF; }
-	if (resolved.depthStencil.stencilWriteMask == 0) { resolved.depthStencil.stencilWriteMask = 0xFFFFFFFF; }
 	return resolved;
 }
 
-export function stencil8Mask(mask: uint32): int32 { return (mask & 0xFF) as int32; }
+export function stencilMask(mask: uint32 | null): uint32 { return mask ?? 0xFFFFFFFF; }
+export function stencil8Mask(mask: uint32 | null): int32 { return (stencilMask(mask) & 0xFF) as int32; }
 
 export function renderPipelineRefusal(descriptor: GPURenderPipelineDescriptor): string {
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {

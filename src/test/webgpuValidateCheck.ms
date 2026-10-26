@@ -44,6 +44,7 @@ import {
 	canvasRefusal,
 	resolvedRenderPipeline,
 	stencil8Mask,
+	stencilMask,
 	clampedAnisotropy,
 	computeModuleRefusal,
 	computePipelineRefusal,
@@ -927,19 +928,28 @@ test "a canvas names a color format and, when it has one, a depth format" {
 	assert canvasRefusal("bgra8unorm", "", -1) == "NativeEnvironment.sampleCount -1 is negative";
 }
 
-test "a render pipeline's zero sample count and stencil masks resolve to WebGPU's defaults" {
+test "a render pipeline's zero sample count and omitted stencil masks resolve to WebGPU's defaults" {
 	let descriptor: GPURenderPipelineDescriptor = {};
 	const resolved = resolvedRenderPipeline(descriptor);
 	assert resolved.multisample.count == 1;
-	assert resolved.depthStencil.stencilReadMask == 0xFFFFFFFF;
-	assert resolved.depthStencil.stencilWriteMask == 0xFFFFFFFF;
+	assert stencilMask(resolved.depthStencil.stencilReadMask) == 0xFFFFFFFF;
+	assert stencilMask(resolved.depthStencil.stencilWriteMask) == 0xFFFFFFFF;
 	descriptor.multisample.count = 4;
 	descriptor.depthStencil.stencilReadMask = 0x0F;
 	descriptor.depthStencil.stencilWriteMask = 0xF0;
 	const kept = resolvedRenderPipeline(descriptor);
 	assert kept.multisample.count == 4;
-	assert kept.depthStencil.stencilReadMask == 0x0F;
-	assert kept.depthStencil.stencilWriteMask == 0xF0;
+	assert stencilMask(kept.depthStencil.stencilReadMask) == 0x0F;
+	assert stencilMask(kept.depthStencil.stencilWriteMask) == 0xF0;
 	assert stencil8Mask(resolved.depthStencil.stencilReadMask) == 0xFF;
 	assert stencil8Mask(kept.depthStencil.stencilWriteMask) == 0xF0;
+}
+
+test "an explicit stencil mask of 0 survives, so a pipeline can test the stencil without writing it" {
+	let descriptor: GPURenderPipelineDescriptor = {};
+	descriptor.depthStencil.stencilReadMask = 0;
+	descriptor.depthStencil.stencilWriteMask = 0;
+	const resolved = resolvedRenderPipeline(descriptor);
+	assert stencilMask(resolved.depthStencil.stencilReadMask) == 0;
+	assert stencil8Mask(resolved.depthStencil.stencilWriteMask) == 0;
 }

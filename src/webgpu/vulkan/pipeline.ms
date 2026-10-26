@@ -96,7 +96,7 @@ import {
 	stop,
 	stopOnUnportedShaderBindings,
 } from "../types.ms";
-import { boundFacts, checkedComputeModule, checkedRenderModule, entryBytes, isStripTopology } from "../validate.ms";
+import { boundFacts, checkedComputeModule, checkedRenderModule, entryBytes, isStripTopology, stencilMask } from "../validate.ms";
 import {
 	bindGroupRecords,
 	bufferRecords,
@@ -368,8 +368,8 @@ function stateWords(descriptor: GPURenderPipelineDescriptor, depth: boolean, ste
 	words.push(stencil ? 1 : 0);
 	stencilFaceWords(words, ds.stencilFront, "depthStencil.stencilFront");
 	stencilFaceWords(words, ds.stencilBack, "depthStencil.stencilBack");
-	words.push(ds.stencilReadMask);
-	words.push(ds.stencilWriteMask);
+	words.push(stencilMask(ds.stencilReadMask));
+	words.push(stencilMask(ds.stencilWriteMask));
 	words.push(ds.depthBias as uint32);
 	if (words.length != RENDER_STATE_WORDS) { stop(`vulkan: render state has ${words.length} words, not ${RENDER_STATE_WORDS}`); }
 	return words;
