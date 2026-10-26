@@ -15,6 +15,7 @@ import {
 	void2dSetup, void2dWhiteView, void2dSetDpiScale, void2dFrameBegin,
 	void2dGlyphPageView, void2dGlyphUploadCount, void2dGlyphUploadBytes, void2dSetTextGamma,
 	void2dReplay, void2dReplayTargets, void2dReplayList, void2dLayoutCheck, void2dSetScopes,
+	void2dSetCoverageSources,
 	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
 	void2dVertexBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
 	void2dAtlasImagesAlive, void2dFrameEnd, void2dFrameSerial, void2dFailPendingTargets,
@@ -562,6 +563,7 @@ export function flushTargets(): void {
 	resolvePipelines();
 	void2dSetDpiScale(l.frameDpi);
 	void2dSetScopes(l.scopeValues[0], l.scopeTotal);
+	void2dSetCoverageSources(l.vertices[0], l.spriteInstances[0], l.uiInstances[0]);
 	const targets: int32 = l.targetsPending ? targetCommandCount() : 0;
 	l.targetsPending = false;
 	if (isDefaultContext(l)) {
@@ -712,6 +714,7 @@ function replayScreen(l: DrawContext2D, from: int32, to: int32): void {
 	if (to <= from) { return; }
 	void2dSetDpiScale(l.frameDpi);
 	void2dSetScopes(l.scopeValues[0], l.scopeTotal);
+	void2dSetCoverageSources(l.vertices[0], l.spriteInstances[0], l.uiInstances[0]);
 	if (void2dActivateContext(l.id) == 0) { return; }
 	void2dReplay(
 		l.commands[from * COMMAND_FLOATS], to - from,
