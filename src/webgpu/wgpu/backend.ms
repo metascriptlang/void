@@ -1094,9 +1094,6 @@ export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void 
 	if (has(usage, (GPUBufferUsage.MAP_READ as int32) | (GPUBufferUsage.MAP_WRITE as int32))) {
 		stop("GPUBufferUsage MAP_READ and MAP_WRITE are not ported to wgpu: mapAsync completes in the browser's event loop and cannot block here without ASYNCIFY or JSPI");
 	}
-	if (has(usage, GPUBufferUsage.STORAGE as int32) && descriptor.size % 4 != 0) {
-		stop(`a STORAGE buffer takes a size that is a multiple of 4, got ${descriptor.size}`);
-	}
 	const native = wgCreateBuffer(descriptor.size, usage, labelText(descriptor.label));
 	if (native == null) { stop(`wgpuDeviceCreateBuffer failed for ${labelOf(descriptor.label)}`); }
 	const slot: BufferSlot = { native: native };

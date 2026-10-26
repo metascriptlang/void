@@ -1013,7 +1013,6 @@ export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void 
 	if (storage && descriptor.size > MAX_STORAGE_BUFFER_BINDING_SIZE) {
 		stop(`a STORAGE buffer of ${descriptor.size} bytes is over the limit of ${MAX_STORAGE_BUFFER_BINDING_SIZE}`);
 	}
-	if (storage && descriptor.size % 4 != 0) { stop("a STORAGE buffer takes a size that is a multiple of 4 (raw ByteAddressBuffer views)"); }
 	if (uniform && has(usage, vertexOrIndex)) {
 		stop("a UNIFORM buffer is a CPU shadow on D3D11 and cannot also be VERTEX or INDEX");
 	}
@@ -1046,7 +1045,7 @@ export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void 
 		const writable = has(usage, GPUBufferUsage.COPY_DST as int32) && !slot.updatable;
 		slot.native = d3dCreateBuffer(
 			device,
-			descriptor.size,
+			storage ? (descriptor.size + 3) / 4 * 4 : descriptor.size,
 			writable ? USAGE_DYNAMIC : USAGE_DEFAULT,
 			bindFlags,
 			writable ? CPU_ACCESS_WRITE : 0,

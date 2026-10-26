@@ -1314,7 +1314,6 @@ export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void 
 	if (storage && descriptor.size > cachedLimits().maxStorageBufferBindingSize) {
 		stop(`a STORAGE buffer of ${descriptor.size} bytes is over the limit of ${cachedLimits().maxStorageBufferBindingSize}`);
 	}
-	if (storage && descriptor.size % 4 != 0) { stop("a STORAGE buffer takes a size that is a multiple of 4"); }
 	when (webgl2) {
 		if ((usage & vertexOrIndex) == vertexOrIndex) { stop("WebGL2 binds a buffer as VERTEX or as INDEX, not both"); }
 	}
