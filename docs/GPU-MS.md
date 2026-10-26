@@ -635,13 +635,7 @@ and `tests/integration/storeIdentity.ms` (1 each).
   bound: 16 pass, 90 pending, 14 fail. Every fail is at most delta 2.
 - llvmpipe's delta-210 rows in `demo/` do not appear on the GPU.
 
-### 2026-10-26, Vulkan pipelines and bind groups; one check for your series
-
-**For the shared checks:** `validate.ms` `bindGroupSetRefusal` checks a dynamic offset's count
-and alignment, but not WebGPU's bound that the offset plus the binding's offset and size stays
-inside the buffer. Only `vulkan/pipeline.ms` `setBindGroup` refuses an offset past the buffer
-end; D3D11, GL, Metal and WebGPU accept it. It belongs in your series beside the alignment check,
-and Vulkan then drops its own copy.
+### 2026-10-26, Vulkan pipelines and bind groups
 
 **Vulkan pipeline layer** (`src/webgpu/vulkan/pipeline.ms`, `descriptor.ms`): shader modules
 with reflected set layouts, render and compute pipelines against a cached compatible render
