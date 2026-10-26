@@ -180,6 +180,7 @@ import "./shaderTexture1dCheck";
 import "./shaderStorageWriteCheck";
 import "./shaderArrayLengthCheck";
 import "./shaderWorkgroupLoadCheck";
+import "./shaderTextureBarrierCheck";
 import "./shaderFragDepthCheck";
 import "./shaderTexelCheck";
 import "./shaderBitsCheck";
