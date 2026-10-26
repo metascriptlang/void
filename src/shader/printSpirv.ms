@@ -242,7 +242,8 @@ class Spirv {
 	annotations: int32[] = [];
 	globals: int32[] = [];
 	functionWords: int32[] = [];
-	keys: Map<string, int32> = new Map();
+	keyNames: string[] = [];
+	keyIds: int32[] = [];
 	constantIds: int32[] = [];
 	compositeIds: int32[] = [];
 	compositeParts: int32[][] = [];
@@ -355,8 +356,13 @@ function f32Bits(v: float64): float64 {
 }
 
 function cached(p: Spirv, key: string): int32 {
-	const held = p.keys.get(key);
-	return held === undefined ? 0 : held;
+	const at = p.keyNames.indexOf(key);
+	return at < 0 ? 0 : p.keyIds[at];
+}
+
+function remember(p: Spirv, key: string, id: int32): void {
+	p.keyNames.push(key);
+	p.keyIds.push(id);
 }
 
 function declared(p: Spirv, key: string, opcode: int32, operands: int32[]): int32 {
@@ -364,7 +370,7 @@ function declared(p: Spirv, key: string, opcode: int32, operands: int32[]): int3
 	if (held != 0) { return held; }
 	const id = fresh(p);
 	inst(p.globals, opcode, [id].concat(operands));
-	p.keys.set(key, id);
+	remember(p, key, id);
 	return id;
 }
 
@@ -557,7 +563,7 @@ function constant(p: Spirv, key: string, opcode: int32, type: int32, operands: i
 	if (held != 0) { return held; }
 	const id = fresh(p);
 	inst(p.globals, opcode, [type, id].concat(operands));
-	p.keys.set(key, id);
+	remember(p, key, id);
 	p.constantIds.push(id);
 	return id;
 }
@@ -1920,7 +1926,7 @@ function declareResource(p: Spirv, index: int32, slot: BindingSlot): void {
 			storage = UNIFORM;
 			const key = "B" + String(type);
 			if (cached(p, key) == 0) {
-				p.keys.set(key, type);
+				remember(p, key, type);
 				decorate(p, type, DECORATION_BLOCK, []);
 			}
 		},
