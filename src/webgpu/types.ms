@@ -29,6 +29,8 @@ export const GPU_MAX_ANISOTROPY: int32 = 16;
 export const GPU_UNIFORM_GROUP = 0;
 export const GPU_RESOURCE_GROUP = 1;
 
+export enum DeviceLoss { None, Recover, Fatal }
+
 export enum GPUBufferUsage {
 	MAP_READ = 0x1,
 	MAP_WRITE = 0x2,
@@ -804,13 +806,6 @@ export function vertexOffsetRefusal(call: string, pipeline: string, member: stri
 
 @noinline export function checkedUnmap(id: uint32, mapMode: int32): void {
 	if (mapMode == 0) { stop(`unmap on GPUBuffer ${id}, which is not mapped`); }
-}
-
-@noinline export function checkedWriteBuffer(id: uint32, bufferSize: int64, offset: int64, bytes: int64): void {
-	if (offset < 0 || offset + bytes > bufferSize) {
-		stop(`writeBuffer of ${bytes} bytes at ${offset} overruns GPUBuffer ${id} of ${bufferSize}`);
-	}
-	if ((offset & 3) != 0) { stop(`writeBuffer offset ${offset} is not a multiple of 4`); }
 }
 
 export function viewMipsRefusal(id: uint32, mipLevels: int32, baseMip: int32, mipCount: int32): string {

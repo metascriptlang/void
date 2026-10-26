@@ -1,12 +1,15 @@
 import {
 	BindingKind,
+	GPUBindGroupDescriptor,
 	GPUBindGroupEntry,
 	GPUBufferUsage,
+	GPUMapMode,
 	GPUPrimitiveState,
 	GPURenderPassDescriptor,
 	GPUQuerySetDescriptor,
 	GPURenderPipelineDescriptor,
 	GPUSamplerDescriptor,
+	GPUShaderBinding,
 	GPUShaderModuleDescriptor,
 	GPUShaderStage,
 	GPUSupportedLimits,
@@ -25,6 +28,9 @@ import {
 	beginOcclusionRefusal,
 	bindGroupIndexRefusal,
 	bindGroupSetRefusal,
+	copyBufferRefusal,
+	copyTextureRefusal,
+	uniformEntryCount,
 	beginPassRefusal,
 	bufferRefusal,
 	canvasRefusal,
@@ -35,6 +41,7 @@ import {
 	computePipelineRefusal,
 	createRefusal,
 	dispatchRefusal,
+	drawOffsetRefusal,
 	drawRefusal,
 	endOcclusionRefusal,
 	entryBytes,
@@ -51,6 +58,7 @@ import {
 	occlusionReuseRefusal,
 	occlusionSetKindRefusal,
 	pipelineSetRefusal,
+	queriesWrittenRefusal,
 	querySetRefusal,
 	resolvedViewDimension,
 	resolvedViewRange,
@@ -69,6 +77,7 @@ import {
 	renderPassRefusal,
 	renderPassPipelineRefusal,
 	renderPipelineRefusal,
+	scissorRefusal,
 	samplerRefusal,
 	shaderModuleRefusal,
 	shutdownRefusal,
@@ -76,7 +85,9 @@ import {
 	textureRefusal,
 	uniformEntryRefusal,
 	viewportRefusal,
+	writeBufferRefusal,
 } from "../webgpu/validate";
+import { BufferRecord, PipelineRecord, QuerySetRecord, QueryState, TextureRecord } from "../webgpu/pool";
 
 function openEncoder(): EncoderState {
 	let s: EncoderState = { open: false };
@@ -208,6 +219,7 @@ const MAP_WRITE = GPUBufferUsage.MAP_WRITE as int32;
 const COPY_SRC = GPUBufferUsage.COPY_SRC as int32;
 const COPY_DST = GPUBufferUsage.COPY_DST as int32;
 const VERTEX = GPUBufferUsage.VERTEX as int32;
+const STORAGE = GPUBufferUsage.STORAGE as int32;
 const ATTACHMENT = GPUTextureUsage.RENDER_ATTACHMENT as int32;
 const SAMPLED = GPUTextureUsage.TEXTURE_BINDING as int32;
 const RENDER_STAGES = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
@@ -228,6 +240,63 @@ test "a buffer needs a positive size and a mappable buffer only its direction's 
 	assert bufferRefusal(16, MAP_READ | VERTEX) == "GPUBufferUsage MAP_READ combines only with COPY_DST";
 	assert bufferRefusal(16, MAP_WRITE | COPY_SRC) == "";
 	assert bufferRefusal(16, MAP_WRITE | COPY_DST) == "GPUBufferUsage MAP_WRITE combines only with COPY_SRC";
+}
+
+function written(usage: int32, frame: int64, end: int64): BufferRecord {
+	return { id: 7, size: 64, usage: usage, writtenFrame: frame, writtenEnd: end };
+}
+
+test "writeBuffer needs COPY_DST and a 4-byte-aligned offset inside the buffer" {
+	assert writeBufferRefusal(written(VERTEX | COPY_DST, -1, 0), 0, 64, 3) == "";
+	assert writeBufferRefusal(written(VERTEX, -1, 0), 0, 16, 3) == "GPUBuffer 7 was created without COPY_DST";
+	assert writeBufferRefusal(written(VERTEX | COPY_DST, -1, 0), 56, 16, 3) == "writeBuffer of 16 bytes at 56 overruns GPUBuffer 7 of 64";
+	assert writeBufferRefusal(written(VERTEX | COPY_DST, -1, 0), -4, 4, 3) == "writeBuffer of 4 bytes at -4 overruns GPUBuffer 7 of 64";
+	assert writeBufferRefusal(written(VERTEX | COPY_DST, -1, 0), 2, 4, 3) == "writeBuffer offset 2 is not a multiple of 4";
+}
+
+test "writeBuffer takes an unmapped MAP_READ buffer and refuses it while mapped" {
+	let buffer = written(MAP_READ | COPY_DST, -1, 0);
+	assert writeBufferRefusal(buffer, 0, 16, 3) == "";
+	buffer.mapMode = GPUMapMode.READ as int32;
+	assert writeBufferRefusal(buffer, 0, 16, 3) == "writeBuffer on GPUBuffer 7, which is mapped";
+}
+
+test "a copy reads a COPY_SRC buffer and writes a COPY_DST one, neither of them mapped" {
+	let buffer = written(COPY_SRC, -1, 0);
+	assert copyBufferRefusal("copyBufferToBuffer", buffer, true) == "";
+	assert copyBufferRefusal("copyBufferToBuffer", buffer, false) == "copyBufferToBuffer destination: GPUBuffer 7 was created without COPY_DST";
+	assert copyBufferRefusal("copyTextureToBuffer", written(VERTEX, -1, 0), true) == "copyTextureToBuffer source: GPUBuffer 7 was created without COPY_SRC";
+	buffer.mapMode = GPUMapMode.WRITE as int32;
+	assert copyBufferRefusal("copyBufferToBuffer", buffer, true) == "copyBufferToBuffer source: GPUBuffer 7 is mapped";
+}
+
+test "a copy reads a COPY_SRC texture and writes a COPY_DST one, single-sampled unless it is the swapchain's" {
+	let texture: TextureRecord = { id: 9, width: 4, height: 4, format: "rgba8unorm", usage: GPUTextureUsage.COPY_SRC as int32, sampleCount: 1 };
+	assert copyTextureRefusal("copyTextureToTexture", texture, true) == "";
+	assert copyTextureRefusal("copyTextureToTexture", texture, false) == "copyTextureToTexture destination: GPUTexture 9 was created without COPY_DST";
+	texture.sampleCount = 4;
+	assert copyTextureRefusal("copyTextureToBuffer", texture, true) == "copyTextureToBuffer source: GPUTexture 9 is multisampled";
+	texture.swapchainView = 3;
+	assert copyTextureRefusal("copyTextureToBuffer", texture, true) == "";
+}
+
+test "a frame writes each buffer's bytes once, appending after its last write, whatever the usage" {
+	const rewrite = "writeBuffer at 8 on GPUBuffer 7 rewrites bytes this frame already wrote, up to 16";
+	assert writeBufferRefusal(written(VERTEX | COPY_DST, 3, 16), 8, 4, 3) == rewrite;
+	assert writeBufferRefusal(written(STORAGE | COPY_DST, 3, 16), 8, 4, 3) == rewrite;
+	assert writeBufferRefusal(written(MAP_READ | COPY_DST, 3, 16), 8, 4, 3) == rewrite;
+	assert writeBufferRefusal(written(STORAGE | COPY_DST, 3, 16), 16, 4, 3) == "";
+	assert writeBufferRefusal(written(STORAGE | COPY_DST, 2, 16), 0, 4, 3) == "";
+}
+
+test "a draw refuses firstInstance and firstVertex or baseVertex only where the vertex stage reads their index" {
+	const reads: PipelineRecord = { id: 3, label: "quad", readsInstanceIndex: true, readsVertexIndex: true };
+	const plain: PipelineRecord = { id: 4, label: "plain" };
+	assert drawOffsetRefusal(reads, "draw", "firstVertex", 0, 0) == "";
+	assert drawOffsetRefusal(plain, "draw", "firstVertex", 6, 2) == "";
+	assert drawOffsetRefusal(reads, "draw", "firstVertex", 0, 2) == "draw with firstInstance 2 on pipeline 'quad': firstInstance must be 0 because the vertex stage reads instance_index";
+	assert drawOffsetRefusal(reads, "draw", "firstVertex", 6, 0) == "draw with firstVertex 6 on pipeline 'quad': firstVertex must be 0 because the vertex stage reads vertex_index";
+	assert drawOffsetRefusal(reads, "drawIndexed", "baseVertex", -3, 0) == "drawIndexed with baseVertex -3 on pipeline 'quad': baseVertex must be 0 because the vertex stage reads vertex_index";
 }
 
 test "a texture size is positive and inside the backend's limits for its dimension" {
@@ -426,11 +495,22 @@ test "a sampler's anisotropy needs every filter linear, and its lod range is non
 
 test "a query set is a timestamp or occlusion set of 1 to 4096 queries" {
 	const timestamps: GPUQuerySetDescriptor = { type: "timestamp", count: 4096 };
-	assert querySetRefusal(timestamps) == "";
+	assert querySetRefusal(timestamps, true) == "";
 	const empty: GPUQuerySetDescriptor = { type: "occlusion", count: 0 };
-	assert querySetRefusal(empty) == "GPUQuerySetDescriptor.count 0 is outside 1..4096";
+	assert querySetRefusal(empty, true) == "GPUQuerySetDescriptor.count 0 is outside 1..4096";
 	const untyped: GPUQuerySetDescriptor = { count: 4 };
-	assert querySetRefusal(untyped) == "GPUQuerySetDescriptor.type '' is neither 'timestamp' nor 'occlusion'";
+	assert querySetRefusal(untyped, true) == "GPUQuerySetDescriptor.type '' is neither 'timestamp' nor 'occlusion'";
+	assert querySetRefusal(timestamps, false) == "this device has no timestamp queries: features().has('timestamp-query') is false";
+	const occlusion: GPUQuerySetDescriptor = { type: "occlusion", count: 4 };
+	assert querySetRefusal(occlusion, false) == "";
+}
+
+test "resolveQuerySet reads only queries a pass wrote and closed" {
+	let set: QuerySetRecord = { id: 3, count: 3, state: [QueryState.Written, QueryState.Open, QueryState.Unwritten] };
+	assert queriesWrittenRefusal(set, 0, 1) == "";
+	assert queriesWrittenRefusal(set, 0, 2) == "resolveQuerySet: query 1 is still open";
+	assert queriesWrittenRefusal(set, 2, 1) == "resolveQuerySet: query 2 was never written";
+	assert queriesWrittenRefusal(set, 1, 0) == "";
 }
 
 test "a viewport and a dispatch stay inside WebGPU's ranges and the backend's limit" {
@@ -442,6 +522,14 @@ test "a viewport and a dispatch stay inside WebGPU's ranges and the backend's li
 	assert dispatchRefusal(-1, 1, 1, 65535) == "dispatchWorkgroups -1,1,1 is outside 0..65535";
 }
 
+test "a scissor rect lies inside the pass attachment" {
+	assert scissorRefusal(0, 0, 64, 32, 64, 32) == "";
+	assert scissorRefusal(8, 8, 0, 0, 64, 32) == "";
+	assert scissorRefusal(1, 0, 64, 32, 64, 32) == "setScissorRect 1,0 64x32 lies outside the 64x32 attachment";
+	assert scissorRefusal(-1, 0, 8, 8, 64, 32) == "setScissorRect -1,0 8x8 lies outside the 64x32 attachment";
+	assert scissorRefusal(0, 30, 8, 3, 64, 32) == "setScissorRect 0,30 8x3 lies outside the 64x32 attachment";
+}
+
 test "a render pipeline takes its vertex and fragment stages from one module" {
 	let pipeline: GPURenderPipelineDescriptor = { vertex: { module: { id: 3 } }, fragment: { module: { id: 3 } } };
 	assert renderPipelineRefusal(pipeline) == "";
@@ -450,6 +538,16 @@ test "a render pipeline takes its vertex and fragment stages from one module" {
 	pipeline.fragment.module = { id: 3 };
 	pipeline.primitive = { topology: "triangle-list", stripIndexFormat: "uint16" };
 	assert renderPipelineRefusal(pipeline) == "primitive.stripIndexFormat 'uint16' needs a strip topology";
+}
+
+test "a render pipeline blends only a target whose format is not an integer one" {
+	let pipeline: GPURenderPipelineDescriptor = { vertex: { module: { id: 3 } }, fragment: { module: { id: 3 } } };
+	pipeline.fragment.targets[1] = { format: "rgba8unorm", blendEnabled: true };
+	assert renderPipelineRefusal(pipeline) == "";
+	pipeline.fragment.targets[2] = { format: "r32uint" };
+	assert renderPipelineRefusal(pipeline) == "";
+	pipeline.fragment.targets[2].blendEnabled = true;
+	assert renderPipelineRefusal(pipeline) == "fragment.targets[2] blends r32uint, an integer format";
 }
 
 test "a stripIndexFormat needs a strip topology" {
@@ -637,6 +735,15 @@ test "a bind group is set in the group it was made for, with its dynamic offsets
 	assert bindGroupSetRefusal(1, 1, 1, aligned, 256) == "setBindGroup(1) takes 1 dynamic offsets, got 2";
 }
 
+test "a uniform group takes one dynamic offset per buffer entry" {
+	let descriptor: GPUBindGroupDescriptor = { label: null };
+	assert uniformEntryCount(descriptor) == 0;
+	descriptor.entries[0].buffer = { id: 5 };
+	descriptor.entries[1].sampler = { id: 7 };
+	descriptor.entries[3].buffer = { id: 6 };
+	assert uniformEntryCount(descriptor) == 2;
+}
+
 test "a storage entry is a positive multiple of 4 bytes inside a STORAGE buffer, on the backend's alignment and limit" {
 	assert entryBytes(entryAt(0, 0), 64) == 64;
 	assert entryBytes(entryAt(16, 0), 64) == 48;
@@ -657,9 +764,12 @@ test "a storage entry is a positive multiple of 4 bytes inside a STORAGE buffer,
 test "a texture view binds as a sampled texture or a one-mip storage texture only if its texture allows it" {
 	assert sampledViewRefusal(3, true) == "";
 	assert sampledViewRefusal(3, false) == "bind group entry 3: the view's texture lacks TEXTURE_BINDING";
-	assert storageViewRefusal(3, true, 1) == "";
-	assert storageViewRefusal(3, false, 1) == "bind group entry 3: the view's texture lacks STORAGE_BINDING";
-	assert storageViewRefusal(3, true, 2) == "bind group entry 3: a storage texture view takes exactly one mip";
+	assert storageViewRefusal(3, true, 1, "rgba8unorm", "rgba8unorm") == "";
+	assert storageViewRefusal(3, false, 1, "rgba8unorm", "rgba8unorm") == "bind group entry 3: the view's texture lacks STORAGE_BINDING";
+	assert storageViewRefusal(3, true, 2, "rgba8unorm", "rgba8unorm") == "bind group entry 3: a storage texture view takes exactly one mip";
+	assert storageViewRefusal(3, true, 1, "r32float", "rgba8unorm") == "bind group entry 3: the shader declares storage format 'r32float' and the view's texture is 'rgba8unorm'";
+	const undeclared: GPUShaderBinding = { kind: "storage-texture" };
+	assert storageViewRefusal(3, true, 1, undeclared.storageFormat, "rgba8unorm") == "";
 }
 
 function colorTarget(width: int32, height: int32, sampleCount: int32): AttachmentFacts {
@@ -727,11 +837,12 @@ test "a resolve target is a single-sample color attachment of its multisampled v
 }
 
 test "a canvas names a color format and, when it has one, a depth format" {
-	assert canvasRefusal("bgra8unorm", "depth32float") == "";
-	assert canvasRefusal("rgba8unorm", "") == "";
-	assert canvasRefusal("", "") == "NativeEnvironment.colorFormat is required";
-	assert canvasRefusal("depth32float", "") == "NativeEnvironment.colorFormat 'depth32float' is not supported";
-	assert canvasRefusal("bgra8unorm", "rgba8unorm") == "NativeEnvironment.depthFormat 'rgba8unorm' is not supported";
+	assert canvasRefusal("bgra8unorm", "depth32float", 4) == "";
+	assert canvasRefusal("rgba8unorm", "", 0) == "";
+	assert canvasRefusal("", "", 1) == "NativeEnvironment.colorFormat is required";
+	assert canvasRefusal("depth32float", "", 1) == "NativeEnvironment.colorFormat 'depth32float' is not supported";
+	assert canvasRefusal("bgra8unorm", "rgba8unorm", 1) == "NativeEnvironment.depthFormat 'rgba8unorm' is not supported";
+	assert canvasRefusal("bgra8unorm", "", -1) == "NativeEnvironment.sampleCount -1 is negative";
 }
 
 test "a render pipeline's zero sample count and stencil masks resolve to WebGPU's defaults" {

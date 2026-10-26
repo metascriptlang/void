@@ -111,6 +111,11 @@ export struct BufferRecord {
 	id: uint32;
 	size: int64;
 	usage: int32;
+	writtenFrame: int64;
+	writtenEnd: int64;
+	mapMode: int32;
+	mapOffset: int64;
+	mapSize: int64;
 }
 
 export struct TextureRecord {
@@ -142,6 +147,17 @@ export struct ViewRecord {
 export struct PipelineRecord {
 	id: uint32;
 	layouts: uint32[2];
+	label: string | null;
+	compute: boolean;
+	readsInstanceIndex: boolean;
+	readsVertexIndex: boolean;
+}
+
+export struct ShaderRecord {
+	id: uint32;
+	compute: boolean;
+	readsInstanceIndex: boolean;
+	readsVertexIndex: boolean;
 }
 
 export struct LayoutRecord {
@@ -150,17 +166,37 @@ export struct LayoutRecord {
 	group: int32;
 }
 
+export struct BindGroupRecord {
+	id: uint32;
+	group: int32;
+	dynamicCount: int32;
+}
+
 export struct IdRecord { id: uint32; }
+
+export enum QueryState {
+	Unwritten,
+	Open,
+	Written,
+}
+
+export struct QuerySetRecord {
+	id: uint32;
+	timestamp: boolean;
+	count: int32;
+	state: Vec<QueryState>;
+	usedPass: Vec<int64>;
+}
 
 export let bufferRecords: Pool<BufferRecord> = newPool<BufferRecord>("", "GPUBuffer", "buffer", { id: 0 });
 export let textureRecords: Pool<TextureRecord> = newPool<TextureRecord>("", "GPUTexture", "texture", { id: 0 });
 export let viewRecords: Pool<ViewRecord> = newPool<ViewRecord>("", "GPUTextureView", "view", { id: 0 });
 export let samplerRecords: Pool<IdRecord> = newPool<IdRecord>("", "GPUSampler", "sampler", { id: 0 });
-export let shaderRecords: Pool<IdRecord> = newPool<IdRecord>("", "GPUShaderModule", "shader module", { id: 0 });
+export let shaderRecords: Pool<ShaderRecord> = newPool<ShaderRecord>("", "GPUShaderModule", "shader module", { id: 0 });
 export let pipelineRecords: Pool<PipelineRecord> = newPool<PipelineRecord>("", "GPURenderPipeline", "render or compute pipeline", { id: 0 });
 export let layoutRecords: Pool<LayoutRecord> = newPool<LayoutRecord>("", "GPUBindGroupLayout", "bind group layout", { id: 0 });
-export let bindGroupRecords: Pool<IdRecord> = newPool<IdRecord>("", "GPUBindGroup", "bind group", { id: 0 });
-export let querySetRecords: Pool<IdRecord> = newPool<IdRecord>("", "GPUQuerySet", "query set", { id: 0 });
+export let bindGroupRecords: Pool<BindGroupRecord> = newPool<BindGroupRecord>("", "GPUBindGroup", "bind group", { id: 0 });
+export let querySetRecords: Pool<QuerySetRecord> = newPool<QuerySetRecord>("", "GPUQuerySet", "query set", { id: 0 });
 
 function resetFor<T>(ref pool: Pool<T>, backend: string): void {
 	reset(pool);

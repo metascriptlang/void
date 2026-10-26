@@ -1,6 +1,8 @@
 import {
 	BindingKind,
+	GPUBindGroupDescriptor,
 	GPUBindGroupEntry,
+	GPUBuffer,
 	GPUBufferUsage,
 	GPUCanvasConfiguration,
 	GPUPrimitiveState,
@@ -13,6 +15,7 @@ import {
 	GPUShaderStage,
 	GPUSupportedLimits,
 	GPUExtent3D,
+	GPUPassTimestampWrites,
 	GPUTexelCopyTextureInfo,
 	GPUTextureDescriptor,
 	GPUTextureFormat,
@@ -24,9 +27,15 @@ import {
 	GPU_MAX_UNIFORM_BLOCKS,
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
+	checkedBufferCopy,
 	checkedTexelCopyRegion,
+	checkedTextureToTextureCopy,
+	checkedTimestampWrites,
+	checkedResolveQuerySet,
 	cubeViewRefusal,
 	depthSliceRefusal,
+	firstInstanceRefusal,
+	labelOf,
 	noDepthSliceRefusal,
 	passExtentRefusal,
 	refuse,
@@ -34,11 +43,25 @@ import {
 	singleSubresourceRefusal,
 	samplerMaxLod,
 	stop,
+	vertexOffsetRefusal,
 	view3dRefusal,
 	viewLayersRefusal,
 	viewMipsRefusal,
 } from "./types.ms";
-import { TextureRecord, ViewRecord } from "./pool.ms";
+import {
+	BufferRecord,
+	PipelineRecord,
+	QuerySetRecord,
+	QueryState,
+	TextureRecord,
+	ViewRecord,
+	bufferRecords,
+	pipelineRecords,
+	querySetRecords,
+	record,
+	textureRecords,
+	viewRecords,
+} from "./pool.ms";
 
 // The checks every backend repeats, once, above the backends: device.ms calls them before it
 // calls backend.X, so a fifth backend gets them without copying. They stay on in release.
@@ -63,6 +86,8 @@ export struct EncoderState {
 	occlusionSet: uint32;
 	occlusionOpen: boolean;
 	occlusionIndex: int32;
+	width: int32;
+	height: int32;
 }
 
 function passName(kind: int32): string { return kind == PASS_RENDER ? "render" : "compute"; }
@@ -186,6 +211,7 @@ let encoder: EncoderState = { open: false };
 let deviceLimits: GPUSupportedLimits = { maxBindGroups: 0 };
 let canvas: GPUCanvasConfiguration = { format: "rgba8unorm", depthFormat: "depth32float", sampleCount: 1 };
 let frame: int64 = 0;
+let boundPipeline: uint32 = 0;
 
 @inline export function occlusionSetId(): uint32 { return encoder.occlusionSet; }
 @inline export function occlusionQueryIndex(): int32 { return encoder.occlusionIndex; }
@@ -203,19 +229,23 @@ export function cacheLimits(limits: GPUSupportedLimits): void { deviceLimits = l
 export function resetFrame(): void { frame = 0; }
 export function advanceFrame(): void { frame += 1; }
 
-export function canvasRefusal(color: string, depth: string): string {
+export function canvasRefusal(color: string, depth: string, sampleCount: int32): string {
 	if (color == "") { return "NativeEnvironment.colorFormat is required"; }
 	if (isDepthFormat(color)) { return `NativeEnvironment.colorFormat '${color}' is not supported`; }
 	if (depth != "" && !isDepthFormat(depth)) { return `NativeEnvironment.depthFormat '${depth}' is not supported`; }
+	if (sampleCount < 0) { return `NativeEnvironment.sampleCount ${sampleCount} is negative`; }
 	return "";
 }
 
 export function cacheCanvas(colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat, sampleCount: int32): void {
-	refuse(canvasRefusal(colorFormat, depthFormat));
+	refuse(canvasRefusal(colorFormat, depthFormat, sampleCount));
 	canvas = { format: colorFormat, depthFormat: depthFormat, sampleCount: sampleCount == 0 ? 1 : sampleCount };
 }
 export function attachOcclusionSet(set: uint32): void { encoder.attachOcclusion(set); }
-export function markPipelineSet(): void { encoder.markPipeline(); }
+export function markPipelineSet(pipeline: uint32): void {
+	encoder.markPipeline();
+	boundPipeline = pipeline;
+}
 export function markIndexSet(): void { encoder.markIndexBuffer(); }
 export function checkedPipelineSet(call: string): void { refuse(encoder.pipelineSetRefusal(call)); }
 export function checkedDrawState(call: string, indexed: boolean): void { refuse(encoder.drawRefusal(call, indexed)); }
@@ -290,6 +320,10 @@ export function isDepthFormat(format: string): boolean {
 	return format == "depth16unorm" || format == "depth32float" || format == "depth24plus-stencil8";
 }
 
+export function isIntegerFormat(format: string): boolean {
+	return format == "r32uint" || format == "rgba8uint" || format == "rgba8sint" || format == "rgba16uint" || format == "rgba32uint";
+}
+
 // `limits` is the backend's own query. The rules run in the order a descriptor is read: size,
 // layers, the mip chain the largest side allows, multisample, then format against dimension.
 export function textureRefusal(descriptor: GPUTextureDescriptor, limits: GPUSupportedLimits): string {
@@ -344,7 +378,30 @@ export function textureRecordOf(id: uint32, descriptor: GPUTextureDescriptor): T
 	};
 }
 
+export function bufferRewriteRefusal(buffer: BufferRecord, member: string, offset: int64, frame: int64): string {
+	if (buffer.writtenFrame == frame && offset < buffer.writtenEnd) {
+		return `${member} at ${offset} on GPUBuffer ${buffer.id} rewrites bytes this frame already wrote, up to ${buffer.writtenEnd}`;
+	}
+	return "";
+}
+
+export function writeBufferRefusal(buffer: BufferRecord, offset: int64, bytes: int64, frame: int64): string {
+	if (buffer.mapMode != 0) { return `writeBuffer on GPUBuffer ${buffer.id}, which is mapped`; }
+	if ((buffer.usage & (GPUBufferUsage.COPY_DST as int32)) == 0) { return `GPUBuffer ${buffer.id} was created without COPY_DST`; }
+	if (offset < 0 || offset + bytes > buffer.size) { return `writeBuffer of ${bytes} bytes at ${offset} overruns GPUBuffer ${buffer.id} of ${buffer.size}`; }
+	if ((offset & 3) != 0) { return `writeBuffer offset ${offset} is not a multiple of 4`; }
+	return bufferRewriteRefusal(buffer, "writeBuffer", offset, frame);
+}
+
 export function checkedBuffer(size: int64, usage: int32): void { refuse(bufferRefusal(size, usage)); }
+export function checkedWriteBuffer(index: int32, offset: int64, bytes: int64): void { refuse(writeBufferRefusal(bufferRecords.slots[index], offset, bytes, frame)); }
+export function checkedBufferRewrite(index: int32, member: string, offset: int64): void { refuse(bufferRewriteRefusal(bufferRecords.slots[index], member, offset, frame)); }
+
+// Runs after the backend's write: a backend reads writtenFrame to tell a frame's first write (sokol_gfx.h:27536).
+export function markBufferWritten(index: int32, offset: int64, bytes: int64): void {
+	bufferRecords.slots[index].writtenFrame = frame;
+	bufferRecords.slots[index].writtenEnd = offset + bytes;
+}
 export function checkedTexture(descriptor: GPUTextureDescriptor, limits: GPUSupportedLimits): void { refuse(textureRefusal(descriptor, limits)); }
 
 function visibilityRefusal(binding: GPUShaderBinding, compute: boolean): string {
@@ -444,6 +501,10 @@ export function renderPipelineRefusal(descriptor: GPURenderPipelineDescriptor): 
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		return "vertex and fragment stages come from one GPUShaderModule in Void";
 	}
+	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
+		const format: string = descriptor.fragment.targets[i].format;
+		if (descriptor.fragment.targets[i].blendEnabled && isIntegerFormat(format)) { return `fragment.targets[${i}] blends ${format}, an integer format`; }
+	}
 	return primitiveRefusal(descriptor.primitive);
 }
 
@@ -464,6 +525,16 @@ export function computePipelineRefusal(pipeline: uint32, isCompute: boolean): st
 
 export function renderPassPipelineRefusal(pipeline: uint32, isCompute: boolean): string {
 	return isCompute ? `GPUPipeline ${pipeline} is a compute pipeline: setPipeline on a render pass takes a render pipeline` : "";
+}
+
+export function drawOffsetRefusal(pipeline: PipelineRecord, call: string, vertexMember: string, vertexOffset: int32, firstInstance: int32): string {
+	if (firstInstance != 0 && pipeline.readsInstanceIndex) { return firstInstanceRefusal(call, labelOf(pipeline.label), firstInstance); }
+	if (vertexOffset != 0 && pipeline.readsVertexIndex) { return vertexOffsetRefusal(call, labelOf(pipeline.label), vertexMember, vertexOffset); }
+	return "";
+}
+
+export function checkedDrawOffsets(call: string, vertexMember: string, vertexOffset: int32, firstInstance: int32): void {
+	refuse(drawOffsetRefusal(pipelineRecords.record(boundPipeline), call, vertexMember, vertexOffset, firstInstance));
 }
 
 // `matches` is whether the pipeline's strip index format is the bound index format; none never matches.
@@ -491,10 +562,26 @@ export function clampedAnisotropy(maxAnisotropy: int32): int32 {
 	return maxAnisotropy == 0 ? 1 : Math.min(maxAnisotropy, GPU_MAX_ANISOTROPY);
 }
 
-export function querySetRefusal(descriptor: GPUQuerySetDescriptor): string {
+export function querySetRefusal(descriptor: GPUQuerySetDescriptor, timestamps: boolean): string {
 	const kind: string = descriptor.type;
 	if (kind != "timestamp" && kind != "occlusion") { return `GPUQuerySetDescriptor.type '${kind}' is neither 'timestamp' nor 'occlusion'`; }
 	if (descriptor.count < 1 || descriptor.count > 4096) { return `GPUQuerySetDescriptor.count ${descriptor.count} is outside 1..4096`; }
+	if (kind == "timestamp" && !timestamps) { return "this device has no timestamp queries: features().has('timestamp-query') is false"; }
+	return "";
+}
+
+export function queriesWrittenRefusal(set: QuerySetRecord, firstQuery: int32, queryCount: int32): string {
+	for (let i = firstQuery; i < firstQuery + queryCount; i++) {
+		if (set.state[i] == QueryState.Unwritten) { return `resolveQuerySet: query ${i} was never written`; }
+		if (set.state[i] == QueryState.Open) { return `resolveQuerySet: query ${i} is still open`; }
+	}
+	return "";
+}
+
+export function scissorRefusal(x: int32, y: int32, width: int32, height: int32, passWidth: int32, passHeight: int32): string {
+	if (x < 0 || y < 0 || width < 0 || height < 0 || (x as int64) + (width as int64) > (passWidth as int64) || (y as int64) + (height as int64) > (passHeight as int64)) {
+		return `setScissorRect ${x},${y} ${width}x${height} lies outside the ${passWidth}x${passHeight} attachment`;
+	}
 	return "";
 }
 
@@ -519,7 +606,46 @@ export function checkedComputePipeline(pipeline: uint32, isCompute: boolean): vo
 export function checkedRenderPassPipeline(pipeline: uint32, isCompute: boolean): void { refuse(renderPassPipelineRefusal(pipeline, isCompute)); }
 export function checkedStripDraw(strip: boolean, matches: boolean): void { refuse(stripDrawRefusal(strip, matches)); }
 export function checkedSampler(descriptor: GPUSamplerDescriptor): void { refuse(samplerRefusal(descriptor)); }
-export function checkedQuerySet(descriptor: GPUQuerySetDescriptor): void { refuse(querySetRefusal(descriptor)); }
+export function checkedQuerySet(descriptor: GPUQuerySetDescriptor, timestamps: boolean): void { refuse(querySetRefusal(descriptor, timestamps)); }
+
+export function checkedResolveQueries(querySet: uint32, firstQuery: int32, queryCount: int32, destination: uint32, destinationOffset: int64): void {
+	const q = querySetRecords.slotIndex(querySet);
+	const b = bufferRecords.slotIndex(destination);
+	checkedResolveQuerySet(querySetRecords.slots[q].count, firstQuery, queryCount, destination, bufferRecords.slots[b].usage, bufferRecords.slots[b].size, destinationOffset);
+	refuse(queriesWrittenRefusal(querySetRecords.slots[q], firstQuery, queryCount));
+}
+
+export function checkedPassQueries(member: string, writes: GPUPassTimestampWrites, occlusionSet: uint32): void {
+	if (writes.querySet.id != 0) {
+		const q = querySetRecords.slotIndex(writes.querySet.id);
+		checkedTimestampWrites(member, writes, querySetRecords.slots[q].timestamp, querySetRecords.slots[q].count);
+	}
+	if (occlusionSet != 0) { checkedOcclusionSetKind(querySetRecords.slots[querySetRecords.slotIndex(occlusionSet)].timestamp); }
+}
+
+export function markTimestampsWritten(writes: GPUPassTimestampWrites): void {
+	if (writes.querySet.id == 0) { return; }
+	const q = querySetRecords.slotIndex(writes.querySet.id);
+	if (writes.beginningOfPassWriteIndex >= 0) { querySetRecords.slots[q].state[writes.beginningOfPassWriteIndex] = QueryState.Written; }
+	if (writes.endOfPassWriteIndex >= 0) { querySetRecords.slots[q].state[writes.endOfPassWriteIndex] = QueryState.Written; }
+}
+
+export function checkedOcclusionQuery(queryIndex: int32): void {
+	const q = querySetRecords.slotIndex(encoder.occlusionSet);
+	checkedOcclusionRange(queryIndex, querySetRecords.slots[q].count);
+	checkedOcclusionReuse(queryIndex, querySetRecords.slots[q].usedPass[queryIndex]);
+}
+
+export function markOcclusionBegun(queryIndex: int32): void {
+	const q = querySetRecords.slotIndex(encoder.occlusionSet);
+	querySetRecords.slots[q].usedPass[queryIndex] = encoder.serial;
+	querySetRecords.slots[q].state[queryIndex] = QueryState.Open;
+}
+
+export function markOcclusionEnded(): void {
+	querySetRecords.slots[querySetRecords.slotIndex(encoder.occlusionSet)].state[encoder.occlusionIndex] = QueryState.Written;
+}
+export function checkedScissor(x: int32, y: int32, width: int32, height: int32): void { refuse(scissorRefusal(x, y, width, height, encoder.width, encoder.height)); }
 export function checkedViewport(width: float32, height: float32, minDepth: float32, maxDepth: float32): void { refuse(viewportRefusal(width, height, minDepth, maxDepth)); }
 export function checkedDispatch(x: int32, y: int32, z: int32, limit: int32): void { refuse(dispatchRefusal(x, y, z, limit)); }
 
@@ -619,6 +745,14 @@ export function bindGroupSetRefusal(
 	return "";
 }
 
+export function uniformEntryCount(descriptor: GPUBindGroupDescriptor): int32 {
+	let count = 0;
+	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
+		if (descriptor.entries[i].buffer.id != 0) { count += 1; }
+	}
+	return count;
+}
+
 export function bindGroupIndexRefusal(index: int32): string {
 	if (index < GPU_UNIFORM_GROUP || index > GPU_RESOURCE_GROUP) {
 		return `setBindGroup index ${index} is outside the ${GPU_RESOURCE_GROUP + 1} bind groups`;
@@ -650,9 +784,14 @@ export function sampledViewRefusal(binding: int32, textureIsSampled: boolean): s
 	return textureIsSampled ? "" : `bind group entry ${binding}: the view's texture lacks TEXTURE_BINDING`;
 }
 
-export function storageViewRefusal(binding: int32, textureIsStorage: boolean, mipCount: int32): string {
+export function storageViewRefusal(binding: int32, textureIsStorage: boolean, mipCount: int32, declared: GPUTextureFormat, actual: GPUTextureFormat): string {
 	if (!textureIsStorage) { return `bind group entry ${binding}: the view's texture lacks STORAGE_BINDING`; }
 	if (mipCount != 1) { return `bind group entry ${binding}: a storage texture view takes exactly one mip`; }
+	const expected: string = declared;
+	const format: string = actual;
+	if (expected != "" && expected != format) {
+		return `bind group entry ${binding}: the shader declares storage format '${expected}' and the view's texture is '${format}'`;
+	}
 	return "";
 }
 
@@ -667,10 +806,52 @@ export function checkedStorageEntry(entry: GPUBindGroupEntry, bufferIsStorage: b
 }
 
 export function checkedSampledView(binding: int32, textureIsSampled: boolean): void { refuse(sampledViewRefusal(binding, textureIsSampled)); }
-export function checkedStorageView(binding: int32, textureIsStorage: boolean, mipCount: int32): void { refuse(storageViewRefusal(binding, textureIsStorage, mipCount)); }
+export function checkedStorageView(binding: int32, v: int32, declared: GPUTextureFormat): void {
+	const texture = textureRecords.record(viewRecords.slots[v].texture);
+	const storage = (texture.usage & (GPUTextureUsage.STORAGE_BINDING as int32)) != 0;
+	refuse(storageViewRefusal(binding, storage, viewRecords.slots[v].mipCount, declared, texture.format));
+}
 
 export function checkedCopyRegion<T>(member: string, texture: T, info: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	checkedTexelCopyRegion(member, texture.id, texture.width, texture.height, texture.mipLevels, texture.layers, texture.volume, info, size);
+}
+
+export function copyBufferRefusal(call: string, buffer: BufferRecord, source: boolean): string {
+	const side = source ? "source" : "destination";
+	const flag = source ? GPUBufferUsage.COPY_SRC as int32 : GPUBufferUsage.COPY_DST as int32;
+	if ((buffer.usage & flag) == 0) { return `${call} ${side}: GPUBuffer ${buffer.id} was created without ${source ? "COPY_SRC" : "COPY_DST"}`; }
+	if (buffer.mapMode != 0) { return `${call} ${side}: GPUBuffer ${buffer.id} is mapped`; }
+	return "";
+}
+
+export function copyTextureRefusal(call: string, texture: TextureRecord, source: boolean): string {
+	const side = source ? "source" : "destination";
+	const flag = source ? GPUTextureUsage.COPY_SRC as int32 : GPUTextureUsage.COPY_DST as int32;
+	if ((texture.usage & flag) == 0) { return `${call} ${side}: GPUTexture ${texture.id} was created without ${source ? "COPY_SRC" : "COPY_DST"}`; }
+	if (texture.swapchainView == 0 && texture.sampleCount != 1) { return `${call} ${side}: GPUTexture ${texture.id} is multisampled`; }
+	return "";
+}
+
+export function checkedCopyBuffer(call: string, buffer: GPUBuffer, source: boolean): void { refuse(copyBufferRefusal(call, bufferRecords.record(buffer.id), source)); }
+
+export function checkedCopyTexture(call: string, info: GPUTexelCopyTextureInfo, source: boolean, size: GPUExtent3D): void {
+	const texture = textureRecords.record(info.texture.id);
+	refuse(copyTextureRefusal(call, texture, source));
+	checkedCopyRegion(`${call} ${source ? "source" : "destination"}`, texture, info, size);
+}
+
+export function checkedBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
+	checkedCopyBuffer("copyBufferToBuffer", source, true);
+	checkedCopyBuffer("copyBufferToBuffer", destination, false);
+	checkedBufferCopy(source.id, bufferRecords.record(source.id).size, sourceOffset, destination.id, bufferRecords.record(destination.id).size, destinationOffset, size);
+}
+
+export function checkedTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
+	checkedCopyTexture("copyTextureToTexture", source, true, size);
+	checkedCopyTexture("copyTextureToTexture", destination, false, size);
+	const from = textureRecords.record(source.texture.id);
+	const to = textureRecords.record(destination.texture.id);
+	checkedTextureToTextureCopy(source, destination, size, from.format, to.format, from.volume, to.volume, isDepthFormat(from.format), from.width, from.height);
 }
 
 export function entryOf<T>(group: T, binding: int32): int32 {
@@ -775,5 +956,8 @@ export function renderPassExtent(descriptor: GPURenderPassDescriptor, facts: Ren
 
 export function checkedRenderPass(descriptor: GPURenderPassDescriptor, facts: RenderPassFacts): GPUExtent3D {
 	refuse(renderPassRefusal(descriptor, facts));
-	return renderPassExtent(descriptor, facts);
+	const extent = renderPassExtent(descriptor, facts);
+	encoder.width = extent.width;
+	encoder.height = extent.height;
+	return extent;
 }

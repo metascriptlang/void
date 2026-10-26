@@ -19,6 +19,7 @@ import {
 	GPUFeatureName,
 	GPUExtent3D,
 	GPUIndexFormat,
+	GPUMapMode,
 	GPUQuerySet,
 	GPUQuerySetDescriptor,
 	GPUQueue,
@@ -43,6 +44,9 @@ import {
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
 	GPUTextureUsage,
+	checkedMapAsync,
+	checkedMappedRange,
+	checkedUnmap,
 	featureBit,
 	stop,
 } from "./types.ms";
@@ -79,34 +83,52 @@ import {
 	checkedBeginOcclusion,
 	checkedBeginPass,
 	checkedBindGroupIndex,
+	checkedBindGroupSet,
 	checkedBuffer,
+	checkedBufferToBuffer,
+	checkedComputePipeline,
+	checkedCopyBuffer,
+	checkedCopyTexture,
 	checkedCreateEncoder,
 	checkedDispatch,
+	checkedDrawOffsets,
 	checkedDrawState,
 	checkedEndOcclusion,
 	checkedEndPass,
 	checkedFinish,
 	checkedInPass,
 	checkedMarker,
+	checkedOcclusionQuery,
 	checkedOutsidePass,
+	checkedPassQueries,
 	checkedPipelineSet,
 	checkedPopGroup,
 	checkedPushGroup,
 	checkedQuerySet,
 	checkedRenderPass,
+	checkedScissor,
+	checkedRenderPassPipeline,
 	checkedRenderPipeline,
+	checkedResolveQueries,
 	checkedSampler,
 	checkedShaderModule,
 	checkedShutdown,
 	checkedTexture,
+	checkedTextureToTexture,
 	checkedViewRange,
 	checkedViewport,
+	checkedWriteBuffer,
+	markBufferWritten,
 	markIndexSet,
+	markOcclusionBegun,
+	markOcclusionEnded,
 	markPipelineSet,
+	markTimestampsWritten,
 	resetEncoder,
 	resetFrame,
 	resolvedRenderPipeline,
 	textureRecordOf,
+	uniformEntryCount,
 	advanceFrame,
 	cacheCanvas,
 	cachedCanvas,
@@ -183,7 +205,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function createBuffer(this self: GPUDevice, descriptor: GPUBufferDescriptor): GPUBuffer {
 	checkedBuffer(descriptor.size, descriptor.usage);
 	const id = allocate(bufferRecords);
-	store(bufferRecords, { id: id, size: descriptor.size, usage: descriptor.usage });
+	store(bufferRecords, { id: id, size: descriptor.size, usage: descriptor.usage, writtenFrame: -1 });
 	backend.createBuffer(id, descriptor);
 	return { id: id };
 }
@@ -207,29 +229,41 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function createShaderModule(this self: GPUDevice, descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
 	checkedShaderModule(descriptor, cachedLimits());
 	const id = allocate(shaderRecords);
-	store(shaderRecords, { id: id });
+	store(shaderRecords, {
+		id: id,
+		compute: descriptor.computeCode != "" || descriptor.computeBytecode.length > 0,
+		readsInstanceIndex: descriptor.readsInstanceIndex,
+		readsVertexIndex: descriptor.readsVertexIndex,
+	});
 	backend.createShaderModule(id, descriptor);
 	return { id: id };
 }
 
 @inline export function createRenderPipeline(this self: GPUDevice, descriptor: GPURenderPipelineDescriptor): GPURenderPipeline {
 	checkedRenderPipeline(descriptor);
+	const shader = shaderRecords.record(descriptor.vertex.module.id);
 	const id = allocate(pipelineRecords);
-	store(pipelineRecords, { id: id });
+	store(pipelineRecords, {
+		id: id,
+		label: descriptor.label,
+		readsInstanceIndex: shader.readsInstanceIndex,
+		readsVertexIndex: shader.readsVertexIndex,
+	});
 	backend.createRenderPipeline(id, resolvedRenderPipeline(descriptor));
 	return { id: id };
 }
 
 @inline export function createComputePipeline(this self: GPUDevice, descriptor: GPUComputePipelineDescriptor): GPUComputePipeline {
 	const id = allocate(pipelineRecords);
-	store(pipelineRecords, { id: id });
+	store(pipelineRecords, { id: id, label: descriptor.label, compute: true });
 	backend.createComputePipeline(id, descriptor);
 	return { id: id };
 }
 
 @inline export function createBindGroup(this self: GPUDevice, descriptor: GPUBindGroupDescriptor): GPUBindGroup {
+	const group = layoutRecords.record(descriptor.layout.id).group;
 	const id = allocate(bindGroupRecords);
-	store(bindGroupRecords, { id: id });
+	store(bindGroupRecords, { id: id, group: group, dynamicCount: group == GPU_UNIFORM_GROUP ? uniformEntryCount(descriptor) : 0 });
 	backend.createBindGroup(id, descriptor);
 	return { id: id };
 }
@@ -240,9 +274,10 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 }
 
 @inline export function createQuerySet(this self: GPUDevice, descriptor: GPUQuerySetDescriptor): GPUQuerySet {
-	checkedQuerySet(descriptor);
+	checkedQuerySet(descriptor, backend.features().has("timestamp-query"));
 	const id = allocate(querySetRecords);
-	store(querySetRecords, { id: id });
+	const kind: string = descriptor.type;
+	store(querySetRecords, { id: id, timestamp: kind == "timestamp", count: descriptor.count, state: new Array(descriptor.count), usedPass: new Array(descriptor.count) });
 	backend.createQuerySet(id, descriptor);
 	return { id: id };
 }
@@ -273,6 +308,13 @@ export function createView(this self: GPUTexture, descriptor: GPUTextureViewDesc
 
 @inline export function getBindGroupLayout(this self: GPURenderPipeline, index: int32): GPUBindGroupLayout { return layoutOf(self.id, index); }
 @inline export function getBindGroupLayout(this self: GPUComputePipeline, index: int32): GPUBindGroupLayout { return layoutOf(self.id, index); }
+
+function checkedBoundGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
+	checkedBindGroupIndex(index);
+	if (bindGroup.id == 0) { return; }
+	const record = bindGroupRecords.record(bindGroup.id);
+	checkedBindGroupSet(index, record.group, record.dynamicCount, dynamicOffsets, cachedLimits().minUniformBufferOffsetAlignment as uint32);
+}
 
 function layoutOf(pipeline: uint32, index: int32): GPUBindGroupLayout {
 	const p = pipelineRecords.slotIndex(pipeline);
@@ -333,7 +375,12 @@ function destroyPipeline(pipeline: uint32): void {
 @inline export function texture(this self: GPUTextureView): GPUTexture { return { id: viewRecords.record(self.id).texture }; }
 
 @inline export function writeBuffer<T>(this self: GPUQueue, buffer: GPUBuffer, bufferOffset: int64, data: Readonly<Span<T>>): void {
+	if (data.length == 0) { return; }
+	const bytes = (data.length as int64) * (sizeof T as int64);
+	const index = bufferRecords.slotIndex(buffer.id);
+	checkedWriteBuffer(index, bufferOffset, bytes);
 	backend.writeBuffer(buffer, bufferOffset, data);
+	markBufferWritten(index, bufferOffset, bytes);
 }
 
 @inline export function writeTexture<T>(
@@ -354,7 +401,10 @@ function destroyPipeline(pipeline: uint32): void {
 @inline export function beginRenderPass(this self: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
 	checkedBeginPass(PASS_RENDER);
 	attachOcclusionSet(descriptor.occlusionQuerySet.id);
-	return backend.beginRenderPass(self, descriptor, checkedRenderPass(descriptor, renderPassFacts(descriptor)));
+	checkedPassQueries("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites, descriptor.occlusionQuerySet.id);
+	const pass = backend.beginRenderPass(self, descriptor, checkedRenderPass(descriptor, renderPassFacts(descriptor)));
+	markTimestampsWritten(descriptor.timestampWrites);
+	return pass;
 }
 
 function renderPassFacts(descriptor: GPURenderPassDescriptor): RenderPassFacts {
@@ -376,18 +426,22 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 
 @inline export function beginComputePass(this self: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
 	checkedBeginPass(PASS_COMPUTE);
-	return backend.beginComputePass(self, descriptor);
+	checkedPassQueries("GPUComputePassDescriptor.timestampWrites", descriptor.timestampWrites, 0);
+	const pass = backend.beginComputePass(self, descriptor);
+	markTimestampsWritten(descriptor.timestampWrites);
+	return pass;
 }
 
 @inline export function setPipeline(this self: GPUComputePassEncoder, pipeline: GPUComputePipeline): void {
 	checkedInPass(PASS_COMPUTE, "setPipeline");
-	markPipelineSet();
+	checkedComputePipeline(pipeline.id, pipelineRecords.record(pipeline.id).compute);
+	markPipelineSet(pipeline.id);
 	backend.setComputePipeline(pipeline);
 }
 
 @inline export function setBindGroup(this self: GPUComputePassEncoder, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	checkedInPass(PASS_COMPUTE, "setBindGroup");
-	checkedBindGroupIndex(index);
+	checkedBoundGroup(index, bindGroup, dynamicOffsets);
 	backend.setComputeBindGroup(index, bindGroup, dynamicOffsets);
 }
 
@@ -418,6 +472,8 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	size: int64,
 ): void {
 	checkedOutsidePass("copyBufferToBuffer");
+	checkedBufferToBuffer(source, sourceOffset, destination, destinationOffset, size);
+	if (size == 0) { return; }
 	backend.copyBufferToBuffer(source, sourceOffset, destination, destinationOffset, size);
 }
 
@@ -428,6 +484,8 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	copySize: GPUExtent3D,
 ): void {
 	checkedOutsidePass("copyBufferToTexture");
+	checkedCopyBuffer("copyBufferToTexture", source.buffer, true);
+	checkedCopyTexture("copyBufferToTexture", destination, false, copySize);
 	backend.copyBufferToTexture(source, destination, copySize);
 }
 
@@ -438,6 +496,8 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	copySize: GPUExtent3D,
 ): void {
 	checkedOutsidePass("copyTextureToBuffer");
+	checkedCopyTexture("copyTextureToBuffer", source, true, copySize);
+	checkedCopyBuffer("copyTextureToBuffer", destination.buffer, false);
 	backend.copyTextureToBuffer(source, destination, copySize);
 }
 
@@ -448,6 +508,7 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	copySize: GPUExtent3D,
 ): void {
 	checkedOutsidePass("copyTextureToTexture");
+	checkedTextureToTexture(source, destination, copySize);
 	backend.copyTextureToTexture(source, destination, copySize);
 }
 
@@ -461,6 +522,8 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	destinationOffset: int64,
 ): void {
 	checkedOutsidePass("resolveQuerySet");
+	checkedResolveQueries(querySet.id, firstQuery, queryCount, destination.id, destinationOffset);
+	if (queryCount == 0) { return; }
 	backend.resolveQuerySet(querySet, firstQuery, queryCount, destination, destinationOffset);
 }
 
@@ -504,28 +567,48 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 @inline export function beginOcclusionQuery(this self: GPURenderPassEncoder, queryIndex: int32): void {
 	checkedInPass(PASS_RENDER, "beginOcclusionQuery");
 	checkedBeginOcclusion(queryIndex);
+	checkedOcclusionQuery(queryIndex);
 	backend.beginOcclusionQuery(queryIndex);
+	markOcclusionBegun(queryIndex);
 }
 @inline export function endOcclusionQuery(this self: GPURenderPassEncoder): void {
 	checkedEndOcclusion();
 	backend.endOcclusionQuery();
+	markOcclusionEnded();
 }
 
 // mapAsync blocks on native: the buffer is readable or writable on return. `size` 0 maps to the end.
 @inline export function mapAsync(this self: GPUBuffer, mode: int32, offset: int64, size: int64): void {
-	backend.mapAsync(self, mode, offset, size);
+	const index = bufferRecords.slotIndex(self.id);
+	const record = bufferRecords.slots[index];
+	const length = checkedMapAsync(self.id, record.usage, record.mapMode, record.size, mode, offset, size);
+	backend.mapAsync(self, mode, offset, length);
+	bufferRecords.slots[index].mapMode = mode;
+	bufferRecords.slots[index].mapOffset = offset;
+	bufferRecords.slots[index].mapSize = length;
+}
+
+function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offset: int64, size: int64): int64 {
+	const record = bufferRecords.record(buffer.id);
+	return checkedMappedRange(member, buffer.id, record.size, record.mapMode, record.mapOffset, record.mapSize, mode as int32, offset, size);
 }
 
 // A copy of the mapped bytes, not WebGPU's live ArrayBuffer view; a MAP_WRITE buffer takes writeMappedRange instead.
 @inline export function getMappedRange(this self: GPUBuffer, offset: int64, size: int64): Vec<uint8> {
-	return backend.getMappedRange(self, offset, size);
+	return backend.getMappedRange(self, offset, mappedLength("getMappedRange", self, GPUMapMode.READ, offset, size));
 }
 
 @inline export function writeMappedRange<T>(this self: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
+	if (data.length == 0) { return; }
+	mappedLength("writeMappedRange", self, GPUMapMode.WRITE, offset, (data.length as int64) * (sizeof T as int64));
 	backend.writeMappedRange(self, offset, data);
 }
 
-@inline export function unmap(this self: GPUBuffer): void { backend.unmap(self); }
+@inline export function unmap(this self: GPUBuffer): void {
+	const index = bufferRecords.slotIndex(self.id);
+	checkedUnmap(self.id, bufferRecords.slots[index].mapMode);
+	bufferRecords.slots[index].mapMode = 0;
+}
 
 @inline export function finish(this self: GPUCommandEncoder): GPUCommandBuffer {
 	checkedFinish();
@@ -534,7 +617,8 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 
 @inline export function setPipeline(this self: GPURenderPassEncoder, pipeline: GPURenderPipeline): void {
 	checkedInPass(PASS_RENDER, "setPipeline");
-	markPipelineSet();
+	checkedRenderPassPipeline(pipeline.id, pipelineRecords.record(pipeline.id).compute);
+	markPipelineSet(pipeline.id);
 	backend.setPipeline(pipeline);
 }
 
@@ -551,12 +635,13 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 
 @inline export function setBindGroup(this self: GPURenderPassEncoder, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	checkedInPass(PASS_RENDER, "setBindGroup");
-	checkedBindGroupIndex(index);
+	checkedBoundGroup(index, bindGroup, dynamicOffsets);
 	backend.setBindGroup(index, bindGroup, dynamicOffsets);
 }
 
 @inline export function setScissorRect(this self: GPURenderPassEncoder, x: int32, y: int32, width: int32, height: int32): void {
 	checkedInPass(PASS_RENDER, "setScissorRect");
+	checkedScissor(x, y, width, height);
 	backend.setScissorRect(x, y, width, height);
 }
 
@@ -587,6 +672,7 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 @inline export function draw(this self: GPURenderPassEncoder, vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	checkedInPass(PASS_RENDER, "draw");
 	checkedDrawState("draw", false);
+	if (instanceCount != 0) { checkedDrawOffsets("draw", "firstVertex", firstVertex, firstInstance); }
 	backend.draw(vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
@@ -600,6 +686,7 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 ): void {
 	checkedInPass(PASS_RENDER, "drawIndexed");
 	checkedDrawState("drawIndexed", true);
+	if (instanceCount != 0) { checkedDrawOffsets("drawIndexed", "baseVertex", baseVertex, firstInstance); }
 	backend.drawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 }
 
