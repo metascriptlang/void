@@ -6080,6 +6080,35 @@ a count off the whole numbers 0 to 255 refused), and on the GPU by `tests/integr
 `parallax`: a base texture's edge moves away from the eye by the height's depth, and the amount-0
 control leaves it).
 
+### Decals: what ports, traced (2026-10-26)
+
+Heaps has two decals, both a box mesh (`h3d/scene/pbr/Decal.hx`, a `Mesh` that hands its axes to
+the shader) whose material projects a texture onto whatever the scene drew inside the box. Each
+pixel of the box reads the scene depth, rebuilds the world position, moves it into the box's own
+space, and discards it outside the unit cube (`h3d/shader/pbr/VolumeDecal.hx` `BaseDecal`).
+
+| Heaps part | What it does | Here |
+|---|---|---|
+| `DecalOverlay` (`VolumeDecal.hx:68-128`) | colour times the texture, alpha from the texel or from the brightest channel (`AUTO_ALPHA`), faded along the box's depth, blended onto the lit colour | **Port.** Forward-compatible: Heaps draws it in the `beforeTonemappingDecal` and `afterTonemappingDecal` passes, onto the HDR and the LDR target after the forward lighting (`scene/pbr/Renderer.hx:864,873`). |
+| Scene depth as a texture (`@global depthMap`) | the depth of what was drawn, read per decal pixel | **Port, needs a step.** The forward renderer's depth target is store-don't-care and unsampled today (`forwardRenderer.ms`); the door already allocates a sampled depth target (`RenderTarget.unallocated(Depth, true)`) and the shadow maps sample theirs. Its rows follow the backend's render-target orientation, as the shadow `mapMatrix` does. |
+| Normal fade (`USE_NORMAL_FADE`, `BaseDecal.normalFade`, `getWorldNormal`) | fades where the surface turns from the box's z, the normal rebuilt from three depth reads | **Port**, after the overlay. |
+| `DecalPBR` (`VolumeDecal.hx:130-219`) | writes albedo, normal and pbr into the G-buffer with per-channel strengths (`decalsOutput`, `Renderer.hx:131-148,791-804`) | **Not a port.** It needs a deferred G-buffer; the forward path has none, and building one is a renderer of its own, not a decal. |
+
+Bevy confirms the shape: its `ForwardDecal` (`bevy_pbr/src/decal/forward.rs`, `forward.wesl`)
+is a mesh that reads the depth prepass, which every camera drawing one must have. Its clustered
+decals (`decal/clustered.rs`) need bindless textures and run on neither WebGL2 nor WebGPU, so they
+are not a target here.
+
+The overlay ports in steps, each with its own check:
+
+1. The decal's fragment math on the CPU (`shader3d.ms` `decalLocalAt`, `outsideDecal`,
+   `decalFade`, `decalOverlayColor`), held to Heaps' formulas. **Built (2026-10-26)**, pinned by
+   `decalCheck.ms`.
+2. A sampled, stored scene depth in the forward renderer, bound at a scene slot.
+3. A decal program and its pass after the translucents, before the tone map, with the box drawn
+   from inside as from outside; a GPU golden.
+4. The after-tone-map pass, then the normal fade.
+
 ### Cascaded sun shadows, as built so far (2026-10-24)
 
 The sun's single fitted map becomes up to four cascades, each its own orthographic map in one
