@@ -47,6 +47,7 @@ import "./skinInfluencesCheck";
 import "./pipelineCheck";
 import "./pipelineLookupCheck";
 import "./stencilStateCheck";
+import "./pipelinePrewarmCheck";
 import "./instanceLayoutCheck";
 import "./instanceAttributeCheck";
 import "./instanceStreamCheck";

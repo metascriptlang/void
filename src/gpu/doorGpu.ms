@@ -527,6 +527,7 @@ function layoutAt(layout: int32): DoorLayout {
 }
 
 export function doorProgramCount(): int32 { return programs.length as int32; }
+export function doorLayoutCount(): int32 { return layouts.length as int32; }
 export function doorProgramLayout(program: int32): int32 { return programAt(program).layout; }
 export function doorUniformSlotMask(program: int32): uint32 {
 	return programAt(program).uniformMask;
