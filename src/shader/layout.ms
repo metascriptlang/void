@@ -116,6 +116,11 @@ export function uniformBlockLayout(m: ShaderModule, resourceIndex: int32):
 			return Result.err(owner + ": member '" + f.name + "' is " + typeName(own) +
 				", and GL carries a uniform block as float vec4s only");
 		}
+		if (own.kind == ShaderTypeKind.Matrix && own.rows == 2) {
+			return Result.err(owner + ": member '" + f.name + "' is " + typeName(own) +
+				", whose vec2 columns sit 8 bytes apart in WGSL's uniform layout and 16 in std140; " +
+				"a uniform matrix has 3 or 4 rows");
+		}
 		if (f.type.kind == ShaderTypeKind.Array && !isVec4OrMat4(own)) {
 			return Result.err(owner + ": member '" + f.name + "' is an array of " +
 				typeName(own) + "; an array member holds F32x4 or mat4x4");

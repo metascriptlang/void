@@ -1043,6 +1043,30 @@ export struct Mat4x4f {
 	columns: Vec4f[4];
 }
 
+export struct Mat2x3f {
+	columns: Vec3f[2];
+}
+
+export struct Mat2x4f {
+	columns: Vec4f[2];
+}
+
+export struct Mat3x2f {
+	columns: Vec2f[3];
+}
+
+export struct Mat3x4f {
+	columns: Vec4f[3];
+}
+
+export struct Mat4x2f {
+	columns: Vec2f[4];
+}
+
+export struct Mat4x3f {
+	columns: Vec3f[4];
+}
+
 export function vec2f(x: float32, y: float32): Vec2f { return { x, y }; }
 export function vec2f(s: float32): Vec2f { return { x: s, y: s }; }
 export function vec2f(v: Vec2i): Vec2f { return { x: v.x as float32, y: v.y as float32 }; }
@@ -1129,6 +1153,24 @@ export function mat3x3f(
 	return mat3x3f(vec3f(c0x, c0y, c0z), vec3f(c1x, c1y, c1z), vec3f(c2x, c2y, c2z));
 }
 export function mat4x4f(c0: Vec4f, c1: Vec4f, c2: Vec4f, c3: Vec4f): Mat4x4f {
+	return { columns: [c0, c1, c2, c3] };
+}
+export function mat2x3f(c0: Vec3f, c1: Vec3f): Mat2x3f {
+	return { columns: [c0, c1] };
+}
+export function mat2x4f(c0: Vec4f, c1: Vec4f): Mat2x4f {
+	return { columns: [c0, c1] };
+}
+export function mat3x2f(c0: Vec2f, c1: Vec2f, c2: Vec2f): Mat3x2f {
+	return { columns: [c0, c1, c2] };
+}
+export function mat3x4f(c0: Vec4f, c1: Vec4f, c2: Vec4f): Mat3x4f {
+	return { columns: [c0, c1, c2] };
+}
+export function mat4x2f(c0: Vec2f, c1: Vec2f, c2: Vec2f, c3: Vec2f): Mat4x2f {
+	return { columns: [c0, c1, c2, c3] };
+}
+export function mat4x3f(c0: Vec3f, c1: Vec3f, c2: Vec3f, c3: Vec3f): Mat4x3f {
 	return { columns: [c0, c1, c2, c3] };
 }
 
@@ -1328,9 +1370,129 @@ export function `*`(this a: Mat3x3f, b: Mat3x3f): Mat3x3f {
 	const c = b.columns;
 	return mat3x3f(a * c[0], a * c[1], a * c[2]);
 }
+export function `*`(this m: Mat2x3f, v: Vec2f): Vec3f {
+	return m.columns[0] * v.x + m.columns[1] * v.y;
+}
+export function `*`(this m: Mat2x4f, v: Vec2f): Vec4f {
+	return m.columns[0] * v.x + m.columns[1] * v.y;
+}
+export function `*`(this m: Mat3x2f, v: Vec3f): Vec2f {
+	return m.columns[0] * v.x + m.columns[1] * v.y + m.columns[2] * v.z;
+}
+export function `*`(this m: Mat3x4f, v: Vec3f): Vec4f {
+	return m.columns[0] * v.x + m.columns[1] * v.y + m.columns[2] * v.z;
+}
+export function `*`(this m: Mat4x2f, v: Vec4f): Vec2f {
+	return m.columns[0] * v.x + m.columns[1] * v.y + m.columns[2] * v.z + m.columns[3] * v.w;
+}
+export function `*`(this m: Mat4x3f, v: Vec4f): Vec3f {
+	return m.columns[0] * v.x + m.columns[1] * v.y + m.columns[2] * v.z + m.columns[3] * v.w;
+}
+export function `*`(this v: Vec2f, m: Mat2x2f): Vec2f {
+	return vec2f(dot(v, m.columns[0]), dot(v, m.columns[1]));
+}
+export function `*`(this v: Vec3f, m: Mat2x3f): Vec2f {
+	return vec2f(dot(v, m.columns[0]), dot(v, m.columns[1]));
+}
+export function `*`(this v: Vec4f, m: Mat2x4f): Vec2f {
+	return vec2f(dot(v, m.columns[0]), dot(v, m.columns[1]));
+}
+export function `*`(this v: Vec2f, m: Mat3x2f): Vec3f {
+	return vec3f(dot(v, m.columns[0]), dot(v, m.columns[1]), dot(v, m.columns[2]));
+}
+export function `*`(this v: Vec3f, m: Mat3x3f): Vec3f {
+	return vec3f(dot(v, m.columns[0]), dot(v, m.columns[1]), dot(v, m.columns[2]));
+}
+export function `*`(this v: Vec4f, m: Mat3x4f): Vec3f {
+	return vec3f(dot(v, m.columns[0]), dot(v, m.columns[1]), dot(v, m.columns[2]));
+}
+export function `*`(this v: Vec2f, m: Mat4x2f): Vec4f {
+	const c = m.columns;
+	return vec4f(dot(v, c[0]), dot(v, c[1]), dot(v, c[2]), dot(v, c[3]));
+}
+export function `*`(this v: Vec3f, m: Mat4x3f): Vec4f {
+	const c = m.columns;
+	return vec4f(dot(v, c[0]), dot(v, c[1]), dot(v, c[2]), dot(v, c[3]));
+}
+export function `*`(this v: Vec4f, m: Mat4x4f): Vec4f {
+	const c = m.columns;
+	return vec4f(dot(v, c[0]), dot(v, c[1]), dot(v, c[2]), dot(v, c[3]));
+}
 export function `*`(this a: Mat4x4f, b: Mat4x4f): Mat4x4f {
 	const c = b.columns;
 	return mat4x4f(a * c[0], a * c[1], a * c[2], a * c[3]);
+}
+export function `*`(this a: Mat2x2f, b: Mat3x2f): Mat3x2f {
+	return mat3x2f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
+}
+export function `*`(this a: Mat2x2f, b: Mat4x2f): Mat4x2f {
+	return mat4x2f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat2x3f, b: Mat2x2f): Mat2x3f {
+	return mat2x3f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat2x3f, b: Mat3x2f): Mat3x3f {
+	return mat3x3f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
+}
+export function `*`(this a: Mat2x3f, b: Mat4x2f): Mat4x3f {
+	return mat4x3f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat2x4f, b: Mat2x2f): Mat2x4f {
+	return mat2x4f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat2x4f, b: Mat3x2f): Mat3x4f {
+	return mat3x4f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
+}
+export function `*`(this a: Mat2x4f, b: Mat4x2f): Mat4x4f {
+	return mat4x4f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat3x2f, b: Mat2x3f): Mat2x2f {
+	return mat2x2f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat3x2f, b: Mat3x3f): Mat3x2f {
+	return mat3x2f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
+}
+export function `*`(this a: Mat3x2f, b: Mat4x3f): Mat4x2f {
+	return mat4x2f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat3x3f, b: Mat2x3f): Mat2x3f {
+	return mat2x3f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat3x3f, b: Mat4x3f): Mat4x3f {
+	return mat4x3f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat3x4f, b: Mat2x3f): Mat2x4f {
+	return mat2x4f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat3x4f, b: Mat3x3f): Mat3x4f {
+	return mat3x4f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
+}
+export function `*`(this a: Mat3x4f, b: Mat4x3f): Mat4x4f {
+	return mat4x4f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat4x2f, b: Mat2x4f): Mat2x2f {
+	return mat2x2f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat4x2f, b: Mat3x4f): Mat3x2f {
+	return mat3x2f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
+}
+export function `*`(this a: Mat4x2f, b: Mat4x4f): Mat4x2f {
+	return mat4x2f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat4x3f, b: Mat2x4f): Mat2x3f {
+	return mat2x3f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat4x3f, b: Mat3x4f): Mat3x3f {
+	return mat3x3f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
+}
+export function `*`(this a: Mat4x3f, b: Mat4x4f): Mat4x3f {
+	return mat4x3f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat4x4f, b: Mat2x4f): Mat2x4f {
+	return mat2x4f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat4x4f, b: Mat3x4f): Mat3x4f {
+	return mat3x4f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
 }
 
 export function transpose(m: Mat2x2f): Mat2x2f {
@@ -1352,6 +1514,54 @@ export function transpose(m: Mat4x4f): Mat4x4f {
 		vec4f(c[0].y, c[1].y, c[2].y, c[3].y),
 		vec4f(c[0].z, c[1].z, c[2].z, c[3].z),
 		vec4f(c[0].w, c[1].w, c[2].w, c[3].w),
+	);
+}
+export function transpose(m: Mat2x3f): Mat3x2f {
+	const c = m.columns;
+	return mat3x2f(
+		vec2f(c[0].x, c[1].x),
+		vec2f(c[0].y, c[1].y),
+		vec2f(c[0].z, c[1].z),
+	);
+}
+export function transpose(m: Mat2x4f): Mat4x2f {
+	const c = m.columns;
+	return mat4x2f(
+		vec2f(c[0].x, c[1].x),
+		vec2f(c[0].y, c[1].y),
+		vec2f(c[0].z, c[1].z),
+		vec2f(c[0].w, c[1].w),
+	);
+}
+export function transpose(m: Mat3x2f): Mat2x3f {
+	const c = m.columns;
+	return mat2x3f(
+		vec3f(c[0].x, c[1].x, c[2].x),
+		vec3f(c[0].y, c[1].y, c[2].y),
+	);
+}
+export function transpose(m: Mat3x4f): Mat4x3f {
+	const c = m.columns;
+	return mat4x3f(
+		vec3f(c[0].x, c[1].x, c[2].x),
+		vec3f(c[0].y, c[1].y, c[2].y),
+		vec3f(c[0].z, c[1].z, c[2].z),
+		vec3f(c[0].w, c[1].w, c[2].w),
+	);
+}
+export function transpose(m: Mat4x2f): Mat2x4f {
+	const c = m.columns;
+	return mat2x4f(
+		vec4f(c[0].x, c[1].x, c[2].x, c[3].x),
+		vec4f(c[0].y, c[1].y, c[2].y, c[3].y),
+	);
+}
+export function transpose(m: Mat4x3f): Mat3x4f {
+	const c = m.columns;
+	return mat3x4f(
+		vec4f(c[0].x, c[1].x, c[2].x, c[3].x),
+		vec4f(c[0].y, c[1].y, c[2].y, c[3].y),
+		vec4f(c[0].z, c[1].z, c[2].z, c[3].z),
 	);
 }
 

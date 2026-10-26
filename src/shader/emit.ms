@@ -29,8 +29,14 @@ import {
 	FrexpResultVec3f,
 	FrexpResultVec4f,
 	Mat2x2f,
+	Mat2x3f,
+	Mat2x4f,
 	Mat3x3f,
 	Mat4x4f,
+	Mat3x2f,
+	Mat3x4f,
+	Mat4x2f,
+	Mat4x3f,
 	ModfResultF32,
 	ModfResultVec2f,
 	ModfResultVec3f,
@@ -569,20 +575,29 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		getTypeImpl(Mat2x2f),
 		getTypeImpl(Mat3x3f),
 		getTypeImpl(Mat4x4f),
+		getTypeImpl(Mat2x3f),
+		getTypeImpl(Mat2x4f),
+		getTypeImpl(Mat3x2f),
+		getTypeImpl(Mat3x4f),
+		getTypeImpl(Mat4x2f),
+		getTypeImpl(Mat4x3f),
 	];
 	const constructors = [
 		"vec2f", "vec3f", "vec4f", "vec2i", "vec3i", "vec4i", "vec2u", "vec3u", "vec4u",
 		"vec2b", "vec3b", "vec4b",
 		"mat2x2f", "mat3x3f", "mat4x4f",
+		"mat2x3f", "mat2x4f", "mat3x2f", "mat3x4f", "mat4x2f", "mat4x3f",
 	];
 	const firstMatrix = 12;
+	const matrixShapes = [2, 2, 3, 3, 4, 4, 2, 3, 2, 4, 3, 2, 3, 4, 4, 2, 4, 3];
 
 	function vectorAt(i: number): ShaderType {
 		if (i < 3) { return vectorType(ScalarKind.F32, (i + 2) as int32); }
 		if (i < 6) { return vectorType(ScalarKind.I32, (i - 1) as int32); }
 		if (i < 9) { return vectorType(ScalarKind.U32, (i - 4) as int32); }
 		if (i < 12) { return vectorType(ScalarKind.Bool, (i - 7) as int32); }
-		return matrixType((i - 10) as int32, (i - 10) as int32);
+		const at = (i - firstMatrix) * 2;
+		return matrixType(matrixShapes[at] as int32, matrixShapes[at + 1] as int32);
 	}
 
 	function matrixColumns(n: Node): boolean {

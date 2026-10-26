@@ -212,7 +212,8 @@ function typeName(p: Glsl, t: ShaderType): string {
 	return match (t.kind) {
 		ShaderTypeKind.Scalar => scalarName(t.scalar),
 		ShaderTypeKind.Vector => vectorPrefix(t.scalar) + "vec" + String(t.rows),
-		ShaderTypeKind.Matrix => "mat" + String(t.columns),
+		ShaderTypeKind.Matrix => t.columns == t.rows ? "mat" + String(t.columns) :
+			"mat" + String(t.columns) + "x" + String(t.rows),
 		ShaderTypeKind.Array => typeName(p, t.element[0]) + "[" + String(t.length) + "]",
 		ShaderTypeKind.Struct => p.structNames[t.structIndex],
 		ShaderTypeKind.Atomic => scalarName(t.scalar),
