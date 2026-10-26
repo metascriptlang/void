@@ -19,6 +19,7 @@ import {
 	trs2d,
 	vec2,
 	noFilters,
+	maskFilter,
 	emptyBounds,
 } from "./types";
 import { checkFilterChain } from "./filterPlan";
@@ -632,6 +633,14 @@ export function setFilter(this n: NodeRef, f: Filter): NodeRef {
 	const steps: Vec<Filter> = f.kind === FilterKind.None ? [] : [f];
 	n.scene.putFilter(n.liveRow("setFilter"), { steps: steps });
 	return n;
+}
+
+// The Mask filter step whose mask is this node's subtree (h2d.filter.Mask, `h2d/filter/Mask.hx:54`):
+// `host.setFilter(maskNode.asMaskFilter(false))`. The node must be in the host's scene, hidden,
+// before the host in the tree and not one of its ancestors; the draw stops on a node that is not.
+export function asMaskFilter(this mask: NodeRef, smoothAlpha: boolean): Filter {
+	const i: int32 = mask.liveRow("asMaskFilter");
+	return maskFilter(i, mask.id.generation, smoothAlpha);
 }
 
 export function setFilters(this n: NodeRef, steps: Readonly<Span<Filter>>): NodeRef {

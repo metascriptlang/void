@@ -57,6 +57,9 @@ export function checkFilterChain(c: FilterChain): void {
 		if (f.kind === FilterKind.Outline && f.samples < 1) {
 			stopOn(`step ${k} (Outline) has ${f.samples} samples; it needs at least 1`);
 		}
+		if (f.kind === FilterKind.Mask && f.mask < 0) {
+			stopOn(`step ${k} (Mask) names no mask node; build it with NodeRef.asMaskFilter`);
+		}
 		if (f.resolutionScale != c.steps[0].resolutionScale) {
 			stopOn(`step ${k} (${f.kind.toString()}) has resolutionScale ${f.resolutionScale} and step 0 has ${c.steps[0].resolutionScale}; a chain renders its subtree once, so its steps share one scale`);
 		}
