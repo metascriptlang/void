@@ -6204,8 +6204,11 @@ sending the axis to the centre and the edges to the border, the texture read per
 nothing outside it or behind the light, the named record only, the lit and pbr loops tinted by
 the cookie and lighting a corner the plain cone does not, the renderer's refusals) and
 `programKeyCheck.ms` (every core mesh program reading the light records reads the cookie, no
-billboard or particle does). The bind path needs the GPU and is not pinned yet: a golden waits
-for a GPU slot.
+billboard or particle does), and on the GPU by `tests/integration/spotCookie.ms` (gate3d
+`spot-cookie`: each quadrant of a 2x2 cookie lands on the ground where the CPU map places it,
+the pyramid's corner past the cone is lit and the ground past the window is not; the cookieless
+control is white and leaves the corner dark). Measured on D3D11 only; the web backends are not
+run.
 
 ### Shadow filtering: PCF, as built so far (2026-10-25)
 
