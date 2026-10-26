@@ -1657,8 +1657,11 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 			const shown: boolean = layersTest(scene.nodes[index].layers, layers);
 			if (shown && scene.nodes[index].kind == NodeKind.Mesh) {
 				const payload: int32 = scene.nodes[index].payload;
-				const pick = scene.meshes[payload].lod;
-				if (pick !== null) { pick.ratioSource = ratioSourceOf(scene, index, layers); }
+				if (scene.meshes[payload].lod !== null) {
+					const source = ratioSourceOf(scene, index, layers);
+					const pick = scene.meshes[payload].lod;
+					if (pick !== null) { pick.ratioSource = source; }
+				}
 				// The walk can produce more items than the list holds as well as fewer: a node
 				// culled since the last collect drops out, and un-culling it puts it back.
 				// Writing `items[at]` unconditionally would store past the end in that second
@@ -1668,11 +1671,15 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 					items[at].mesh = scene.meshes[payload].mesh;
 					items[at].material = scene.meshes[payload].material;
 					items[at].order = scene.nodes[index].renderOrder;
-					items[at].skin = null;
-					items[at].skinGeometry = scene.meshes[payload].skinGeometry;
+					if (items[at].skin !== null) { items[at].skin = null; }
+					if (items[at].skinGeometry !== scene.meshes[payload].skinGeometry) {
+						items[at].skinGeometry = scene.meshes[payload].skinGeometry;
+					}
 					items[at].skinPalette = scene.meshes[payload].skinPalette;
 					items[at].range = scene.meshes[payload].range;
-					items[at].lod = scene.meshes[payload].lod;
+					if (items[at].lod !== scene.meshes[payload].lod) {
+						items[at].lod = scene.meshes[payload].lod;
+					}
 				} else {
 					items.push({
 						mesh: scene.meshes[payload].mesh,
