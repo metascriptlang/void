@@ -139,7 +139,7 @@ void voidAppTextDeliver(int type, const char *utf8, int cursor) {
 	s_cursor = 0;
 }
 
-static char s_title[256] = "Void — sokol";
+static char s_title[256] = "Void";
 static bool s_titleSet = false;
 
 void voidSetWindowTitle(const char *title) {

@@ -116,7 +116,7 @@ function stepTiming(): void {
 	if (frames < 30) return;
 	const d: float64 = frameDuration();
 	check(d > 0.005 && d < 0.05, `frame duration ${d} is outside 5..50 ms`);
-	check(macHostTitle() === "Void — sokol", `initial title '${macHostTitle()}'`);
+	check(macHostTitle() === "Void", `initial title '${macHostTitle()}'`);
 	setWindowTitle("Void ü window");
 	check(macHostTitle() === "Void ü window", `title '${macHostTitle()}' after setWindowTitle`);
 	step = step + 1;

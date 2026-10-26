@@ -1,4 +1,4 @@
-// Void — sokol native entry for the 2D batcher demo. Window/loop only.
+// Void native entry for the 2D batcher demo. Window/loop only.
 
 import { init2d, frame2d } from "./renderer2d";
 
