@@ -30,13 +30,14 @@ import {
 	isAtomic,
 	isDerivative,
 	isEffect,
+	rootOf,
 	sameShaderType,
 	scalarType,
 	vectorType,
 	predeclaredMemberType,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
-import { builtinType, ioLocation, rootOf } from "./irWalk";
+import { builtinType, ioLocation } from "./irWalk";
 import { Reads, printableEntry } from "./specialize";
 import { componentCompare, isComponentCompare, isMath } from "./spelling";
 

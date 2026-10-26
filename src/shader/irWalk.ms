@@ -12,6 +12,7 @@ import {
 	ShaderTypeKind,
 	StmtKind,
 	isEffect,
+	rootOf,
 	sameShaderType,
 	scalarType,
 	vectorType,
@@ -36,12 +37,6 @@ export function builtinType(b: Builtin): ShaderType {
 			Builtin.SampleIndex | Builtin.SampleMask => scalarType(ScalarKind.U32),
 		Builtin.None => { throw new Error("internal: builtinType of Builtin.None"); },
 	};
-}
-
-export function rootOf(e: ShaderExpr): ShaderExpr {
-	const through = e.kind == ExprKind.Field || e.kind == ExprKind.Swizzle ||
-		e.kind == ExprKind.Index;
-	return through && e.operands.length > 0 ? rootOf(e.operands[0]) : e;
 }
 
 function stmtsHaveEffect(m: ShaderModule, effects: int32[], stmts: ShaderStmt[]): boolean {

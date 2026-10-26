@@ -1170,9 +1170,23 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 	}
 }
 
+export function rootOf(e: ShaderExpr): ShaderExpr {
+	const through = e.kind == ExprKind.Field || e.kind == ExprKind.Swizzle || e.kind == ExprKind.Index;
+	return through && e.operands.length > 0 ? rootOf(e.operands[0]) : e;
+}
+
 function stmtErrors(c: Checker, s: ShaderStmt, f: ShaderFunction, owner: string): void {
 	exprErrors(c, s.expr, f, owner);
 	exprErrors(c, s.target, f, owner);
+	const root = rootOf(s.target);
+	if (s.kind == StmtKind.Assign && root.kind == ExprKind.Resource &&
+		root.index >= 0 && root.index < c.module.resources.length) {
+		const r = c.module.resources[root.index];
+		if (r.kind == ResourceKind.StorageBuffer && r.access != Access.ReadWrite) {
+			c.errors.push(owner + ": a write to storage buffer '" + r.name +
+				"', whose access is " + r.access.toString().toLowerCase() + ", not read_write");
+		}
+	}
 	if (holdsAtomic(c.module, s.expr.type) || holdsAtomic(c.module, s.target.type)) {
 		c.errors.push(owner + ": an atomic is read and written only through atomic operations, " +
 			"as WGSL's");

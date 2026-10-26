@@ -1955,7 +1955,21 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return featureIf(gate, [write]);
 	}
 
+	function writableStorage(target: Node): ShaderExpr | null {
+		if (target.kind != NodeKind.MemberExpr || !isType(target.object, bindingsType)) { return null; }
+		const r = resourceNamed(target.property);
+		if (r < 0 || m.resources[r].kind != ResourceKind.StorageBuffer) { return null; }
+		if (m.resources[r].access != Access.ReadWrite) {
+			fail(target, "storage buffer '" + target.property + "' is read-only: declare it " +
+				"@access(read_write) to write it, as WGSL's");
+		}
+		use(resourceRead, r, target);
+		return exprOf(ExprKind.Resource, m.resources[r].type, r, []);
+	}
+
 	function assignee(target: Node, n: Node): ShaderExpr {
+		const storage = writableStorage(target);
+		if (storage != null) { return storage; }
 		if (target.kind == NodeKind.Identifier &&
 			(locals.includes(target.name) || workgroupOf(target) >= 0)) {
 			return identifier(target);
