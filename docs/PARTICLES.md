@@ -171,7 +171,15 @@ Parity:
   `tie_death` cases (life 0.1 at 60 and 120 Hz, 0.3 at 100 Hz, 1.0 at 120 Hz) where Unity removes
   a particle one frame before every float32 age or remaining chain tried does, and the three
   goldens that depend on that death (prewarm_rate10_life1, ring_pause_until_replaced_max4,
-  texture_sheet_4x4_wholesheet, which also has a frame tie).
+  texture_sheet_4x4_wholesheet, which also has a frame tie). `tests/unity/AgeProbe.cs` captured
+  why, on 2026-10-26: Unity keeps a normalized age (the AgePercent vertex stream) and reads
+  remaining as `L * (1 - age)` (680 of 682 frames bit-exact), and in all four cases its age passes
+  1 a step early because it runs a few ulps ahead of `age += dt / L` (life 1.0 at 120 Hz: 0.99166733
+  at step 119 against 0.9916661). The increment itself is not reproduced: against the previous
+  captured age, `dt * (1 / L)` gives the next one in 488 of 682 steps and misses by one ulp
+  otherwise, under no rounding, sub-step, clock or double model tried. Storing a normalized age
+  in Void would not close the cases (counts 894 of 903 against 895 for seconds), so the
+  seconds model stays.
 - `tests/oracle/particles3d.cases` through `fromHeaps`. A case declares what it cannot match with
   `carries=`: `EmissionCeil`, `SpawnAge`, `GradientSampled`, `RandomStream` (Heaps draws from one
   stream, Void from a hash per particle) and `OneShotClock`.
