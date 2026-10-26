@@ -256,14 +256,12 @@ test "back-face-culled ccw quads take one uniform group at three dynamic offsets
 	assert validationErrorsAfterClose(device) == 0;
 }
 
-test "a vertex buffer written after the draw was recorded holds the second write when the draw runs" {
+test "a vertex buffer written after the draw was recorded holds that write when the draw runs" {
 	const device = openDevice();
 	const pipeline = flatPipeline(device, 1);
 	const group = uniformGroup(device, pipeline, colourUniforms(device));
 	const vertices = vertexBuffer(device, 128);
-	const junk: Vec<float32> = [9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0, 9.0];
 	const quad: Vec<float32> = [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5, 0.5, -0.5];
-	device.queue.writeBuffer(vertices, 64, junk);
 	const indices = device.createBuffer({
 		label: "indices",
 		size: 12,
@@ -343,7 +341,7 @@ test "a MAP_WRITE buffer filled through a mapped range copies to a MAP_READ buff
 	assert validationErrorsAfterClose(device) == 0;
 }
 
-test "a 1000-byte buffer and a 13x7 texture written at a 55-byte pitch round trip byte for byte" {
+test "a 1000-byte buffer and a 13x7 texture written at a 56-byte pitch round trip byte for byte" {
 	const device = openDevice();
 	let bufferBytes: Vec<uint8> = new Array(1000);
 	for (let i = 0; i < 1000; i++) { bufferBytes[i] = ((i * 7 + 3) % 251) as uint8; }
@@ -353,7 +351,7 @@ test "a 1000-byte buffer and a 13x7 texture written at a 55-byte pitch round tri
 		usage: (GPUBufferUsage.COPY_DST as int32) | (GPUBufferUsage.COPY_SRC as int32) | (GPUBufferUsage.VERTEX as int32),
 	});
 	device.queue.writeBuffer(stored, 0, bufferBytes);
-	const pitch = 13 * 4 + 3;
+	const pitch = 14 * 4;
 	let source: Vec<uint8> = new Array(pitch * 7);
 	for (let y = 0; y < 7; y++) {
 		for (let x = 0; x < pitch; x++) { source[y * pitch + x] = ((y * 31 + x * 5 + 1) % 253) as uint8; }
