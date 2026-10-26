@@ -145,6 +145,20 @@ test "a synced tree is clean, and syncing again moves nothing" {
 	assert syncWorld(scene) == 0;
 }
 
+test "a sync after no setter ran skips the walk, and the next setter brings it back" {
+	let context: DrawContext = contextOf(64, 1);
+	let scene: Scene3D = Scene3D.create(context);
+	const child: NodeId3D = oneMesh(scene, context, vec3(1.0, 0.0, 0.0), 0);
+	assert scene.posChanged && syncWorld(scene) == 2 && !scene.posChanged;
+	scene.nodes[child.index].flags = scene.nodes[child.index].flags.incl(NodeFlag.PosChanged);
+	assert syncWorld(scene) == 0;
+	setLocal(scene, child, Transform3D.fromTranslation(vec3(3.0, 0.0, 0.0)));
+	assert scene.posChanged && syncWorld(scene) == 1;
+	const world: Result<Mat4, SceneError> = scene.worldOf(child);
+	assert world.ok;
+	if (world.ok) { assert near(translationOf(world.value), 3.0, 0.0, 0.0); }
+}
+
 test "moving a parent re-syncs its children and nothing above it" {
 	let context: DrawContext = contextOf(64, 1);
 	let scene: Scene3D = Scene3D.create(context);
