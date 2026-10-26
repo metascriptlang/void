@@ -60,6 +60,7 @@ import "./programKeyCheck";
 import "./drawSurfaceCheck";
 import "./bloomCheck";
 import "./doorResidentCheck";
+import "./doorComputeCheck";
 import "./gpuTimerRingCheck";
 import "./bloomKernelCheck";
 import "./dirShadowCheck";
