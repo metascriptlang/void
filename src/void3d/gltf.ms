@@ -75,6 +75,7 @@ export enum GltfError {
 	NotGlb,
 	BadReference,
 	ImageByUri,
+	BufferByUri,
 	BadImage,
 	UnsupportedSampler,
 	UnsupportedMaterial,
@@ -109,6 +110,8 @@ function gltfCause(code: GltfError): string {
 		GltfError.BadReference => "node, mesh, material, texture, or graph reference is invalid",
 		GltfError.ImageByUri => "External URI image loading is not supported; " +
 			"supply an embedded image",
+		GltfError.BufferByUri => "a buffer after the first is read only from a base64 data: URI; " +
+			"embed it, or pass the first buffer's bytes to the loader",
 		GltfError.BadImage => "embedded PNG/JPEG bytes or image dimensions are invalid",
 		GltfError.UnsupportedSampler => "sampler filter or wrap is unsupported or incompatible",
 		GltfError.UnsupportedMaterial => "material property or texture combination is unsupported",
@@ -344,6 +347,7 @@ struct MaterialRead {
 }
 
 struct ImageView {
+	buffer: int32;
 	offset: int32;
 	length: int32;
 	format: ImageFormat;
@@ -392,8 +396,7 @@ function animationMode(value: JsonValue): Result<GltfCurveMode, GltfError> {
 }
 
 function animationValues(
-	accessors: JsonValue, views: JsonValue, buffer: Readonly<Span<uint8>>,
-	bufferLength: int32, index: int32, components: int32,
+	accessors: JsonValue, index: int32, components: int32,
 	ref buffers: Vec<GltfAccessorBuffer>, ref accessorViews: Vec<GltfAccessorView>,
 	sparseOk: boolean = false,
 	normalizedOk: boolean = false,
@@ -406,12 +409,6 @@ function animationValues(
 	if (!encoded || source.shape != shape ||
 		(components == 1 && !sparseOk && source.sparse !== null)) {
 		return Result.err(GltfError.Unsupported);
-	}
-	if (buffers.length == 0) {
-		accessorViews = try colourAccessorViews(views, bufferLength);
-		let bytes: Vec<uint8> = new Array(bufferLength);
-		for (let i = 0; i < bufferLength; i++) { bytes[i] = buffer[i]; }
-		buffers.push({ bytes: move bytes, byteLength: bufferLength });
 	}
 	const decoded = GltfAccessorValues.decode(source, buffers, accessorViews);
 	if (!decoded.ok) {
@@ -427,7 +424,7 @@ function animationValues(
 
 function weightTrack(
 	sampler: JsonValue, node: int32, targetCount: int32,
-	accessors: JsonValue, views: JsonValue, buffer: Readonly<Span<uint8>>, bufferLength: int32,
+	accessors: JsonValue,
 	ref buffers: Vec<GltfAccessorBuffer>, ref accessorViews: Vec<GltfAccessorView>,
 	ref cause: string,
 ): Result<GltfWeightTrack, GltfError> {
@@ -436,9 +433,9 @@ function weightTrack(
 		return Result.err(GltfError.BadReference);
 	}
 	const mode = try animationMode(fieldOf(sampler, "interpolation"));
-	const times = try animationValues(accessors, views, buffer, bufferLength,
+	const times = try animationValues(accessors,
 		intField(sampler, "input", -1), 1, buffers, accessorViews);
-	const values = try animationValues(accessors, views, buffer, bufferLength,
+	const values = try animationValues(accessors,
 		intField(sampler, "output", -1), 1, buffers, accessorViews, true, true);
 	const curve = GltfWeightCurve.forWeightValues(mode, targetCount, times, values);
 	if (!curve.ok) {
@@ -451,8 +448,8 @@ function weightTrack(
 }
 
 function loadAnimations(
-	root: JsonValue, accessors: JsonValue, views: JsonValue, buffer: Readonly<Span<uint8>>,
-	bufferLength: int32, nodeCount: int32, nodeTargets: Readonly<Span<int32>>,
+	root: JsonValue, accessors: JsonValue, nodeCount: int32,
+	nodeTargets: Readonly<Span<int32>>,
 	ref buffers: Vec<GltfAccessorBuffer>, ref accessorViews: Vec<GltfAccessorView>,
 	ref cause: string,
 ): Result<Vec<GltfAnimation>, GltfError> {
@@ -488,7 +485,7 @@ function loadAnimations(
 					}
 				}
 				const track = try weightTrack(samplers.at(samplerIndex), node, nodeTargets[node],
-					accessors, views, buffer, bufferLength, buffers, accessorViews, cause);
+					accessors, buffers, accessorViews, cause);
 				clip.weightTracks.push(track);
 				continue;
 			}
@@ -503,9 +500,9 @@ function loadAnimations(
 			}
 			const sampler = samplers.at(samplerIndex);
 			const mode = try animationMode(fieldOf(sampler, "interpolation"));
-			const times = try animationValues(accessors, views, buffer, bufferLength,
+			const times = try animationValues(accessors,
 				intField(sampler, "input", -1), 1, buffers, accessorViews);
-			const values = try animationValues(accessors, views, buffer, bufferLength,
+			const values = try animationValues(accessors,
 				intField(sampler, "output", -1), path == GltfCurvePath.Rotation ? 4 : 3,
 				buffers, accessorViews);
 			const curve = GltfCurve.forValues(path, mode, times, values);
@@ -663,7 +660,7 @@ function colourOptionalInt(obj: JsonValue, key: string): Result<int32 | null, Gl
 
 function colourAccessorViews(
 	views: JsonValue,
-	bufferLength: int32,
+	buffers: Readonly<Span<GltfAccessorBuffer>>,
 ): Result<Vec<GltfAccessorView>, GltfError> {
 	let result: Vec<GltfAccessorView> = [];
 	for (let i = 0; i < countOf(views); i++) {
@@ -672,7 +669,10 @@ function colourAccessorViews(
 			return Result.err(GltfError.Unsupported);
 		}
 		const buffer: int32 = try colourIntField(view, "buffer", -1);
-		if (buffer != 0) { return Result.err(GltfError.Unsupported); }
+		if (buffer < 0 || buffer >= (buffers.length as int32)) {
+			return Result.err(GltfError.BadReference);
+		}
+		const bufferLength: int32 = buffers[buffer].byteLength;
 		const offset: int32 = try colourIntField(view, "byteOffset", 0);
 		const length: int32 = try colourIntField(view, "byteLength", -1);
 		if (offset < 0 || length < 0 || offset > bufferLength || length > bufferLength - offset) {
@@ -751,9 +751,6 @@ function accessorSource(
 function loadSkins(
 	root: JsonValue,
 	accessors: JsonValue,
-	views: JsonValue,
-	buffer: Readonly<Span<uint8>>,
-	bufferLength: int32,
 	nodeCount: int32,
 	ref buffers: Vec<GltfAccessorBuffer>,
 	ref accessorViews: Vec<GltfAccessorView>,
@@ -817,17 +814,6 @@ function loadSkins(
 				return Result.err(gltfFailure(GltfError.Unsupported, source, matrixLocation, name,
 					"inverse bind accessor must be float MAT4 with at least one row per joint"));
 			}
-			if (buffers.length == 0) {
-				const decodedViews = colourAccessorViews(views, bufferLength);
-				if (!decodedViews.ok) {
-					return Result.err(gltfFailure(decodedViews.error, source,
-						matrixLocation, name, "inverse bind buffer views are invalid"));
-				}
-				accessorViews = move decodedViews.value;
-				let bytes: Vec<uint8> = new Array(bufferLength);
-				for (let i = 0; i < bufferLength; i++) { bytes[i] = buffer[i]; }
-				buffers.push({ bytes: move bytes, byteLength: bufferLength });
-			}
 			const decoded = GltfAccessorValues.decode(matrices, buffers, accessorViews);
 			if (!decoded.ok) {
 				return Result.err(gltfFailure(GltfError.Unsupported, source, matrixLocation,
@@ -865,9 +851,6 @@ function loadSkinMesh(
 	vertexSources: Readonly<Span<int32>>,
 	sourceCount: int32,
 	accessors: JsonValue,
-	views: JsonValue,
-	buffer: Readonly<Span<uint8>>,
-	bufferLength: int32,
 	ref buffers: Vec<GltfAccessorBuffer>,
 	ref accessorViews: Vec<GltfAccessorView>,
 ): Result<GltfSkinMesh | null, GltfError> {
@@ -889,12 +872,6 @@ function loadSkinMesh(
 	const weights = try accessorSource(accessors, try colourIntField(attributes, "WEIGHTS_0", -1));
 	if (joints.count != sourceCount || weights.count != sourceCount) {
 		return Result.err(GltfError.CountMismatch);
-	}
-	if (buffers.length == 0) {
-		accessorViews = try colourAccessorViews(views, bufferLength);
-		let bytes: Vec<uint8> = new Array(bufferLength);
-		for (let i = 0; i < bufferLength; i++) { bytes[i] = buffer[i]; }
-		buffers.push({ bytes: move bytes, byteLength: bufferLength });
 	}
 	const read = SkinInfluences.readSkinInfluences(joints, weights, buffers, accessorViews, 65536);
 	if (!read.ok) { return Result.err(GltfError.Unsupported); }
@@ -950,8 +927,6 @@ function geometryAttribute(
 	shape: GltfAccessorShape,
 	count: int32,
 	views: JsonValue,
-	buffer: Readonly<Span<uint8>>,
-	bufferLength: int32,
 	ref buffers: Vec<GltfAccessorBuffer>,
 	ref accessorViews: Vec<GltfAccessorView>,
 ): Result<GltfAccessorValues, GltfError> {
@@ -967,12 +942,6 @@ function geometryAttribute(
 	const dense = source.bufferView;
 	if (dense !== null && (dense < 0 || dense >= countOf(views))) {
 		return Result.err(GltfError.Unsupported);
-	}
-	if (buffers.length == 0) {
-		accessorViews = try colourAccessorViews(views, bufferLength);
-		let bytes: Vec<uint8> = new Array(bufferLength);
-		for (let i = 0; i < bufferLength; i++) { bytes[i] = buffer[i]; }
-		buffers.push({ bytes: move bytes, byteLength: bufferLength });
 	}
 	let decoded = GltfAccessorValues.decode(source, buffers, accessorViews);
 	if (!decoded.ok) {
@@ -991,8 +960,6 @@ function loadMorphTargets(
 	original: int32,
 	accessors: JsonValue,
 	views: JsonValue,
-	buffer: Readonly<Span<uint8>>,
-	bufferLength: int32,
 	ref colourBuffers: Vec<GltfAccessorBuffer>,
 	ref colourViews: Vec<GltfAccessorView>,
 	ref cause: string,
@@ -1030,7 +997,7 @@ function loadMorphTargets(
 			}
 			const source = try accessorSource(accessors, try colourIntField(target, key, -1));
 			const decoded = try source.geometryAttribute(GltfAccessorShape.Vec3, original,
-				views, buffer, bufferLength, colourBuffers, colourViews);
+				views, colourBuffers, colourViews);
 			let values: Vec<float32> = [];
 			for (const value of decoded.values) { values.push(value as float32); }
 			if (key == "POSITION") { morph.positions = move values; }
@@ -1080,8 +1047,6 @@ function loadMesh(
 	read: MaterialRead,
 	accessors: JsonValue,
 	views: JsonValue,
-	buffer: Readonly<Span<uint8>>,
-	bufferLength: int32,
 	ref colourBuffers: Vec<GltfAccessorBuffer>,
 	ref colourViews: Vec<GltfAccessorView>,
 	ref vertexSources: Vec<int32>,
@@ -1105,14 +1070,14 @@ function loadMesh(
 	let data: MeshData = textured ? MeshData.withUvs() : MeshData.empty();
 	if (!data.hasRoomFor(count)) { return Result.err(GltfError.MeshTooLarge); }
 	const positions = try positionSource.geometryAttribute(GltfAccessorShape.Vec3, count,
-		views, buffer, bufferLength, colourBuffers, colourViews);
+		views, colourBuffers, colourViews);
 	const flat: boolean = !hasField(attributes, "NORMAL");
 	let normalValues: Vec<float64> = [];
 	if (!flat) {
 		const source = try accessorSource(accessors,
 			try colourIntField(attributes, "NORMAL", -1));
 		let decoded = try source.geometryAttribute(GltfAccessorShape.Vec3, count,
-			views, buffer, bufferLength, colourBuffers, colourViews);
+			views, colourBuffers, colourViews);
 		normalValues = move decoded.values;
 	}
 	let colors: Vec<GltfLinearRgba> = [];
@@ -1145,7 +1110,7 @@ function loadMesh(
 		const source = try accessorSource(accessors,
 			try colourIntField(attributes, "TEXCOORD_0", -1));
 		let decoded = try source.geometryAttribute(GltfAccessorShape.Vec2, count,
-			views, buffer, bufferLength, colourBuffers, colourViews);
+			views, colourBuffers, colourViews);
 		uvValues = move decoded.values;
 	}
 	const maps = read.material.pbrMaps;
@@ -1158,7 +1123,7 @@ function loadMesh(
 		const source = try accessorSource(accessors,
 			try colourIntField(attributes, "TEXCOORD_1", -1));
 		let decoded = try source.geometryAttribute(GltfAccessorShape.Vec2, count,
-			views, buffer, bufferLength, colourBuffers, colourViews);
+			views, colourBuffers, colourViews);
 		uvBValues = move decoded.values;
 	}
 	const tangented: boolean = read.material.normalTexture != NO_TEXTURE_INDEX;
@@ -1167,7 +1132,7 @@ function loadMesh(
 		const source = try accessorSource(accessors,
 			try colourIntField(attributes, "TANGENT", -1));
 		let decoded = try source.geometryAttribute(GltfAccessorShape.Vec4, count,
-			views, buffer, bufferLength, colourBuffers, colourViews);
+			views, colourBuffers, colourViews);
 		tangentValues = move decoded.values;
 	}
 	let tangents: Vec<float32> = [];
@@ -1524,7 +1489,9 @@ function loadInlineImage(uri: string, image: JsonValue): Result<ImageView, GltfE
 	}
 	let inlineBytes: Vec<uint8> = try base64Bytes(uri.substring(comma + 1), GltfError.BadImage);
 	const count: int32 = inlineBytes.length as int32;
-	return Result.ok({ offset: 0, length: count, format: format, inlineBytes: move inlineBytes });
+	return Result.ok({
+		buffer: -1, offset: 0, length: count, format: format, inlineBytes: move inlineBytes,
+	});
 }
 
 // A buffer embedded as a data: URI, in the two media types Bevy's `load_buffers` takes.
@@ -1536,6 +1503,44 @@ function inlineBuffer(uri: string): Result<Vec<uint8>, GltfError> {
 		return Result.err(GltfError.Unsupported);
 	}
 	return base64Bytes(uri.substring(comma + 1), GltfError.Unsupported);
+}
+
+function loadBuffer(
+	info: JsonValue,
+	index: int32,
+	fromGlb: boolean,
+	supplied: Readonly<Span<uint8>>,
+	source: string,
+): Result<GltfAccessorBuffer, GltfDiagnostic> {
+	const path: string = `$.buffers[${index}]`;
+	const uri: JsonValue = fieldOf(info, "uri");
+	const embedded: boolean =
+		!isNull(uri) && uri.kind == JsonKind.String && uri.strVal.startsWith("data:");
+	let bytes: Vec<uint8> = [];
+	if (embedded) {
+		if (index == 0 && supplied.length > 0) {
+			return Result.err(gltfFailure(GltfError.Unsupported, source, `${path}.uri`,
+				"", "a buffer embedded as a data: URI takes no supplied bytes"));
+		}
+		const decoded = inlineBuffer(uri.strVal);
+		if (!decoded.ok) {
+			return Result.err(gltfFailure(decoded.error, source, `${path}.uri`, "",
+				"a data: URI buffer is base64 application/octet-stream or gltf-buffer"));
+		}
+		bytes = move decoded.value;
+	} else if (index > 0) {
+		return Result.err(gltfFailure(GltfError.BufferByUri, source, `${path}.uri`));
+	} else if (fromGlb && !isNull(uri)) {
+		return Result.err(gltfFailure(GltfError.Unsupported, source, `${path}.uri`));
+	} else {
+		bytes = new Array(supplied.length);
+		for (let i = 0; i < supplied.length; i++) { bytes[i] = supplied[i]; }
+	}
+	const declared: int32 = intField(info, "byteLength", -1);
+	if (declared < 0 || declared > (bytes.length as int32)) {
+		return Result.err(gltfFailure(GltfError.OutOfRange, source, `${path}.byteLength`));
+	}
+	return Result.ok({ bytes: move bytes, byteLength: declared });
 }
 
 function base64Bytes(payload: string, malformed: GltfError): Result<Vec<uint8>, GltfError> {
@@ -1565,8 +1570,7 @@ function base64Bytes(payload: string, malformed: GltfError): Result<Vec<uint8>, 
 
 function loadImageView(
 	image: JsonValue,
-	views: JsonValue,
-	bufferLength: int32,
+	accessorViews: Readonly<Span<GltfAccessorView>>,
 ): Result<ImageView, GltfError> {
 	if (image === null || image.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
@@ -1579,23 +1583,17 @@ function loadImageView(
 		return loadInlineImage(uri.strVal, image);
 	}
 	const viewIndex: int32 = intField(image, "bufferView", INVALID_INT);
-	if (viewIndex < 0 || viewIndex >= countOf(views)) {
+	if (viewIndex < 0 || viewIndex >= (accessorViews.length as int32)) {
 		return Result.err(GltfError.BadReference);
 	}
 	const format = formatForMime(fieldOf(image, "mimeType").asString());
 	if (!format.ok) { return Result.err(format.error); }
-	const view: JsonValue = views.at(viewIndex);
-	if (isNull(view) || intField(view, "buffer", 0) != 0
-		|| !isNull(fieldOf(view, "byteStride"))) {
-		return Result.err(GltfError.Unsupported);
-	}
-	const offset: int32 = intField(view, "byteOffset", 0);
-	const length: int32 = intField(view, "byteLength", INVALID_INT);
-	if (offset < 0 || length <= 0 || offset > bufferLength || length > bufferLength - offset) {
-		return Result.err(GltfError.OutOfRange);
-	}
+	const view: GltfAccessorView = accessorViews[viewIndex];
+	if (view.byteStride !== null) { return Result.err(GltfError.Unsupported); }
+	if (view.byteLength <= 0) { return Result.err(GltfError.OutOfRange); }
 	const out: ImageView = {
-		offset: offset, length: length, format: format.value, inlineBytes: [],
+		buffer: view.buffer, offset: view.byteOffset, length: view.byteLength,
+		format: format.value, inlineBytes: [],
 	};
 	return Result.ok(out);
 }
@@ -1604,7 +1602,7 @@ function loadTexture(
 	texture: JsonValue,
 	images: Readonly<Span<ImageView>>,
 	samplers: Readonly<Span<Sampling>>,
-	buffer: Readonly<Span<uint8>>,
+	buffers: Readonly<Span<GltfAccessorBuffer>>,
 ): Result<TextureData, GltfError> {
 	if (texture === null || texture.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
@@ -1624,7 +1622,8 @@ function loadTexture(
 	}
 	const bytes: Readonly<Span<uint8>> = images[source].inlineBytes.length > 0
 		? images[source].inlineBytes
-		: buffer[images[source].offset..images[source].offset + images[source].length];
+		: buffers[images[source].buffer].bytes[images[source].offset..
+			images[source].offset + images[source].length];
 	const format: Result<ImageFormat, ImageError> = imageFormatOf(bytes);
 	if (!format.ok || format.value != images[source].format) {
 		return Result.err(GltfError.BadImage);
@@ -2236,39 +2235,21 @@ function decodeGltf(
 	const imageCount: int32 = countOf(imageArray);
 	const buffers: JsonValue = arrayOf(root, "buffers");
 	const bufferCount: int32 = countOf(buffers);
-	if (bufferCount > 1 || (meshCount > 0 && bufferCount != 1)) {
+	if (meshCount > 0 && bufferCount == 0) {
 		return Result.err(gltfFailure(GltfError.Unsupported, source, "$.buffers", "",
-			"this loader accepts at most one supplied buffer and requires it for meshes"));
+			"meshes read their vertices from a buffer and the file declares none"));
 	}
-	let declaredLength: int32 = 0;
-	let inlined: Vec<uint8> = [];
-	let inline: boolean = false;
-	if (bufferCount == 1) {
-		const bufferInfo: JsonValue = at(buffers, 0);
-		const uri: JsonValue = fieldOf(bufferInfo, "uri");
-		if (fromGlb && !isNull(uri)) {
-			return Result.err(gltfFailure(GltfError.Unsupported, source, "$.buffers[0].uri"));
-		}
-		if (!isNull(uri) && uri.kind == JsonKind.String && uri.strVal.startsWith("data:")) {
-			if (supplied.length > 0) {
-				return Result.err(gltfFailure(GltfError.Unsupported, source, "$.buffers[0].uri",
-					"", "a buffer embedded as a data: URI takes no supplied bytes"));
-			}
-			const decoded = inlineBuffer(uri.strVal);
-			if (!decoded.ok) {
-				return Result.err(gltfFailure(decoded.error, source, "$.buffers[0].uri", "",
-					"a data: URI buffer is base64 application/octet-stream or gltf-buffer"));
-			}
-			inlined = move decoded.value;
-			inline = true;
-		}
-		declaredLength = intField(bufferInfo, "byteLength", -1);
-		const actualLength: int32 = (inline ? inlined.length : supplied.length) as int32;
-		if (declaredLength < 0 || declaredLength > actualLength) {
-			return Result.err(gltfFailure(GltfError.OutOfRange, source, "$.buffers[0].byteLength"));
-		}
+	let colourBuffers: Vec<GltfAccessorBuffer> = [];
+	for (let i = 0; i < bufferCount; i++) {
+		const loaded = try loadBuffer(at(buffers, i), i, fromGlb, supplied, source);
+		colourBuffers.push(move loaded);
 	}
-	const buffer: Readonly<Span<uint8>> = inline ? inlined : supplied;
+	const viewRead = colourAccessorViews(views, colourBuffers);
+	if (!viewRead.ok) {
+		return Result.err(gltfFailure(viewRead.error, source, "$.bufferViews", "",
+			"a buffer view names a missing buffer or reaches past its end"));
+	}
+	let colourViews: Vec<GltfAccessorView> = move viewRead.value;
 	const samplerArray: JsonValue = arrayOf(root, "samplers");
 	let samplers: Vec<Sampling> = [];
 	for (let i = 0; i < countOf(samplerArray); i++) {
@@ -2281,7 +2262,7 @@ function decodeGltf(
 	}
 	let images: Vec<ImageView> = [];
 	for (let i = 0; i < imageCount; i++) {
-		const image = loadImageView(imageArray.at(i), views, declaredLength);
+		const image = loadImageView(imageArray.at(i), colourViews);
 		if (!image.ok) {
 			return Result.err(gltfFailure(image.error, source, `$.images[${i}]`,
 				sourceName(imageArray.at(i))));
@@ -2291,7 +2272,7 @@ function decodeGltf(
 	const textureArray: JsonValue = arrayOf(root, "textures");
 	const textureCount: int32 = countOf(textureArray);
 	for (let i = 0; i < textureCount; i++) {
-		let texture = loadTexture(textureArray.at(i), images, samplers, buffer);
+		let texture = loadTexture(textureArray.at(i), images, samplers, colourBuffers);
 		if (!texture.ok) {
 			return Result.err(gltfFailure(texture.error, source, `$.textures[${i}]`,
 				sourceName(textureArray.at(i))));
@@ -2320,8 +2301,6 @@ function decodeGltf(
 	}
 	const whites = substituteWhites(data, reads);
 	if (!whites.ok) { return Result.err(gltfFailure(whites.error, source, "$.materials")); }
-	let colourBuffers: Vec<GltfAccessorBuffer> = [];
-	let colourViews: Vec<GltfAccessorView> = [];
 	let runs: Vec<PrimitiveRun> = [];
 	let pbrDefault: int32 = DEFAULT_MATERIAL;
 	let usedNames: Vec<string> = [];
@@ -2379,8 +2358,6 @@ function decodeGltf(
 					read,
 					accessors,
 					views,
-					buffer,
-					declaredLength,
 					colourBuffers,
 					colourViews,
 					vertexSources,
@@ -2393,7 +2370,7 @@ function decodeGltf(
 			if (morphed) {
 				let cause: string = "";
 				const targets = loadMorphTargets(primitive, mesh.value, sourceCount, accessors,
-					views, buffer, declaredLength, colourBuffers, colourViews, cause);
+					views, colourBuffers, colourViews, cause);
 				if (!targets.ok) {
 					return Result.err(gltfFailure(targets.error, source,
 						`$.meshes[${i}].primitives[${p}].targets`, base, cause));
@@ -2416,7 +2393,7 @@ function decodeGltf(
 				});
 			}
 			const skinMesh = loadSkinMesh(primitive, mesh.value, vertexSources, sourceCount,
-				accessors, views, buffer, declaredLength, colourBuffers, colourViews);
+				accessors, colourBuffers, colourViews);
 			if (!skinMesh.ok) {
 				return Result.err(gltfFailure(skinMesh.error, source,
 					`$.meshes[${i}].primitives[${p}].attributes`, base,
@@ -2479,7 +2456,7 @@ function decodeGltf(
 		}
 		data.nodes.push(node.value);
 	}
-	data.skins = try loadSkins(root, accessors, views, buffer, declaredLength, nodeCount,
+	data.skins = try loadSkins(root, accessors, nodeCount,
 		colourBuffers, colourViews, source);
 	const resolved = try resolveMorphNodes(data, runs, source);
 	let nodeTargets: Vec<int32> = [];
@@ -2488,7 +2465,7 @@ function decodeGltf(
 		nodeTargets.push(morph === null ? 0 : data.morphs[morph].targetCount);
 	}
 	let animationCause: string = "";
-	let animations = loadAnimations(root, accessors, views, buffer, declaredLength, nodeCount,
+	let animations = loadAnimations(root, accessors, nodeCount,
 		nodeTargets, colourBuffers, colourViews, animationCause);
 	if (!animations.ok) {
 		return Result.err(gltfFailure(animations.error, source, "$.animations", "",
