@@ -532,6 +532,9 @@ function stencilScene(device: GPUDevice, writerReference: uint32, testerReferenc
 		depthClearValue: 1.0,
 		depthLoadOp: "clear",
 		depthStoreOp: "store",
+		stencilClearValue: 0,
+		stencilLoadOp: "clear",
+		stencilStoreOp: "discard",
 	};
 	const encoder = device.createCommandEncoder();
 	const pass = encoder.beginRenderPass(descriptor);
@@ -902,6 +905,10 @@ function clearedDepthBytes(device: GPUDevice, format: GPUTextureFormat, bytesPer
 	});
 	let descriptor: GPURenderPassDescriptor = { label: "clear depth" };
 	descriptor.depthStencilAttachment = { view: target.createView({ label: null }), depthClearValue: value, depthLoadOp: "clear", depthStoreOp: "store" };
+	if (format == "depth24plus-stencil8") {
+		descriptor.depthStencilAttachment.stencilLoadOp = "clear";
+		descriptor.depthStencilAttachment.stencilStoreOp = "discard";
+	}
 	const encoder = device.createCommandEncoder();
 	encoder.beginRenderPass(descriptor).end();
 	device.queue.submit(encoder.finish());
