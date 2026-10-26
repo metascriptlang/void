@@ -185,6 +185,7 @@ import "./shaderWgslCheck";
 import "./shaderIrProgramCheck";
 import "./shaderGlslCheck";
 import "./shaderMslCheck";
+import "./shaderSpirvCheck";
 import "./shadyExamplesCheck";
 import "./shadyTestsCheck";
 import "./shadyPortsCheck";
