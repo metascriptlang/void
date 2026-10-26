@@ -147,7 +147,9 @@ later replaces the hand-written GLSL source of each base.
   returns a call of `shaderProgramRegister` on two literals, the target's
   `GPUShaderModuleDescriptor` (built as `shaderModule` builds it) and a one-buffer `DoorLayout`,
   which registers them through `doorRegisterLayouts` and `doorRegisterPrograms` of
-  `src/gpu/doorGpu.ms`; no C, no `@emit`, no file written.
+  `src/gpu/doorGpu.ms`; no C, no `@emit`. Each stage's DXBC or metallib is read from
+  `shaders/` or `out/shaders/` and, when missing and the tool exists, compiled into `out/shaders/`
+  (`stageBlob`; `docs/SHADER-IR.md` "A program the app builds"), and that stage's text is dropped.
   Attribute locations come from the `glsl430` reflection, matched by field name. Printing runs in
   the macro, not ahead of time into a generated module, by measurement (2026-10-23, BUILD
   `4b5816aea`, Windows, `msc check src/test/shaderProgramCheck.ms` against a copy without its two
@@ -172,6 +174,18 @@ later replaces the hand-written GLSL source of each base.
   on the door path (2026-10-22, BUILD `afcd22f19`) and has not been drawn since; on the C path it
   passed D3D11 `forwardOutline` at framebuffer factor 1 and 2, 33 of 33 reference comparisons,
   and `scripts/web3d.sh` 27 of 27 on WebGL2 (2026-10-18, BUILD `4fe2a5eec`).
+- **`shaderCompute(name, kernel, [x, y, z])` is `shaderProgram` for one compute entry.** It splices
+  `const <name>: int32` initialized by `shaderBuild`, which lowers with `glslComputeIr` (the
+  workgroup size is written beside the kernel because the entry has nowhere to carry it), prints,
+  reflects and precompiles for the build's target (`cs_5_0` for DXBC), and returns a call of
+  `shaderComputeRegister` on the descriptor. A vertex or fragment entry is refused by
+  `glslStage` ("a compute entry returns nothing", `tests/refusals/computeVertexEntry.ms`), and a
+  `@feature` field by `oneProgram` (`tests/refusals/computeFeature.ms`). Parked: this branch has
+  no compute registration, so `shaderComputeRegister` stops with the card's name; the merge with
+  `wt/shader-render` replaces its body with `registerComputePrograms((index) => descriptor, 1)`
+  of `src/gpu/doorCompute.ms`. `src/test/shaderComputeProgramCheck.ms` reads the descriptor
+  through `shaderBuild`'s `shaderComputeModule` product, since a registered program cannot be
+  read back.
 - **A helper call costs a copy of each argument.** glslang passes every argument through a
   variable, and SPIRV-Cross prints it at each call (`highp vec4 param_1 = ui_params[1];`), where
   a GLSL builtin or code at the call site costs none. Neither shady nor TypeGPU inlines, so the
