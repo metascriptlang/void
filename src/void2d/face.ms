@@ -54,8 +54,8 @@ import {
 	void2dSfntSequence,
 	void2dSfntFlags,
 	void2dSfntSummariesRead,
-	void2dFontBytesAdd,
 } from "./sfnt.h";
+import { void2dFontBytesAdd } from "./fontBytes.h";
 import { GlyphPageHandle } from "./glyphAtlas";
 
 export struct FaceMetrics {
