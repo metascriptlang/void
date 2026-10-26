@@ -5973,9 +5973,9 @@ A `.gltf` or `.glb` may declare more than one buffer, and each buffer view reads
 names, as Bevy's `load_buffers` builds one byte vector per buffer
 (`bevy_gltf/src/loader/mod.rs:2094-2134`) and every accessor reads through its view's buffer.
 The first buffer is the GLB `BIN` chunk or the caller's bytes, or a `data:` URI; every buffer
-after it must be a `data:` URI. A file URI past the first is refused as `BufferByUri` at
-`$.buffers[i].uri`, because reading it needs a resolver contract (where relative paths resolve,
-whether a load may touch the filesystem or network), which is the person's decision. Every view
+after it must be a `data:` URI, or a file URI the caller's `GltfFileSystem` reads (next
+section); without one, a file URI past the first is refused as `BufferByUri` at
+`$.buffers[i].uri`. Every view
 is checked when the file loads, not on first use: a view naming a missing buffer is
 `BadReference` and one past its buffer's end is `OutOfRange`, both at `$.bufferViews`. Embedded
 images read their view's buffer the same way.
@@ -5983,6 +5983,33 @@ images read their view's buffer the same way.
 Pinned by `gltfCheck.ms`: positions in buffer 0 and normals in buffer 1 load the same vertices
 whether buffer 0 is supplied or embedded; a second buffer given by file name, a view naming a
 buffer that does not exist, and a second buffer shorter than its view are refused.
+
+### glTF files that name other files, as built (2026-10-26)
+
+A `.gltf` exported beside its `.bin` and `.png` files loads when the caller passes a
+`GltfFileSystem` (the last argument of `loadGltf`, `loadGltfDetailed`, `loadGlb` and
+`loadGlbDetailed`). It is the part of Heaps' `hxd.fs.FileSystem` that a loader reads, `exists`
+and `get(path).getBytes()` (`hxd/fs/FileSystem.hx:5-6`, `hxd/fs/FileEntry.hx:13`), handed in by
+the app as `hxd.res.Loader` takes its file system (`hxd/res/Loader.hx:14,31-36`), so Void reads
+no disk or network itself. The path asked for is the URI as written, relative to the `.gltf`;
+where it resolves is the file system's business.
+
+- A buffer with a file URI is read from the file system: any buffer past the first, and the
+  first when no bytes are supplied. Supplied bytes still win for the first buffer.
+- An image with a file URI is read from it, its type sniffed from the bytes and checked against
+  `mimeType` when declared (`BadImage` on a mismatch or bytes that are no PNG or JPEG).
+- A path the file system does not hold is `FileNotFound`, at `$.buffers[i].uri` or
+  `$.images[i]`, naming the URI.
+- A URI with a `%` is refused as `Unsupported` ("a percent-encoded URI is not decoded"): std has
+  no percent decoder yet, and handing the file system an encoded name would miss the file
+  silently. The trigger to lift it is a percent decoder in std.
+- Without a file system nothing changes: `BufferByUri` and `ImageByUri` as before.
+
+Pinned by `gltfCheck.ms` (a second buffer read from the file system loads the same vertices as
+the supplied one; the first buffer read from it when none is supplied; missing, encoded and
+short files refused) and `gltfEmbeddedImageCheck.ms` (an image read from it decodes to the
+expected pixels with and without `mimeType`; a declared type that disagrees, a missing file, an
+encoded name and bytes that are no image refused).
 
 ### A second uv set for the occlusion map, as built (2026-10-24)
 
