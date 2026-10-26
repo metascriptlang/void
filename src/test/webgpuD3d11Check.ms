@@ -41,6 +41,7 @@ import {
 	clearingPass,
 	colourTarget,
 	colourUniforms,
+	drawOverLoadedStencil,
 	drawTriangleIn,
 	pixel,
 	readBack,
@@ -669,6 +670,9 @@ test "a stencil write at reference 1 masks a later equal-test draw to the left h
 		depthClearValue: 1.0,
 		depthLoadOp: "clear",
 		depthStoreOp: "store",
+		stencilClearValue: 0,
+		stencilLoadOp: "clear",
+		stencilStoreOp: "discard",
 	};
 	const encoder = device.createCommandEncoder();
 	const pass = encoder.beginRenderPass(descriptor);
@@ -688,6 +692,15 @@ test "a stencil write at reference 1 masks a later equal-test draw to the left h
 	const pixels = readPixels(target);
 	assert pixel(pixels, 16, 32) == GREEN;
 	assert pixel(pixels, 48, 32) == BLUE;
+	device.destroy();
+}
+
+test "a stencil cleared to 1 and stored is loaded by the next pass while that pass clears its depth" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawOverLoadedStencil(device, stencilPipeline(device, flatShader(device), "equal", "keep"), target);
+	const pixels = readPixels(target);
+	assert pixel(pixels, 0, 0) == GREEN && pixel(pixels, 63, 63) == GREEN;
 	device.destroy();
 }
 

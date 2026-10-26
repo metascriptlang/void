@@ -610,10 +610,12 @@ enum {
 	PASS_DEPTH_LOAD,
 	PASS_DEPTH_STORE,
 	PASS_DEPTH_STENCIL,
+	PASS_STENCIL_LOAD,
+	PASS_STENCIL_STORE,
 	PASS_COLOR_OPS,
 	PASS_COLOR_OP_STRIDE = 3
 };
-enum { PASS_DEPTH_CLEAR = MAX_TARGETS * 4 };
+enum { PASS_DEPTH_CLEAR = MAX_TARGETS * 4, PASS_STENCIL_CLEAR };
 
 int32_t wgBeginPass(
 	const WgView *colorViews,
@@ -651,8 +653,9 @@ int32_t wgBeginPass(
 		depthAttachment.depthStoreOp = (WGPUStoreOp)ints[PASS_DEPTH_STORE];
 		depthAttachment.depthClearValue = (float)reals[PASS_DEPTH_CLEAR];
 		if (ints[PASS_DEPTH_STENCIL]) {
-			depthAttachment.stencilLoadOp = WGPULoadOp_Clear;
-			depthAttachment.stencilStoreOp = WGPUStoreOp_Discard;
+			depthAttachment.stencilLoadOp = (WGPULoadOp)ints[PASS_STENCIL_LOAD];
+			depthAttachment.stencilStoreOp = (WGPUStoreOp)ints[PASS_STENCIL_STORE];
+			depthAttachment.stencilClearValue = (uint32_t)reals[PASS_STENCIL_CLEAR];
 		}
 	}
 	WGPURenderPassDescriptor desc = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
@@ -1062,11 +1065,14 @@ const char *wgConstantsDisagreement(const int32_t *values, int32_t count) {
 		DRIVER(PASS_DEPTH_LOAD),
 		DRIVER(PASS_DEPTH_STORE),
 		DRIVER(PASS_DEPTH_STENCIL),
+		DRIVER(PASS_STENCIL_LOAD),
+		DRIVER(PASS_STENCIL_STORE),
 		DRIVER(PASS_COLOR_OPS),
 		DRIVER(PASS_COLOR_OP_STRIDE),
 		DRIVER(PL_BUFFER_STRIDE),
 		DRIVER(PL_TARGETS),
 		DRIVER(PASS_DEPTH_CLEAR),
+		DRIVER(PASS_STENCIL_CLEAR),
 		DRIVER(MAX_BUFFERS),
 		DRIVER(MAX_ATTRIBUTES),
 		DRIVER(MAX_TARGETS),

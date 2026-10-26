@@ -23,6 +23,7 @@ import {
 	GPUMipmapFilterMode,
 	GPUIndexFormat,
 	GPULoadOp,
+	GPURenderPassDepthStencilAttachment,
 	GPURenderPassDescriptor,
 	GPURenderPassEncoder,
 	GPURenderPipeline,
@@ -1503,6 +1504,14 @@ export function doorGpuTimerPassCount(): int32 { return timerResultCount(); }
 export function doorGpuTimerPassMs(index: int32): float64 { return timerResultMs(index); }
 export function doorGpuTimerPassLabel(index: int32): string { return timerResultLabel(index); }
 
+function withStencilOps(attachment: GPURenderPassDepthStencilAttachment, texture: GPUTexture): GPURenderPassDepthStencilAttachment {
+	if (texture.format() != "depth24plus-stencil8") { return attachment; }
+	let stencil = attachment;
+	stencil.stencilLoadOp = attachment.depthLoadOp;
+	stencil.stencilStoreOp = attachment.depthStoreOp;
+	return stencil;
+}
+
 function frameEncoder(): GPUCommandEncoder {
 	if (encoder.id == 0) { encoder = device.createCommandEncoder(); }
 	return encoder;
@@ -1542,12 +1551,12 @@ export function doorBeginPass(
 			stop("beginPass on the depth attachment, whose view " + String(depth.view) +
 				" is not alive");
 		}
-		descriptor.depthStencilAttachment = {
+		descriptor.depthStencilAttachment = withStencilOps({
 			view: { id: depth.view },
 			depthClearValue: depth.clear,
 			depthLoadOp: LOAD_OPS[depth.load as int32],
 			depthStoreOp: STORE_OPS[depth.store as int32],
-		};
+		}, { id: doorViewImage(depth.view) });
 	}
 	descriptor.timestampWrites = timestampsOf("target");
 	pass = frameEncoder().beginRenderPass(descriptor);
@@ -1612,12 +1621,12 @@ export function doorBeginScreenPass(
 	};
 	const depth = getCurrentDepthTexture();
 	if (depth.id != 0) {
-		descriptor.depthStencilAttachment = {
+		descriptor.depthStencilAttachment = withStencilOps({
 			view: depth.createView({ label: null }),
 			depthClearValue: 1,
 			depthLoadOp: "clear",
 			depthStoreOp: "discard",
-		};
+		}, depth);
 	}
 	descriptor.timestampWrites = timestampsOf("screen");
 	pass = frameEncoder().beginRenderPass(descriptor);

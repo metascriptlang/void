@@ -35,6 +35,7 @@ import {
 	clearingPass,
 	colourTarget,
 	colourUniforms,
+	drawOverLoadedStencil,
 	pixel,
 	readBack,
 	readbackBuffer,
@@ -100,6 +101,22 @@ function flatPipeline(device: GPUDevice, sampleCount: int32): GPURenderPipeline 
 	return device.createRenderPipeline(descriptor);
 }
 
+function stencilTester(device: GPUDevice): GPURenderPipeline {
+	const module = flatShader(device);
+	let descriptor: GPURenderPipelineDescriptor = { label: "stencil equal" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	descriptor.primitive.topology = "triangle-strip";
+	descriptor.depthStencil.format = "depth24plus-stencil8";
+	descriptor.depthStencil.depthCompare = "always";
+	descriptor.depthStencil.stencilFront = { compare: "equal", passOp: "keep" };
+	descriptor.depthStencil.stencilBack = { compare: "equal", passOp: "keep" };
+	return device.createRenderPipeline(descriptor);
+}
+
 function readTexture(device: GPUDevice, texture: GPUTexture): Vec<uint8> {
 	const destination = readbackBuffer(device, ROW * SIZE);
 	const encoder = device.createCommandEncoder();
@@ -161,6 +178,15 @@ test "a Vulkan triangle takes its colour from the uniform block at the dynamic o
 	assert pixel(pixels, 63, 63) == BLUE;
 	const live = device.liveCounts();
 	assert live.buffers == 3 && live.textures == 1 && live.views == 1 && live.shaderModules == 1 && live.pipelines == 1;
+	assert validationErrorsAfterClose(device) == 0;
+}
+
+test "a stencil cleared to 1 and stored is loaded by the next pass while that pass clears its depth" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawOverLoadedStencil(device, stencilTester(device), target);
+	const pixels = readTexture(device, target);
+	assert pixel(pixels, 0, 0) == GREEN && pixel(pixels, 63, 63) == GREEN;
 	assert validationErrorsAfterClose(device) == 0;
 }
 

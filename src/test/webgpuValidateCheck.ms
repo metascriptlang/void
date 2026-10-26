@@ -59,6 +59,7 @@ import {
 	groupOfKind,
 	inPassRefusal,
 	isDepthFormat,
+	isStencilFormat,
 	isStripTopology,
 	markIndexBuffer,
 	markPipeline,
@@ -415,6 +416,8 @@ test "a depth or stencil format is a 2d texture only" {
 	assert isDepthFormat("depth24plus-stencil8");
 	assert !isDepthFormat("rgba8unorm");
 	assert !isDepthFormat("r32float");
+	assert isStencilFormat("depth24plus-stencil8");
+	assert !isStencilFormat("depth32float");
 	let t = texture(8, 8, 8);
 	t.dimension = "3d";
 	t.format = "depth32float";
@@ -890,6 +893,21 @@ test "a render pass takes renderable one-mip one-layer attachments of one size" 
 	facts.depth = { ...colorTarget(32, 16, 1), depth: true, single: false };
 	assert renderPassRefusal(descriptor, facts) == "depthStencilAttachment.view spans several mips or layers: a render attachment is one mip of one layer";
 	assert renderPassRefusal({ label: null }, facts) == "beginRenderPass without an attachment";
+}
+
+test "a depth attachment with a stencil aspect takes both stencil ops, and one without takes neither" {
+	let descriptor = colorPass();
+	let facts = onePass(colorTarget(64, 32, 1));
+	descriptor.depthStencilAttachment.view = { id: 2 };
+	facts.depth = { ...colorTarget(64, 32, 1), depth: true, stencil: true };
+	const required = "depthStencilAttachment.view has a stencil aspect, so stencilLoadOp and stencilStoreOp are required";
+	assert renderPassRefusal(descriptor, facts) == required;
+	descriptor.depthStencilAttachment.stencilLoadOp = "clear";
+	assert renderPassRefusal(descriptor, facts) == required;
+	descriptor.depthStencilAttachment.stencilStoreOp = "discard";
+	assert renderPassRefusal(descriptor, facts) == "";
+	facts.depth.stencil = false;
+	assert renderPassRefusal(descriptor, facts) == "depthStencilAttachment.view has no stencil aspect, so stencilLoadOp and stencilStoreOp must be left out";
 }
 
 test "a render pass color attachment names a depth slice only on a 3d view, inside its mip" {

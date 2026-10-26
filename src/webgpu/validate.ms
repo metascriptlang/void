@@ -437,6 +437,10 @@ export function isDepthFormat(format: string): boolean {
 	return format == "depth16unorm" || format == "depth32float" || format == "depth24plus-stencil8";
 }
 
+export function isStencilFormat(format: string): boolean {
+	return format == "depth24plus-stencil8";
+}
+
 export function isIntegerFormat(format: string): boolean {
 	return format == "r32uint" || format == "rgba8uint" || format == "rgba8sint" || format == "rgba16uint" || format == "rgba32uint";
 }
@@ -1075,6 +1079,7 @@ export function entryOf<T>(group: T, binding: int32): int32 {
 export struct AttachmentFacts {
 	texture: uint32;
 	depth: boolean;
+	stencil: boolean;
 	renderable: boolean;
 	single: boolean;
 	volume: boolean;
@@ -1095,6 +1100,7 @@ export function attachmentFactsOf(view: ViewRecord, texture: TextureRecord): Att
 	return {
 		texture: texture.id,
 		depth: isDepthFormat(texture.format),
+		stencil: isStencilFormat(texture.format),
 		renderable: (texture.usage & (GPUTextureUsage.RENDER_ATTACHMENT as int32)) != 0,
 		single: view.attachable,
 		volume: view.dimension == "3d",
@@ -1126,6 +1132,16 @@ function colorAttachmentRefusal(i: int32, descriptor: GPURenderPassDescriptor, v
 	return "";
 }
 
+function stencilOpsRefusal(load: string, store: string, stencil: boolean): string {
+	if (stencil && (load == "" || store == "")) {
+		return "depthStencilAttachment.view has a stencil aspect, so stencilLoadOp and stencilStoreOp are required";
+	}
+	if (!stencil && (load != "" || store != "")) {
+		return "depthStencilAttachment.view has no stencil aspect, so stencilLoadOp and stencilStoreOp must be left out";
+	}
+	return "";
+}
+
 // sokol _sg_validate_begin_pass (sokol_gfx.h:24757): every attachment is a renderable view of one
 // mip and layer, all of one size, and a resolve target matches its multisampled view.
 export function renderPassRefusal(descriptor: GPURenderPassDescriptor, facts: RenderPassFacts): string {
@@ -1144,6 +1160,8 @@ export function renderPassRefusal(descriptor: GPURenderPassDescriptor, facts: Re
 	if (descriptor.depthStencilAttachment.view.id != 0) {
 		const view = facts.depth;
 		if (!view.depth || !view.renderable) { return "depthStencilAttachment.view is not a depth RENDER_ATTACHMENT"; }
+		const stencilOps = stencilOpsRefusal(descriptor.depthStencilAttachment.stencilLoadOp, descriptor.depthStencilAttachment.stencilStoreOp, view.stencil);
+		if (stencilOps != "") { return stencilOps; }
 		const single = singleSubresourceRefusal("depthStencilAttachment.view", view.single);
 		if (single != "") { return single; }
 		const extent = passExtentRefusal(width, height, mipWidth(view), mipHeight(view));

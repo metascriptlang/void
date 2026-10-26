@@ -1885,6 +1885,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		depth = views[v].depthStencil;
 		depthStencil = textures[textureRecords.slotIndex(viewRecords.slots[v].texture)].info.stencil;
 		checkStoreOp(descriptor.depthStencilAttachment.depthStoreOp, -1, "depthStoreOp");
+		if (depthStencil) { checkStoreOp(descriptor.depthStencilAttachment.stencilStoreOp, -1, "stencilStoreOp"); }
 	}
 	d3dSetRenderTargets(context, targets[0], targets[1], targets[2], targets[3], depth);
 	d3dSetViewport(context, 0.0, 0.0, pass.width, pass.height, 0.0, 1.0);
@@ -1896,9 +1897,12 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 			d3dClearRtv(context, targets[i], color.r, color.g, color.b, color.a);
 		}
 	}
-	if (depthView != 0 && isClear(descriptor.depthStencilAttachment.depthLoadOp, -1, "depthLoadOp")) {
-		const flags = depthStencil ? CLEAR_DEPTH | CLEAR_STENCIL : CLEAR_DEPTH;
-		d3dClearDsv(context, depth, flags, descriptor.depthStencilAttachment.depthClearValue, 0);
+	if (depthView != 0) {
+		const attachment = descriptor.depthStencilAttachment;
+		const clearDepth = isClear(attachment.depthLoadOp, -1, "depthLoadOp");
+		const clearStencil = depthStencil && isClear(attachment.stencilLoadOp, -1, "stencilLoadOp");
+		const flags = (clearDepth ? CLEAR_DEPTH : 0) | (clearStencil ? CLEAR_STENCIL : 0);
+		if (flags != 0) { d3dClearDsv(context, depth, flags, attachment.depthClearValue, (attachment.stencilClearValue & 0xFF) as int32); }
 	}
 	nativeBinds = { indexFormat: 0 };
 	bound.appliedPipeline = 0;

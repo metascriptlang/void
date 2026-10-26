@@ -29,8 +29,10 @@ import {
 	DESCRIPTOR_UNIFORM_BUFFER_DYNAMIC,
 	LAYOUT_GENERAL,
 	LAYOUT_SHADER_READ_ONLY,
+	LOAD_OP_DONT_CARE,
 	LOAD_OP_LOAD,
 	STAGE_COMPUTE_SHADER,
+	STORE_OP_DONT_CARE,
 	STORE_OP_STORE,
 	blendOp,
 	cullMode,
@@ -438,7 +440,16 @@ function compatiblePass(
 		if (!info.depth) { stop("depthStencil.format is not a depth format"); }
 		depth = true;
 		stencil = (info.aspect & ASPECT_STENCIL) != 0;
-		depthKeyWords(key, info.native, samples, LOAD_OP_LOAD, STORE_OP_STORE, stencil, false);
+		depthKeyWords(
+			key,
+			info.native,
+			samples,
+			LOAD_OP_LOAD,
+			STORE_OP_STORE,
+			stencil ? LOAD_OP_LOAD : LOAD_OP_DONT_CARE,
+			stencil ? STORE_OP_STORE : STORE_OP_DONT_CARE,
+			false,
+		);
 	} else {
 		noDepthKeyWords(key);
 	}
