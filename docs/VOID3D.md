@@ -6278,7 +6278,7 @@ stream is refused on a skinned or non-mesh program, `sameBatch`), `programKeyChe
 programs and their casters carry the row, bit 18) and `litShaderCheck.ms` (a translated, mirrored
 row with a colour, and skinned vertices that ignore the row).
 
-### Bevy comparison bench, scope (prepared 2026-10-24, not run)
+### Bevy comparison bench, scope (prepared 2026-10-24, void3d side first run 2026-10-26)
 
 "Performance of Bevy" is measured, not argued: the same workload as a Bevy stress test, both
 engines in release on this machine (Windows 11, Ryzen 9950X, RTX 5090; void3d on D3D11, Bevy on its
@@ -6315,6 +6315,14 @@ the full tree at the same commit and the three assets (`models/animated/Fox.glb`
 `models/animated/MorphStressTest.gltf`, `branding/icon.png`); a fat-LTO Bevy build and every bench
 run are heavy jobs and take a void-manager slot. Step 1 is measuring void3d's `many_cubes` as it is,
 since the batching milestone is sized by that gap.
+
+**First run, void3d alone (2026-10-26).** `many_cubes` sphere layout at the default 1.6M cubes,
+D3D11, interleaved 20 s runs on `5b903719` (before the instance row and the clusters) and
+`f455eb30`: medians of the per-second averages 292.7, 317.5, 303.5, 314.1, 302.4 and 295.7 ms
+before against 291.4, 272.6, 267.3, 267.3, 254.0 and 259.6 ms after, a median ratio of 0.87 over
+six clean pairs (a seventh was NOISY). Batching cut the draws, yet the frame stays near 270 ms,
+so per-item CPU work dominates at this count; per-flow timers on one frame are the next
+measurement. Bevy has not been run here yet.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
