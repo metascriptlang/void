@@ -50,6 +50,7 @@ import {
 	resource,
 	ret,
 	shaderFunction,
+	single,
 	swizzle,
 	tiny,
 	unaryOf,
@@ -281,6 +282,35 @@ test "every intrinsic and statement prints" {
 	assert decorationsOf(fsList, named(fsList, "id")) == "30:2,14";
 	assert operandsOf(fsList, 17).split(",").includes("35");
 	assert count(fsList, 246) > 0 && count(fsList, 251) > 0 && count(fsList, 252) > 0;
+}
+
+function killerOf(list: Instruction[]): uint32 {
+	let current: uint32 = 0;
+	let killer: uint32 = 0;
+	for (const i of list) {
+		if (i.opcode == 54) { current = i.operands[1]; }
+		if (i.opcode == 252) { killer = current; }
+	}
+	return killer;
+}
+
+test "a discard in a called function raises a private flag the entry kills on before it returns" {
+	let m = tiny(ShaderStage.Fragment, column(model()));
+	m.functions.push(shaderFunction("drop", [], [single(StmtKind.Discard), ret()]));
+	prepend(m.functions[0], stmtOf(StmtKind.Call, exprOf(ExprKind.Call, new ShaderType(), 1, []),
+		[]));
+	assert irErrors(m).length == 0;
+	const list = instructions(wordsOf(m, 0, slotsOf(m, [0])));
+	const flag = named(list, "demoted");
+	assert flag != 0;
+	assert operandsOf(list, 59).split(",").some((v) => v.split(":")[1] == String(flag) &&
+		v.split(":")[2] == "6");
+	assert count(list, 252) == 1;
+	let entryId: uint32 = 0;
+	for (const i of list) {
+		if (i.opcode == 15) { entryId = i.operands[1]; }
+	}
+	assert killerOf(list) == entryId;
 }
 
 function helperCall(): ShaderExpr { return exprOf(ExprKind.Call, VEC4, 1, []); }

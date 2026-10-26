@@ -36,6 +36,7 @@ export class Reads {
 	structs: int32[] = [];
 	pairs: TexturePair[] = [];
 	workgroups: int32[] = [];
+	privates: int32[] = [];
 }
 
 class Walk {
@@ -115,6 +116,9 @@ function walkExpr(w: Walk, e: ShaderExpr): void {
 		ExprKind.Intrinsic => notePair(w, e),
 		ExprKind.Workgroup => {
 			if (note(w.reads.workgroups, e.index)) { walkType(w, m.workgroups[e.index].type); }
+		},
+		ExprKind.Private => {
+			if (note(w.reads.privates, e.index)) { walkType(w, m.privates[e.index].type); }
 		},
 		_ => {},
 	}
