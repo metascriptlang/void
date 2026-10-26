@@ -985,7 +985,8 @@ STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms
 	tests/integration/reparentFrame.ms tests/integration/dirShadow.ms src/test/dirShadowCheck.ms
 	src/test/programKeyCheck.ms tests/integration/movingMaterial.ms
 	tests/integration/mapMaterial.ms tests/integration/billboardBlend.ms
-	tests/integration/lightShadows.ms tests/integration/parallaxFrame.ms"
+	tests/integration/lightShadows.ms tests/integration/parallaxFrame.ms
+	tests/integration/spotCookie.ms"
 
 run_style() {
 	long=$(
@@ -2633,6 +2634,33 @@ run_parallax() {
 	pass "parallax: the pbr-maps height moves a base texture's edge along the view, and the amount-0 control leaves it in place"
 }
 
+run_spot_cookie() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "spot-cookie: GATE_SKIP_CAPTURE=1 — no cookie was read back"
+		return
+	fi
+	exe="$WORK/spotCookie.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/spotCookie.ms --output="$exe" > "$WORK/spotCookie.build.log" 2>&1; then
+		fail "spot-cookie: tests/integration/spotCookie.ms does not build — see $WORK/spotCookie.build.log"
+		return
+	fi
+	for control in 0 1; do
+		log="$WORK/spotCookie.$control.log"
+		status=0
+		VOID_SPOT_COOKIE_CONTROL=$control "$exe" > "$log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "spot-cookie: no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS spot cookie' "$log"; then
+			fail "spot-cookie: control $control (exit $status) — see $log"
+			return
+		fi
+	done
+	pass "spot-cookie: a spot's 2x2 cookie tints each quadrant of its window as the CPU map places it, lights the pyramid's corner past the cone and nothing outside; the cookieless control is white and leaves the corner dark"
+}
+
 # Cases are tests/integration/dirShadow.ms `Case` ordinals; 1 (Detached) is the control, and
 # 7 (DissolveControl) the control of 6 (Dissolve), and 8 (BackFace) of 9 (BackFaceBothSides);
 DIR_SHADOW_CASES="0 2 3 4 5 6 8 9 14 15"
@@ -3125,6 +3153,7 @@ run_moving_material
 run_map_material
 run_light_shadows
 run_parallax
+run_spot_cookie
 run_camera_rig
 run_reparent
 run_gltf
