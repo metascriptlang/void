@@ -1810,6 +1810,47 @@ function filterMaskAtDpi(): Scene2D {
 	return s;
 }
 
+function filterMaskHost(s: Scene2D, x: float32, y: float32): NodeRef {
+	const host = s.add(s.rect(0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0)).at(x, y));
+	host.addChild(s.graphics()).fillCheckerRect(0.0, 0.0, 90.0, 70.0,
+		rgba(0.16, 0.17, 0.20, 1.0), rgba(0.82, 0.84, 0.88, 1.0), 9.0);
+	return host;
+}
+
+function filterMaskEllipse(s: Scene2D, x: float32, y: float32, alpha: float32): NodeRef {
+	const m = s.add(s.graphics().at(x, y)).setVisible(false);
+	m.fillEllipse(45.0, 35.0, 40.0, 28.0, rgba(1.0, 1.0, 1.0, alpha));
+	return m;
+}
+
+// filter/mask: the Mask filter in the render-target form. Hidden mask nodes, each before the node it
+// masks: a hard ellipse over a checker, the same ellipse at alpha 0.4 with smoothAlpha off (any
+// coverage keeps the pixel, so it reads like the first) and on (the checker shows at 0.4), a rotated
+// rounded mask over an upright host, and a chain of Mask then Glow.
+function filterMask(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const hard = filterMaskEllipse(s, 12.0, 12.0, 1.0);
+	filterMaskHost(s, 12.0, 12.0).setFilter(hard.asMaskFilter(false));
+	const thin = filterMaskEllipse(s, 120.0, 12.0, 0.4);
+	filterMaskHost(s, 120.0, 12.0).setFilter(thin.asMaskFilter(true));
+	const thinHard = filterMaskEllipse(s, 228.0, 12.0, 0.4);
+	filterMaskHost(s, 228.0, 12.0).setFilter(thinHard.asMaskFilter(false));
+
+	const turned = s.add(s.graphics().at(60.0, 150.0)).setVisible(false);
+	turned.setRotation(0.5);
+	turned.fillRoundedRect(-35.0, -25.0, 70.0, 50.0, 16.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const host = filterMaskHost(s, 25.0, 115.0);
+	host.setFilter(turned.asMaskFilter(false));
+
+	const ring = s.add(s.graphics().at(180.0, 100.0)).setVisible(false);
+	ring.fillRing(45.0, 35.0, 36.0, 18.0, 0.0, 6.2831855, rgba(1.0, 1.0, 1.0, 1.0));
+	filterMaskHost(s, 180.0, 100.0).setFilters([
+		ring.asMaskFilter(false),
+		glowFilter(rgba(0.95, 0.60, 0.20, 1.0), 5.0, 1.5),
+	]);
+	return s;
+}
+
 function filterDropShadowAlpha(): Scene2D {
 	const s = Scene2D.create(DARK);
 	const host = s.rect(0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0)).at(20.0, 20.0);
@@ -2385,5 +2426,6 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "text/outlineSdfScaleDown", build: textOutlineSdfScaleDown },
 		{ name: "text/outlineSdfSeam", build: textOutlineSdfSeam },
 		{ name: "clip/roundedMask", build: clipRoundedMask },
+		{ name: "filter/mask", build: filterMask },
 	];
 }
