@@ -184,6 +184,7 @@ export struct LayoutRecord {
 export struct BindGroupRecord {
 	id: uint32;
 	group: int32;
+	pipeline: uint32;
 	dynamicCount: int32;
 	dynamicIndex: int32[GPU_MAX_BIND_GROUP_ENTRIES];
 	dynamicRoom: int64[GPU_MAX_BIND_GROUP_ENTRIES];

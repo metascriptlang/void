@@ -235,6 +235,7 @@ export struct BoundFacts {
 	dynamicOffsets: uint32[GPU_MAX_BIND_GROUP_ENTRIES];
 	vertexSet: int32;
 	groupSet: int32;
+	ownersDirty: boolean;
 }
 
 export let boundFacts: BoundFacts = { pipeline: 0 };
@@ -271,6 +272,7 @@ export function attachOcclusionSet(set: uint32): void { encoder.attachOcclusion(
 export function markPipelineSet(pipeline: uint32): void {
 	encoder.markPipeline();
 	boundFacts.pipeline = pipeline;
+	boundFacts.ownersDirty = true;
 }
 
 export function vertexSlotRefusal(slot: int32): string {
@@ -293,6 +295,7 @@ export function markIndexSet(buffer: uint32, format: GPUIndexFormat, offset: int
 
 export function markBindGroupSet(index: int32, bindGroup: uint32, dynamicOffsets: Readonly<Span<uint32>>): void {
 	boundFacts.bindGroups[index] = bindGroup;
+	boundFacts.ownersDirty = true;
 	boundFacts.groupSet = bindGroup == 0 ? boundFacts.groupSet & ~(1 << index) : boundFacts.groupSet | (1 << index);
 	if (bindGroup == 0 || index != GPU_UNIFORM_GROUP) { return; }
 	const count = bindGroupRecords.record(bindGroup).dynamicCount;
@@ -306,10 +309,31 @@ export function checkedDrawState(call: string, indexed: boolean): void {
 		stop(`the shader module of GPURenderPipeline ${boundFacts.pipeline} was destroyed`);
 	}
 	refuse(boundRefusal(pipelineRecords.slots[p].vertexSlots, pipelineRecords.slots[p].groups, false));
+	checkGroupOwners(pipelineRecords.slots[p].groups, false);
 	if (indexed) { refuse(stripDrawRefusal(pipelineRecords.slots[p].strip, pipelineRecords.slots[p].stripIndexFormat == boundFacts.indexFormat)); }
 }
 export function checkedDispatchBound(): void {
-	refuse(boundRefusal(0, pipelineRecords.slots[pipelineRecords.slotIndex(boundFacts.pipeline)].groups, true));
+	const groups = pipelineRecords.slots[pipelineRecords.slotIndex(boundFacts.pipeline)].groups;
+	refuse(boundRefusal(0, groups, true));
+	checkGroupOwners(groups, true);
+}
+
+// WebGPU (Validate encoder bind groups): a bind group is group-equivalent with the pipeline's layout
+// only when it was made from that pipeline's own getBindGroupLayout, since every layout here is a
+// default layout with that pipeline as its [[exclusivePipeline]]. Checked when the pipeline or a group was set.
+export function groupOwnerRefusal(bindGroup: uint32, index: int32, owner: uint32, bound: uint32, compute: boolean): string {
+	if (owner == bound) { return ""; }
+	return `bind group ${bindGroup} (group ${index}) was made for ${compute ? "GPUComputePipeline" : "GPURenderPipeline"} ${owner}, not the bound pipeline ${bound}`;
+}
+
+function checkGroupOwners(groups: int32, compute: boolean): void {
+	if (!boundFacts.ownersDirty) { return; }
+	boundFacts.ownersDirty = false;
+	for (let index = 0; index <= GPU_RESOURCE_GROUP; index++) {
+		if ((groups & (1 << index)) == 0) { continue; }
+		const id = boundFacts.bindGroups[index];
+		refuse(groupOwnerRefusal(id, index, bindGroupRecords.record(id).pipeline, boundFacts.pipeline, compute));
+	}
 }
 
 // A slot or group the pipeline reads and the pass never set, as sokol refuses it at apply_bindings

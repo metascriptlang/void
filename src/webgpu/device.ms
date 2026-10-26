@@ -311,6 +311,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	store(bindGroupRecords, {
 		id: id,
 		group: group,
+		pipeline: layout.pipeline,
 		dynamicCount: group == GPU_UNIFORM_GROUP ? uniformEntryCount(descriptor) : 0,
 		dynamicIndex: dynamicIndexOf(descriptor),
 		dynamicRoom: group == GPU_UNIFORM_GROUP ? dynamicRoomOf(descriptor, shader) : [0],
