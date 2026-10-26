@@ -177,6 +177,7 @@ import "./shaderMultisampledCheck";
 import "./shaderStorageFormatCheck";
 import "./shaderSampledIntegerCheck";
 import "./shaderTexture1dCheck";
+import "./shaderStorageWriteCheck";
 import "./shaderFragDepthCheck";
 import "./shaderTexelCheck";
 import "./shaderBitsCheck";
