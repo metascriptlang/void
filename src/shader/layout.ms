@@ -26,6 +26,7 @@ export enum ShaderTarget {
 	Glsl430,
 	Hlsl5,
 	Msl,
+	Spirv,
 }
 
 export class StructLayout {

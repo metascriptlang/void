@@ -12,7 +12,8 @@ import {
 	typeKind,
 } from "std/meta";
 import { glslIr, glslLinkedIr } from "./emit";
-import { programModule, programSource, targetArms } from "./descriptor";
+import { programModule, programSource, targetArms, wordsBase64 } from "./descriptor";
+import { shaderBytecodeFromBase64 } from "./dxbc";
 import { ShaderTarget } from "./layout";
 import { reflectProgram } from "./reflect";
 import { Vec2f, Vec2i, Vec2u, Vec3f, Vec3i, Vec3u, Vec4f, Vec4i, Vec4u } from "./std";
@@ -211,6 +212,8 @@ export macro shaderBuild(
 	function called(callee: string, args: Node[]): Node {
 		const symbol = callee == "shaderModuleOf" ?
 			bindSym("shaderModuleOf") :
+			callee == "shaderBytecodeFromBase64" ?
+			bindSym("shaderBytecodeFromBase64") :
 			bindSym("shaderProgramRegister");
 		if (symbol == null) { error(kind + ": " + callee + " is not in scope", name); }
 		return {
@@ -229,7 +232,8 @@ export macro shaderBuild(
 
 	const module = programModule(stringValue(vertex), stringValue(fragment), []);
 	if (!module.ok) { refused(module.error); }
-	const source = programSource(module.value, targetOf());
+	const target = targetOf();
+	const source = programSource(module.value, target);
 	if (!source.ok) { refused(source.error); }
 	const s = source.value;
 	if (s.refusal != "") { refused(s.refusal); }
@@ -307,6 +311,14 @@ export macro shaderBuild(
 		array(bindings),
 		array(attributes),
 	];
+	if (target == ShaderTarget.Spirv) {
+		descriptorKeys.push("vertexBytecode");
+		descriptorValues.push(called("shaderBytecodeFromBase64",
+			[text(wordsBase64(s.vertexWords))]));
+		descriptorKeys.push("fragmentBytecode");
+		descriptorValues.push(called("shaderBytecodeFromBase64",
+			[text(wordsBase64(s.fragmentWords))]));
+	}
 	if (s.reflection.readsVertexIndex) {
 		descriptorKeys.push("readsVertexIndex");
 		descriptorValues.push({

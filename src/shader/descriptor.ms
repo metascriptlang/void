@@ -22,6 +22,7 @@ import { ShaderTarget, bindingSlots } from "./layout";
 import { GlslTarget, printGlsl } from "./printGlsl";
 import { printHlsl } from "./printHlsl";
 import { printMsl } from "./printMsl";
+import { printSpirv } from "./printSpirv";
 import { printWgsl } from "./printWgsl";
 import { Reflection, reflectCompute, reflectProgram } from "./reflect";
 import { specialize } from "./specialize";
@@ -223,6 +224,7 @@ export function targetName(target: ShaderTarget): string {
 		ShaderTarget.Glsl430 => "glsl430",
 		ShaderTarget.Hlsl5 => "hlsl5",
 		ShaderTarget.Msl => "msl",
+		ShaderTarget.Spirv => "spirv",
 	};
 }
 
@@ -242,6 +244,7 @@ function arm(language: string, target: ShaderTarget, anyOfAll: string[][]): Targ
 
 export function targetArms(): TargetArm[] {
 	return [
+		arm("spirv", ShaderTarget.Spirv, [["voidVulkan"]]),
 		arm("wgsl", ShaderTarget.Wgsl, [["webgpu"]]),
 		arm("glsl300es", ShaderTarget.Glsl300es, [["webgl2"], ["android"], ["linux", "voidGles3"]]),
 		arm("metal_ios", ShaderTarget.Msl, [["ios"]]),
@@ -275,7 +278,37 @@ export function stageSource(m: ShaderModule, entry: int32, target: ShaderTarget)
 		ShaderTarget.Glsl430 => printGlsl(m, entry, slots, GlslTarget.Glsl430),
 		ShaderTarget.Glsl300es => printGlsl(m, entry, slots, GlslTarget.Glsl300es),
 		ShaderTarget.Msl => printMsl(m, entry, slots),
+		ShaderTarget.Spirv => Result.err("a SPIR-V stage is words, not text; use stageWords"),
 	};
+}
+
+export function stageWords(m: ShaderModule, entry: int32): Result<uint32[], string> {
+	const slots = try bindingSlots(m, programEntries(m), ShaderTarget.Spirv);
+	return printSpirv(m, entry, slots);
+}
+
+const BASE64_DIGITS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+export function wordsBase64(words: uint32[]): string {
+	let bytes: int32[] = [];
+	for (const w of words) {
+		bytes.push((w & 255) as int32);
+		bytes.push(((w >> 8) & 255) as int32);
+		bytes.push(((w >> 16) & 255) as int32);
+		bytes.push(((w >> 24) & 255) as int32);
+	}
+	let out: string[] = [];
+	for (let i = 0; i < bytes.length; i += 3) {
+		const left = bytes.length - i;
+		const b1 = left > 1 ? bytes[i + 1] : 0;
+		const b2 = left > 2 ? bytes[i + 2] : 0;
+		const chunk = bytes[i] * 65536 + b1 * 256 + b2;
+		out.push(BASE64_DIGITS[(chunk / 262144) % 64]);
+		out.push(BASE64_DIGITS[(chunk / 4096) % 64]);
+		out.push(left > 1 ? BASE64_DIGITS[(chunk / 64) % 64] : "=");
+		out.push(left > 2 ? BASE64_DIGITS[chunk % 64] : "=");
+	}
+	return out.join("");
 }
 
 export class ProgramSource {
@@ -283,14 +316,39 @@ export class ProgramSource {
 	vertexCode: string = "";
 	fragmentCode: string = "";
 	computeCode: string = "";
+	vertexWords: uint32[] = [];
+	fragmentWords: uint32[] = [];
+	computeWords: uint32[] = [];
 	entryPoint: string = "main";
 	refusal: string = "";
+}
+
+function spirvSource(m: ShaderModule, out: ProgramSource): Result<ProgramSource, string> {
+	if (m.entries.length == 1) {
+		out.reflection = try reflectCompute(m, 0, ShaderTarget.Spirv);
+		const words = stageWords(m, 0);
+		if (words.ok) { out.computeWords = words.value; } else { out.refusal = words.error; }
+		return Result.ok(out);
+	}
+	out.reflection = try reflectProgram(m, 0, 1, ShaderTarget.Spirv);
+	const vertex = stageWords(m, 0);
+	const fragment = stageWords(m, 1);
+	if (!vertex.ok) {
+		out.refusal = vertex.error;
+	} else if (!fragment.ok) {
+		out.refusal = fragment.error;
+	} else {
+		out.vertexWords = vertex.value;
+		out.fragmentWords = fragment.value;
+	}
+	return Result.ok(out);
 }
 
 export function programSource(m: ShaderModule, target: ShaderTarget):
 	Result<ProgramSource, string> {
 	let out = new ProgramSource();
 	out.entryPoint = entryPointOf(target);
+	if (target == ShaderTarget.Spirv) { return spirvSource(m, out); }
 	if (m.entries.length == 1) {
 		out.reflection = try reflectCompute(m, 0, target);
 		const code = stageSource(m, 0, target);
@@ -363,7 +421,7 @@ function attributeSource(r: Reflection): string[] {
 }
 
 export function isComputeSource(s: ProgramSource): boolean {
-	return s.computeCode != "" || s.reflection.workgroupSize[0] > 0;
+	return s.computeCode != "" || s.computeWords.length > 0 || s.reflection.workgroupSize[0] > 0;
 }
 
 export function descriptorSource(
