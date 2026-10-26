@@ -1092,6 +1092,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	let paramNames: string[] = [];
 	let localKeys: string[] = [];
 	let localIndices: int32[] = [];
+	let constLocalIndices: int32[] = [];
+	let constLocalValues: ShaderExpr[] = [];
 	let inHelper = false;
 	let breakOwners: string[] = [];
 	let locals: string[] = [];
@@ -1510,6 +1512,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		paramNames = [];
 		localKeys = [];
 		localIndices = [];
+		constLocalIndices = [];
+		constLocalValues = [];
 	}
 
 	function defineFunction(callee: Node): void {
@@ -1557,12 +1561,16 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		f.result = valueType(helperType.typExprReturn, callee);
 	}
 
-	function local(n: Node, type: ShaderType): int32 {
+	function local(n: Node, type: ShaderType, value: ShaderExpr): int32 {
 		checkName(n.declName, n);
 		const index = current.locals.length as int32;
 		current.locals.push(shaderField(n.declName, type));
 		localKeys.push(declKey(scopeModule, n));
 		localIndices.push(index);
+		if (n.declKind == DeclKind.Const) {
+			constLocalIndices.push(index);
+			constLocalValues.push(value);
+		}
 		return index;
 	}
 
@@ -1772,8 +1780,16 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		});
 	}
 
+	function folded(e: ShaderExpr): ShaderExpr {
+		if (e.kind == ExprKind.Constant) { return folded(m.constants[e.index].value); }
+		if (e.kind == ExprKind.Local && constLocalIndices.includes(e.index)) {
+			return folded(constLocalValues[constLocalIndices.indexOf(e.index)]);
+		}
+		return e;
+	}
+
 	function integerConstant(e: ShaderExpr): ShaderExpr | null {
-		if (e.kind == ExprKind.Constant) { return integerConstant(m.constants[e.index].value); }
+		e = folded(e);
 		if (e.kind == ExprKind.Literal && e.type.scalar == ScalarKind.I32) { return e; }
 		if (e.kind == ExprKind.Unary && e.unary == UnaryOp.Negate) {
 			const inner = integerConstant(e.operands[0]);
@@ -1784,7 +1800,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 
 	function constantParts(e: ShaderExpr): ShaderExpr[] {
 		let parts: ShaderExpr[] = [];
-		if (e.kind == ExprKind.Constant) { return constantParts(m.constants[e.index].value); }
+		e = folded(e);
 		if (e.kind != ExprKind.Construct || e.type.kind != ShaderTypeKind.Vector ||
 			e.type.scalar != ScalarKind.I32) {
 			return parts;
@@ -1814,7 +1830,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		}
 		if (parts.length != rows) {
 			fail(n, name + " takes a constant offset: a vec" + String(rows) + "i of integer literals, " +
-				"or a module const of one (a function's const is not folded), as WGSL's");
+				"or a const of one (a let, or a const of runtime values, is not a const-expression), as WGSL's");
 		}
 		for (const part of parts) {
 			if (part.value < OFFSET_MIN || part.value > OFFSET_MAX) {
@@ -2059,9 +2075,10 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		if (n.initializer == null) { fail(n, "a shader local is declared with its value"); }
 		const type = valueType(getType(n.initializer), n);
 		uniformLoadSite = alone ? n.initializer : null;
-		let s = stmtOf(StmtKind.Let, lower(n.initializer), []);
+		const value = lower(n.initializer);
+		let s = stmtOf(StmtKind.Let, value, []);
 		locals.push(n.declName);
-		s.local = local(n, type);
+		s.local = local(n, type, value);
 		return s;
 	}
 

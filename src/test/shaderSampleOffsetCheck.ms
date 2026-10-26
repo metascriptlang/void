@@ -93,6 +93,21 @@ export function offsetFs(input: Pixel, b: Surfaces): Vec4f {
 		depth + depthLayer);
 }
 
+export struct Swatch {
+	@binding(0) color: Texture2d;
+	@binding(0) linear: Sampler;
+}
+
+export function localOffsetFs(input: Pixel, b: Swatch): Vec4f {
+	const uv = vec2f(0.25, 0.75);
+	const shift = vec2i(1, -1);
+	const unit = 1;
+	const built = vec2i(unit, -unit);
+	const again = shift;
+	return textureSample(b.color, b.linear, uv, shift) + textureSampleLevel(b.color, b.linear, uv, 0.0, built) +
+		textureSampleBias(b.color, b.linear, uv, 0.5, again);
+}
+
 export function layeredCompareFs(input: Pixel, b: Surfaces): Vec4f {
 	const uv = vec2f(0.25, 0.75);
 	return vec4f(textureSampleCompare(b.shadowLayers, b.shadowSampler, uv, 1, 0.5, vec2i(0, 1)),
@@ -152,6 +167,34 @@ test "the offset reaches an array layer, a volume slice and a depth texel" {
 	const stack: TextureDepth2dArray = { width: 2, height: 1, layers: 2, texels: [0.2, 0.8, 0.8, 0.2] };
 	assert textureSampleCompare(stack, less, vec2f(0.25, 0.5), 1, 0.5, vec2i(1, 0)) == 0.0;
 	assert textureSampleLevel(stack, clamp, vec2f(0.25, 0.5), 1, 0, vec2i(1, 0)) == 0.2;
+}
+
+test "a function's const of constants is a const-expression, as WGSL's, and prints as the literal offset" {
+	assert glsl(localOffsetFs) ==
+		"layout(binding=0) uniform texture2D color;
+" +
+		"layout(binding=0) uniform sampler linear;
+" +
+		"layout(location=0) out vec4 fragColor;
+" +
+		"void main() {
+" +
+		"    vec2 uv = vec2(0.25, 0.75);
+" +
+		"    ivec2 shift = ivec2(1, -1);
+" +
+		"    int unit = 1;
+" +
+		"    ivec2 built = ivec2(1, -1);
+" +
+		"    ivec2 again = shift;
+" +
+		"    fragColor = (textureOffset(sampler2D(color, linear), uv, ivec2(1, -1)) + textureLodOffset(sampler2D(color, linear), uv, 0.0, ivec2(1, -1))) + textureOffset(sampler2D(color, linear), uv, ivec2(1, -1), 0.5);
+" +
+		"    return;
+" +
+		"}
+";
 }
 
 function probePath(name: string, target: ShaderTarget, stage: string): string {

@@ -10,6 +10,7 @@ import {
 	lt,
 	select,
 	textureSample,
+	vec2i,
 	vec4f,
 } from "../shader/std";
 
@@ -57,6 +58,13 @@ function belowFs(input: PictureFragment, b: BelowBindings): Vec4f {
 
 shaderModule(below, pictureVs, belowFs);
 
+function nudgedFs(input: PictureFragment, b: PictureBindings): Vec4f {
+	const shift = vec2i(1, -1);
+	return textureSample(b.picture, b.smoothing, input.uv, shift);
+}
+
+shaderModule(nudged, pictureVs, nudgedFs);
+
 test "shaderModule declares the program's WebGPU shader module for this build's backend" {
 	assert (pictureModule.label ?? "") == "picture";
 	assert pictureModule.vertexCode.length > 0 && pictureModule.fragmentCode.length > 0;
@@ -82,4 +90,10 @@ test "shaderModule spells a componentwise comparison while the macro prints it" 
 	const code = belowModule.fragmentCode;
 	assert code.includes("<") || code.includes("lessThan(");
 	assert !code.includes("null");
+}
+
+test "shaderModule folds a function's const of constants into the offset while the macro prints it" {
+	const code = nudgedModule.fragmentCode;
+	assert code.includes("vec2i(1i, (-1i))") || code.includes("int2(1, -1))") || code.includes("int2(1, (-1)))") ||
+		code.includes("ivec2(1, -1))"), code;
 }
