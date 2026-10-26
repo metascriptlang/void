@@ -27,6 +27,7 @@ import {
 	isShift,
 	offsetOf,
 	isAtomic,
+	isUniformLoad,
 	frexpResultType,
 	modfResultType,
 	isEffect,
@@ -693,6 +694,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.WorkgroupBarrier =>
 			"threadgroup_barrier(mem_flags::mem_threadgroup)",
 		Intrinsic.StorageBarrier => "threadgroup_barrier(mem_flags::mem_device)",
+		Intrinsic.WorkgroupUniformLoad => exprText(p, o[0]),
 		Intrinsic.ArrayLength => lengthText(p, e),
 		_ => isAtomic(op) ? atomicText(p, e) : fail(p, op.toString() + " has no MSL spelling"),
 	};
@@ -844,6 +846,12 @@ function stmtsText(p: Printer, stmts: ShaderStmt[], depth: int32): void {
 }
 
 function stmtText(p: Printer, s: ShaderStmt, depth: int32): void {
+	if (s.kind == StmtKind.Let && isUniformLoad(s.expr)) {
+		emit(p, depth, "threadgroup_barrier(mem_flags::mem_threadgroup);");
+		emit(p, depth, simpleText(p, s) + ";");
+		emit(p, depth, "threadgroup_barrier(mem_flags::mem_threadgroup);");
+		return;
+	}
 	match (s.kind) {
 		StmtKind.Block => {
 			emit(p, depth, "{");

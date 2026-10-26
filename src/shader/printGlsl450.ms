@@ -33,6 +33,7 @@ import {
 	hasOffset,
 	sampleBase,
 	isShift,
+	isUniformLoad,
 	sameShaderType,
 	texelScalar,
 } from "./ir";
@@ -498,6 +499,7 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 		// of memoryBarrierShared() is refused by sokol-shdc's WGSL reader (measured, shdc win32).
 		Intrinsic.WorkgroupBarrier => "barrier()",
 		Intrinsic.StorageBarrier => "memoryBarrierBuffer(); barrier()",
+		Intrinsic.WorkgroupUniformLoad => args[0],
 		Intrinsic.ArrayLength => e.type.scalar == ScalarKind.I32 ? args[0] + ".length()" :
 			typeName(p, e.type) + "(" + args[0] + ".length())",
 		Intrinsic.AtomicCompareExchangeWeak => {
@@ -664,6 +666,9 @@ function stmt(p: Glsl, s: ShaderStmt, indent: string): string {
 	const inner = indent + "    ";
 	const exchange = s.expr.kind == ExprKind.Intrinsic &&
 		s.expr.intrinsic == Intrinsic.AtomicCompareExchangeWeak;
+	if (s.kind == StmtKind.Let && isUniformLoad(s.expr)) {
+		return indent + "barrier();\n" + indent + simple(p, s) + ";\n" + indent + "barrier();\n";
+	}
 	if (exchange && s.kind == StmtKind.Let) { return exchangeLet(p, s, indent); }
 	if (exchange && s.kind == StmtKind.Call) {
 		return indent + atomicText(s.expr, s.expr.operands.map((a) => expr(p, a))) + ";\n";

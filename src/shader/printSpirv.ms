@@ -28,6 +28,7 @@ import {
 	hasOffset,
 	offsetOf,
 	isAtomic,
+	isUniformLoad,
 	isDerivative,
 	isEffect,
 	rootOf,
@@ -1657,6 +1658,7 @@ function intrinsic(p: Spirv, e: ShaderExpr): int32 {
 	if (op == Intrinsic.TextureDimensions) { return dimensions(p, e); }
 	if (op == Intrinsic.TextureNumSamples) { return sampleCount(p, e); }
 	if (op == Intrinsic.ArrayLength) { return arrayLength(p, e); }
+	if (op == Intrinsic.WorkgroupUniformLoad) { return value(p, o[0]); }
 	return refusal(p, op.toString() + " is not printed yet");
 }
 
@@ -1865,9 +1867,12 @@ function stmt(p: Spirv, s: ShaderStmt): void {
 		StmtKind.Block => { stmts(p, s.body); },
 		StmtKind.Let => {
 			const local = p.fn.locals[s.local];
+			const bracketed = isUniformLoad(s.expr);
+			if (bracketed) { barrier(p, false); }
 			const init = s.expr.type.kind == ShaderTypeKind.Void ?
 				nullConstant(p, typeId(p, local.type)) : value(p, s.expr);
 			emit(p, OP_STORE, [p.localVars[s.local], init]);
+			if (bracketed) { barrier(p, false); }
 		},
 		StmtKind.Assign => { assign(p, s); },
 		StmtKind.Call => {

@@ -275,6 +275,7 @@ export enum Intrinsic {
 	TextureSampleGrad,
 	TextureNumSamples,
 	ArrayLength,
+	WorkgroupUniformLoad,
 }
 
 function isExplicitSample(op: Intrinsic): boolean {
@@ -400,6 +401,20 @@ function arrayLengthError(m: ShaderModule, e: ShaderExpr): string {
 	const count = e.type.kind == ShaderTypeKind.Scalar &&
 		(e.type.scalar == ScalarKind.U32 || e.type.scalar == ScalarKind.I32);
 	return count ? "" : "ArrayLength gives a u32 or an i32 count";
+}
+
+export function isUniformLoad(e: ShaderExpr): boolean {
+	return e.kind == ExprKind.Intrinsic && e.intrinsic == Intrinsic.WorkgroupUniformLoad;
+}
+
+function uniformLoadError(e: ShaderExpr): string {
+	const o = e.operands;
+	if (o.length != 1 || rootOf(o[0]).kind != ExprKind.Workgroup) {
+		return "WorkgroupUniformLoad takes a workgroup variable, as WGSL's takes a ptr<workgroup, T>";
+	}
+	const plain = o[0].type.kind == ShaderTypeKind.Scalar || o[0].type.kind == ShaderTypeKind.Vector;
+	return plain && e.type.kind == o[0].type.kind && e.type.scalar == o[0].type.scalar ? "" :
+		"WorkgroupUniformLoad loads a scalar or a vector";
 }
 
 function explicitSampleError(e: ShaderExpr): string {
@@ -552,7 +567,8 @@ export function isAtomic(op: Intrinsic): boolean {
 
 export function isEffect(op: Intrinsic): boolean {
 	return op == Intrinsic.TextureStore || op == Intrinsic.WorkgroupBarrier ||
-		op == Intrinsic.StorageBarrier || isAtomic(op) && op != Intrinsic.AtomicLoad;
+		op == Intrinsic.StorageBarrier || op == Intrinsic.WorkgroupUniformLoad ||
+		isAtomic(op) && op != Intrinsic.AtomicLoad;
 }
 
 export class ShaderExpr {
@@ -1023,6 +1039,7 @@ class Checker {
 	callees: int32[][] = [];
 	fragmentOnly: string[][] = [];
 	computeOnly: string[][] = [];
+	uniformLoads: int32 = 0;
 }
 
 export function isDerivative(op: Intrinsic): boolean {
@@ -1037,7 +1054,8 @@ function isFragmentOnly(op: Intrinsic): boolean {
 }
 
 function isComputeOnly(op: Intrinsic): boolean {
-	return op == Intrinsic.WorkgroupBarrier || op == Intrinsic.StorageBarrier;
+	return op == Intrinsic.WorkgroupBarrier || op == Intrinsic.StorageBarrier ||
+		op == Intrinsic.WorkgroupUniformLoad;
 }
 
 function noted(list: string[], what: string): void {
@@ -1143,6 +1161,11 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 		const error = arrayLengthError(m, e);
 		if (error != "") { c.errors.push(owner + ": " + error); }
 	}
+	if (isUniformLoad(e)) {
+		c.uniformLoads += 1;
+		const error = uniformLoadError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
 	if (e.kind == ExprKind.Intrinsic && (e.intrinsic == Intrinsic.TextureLoad ||
 		e.intrinsic == Intrinsic.TextureDimensions || e.intrinsic == Intrinsic.TextureNumSamples)) {
 		const error = multisampleError(e);
@@ -1191,8 +1214,21 @@ export function rootOf(e: ShaderExpr): ShaderExpr {
 }
 
 function stmtErrors(c: Checker, s: ShaderStmt, f: ShaderFunction, owner: string): void {
+	const loadsBefore = c.uniformLoads;
 	exprErrors(c, s.expr, f, owner);
 	exprErrors(c, s.target, f, owner);
+	const loads = c.uniformLoads - loadsBefore;
+	if (loads > 0 && !(loads == 1 && s.kind == StmtKind.Let && isUniformLoad(s.expr))) {
+		c.errors.push(owner + ": a WorkgroupUniformLoad is the initializer of a const or let of its " +
+			"own, because the barriers around it sit between two statements");
+	}
+	if (s.kind == StmtKind.For) {
+		for (const inner of s.init.concat(s.update)) {
+			if (isUniformLoad(inner.expr)) {
+				c.errors.push(owner + ": a WorkgroupUniformLoad is no part of a for header");
+			}
+		}
+	}
 	const root = rootOf(s.target);
 	if (s.kind == StmtKind.Assign && root.kind == ExprKind.Resource &&
 		root.index >= 0 && root.index < c.module.resources.length) {

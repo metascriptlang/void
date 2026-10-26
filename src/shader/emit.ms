@@ -762,6 +762,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 
 	let inputType: Node | null = null;
 	let bindingsType: Node | null = null;
+	let uniformLoadSite: Node | null = null;
 	let keyType: Node | null = null;
 	for (let i = 0; i < signature.typExprParams.length; i++) {
 		const name = signature.typExprParamNames[i];
@@ -1743,6 +1744,12 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				fail(n, name + " exists only in a compute entry, as WGSL's does") :
 				intrinsicOf(name == "workgroupBarrier" ? Intrinsic.WorkgroupBarrier :
 					Intrinsic.StorageBarrier, type, args),
+			"workgroupUniformLoad" => !compute ?
+				fail(n, name + " exists only in a compute entry, as WGSL's does") :
+				n != uniformLoadSite ?
+				fail(n, name + " is the initializer of a const or let of its own, because the " +
+					"barriers around it sit between two statements") :
+				intrinsicOf(Intrinsic.WorkgroupUniformLoad, type, args),
 			"textureSample" | "textureSampleBias" => fragmentOnly ?
 				fail(n, name + " samples only in a fragment entry, as WGSL's does") :
 				intrinsicOf(name == "textureSample" ? Intrinsic.TextureSample :
@@ -2023,7 +2030,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return inStd && impl != null ? impl.fnName : "";
 	}
 
-	function simple(n: Node): ShaderStmt {
+	function simple(n: Node, alone: boolean): ShaderStmt {
 		if (n.kind == NodeKind.ExprStmt) {
 			const e = n.expr;
 			if (e.kind == NodeKind.CallExpr && stdFunctionName(e.callee) == "discard") {
@@ -2044,6 +2051,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		}
 		if (n.initializer == null) { fail(n, "a shader local is declared with its value"); }
 		const type = valueType(getType(n.initializer), n);
+		uniformLoadSite = alone ? n.initializer : null;
 		let s = stmtOf(StmtKind.Let, lower(n.initializer), []);
 		locals.push(n.declName);
 		s.local = local(n, type);
@@ -2192,7 +2200,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			NodeKind.ForStmt => {
 				if (n.forLabel != "") { fail(n, "GLSL has no labelled loops"); }
 				const outer = locals.length;
-				const init = simple(n.forInit);
+				const init = simple(n.forInit, false);
 				const test = condition(n.forCondition);
 				const update = assignment(n.forUpdate);
 				let s = stmtOf(StmtKind.For, test, loopBody(n.forBody));
@@ -2219,7 +2227,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			NodeKind.ReturnStmt => { return returned(n); },
 			_ => {},
 		}
-		return [simple(n)];
+		return [simple(n, true)];
 	}
 
 	if (feederType != null && feederType.kind == NodeKind.TypeFunction) {

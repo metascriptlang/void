@@ -30,6 +30,7 @@ import {
 	sampleBase,
 	rootOf,
 	isAtomic,
+	isUniformLoad,
 	sameShaderType,
 	texelScalar,
 } from "./ir";
@@ -787,6 +788,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 			explicitSampleOf(p, e),
 		Intrinsic.WorkgroupBarrier => "memoryBarrierShared(); barrier()",
 		Intrinsic.StorageBarrier => "memoryBarrierBuffer(); barrier()",
+		Intrinsic.WorkgroupUniformLoad => expr(p, e.operands[0]),
 		Intrinsic.ArrayLength => converted(p, expr(p, e.operands[0]) + ".length()", "int", e.type),
 		Intrinsic.AtomicCompareExchangeWeak => p.es ? atomicText(p, e) : fail(p,
 			"AtomicCompareExchangeWeak outside a " +
@@ -1068,6 +1070,10 @@ function switchText(p: Printer, s: ShaderStmt, depth: int32): string {
 
 function stmt(p: Printer, s: ShaderStmt, depth: int32): string {
 	const at = indent(depth);
+	if (s.kind == StmtKind.Let && isUniformLoad(s.expr)) {
+		const barrier = at + "memoryBarrierShared(); barrier();\n";
+		return barrier + at + simple(p, s) + ";\n" + barrier;
+	}
 	if (s.kind == StmtKind.Let && isExchange(s.expr) && !p.es) { return exchangeLet(p, s, at); }
 	if (s.kind == StmtKind.Call && isExchange(s.expr)) {
 		return at + atomicText(p, s.expr) + ";\n";

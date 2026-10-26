@@ -29,6 +29,7 @@ import {
 	isArrayTexture,
 	sampleBase,
 	isAtomic,
+	isUniformLoad,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import {
@@ -924,6 +925,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 			explicitSampleOf(p, e),
 		Intrinsic.WorkgroupBarrier => "GroupMemoryBarrierWithGroupSync()",
 		Intrinsic.StorageBarrier => "DeviceMemoryBarrierWithGroupSync()",
+		Intrinsic.WorkgroupUniformLoad => expr(p, e.operands[0]),
 		Intrinsic.ArrayLength => lengthOf(p, e),
 		_ => isAtomic(e.intrinsic) ? fail(p, e.intrinsic.toString() + " inside an expression or " +
 			"a for header: Interlocked* hands its result back through an out parameter, so an " +
@@ -1106,6 +1108,10 @@ function stmt(p: Printer, s: ShaderStmt, depth: int32): string {
 	const at = indent(depth);
 	if (s.kind == StmtKind.Call && isAtomicCall(s.expr)) {
 		return atomicStatement(p, s.expr, "", at);
+	}
+	if (s.kind == StmtKind.Let && isUniformLoad(s.expr)) {
+		const barrier = at + "GroupMemoryBarrierWithGroupSync();\n";
+		return barrier + at + simple(p, s) + ";\n" + barrier;
 	}
 	if (s.kind == StmtKind.Let && isAtomicCall(s.expr)) {
 		const name = p.scope[p.current.params.length + s.local];

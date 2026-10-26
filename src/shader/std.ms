@@ -2407,6 +2407,13 @@ export function format(): void {}
 export function workgroupBarrier(): void {}
 export function storageBarrier(): void {}
 
+// WGSL's workgroupUniformLoad(&v): a barrier, a read of workgroup memory that every invocation
+// of the group sees alike, and a barrier. The CPU runs one invocation at a time, so it is the read.
+export function workgroupUniformLoad(ref v: float32): float32 { return v; }
+export function workgroupUniformLoad(ref v: int32): int32 { return v; }
+export function workgroupUniformLoad(ref v: uint32): uint32 { return v; }
+export function workgroupUniformLoad(ref v: boolean): boolean { return v; }
+
 // WGSL's atomic<i32> and atomic<u32>, in a storage buffer element or workgroup memory. An
 // operation takes it by ref, as WGSL takes &a; the CPU runs one invocation at a time, so each
 // is a plain read-modify-write that returns the old value.
