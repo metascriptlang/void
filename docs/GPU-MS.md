@@ -44,7 +44,7 @@ End-game done when, in addition:
 |---|---|---|
 | Windows | D3D11 (`src/webgpu/d3d11`) | door goldens 120/120 against `tests/golden/d3d11`; WARP check `src/test/webgpuD3d11Check.ms`; index 134 files / 1884 tests green at `b0be359b` |
 | Windows | GL core 4.3 (`src/webgpu/gl`, `-d:voidGlCore`) | `src/test/webgpuGlCheck.ms` 304/304; `sh scripts/golden.sh --backend gl` 94 pass + 26 pending (within `tests/PENDING.md` budgets), 0 fail of 120 |
-| Windows | Vulkan (`src/webgpu/vulkan`, `-d:voidVulkan`) | `src/test/webgpuVulkanCheck.ms` 16/16 on the GPU, tree `f9325f09`; `msc check` for Windows, Linux and Android; no window host yet, so no goldens |
+| Windows | Vulkan (`src/webgpu/vulkan`, `-d:voidVulkan`) | `src/test/webgpuVulkanCheck.ms` 16/16 and `tests/integration/vulkanSwapchain.ms` PASS on the GPU, tree `f6fe0d70`; `msc check` for Windows, Linux and Android; window host links, not yet run against the goldens |
 | Browser | WebGPU (`src/webgpu/wgpu`, `-d:webgpu`) | `scripts/build-web.sh`, headless Chrome shows the full void2d demo |
 | Browser | WebGL2 (`src/webgpu/gl`, GLES3 path, `-d:webgl2`) | same page, same picture outside the animated node tree |
 | Android | GLES3 (`src/webgpu/gl`, `OGL_GLES`) | check-only: NDK clang `-fsyntax-only` clean, `msc check --os=android` 114 modules; never linked or run |
@@ -676,20 +676,22 @@ question is settled.
 - no queries;
 - no writable storage in a vertex or fragment stage;
 - no recovery from a lost device;
-- no multisampled swapchain;
 - no copy within one texture;
 - no 3d slice as an attachment;
 - one swapchain per process;
-- no Vulkan window host: `bridgeWin.c` has no `VOID_VULKAN` branch, and
-  `tests/integration/vulkanSwapchain.ms` does not compile against the new surface API.
+- a lost surface or device stops the window rather than recreating it.
 
-**Next, the window host:**
-- `VOID_VULKAN` branches in `bridgeWin.c`.
-- The present semaphore signalled at present time, as Mach does (vulkan.zig:1170-1183).
-  Today the first submit of a frame signals it, so a later submit that draws the swapchain is
-  not waited on.
-- An MSAA canvas the backend owns and resolves into the acquired image, since `voidRun`
-  defaults to 4x.
+**The window host runs on Vulkan** (`src/webgpu/vulkan/window.ms`, `src/sokol/windowVulkan.c`):
+a `-d:voidVulkan` Windows build compiles `bridgeWin.c` with `VOID_VULKAN` and links
+(`mainSokol2d`, tree `f6fe0d70`). The present semaphore is signalled at present, after every
+submit of the frame, as Mach does (vulkan.zig:1170-1183). The backend owns the 4x canvas that
+`voidRun` asks for and resolves it into the acquired image; `NativeSwapchain.resolveView`
+stays null. The image is adopted once per present, so a second `getCurrentTexture` in a frame
+keeps what the frame drew, and a frame that never asks for it still presents.
+`tests/integration/vulkanSwapchain.ms` passes on the RTX 5090: 8 frames at 4x, 64x48 resized
+to 96x72, each clear read back resolved. Its validation count is 0 only because no layer is
+installed; the lavapipe run with validation in WSL is still to come, and `mainSokol2d` has not
+been run on Vulkan against the goldens.
 
 ## G7 — after Metal (either side, coordinated)
 
