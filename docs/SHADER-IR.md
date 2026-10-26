@@ -77,6 +77,20 @@ program refuses one uniform declared at two bindings.
   (`printWgsl.ms` `isHoisted`, `hoistReason`).
 - **An attribute, varying or output is a scalar or vector,** WGSL's user-defined IO: refused at
   the author's field and in `irErrors` (src/shader/CLAUDE.md, "An author struct is a GLSL struct").
+- **A discard demotes the invocation to a helper,** WGSL's meaning: it runs on, so a derivative
+  its quad takes afterwards stays defined. GLSL, HLSL and SPIR-V end the invocation instead, and
+  the void2d checker's `fwidth` tie bias read undefined values beside a clipped neighbour on GL
+  (the `clip/roundedMask` golden). `demote.ms` `demotedDiscards` therefore rewrites a discarding
+  fragment program at the start of `printGlsl`, `printHlsl` and `printSpirv`, as Tint's
+  `DemoteToHelper` does for those writers (Dawn `1716e88`,
+  `src/tint/lang/core/ir/transform/demote_to_helper.cc`): a discard sets the private flag
+  `demoted`, a storage write or effect intrinsic runs only while it is clear, and the entry
+  discards before it returns. An effect intrinsic whose result is read is refused by name.
+  MSL keeps `discard_fragment`, which is uniform from Metal 2.3 and Void compiles Metal 2.4;
+  Dawn lowers it on Apple GPUs only against a per-sample-shading driver bug
+  (`src/dawn/native/metal/PhysicalDeviceMTL.mm:454-465`), not measured here. SPIR-V keeps the
+  flag rather than `OpDemoteToHelperInvocation`, which needs SPIR-V 1.6 or an extension where
+  Void prints 1.3.
 
 ## Validators run beside the code, never in the app
 
