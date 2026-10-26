@@ -704,6 +704,9 @@ export function beginFrame(
 	let readsTime: boolean = false;
 	let resolvedMaterial: int32 = -1;
 	let resolvedKey: ProgramKey = ProgramKey.of(Program.Lit);
+	let opaque: boolean = false;
+	let alpha: boolean = false;
+	let additive: boolean = false;
 	for (let i = 0; i < (items.length as int32); i++) {
 		const material: int32 = items[i].material.index;
 		if (material != resolvedMaterial) {
@@ -714,6 +717,10 @@ export function beginFrame(
 			resolvedKey = resolved.value;
 			resolvedMaterial = material;
 			readsTime = readsTime || scrolls(context, material, resolvedKey);
+			const phase: Phase = context.materials[material].phase;
+			opaque = opaque || phase == Phase.Opaque;
+			alpha = alpha || phase == Phase.Alpha;
+			additive = additive || phase == Phase.Additive;
 		}
 		renderer.drawn[i] = resolvedKey;
 	}
@@ -735,9 +742,9 @@ export function beginFrame(
 	}
 	const environment: Environment | null = renderer.environment;
 	if (environment !== null && !environment.isCurrent()) { environment.compute(); }
-	collect(renderer.opaque, items, context.materials);
-	collect(renderer.alpha, items, context.materials);
-	collect(renderer.additive, items, context.materials);
+	collectSeen(renderer.opaque, opaque, items, context.materials);
+	collectSeen(renderer.alpha, alpha, items, context.materials);
+	collectSeen(renderer.additive, additive, items, context.materials);
 	let viewProj: Mat4 = {
 		m11: camera[0], m12: camera[1], m13: camera[2], m14: camera[3],
 		m21: camera[4], m22: camera[5], m23: camera[6], m24: camera[7],
@@ -941,6 +948,15 @@ function pairProgram(
 	}
 	if (!texturesFit(drawn.value, material)) { return Result.err(RendererError.MaterialTexture); }
 	return Result.ok(drawn.value);
+}
+
+function collectSeen(
+	ref list: PassList,
+	seen: boolean,
+	items: Readonly<Span<DrawItem>>,
+	materials: Readonly<Span<Material>>,
+): void {
+	if (seen) { collect(list, items, materials); } else { list.count = 0; }
 }
 
 function scrolls(context: DrawContext, index: int32, key: ProgramKey): boolean {
