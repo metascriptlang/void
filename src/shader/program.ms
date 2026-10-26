@@ -13,9 +13,10 @@ import {
 	typeKind,
 	warning,
 } from "std/meta";
-import { glslIr, glslLinkedIr } from "./emit";
+import { glslComputeIr, glslIr, glslLinkedIr } from "./emit";
 import {
 	bytesBase64,
+	computeModule,
 	programModule,
 	programSource,
 	targetArms,
@@ -29,6 +30,7 @@ import { reflectProgram } from "./reflect";
 import { Vec2f, Vec2i, Vec2u, Vec3f, Vec3i, Vec3u, Vec4f, Vec4i, Vec4u } from "./std";
 import { GPUShaderModuleDescriptor } from "../webgpu/types.ms";
 import { DoorLayout, doorRegisterLayouts, doorRegisterPrograms } from "../gpu/doorGpu.ms";
+import { stop } from "../gpu/stop.ms";
 
 export function shaderModuleOf(descriptor: GPUShaderModuleDescriptor): GPUShaderModuleDescriptor {
 	return descriptor;
@@ -45,10 +47,22 @@ export function shaderProgramRegister(
 	);
 }
 
+export function shaderComputeRegister(descriptor: GPUShaderModuleDescriptor): int32 {
+	stop("shaderCompute needs the door compute registration (wt/shader-render 8ef80a1e)");
+}
+
 class StageBlob {
 	path: string = "";
 	missing: string = "";
 	error: string = "";
+}
+
+function dxbcProfile(stage: string): string {
+	if (stage == "vertex") { return "vs_5_0"; }
+	if (stage == "fragment") { return "ps_5_0"; }
+	if (stage == "compute") { return "cs_5_0"; }
+	console.error("no DXBC profile for the " + stage + " stage");
+	unreachable;
 }
 
 // The tracked blobs sit in shaders/ and the ones a build compiles in out/shaders/, both under the
@@ -63,7 +77,7 @@ export function stageBlob(
 	const blob = new StageBlob();
 	if (language == "hlsl5") {
 		const found = dxbcStage("shaders/dxbc", "out/shaders/dxbc",
-			fxc, stage == "vertex" ? "vs_5_0" : "ps_5_0", entry, code);
+			fxc, dxbcProfile(stage), entry, code);
 		blob.path = found.path;
 		blob.error = found.error;
 		if (found.path == "" && found.error == "") { blob.missing = "fxc"; }
@@ -76,27 +90,30 @@ export function stageBlob(
 	return blob;
 }
 
-export macro vertexFormats(vertex: Node, fragment: Node): Node {
+export macro oneProgram(product: Node, entry: Node): Node {
+	const named = stringValue(product);
 	function refuseFeatures(fields: Node | null): void {
 		if (fields == null || fields.kind != NodeKind.TypeObject) { return; }
 		for (let f = 0; f < fields.typExprFieldNames.length; f++) {
 			for (const d of fields.typExprFieldDecorators[f]) {
 				if (d.macroName == "feature") {
-					error("shaderProgram builds one program, so '" + fields.typExprFieldNames[f] +
+					error(named + " builds one program, so '" + fields.typExprFieldNames[f] +
 						"' cannot be @feature; a program family is a row of " +
 						"src/void3d/programKeys.txt", d);
 				}
 			}
 		}
 	}
-	function refuseFamily(entry: Node): void {
-		const signature = getType(entry);
-		if (signature == null || signature.kind != NodeKind.TypeFunction) {
-			error("shaderProgram: this is not a shader entry", entry);
-		}
-		for (const t of signature.typExprParams) { refuseFeatures(getTypeImpl(t)); }
-		refuseFeatures(getTypeImpl(signature.typExprReturn));
+	const signature = getType(entry);
+	if (signature == null || signature.kind != NodeKind.TypeFunction) {
+		error(named + ": this is not a shader entry", entry);
 	}
+	for (const t of signature.typExprParams) { refuseFeatures(getTypeImpl(t)); }
+	refuseFeatures(getTypeImpl(signature.typExprReturn));
+	return product;
+}
+
+export macro vertexFormats(vertex: Node, fragment: Node): Node {
 	function formatOf(t: Node, at: Node): string {
 		const kind = typeKind(t);
 		if (kind == TypeKind.Float32) { return "float32 4"; }
@@ -115,8 +132,6 @@ export macro vertexFormats(vertex: Node, fragment: Node): Node {
 		error("shaderProgram: a vertex attribute is float32 or a ./std float vector of it", at);
 	}
 
-	refuseFamily(vertex);
-	refuseFamily(fragment);
 	const signature = getType(vertex);
 	let text = "";
 	for (const t of signature.typExprParams) {
@@ -178,7 +193,10 @@ export macro shaderProgram(name: Node, vertex: Node, fragment: Node): Node {
 					called(bindSym("glslIr"), [vertex]),
 					called(bindSym("glslLinkedIr"), [fragment, vertex]),
 					called(bindSym("vertexFormats"), [vertex, fragment]),
-					literal("shaderProgram"),
+					called(bindSym("oneProgram"), [
+						called(bindSym("oneProgram"), [literal("shaderProgram"), vertex]),
+						fragment,
+					]),
 				]),
 				declKind: DeclKind.Const,
 				nameLocation: { line: name.line, column: name.column },
@@ -196,6 +214,7 @@ export macro shaderBuild(
 ): Node {
 	const kind = stringValue(product);
 	const base = stringValue(name);
+	const compute = kind == "shaderCompute" || kind == "shaderComputeModule";
 	function armIndex(): int32 {
 		const arms = targetArms();
 		for (let i = 0; i < arms.length; i++) {
@@ -256,6 +275,8 @@ export macro shaderBuild(
 			bindSym("shaderModuleOf") :
 			callee == "shaderBytecodeFromBase64" ?
 			bindSym("shaderBytecodeFromBase64") :
+			callee == "shaderComputeRegister" ?
+			bindSym("shaderComputeRegister") :
 			bindSym("shaderProgramRegister");
 		if (symbol == null) { error(kind + ": " + callee + " is not in scope", name); }
 		return {
@@ -272,7 +293,8 @@ export macro shaderBuild(
 		values.push(text(value));
 	}
 
-	const module = programModule(stringValue(vertex), stringValue(fragment), []);
+	const module = compute ? computeModule(stringValue(vertex), []) :
+		programModule(stringValue(vertex), stringValue(fragment), []);
 	if (!module.ok) { refused(module.error); }
 	const arm = targetArms()[armIndex()];
 	const target = arm.target;
@@ -294,10 +316,12 @@ export macro shaderBuild(
 			name);
 		return "";
 	}
-	const vertexBase64 = target == ShaderTarget.Spirv ? wordsBase64(s.vertexWords) :
-		blobBase64("vertex", s.vertexCode);
-	const fragmentBase64 = target == ShaderTarget.Spirv ? wordsBase64(s.fragmentWords) :
-		blobBase64("fragment", s.fragmentCode);
+	function stageBase64(stage: string, code: string, words: uint32[]): string {
+		return target == ShaderTarget.Spirv ? wordsBase64(words) : blobBase64(stage, code);
+	}
+	const vertexBase64 = compute ? "" : stageBase64("vertex", s.vertexCode, s.vertexWords);
+	const fragmentBase64 = compute ? "" : stageBase64("fragment", s.fragmentCode, s.fragmentWords);
+	const computeBase64 = compute ? stageBase64("compute", s.computeCode, s.computeWords) : "";
 	const keepText = arm.language == "metal_ios";
 	const bindings: Node[] = [];
 	for (const b of s.reflection.bindings) {
@@ -355,24 +379,28 @@ export macro shaderBuild(
 		values.push(integer(a.semanticIndex));
 		attributes.push(object(keys, values));
 	}
-	const descriptorKeys = [
-		"label",
-		"vertexCode",
-		"vertexEntryPoint",
-		"fragmentCode",
-		"fragmentEntryPoint",
-		"bindings",
-		"attributes",
-	];
-	const descriptorValues = [
-		text(base),
-		text(vertexBase64 != "" && !keepText ? "" : s.vertexCode),
-		text(s.entryPoint),
-		text(fragmentBase64 != "" && !keepText ? "" : s.fragmentCode),
-		text(s.entryPoint),
-		array(bindings),
-		array(attributes),
-	];
+	const stageKeys = compute ?
+		["computeCode", "computeEntryPoint"] :
+		["vertexCode", "vertexEntryPoint", "fragmentCode", "fragmentEntryPoint"];
+	const stageValues = compute ?
+		[text(computeBase64 != "" && !keepText ? "" : s.computeCode), text(s.entryPoint)] :
+		[
+			text(vertexBase64 != "" && !keepText ? "" : s.vertexCode),
+			text(s.entryPoint),
+			text(fragmentBase64 != "" && !keepText ? "" : s.fragmentCode),
+			text(s.entryPoint),
+		];
+	const descriptorKeys = ["label"].concat(stageKeys).concat(["bindings", "attributes"]);
+	const descriptorValues = [text(base)].concat(stageValues)
+		.concat([array(bindings), array(attributes)]);
+	if (computeBase64 != "") {
+		descriptorKeys.push("computeBytecode");
+		descriptorValues.push(called("shaderBytecodeFromBase64", [text(computeBase64)]));
+	}
+	if (compute) {
+		descriptorKeys.push("workgroupSize");
+		descriptorValues.push(array(s.reflection.workgroupSize.map((n) => integer(n))));
+	}
 	if (vertexBase64 != "") {
 		descriptorKeys.push("vertexBytecode");
 		descriptorValues.push(called("shaderBytecodeFromBase64", [text(vertexBase64)]));
@@ -400,7 +428,10 @@ export macro shaderBuild(
 		});
 	}
 	const descriptor = object(descriptorKeys, descriptorValues);
-	if (kind == "shaderModule") { return called("shaderModuleOf", [descriptor]); }
+	if (kind == "shaderModule" || kind == "shaderComputeModule") {
+		return called("shaderModuleOf", [descriptor]);
+	}
+	if (kind == "shaderCompute") { return called("shaderComputeRegister", [descriptor]); }
 	const named = reflectProgram(module.value, 0, 1, ShaderTarget.Glsl430);
 	if (!named.ok) { refused(named.error); }
 	const vertexAttributes: Node[] = [];
@@ -457,6 +488,52 @@ export macro shaderModule(name: Node, vertex: Node, fragment: Node): Node {
 					called(bindSym("glslLinkedIr"), [fragment, vertex]),
 					literal(""),
 					literal("shaderModule"),
+				]),
+				declKind: DeclKind.Const,
+				nameLocation: { line: name.line, column: name.column },
+			},
+		],
+	};
+}
+
+// The workgroup size is written beside the kernel, as glslCompute takes it.
+export macro shaderCompute(name: Node, kernel: Node, workgroupSize: Node): Node {
+	function literal(text: string): Node {
+		return { kind: NodeKind.StringLiteral, line: name.line, column: name.column, value: text };
+	}
+	function called(callee: Node | null, args: Node[]): Node {
+		if (callee == null) {
+			error("shaderCompute: a macro it expands to is not in scope", name);
+		}
+		return {
+			kind: NodeKind.CallExpr,
+			line: name.line,
+			column: name.column,
+			callee,
+			arguments: args,
+		};
+	}
+	if (name.kind != NodeKind.Identifier) {
+		error("shaderCompute: the first argument names the program it declares", name);
+	}
+	const base = name.name;
+	return {
+		kind: NodeKind.SpliceMany,
+		line: name.line,
+		column: name.column,
+		spliceNodes: [
+			{
+				kind: NodeKind.VariableDecl,
+				line: name.line,
+				column: name.column,
+				declName: base,
+				declType: "int32",
+				initializer: called(bindSym("shaderBuild"), [
+					literal(base),
+					called(bindSym("glslComputeIr"), [kernel, workgroupSize]),
+					literal(""),
+					literal(""),
+					called(bindSym("oneProgram"), [literal("shaderCompute"), kernel]),
 				]),
 				declKind: DeclKind.Const,
 				nameLocation: { line: name.line, column: name.column },
