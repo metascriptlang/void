@@ -1019,6 +1019,9 @@ function construct(p: Spirv, e: ShaderExpr): int32 {
 	if (o.length == 1 && sameShaderType(o[0].type, t)) { return parts[0]; }
 	if (t.kind == ShaderTypeKind.Vector) {
 		if (o.length == 1 && o[0].type.kind == ShaderTypeKind.Scalar) { return splat(p, t, parts[0]); }
+		if (o.length == 1 && o[0].type.kind == ShaderTypeKind.Vector && o[0].type.rows == t.rows) {
+			return converted(p, o[0].type, t, parts[0]);
+		}
 		let components: int32 = 0;
 		for (const a of o) { components += rowsOf(a.type); }
 		if (components != t.rows) {
@@ -1049,9 +1052,10 @@ function construct(p: Spirv, e: ShaderExpr): int32 {
 }
 
 function convert(p: Spirv, e: ShaderExpr): int32 {
-	const from = e.operands[0].type;
-	const t = e.type;
-	const x = value(p, e.operands[0]);
+	return converted(p, e.operands[0].type, e.type, value(p, e.operands[0]));
+}
+
+function converted(p: Spirv, from: ShaderType, t: ShaderType, x: int32): int32 {
 	const numeric = t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector;
 	if (!numeric || from.kind != t.kind || rowsOf(from) != rowsOf(t)) {
 		return refusal(p, "a conversion from a " + from.kind.toString() + " to a " +
