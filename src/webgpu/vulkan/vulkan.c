@@ -452,12 +452,14 @@ int32_t vulkanInstanceCreate(void) {
 	uint32_t layerCount = 0;
 	int32_t debugUtils = 0;
 	if (validationRequested()) {
-		if (hasLayer(VALIDATION_LAYER)) {
-			layerCount = 1;
-			debugUtils = hasInstanceExtension(NULL, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) ||
-				hasInstanceExtension(VALIDATION_LAYER, VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-		} else {
-			fprintf(stderr, "vulkan: validation was asked for, but %s is not installed\n", VALIDATION_LAYER);
+		if (!hasLayer(VALIDATION_LAYER)) {
+			return fail(VULKAN_ERROR_EXTENSION, "validation was asked for, but %s is not installed", VALIDATION_LAYER);
+		}
+		layerCount = 1;
+		debugUtils = hasInstanceExtension(NULL, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) ||
+			hasInstanceExtension(VALIDATION_LAYER, VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+		if (!debugUtils) {
+			return fail(VULKAN_ERROR_EXTENSION, "validation was asked for, but %s reports through no %s", VALIDATION_LAYER, VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 		}
 	}
 	if (debugUtils) extensions[extensionCount++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
