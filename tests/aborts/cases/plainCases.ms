@@ -12,6 +12,7 @@
 // expect endTargetWithoutBegin: void2d: endTarget with no target open; every endTarget closes one beginTarget
 // expect glyphKeyOverflow: void2d glyph atlas: a key of size 1100 px and outline lane 0 does not fit the packed key
 // expect layerSlotInLanes: layer slot on node 3 inside a noOverlap subtree
+// expect maskFilterNoNode: void2d filter: step 0 (Mask) names no mask node; build it with NodeRef.asMaskFilter
 // expect metricsOnRect: textWidth asked of a Rect node
 // expect outlineOff: void2d text outline: setOutline needs the outline module; build with -d:voidTextOutline
 // expect overlapPromise: node 1 promised setNoOverlap, but its children 2 and 3 overlap
@@ -41,7 +42,7 @@ import { Scene2D, TileCell } from "../../../src/void2d/node";
 import "../../../src/void2d/scene";
 import { paint } from "../../../src/void2d/scene";
 import { sync } from "../../../src/void2d/render";
-import { rgba, whiteTile, identity2d, tile } from "../../../src/void2d/types";
+import { rgba, whiteTile, identity2d, maskFilter, tile } from "../../../src/void2d/types";
 import { begin2d, blurPass, endTarget, beginTarget } from "../../../src/void2d/draw";
 import { BoxFillKind, BoxStyle, solidFill, uniformBorders, uniformRadii } from "../../../src/void2d/boxStyle";
 import { GlyphKey, PageKind } from "../../../src/void2d/glyphAtlas";
@@ -139,6 +140,10 @@ function run(name: string): void {
 		list.setNoOverlap(true);
 		s.paint(200.0, 100.0, 1.0);
 		console.log("a layer slot was drawn inside lanes");
+	} else if (name == "maskFilterNoNode") {
+		const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+		s.rect(10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0)).setFilter(maskFilter(-1, 0, false));
+		console.log("a Mask step with no mask node was accepted");
 	} else if (name == "metricsOnRect") {
 		const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 		const box = s.rect(10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0));
