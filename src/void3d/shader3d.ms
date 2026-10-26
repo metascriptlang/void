@@ -9,10 +9,12 @@ import {
 	Texture2dU32,
 	TextureCube,
 	Vec2f,
+	Vec2i,
 	Vec3f,
 	Vec4f,
 	Vec4i,
 	abs,
+	acos,
 	atan2,
 	binding,
 	builtin,
@@ -22,6 +24,8 @@ import {
 	determinant,
 	discard,
 	dot,
+	dpdx,
+	dpdy,
 	exp2,
 	feature,
 	inverse,
@@ -2029,6 +2033,21 @@ export function decalFade(z: float32, start: float32, end: float32, power: float
 	return 1.0 - clamp(pow(max(0.0, abs(z * 2.0) - start) / (end - start), power), 0.0, 1.0);
 }
 
+// BaseDecal.getWorldNormal (VolumeDecal.hx:52-58): the surface under the pixel from the world
+// points rebuilt at it and one pixel along each screen axis, turned to face `eye`, as Heaps'
+// screen axes turn it.
+export function decalSurfaceNormal(at: Vec3f, alongX: Vec3f, alongY: Vec3f, eye: Vec3f): Vec3f {
+	const n = normalize(cross(alongY - at, alongX - at));
+	return dot(n, eye - at) < 0.0 ? n * -1.0 : n;
+}
+
+// BaseDecal.normalFade (VolumeDecal.hx:39-44): 1 where the surface faces along the box's z, 0.5
+// across it, 0 against it, mapped from normalFadeStart..normalFadeEnd onto 0..1.
+export function decalNormalFade(boxZ: Vec3f, normal: Vec3f, start: float32, end: float32): float32 {
+	const angle = 1.0 - abs(acos(clamp(dot(boxZ, normal), -1.0, 1.0))) / 3.14159265358979;
+	return clamp((angle - start) / (end - start), 0.0, 1.0);
+}
+
 // DecalOverlay.fragment (VolumeDecal.hx:108-123): the tint times the texel, squared under
 // GAMMA_CORRECT, lifted by the emissive; AUTO_ALPHA takes the alpha from the brightest channel.
 export function decalOverlayColor(
@@ -2055,6 +2074,10 @@ export struct DecalVaryings {
 	screenToLocal1: Vec4f;
 	screenToLocal2: Vec4f;
 	screenToLocal3: Vec4f;
+	boxWorld0: Vec4f;
+	boxWorld1: Vec4f;
+	boxWorld2: Vec4f;
+	boxWorld3: Vec4f;
 	baseColor: Vec4f;
 	screen: Vec4f;
 	@builtin(position) clip: Vec4f;
@@ -2065,17 +2088,23 @@ export struct DecalFragmentInput {
 	screenToLocal1: Vec4f;
 	screenToLocal2: Vec4f;
 	screenToLocal3: Vec4f;
+	boxWorld0: Vec4f;
+	boxWorld1: Vec4f;
+	boxWorld2: Vec4f;
+	boxWorld3: Vec4f;
 	baseColor: Vec4f;
 	screen: Vec4f;
 	@builtin(position) fragCoord: Vec4f;
 }
 
 // gpu3d.ms DECAL_*: the tint, then fadeStart, fadeEnd, fadePower and emissive, then CENTERED,
-// GAMMA_CORRECT, AUTO_ALPHA and the tone map as 1 or 0.
+// GAMMA_CORRECT, AUTO_ALPHA and the tone map as 1 or 0, then normalFadeStart, normalFadeEnd and
+// USE_NORMAL_FADE.
 export struct DecalParams {
 	decalColor: Vec4f;
 	decalFade: Vec4f;
 	decalMode: Vec4f;
+	decalNormalFade: Vec4f;
 }
 
 export struct DecalBindings {
@@ -2096,6 +2125,10 @@ export function decalVs(input: LitAttributes, b: VertexBindings): DecalVaryings 
 		screenToLocal1: toLocal.columns[1],
 		screenToLocal2: toLocal.columns[2],
 		screenToLocal3: toLocal.columns[3],
+		boxWorld0: world.columns[0],
+		boxWorld1: world.columns[1],
+		boxWorld2: world.columns[2],
+		boxWorld3: world.columns[3],
 		baseColor: input.color * input.instanceColor,
 		screen: clip,
 		clip: clip,
@@ -2108,19 +2141,44 @@ export function ndcDepthOf(stored: float32, zeroToOne: float32): float32 {
 	return zeroToOne == 1.0 ? stored : stored * 2.0 - 1.0;
 }
 
+function decalLocalAtPixel(b: DecalBindings, pixel: Vec2i, ndc: Vec2f, toLocal: Mat4x4f): Vec3f {
+	const stored = textureLoad(b.sceneDepth, b.sceneDepthSampler, pixel, 0).x;
+	return decalLocalAt(ndc, ndcDepthOf(stored, b.frameParams.cameraPosition.w), toLocal);
+}
+
+// The fragment's NDC moves by dpdx and dpdy per pixel on every backend, whichever way its rows
+// run, so the neighbours' NDC needs no pixel size.
 export function decalFs(input: DecalFragmentInput, b: DecalBindings): Vec4f {
-	const stored = textureLoad(b.sceneDepth, b.sceneDepthSampler, vec2i(input.fragCoord.xy), 0).x;
-	const depth = ndcDepthOf(stored, b.frameParams.cameraPosition.w);
+	const ndc = input.screen.xy / input.screen.w;
+	const ndcDx = dpdx(ndc);
+	const ndcDy = dpdy(ndc);
+	const pixel = vec2i(input.fragCoord.xy);
 	const toLocal = mat4x4f(
 		input.screenToLocal0, input.screenToLocal1, input.screenToLocal2, input.screenToLocal3,
 	);
-	const local = decalLocalAt(input.screen.xy / input.screen.w, depth, toLocal);
+	const local = decalLocalAtPixel(b, pixel, ndc, toLocal);
 	if (outsideDecal(local)) {
 		discard();
 	}
 	const fade = b.decalParams.decalFade;
 	const mode = b.decalParams.decalMode;
-	const faded = decalFade(local.z, fade.x, fade.y, fade.z);
+	let faded = decalFade(local.z, fade.x, fade.y, fade.z);
+	const normalFade = b.decalParams.decalNormalFade;
+	if (normalFade.z == 1.0) {
+		const world = mat4x4f(input.boxWorld0, input.boxWorld1, input.boxWorld2, input.boxWorld3);
+		const last = textureDimensions(b.sceneDepth, b.sceneDepthSampler, 0) - vec2i(1, 1);
+		const right = clamp(pixel + vec2i(1, 0), vec2i(0, 0), last);
+		const below = clamp(pixel + vec2i(0, 1), vec2i(0, 0), last);
+		const alongX = decalLocalAtPixel(b, right, ndc + ndcDx, toLocal);
+		const alongY = decalLocalAtPixel(b, below, ndc + ndcDy, toLocal);
+		const normal = decalSurfaceNormal(
+			(world * vec4f(local, 1.0)).xyz, (world * vec4f(alongX, 1.0)).xyz,
+			(world * vec4f(alongY, 1.0)).xyz, b.frameParams.cameraPosition.xyz,
+		);
+		faded = faded * decalNormalFade(
+			normalize(world.columns[2].xyz), normal, normalFade.x, normalFade.y,
+		);
+	}
 	const uv = mode.x == 1.0 ? local.xy + vec2f(0.5, 0.5) : local.xy;
 	const texel = textureSample(b.decalTexture, b.decalSampler, uv);
 	const tint = b.decalParams.decalColor * input.baseColor;

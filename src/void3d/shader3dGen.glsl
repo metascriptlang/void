@@ -3735,6 +3735,10 @@ out vec4 screenToLocal0;
 out vec4 screenToLocal1;
 out vec4 screenToLocal2;
 out vec4 screenToLocal3;
+out vec4 boxWorld0;
+out vec4 boxWorld1;
+out vec4 boxWorld2;
+out vec4 boxWorld3;
 out vec4 baseColor;
 out vec4 screen;
 mat4 instanceWorld(vec4 row0, vec4 row1, vec4 row2) {
@@ -3748,6 +3752,10 @@ void main() {
     screenToLocal1 = toLocal[1];
     screenToLocal2 = toLocal[2];
     screenToLocal3 = toLocal[3];
+    boxWorld0 = world[0];
+    boxWorld1 = world[1];
+    boxWorld2 = world[2];
+    boxWorld3 = world[3];
     baseColor = (color * instanceColor);
     screen = clip;
     gl_Position = clip;
@@ -3760,6 +3768,7 @@ layout(binding=3) uniform decalParams {
     vec4 decalColor;
     vec4 decalFade;
     vec4 decalMode;
+    vec4 decalNormalFade;
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -3776,21 +3785,37 @@ in vec4 screenToLocal0;
 in vec4 screenToLocal1;
 in vec4 screenToLocal2;
 in vec4 screenToLocal3;
+in vec4 boxWorld0;
+in vec4 boxWorld1;
+in vec4 boxWorld2;
+in vec4 boxWorld3;
 in vec4 baseColor;
 in vec4 screen;
 layout(location=0) out vec4 fragColor;
-float ndcDepthOf(float stored, float zeroToOne) {
-    return (zeroToOne == 1.0) ? stored : ((stored * 2.0) - 1.0);
-}
 vec3 decalLocalAt(vec2 screen_1, float depth, mat4 screenToLocal) {
     vec4 local = screenToLocal * vec4(screen_1.x, screen_1.y, depth, 1.0);
     return local.xyz / local.w;
+}
+float ndcDepthOf(float stored, float zeroToOne) {
+    return (zeroToOne == 1.0) ? stored : ((stored * 2.0) - 1.0);
+}
+vec3 decalLocalAtPixel(ivec2 pixel, vec2 ndc, mat4 toLocal) {
+    float stored = texelFetch(sampler2D(sceneDepth, sceneDepthSampler), pixel, 0).x;
+    return decalLocalAt(ndc, ndcDepthOf(stored, cameraPosition.w), toLocal);
 }
 bool outsideDecal(vec3 local) {
     return ((abs(local.x) > 0.5) || (abs(local.y) > 0.5)) || (abs(local.z) > 0.5);
 }
 float decalFade_1(float z, float start, float end, float power) {
     return 1.0 - clamp(pow((max(0.0, (abs((z * 2.0)) - start)) / (end - start)), power), 0.0, 1.0);
+}
+vec3 decalSurfaceNormal(vec3 at, vec3 alongX, vec3 alongY, vec3 eye) {
+    vec3 n = normalize(cross((alongY - at), (alongX - at)));
+    return (dot(n, (eye - at)) < 0.0) ? (n * -1.0) : n;
+}
+float decalNormalFade_1(vec3 boxZ, vec3 normal, float start, float end) {
+    float angle = 1.0 - (abs(acos(clamp(dot(boxZ, normal), -1.0, 1.0))) / 3.14159265358979);
+    return clamp(((angle - start) / (end - start)), 0.0, 1.0);
 }
 vec4 decalOverlayColor(vec4 tint, vec4 texel, float emissive, bool gammaCorrect, bool autoAlpha, float fade) {
     vec3 rgb = tint.rgb * texel.rgb;
@@ -3848,16 +3873,29 @@ vec3 toneMapped(vec3 rgb, vec4 tone) {
     return linearToSrgb(toneCurved((srgbToLinear(rgb) * tone.y), tone.w));
 }
 void main() {
-    float stored = texelFetch(sampler2D(sceneDepth, sceneDepthSampler), ivec2(gl_FragCoord.xy), 0).x;
-    float depth = ndcDepthOf(stored, cameraPosition.w);
+    vec2 ndc = screen.xy / screen.w;
+    vec2 ndcDx = dFdx(ndc);
+    vec2 ndcDy = dFdy(ndc);
+    ivec2 pixel = ivec2(gl_FragCoord.xy);
     mat4 toLocal = mat4(screenToLocal0, screenToLocal1, screenToLocal2, screenToLocal3);
-    vec3 local = decalLocalAt((screen.xy / screen.w), depth, toLocal);
+    vec3 local = decalLocalAtPixel(pixel, ndc, toLocal);
     if (outsideDecal(local)) {
         discard;
     }
     vec4 fade = decalFade;
     vec4 mode = decalMode;
     float faded = decalFade_1(local.z, fade.x, fade.y, fade.z);
+    vec4 normalFade = decalNormalFade;
+    if (normalFade.z == 1.0) {
+        mat4 world = mat4(boxWorld0, boxWorld1, boxWorld2, boxWorld3);
+        ivec2 last = textureSize(sampler2D(sceneDepth, sceneDepthSampler), 0) - ivec2(1, 1);
+        ivec2 right = clamp((pixel + ivec2(1, 0)), ivec2(0, 0), last);
+        ivec2 below = clamp((pixel + ivec2(0, 1)), ivec2(0, 0), last);
+        vec3 alongX = decalLocalAtPixel(right, (ndc + ndcDx), toLocal);
+        vec3 alongY = decalLocalAtPixel(below, (ndc + ndcDy), toLocal);
+        vec3 normal = decalSurfaceNormal((world * vec4(local, 1.0)).xyz, (world * vec4(alongX, 1.0)).xyz, (world * vec4(alongY, 1.0)).xyz, cameraPosition.xyz);
+        faded = faded * decalNormalFade_1(normalize(world[2].xyz), normal, normalFade.x, normalFade.y);
+    }
     vec2 uv = (mode.x == 1.0) ? (local.xy + vec2(0.5, 0.5)) : local.xy;
     vec4 texel = texture(sampler2D(decalTexture, decalSampler), uv);
     vec4 tint = decalColor * baseColor;
