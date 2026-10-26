@@ -1,12 +1,16 @@
 import {
-	Scene3D, SceneError, Transform3D, addGroup, addSkinMeshNode, rootId, closeScene,
-	refreshChecked, setLocal, setPickable, remove, setMaterialOf, SceneSyncError,
+	Scene3D, SceneError, Transform3D, addGroup, addSkinMeshNode, addLodSkinMeshNode, rootId,
+	closeScene, refreshChecked, setLocal, setPickable, remove, setMaterialOf, setForcedLod,
+	SceneSyncError,
 } from "../void3d/scene";
+import { MeshLod, MeshLodRanges, nextPickPass, pickFor } from "../void3d/meshLod";
 import { SkinGeometry, SkinGeometryError, bind, spatialReady } from "../void3d/skinGeometry";
 import { SkinPose, bind as bindPose } from "../void3d/skinPose";
 import { SkinPalette, create } from "../void3d/skinPalette";
 import { MeshData, addVertex, addSkinAttributes } from "../void3d/meshData";
-import { MeshId, MaterialId, DrawItem, validSkin, addMaterial } from "../void3d/draw";
+import {
+	MeshId, MaterialId, DrawItem, validSkin, addMaterial, drawnRange,
+} from "../void3d/draw";
 import { Material, Phase } from "../void3d/material";
 import { Program, ProgramKey, VertexLayout, withSkin } from "../void3d/gpu3d";
 import { PickError, pickNearest } from "../void3d/pick";
@@ -116,6 +120,69 @@ test "retained picking refreshes joints and respects skin range in world space" 
 		assert hit.value.distance == 2 && hit.value.point.x == 24.25;
 		assert hit.value.mesh.index == made.value.index;
 	}
+}
+
+function triangleLevels(): MeshLod {
+	const made = MeshLod.create(2, [0.5], 0.1);
+	if (!made.ok) { unreachable; }
+	return made.value;
+}
+
+function triangleRanges(): MeshLodRanges {
+	const made = MeshLodRanges.fromElementRanges(2, 1, 6,
+		[{ base: 0, count: 3 }, { base: 3, count: 3 }]);
+	if (!made.ok) { unreachable; }
+	return made.value;
+}
+
+test "a skinned LOD node draws the level its pick chooses" {
+	const f = fixture(true);
+	defer closeScene(f.scene);
+	const made = addLodSkinMeshNode(f.scene, f.scene.rootId(), Transform3D.identity(),
+		f.mesh, f.material, f.geometry, 0, triangleLevels(), triangleRanges(), 0);
+	assert made.ok;
+	if (!made.ok) { return; }
+	let items: Vec<DrawItem> = [];
+	assert refreshChecked(f.scene, items).ok;
+	assert items.length == 1 && items[0].skinGeometry !== null;
+	assert items[0].validSkin(f.scene.context.materials[0].program);
+	const first = items[0].drawnRange();
+	assert first !== null && first.base == 0 && first.count == 3;
+	assert setForcedLod(f.scene, made.value, 1).ok;
+	const pick = items[0].lod;
+	assert pick !== null;
+	if (pick === null) { return; }
+	assert pick.pickFor(items[0].world, vec3(0, 0, 5), 1.0, 1.0, 0.1, 1.0, nextPickPass()).ok;
+	const second = items[0].drawnRange();
+	assert second !== null && second.base == 3 && second.count == 3;
+}
+
+test "a skinned LOD node checks the skin of every level, not only the first" {
+	const f = fixture(true);
+	defer closeScene(f.scene);
+	let joints: Vec<int32> = [];
+	let weights: Vec<float32> = [];
+	for (let at = 0; at < f.geometry.influences.joints.length; at++) {
+		joints.push(f.geometry.influences.joints[at]);
+		weights.push(f.geometry.influences.weights[at]);
+	}
+	weights[3 * 4] = 0.5;
+	weights[3 * 4 + 1] = 0.5;
+	const mismatched = SkinGeometry.bind(f.geometry.source,
+		{ joints: joints, weights: weights }, f.geometry.pose);
+	assert mismatched.ok;
+	if (!mismatched.ok) { return; }
+	const levelZero = addSkinMeshNode(f.scene, f.scene.rootId(), Transform3D.identity(),
+		f.mesh, f.material, mismatched.value, 0, { base: 0, count: 3 });
+	assert levelZero.ok;
+	const second = SkinGeometry.bind(f.geometry.source,
+		{ joints: joints, weights: weights }, f.geometry.pose);
+	assert second.ok;
+	if (!second.ok) { return; }
+	const everyLevel = addLodSkinMeshNode(f.scene, f.scene.rootId(), Transform3D.identity(),
+		f.mesh, f.material, second.value, 0, triangleLevels(), triangleRanges(), 0);
+	assert !everyLevel.ok;
+	if (!everyLevel.ok) { assert everyLevel.error == SceneError.SkinMesh; }
 }
 
 test "retained skin refuses foreign pose bad palette layout and element declaration before pins" {
