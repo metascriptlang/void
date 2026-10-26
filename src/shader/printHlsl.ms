@@ -924,7 +924,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>
 			explicitSampleOf(p, e),
 		Intrinsic.WorkgroupBarrier => "GroupMemoryBarrierWithGroupSync()",
-		Intrinsic.StorageBarrier => "DeviceMemoryBarrierWithGroupSync()",
+		Intrinsic.StorageBarrier | Intrinsic.TextureBarrier => "DeviceMemoryBarrierWithGroupSync()",
 		Intrinsic.WorkgroupUniformLoad => expr(p, e.operands[0]),
 		Intrinsic.ArrayLength => lengthOf(p, e),
 		_ => isAtomic(e.intrinsic) ? fail(p, e.intrinsic.toString() + " inside an expression or " +

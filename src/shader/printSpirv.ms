@@ -1371,6 +1371,15 @@ function barrier(p: Spirv, storage: boolean): int32 {
 	return 0;
 }
 
+function imageBarrier(p: Spirv): int32 {
+	emit(p, OP_CONTROL_BARRIER, [
+		intConstant(p, ScalarKind.U32, 2),
+		intConstant(p, ScalarKind.U32, 2),
+		intConstant(p, ScalarKind.U32, 2056),
+	]);
+	return 0;
+}
+
 function atomicOpcode(op: Intrinsic, s: ScalarKind): int32 {
 	const signed = s == ScalarKind.I32;
 	if (op == Intrinsic.AtomicAdd) { return OP_ATOMIC_I_ADD; }
@@ -1658,6 +1667,7 @@ function intrinsic(p: Spirv, e: ShaderExpr): int32 {
 	if (op == Intrinsic.TextureDimensions) { return dimensions(p, e); }
 	if (op == Intrinsic.TextureNumSamples) { return sampleCount(p, e); }
 	if (op == Intrinsic.ArrayLength) { return arrayLength(p, e); }
+	if (op == Intrinsic.TextureBarrier) { return imageBarrier(p); }
 	if (op == Intrinsic.WorkgroupUniformLoad) { return value(p, o[0]); }
 	return refusal(p, op.toString() + " is not printed yet");
 }

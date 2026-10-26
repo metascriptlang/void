@@ -788,6 +788,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 			explicitSampleOf(p, e),
 		Intrinsic.WorkgroupBarrier => "memoryBarrierShared(); barrier()",
 		Intrinsic.StorageBarrier => "memoryBarrierBuffer(); barrier()",
+		Intrinsic.TextureBarrier => "memoryBarrierImage(); barrier()",
 		Intrinsic.WorkgroupUniformLoad => expr(p, e.operands[0]),
 		Intrinsic.ArrayLength => converted(p, expr(p, e.operands[0]) + ".length()", "int", e.type),
 		Intrinsic.AtomicCompareExchangeWeak => p.es ? atomicText(p, e) : fail(p,

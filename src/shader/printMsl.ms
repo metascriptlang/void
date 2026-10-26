@@ -694,6 +694,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.WorkgroupBarrier =>
 			"threadgroup_barrier(mem_flags::mem_threadgroup)",
 		Intrinsic.StorageBarrier => "threadgroup_barrier(mem_flags::mem_device)",
+		Intrinsic.TextureBarrier => "threadgroup_barrier(mem_flags::mem_texture)",
 		Intrinsic.WorkgroupUniformLoad => exprText(p, o[0]),
 		Intrinsic.ArrayLength => lengthText(p, e),
 		_ => isAtomic(op) ? atomicText(p, e) : fail(p, op.toString() + " has no MSL spelling"),

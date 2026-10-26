@@ -276,6 +276,7 @@ export enum Intrinsic {
 	TextureNumSamples,
 	ArrayLength,
 	WorkgroupUniformLoad,
+	TextureBarrier,
 }
 
 function isExplicitSample(op: Intrinsic): boolean {
@@ -567,8 +568,8 @@ export function isAtomic(op: Intrinsic): boolean {
 
 export function isEffect(op: Intrinsic): boolean {
 	return op == Intrinsic.TextureStore || op == Intrinsic.WorkgroupBarrier ||
-		op == Intrinsic.StorageBarrier || op == Intrinsic.WorkgroupUniformLoad ||
-		isAtomic(op) && op != Intrinsic.AtomicLoad;
+		op == Intrinsic.StorageBarrier || op == Intrinsic.TextureBarrier ||
+		op == Intrinsic.WorkgroupUniformLoad || isAtomic(op) && op != Intrinsic.AtomicLoad;
 }
 
 export class ShaderExpr {
@@ -1055,7 +1056,7 @@ function isFragmentOnly(op: Intrinsic): boolean {
 
 function isComputeOnly(op: Intrinsic): boolean {
 	return op == Intrinsic.WorkgroupBarrier || op == Intrinsic.StorageBarrier ||
-		op == Intrinsic.WorkgroupUniformLoad;
+		op == Intrinsic.TextureBarrier || op == Intrinsic.WorkgroupUniformLoad;
 }
 
 function noted(list: string[], what: string): void {

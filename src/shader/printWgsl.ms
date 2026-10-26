@@ -499,6 +499,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureSampleGrad => "textureSampleGrad(" + argsText(p, o) + ")",
 		Intrinsic.WorkgroupBarrier => "workgroupBarrier()",
 		Intrinsic.StorageBarrier => "storageBarrier()",
+		Intrinsic.TextureBarrier => "textureBarrier()",
 		Intrinsic.ArrayLength => lengthText(p, e),
 		Intrinsic.WorkgroupUniformLoad => "workgroupUniformLoad(&" + exprText(p, o[0]) + ")",
 		_ => isAtomic(op) ? atomicText(p, e) : refusal(p, op.toString() + " has no WGSL spelling"),

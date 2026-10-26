@@ -2406,6 +2406,7 @@ export function format(): void {}
 
 export function workgroupBarrier(): void {}
 export function storageBarrier(): void {}
+export function textureBarrier(): void {}
 
 // WGSL's workgroupUniformLoad(&v): a barrier, a read of workgroup memory that every invocation
 // of the group sees alike, and a barrier. The CPU runs one invocation at a time, so it is the read.

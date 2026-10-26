@@ -1744,6 +1744,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				fail(n, name + " exists only in a compute entry, as WGSL's does") :
 				intrinsicOf(name == "workgroupBarrier" ? Intrinsic.WorkgroupBarrier :
 					Intrinsic.StorageBarrier, type, args),
+			"textureBarrier" => !compute ?
+				fail(n, name + " exists only in a compute entry, as WGSL's does") :
+				intrinsicOf(Intrinsic.TextureBarrier, type, args),
 			"workgroupUniformLoad" => !compute ?
 				fail(n, name + " exists only in a compute entry, as WGSL's does") :
 				n != uniformLoadSite ?
