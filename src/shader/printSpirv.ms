@@ -30,6 +30,7 @@ import {
 	sameShaderType,
 	scalarType,
 	vectorType,
+	predeclaredMemberType,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
 import { builtinType, ioLocation, rootOf } from "./irWalk";
@@ -426,7 +427,7 @@ function strideOf(p: Spirv, t: ShaderType): int32 {
 		ShaderTypeKind.Struct => p.structSizes[t.structIndex],
 		ShaderTypeKind.Void | ShaderTypeKind.Array | ShaderTypeKind.RuntimeArray |
 			ShaderTypeKind.Texture | ShaderTypeKind.Sampler | ShaderTypeKind.StorageTexture |
-			ShaderTypeKind.ExchangeResult => 0,
+			ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult => 0,
 	};
 }
 
@@ -540,6 +541,11 @@ function exchangeTypeId(p: Spirv, s: ScalarKind): int32 {
 	return declared(p, "x" + String(members[0]), OP_TYPE_STRUCT, members);
 }
 
+function splitTypeId(p: Spirv, t: ShaderType): int32 {
+	const members = [typeId(p, predeclaredMemberType(t, 0)), typeId(p, predeclaredMemberType(t, 1))];
+	return declared(p, "r" + String(members[0]) + ":" + String(members[1]), OP_TYPE_STRUCT, members);
+}
+
 function typeId(p: Spirv, t: ShaderType): int32 {
 	return match (t.kind) {
 		ShaderTypeKind.Void => declared(p, "void", OP_TYPE_VOID, []),
@@ -554,6 +560,7 @@ function typeId(p: Spirv, t: ShaderType): int32 {
 		ShaderTypeKind.Sampler => declared(p, "sampler", OP_TYPE_SAMPLER, []),
 		ShaderTypeKind.StorageTexture => storageTextureTypeId(p, t),
 		ShaderTypeKind.ExchangeResult => exchangeTypeId(p, t.scalar),
+		ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult => splitTypeId(p, t),
 	};
 }
 
@@ -814,7 +821,8 @@ function literalId(p: Spirv, t: ShaderType, v: float64): int32 {
 		ShaderTypeKind.Void | ShaderTypeKind.Matrix | ShaderTypeKind.Array |
 			ShaderTypeKind.RuntimeArray | ShaderTypeKind.Struct | ShaderTypeKind.Texture |
 			ShaderTypeKind.Sampler | ShaderTypeKind.StorageTexture | ShaderTypeKind.Atomic |
-			ShaderTypeKind.ExchangeResult => refusal(p, "a literal of a " + t.kind.toString()),
+			ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult =>
+				refusal(p, "a literal of a " + t.kind.toString()),
 	};
 }
 
@@ -1136,6 +1144,8 @@ function glslNumber(op: Intrinsic): int32 {
 	if (op == Intrinsic.Smoothstep) { return 49; }
 	if (op == Intrinsic.Fma) { return 50; }
 	if (op == Intrinsic.Ldexp) { return 53; }
+	if (op == Intrinsic.Modf) { return 36; }
+	if (op == Intrinsic.Frexp) { return 52; }
 	if (op == Intrinsic.Pack4x8Snorm) { return 54; }
 	if (op == Intrinsic.Pack4x8Unorm) { return 55; }
 	if (op == Intrinsic.Pack2x16Snorm) { return 56; }

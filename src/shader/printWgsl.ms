@@ -27,6 +27,7 @@ import {
 	isAtomic,
 	isDerivative,
 	isEffect,
+	isPredeclaredResult,
 } from "./ir";
 import { BindingSlot } from "./layout";
 import { builtinType, ioLocation } from "./irWalk";
@@ -40,6 +41,7 @@ import {
 	isIntMin,
 	isMath,
 	mathName,
+	splitMember,
 } from "./spelling";
 
 function wgslReservedWords(): string[] {
@@ -278,8 +280,9 @@ function typeText(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.StorageTexture => "texture_storage_" + storageShapeText(p, t.shape) + "<" +
 			formatText(t.format) + ", " + accessText(t.access) + ">",
 		ShaderTypeKind.Atomic => "atomic<" + scalarText(t.scalar) + ">",
-		ShaderTypeKind.ExchangeResult => refusal(p, "an atomic exchange result outside the " +
-			"local it initializes"),
+		ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult =>
+			refusal(p, "a " + t.kind.toString() + ", which WGSL cannot name, outside the local it " +
+				"initializes"),
 		ShaderTypeKind.Void => refusal(p, "a value of type void"),
 	};
 }
@@ -509,6 +512,7 @@ function dimensionsText(p: Printer, e: ShaderExpr): string {
 function memberName(p: Printer, t: ShaderType, member: int32): string {
 	return match (t.kind) {
 		ShaderTypeKind.ExchangeResult => member == 0 ? "old_value" : "exchanged",
+		ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult => splitMember(t, member),
 		ShaderTypeKind.Struct => p.members[t.structIndex][member],
 		_ => refusal(p, "a field of a " + t.kind.toString()),
 	};
@@ -583,7 +587,7 @@ function splitSwizzle(s: ShaderStmt): boolean {
 
 function simpleText(p: Printer, s: ShaderStmt): string {
 	return match (s.kind) {
-		StmtKind.Let => p.fn.locals[s.local].type.kind == ShaderTypeKind.ExchangeResult &&
+		StmtKind.Let => isPredeclaredResult(p.fn.locals[s.local].type) &&
 			!isVoid(s.expr) ? "var " + p.locals[s.local] + " = " + exprText(p, s.expr) :
 			"var " + p.locals[s.local] + " : " + typeText(p, p.fn.locals[s.local].type) +
 			(isVoid(s.expr) ? "" : " = " + exprText(p, s.expr)),

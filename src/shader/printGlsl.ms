@@ -26,6 +26,7 @@ import {
 	isShift,
 	isArrayTexture,
 	isAtomic,
+	sameShaderType,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import {
@@ -36,6 +37,7 @@ import {
 	innermost,
 	ioLocation,
 	rootOf,
+	splitResults,
 	stmtStructs,
 	structOrder,
 } from "./irWalk";
@@ -46,10 +48,14 @@ import {
 	glslAtomicName,
 	glslBitcast,
 	glslBits,
+	glslSplitTypes,
 	isIntMin,
 	mathName,
 	pointed,
 	repeatedBitsOperand,
+	splitHelperName,
+	splitMember,
+	splitStructName,
 } from "./spelling";
 import { claimName } from "./names";
 import { printableEntry } from "./specialize";
@@ -167,6 +173,9 @@ class Printer {
 	functionNames: string[] = [];
 	workgroupNames: string[] = [];
 	exchangeNames: string[] = ["", ""];
+	splits: ShaderType[] = [];
+	splitStructs: string[] = [];
+	splitHelpers: string[] = [];
 	effects: int32[] = [];
 	pairs: Pair[] = [];
 	scope: string[] = [];
@@ -239,6 +248,15 @@ function texelType(format: TexelFormat): string {
 	return format == TexelFormat.Rgba8uint || format == TexelFormat.R32uint ? "uvec4" : "vec4";
 }
 
+function splitNames(p: Printer, t: ShaderType, names: string[]): string {
+	const at = p.splits.findIndex((s) => sameShaderType(s, t));
+	if (at >= 0) { return names[at]; }
+	if (p.es && t.kind == ShaderTypeKind.FrexpResult) {
+		return fail(p, "Frexp is not in GLSL ES 3.00 (ES 3.10 has it)");
+	}
+	return fail(p, "no struct is declared for a " + t.kind.toString());
+}
+
 function typeName(p: Printer, t: ShaderType): string {
 	return match (t.kind) {
 		ShaderTypeKind.Void => "void",
@@ -256,6 +274,7 @@ function typeName(p: Printer, t: ShaderType): string {
 			imageShapeName(p, t.shape),
 		ShaderTypeKind.Atomic => scalarName(t.scalar),
 		ShaderTypeKind.ExchangeResult => p.exchangeNames[exchangeSlot(t.scalar)],
+		ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult => splitNames(p, t, p.splitStructs),
 	};
 }
 
@@ -688,6 +707,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 			typeName(p, e.type), expr(p, e.operands[0])),
 		Intrinsic.Ldexp => p.es ? fail(p, "Ldexp is not in GLSL ES 3.00 (ES 3.10 has it)") :
 			"ldexp(" + args() + ")",
+		Intrinsic.Modf | Intrinsic.Frexp => splitNames(p, e.type, p.splitHelpers) + "(" + args() + ")",
 		Intrinsic.Saturate => "clamp(" + args() + ", 0.0, 1.0)",
 		Intrinsic.Fma => p.es ? "(" + operand(p, e.operands[0]) + " * " +
 			operand(p, e.operands[1]) + " + " + operand(p, e.operands[2]) + ")" :
@@ -871,6 +891,9 @@ function expr(p: Printer, e: ShaderExpr): string {
 			const base = e.operands[0];
 			if (base.type.kind == ShaderTypeKind.ExchangeResult) {
 				return postfixBase(p, base) + (e.index == 0 ? ".old_value" : ".exchanged");
+			}
+			if (base.type.kind == ShaderTypeKind.ModfResult || base.type.kind == ShaderTypeKind.FrexpResult) {
+				return postfixBase(p, base) + "." + splitMember(base.type, e.index);
 			}
 			if (base.type.kind != ShaderTypeKind.Struct) {
 				return fail(p, "Field of a " + base.type.kind.toString());
@@ -1275,6 +1298,20 @@ export function printGlsl(
 			exchanges += "struct " + p.exchangeNames[slot] + "\n{\n    " +
 				scalarName(v.type.scalar) + " old_value;\n    bool exchanged;\n};\n\n";
 		}
+	}
+	for (const t of splitResults(m, functions)) {
+		if (es && t.kind == ShaderTypeKind.FrexpResult) { continue; }
+		p.splits.push(t);
+		const structName = claim(p, p.globals, splitStructName(t));
+		const helperName = claim(p, p.globals, splitHelperName(t));
+		p.splitStructs.push(structName);
+		p.splitHelpers.push(helperName);
+		const types = glslSplitTypes(t);
+		const call = t.kind == ShaderTypeKind.ModfResult ? "modf" : "frexp";
+		exchanges += "struct " + structName + "\n{\n    " + types[0] + " " + splitMember(t, 0) + ";\n    " +
+			types[1] + " " + splitMember(t, 1) + ";\n};\n\n" +
+			structName + " " + helperName + "(" + types[0] + " arg)\n{\n    " + types[1] + " other;\n    " +
+			types[0] + " part = " + call + "(arg, other);\n    return " + structName + "(part, other);\n}\n\n";
 	}
 
 	let head = es ? "#version 300 es\n" : "#version 430\n";

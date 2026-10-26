@@ -1624,6 +1624,111 @@ export function ldexp(x: float32, e: int32): float32 {
 export function ldexp(x: Vec2f, e: Vec2i): Vec2f { return vec2f(ldexp(x.x, e.x), ldexp(x.y, e.y)); }
 export function ldexp(x: Vec3f, e: Vec3i): Vec3f { return vec3f(ldexp(x.x, e.x), ldexp(x.y, e.y), ldexp(x.z, e.z)); }
 export function ldexp(x: Vec4f, e: Vec4i): Vec4f { return vec4f(ldexp(x.x, e.x), ldexp(x.y, e.y), ldexp(x.z, e.z), ldexp(x.w, e.w)); }
+
+// WGSL's modf and frexp answer a struct whose fields the specification names: a fraction and the
+// whole part or the exponent. Each width of each is a ./std struct, as the atomic exchange results
+// are; the IR marks the type as one a printer declares. An infinity or NaN has no result the
+// targets agree on, so the oracle refuses it.
+export struct ModfResultF32 {
+	fract: float32;
+	whole: float32;
+}
+
+export struct ModfResultVec2f {
+	fract: Vec2f;
+	whole: Vec2f;
+}
+
+export struct ModfResultVec3f {
+	fract: Vec3f;
+	whole: Vec3f;
+}
+
+export struct ModfResultVec4f {
+	fract: Vec4f;
+	whole: Vec4f;
+}
+
+export struct FrexpResultF32 {
+	fract: float32;
+	exp: int32;
+}
+
+export struct FrexpResultVec2f {
+	fract: Vec2f;
+	exp: Vec2i;
+}
+
+export struct FrexpResultVec3f {
+	fract: Vec3f;
+	exp: Vec3i;
+}
+
+export struct FrexpResultVec4f {
+	fract: Vec4f;
+	exp: Vec4i;
+}
+
+function finite(x: float32): float32 {
+	if (!(Math.abs(x) <= 3.4028234663852886e38)) {
+		unreachable("modf and frexp: an infinity or NaN has no result the targets agree on");
+	}
+	return x;
+}
+
+export function modf(x: float32): ModfResultF32 {
+	const whole = Math.trunc(finite(x)) as float32;
+	return { fract: x - whole, whole };
+}
+export function modf(v: Vec2f): ModfResultVec2f {
+	const x = modf(v.x);
+	const y = modf(v.y);
+	return { fract: vec2f(x.fract, y.fract), whole: vec2f(x.whole, y.whole) };
+}
+export function modf(v: Vec3f): ModfResultVec3f {
+	const x = modf(v.x);
+	const y = modf(v.y);
+	const z = modf(v.z);
+	return { fract: vec3f(x.fract, y.fract, z.fract), whole: vec3f(x.whole, y.whole, z.whole) };
+}
+export function modf(v: Vec4f): ModfResultVec4f {
+	const x = modf(v.x);
+	const y = modf(v.y);
+	const z = modf(v.z);
+	const w = modf(v.w);
+	return {
+		fract: vec4f(x.fract, y.fract, z.fract, w.fract),
+		whole: vec4f(x.whole, y.whole, z.whole, w.whole),
+	};
+}
+
+// C's frexp: x = fract * 2^exp with |fract| in [0.5, 1), and a zero keeps its sign and exponent 0.
+export function frexp(x: float32): FrexpResultF32 {
+	if (finite(x) == 0.0) { return { fract: x, exp: 0 }; }
+	const e = binaryExponent(Math.abs(x) as float64) + 1.0;
+	return { fract: ((x as float64) / Math.pow(2.0, e)) as float32, exp: e as int32 };
+}
+export function frexp(v: Vec2f): FrexpResultVec2f {
+	const x = frexp(v.x);
+	const y = frexp(v.y);
+	return { fract: vec2f(x.fract, y.fract), exp: vec2i(x.exp, y.exp) };
+}
+export function frexp(v: Vec3f): FrexpResultVec3f {
+	const x = frexp(v.x);
+	const y = frexp(v.y);
+	const z = frexp(v.z);
+	return { fract: vec3f(x.fract, y.fract, z.fract), exp: vec3i(x.exp, y.exp, z.exp) };
+}
+export function frexp(v: Vec4f): FrexpResultVec4f {
+	const x = frexp(v.x);
+	const y = frexp(v.y);
+	const z = frexp(v.z);
+	const w = frexp(v.w);
+	return {
+		fract: vec4f(x.fract, y.fract, z.fract, w.fract),
+		exp: vec4i(x.exp, y.exp, z.exp, w.exp),
+	};
+}
 export function degrees(v: Vec2f): Vec2f { return vec2f(degrees(v.x), degrees(v.y)); }
 export function degrees(v: Vec3f): Vec3f { return vec3f(degrees(v.x), degrees(v.y), degrees(v.z)); }
 export function degrees(v: Vec4f): Vec4f {
@@ -3100,6 +3205,14 @@ export function countTrailingZeros(v: Vec2i): Vec2i { return vec2i(countTrailing
 export function countTrailingZeros(v: Vec3i): Vec3i { return vec3i(countTrailingZeros(v.x), countTrailingZeros(v.y), countTrailingZeros(v.z)); }
 export function countTrailingZeros(v: Vec4i): Vec4i { return vec4i(countTrailingZeros(v.x), countTrailingZeros(v.y), countTrailingZeros(v.z), countTrailingZeros(v.w)); }
 
+// floor(log2(a)) of a positive finite a, corrected for log2's rounding at a power of two.
+function binaryExponent(a: float64): float64 {
+	let e = Math.floor(Math.log2(a));
+	if (Math.pow(2.0, e) > a) { e -= 1.0; }
+	if (Math.pow(2.0, e + 1.0) <= a) { e += 1.0; }
+	return e;
+}
+
 // IEEE binary32 by arithmetic, as halfBits is binary16. WGSL leaves the bits of an infinity or NaN
 // indeterminate, so the oracle refuses both ways.
 function floatToBits(x: float32): uint32 {
@@ -3109,9 +3222,7 @@ function floatToBits(x: float32): uint32 {
 	const sign: uint32 = x < 0.0 || (x == 0.0 && 1.0 / x < 0.0) ? 0x80000000 : 0;
 	const a = Math.abs(x) as float64;
 	if (a < 1.1754943508222875e-38) { return sign | ((a * Math.pow(2.0, 149.0)) as uint32); }
-	let e = Math.floor(Math.log2(a));
-	if (Math.pow(2.0, e) > a) { e -= 1.0; }
-	if (Math.pow(2.0, e + 1.0) <= a) { e += 1.0; }
+	const e = binaryExponent(a);
 	const fraction = (a / Math.pow(2.0, e) - 1.0) * 8388608.0;
 	return sign | (((e + 127.0) as uint32) << 23) | (fraction as uint32);
 }
@@ -3222,9 +3333,7 @@ function halfBits(x: float32): uint32 {
 	const sign: uint32 = x < 0.0 || (x == 0.0 && 1.0 / x < 0.0) ? 0x8000 : 0;
 	const a = Math.abs(x) as float64;
 	if (a < 0.00006103515625) { return sign | (nearestEven(a * 16777216.0) as uint32); }
-	let e = Math.floor(Math.log2(a));
-	if (Math.pow(2.0, e) > a) { e -= 1.0; }
-	if (Math.pow(2.0, e + 1.0) <= a) { e += 1.0; }
+	let e = binaryExponent(a);
 	let fraction = nearestEven((a / Math.pow(2.0, e) - 1.0) * 1024.0);
 	if (fraction == 1024.0) {
 		e += 1.0;

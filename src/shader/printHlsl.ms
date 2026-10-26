@@ -45,6 +45,9 @@ import {
 	isIntMin,
 	mathName,
 	pointed,
+	splitHelperName,
+	splitMember,
+	splitStructName,
 } from "./spelling";
 import { claimName } from "./names";
 import { printableEntry } from "./specialize";
@@ -238,6 +241,7 @@ function typeName(p: Printer, t: ShaderType): string {
 		},
 		ShaderTypeKind.Atomic => scalarName(t.scalar),
 		ShaderTypeKind.ExchangeResult => exchangeResult(p, t.scalar),
+		ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult => splitResult(p, t),
 	};
 }
 
@@ -245,6 +249,33 @@ function exchangeResult(p: Printer, scalar: ScalarKind): string {
 	const suffix = scalar == ScalarKind.I32 ? "I32" : "U32";
 	return helper(p, "exchange " + suffix, "AtomicExchange" + suffix, (n) => "struct " + n +
 		"\n{\n    " + scalarName(scalar) + " old_value;\n    bool exchanged;\n};\n");
+}
+
+function splitTypes(t: ShaderType): string[] {
+	const fract = t.rows == 1 ? "float" : "float" + String(t.rows);
+	if (t.kind == ShaderTypeKind.ModfResult) { return [fract, fract]; }
+	return [fract, t.rows == 1 ? "int" : "int" + String(t.rows)];
+}
+
+// naga's HLSL back-end writes the same two functions: frexp and modf hand back one half through an
+// out parameter, and frexp's mantissa is signed by hand because HLSL's carries no sign.
+function splitResult(p: Printer, t: ShaderType): string {
+	const types = splitTypes(t);
+	return helper(p, "split " + splitStructName(t), splitStructName(t), (n) => "struct " + n +
+		"\n{\n    " + types[0] + " " + splitMember(t, 0) + ";\n    " + types[1] + " " +
+		splitMember(t, 1) + ";\n};\n");
+}
+
+function splitCall(p: Printer, e: ShaderExpr): string {
+	const result = splitResult(p, e.type);
+	const types = splitTypes(e.type);
+	const modf = e.type.kind == ShaderTypeKind.ModfResult;
+	const name = helper(p, "splitCall " + splitStructName(e.type), splitHelperName(e.type), (n) =>
+		result + " " + n + "(" + types[0] + " arg)\n{\n    " + types[0] + " other;\n    " + result +
+		" result;\n    result." + splitMember(e.type, 0) + " = " + (modf ? "modf" : "sign(arg) * frexp") +
+		"(arg, other);\n    result." + splitMember(e.type, 1) + " = " +
+		(modf ? "other" : types[1] + "(other)") + ";\n    return result;\n}\n");
+	return name + "(" + expr(p, e.operands[0]) + ")";
 }
 
 function temporary(p: Printer, name: string): string {
@@ -803,6 +834,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.Asinh | Intrinsic.Acosh | Intrinsic.Atanh | Intrinsic.FwidthCoarse |
 			Intrinsic.FwidthFine => polyfillOf(p, e),
 		Intrinsic.Bitcast => bitcastOf(p, e),
+		Intrinsic.Modf | Intrinsic.Frexp => splitCall(p, e),
 		Intrinsic.Sign => converted(p, "sign(" + args() + ")", "int", e.type),
 		Intrinsic.Inverse => inverseOf(p, e),
 		Intrinsic.UpperLeft3x3 => "((float3x3)" + operand(p, e.operands[0]) + ")",
@@ -908,6 +940,9 @@ function expr(p: Printer, e: ShaderExpr): string {
 			const base = e.operands[0];
 			if (base.type.kind == ShaderTypeKind.ExchangeResult) {
 				return postfixBase(p, base) + (e.index == 0 ? ".old_value" : ".exchanged");
+			}
+			if (base.type.kind == ShaderTypeKind.ModfResult || base.type.kind == ShaderTypeKind.FrexpResult) {
+				return postfixBase(p, base) + "." + splitMember(base.type, e.index);
 			}
 			if (base.type.kind != ShaderTypeKind.Struct) {
 				return fail(p, "Field of a " + base.type.kind.toString());
@@ -1057,7 +1092,7 @@ function packedSize(t: ShaderType): int32 {
 		ShaderTypeKind.Array => t.length * packedSize(t.element[0]),
 		ShaderTypeKind.Void | ShaderTypeKind.RuntimeArray | ShaderTypeKind.Struct |
 			ShaderTypeKind.Texture | ShaderTypeKind.Sampler | ShaderTypeKind.StorageTexture |
-			ShaderTypeKind.ExchangeResult => -1,
+			ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult => -1,
 	};
 }
 

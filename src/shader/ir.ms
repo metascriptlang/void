@@ -18,6 +18,8 @@ export enum ShaderTypeKind {
 	StorageTexture,
 	Atomic,
 	ExchangeResult,
+	ModfResult,
+	FrexpResult,
 }
 
 export enum TextureShape {
@@ -156,6 +158,8 @@ export enum Intrinsic {
 	Acosh,
 	Atanh,
 	Ldexp,
+	Modf,
+	Frexp,
 	Degrees,
 	Radians,
 	Min,
@@ -357,6 +361,19 @@ function mixedMathError(e: ShaderExpr): string {
 		!isNumericShape(o[1].type) || o[1].type.scalar != ScalarKind.I32 ||
 		!sameShape(first, o[1].type) || !sameShaderType(e.type, first)) {
 		return name + " takes an f32 scalar or vector and an i32 of its shape, as WGSL's";
+	}
+	return "";
+}
+
+// modf and frexp take an f32 scalar or vector and answer the predeclared result of its width.
+function splitError(e: ShaderExpr): string {
+	const name = e.intrinsic.toString();
+	const o = e.operands;
+	const want = e.intrinsic == Intrinsic.Modf ? ShaderTypeKind.ModfResult : ShaderTypeKind.FrexpResult;
+	if (o.length != 1 || !isNumericShape(o[0].type) || o[0].type.scalar != ScalarKind.F32 ||
+		e.type.kind != want || e.type.rows != o[0].type.rows) {
+		return name + " takes an f32 scalar or vector and answers the predeclared result of its " +
+			"width, as WGSL's";
 	}
 	return "";
 }
@@ -653,6 +670,35 @@ export function exchangeResultType(scalar: ScalarKind): ShaderType {
 	return t;
 }
 
+// WGSL's __modf_result_* and __frexp_result_*: rows is 1 for the f32 forms and the width of a vector
+// form otherwise. Member 0 is fract, member 1 whole for modf and exp for frexp.
+export function modfResultType(rows: int32): ShaderType {
+	let t = scalarType(ScalarKind.F32);
+	t.kind = ShaderTypeKind.ModfResult;
+	t.rows = rows;
+	return t;
+}
+
+export function frexpResultType(rows: int32): ShaderType {
+	let t = modfResultType(rows);
+	t.kind = ShaderTypeKind.FrexpResult;
+	return t;
+}
+
+export function isPredeclaredResult(t: ShaderType): boolean {
+	return t.kind == ShaderTypeKind.ExchangeResult || t.kind == ShaderTypeKind.ModfResult ||
+		t.kind == ShaderTypeKind.FrexpResult;
+}
+
+function shapeOf(scalar: ScalarKind, rows: int32): ShaderType {
+	return rows == 1 ? scalarType(scalar) : vectorType(scalar, rows);
+}
+
+export function predeclaredMemberType(t: ShaderType, member: int32): ShaderType {
+	const exponent = t.kind == ShaderTypeKind.FrexpResult && member == 1;
+	return shapeOf(exponent ? ScalarKind.I32 : ScalarKind.F32, t.rows);
+}
+
 export function sameShaderType(a: ShaderType, b: ShaderType): boolean {
 	if (a.kind != b.kind || a.scalar != b.scalar || a.rows != b.rows || a.columns != b.columns ||
 		a.length != b.length || a.structIndex != b.structIndex || a.shape != b.shape ||
@@ -939,6 +985,10 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 		const error = mixedMathError(e);
 		if (error != "") { c.errors.push(owner + ": " + error); }
 	}
+	if (e.kind == ExprKind.Intrinsic && (e.intrinsic == Intrinsic.Modf || e.intrinsic == Intrinsic.Frexp)) {
+		const error = splitError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
 	const atomic = e.kind == ExprKind.Intrinsic && isAtomic(e.intrinsic);
 	if (atomic && (e.operands.length == 0 || e.operands[0].type.kind != ShaderTypeKind.Atomic)) {
 		c.errors.push(owner + ": " + e.intrinsic.toString() + " works on an atomic, as WGSL's");
@@ -1061,6 +1111,10 @@ export function irErrors(m: ShaderModule): string[] {
 		for (const f of s.members) {
 			if (holdsRuntimeArray(f.type)) {
 				c.errors.push("struct '" + s.name + "': member '" + f.name + "' " + RUNTIME_ARRAY);
+			}
+			if (isPredeclaredResult(f.type)) {
+				c.errors.push("struct '" + s.name + "': member '" + f.name + "' is a predeclared result, " +
+					"which WGSL cannot name");
 			}
 		}
 	}

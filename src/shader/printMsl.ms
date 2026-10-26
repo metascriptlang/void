@@ -26,6 +26,8 @@ import {
 	sameShaderType,
 	isShift,
 	isAtomic,
+	frexpResultType,
+	modfResultType,
 	isEffect,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
@@ -40,6 +42,9 @@ import {
 	isIntMin,
 	isMath,
 	mathName,
+	splitHelperName,
+	splitMember,
+	splitStructName,
 	pointed,
 	repeatedBitsOperand,
 } from "./spelling";
@@ -64,7 +69,7 @@ function mslReservedWords(): string[] {
 		"texture2d_ms", "depth2d", "depth2d_array", "depthcube", "depth2d_ms", "level", "bias",
 		"discard_fragment", "select", "fmod", "rint", "rsqrt", "faceforward", "dfdx", "dfdy",
 		"all", "any", "as_type", "ctz", "clz", "extract_bits", "insert_bits", "popcount", "reverse_bits",
-		"half",
+		"half", "modf", "frexp",
 	];
 	for (const scalar of ["float", "int", "uint", "bool", "half"]) {
 		for (let n = 2; n <= 4; n++) {
@@ -106,7 +111,7 @@ function builtinName(op: Intrinsic): string {
 		Intrinsic.Unpack2x16Snorm => "unpack_snorm2x16_to_float",
 		Intrinsic.FirstLeadingBit | Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits |
 			Intrinsic.InsertBits | Intrinsic.Pack2x16Float | Intrinsic.Unpack2x16Float => "",
-		Intrinsic.Sign | Intrinsic.Degrees | Intrinsic.Radians => "",
+		Intrinsic.Sign | Intrinsic.Degrees | Intrinsic.Radians | Intrinsic.Modf | Intrinsic.Frexp => "",
 		_ => mathName(op),
 	};
 }
@@ -188,6 +193,7 @@ class Printer {
 	upperLeft: boolean = false;
 	inverses: int32[] = [];
 	exchanges: boolean[] = [false, false];
+	splits: ShaderType[] = [];
 	error: string = "";
 	lines: string[] = [];
 	reserved: string[] = [];
@@ -274,8 +280,35 @@ function typeText(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.Atomic => "atomic_" + scalarText(t.scalar),
 		ShaderTypeKind.ExchangeResult => "AtomicExchange" +
 			exchangeSuffix(t.scalar == ScalarKind.I32 ? 0 : 1),
+		ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult => usedSplit(p, t),
 		ShaderTypeKind.Void => "void",
 	};
+}
+
+function splitTypes(t: ShaderType): string[] {
+	const fract = t.rows == 1 ? "float" : "float" + String(t.rows);
+	if (t.kind == ShaderTypeKind.ModfResult) { return [fract, fract]; }
+	return [fract, t.rows == 1 ? "int" : "int" + String(t.rows)];
+}
+
+function splitText(t: ShaderType): string {
+	const types = splitTypes(t);
+	const result = splitStructName(t);
+	const call = t.kind == ShaderTypeKind.ModfResult ? "modf" : "frexp";
+	return "struct " + result + " {\n  " + types[0] + " " + splitMember(t, 0) + ";\n  " + types[1] + " " +
+		splitMember(t, 1) + ";\n};\n\nstatic inline " + result + " " + splitHelperName(t) + "(" +
+		types[0] + " arg) {\n  " + types[1] + " other;\n  " + types[0] + " part = " + call +
+		"(arg, other);\n  return " + result + "{part, other};\n}";
+}
+
+function usedSplit(p: Printer, t: ShaderType): string {
+	if (!p.splits.some((s) => sameShaderType(s, t))) { p.splits.push(t); }
+	return splitStructName(t);
+}
+
+function splitCallName(p: Printer, t: ShaderType): string {
+	usedSplit(p, t);
+	return splitHelperName(t);
 }
 
 function atomicText(p: Printer, e: ShaderExpr): string {
@@ -620,6 +653,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 			Intrinsic.InsertBits | Intrinsic.Pack2x16Float | Intrinsic.Unpack2x16Float =>
 			bitsText(p, e),
 		Intrinsic.Sign => signText(p, e),
+		Intrinsic.Modf | Intrinsic.Frexp => splitCallName(p, e.type) + "(" + exprText(p, o[0]) + ")",
 		Intrinsic.Degrees => "(" + exprText(p, o[0]) + " * 57.295779513082323)",
 		Intrinsic.Radians => "(" + exprText(p, o[0]) + " * 0.017453292519943295)",
 		Intrinsic.Inverse => inverseCall(p, e),
@@ -667,6 +701,9 @@ function initializerText(p: Printer, e: ShaderExpr): string {
 
 function memberName(p: Printer, t: ShaderType, member: int32): string {
 	if (t.kind == ShaderTypeKind.ExchangeResult) { return member == 0 ? "old_value" : "exchanged"; }
+	if (t.kind == ShaderTypeKind.ModfResult || t.kind == ShaderTypeKind.FrexpResult) {
+		return splitMember(t, member);
+	}
 	if (t.kind != ShaderTypeKind.Struct) { return fail(p, "a field of a " + t.kind.toString()); }
 	return p.members[t.structIndex][member];
 }
@@ -1097,6 +1134,12 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 	p.taken = ["main0", "main0_in", "main0_out", "in", "out", UPPER_LEFT, inverseName(2),
 		inverseName(3), inverseName(4), "AtomicExchangeI32", "AtomicExchangeU32",
 		"atomicCompareExchangeWeakI32", "atomicCompareExchangeWeakU32"];
+	for (let rows = 1; rows <= 4; rows++) {
+		for (const t of [modfResultType(rows as int32), frexpResultType(rows as int32)]) {
+			p.taken.push(splitStructName(t));
+			p.taken.push(splitHelperName(t));
+		}
+	}
 	for (const s of m.structs) {
 		p.structs.push(nameIn(p, p.taken, s.name));
 		let scope: string[] = [];
@@ -1175,6 +1218,7 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 	for (let slot = 0; slot < 2; slot++) {
 		if (p.exchanges[slot]) { decls.push(exchangeText(slot as int32)); }
 	}
+	for (const t of p.splits) { decls.push(splitText(t)); }
 	for (const text of functions) { decls.push(text); }
 	const returned = outputs.length > 0 ? "main0_out" : "void";
 	const shared = reads.workgroups.map((w) => "  threadgroup " +

@@ -1,4 +1,4 @@
-import { BinaryOp, Intrinsic, ScalarKind } from "./ir";
+import { BinaryOp, Intrinsic, ScalarKind, ShaderType, ShaderTypeKind } from "./ir";
 
 export function binaryOperator(op: BinaryOp): string {
 	return match (op) {
@@ -63,8 +63,8 @@ export function isMath(op: Intrinsic): boolean {
 			Intrinsic.Exp | Intrinsic.Exp2 | Intrinsic.Log | Intrinsic.Log2 | Intrinsic.Pow |
 			Intrinsic.Sin | Intrinsic.Cos | Intrinsic.Tan | Intrinsic.Asin | Intrinsic.Acos |
 			Intrinsic.Atan | Intrinsic.Atan2 | Intrinsic.Sinh | Intrinsic.Cosh | Intrinsic.Tanh |
-			Intrinsic.Asinh | Intrinsic.Acosh | Intrinsic.Atanh | Intrinsic.Ldexp |
-			Intrinsic.Degrees | Intrinsic.Radians | Intrinsic.Min | Intrinsic.Max |
+			Intrinsic.Asinh | Intrinsic.Acosh | Intrinsic.Atanh | Intrinsic.Ldexp | Intrinsic.Modf |
+			Intrinsic.Frexp | Intrinsic.Degrees | Intrinsic.Radians | Intrinsic.Min | Intrinsic.Max |
 			Intrinsic.Clamp | Intrinsic.Saturate | Intrinsic.Mix | Intrinsic.Step |
 			Intrinsic.Smoothstep | Intrinsic.Fma | Intrinsic.Dot | Intrinsic.Cross |
 			Intrinsic.Length | Intrinsic.Distance | Intrinsic.Normalize | Intrinsic.Reflect |
@@ -112,6 +112,8 @@ export function mathName(op: Intrinsic): string {
 		Intrinsic.Acosh => "acosh",
 		Intrinsic.Atanh => "atanh",
 		Intrinsic.Ldexp => "ldexp",
+		Intrinsic.Modf => "modf",
+		Intrinsic.Frexp => "frexp",
 		Intrinsic.Degrees => "degrees",
 		Intrinsic.Radians => "radians",
 		Intrinsic.Min => "min",
@@ -256,4 +258,28 @@ export function glslBitcast(
 		return (from == ScalarKind.I32 ? "intBitsToFloat(" : "uintBitsToFloat(") + arg + ")";
 	}
 	return resultType + "(" + arg + ")";
+}
+
+// The structs of modf and frexp are predeclared in WGSL; the other targets declare one per width
+// the module uses, with a helper that makes it, as naga's back-ends do.
+export function splitStructName(t: ShaderType): string {
+	const head = t.kind == ShaderTypeKind.ModfResult ? "ModfResult" : "FrexpResult";
+	return head + (t.rows == 1 ? "F32" : "Vec" + String(t.rows) + "f");
+}
+
+export function splitHelperName(t: ShaderType): string {
+	const head = t.kind == ShaderTypeKind.ModfResult ? "modf" : "frexp";
+	return head + (t.rows == 1 ? "F32" : "Vec" + String(t.rows) + "f");
+}
+
+export function splitMember(t: ShaderType, member: int32): string {
+	if (member == 0) { return "fract"; }
+	return t.kind == ShaderTypeKind.ModfResult ? "whole" : "exp";
+}
+
+// GLSL's float or vec and the type of the second field: the same for modf, an int or ivec for frexp.
+export function glslSplitTypes(t: ShaderType): string[] {
+	const arg = t.rows == 1 ? "float" : "vec" + String(t.rows);
+	if (t.kind == ShaderTypeKind.ModfResult) { return [arg, arg]; }
+	return [arg, t.rows == 1 ? "int" : "ivec" + String(t.rows)];
 }

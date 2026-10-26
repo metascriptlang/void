@@ -30,7 +30,9 @@ import {
 	UnaryOp,
 	isAtomic,
 	isShift,
+	sameShaderType,
 } from "./ir";
+import { splitResults } from "./irWalk";
 import {
 	Names,
 	fieldNames,
@@ -47,8 +49,12 @@ import {
 	glslAtomicName,
 	glslBitcast,
 	glslBits,
+	glslSplitTypes,
 	mathName,
 	repeatedBitsOperand,
+	splitHelperName,
+	splitMember,
+	splitStructName,
 } from "./spelling";
 
 function glslReservedWords(): string[] {
@@ -134,6 +140,9 @@ class Glsl {
 	workgroupNames: string[] = [];
 	exchangeNames: string[] = ["", ""];
 	exchangeMakers: string[] = ["", ""];
+	splits: ShaderType[] = [];
+	splitStructs: string[] = [];
+	splitHelpers: string[] = [];
 	fn: int32 = -1;
 	samplerless: boolean = false;
 }
@@ -193,6 +202,12 @@ function vectorPrefix(s: ScalarKind): string {
 	};
 }
 
+function splitAt(p: Glsl, t: ShaderType): int32 {
+	const at = p.splits.findIndex((s) => sameShaderType(s, t)) as int32;
+	if (at < 0) { broken("no struct is declared for a " + t.kind.toString()); }
+	return at;
+}
+
 function typeName(p: Glsl, t: ShaderType): string {
 	return match (t.kind) {
 		ShaderTypeKind.Scalar => scalarName(t.scalar),
@@ -202,8 +217,14 @@ function typeName(p: Glsl, t: ShaderType): string {
 		ShaderTypeKind.Struct => p.structNames[t.structIndex],
 		ShaderTypeKind.Atomic => scalarName(t.scalar),
 		ShaderTypeKind.ExchangeResult => p.exchangeNames[exchangeSlot(t.scalar)],
+		ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult => p.splitStructs[splitAt(p, t)],
 		_ => { broken("a " + t.kind.toString() + " is no GLSL value type"); },
 	};
+}
+
+function splitField(e: ShaderExpr): boolean {
+	const kind = e.operands[0].type.kind;
+	return kind == ShaderTypeKind.ModfResult || kind == ShaderTypeKind.FrexpResult;
 }
 
 function atomicText(e: ShaderExpr, args: string[]): string {
@@ -353,7 +374,8 @@ function expr(p: Glsl, e: ShaderExpr): string {
 			e.type.scalar == ScalarKind.U32 && e.operands[0].kind == ExprKind.Literal ?
 			integerText(e.operands[0].value) + "u" :
 			typeName(p, e.type) + "(" + value(p, e.operands[0]) + ")",
-		ExprKind.Field => e.operands[0].type.kind == ShaderTypeKind.ExchangeResult ?
+		ExprKind.Field => splitField(e) ? expr(p, e.operands[0]) + "." + splitMember(e.operands[0].type, e.index) :
+			e.operands[0].type.kind == ShaderTypeKind.ExchangeResult ?
 			expr(p, e.operands[0]) + (e.index == 0 ? ".old_value" : ".exchanged") :
 			expr(p, e.operands[0]) + "." + p.structFields[e.operands[0].type.structIndex][e.index],
 		ExprKind.Swizzle => expr(p, e.operands[0]) + "." + swizzle(e),
@@ -423,6 +445,7 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 		Intrinsic.Bitcast => glslBitcast(e.operands[0].type.scalar, e.type.scalar,
 			typeName(p, e.type), args[0]),
 		Intrinsic.Saturate => "clamp(" + args[0] + ", 0.0, 1.0)",
+		Intrinsic.Modf | Intrinsic.Frexp => p.splitHelpers[splitAt(p, e.type)] + all,
 		Intrinsic.Select => e.operands[2].type.kind == ShaderTypeKind.Vector ? "mix" + all :
 			"(" + args[2] + " ? " + args[1] + " : " + args[0] + ")",
 		Intrinsic.TextureDimensions | Intrinsic.TextureLoad => fetched(p, e, args),
@@ -736,6 +759,12 @@ function nameDeclarations(p: Glsl): void {
 				"(" + scalar + ", " + scalar + ")");
 		}
 	}
+	for (const t of splitResults(m, m.functions.map((f, i) => i as int32))) {
+		const argType = glslSplitTypes(t)[0];
+		p.splits.push(t);
+		p.splitStructs.push(nameStruct(names, splitStructName(t)));
+		p.splitHelpers.push(nameFunction(names, splitHelperName(t), "(" + argType + ")"));
+	}
 	for (const d of m.declarations) {
 		const i = d.index;
 		if (d.kind == DeclarationKind.Struct) {
@@ -804,6 +833,16 @@ export function printGlsl450(m: ShaderModule): string {
 		out += "struct " + t + " {\n    " + scalar + " old_value;\n    bool exchanged;\n};\n" + t +
 			" " + p.exchangeMakers[slot] + "(" + scalar + " compare, " + scalar + " old) {\n" +
 			"    return " + t + "(old, old == compare);\n}\n";
+	}
+	for (let i = 0; i < p.splits.length; i++) {
+		const t = p.splits[i];
+		const [argType, otherType] = glslSplitTypes(t);
+		const call = t.kind == ShaderTypeKind.ModfResult ? "modf" : "frexp";
+		out += "struct " + p.splitStructs[i] + " {\n    " + argType + " " + splitMember(t, 0) + ";\n    " +
+			otherType + " " + splitMember(t, 1) + ";\n};\n" + p.splitStructs[i] + " " +
+			p.splitHelpers[i] + "(" + argType + " arg) {\n    " + otherType + " other;\n    " +
+			argType + " part = " + call + "(arg, other);\n    return " + p.splitStructs[i] +
+			"(part, other);\n}\n";
 	}
 	for (const r of m.resources) { out += gated(r.condition, resourceText(p, r)); }
 	for (const direction of [IoDirection.In, IoDirection.Out]) {

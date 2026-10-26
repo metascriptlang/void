@@ -24,9 +24,17 @@ import {
 	AtomicExchangeU32,
 	AtomicI32,
 	AtomicU32,
+	FrexpResultF32,
+	FrexpResultVec2f,
+	FrexpResultVec3f,
+	FrexpResultVec4f,
 	Mat2x2f,
 	Mat3x3f,
 	Mat4x4f,
+	ModfResultF32,
+	ModfResultVec2f,
+	ModfResultVec3f,
+	ModfResultVec4f,
 	Sampler,
 	SamplerComparison,
 	StorageTexture2d,
@@ -100,11 +108,14 @@ import {
 	exchangeResultType,
 	exprOf,
 	featureOn,
+	frexpResultType,
 	holds,
 	intrinsicOf,
 	irErrors,
 	literal,
 	matrixType,
+	modfResultType,
+	predeclaredMemberType,
 	sameCondition,
 	samplerType,
 	scalarType,
@@ -538,6 +549,10 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	const atomicNodes = [getTypeImpl(AtomicI32), getTypeImpl(AtomicU32)];
 	const exchangeNodes = [getTypeImpl(AtomicExchangeI32), getTypeImpl(AtomicExchangeU32)];
 	const atomicScalars = [ScalarKind.I32, ScalarKind.U32];
+	const modfNodes = [getTypeImpl(ModfResultF32), getTypeImpl(ModfResultVec2f),
+		getTypeImpl(ModfResultVec3f), getTypeImpl(ModfResultVec4f)];
+	const frexpNodes = [getTypeImpl(FrexpResultF32), getTypeImpl(FrexpResultVec2f),
+		getTypeImpl(FrexpResultVec3f), getTypeImpl(FrexpResultVec4f)];
 	const vectorTypes = [
 		getTypeImpl(Vec2f),
 		getTypeImpl(Vec3f),
@@ -579,18 +594,22 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return false;
 	}
 
-	function atomicOrExchange(t: Node): ShaderType | null {
+	function predeclaredType(t: Node): ShaderType | null {
 		for (let i = 0; i < atomicNodes.length; i++) {
 			if (sameType(t, atomicNodes[i])) { return atomicType(atomicScalars[i]); }
 			if (sameType(t, exchangeNodes[i])) { return exchangeResultType(atomicScalars[i]); }
+		}
+		for (let i = 0; i < modfNodes.length; i++) {
+			if (sameType(t, modfNodes[i])) { return modfResultType((i + 1) as int32); }
+			if (sameType(t, frexpNodes[i])) { return frexpResultType((i + 1) as int32); }
 		}
 		return null;
 	}
 
 	function glslType(t: Node | null, at: Node): ShaderType {
 		if (t == null) { fail(at, "the expression has no type"); }
-		const atomic = atomicOrExchange(t);
-		if (atomic != null) { return atomic; }
+		const predeclared = predeclaredType(t);
+		if (predeclared != null) { return predeclared; }
 		match (typeKind(t)) {
 			TypeKind.Float32 => { return scalarType(ScalarKind.F32); },
 			TypeKind.Int32 => { return scalarType(ScalarKind.I32); },
@@ -1030,7 +1049,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		"pack2x16float", "unpack4x8unorm", "unpack4x8snorm", "unpack2x16unorm", "unpack2x16snorm",
 		"unpack2x16float", "asinh", "acosh", "atanh", "ldexp", "countLeadingZeros",
 		"countTrailingZeros", "bitcastF32toU32", "bitcastF32toI32", "bitcastI32toF32",
-		"bitcastI32toU32", "bitcastU32toF32", "bitcastU32toI32",
+		"bitcastI32toU32", "bitcastU32toF32", "bitcastU32toI32", "modf", "frexp",
 	];
 	const intrinsics = [
 		Intrinsic.Abs, Intrinsic.Sign, Intrinsic.Floor, Intrinsic.Ceil, Intrinsic.Trunc,
@@ -1057,7 +1076,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		Intrinsic.Unpack2x16Snorm, Intrinsic.Unpack2x16Float, Intrinsic.Asinh, Intrinsic.Acosh,
 		Intrinsic.Atanh, Intrinsic.Ldexp, Intrinsic.CountLeadingZeros, Intrinsic.CountTrailingZeros,
 		Intrinsic.Bitcast, Intrinsic.Bitcast, Intrinsic.Bitcast, Intrinsic.Bitcast,
-		Intrinsic.Bitcast, Intrinsic.Bitcast,
+		Intrinsic.Bitcast, Intrinsic.Bitcast, Intrinsic.Modf, Intrinsic.Frexp,
 	];
 	const derivativeNames = ["dpdx", "dpdy", "fwidth", "dpdxCoarse", "dpdxFine", "dpdyCoarse",
 		"dpdyFine", "fwidthCoarse", "fwidthFine"];
@@ -1084,8 +1103,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		const view = viewNodes.findIndex((n) => sameType(t, n));
 		if (view >= 0) { return textureType(viewShapes[view], viewTexels[view]); }
 		if (sameType(t, samplerNode) || sameType(t, comparisonNode)) { return samplerType(); }
-		const atomic = atomicOrExchange(t);
-		if (atomic != null) { return atomic; }
+		const predeclared = predeclaredType(t);
+		if (predeclared != null) { return predeclared; }
 		if (isAuthorStruct(t)) { return structType(knownStruct(t)); }
 		return new ShaderType();
 	}
@@ -1192,14 +1211,19 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 
 	function memberOf(object: ShaderExpr, n: Node): ShaderExpr {
 		const t = getType(n.object);
-		const atomic = t == null ? null : atomicOrExchange(t);
-		if (atomic != null && atomic.kind == ShaderTypeKind.Atomic) {
+		const predeclared = t == null ? null : predeclaredType(t);
+		if (predeclared != null && predeclared.kind == ShaderTypeKind.Atomic) {
 			fail(n, "an atomic is read through atomicLoad and written through atomicStore, " +
 				"as WGSL's");
 		}
-		if (atomic != null) {
+		if (predeclared != null && predeclared.kind != ShaderTypeKind.ExchangeResult) {
+			const member = n.property == "fract" ? 0 : 1;
+			return exprOf(ExprKind.Field, predeclaredMemberType(predeclared, member), member,
+				[object]);
+		}
+		if (predeclared != null) {
 			const old = n.property == "oldValue";
-			return exprOf(ExprKind.Field, old ? scalarType(atomic.scalar) :
+			return exprOf(ExprKind.Field, old ? scalarType(predeclared.scalar) :
 				scalarType(ScalarKind.Bool), old ? 0 : 1, [object]);
 		}
 		if (t == null || !isAuthorStruct(t)) {
