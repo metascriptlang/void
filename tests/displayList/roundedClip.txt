@@ -1,0 +1,13 @@
+commands 9 draws 3 vertices 0 uiInstances 3 spriteInstances 0
+cmd 0 scissor break:clip view:0 blend:0 sampler:0 effect:-1 rt:0 pipe:vertex verts:0+0 clip:4.00,4.00,40.00,30.00 round:1.00,0.00,24.00,20.00 0.00,1.00,19.00,15.00 radii:6.00,6.00,6.00,6.00
+cmd 1 draw break:clip view:0 blend:1 sampler:2 effect:-1 rt:0 pipe:ui inst:0+1 clip:4.00,4.00,40.00,30.00 round:1.00,0.00,24.00,20.00 0.00,1.00,19.00,15.00 radii:6.00,6.00,6.00,6.00
+cmd 2 scissor break:clip view:0 blend:0 sampler:0 effect:-1 rt:0 pipe:vertex verts:0+0 clip:34.00,9.00,10.00,20.00 round:1.00,0.00,24.00,20.00 0.00,1.00,19.00,15.00 radii:6.00,6.00,6.00,6.00
+cmd 3 draw break:clip view:0 blend:1 sampler:2 effect:-1 rt:0 pipe:ui inst:1+1 clip:34.00,9.00,10.00,20.00 round:1.00,0.00,24.00,20.00 0.00,1.00,19.00,15.00 radii:6.00,6.00,6.00,6.00
+cmd 4 scissor break:clip view:0 blend:0 sampler:0 effect:-1 rt:0 pipe:vertex verts:0+0 clip:4.00,4.00,40.00,30.00 round:1.00,0.00,24.00,20.00 0.00,1.00,19.00,15.00 radii:6.00,6.00,6.00,6.00
+cmd 5 scissor break:clip view:0 blend:0 sampler:0 effect:-1 rt:0 pipe:vertex verts:0+0 clip:0.00,0.00,0.00,0.00
+cmd 6 scissor break:clip view:0 blend:0 sampler:0 effect:-1 rt:0 pipe:vertex verts:0+0 clip:62.29,4.95,35.42,30.10 round:0.92,0.39,81.47,15.00 -0.39,0.92,-12.73,10.00 radii:8.00,0.00,4.00,2.00
+cmd 7 draw break:clip view:0 blend:1 sampler:2 effect:-1 rt:0 pipe:ui inst:2+1 clip:62.29,4.95,35.42,30.10 round:0.92,0.39,81.47,15.00 -0.39,0.92,-12.73,10.00 radii:8.00,0.00,4.00,2.00
+cmd 8 scissor break:clip view:0 blend:0 sampler:0 effect:-1 rt:0 pipe:vertex verts:0+0 clip:0.00,0.00,0.00,0.00
+u 0 mode 0 affine 1.00 0.00 0.00 1.00 at -6.00 -6.00 size 60.00 60.00 uvr 0.00 0.00 0.00 0.00 border 0.00 0.00 0.00 0.00 params 0.00 0.00 0.00 0.00 0.00 0.00 0.00 fill 0.00 1.00 0.00 1.00 edge 0.00 0.00 0.00 0.00
+u 1 mode 0 affine 1.00 0.00 0.00 1.00 at 34.00 9.00 size 30.00 30.00 uvr 0.00 0.00 0.00 0.00 border 0.00 0.00 0.00 0.00 params 0.00 0.00 0.00 0.00 0.00 0.00 0.00 fill 1.00 0.00 0.00 1.00 edge 0.00 0.00 0.00 0.00
+u 2 mode 0 affine 0.92 0.39 -0.39 0.92 at 64.76 -8.16 size 50.00 40.00 uvr 0.00 0.00 0.00 0.00 border 0.00 0.00 0.00 0.00 params 0.00 0.00 0.00 0.00 0.00 0.00 0.00 fill 0.00 0.00 1.00 1.00 edge 0.00 0.00 0.00 0.00
