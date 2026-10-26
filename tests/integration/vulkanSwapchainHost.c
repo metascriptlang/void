@@ -88,12 +88,75 @@ void vulkanHostWindowClose(void) {
 	s_host = (Host){ 0 };
 }
 
+#elif defined(_WIN32)
+#include <windows.h>
+
+static HWND s_window;
+
+static void pump(void) {
+	MSG message;
+	while (PeekMessageA(&message, NULL, 0, 0, PM_REMOVE)) {
+		TranslateMessage(&message);
+		DispatchMessageA(&message);
+	}
+}
+
+static int32_t sizeClient(uint32_t width, uint32_t height) {
+	RECT frame = { 0, 0, (LONG)width, (LONG)height };
+	AdjustWindowRect(&frame, WS_POPUP, FALSE);
+	if (!SetWindowPos(s_window, NULL, 0, 0, frame.right - frame.left, frame.bottom - frame.top,
+			SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE)) {
+		fprintf(stderr, "vulkan swapchain host: SetWindowPos failed: %lu\n", GetLastError());
+		return 1;
+	}
+	pump();
+	RECT client;
+	GetClientRect(s_window, &client);
+	if ((uint32_t)client.right != width || (uint32_t)client.bottom != height) {
+		fprintf(stderr, "vulkan swapchain host: the client area is %ldx%ld, not %ux%u\n",
+			client.right, client.bottom, width, height);
+		return 1;
+	}
+	return 0;
+}
+
+int32_t vulkanHostWindowOpen(uint32_t width, uint32_t height) {
+	HINSTANCE instance = GetModuleHandleA(NULL);
+	WNDCLASSA windowClass = { 0 };
+	windowClass.lpfnWndProc = DefWindowProcA;
+	windowClass.hInstance = instance;
+	windowClass.lpszClassName = "VoidVulkanSwapchainHost";
+	if (RegisterClassA(&windowClass) == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+		fprintf(stderr, "vulkan swapchain host: RegisterClassA failed: %lu\n", GetLastError());
+		return 1;
+	}
+	s_window = CreateWindowA(windowClass.lpszClassName, "void vulkan swapchain", WS_POPUP,
+		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, instance, NULL);
+	if (s_window == NULL) {
+		fprintf(stderr, "vulkan swapchain host: CreateWindowA failed: %lu\n", GetLastError());
+		return 1;
+	}
+	ShowWindow(s_window, SW_SHOWNOACTIVATE);
+	if (sizeClient(width, height) != 0) return 1;
+	return vulkanSurfaceCreateWin32(instance, s_window);
+}
+
+int32_t vulkanHostWindowResize(uint32_t width, uint32_t height) {
+	return sizeClient(width, height);
+}
+
+void vulkanHostWindowClose(void) {
+	if (s_window != NULL) DestroyWindow(s_window);
+	pump();
+	s_window = NULL;
+}
+
 #else
 
 int32_t vulkanHostWindowOpen(uint32_t width, uint32_t height) {
 	(void)width;
 	(void)height;
-	fprintf(stderr, "vulkan swapchain host: the test window is Xlib, which this platform lacks\n");
+	fprintf(stderr, "vulkan swapchain host: no test window on this platform\n");
 	return 1;
 }
 
