@@ -36,6 +36,7 @@ import {
 	recordTexture,
 } from "./clusterTextures";
 import {
+	LIGHT_COOKIE,
 	LIGHT_CLUSTER_FACTORS,
 	LIGHT_CLUSTER_GRID,
 	LIGHT_CLUSTER_SCREEN,
@@ -100,10 +101,12 @@ export function recordCountOf(lights: Readonly<Span<float32>>): Result<int32, Cl
 }
 
 // Each record as clusters.ms sees it: a spot by its cone, any other shape by the sphere its range
-// reaches, which holds every point it lights.
+// reaches, which holds every point it lights. The cookie spot lights its square pyramid, so its
+// cone is the one through the pyramid's corners.
 export function clusterLightsOf(lights: Readonly<Span<float32>>, count: int32): Vec<ClusterLight> {
 	let out: Vec<ClusterLight> = [];
 	for (let i = 0; i < count; i++) {
+		const cookie: boolean = lights[LIGHT_COOKIE] == (i + 1) as float32;
 		const at: int32 = LIGHT_UNIFORM_LENGTH + i * LIGHT_RECORD_LENGTH;
 		const shape: int32 = at + LIGHT_RECORD_SHAPE;
 		const spot: boolean = lights[shape + 3] == LIGHT_KIND_SPOT;
@@ -113,10 +116,16 @@ export function clusterLightsOf(lights: Readonly<Span<float32>>, count: int32): 
 			range: lights[at + LIGHT_RECORD_COLOR + 3],
 			direction: spot ? vec3(lights[shape], lights[shape + 1], lights[shape + 2])
 				: vec3(0.0, 0.0, 1.0),
-			outerHalfAngle: spot ? lights[shape + 7] * 0.5 : 0.0,
+			outerHalfAngle: !spot ? 0.0 : cookie ? cornerHalfAngle(lights[shape + 7]) :
+				lights[shape + 7] * 0.5,
 		});
 	}
 	return out;
+}
+
+function cornerHalfAngle(fullAngle: float32): float32 {
+	const half: float64 = (fullAngle * 0.5) as float64;
+	return Math.atan(Math.SQRT2 * Math.tan(half)) as float32;
 }
 
 function emptyAssignment(): ClusterAssignment {

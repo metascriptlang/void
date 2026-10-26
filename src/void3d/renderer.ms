@@ -31,6 +31,9 @@ import {
 	LIGHT_RECORD_LENGTH,
 	LIGHT_RECORD_SHAPE,
 	LIGHT_CLUSTER_GRID,
+	LIGHT_COOKIE,
+	LIGHT_COOKIE_MATRIX,
+	LIGHT_KIND_SPOT,
 	CLUSTER_SCENE_VIEWS,
 	CLUSTER_SCENE_SAMPLERS,
 	SHADOW_UNIFORM_SLOT,
@@ -68,7 +71,7 @@ import {
 	viewSlotOf,
 	samplerSlotOf,
 } from "./material";
-import { TextureId } from "./texture";
+import { TextureId, NO_TEXTURE } from "./texture";
 import { Vec3, vec3 } from "../math/math3d";
 import { TargetLayout } from "../gpu/target";
 import {
@@ -79,6 +82,7 @@ import {
 	frameIndex,
 	PixelFormat,
 	makeCubeImage,
+	makeImage,
 	makeTextureView,
 	makeSampler,
 	destroyImage,
@@ -124,7 +128,9 @@ import { Frustum3D } from "./frustum";
 import {
 	DirShadowMap, ShadowKind, castsAll, drawShadows, carryShadows, sceneTexture,
 } from "./dirShadowMap";
-import { SpotShadowError, spotCaster, spotShadowView } from "./spotShadow";
+import {
+	SpotShadowError, NOT_A_RECORD, spotCaster, spotShadowView, casterRecord, recordKind,
+} from "./spotShadow";
 import { CubeShadowError, cubeCaster, cubeShadowViews } from "./cubeShadow";
 import {
 	CameraView, CAMERA_EYE, CAMERA_NEAR, CAMERA_PROJECTION_X, CAMERA_PROJECTION_Y,
@@ -179,8 +185,11 @@ export interface Renderer {
 	// clustered in; a frame with a positioned light and no view is refused.
 	cameraView: CameraView | null;
 	clusters: ClusterFrame;
-	// The light block as written: the caller's ambient and sun, then the clusters' fields.
+	// The light block as written: the caller's ambient and sun, then the clusters' fields, then
+	// the cookie spot's record and the matrix to its map.
 	lightValues: Vec<float32>;
+	// The frame's cookie texture (the light block's LIGHT_COOKIE id), NO_TEXTURE without one.
+	cookie: TextureId;
 	// The last frame drew a material whose UV transform scrolls.
 	readsTime: boolean;
 	preset: Preset;
@@ -195,6 +204,10 @@ export interface Renderer {
 	blackCube: uint32;
 	blackCubeView: uint32;
 	blackCubeSampler: uint32;
+	// The cookie slot's texel when no spot has a cookie or its texture is not drawable this
+	// frame: clear, so a cookie that failed to upload lights nothing, as a material draws nothing.
+	clearTexel: uint32;
+	clearTexelView: uint32;
 	screenMesh: MeshId;
 	// The GPU context the handles in play belong to; 0 before the first frame.
 	generation: int32;
@@ -251,6 +264,10 @@ export enum RendererError {
 	// clusters.ms refused the view or a light (a zero-sized target, a light out of range).
 	ClusterAssign,
 	ClusterUpload,
+	// The light block's cookie spot is no spot record of it, or makes no camera.
+	BadCookieSpot,
+	// The cookie spot's texture is not a live one of this context: released, or another's.
+	StaleCookie,
 }
 
 // Floats of the uniform pool the core reserves: camera, lights and the frame block.
@@ -326,6 +343,7 @@ export function createDrawing(
 		cameraView: null,
 		clusters: ClusterFrame.create(ClusterConfig.defaults()),
 		lightValues: new Array(LIGHT_UNIFORM_LENGTH),
+		cookie: NO_TEXTURE,
 		readsTime: false,
 		preset: preset,
 		drawn: [],
@@ -336,6 +354,8 @@ export function createDrawing(
 		blackCube: 0,
 		blackCubeView: 0,
 		blackCubeSampler: 0,
+		clearTexel: 0,
+		clearTexelView: 0,
 		screenMesh: screen.value,
 		generation: 0,
 		changed: true,
@@ -411,7 +431,7 @@ export function attachEnvironment(renderer: Renderer, environment: Environment |
 	renderer.changed = true;
 }
 
-function makeBlackCube(renderer: Renderer): void {
+function makeStandIns(renderer: Renderer): void {
 	const black: uint32[] = [0, 0, 0, 0, 0, 0];
 	renderer.blackCube = makeCubeImage(black, 1);
 	renderer.blackCubeView = makeTextureView(renderer.blackCube);
@@ -422,6 +442,26 @@ function makeBlackCube(renderer: Renderer): void {
 		);
 		unreachable;
 	}
+	const clear: uint32[] = [0];
+	renderer.clearTexel = makeImage(clear, 1, 1);
+	renderer.clearTexelView = makeTextureView(renderer.clearTexel);
+	if (renderer.clearTexel == 0 || renderer.clearTexelView == 0) {
+		console.log("void3d: the GPU refused the 1x1 clear texel a lit key reads without a cookie");
+		unreachable;
+	}
+}
+
+// pbr/SpotLight.hx generateLightProj and Light.hx screenToUv (157): the cookie spot's camera,
+// which is the spot map's (spotShadowView), then NDC to the texture's uv, row 0 at the top as
+// an uploaded image's is on every backend.
+export function cookieMapOf(view: CameraView): Mat4 {
+	const uv: Mat4 = {
+		m11: 0.5, m12: 0.0, m13: 0.0, m14: 0.0,
+		m21: 0.0, m22: -0.5, m23: 0.0, m24: 0.0,
+		m31: 0.0, m32: 0.0, m33: 1.0, m34: 0.0,
+		m41: 0.5, m42: 0.5, m43: 0.0, m44: 1.0,
+	};
+	return view.viewProj * uv;
 }
 
 function writeEnvironment(renderer: Renderer): void {
@@ -670,6 +710,24 @@ export function beginFrame(
 	if (shadowedCube >= 0 && cubeShadow === null) {
 		return Result.err(RendererError.CubeShadowUnattached);
 	}
+	const cookieSpot: int32 = casterRecord(lights, LIGHT_COOKIE);
+	if (cookieSpot == NOT_A_RECORD ||
+		(cookieSpot >= 0 && recordKind(lights, cookieSpot) != LIGHT_KIND_SPOT)) {
+		return Result.err(RendererError.BadCookieSpot);
+	}
+	let cookie: TextureId = NO_TEXTURE;
+	let cookieMatrix: Mat4 | null = null;
+	if (cookieSpot >= 0) {
+		const placed: Result<CameraView, SpotShadowError> = spotShadowView(lights, cookieSpot);
+		if (!placed.ok) { return Result.err(RendererError.BadCookieSpot); }
+		cookieMatrix = cookieMapOf(placed.value);
+		cookie = {
+			store: lights[LIGHT_COOKIE + 1] as int32,
+			index: lights[LIGHT_COOKIE + 2] as int32,
+			generation: lights[LIGHT_COOKIE + 3] as int32,
+		};
+		if (!context.hasTexture(cookie)) { return Result.err(RendererError.StaleCookie); }
+	}
 	const view: CameraView | null = renderer.cameraView;
 	if (records > 0 && view === null) { return Result.err(RendererError.ClusterViewUnset); }
 	if (records > 0 && view !== null && !viewMatches(view, camera)) {
@@ -679,6 +737,17 @@ export function beginFrame(
 		writeUniforms(context, renderer.cameraBlock, camera);
 	if (!cameraWritten.ok) { return Result.err(RendererError.CameraBlockLength); }
 	for (let i = 0; i < LIGHT_CLUSTER_GRID; i++) { renderer.lightValues[i] = lights[i]; }
+	for (let i = LIGHT_COOKIE; i < LIGHT_COOKIE_MATRIX; i++) {
+		renderer.lightValues[i] = lights[i];
+	}
+	const matrixPart: Span<float32> =
+		renderer.lightValues[LIGHT_COOKIE_MATRIX..LIGHT_COOKIE_MATRIX + 16];
+	if (cookieMatrix !== null) {
+		cookieMatrix.writeTo(matrixPart, 0);
+	} else {
+		for (let i = 0; i < 16; i++) { matrixPart[i] = 0.0; }
+	}
+	renderer.cookie = cookie;
 	const assigned: Result<ClusterAssignment, ClusterFrameError> = renderer.clusters.assignFrame(
 		lights, view, !originTopLeft(), renderer.lightValues);
 	if (!assigned.ok) { return Result.err(RendererError.ClusterAssign); }
@@ -732,7 +801,7 @@ export function beginFrame(
 		rebuildMeshes(context);
 		rebuildTextures(context);
 		context.meshes[renderer.screenMesh.index].vertexBuffer = makeScreenTriangle();
-		makeBlackCube(renderer);
+		makeStandIns(renderer);
 		renderer.generation = generation;
 		renderer.changed = true;
 	}
@@ -786,6 +855,7 @@ export function drawShadowPass(
 // A frame without one of the maps binds another in its slot: the absent light's part of the
 // block is zero, so its lookup answers lit before it reads the map.
 function sceneTextureOf(renderer: Renderer): SceneTexture {
+	const context: DrawContext = renderer.context;
 	const clusters: ClusterFrame = renderer.clusters;
 	const shadows: SceneTexture = {
 		...shadowTextureOf(renderer),
@@ -794,17 +864,25 @@ function sceneTextureOf(renderer: Renderer): SceneTexture {
 		clusterIndices: clusters.indicesView(),
 		clusterSampler: clusters.clusterSampler(),
 	};
+	const cookie: TextureId = renderer.cookie;
+	const drawable: boolean = cookie.isTexture() && context.hasTexture(cookie) &&
+		context.textureReady(cookie.index);
+	const lit: SceneTexture = {
+		...shadows,
+		cookieView: drawable ? context.viewOf(cookie) : renderer.clearTexelView,
+		cookieSampler: drawable ? context.samplerOf(cookie) : renderer.blackCubeSampler,
+	};
 	const environment: Environment | null = renderer.environment;
 	if (environment === null) {
 		return {
-			...shadows,
+			...lit,
 			envDiffuse: renderer.blackCubeView,
 			envSpecular: renderer.blackCubeView,
 			envSampler: renderer.blackCubeSampler,
 		};
 	}
 	return {
-		...shadows,
+		...lit,
 		envDiffuse: environment.diffuse.asTexture(),
 		envSpecular: environment.specular.asTexture(),
 		envSampler: environment.sampler,
@@ -1087,9 +1165,15 @@ export function closeRenderer(renderer: Renderer): void {
 		destroyImage(renderer.blackCube);
 		destroySampler(renderer.blackCubeSampler);
 	}
+	if (renderer.clearTexel != 0 && renderer.generation == contextGeneration()) {
+		destroyView(renderer.clearTexelView);
+		destroyImage(renderer.clearTexel);
+	}
 	renderer.blackCube = 0;
 	renderer.blackCubeView = 0;
 	renderer.blackCubeSampler = 0;
+	renderer.clearTexel = 0;
+	renderer.clearTexelView = 0;
 	closeClusterFrame(renderer.clusters);
 	context.meshes[screen].vertexBuffer = 0;
 	const released: Result<int32, HandleError> = releaseMesh(context, renderer.screenMesh);

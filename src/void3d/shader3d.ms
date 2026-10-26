@@ -287,6 +287,8 @@ export struct LightParams {
 	clusterFactors: Vec4f;
 	clusterView: Vec4f;
 	clusterScreen: Vec4f;
+	cookie: Vec4f;
+	cookieMatrix: Mat4x4f;
 }
 
 export struct FrameParams {
@@ -335,6 +337,8 @@ export struct LitBindings {
 	@binding(6) @sampleType(unfilterable_float) spotShadowMap: Texture2dArray;
 	@binding(3) @samplerType(nonfiltering) spotShadowSampler: Sampler;
 	@binding(12) @sampleType(unfilterable_float) cubeShadowMap: Texture2dArray;
+	@binding(13) cookieTexture: Texture2d;
+	@binding(6) cookieSampler: Sampler;
 	@binding(0) baseTexture: Texture2d;
 	@binding(0) baseSampler: Sampler;
 	@binding(1) backTexture: Texture2d;
@@ -910,6 +914,18 @@ export function spotSample(position: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b:
 	return vec4f(toLight, lightWindow(distance, tint.a) * cone);
 }
 
+// The cookie spot's sample: pbr/Light.hx multiplies the cookie in where a spot without one takes
+// its angular falloff (153-161), so only the window is left here, and the light reaches the whole
+// square pyramid SpotLight draws (spotLightPrim, SpotLight.hx:52-86), past the cone's angle.
+export function cookieSpotSample(position: Vec3f, at: Vec4f, tint: Vec4f): Vec4f {
+	const delta = at.xyz - position;
+	const distance = length(delta);
+	if (distance < 0.0001) {
+		return vec4f(0.0);
+	}
+	return vec4f(delta / distance, lightWindow(distance, tint.a));
+}
+
 // pbr/Light.hx rectangleLightIntensity (67-84), one axis: the delta and the inverse light
 // direction projected off `excluded`, their cosine against the outer and inner cosines with
 // Heaps' 0.00001 widening.
@@ -1027,6 +1043,33 @@ export function shapedSpecularDir(
 		return rectangleSpecularDir(position, reflected, diffuse, at, a, b, c);
 	}
 	return diffuse;
+}
+
+// pbr/Light.hx SpotLight with useCookie (153-159): the position through lightProj
+// (cookieMatrix, which the renderer writes with screenToUv folded in), nothing outside the map,
+// else the texel's colour times its alpha. The level is 0 because the clustered loop around it is
+// not uniform control flow, where WGSL samples without derivatives only.
+export function cookieAt(position: Vec3f, b: LitBindings): Vec3f {
+	const q = b.lightParams.cookieMatrix * vec4f(position, 1.0);
+	if (q.w <= 0.0) {
+		return vec3f(0.0);
+	}
+	const uv = q.xy / q.w;
+	if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+		return vec3f(0.0);
+	}
+	const texel = textureSampleLevel(b.cookieTexture, b.cookieSampler, uv, 0.0);
+	return texel.rgb * texel.a;
+}
+
+// The cookie's colour for record `i` and 1 in w when the light block names it as the cookie spot
+// (gpu3d.ms LIGHT_COOKIE), else white and 0.
+export function recordCookieAt(position: Vec3f, b: LitBindings, i: int32): Vec4f {
+	const named = (i + 1) as float32;
+	if (b.lightParams.cookie.x == named) {
+		return vec4f(cookieAt(position, b), 1.0);
+	}
+	return vec4f(1.0, 1.0, 1.0, 0.0);
 }
 
 // PENDING3D: light-shape-range-window
@@ -1655,7 +1698,14 @@ export function pbrShade(
 		const tint = litTexelOf(b, i, 1);
 		const a = litTexelOf(b, i, 2);
 		const bb = litTexelOf(b, i, 3);
-		if (a.w < 0.5) {
+		const cookie = recordCookieAt(position, b, i);
+		if (cookie.w > 0.5) {
+			const sample = cookieSpotSample(position, at, tint);
+			const radiance = srgbToLinear(tint.rgb) * cookie.rgb * (sample.w * at.w);
+			light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample.xyz,
+				sample.xyz, radiance, recordShadowAt(position, surfaceNormal, b, key, i), 0.0,
+				values.z);
+		} else if (a.w < 0.5) {
 			const toLight = at.xyz - position;
 			const falloff = clamp(1.0 - length(toLight) / tint.a, 0.0, 1.0);
 			const radiance = srgbToLinear(tint.rgb) * (falloff * falloff * at.w);
@@ -1695,9 +1745,19 @@ export function litShade(
 	const cluster = litClusterOf(frag, position, b);
 	for (let k = 0; k < cluster.y + cluster.z; k++) {
 		const i = litLightOf(b, cluster, k);
-		light = light + lightAt(position, n, litTexelOf(b, i, 0), litTexelOf(b, i, 1),
-			litTexelOf(b, i, 2), litTexelOf(b, i, 3), litTexelOf(b, i, 4), litTexelOf(b, i, 5)) *
-			recordShadowAt(position, surfaceNormal, b, key, i);
+		const at = litTexelOf(b, i, 0);
+		const tint = litTexelOf(b, i, 1);
+		const cookie = recordCookieAt(position, b, i);
+		let lit = vec3f(0.0);
+		if (cookie.w > 0.5) {
+			const sample = cookieSpotSample(position, at, tint);
+			lit = srgbToLinear(tint.rgb) * cookie.rgb *
+				(sample.w * max(dot(n, sample.xyz), 0.0) * at.w);
+		} else {
+			lit = lightAt(position, n, at, tint, litTexelOf(b, i, 2), litTexelOf(b, i, 3),
+				litTexelOf(b, i, 4), litTexelOf(b, i, 5));
+		}
+		light = light + lit * recordShadowAt(position, surfaceNormal, b, key, i);
 	}
 	const surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf(b, key).y));
 	return vec4f(linearToSrgb(surface * light), surfaceColor.a);

@@ -313,6 +313,8 @@ layout(binding=1) uniform lightParams {
     vec4 clusterFactors;
     vec4 clusterView;
     vec4 clusterScreen;
+    vec4 cookie;
+    mat4 cookieMatrix;
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -678,6 +680,8 @@ layout(binding=1) uniform lightParams {
     vec4 clusterFactors;
     vec4 clusterView;
     vec4 clusterScreen;
+    vec4 cookie;
+    mat4 cookieMatrix;
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -1259,6 +1263,8 @@ layout(binding=1) uniform lightParams {
     vec4 clusterFactors;
     vec4 clusterView;
     vec4 clusterScreen;
+    vec4 cookie;
+    mat4 cookieMatrix;
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;

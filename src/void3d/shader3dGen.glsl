@@ -636,6 +636,8 @@ layout(binding=1) uniform lightParams {
     vec4 clusterFactors;
     vec4 clusterView;
     vec4 clusterScreen;
+    vec4 cookie;
+    mat4 cookieMatrix;
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -1026,6 +1028,8 @@ layout(binding=1) uniform lightParams {
     vec4 clusterFactors;
     vec4 clusterView;
     vec4 clusterScreen;
+    vec4 cookie;
+    mat4 cookieMatrix;
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -1068,6 +1072,8 @@ layout(binding=3) uniform sampler spotShadowSampler;
 @image_sample_type cubeShadowMap unfilterable_float
 layout(binding=12) uniform texture2DArray cubeShadowMap;
 #endif
+layout(binding=13) uniform texture2D cookieTexture;
+layout(binding=6) uniform sampler cookieSampler;
 #ifdef PBR
 layout(binding=7) uniform textureCube envDiffuse;
 #endif
@@ -1461,6 +1467,37 @@ ivec2 recordTexelOf(int light, int texel) {
 vec4 litTexelOf(int light, int texel) {
     return texelFetch(sampler2D(lightRecords, clusterSampler), recordTexelOf(light, texel), 0);
 }
+vec3 cookieAt(vec3 position) {
+    vec4 q = cookieMatrix * vec4(position, 1.0);
+    if (q.w <= 0.0) {
+        return vec3(0.0);
+    }
+    vec2 uv = q.xy / q.w;
+    if ((((uv.x < 0.0) || (uv.x > 1.0)) || (uv.y < 0.0)) || (uv.y > 1.0)) {
+        return vec3(0.0);
+    }
+    vec4 texel = textureLod(sampler2D(cookieTexture, cookieSampler), uv, 0.0);
+    return texel.rgb * texel.a;
+}
+vec4 recordCookieAt(vec3 position, int i) {
+    float named = float(i + 1);
+    if (cookie.x == named) {
+        return vec4(cookieAt(position), 1.0);
+    }
+    return vec4(1.0, 1.0, 1.0, 0.0);
+}
+float lightWindow(float distance_1, float range) {
+    float window = clamp((1.0 - (distance_1 / range)), 0.0, 1.0);
+    return window * window;
+}
+vec4 cookieSpotSample(vec3 position, vec4 at, vec4 tint) {
+    vec3 delta = at.xyz - position;
+    float distance_1 = length(delta);
+    if (distance_1 < 0.0001) {
+        return vec4(0.0);
+    }
+    return vec4((delta / distance_1), lightWindow(distance_1, tint.a));
+}
 #ifdef SHADOWED
 float spotShadowAt(vec3 position, vec3 normal_1) {
     vec4 receiver = spotReceiver;
@@ -1550,10 +1587,6 @@ float recordShadowAt(vec3 position, vec3 normal_1, int i) {
     }
 #endif
     return lit;
-}
-float lightWindow(float distance_1, float range) {
-    float window = clamp((1.0 - (distance_1 / range)), 0.0, 1.0);
-    return window * window;
 }
 vec4 capsuleSample(vec3 position, vec4 at, vec4 tint, vec4 a, vec4 b) {
     vec3 start = at.xyz - (a.xyz * b.x);
@@ -1682,17 +1715,22 @@ vec4 pbrShade(vec3 n, vec3 surfaceNormal, vec3 position, vec2 frag, vec4 surface
         vec4 tint = litTexelOf(i, 1);
         vec4 a = litTexelOf(i, 2);
         vec4 bb = litTexelOf(i, 3);
-        if (a.w < 0.5) {
+        vec4 cookie_1 = recordCookieAt(position, i);
+        if (cookie_1.w > 0.5) {
+            vec4 sample_1 = cookieSpotSample(position, at, tint);
+            vec3 radiance = (srgbToLinear(tint.rgb) * cookie_1.rgb) * (sample_1.w * at.w);
+            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_1.xyz, sample_1.xyz, radiance, recordShadowAt(position, surfaceNormal, i), 0.0, values.z);
+        } else if (a.w < 0.5) {
             vec3 toLight = at.xyz - position;
             float falloff = clamp((1.0 - (length(toLight) / tint.a)), 0.0, 1.0);
-            vec3 radiance = srgbToLinear(tint.rgb) * ((falloff * falloff) * at.w);
-            light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, recordShadowAt(position, surfaceNormal, i), 0.0, values.z);
+            vec3 radiance_1 = srgbToLinear(tint.rgb) * ((falloff * falloff) * at.w);
+            light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance_1, recordShadowAt(position, surfaceNormal, i), 0.0, values.z);
         } else {
             vec4 cc = litTexelOf(i, 4);
-            vec4 sample_1 = shapedSample(position, n, at, tint, a, bb, cc, litTexelOf(i, 5));
-            vec3 radiance_1 = srgbToLinear(tint.rgb) * (sample_1.w * at.w);
-            vec3 specular = shapedSpecularDir(position, reflected, sample_1.xyz, at, a, bb, cc);
-            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_1.xyz, specular, radiance_1, recordShadowAt(position, surfaceNormal, i), 0.0, values.z);
+            vec4 sample_2 = shapedSample(position, n, at, tint, a, bb, cc, litTexelOf(i, 5));
+            vec3 radiance_2 = srgbToLinear(tint.rgb) * (sample_2.w * at.w);
+            vec3 specular = shapedSpecularDir(position, reflected, sample_2.xyz, at, a, bb, cc);
+            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_2.xyz, specular, radiance_2, recordShadowAt(position, surfaceNormal, i), 0.0, values.z);
         }
     }
     return vec4(linearToSrgb(light), surfaceColor.a);
@@ -1731,7 +1769,17 @@ vec4 litShade(vec3 n, vec3 surfaceNormal, vec3 position, vec2 frag, vec4 surface
     ivec4 cluster = litClusterOf(frag, position);
     for (int k = 0; k < (cluster.y + cluster.z); k++) {
         int i = litLightOf(cluster, k);
-        light = light + (lightAt(position, n, litTexelOf(i, 0), litTexelOf(i, 1), litTexelOf(i, 2), litTexelOf(i, 3), litTexelOf(i, 4), litTexelOf(i, 5)) * recordShadowAt(position, surfaceNormal, i));
+        vec4 at = litTexelOf(i, 0);
+        vec4 tint = litTexelOf(i, 1);
+        vec4 cookie_1 = recordCookieAt(position, i);
+        vec3 lit = vec3(0.0);
+        if (cookie_1.w > 0.5) {
+            vec4 sample_1 = cookieSpotSample(position, at, tint);
+            lit = (srgbToLinear(tint.rgb) * cookie_1.rgb) * ((sample_1.w * max(dot(n, sample_1.xyz), 0.0)) * at.w);
+        } else {
+            lit = lightAt(position, n, at, tint, litTexelOf(i, 2), litTexelOf(i, 3), litTexelOf(i, 4), litTexelOf(i, 5));
+        }
+        light = light + (lit * recordShadowAt(position, surfaceNormal, i));
     }
     vec3 surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf().y));
     return vec4(linearToSrgb((surface * light)), surfaceColor.a);
@@ -2089,6 +2137,8 @@ layout(binding=1) uniform lightParams {
     vec4 clusterFactors;
     vec4 clusterView;
     vec4 clusterScreen;
+    vec4 cookie;
+    mat4 cookieMatrix;
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -2131,6 +2181,8 @@ layout(binding=3) uniform sampler spotShadowSampler;
 @image_sample_type cubeShadowMap unfilterable_float
 layout(binding=12) uniform texture2DArray cubeShadowMap;
 #endif
+layout(binding=13) uniform texture2D cookieTexture;
+layout(binding=6) uniform sampler cookieSampler;
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
 #ifdef BACK_TEXTURE
@@ -2675,6 +2727,37 @@ ivec2 recordTexelOf(int light, int texel) {
 vec4 litTexelOf(int light, int texel) {
     return texelFetch(sampler2D(lightRecords, clusterSampler), recordTexelOf(light, texel), 0);
 }
+vec3 cookieAt(vec3 position) {
+    vec4 q = cookieMatrix * vec4(position, 1.0);
+    if (q.w <= 0.0) {
+        return vec3(0.0);
+    }
+    vec2 uv = q.xy / q.w;
+    if ((((uv.x < 0.0) || (uv.x > 1.0)) || (uv.y < 0.0)) || (uv.y > 1.0)) {
+        return vec3(0.0);
+    }
+    vec4 texel = textureLod(sampler2D(cookieTexture, cookieSampler), uv, 0.0);
+    return texel.rgb * texel.a;
+}
+vec4 recordCookieAt(vec3 position, int i) {
+    float named = float(i + 1);
+    if (cookie.x == named) {
+        return vec4(cookieAt(position), 1.0);
+    }
+    return vec4(1.0, 1.0, 1.0, 0.0);
+}
+float lightWindow(float distance_1, float range) {
+    float window = clamp((1.0 - (distance_1 / range)), 0.0, 1.0);
+    return window * window;
+}
+vec4 cookieSpotSample(vec3 position, vec4 at, vec4 tint) {
+    vec3 delta = at.xyz - position;
+    float distance_1 = length(delta);
+    if (distance_1 < 0.0001) {
+        return vec4(0.0);
+    }
+    return vec4((delta / distance_1), lightWindow(distance_1, tint.a));
+}
 #ifdef SHADOWED
 float spotShadowAt(vec3 position, vec3 normal_1) {
     vec4 receiver = spotReceiver;
@@ -2764,10 +2847,6 @@ float recordShadowAt(vec3 position, vec3 normal_1, int i) {
     }
 #endif
     return lit;
-}
-float lightWindow(float distance_1, float range) {
-    float window = clamp((1.0 - (distance_1 / range)), 0.0, 1.0);
-    return window * window;
 }
 vec4 capsuleSample(vec3 position, vec4 at, vec4 tint, vec4 a, vec4 b) {
     vec3 start = at.xyz - (a.xyz * b.x);
@@ -2896,17 +2975,22 @@ vec4 pbrShade(vec3 n, vec3 surfaceNormal, vec3 position, vec2 frag, vec4 surface
         vec4 tint = litTexelOf(i, 1);
         vec4 a = litTexelOf(i, 2);
         vec4 bb = litTexelOf(i, 3);
-        if (a.w < 0.5) {
+        vec4 cookie_1 = recordCookieAt(position, i);
+        if (cookie_1.w > 0.5) {
+            vec4 sample_1 = cookieSpotSample(position, at, tint);
+            vec3 radiance = (srgbToLinear(tint.rgb) * cookie_1.rgb) * (sample_1.w * at.w);
+            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_1.xyz, sample_1.xyz, radiance, recordShadowAt(position, surfaceNormal, i), 0.0, values.z);
+        } else if (a.w < 0.5) {
             vec3 toLight = at.xyz - position;
             float falloff = clamp((1.0 - (length(toLight) / tint.a)), 0.0, 1.0);
-            vec3 radiance = srgbToLinear(tint.rgb) * ((falloff * falloff) * at.w);
-            light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, recordShadowAt(position, surfaceNormal, i), 0.0, values.z);
+            vec3 radiance_1 = srgbToLinear(tint.rgb) * ((falloff * falloff) * at.w);
+            light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance_1, recordShadowAt(position, surfaceNormal, i), 0.0, values.z);
         } else {
             vec4 cc = litTexelOf(i, 4);
-            vec4 sample_1 = shapedSample(position, n, at, tint, a, bb, cc, litTexelOf(i, 5));
-            vec3 radiance_1 = srgbToLinear(tint.rgb) * (sample_1.w * at.w);
-            vec3 specular = shapedSpecularDir(position, reflected, sample_1.xyz, at, a, bb, cc);
-            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_1.xyz, specular, radiance_1, recordShadowAt(position, surfaceNormal, i), 0.0, values.z);
+            vec4 sample_2 = shapedSample(position, n, at, tint, a, bb, cc, litTexelOf(i, 5));
+            vec3 radiance_2 = srgbToLinear(tint.rgb) * (sample_2.w * at.w);
+            vec3 specular = shapedSpecularDir(position, reflected, sample_2.xyz, at, a, bb, cc);
+            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_2.xyz, specular, radiance_2, recordShadowAt(position, surfaceNormal, i), 0.0, values.z);
         }
     }
     return vec4(linearToSrgb(light), surfaceColor.a);
@@ -2945,7 +3029,17 @@ vec4 litShade(vec3 n, vec3 surfaceNormal, vec3 position, vec2 frag, vec4 surface
     ivec4 cluster = litClusterOf(frag, position);
     for (int k = 0; k < (cluster.y + cluster.z); k++) {
         int i = litLightOf(cluster, k);
-        light = light + (lightAt(position, n, litTexelOf(i, 0), litTexelOf(i, 1), litTexelOf(i, 2), litTexelOf(i, 3), litTexelOf(i, 4), litTexelOf(i, 5)) * recordShadowAt(position, surfaceNormal, i));
+        vec4 at = litTexelOf(i, 0);
+        vec4 tint = litTexelOf(i, 1);
+        vec4 cookie_1 = recordCookieAt(position, i);
+        vec3 lit = vec3(0.0);
+        if (cookie_1.w > 0.5) {
+            vec4 sample_1 = cookieSpotSample(position, at, tint);
+            lit = (srgbToLinear(tint.rgb) * cookie_1.rgb) * ((sample_1.w * max(dot(n, sample_1.xyz), 0.0)) * at.w);
+        } else {
+            lit = lightAt(position, n, at, tint, litTexelOf(i, 2), litTexelOf(i, 3), litTexelOf(i, 4), litTexelOf(i, 5));
+        }
+        light = light + (lit * recordShadowAt(position, surfaceNormal, i));
     }
     vec3 surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf().y));
     return vec4(linearToSrgb((surface * light)), surfaceColor.a);

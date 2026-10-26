@@ -27,9 +27,11 @@ import {
 	LIGHT_KIND_SPOT,
 	LIGHT_KIND_RECTANGLE,
 	LIGHT_KIND_CAPSULE,
+	LIGHT_COOKIE,
 	declares,
 	vertexLayoutOf,
 } from "./gpu3d";
+import { TextureId, NO_TEXTURE } from "./texture";
 import {
 	SpotLightShape,
 	RectangleLightShape,
@@ -142,6 +144,11 @@ export struct LightInstance {
 	// A directional with it set is LightError.UnshadowableLight, and a second caster of one map
 	// LightError.TooManyShadowedSpots or TooManyCubeCasters.
 	shadows: boolean;
+	// SpotLight.cookie (SpotLight.hx:10, 119-126): a texture whose colour times its alpha the spot
+	// projects in place of its cone's falloff (shader3d.ms cookieAt). One spot of a frame has one;
+	// a cookie on another kind is LightError.UncookableLight. The scene does not hold the texture:
+	// a frame whose cookie was released is RendererError.StaleCookie.
+	cookie: TextureId;
 }
 
 export enum SceneError {
@@ -183,6 +190,10 @@ export enum LightError {
 	TooManyShadowedSpots,
 	UnshadowableLight,
 	TooManyCubeCasters,
+	UncookableLight,
+	TooManyCookieSpots,
+	// The light block carries the cookie's id as floats, exact below 2^24.
+	CookieIdPastFloat,
 }
 
 // h3d.scene.Object's position/rotation/scale, kept as one value struct because every pass that
@@ -1304,6 +1315,12 @@ export function setLightPriority(scene: Scene3D, id: NodeId3D, priority: int32):
 	scene.lights[scene.nodes[node].payload].priority = priority;
 }
 
+// SpotLight.cookie's setter; NO_TEXTURE takes it off.
+export function setLightCookie(scene: Scene3D, id: NodeId3D, cookie: TextureId): void {
+	const node: int32 = scene.kindRow(id, NodeKind.Light, "setLightCookie");
+	scene.lights[scene.nodes[node].payload].cookie = cookie;
+}
+
 export function setAmbient(scene: Scene3D, ambient: Vec3): void {
 	if (scene.closed) { stopOnClosed("setAmbient"); }
 	scene.ambientLight = ambient;
@@ -1732,6 +1749,7 @@ export function collectLightsFor(
 				const light: LightInstance = scene.lights[scene.nodes[index].payload];
 				if (light.kind == LightKind.Directional) {
 					if (light.shadows) { return Result.err(LightError.UnshadowableLight); }
+					if (light.cookie.isTexture()) { return Result.err(LightError.UncookableLight); }
 					if (seenDirectional) { return Result.err(LightError.TooManyDirectionalLights); }
 					seenDirectional = true;
 					// fwd.DirLight.emit reads absPos.front() normalized; the shader wants the
@@ -1755,8 +1773,20 @@ export function collectLightsFor(
 	const found: int32 = scene.lightOrder.length as int32;
 	let spotCaster: int32 = -1;
 	let cubeCaster: int32 = -1;
+	let cookieSpot: int32 = -1;
+	let cookie: TextureId = NO_TEXTURE;
 	for (let i = 0; i < found; i++) {
 		const light: LightInstance = scene.lights[scene.nodes[scene.lightOrder[i]].payload];
+		if (light.cookie.isTexture()) {
+			if (light.kind != LightKind.Spot) { return Result.err(LightError.UncookableLight); }
+			if (cookieSpot >= 0) { return Result.err(LightError.TooManyCookieSpots); }
+			if (!floatExact(light.cookie.store) || !floatExact(light.cookie.index) ||
+				!floatExact(light.cookie.generation)) {
+				return Result.err(LightError.CookieIdPastFloat);
+			}
+			cookieSpot = i;
+			cookie = light.cookie;
+		}
 		if (!light.shadows) { continue; }
 		if (light.kind == LightKind.Spot) {
 			if (spotCaster >= 0) { return Result.err(LightError.TooManyShadowedSpots); }
@@ -1771,6 +1801,10 @@ export function collectLightsFor(
 	pushQuad(out, vec4(toward.x, toward.y, toward.z, sunPower));
 	pushQuad(out, vec4(sunColor.x, sunColor.y, sunColor.z, (cubeCaster + 1) as float32));
 	while ((out.length as int32) < LIGHT_UNIFORM_LENGTH) { out.push(0.0); }
+	out[LIGHT_COOKIE] = (cookieSpot + 1) as float32;
+	out[LIGHT_COOKIE + 1] = cookie.store as float32;
+	out[LIGHT_COOKIE + 2] = cookie.index as float32;
+	out[LIGHT_COOKIE + 3] = cookie.generation as float32;
 	for (let i = 0; i < found; i++) {
 		const index: int32 = scene.lightOrder[i];
 		const light: LightInstance = scene.lights[scene.nodes[index].payload];
@@ -1785,6 +1819,10 @@ export function collectLightsFor(
 		}
 	}
 	return Result.ok(found);
+}
+
+function floatExact(value: int32): boolean {
+	return value >= 0 && value <= 16777216;
 }
 
 function pushQuad(ref out: Vec<float32>, v: Vec4): void {

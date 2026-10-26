@@ -705,6 +705,8 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.SpotShadowUnattached => PixelArtError.ShapedLight,
 		RendererError.BadCubeShadow => PixelArtError.ShapedLight,
 		RendererError.CubeShadowUnattached => PixelArtError.ShapedLight,
+		RendererError.BadCookieSpot => PixelArtError.ShapedLight,
+		RendererError.StaleCookie => PixelArtError.ShapedLight,
 		RendererError.ClusterViewUnset => PixelArtError.ClusterViewUnset,
 		RendererError.ClusterViewStale => PixelArtError.ClusterViewStale,
 		RendererError.ClusterAssign => PixelArtError.ClusterAssign,

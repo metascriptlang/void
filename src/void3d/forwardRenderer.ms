@@ -128,6 +128,9 @@ export enum ForwardError {
 	SpotShadowUnattached,
 	BadCubeShadow,
 	CubeShadowUnattached,
+	// RendererError.BadCookieSpot and StaleCookie.
+	BadCookieSpot,
+	StaleCookie,
 	TargetSize,
 	// The device cannot render into an Rgba16f target (GLES3 and WebGL2 without a
 	// color-buffer-float extension); there is no LDR fallback.
@@ -285,6 +288,8 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.SpotShadowUnattached => ForwardError.SpotShadowUnattached,
 		RendererError.BadCubeShadow => ForwardError.BadCubeShadow,
 		RendererError.CubeShadowUnattached => ForwardError.CubeShadowUnattached,
+		RendererError.BadCookieSpot => ForwardError.BadCookieSpot,
+		RendererError.StaleCookie => ForwardError.StaleCookie,
 		RendererError.ClusterViewUnset => ForwardError.ClusterViewUnset,
 		RendererError.ClusterViewStale => ForwardError.ClusterViewStale,
 		RendererError.ClusterAssign => ForwardError.ClusterAssign,

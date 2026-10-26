@@ -418,15 +418,19 @@ export const SKIN_UNIFORM_LENGTH: int32 = 768;
 export const VERTEX_UNIFORM_SLOT: int32 = 0;
 export const VERTEX_UNIFORM_LENGTH: int32 = 28;
 export const LIGHT_UNIFORM_SLOT: int32 = 1;
-// Laid out as shader3d.ms LightParams: ambient, dirLight, dirColor, then the clusters. ambient.w
-// and dirColor.w name the records that cast the spot map and the cube map, as record + 1 (0 none).
+// Laid out as shader3d.ms LightParams: ambient, dirLight, dirColor, then the clusters, then the
+// cookie spot. ambient.w and dirColor.w name the records that cast the spot map and the cube map,
+// as record + 1 (0 none); LIGHT_COOKIE names the cookie spot the same way, followed by its
+// texture's id (store, index, generation), and the renderer writes LIGHT_COOKIE_MATRIX.
 export const LIGHT_SPOT_CASTER: int32 = 3;
 export const LIGHT_CUBE_CASTER: int32 = 11;
 export const LIGHT_CLUSTER_GRID: int32 = 12;
 export const LIGHT_CLUSTER_FACTORS: int32 = 16;
 export const LIGHT_CLUSTER_VIEW: int32 = 20;
 export const LIGHT_CLUSTER_SCREEN: int32 = 24;
-export const LIGHT_UNIFORM_LENGTH: int32 = 28;
+export const LIGHT_COOKIE: int32 = 28;
+export const LIGHT_COOKIE_MATRIX: int32 = 32;
+export const LIGHT_UNIFORM_LENGTH: int32 = 48;
 // A positioned light's record, following the block in collectLights' span: position and power,
 // colour and range, then shapeA..shapeD (kind in shapeA.w; a point light reads no shape).
 export const LIGHT_RECORD_TEXELS: int32 = 6;
@@ -487,9 +491,15 @@ export const LIGHT_RECORDS_VIEW_SLOT: int32 = 9;
 export const CLUSTER_RECORDS_VIEW_SLOT: int32 = 10;
 export const CLUSTER_INDICES_VIEW_SLOT: int32 = 11;
 export const CLUSTER_SAMPLER_SLOT: int32 = 5;
+// The cookie spot's texture (shader3d.ms cookieAt), read wherever the clustered lights are: the
+// light's own, or a clear texel when no spot has one.
+export const COOKIE_VIEW_SLOT: int32 = 13;
+export const COOKIE_SAMPLER_SLOT: int32 = 6;
 export const CLUSTER_SCENE_VIEWS: uint32 = (1 << (LIGHT_RECORDS_VIEW_SLOT as uint32)) |
-	(1 << (CLUSTER_RECORDS_VIEW_SLOT as uint32)) | (1 << (CLUSTER_INDICES_VIEW_SLOT as uint32));
-export const CLUSTER_SCENE_SAMPLERS: uint32 = 1 << (CLUSTER_SAMPLER_SLOT as uint32);
+	(1 << (CLUSTER_RECORDS_VIEW_SLOT as uint32)) | (1 << (CLUSTER_INDICES_VIEW_SLOT as uint32)) |
+	(1 << (COOKIE_VIEW_SLOT as uint32));
+export const CLUSTER_SCENE_SAMPLERS: uint32 =
+	(1 << (CLUSTER_SAMPLER_SLOT as uint32)) | (1 << (COOKIE_SAMPLER_SLOT as uint32));
 // A lit material's own block (binding=3). The core reads the saturation it applies to the
 // material's colour before lighting (0 leaves it alone, -1 is grey) and, at 1 in
 // MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal, and discards a pixel

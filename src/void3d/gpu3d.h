@@ -17,15 +17,15 @@
 // environment's diffuse and specular cubes (pbrEnvironmentLight) at views 7 and 8 and sampler 4,
 // then the frame's light records, cluster records and index list (clusterLookup.ms) at views 9,
 // 10 and 11 and sampler 5, then the point's shadow map (pointShadowAt) at view 12, read with
-// the spot's sampler.
+// the spot's sampler, then the cookie spot's texture (cookieAt) at view 13 and sampler 6.
 static const int32_t GPU3D_BINDING_VERTEX_BUFFER = 0; // two
 static const int32_t GPU3D_BINDING_INDEX_BUFFER = 2;
-static const int32_t GPU3D_BINDING_VIEW = 3; // thirteen
-static const int32_t GPU3D_BINDING_VIEWS = 13;
-static const int32_t GPU3D_BINDING_SAMPLER = 16; // six
-static const int32_t GPU3D_BINDING_SAMPLERS = 6;
-static const int32_t GPU3D_BINDING_VERTEX_OFFSET = 22; // slot 1, in bytes
-static const int32_t GPU3D_BINDING_LENGTH = 23;
+static const int32_t GPU3D_BINDING_VIEW = 3; // fourteen
+static const int32_t GPU3D_BINDING_VIEWS = 14;
+static const int32_t GPU3D_BINDING_SAMPLER = 17; // seven
+static const int32_t GPU3D_BINDING_SAMPLERS = 7;
+static const int32_t GPU3D_BINDING_VERTEX_OFFSET = 24; // slot 1, in bytes
+static const int32_t GPU3D_BINDING_LENGTH = 25;
 
 int32_t gpu3dProgramBase(void);
 int32_t gpu3dLayoutBase(void);

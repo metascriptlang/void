@@ -50,6 +50,8 @@ import {
 	CLUSTER_RECORDS_VIEW_SLOT,
 	CLUSTER_INDICES_VIEW_SLOT,
 	CLUSTER_SAMPLER_SLOT,
+	COOKIE_VIEW_SLOT,
+	COOKIE_SAMPLER_SLOT,
 	NORMAL_VIEW_SLOT,
 } from "./gpu3d";
 import {
@@ -1721,11 +1723,14 @@ export struct SceneTexture {
 	clusterRecords: uint32;
 	clusterIndices: uint32;
 	clusterSampler: uint32;
+	cookieView: uint32;
+	cookieSampler: uint32;
 }
 
 export const NO_SCENE_TEXTURE: SceneTexture = {
 	view: 0, sampler: 0, spotView: 0, spotSampler: 0, cubeView: 0, envDiffuse: 0, envSpecular: 0,
 	envSampler: 0, lightRecords: 0, clusterRecords: 0, clusterIndices: 0, clusterSampler: 0,
+	cookieView: 0, cookieSampler: 0,
 };
 
 // `rows` and `rowOffset` are slot 1's buffer and byte offset, 0 for a layout that reads none.
@@ -1771,7 +1776,18 @@ function bindItem(
 	context.bindings[GPU3D_BINDING_VIEW + CLUSTER_RECORDS_VIEW_SLOT] = scene.clusterRecords;
 	context.bindings[GPU3D_BINDING_VIEW + CLUSTER_INDICES_VIEW_SLOT] = scene.clusterIndices;
 	context.bindings[GPU3D_BINDING_SAMPLER + CLUSTER_SAMPLER_SLOT] = scene.clusterSampler;
+	context.bindings[GPU3D_BINDING_VIEW + COOKIE_VIEW_SLOT] = scene.cookieView;
+	context.bindings[GPU3D_BINDING_SAMPLER + COOKIE_SAMPLER_SLOT] = scene.cookieSampler;
 	applyBindings(context.bindings);
+}
+
+// The view and sampler a context texture binds at, for a slot past a material's (the cookie's).
+export function viewOf(this context: DrawContext, id: TextureId): uint32 {
+	return context.viewAt(id.index);
+}
+
+export function samplerOf(this context: DrawContext, id: TextureId): uint32 {
+	return context.textures[id.index].sampler;
 }
 
 // viewAt and textureReady read `owner.view` because `asView` stops on a stale texture.
