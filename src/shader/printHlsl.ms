@@ -561,6 +561,19 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	return converted(p, name + "(" + texture + ", " + level + ")", result, e.type);
 }
 
+function samplesOf(p: Printer, e: ShaderExpr): string {
+	const t = e.operands[0].type;
+	if (t.kind != ShaderTypeKind.Texture || t.shape != TextureShape.Multisampled2d) {
+		return fail(p, "TextureNumSamples takes a multisampled texture");
+	}
+	const typeText = typeName(p, t);
+	const name = helper(p, "textureSamples " + typeText, "textureSamples", (n) =>
+		"uint " + n + "(" + typeText + " t)\n{\n    uint width;\n    uint height;\n" +
+		"    uint samples;\n    t.GetDimensions(width, height, samples);\n" +
+		"    return samples;\n}\n");
+	return converted(p, name + "(" + expr(p, e.operands[0]) + ")", "uint", e.type);
+}
+
 function loadOf(p: Printer, e: ShaderExpr): string {
 	const args = withoutSampler(e);
 	const t = args[0].type;
@@ -867,6 +880,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureLoad => loadOf(p, e),
 		Intrinsic.TextureStore => storeOf(p, e),
 		Intrinsic.TextureDimensions => sizeOf(p, e),
+		Intrinsic.TextureNumSamples => samplesOf(p, e),
 		Intrinsic.TextureSampleCompare => compareOf(p, e, false),
 		Intrinsic.TextureSampleCompareLevel => compareOf(p, e, true),
 		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>

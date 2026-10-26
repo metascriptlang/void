@@ -582,6 +582,14 @@ function dimensionsText(p: Printer, e: ShaderExpr): string {
 	return typeText(p, e.type) + "(" + sizes.join(", ") + ")";
 }
 
+function samplesText(p: Printer, e: ShaderExpr): string {
+	const t = e.operands[0].type;
+	if (t.kind != ShaderTypeKind.Texture || t.shape != TextureShape.Multisampled2d) {
+		return fail(p, "TextureNumSamples takes a multisampled texture");
+	}
+	return typeText(p, e.type) + "(" + exprText(p, e.operands[0]) + ".get_num_samples())";
+}
+
 function signText(p: Printer, e: ShaderExpr): string {
 	const x = e.operands[0];
 	if (isFloat(x.type)) { return "sign(" + exprText(p, x) + ")"; }
@@ -669,6 +677,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureLoad => loadText(p, e),
 		Intrinsic.TextureStore => storeText(p, e),
 		Intrinsic.TextureDimensions => dimensionsText(p, e),
+		Intrinsic.TextureNumSamples => samplesText(p, e),
 		Intrinsic.TextureSampleCompare => compareText(p, e, false),
 		Intrinsic.TextureSampleCompareLevel => compareText(p, e, true),
 		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>

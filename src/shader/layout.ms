@@ -233,7 +233,8 @@ function slotOf(m: ShaderModule, u: Used, target: ShaderTarget): BindingSlot {
 
 function samplerlessReads(e: ShaderExpr, out: int32[]): void {
 	const fetch = e.kind == ExprKind.Intrinsic && (e.intrinsic == Intrinsic.TextureLoad ||
-		e.intrinsic == Intrinsic.TextureDimensions);
+		e.intrinsic == Intrinsic.TextureDimensions ||
+		e.intrinsic == Intrinsic.TextureNumSamples);
 	if (fetch && e.operands.length > 0 && e.operands[0].kind == ExprKind.Resource &&
 		e.operands[0].type.kind == ShaderTypeKind.Texture &&
 		!e.operands.some((o) => o.type.kind == ShaderTypeKind.Sampler) &&

@@ -241,6 +241,7 @@ export enum Intrinsic {
 	TextureSampleLevel,
 	TextureSampleBias,
 	TextureSampleGrad,
+	TextureNumSamples,
 }
 
 function isExplicitSample(op: Intrinsic): boolean {
@@ -323,6 +324,27 @@ function offsetError(e: ShaderExpr): string {
 		if (part < OFFSET_MIN || part > OFFSET_MAX) { inRange = false; }
 	}
 	return inRange ? "" : name + " takes a constant offset in [-8, 7], as WGSL's";
+}
+
+function multisampleError(e: ShaderExpr): string {
+	const name = e.intrinsic.toString();
+	const o = e.operands;
+	const multisampled = o.length > 0 && o[0].type.kind == ShaderTypeKind.Texture &&
+		o[0].type.shape == TextureShape.Multisampled2d;
+	if (e.intrinsic == Intrinsic.TextureNumSamples) {
+		return o.length == 1 && multisampled ? "" : name + " takes one multisampled texture, as WGSL's";
+	}
+	if (!multisampled) { return ""; }
+	if (e.intrinsic == Intrinsic.TextureDimensions && o.length != 1) {
+		return name + " of a multisampled texture takes no level, as WGSL's";
+	}
+	if (e.intrinsic == Intrinsic.TextureLoad &&
+		(o.length != 3 || o[2].type.kind != ShaderTypeKind.Scalar ||
+		o[2].type.scalar != ScalarKind.I32 && o[2].type.scalar != ScalarKind.U32)) {
+		return name + " of a multisampled texture takes coordinates and an i32 or u32 sample " +
+			"index, as WGSL's";
+	}
+	return "";
 }
 
 function explicitSampleError(e: ShaderExpr): string {
@@ -1056,6 +1078,11 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 	}
 	if (e.kind == ExprKind.Intrinsic && isExplicitSample(e.intrinsic)) {
 		const error = explicitSampleError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
+	if (e.kind == ExprKind.Intrinsic && (e.intrinsic == Intrinsic.TextureLoad ||
+		e.intrinsic == Intrinsic.TextureDimensions || e.intrinsic == Intrinsic.TextureNumSamples)) {
+		const error = multisampleError(e);
 		if (error != "") { c.errors.push(owner + ": " + error); }
 	}
 	if (e.kind == ExprKind.Intrinsic && isSampling(e.intrinsic)) {

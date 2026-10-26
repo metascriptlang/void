@@ -481,6 +481,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureLoad => "textureLoad(" + argsText(p, withoutSamplers(o)) + ")",
 		Intrinsic.TextureStore => "textureStore(" + argsText(p, o) + ")",
 		Intrinsic.TextureDimensions => dimensionsText(p, e),
+		Intrinsic.TextureNumSamples => samplesText(p, e),
 		Intrinsic.TextureSampleCompare => compareText(p, e, false),
 		Intrinsic.TextureSampleCompareLevel => compareText(p, e, true),
 		Intrinsic.TextureSampleLevel => "textureSampleLevel(" + argsText(p, o) + ")",
@@ -512,6 +513,11 @@ function storageShapeText(p: Printer, shape: TextureShape): string {
 
 function dimensionsText(p: Printer, e: ShaderExpr): string {
 	const call = "textureDimensions(" + argsText(p, withoutSamplers(e.operands)) + ")";
+	return e.type.scalar == ScalarKind.U32 ? call : typeText(p, e.type) + "(" + call + ")";
+}
+
+function samplesText(p: Printer, e: ShaderExpr): string {
+	const call = "textureNumSamples(" + exprText(p, e.operands[0]) + ")";
 	return e.type.scalar == ScalarKind.U32 ? call : typeText(p, e.type) + "(" + call + ")";
 }
 

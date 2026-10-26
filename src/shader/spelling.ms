@@ -51,8 +51,9 @@ export function isMath(op: Intrinsic): boolean {
 			Intrinsic.LessThanEqual | Intrinsic.GreaterThan | Intrinsic.GreaterThanEqual |
 			Intrinsic.Equal | Intrinsic.NotEqual |
 			Intrinsic.TextureSample | Intrinsic.TextureLoad | Intrinsic.TextureStore |
-			Intrinsic.TextureDimensions | Intrinsic.TextureSampleCompare |
-			Intrinsic.TextureSampleCompareLevel | Intrinsic.TextureSampleLevel |
+			Intrinsic.TextureDimensions | Intrinsic.TextureNumSamples |
+			Intrinsic.TextureSampleCompare | Intrinsic.TextureSampleCompareLevel |
+			Intrinsic.TextureSampleLevel |
 			Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad | Intrinsic.WorkgroupBarrier |
 			Intrinsic.StorageBarrier | Intrinsic.AtomicLoad | Intrinsic.AtomicStore |
 			Intrinsic.AtomicAdd | Intrinsic.AtomicSub | Intrinsic.AtomicMax | Intrinsic.AtomicMin |

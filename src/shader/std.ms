@@ -2970,6 +2970,38 @@ export function textureLoad(texture: Texture2dI32, at: Vec2i, level: int32): Vec
 	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
 }
 
+// WGSL's texture_multisampled_2d<f32>: `samples` images of one size, four floats a texel, the
+// sample of a texel at `((sample * height + y) * width + x) * 4`. It is fetched, never filtered.
+export struct TextureMultisampled2d {
+	width: int32;
+	height: int32;
+	samples: int32;
+	texels: float32[];
+}
+
+export function textureDimensions(texture: TextureMultisampled2d): Vec2i {
+	return { x: texture.width, y: texture.height };
+}
+
+export function textureNumSamples(texture: TextureMultisampled2d): int32 {
+	return texture.samples;
+}
+
+export function textureLoad(
+	texture: TextureMultisampled2d,
+	at: Vec2i,
+	sampleIndex: int32,
+): Vec4f {
+	if (sampleIndex < 0 || sampleIndex >= texture.samples) {
+		unreachable("textureLoad: the sample is outside the texture");
+	}
+	if (!insideTexture(texture.width, texture.height, at)) {
+		unreachable("textureLoad: the texel is outside the texture");
+	}
+	return loadTexel(texture.texels,
+		((sampleIndex * texture.height + at.y) * texture.width + at.x) * 4);
+}
+
 // WGSL's texture_3d<f32>: slices of one size, four floats a texel.
 export struct Texture3d {
 	width: int32;

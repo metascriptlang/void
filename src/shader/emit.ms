@@ -55,6 +55,7 @@ import {
 	TextureDepth2d,
 	TextureDepth2dArray,
 	TextureDepthCube,
+	TextureMultisampled2d,
 	Vec2b,
 	Vec2f,
 	Vec2i,
@@ -550,13 +551,14 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	const viewNodes = [getTypeImpl(Texture2dU32), getTypeImpl(Texture2dArray),
 		getTypeImpl(TextureCube), getTypeImpl(Texture2dI32), getTypeImpl(Texture3d),
 		getTypeImpl(TextureDepth2d), getTypeImpl(TextureDepth2dArray),
-		getTypeImpl(TextureDepthCube)];
+		getTypeImpl(TextureDepthCube), getTypeImpl(TextureMultisampled2d)];
 	const viewShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.Cube, TextureShape.D2,
-		TextureShape.D3, TextureShape.Depth2d, TextureShape.Depth2dArray, TextureShape.DepthCube];
+		TextureShape.D3, TextureShape.Depth2d, TextureShape.Depth2dArray, TextureShape.DepthCube,
+		TextureShape.Multisampled2d];
 	const viewTexels = [ScalarKind.U32, ScalarKind.F32, ScalarKind.F32, ScalarKind.I32,
-		ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32];
+		ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32];
 	const viewSamples = [SampleType.Uint, SampleType.Float, SampleType.Float, SampleType.Sint,
-		SampleType.Float, SampleType.Depth, SampleType.Depth, SampleType.Depth];
+		SampleType.Float, SampleType.Depth, SampleType.Depth, SampleType.Depth, SampleType.UnfilterableFloat];
 	const comparisonNode = getTypeImpl(SamplerComparison);
 	const atomicNodes = [getTypeImpl(AtomicI32), getTypeImpl(AtomicU32)];
 	const exchangeNodes = [getTypeImpl(AtomicExchangeI32), getTypeImpl(AtomicExchangeU32)];
@@ -1071,6 +1073,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		"unpack2x16float", "asinh", "acosh", "atanh", "ldexp", "countLeadingZeros",
 		"countTrailingZeros", "bitcastF32toU32", "bitcastF32toI32", "bitcastI32toF32",
 		"bitcastI32toU32", "bitcastU32toF32", "bitcastU32toI32", "modf", "frexp",
+		"textureNumSamples",
 	];
 	const intrinsics = [
 		Intrinsic.Abs, Intrinsic.Sign, Intrinsic.Floor, Intrinsic.Ceil, Intrinsic.Trunc,
@@ -1098,6 +1101,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		Intrinsic.Atanh, Intrinsic.Ldexp, Intrinsic.CountLeadingZeros, Intrinsic.CountTrailingZeros,
 		Intrinsic.Bitcast, Intrinsic.Bitcast, Intrinsic.Bitcast, Intrinsic.Bitcast,
 		Intrinsic.Bitcast, Intrinsic.Bitcast, Intrinsic.Modf, Intrinsic.Frexp,
+		Intrinsic.TextureNumSamples,
 	];
 	const derivativeNames = ["dpdx", "dpdy", "fwidth", "dpdxCoarse", "dpdxFine", "dpdyCoarse",
 		"dpdyFine", "fwidthCoarse", "fwidthFine"];

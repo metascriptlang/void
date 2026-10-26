@@ -92,6 +92,7 @@ const OP_IMAGE_READ = 98;
 const OP_IMAGE_WRITE = 99;
 const OP_IMAGE_QUERY_SIZE_LOD = 103;
 const OP_IMAGE_QUERY_SIZE = 104;
+const OP_IMAGE_QUERY_SAMPLES = 107;
 const OP_CONVERT_F_TO_U = 109;
 const OP_CONVERT_F_TO_S = 110;
 const OP_CONVERT_S_TO_F = 111;
@@ -1578,6 +1579,17 @@ function dimensions(p: Spirv, e: ShaderExpr): int32 {
 	return e.type.scalar == ScalarKind.U32 ? kept : typed(p, OP_BITCAST, typeId(p, e.type), [kept]);
 }
 
+function sampleCount(p: Spirv, e: ShaderExpr): int32 {
+	const t = e.operands[0].type;
+	if (t.kind != ShaderTypeKind.Texture || t.shape != TextureShape.Multisampled2d) {
+		return refusal(p, "TextureNumSamples takes a multisampled texture");
+	}
+	need(p, CAP_IMAGE_QUERY);
+	const count = typed(p, OP_IMAGE_QUERY_SAMPLES, typeId(p, scalarType(ScalarKind.U32)),
+		[handle(p, e.operands[0])]);
+	return e.type.scalar == ScalarKind.U32 ? count : typed(p, OP_BITCAST, typeId(p, e.type), [count]);
+}
+
 function intrinsic(p: Spirv, e: ShaderExpr): int32 {
 	const op = e.intrinsic;
 	const o = e.operands;
@@ -1612,6 +1624,7 @@ function intrinsic(p: Spirv, e: ShaderExpr): int32 {
 	if (op == Intrinsic.TextureLoad) { return texelLoad(p, e); }
 	if (op == Intrinsic.TextureStore) { return texelStore(p, e); }
 	if (op == Intrinsic.TextureDimensions) { return dimensions(p, e); }
+	if (op == Intrinsic.TextureNumSamples) { return sampleCount(p, e); }
 	return refusal(p, op.toString() + " is not printed yet");
 }
 

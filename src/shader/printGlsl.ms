@@ -164,6 +164,7 @@ class Printer {
 	module: ShaderModule = new ShaderModule();
 	stage: ShaderStage = ShaderStage.Vertex;
 	es: boolean = false;
+	samplesQueried: boolean = false;
 	error: string = "";
 	globals: string[] = [];
 	structNames: string[] = [];
@@ -503,6 +504,17 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	return converted(p, layered ? call + ".xy" : call, "ivec2", e.type);
 }
 
+function samplesOf(p: Printer, e: ShaderExpr): string {
+	const t = e.operands[0].type;
+	if (t.kind != ShaderTypeKind.Texture || t.shape != TextureShape.Multisampled2d ||
+		e.type.scalar != ScalarKind.I32) {
+		return fail(p, "TextureNumSamples takes a multisampled texture and gives an i32");
+	}
+	const pair = pairOf(p, e.operands[0], null);
+	p.samplesQueried = true;
+	return "textureSamples(" + pair.name + ")";
+}
+
 function loadOf(p: Printer, e: ShaderExpr): string {
 	const args = withoutSampler(e);
 	const t = args[0].type;
@@ -743,6 +755,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureLoad => loadOf(p, e),
 		Intrinsic.TextureStore => storeOf(p, e),
 		Intrinsic.TextureDimensions => sizeOf(p, e),
+		Intrinsic.TextureNumSamples => samplesOf(p, e),
 		Intrinsic.TextureSampleCompare => compareOf(p, e, false),
 		Intrinsic.TextureSampleCompareLevel => compareOf(p, e, true),
 		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>
@@ -1107,7 +1120,7 @@ function combinedType(p: Printer, pair: Pair): string {
 			" texture") : prefix + "sampler" + shape;
 	const desktop = (shape: string) => p.es ?
 		fail(p, "texture '" + p.module.resources[pair.texture].name + "' is " + t.shape.toString() +
-			", which GLSL ES 3.00 has not") : plain(shape);
+			", which GLSL ES 3.00 has not (" + prefix + "sampler" + shape + ")") : plain(shape);
 	return match (t.shape) {
 		TextureShape.D2 => plain("2D"),
 		TextureShape.D2Array => plain("2DArray"),
@@ -1344,7 +1357,8 @@ export function printGlsl(
 			types[0] + " part = " + call + "(arg, other);\n    return " + structName + "(part, other);\n}\n\n";
 	}
 
-	let head = es ? "#version 300 es\n" : "#version 430\n";
+	const version = es ? "#version 300 es\n" : "#version 430\n";
+	let head = "";
 	if (es && entry.stage == ShaderStage.Fragment) {
 		head += "precision highp float;\nprecision highp int;\n";
 	}
@@ -1374,5 +1388,6 @@ export function printGlsl(
 	if (reads.workgroups.length > 0) { head += "\n"; }
 	const bodies = functions.map((f) => functionText(p, f)).join("\n");
 	if (p.error != "") { return Result.err(p.error); }
-	return Result.ok(head + bodies);
+	const extensions = p.samplesQueried ? "#extension GL_ARB_shader_texture_image_samples : require\n" : "";
+	return Result.ok(version + extensions + head + bodies);
 }

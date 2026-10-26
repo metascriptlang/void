@@ -429,6 +429,7 @@ function intrinsicName(op: Intrinsic): string {
 		Intrinsic.TextureLoad => "texelFetch",
 		Intrinsic.TextureStore => "imageStore",
 		Intrinsic.TextureDimensions => "textureSize",
+		Intrinsic.TextureNumSamples => "textureSamples",
 		Intrinsic.TextureSampleCompare => "texture",
 		Intrinsic.TextureSampleCompareLevel | Intrinsic.TextureSampleLevel => "textureLod",
 		Intrinsic.TextureSampleBias => "texture",
@@ -478,7 +479,8 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 		Intrinsic.Modf | Intrinsic.Frexp => p.splitHelpers[splitAt(p, e.type)] + all,
 		Intrinsic.Select => e.operands[2].type.kind == ShaderTypeKind.Vector ? "mix" + all :
 			"(" + args[2] + " ? " + args[1] + " : " + args[0] + ")",
-		Intrinsic.TextureDimensions | Intrinsic.TextureLoad => fetched(p, e, args),
+		Intrinsic.TextureDimensions | Intrinsic.TextureLoad | Intrinsic.TextureNumSamples =>
+			fetched(p, e, args),
 		Intrinsic.TextureStore => "imageStore(" + args[0] + ", " + imageAt(e, args) + ", " +
 			args[args.length - 1] + ")",
 		Intrinsic.TextureSample => "texture" + offsetSuffix(e) + "(" + sampled + ", " +
@@ -538,8 +540,9 @@ function fetched(p: Glsl, e: ShaderExpr, all: string[]): string {
 		return texture.shape == TextureShape.D2Array ? size + ".xy" : size;
 	}
 	p.samplerless = true;
+	if (e.intrinsic == Intrinsic.TextureNumSamples) { return "textureSamples(" + args[0] + ")"; }
 	if (e.intrinsic == Intrinsic.TextureDimensions) {
-		return "textureSize(" + args[0] + ", " + args[1] + ")";
+		return "textureSize(" + args.join(", ") + ")";
 	}
 	return texture.shape == TextureShape.D2Array ?
 		"texelFetch(" + args[0] + ", ivec3(" + args[1] + ", " + args[2] + "), " + args[3] + ")" :
@@ -741,6 +744,7 @@ function resourceText(p: Glsl, r: ShaderResource): string {
 				"@image_sample_type " + r.name + " depth\n" + slot + (r.type.shape ==
 					TextureShape.DepthCube ? "textureCube " : "texture2DArray ") + r.name + ";\n",
 			TextureShape.D3 => sampleTag(r) + slot + "texture3D " + r.name + ";\n",
+			TextureShape.Multisampled2d => sampleTag(r) + slot + "texture2DMS " + r.name + ";\n",
 			TextureShape.D2 | TextureShape.Depth2d => r.type.scalar == ScalarKind.U32 ?
 				"@image_sample_type " + r.name + " uint\n" + slot + "utexture2D " + r.name + ";\n" :
 				r.type.scalar == ScalarKind.I32 ?
