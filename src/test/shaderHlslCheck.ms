@@ -175,7 +175,8 @@ test "the compute probe pads std430 elements and binds t and u registers" {
 		"RWTexture2D<float> heat : register(u1);\n",
 		"RWTexture2D<unorm float4> image : register(u2);\n",
 		"int2 size = int2(imageSize(image));\n",
-		"heat[uint2(int2(local.xy))] = float4(springs[flat].axis, heat[uint2(int2(local.xy))]).x;\n",
+		"heat[uint2(int2(local.xy))] = float4(springs[flat].axis, " +
+			"float4(heat[uint2(int2(local.xy))], 0.0, 0.0, 1.0).x).x;\n",
 		"[numthreads(8, 4, 1)]\nvoid main(StageInput stage_input)\n",
 		"    uint3 global : SV_DispatchThreadID;\n    uint3 local : SV_GroupThreadID;\n" +
 			"    uint flat : SV_GroupIndex;\n    uint3 group : SV_GroupID;\n",
