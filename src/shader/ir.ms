@@ -264,7 +264,10 @@ function explicitSampleError(e: ShaderExpr): string {
 	const color = t.shape == TextureShape.D2 || t.shape == TextureShape.D2Array ||
 		t.shape == TextureShape.D3 || t.shape == TextureShape.Cube ||
 		t.shape == TextureShape.CubeArray;
-	if (!color || t.scalar != ScalarKind.F32) {
+	const depth = t.shape == TextureShape.Depth2d || t.shape == TextureShape.Depth2dArray ||
+		t.shape == TextureShape.DepthCube;
+	const depthLevel = depth && e.intrinsic == Intrinsic.TextureSampleLevel;
+	if (!depthLevel && (!color || t.scalar != ScalarKind.F32)) {
 		return name + " of a " + t.shape.toString() + " texture of " + t.scalar.toString() +
 			": it samples a float color texture here";
 	}
@@ -272,6 +275,11 @@ function explicitSampleError(e: ShaderExpr): string {
 	if (o.length != 3 + (isArrayTexture(t) ? 1 : 0) + tail) {
 		return name + " takes a texture, a sampler, coordinates, a layer of an array, and " +
 			(tail == 2 ? "two derivatives" : "a level or bias") + ", as WGSL's";
+	}
+	const level = o[o.length - 1].type;
+	if (depthLevel && (level.kind != ShaderTypeKind.Scalar ||
+		level.scalar != ScalarKind.I32 && level.scalar != ScalarKind.U32)) {
+		return name + " of a " + t.shape.toString() + " texture takes an i32 or u32 level, as WGSL's";
 	}
 	return "";
 }

@@ -627,6 +627,11 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
+	if (o[1].kind == ExprKind.Resource &&
+		p.module.resources[o[1].index].samplerType == SamplerType.Comparison) {
+		return fail(p, e.intrinsic.toString() + " through a comparison sampler, which needs a " +
+			"depth reference");
+	}
 	const layer = isArrayTexture(t) ? 1 : 0;
 	const at = layer == 0 ? expr(p, o[2]) : (t.shape == TextureShape.CubeArray ? "float4(" :
 		"float3(") + expr(p, o[2]) + ", float(" + expr(p, o[3]) + "))";

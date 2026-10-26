@@ -456,8 +456,10 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 	const args = e.operands.map((a) => expr(p, a));
 	const all = "(" + args.join(", ") + ")";
 	const texture = e.operands.length > 0 ? e.operands[0].type : new ShaderType();
-	const layered = texture.kind == ShaderTypeKind.Texture && texture.shape == TextureShape.D2Array;
-	const cube = texture.kind == ShaderTypeKind.Texture && texture.shape == TextureShape.Cube;
+	const layered = texture.kind == ShaderTypeKind.Texture &&
+		(texture.shape == TextureShape.D2Array || texture.shape == TextureShape.Depth2dArray);
+	const cube = texture.kind == ShaderTypeKind.Texture &&
+		(texture.shape == TextureShape.Cube || texture.shape == TextureShape.DepthCube);
 	const isTexture = texture.kind == ShaderTypeKind.Texture;
 	const shape = isTexture && texture.scalar == ScalarKind.U32 ? "usampler2D(" :
 		isTexture && texture.scalar == ScalarKind.I32 ? "isampler2D(" :
@@ -483,8 +485,8 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 		Intrinsic.TextureSampleCompare | Intrinsic.TextureSampleCompareLevel => compared(e, args),
 		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>
 			intrinsicName(e.intrinsic) + "(" + sampled + ", " + (layered ? "vec3(" + args[2] +
-				", float(" + args[3] + "))" : args[2]) + ", " +
-				args.slice(layered ? 4 : 3).join(", ") + ")",
+				", float(" + args[3] + "))" : args[2]) + ", " + floated(e, args, layered ? 4 : 3) +
+				")" + (isDepthShape(texture.shape) ? ".x" : ""),
 		// glslang gives a compute barrier() workgroup-memory semantics, while the OpMemoryBarrier
 		// of memoryBarrierShared() is refused by sokol-shdc's WGSL reader (measured, shdc win32).
 		Intrinsic.WorkgroupBarrier => "barrier()",
@@ -495,6 +497,19 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 		},
 		_ => isAtomic(e.intrinsic) ? atomicText(e, args) : intrinsicName(e.intrinsic) + all,
 	};
+}
+
+function isDepthShape(shape: TextureShape): boolean {
+	return shape == TextureShape.Depth2d || shape == TextureShape.Depth2dArray ||
+		shape == TextureShape.DepthCube;
+}
+
+// A depth texture's level is an integer, and textureLod takes a float.
+function floated(e: ShaderExpr, args: string[], from: int32): string {
+	return args.slice(from).map((a, i) => {
+		const t = e.operands[from + i].type;
+		return t.kind == ShaderTypeKind.Scalar && t.scalar != ScalarKind.F32 ? "float(" + a + ")" : a;
+	}).join(", ");
 }
 
 function fetched(p: Glsl, e: ShaderExpr, all: string[]): string {

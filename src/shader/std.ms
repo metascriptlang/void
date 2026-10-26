@@ -3135,6 +3135,56 @@ export function textureSampleCompareLevel(
 	return textureSampleCompare(texture, sampler, dir, reference);
 }
 
+// WGSL's textureSampleLevel on a depth texture takes an integer level and answers the depth
+// itself, no comparison. A CPU depth texture has one level and a level past the last clamps to
+// it (the Vulkan specification's "Level-of-Detail Operation"), so each samples the texels as
+// textureSample does, read as the x of a color texture.
+function depthColor(texels: float32[], first: int32, size: Vec2i): Texture2d {
+	let colors: float32[] = [];
+	for (let i = 0; i < size.x * size.y; i++) {
+		colors.push(texels[first + i]);
+		colors.push(0.0);
+		colors.push(0.0);
+		colors.push(0.0);
+	}
+	return { width: size.x, height: size.y, texels: colors };
+}
+
+export function textureSampleLevel(
+	texture: TextureDepth2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	level: int32,
+): float32 {
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	return textureSample(depthColor(texture.texels, 0, size), sampler, uv).x;
+}
+
+export function textureSampleLevel(
+	texture: TextureDepth2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+	level: int32,
+): float32 {
+	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	const colors = depthColor(texture.texels, layer * texture.width * texture.height, size);
+	return textureSample(colors, sampler, uv).x;
+}
+
+export function textureSampleLevel(
+	texture: TextureDepthCube,
+	sampler: Sampler,
+	dir: Vec3f,
+	level: int32,
+): float32 {
+	const size: Vec2i = { x: texture.size, y: texture.size };
+	const colors = depthColor(texture.texels, cubeFaceIndex(dir) * texture.size * texture.size, size);
+	const clamped: Sampler = { nearest: sampler.nearest, wrap: Wrap.Clamp };
+	return textureSample(colors, clamped, cubeFaceUv(dir)).x;
+}
+
 // WGSL's integer bit builtins on one invocation. The core runs on uint32 bits; int32 goes
 // through int32Bits and uint32Bits, as WGSL's i32 and u32 share their bits.
 export function countOneBits(x: uint32): uint32 {

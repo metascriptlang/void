@@ -561,7 +561,8 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const layer = isArrayTexture(t) ? 1 : 0;
 	const at = layer == 0 ? expr(p, o[2]) : (t.shape == TextureShape.CubeArray ? "vec4(" :
 		"vec3(") + expr(p, o[2]) + ", float(" + expr(p, o[3]) + "))";
-	const tail = o.slice(3 + layer).map((a) => expr(p, a)).join(", ");
+	const tail = o.slice(3 + layer).map((a) => a.type.kind == ShaderTypeKind.Scalar &&
+		a.type.scalar != ScalarKind.F32 ? "float(" + expr(p, a) + ")" : expr(p, a)).join(", ");
 	const name = match (e.intrinsic) {
 		Intrinsic.TextureSampleLevel => "textureLod(",
 		Intrinsic.TextureSampleBias => "texture(",
