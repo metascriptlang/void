@@ -2612,6 +2612,17 @@ changes described above on today's compiler; the P4 web archive also takes its r
     overlay hidden; `sh scripts/experiment-profilerWeb.sh` for the wasm delta per backend
     (`tests/experiments/profilerWeb.ms`, which links no `node.ms`); none of these is a
     measurement yet, so no overhead or size figure is claimed.
+  - **Overdraw counter** (R7 L1; `frameMarks.lastFrameCoverage`, `overdraw`). Device pixels the
+    submitted quads cover, each clipped to its command's scissor, split into swapchain,
+    render-target and opaque (a Box with fill alpha 1 or a white alpha-1 vertex triangle, blend
+    None or Alpha); overdraw is swapchain pixels over the swapchain's pixel count, computed on
+    the CPU at replay with `-d:voidProfiler` only. Metal, golden scenes: `prim/boxFills` 0.72
+    (43 % opaque), `prim/roundedRect` 0.59 (95 %), `clip/scrolledList` 0.40 (100 %),
+    `clip/maskScroll` 0.44 (98 %), `order/noOverlapLanes` 1.02 (86 %), `prim/shadowStack` 2.49
+    (17 %), `ui/profilerOverlayFull` 1.66 (54 %), the text and card scenes 0.15 to 0.56 (0 %).
+    Only stacks of translucent shadows pass 2, so these scenes do not support a Heaps `ZGroup`
+    pre-pass (opaque boxes would need an inner and a fringe instance each); re-measure on a
+    real Lightcube frame before building one.
 - **Per-backend shader headers.** Every `.glsl.h` carries the text of every backend (WGSL, Metal, HLSL, GLSL ES) into every binary: void3d measured 243,778 B of shader data for the four premultiplied programs alone in `libVoidAndroid.so` at `764060b` (llvm-nm), most of it other backends' text, and wasm pays the same. `scripts/regen-shaders.sh` cannot pass `--ifdef` because `batcher.c`, `bridge.c`, `bridgeEmbed.m` and void3d's `gpu3d.c` include the headers without the platform's `SOKOL_<backend>`. The fix gives every includer that define, regenerates with `--ifdef`, and stops a build that forgets it with `#error`, because `--ifdef` otherwise compiles the program away silently. Proof: per-platform nm before and after (Android, wgpu wasm, D3D11) and goldens unchanged. Moved here by the human on 2026-10-05.
 
   **Built 2026-10-05** (`5777cec`, `9ad34b8`): `src/sokol/backend.h` picks the backend once
