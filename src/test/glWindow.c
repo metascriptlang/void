@@ -21,6 +21,7 @@
 #define WGL_CONTEXT_FLAGS_ARB 0x2094
 #define WGL_CONTEXT_PROFILE_MASK_ARB 0x9126
 #define WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x0002
+#define WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB 0x0004
 #define WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x0001
 #define GL_READ_FRAMEBUFFER_ID 0x8CA8
 #define GL_COLOR_ATTACHMENT0_ID 0x8CE0
@@ -98,12 +99,12 @@ int32_t glWindowOpen(void) {
 	const int attrs[] = {
 		WGL_CONTEXT_MAJOR_VERSION_ARB, 4,
 		WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-		WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
+		WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB | WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB,
 		WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
 		0,
 	};
 	s_context = createContextAttribs(s_dc, NULL, attrs);
-	if (s_context == NULL) return fail("wglCreateContextAttribsARB for GL core 4.3 failed");
+	if (s_context == NULL) return fail("wglCreateContextAttribsARB for a robust GL core 4.3 context failed");
 	if (!wglMakeCurrent(s_dc, s_context)) return fail("wglMakeCurrent on the GL check window failed");
 	s_genFramebuffers = (GenFramebuffersFn)(void *)wglGetProcAddress("glGenFramebuffers");
 	s_bindFramebuffer = (BindFramebufferFn)(void *)wglGetProcAddress("glBindFramebuffer");

@@ -5,6 +5,8 @@
 #include "../platform/win32/window.h"
 #include "appWindow.h"
 
+#include <string.h>
+
 #define WGL_DRAW_TO_WINDOW_ARB 0x2001
 #define WGL_ACCELERATION_ARB 0x2003
 #define WGL_SUPPORT_OPENGL_ARB 0x2010
@@ -24,10 +26,12 @@
 #define WGL_CONTEXT_PROFILE_MASK_ARB 0x9126
 #define WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x0002
 #define WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x0001
+#define WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB 0x0004
 
 typedef BOOL (WINAPI *ChoosePixelFormatFn)(HDC, const int *, const FLOAT *, UINT, int *, UINT *);
 typedef HGLRC (WINAPI *CreateContextAttribsFn)(HDC, HGLRC, const int *);
 typedef BOOL (WINAPI *SwapIntervalFn)(int);
+typedef const char *(WINAPI *ExtensionsStringFn)(HDC);
 
 static ChoosePixelFormatFn s_choosePixelFormat;
 static CreateContextAttribsFn s_createContextAttribs;
@@ -35,6 +39,18 @@ static SwapIntervalFn s_swapInterval;
 static HDC s_dc;
 static HGLRC s_context;
 static int s_samples;
+
+static bool hasExtension(const char *ext, const char *extensions) {
+	if (extensions == NULL) return false;
+	const char *start = extensions;
+	for (;;) {
+		const char *where = strstr(start, ext);
+		if (where == NULL) return false;
+		const char *terminator = where + strlen(ext);
+		if ((where == start || where[-1] == ' ') && (*terminator == ' ' || *terminator == '\0')) return true;
+		start = terminator;
+	}
+}
 
 static void loadExtensions(void) {
 	HWND probe = CreateWindowExW(0, L"STATIC", L"", WS_POPUP, 0, 0, 1, 1, NULL, NULL, GetModuleHandleW(NULL), NULL);
@@ -53,6 +69,8 @@ static void loadExtensions(void) {
 	s_choosePixelFormat = (ChoosePixelFormatFn)(void *)wglGetProcAddress("wglChoosePixelFormatARB");
 	s_createContextAttribs = (CreateContextAttribsFn)(void *)wglGetProcAddress("wglCreateContextAttribsARB");
 	s_swapInterval = (SwapIntervalFn)(void *)wglGetProcAddress("wglSwapIntervalEXT");
+	ExtensionsStringFn extensionsString = (ExtensionsStringFn)(void *)wglGetProcAddress("wglGetExtensionsStringARB");
+	const bool robustness = extensionsString != NULL && hasExtension("WGL_ARB_create_context_robustness", extensionsString(dc));
 	wglMakeCurrent(NULL, NULL);
 	wglDeleteContext(rc);
 	ReleaseDC(probe, dc);
@@ -60,6 +78,7 @@ static void loadExtensions(void) {
 	if (!s_choosePixelFormat) voidFail("the GL driver lacks WGL_ARB_pixel_format");
 	if (!s_createContextAttribs) voidFail("the GL driver lacks WGL_ARB_create_context");
 	if (!s_swapInterval) voidFail("the GL driver lacks WGL_EXT_swap_control");
+	if (!robustness) voidFail("the GL driver lacks WGL_ARB_create_context_robustness: Void needs bounded buffer reads");
 }
 
 void voidWindowSurfaceCreate(HWND hwnd, int samples) {
@@ -91,7 +110,7 @@ void voidWindowSurfaceCreate(HWND hwnd, int samples) {
 	const int attrs[] = {
 		WGL_CONTEXT_MAJOR_VERSION_ARB, 4,
 		WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-		WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
+		WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB | WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB,
 		WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
 		0,
 	};

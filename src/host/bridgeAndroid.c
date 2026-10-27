@@ -4,9 +4,12 @@
 // surface. The GPU door's GL backend (src/webgpu/gl, OGL_GLES) draws on that context.
 
 #include <EGL/egl.h>
+#include <EGL/eglext.h>
 #include <GLES3/gl3.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "bridge.h"
 #include "views.h"
@@ -23,10 +26,30 @@ typedef struct {
 	int w, h;
 } AndroidSurface;
 
+static bool hasExtension(const char *ext, const char *extensions) {
+	if (extensions == NULL) return false;
+	const char *start = extensions;
+	for (;;) {
+		const char *where = strstr(start, ext);
+		if (where == NULL) return false;
+		const char *terminator = where + strlen(ext);
+		if ((where == start || where[-1] == ' ') && (*terminator == ' ' || *terminator == '\0')) return true;
+		start = terminator;
+	}
+}
+
+static EGLint robustAccessAttrib(EGLint major, EGLint minor) {
+	if (major > 1 || minor >= 5) return EGL_CONTEXT_OPENGL_ROBUST_ACCESS;
+	if (hasExtension("EGL_EXT_create_context_robustness", eglQueryString(g_dpy, EGL_EXTENSIONS))) return EGL_CONTEXT_OPENGL_ROBUST_ACCESS_EXT;
+	voidFail("EGL %d.%d without EGL_EXT_create_context_robustness: Void needs bounded buffer reads", major, minor);
+	return EGL_NONE;
+}
+
 static int egl_boot(void) {
 	g_dpy = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 	if (g_dpy == EGL_NO_DISPLAY) return 0;
-	if (!eglInitialize(g_dpy, NULL, NULL)) return 0;
+	EGLint major = 0, minor = 0;
+	if (!eglInitialize(g_dpy, &major, &minor)) return 0;
 	const int samples = voidViewsSampleCount();
 	EGLint cfgAttr[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
@@ -41,7 +64,7 @@ static int egl_boot(void) {
 	if (!eglChooseConfig(g_dpy, cfgAttr, &g_cfg, 1, &n)) return 0;
 	if (n < 1) voidFail("EGL has no RGBA8 window and pbuffer config with %d samples", samples);
 	eglBindAPI(EGL_OPENGL_ES_API);
-	EGLint ctxAttr[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
+	EGLint ctxAttr[] = { EGL_CONTEXT_CLIENT_VERSION, 3, robustAccessAttrib(major, minor), EGL_TRUE, EGL_NONE };
 	g_ctx = eglCreateContext(g_dpy, g_cfg, EGL_NO_CONTEXT, ctxAttr);
 	return g_ctx != EGL_NO_CONTEXT;
 }
