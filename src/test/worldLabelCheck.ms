@@ -9,7 +9,7 @@ import { MeshData, MeshError, LIT_TEXTURED_VERTEX_STRIDE } from "../void3d/meshD
 import {
 	LabelUv, labelKey, labelParams, facingRotation, labelQuad, localFor, grown, uvOfSubRect,
 } from "../void3d/worldLabel";
-import { approx } from "./helpers";
+import { approx, sameLanes } from "./helpers";
 import { Rgba } from "../void3d/meshData";
 import { MATERIAL_UNIFORM_SLOT } from "../void3d/gpu3d";
 import { RenderState, BlendMode } from "../gpu/state";
@@ -20,7 +20,6 @@ import {
 } from "../void3d/draw";
 import { MovingUnlitMaterialParams } from "../void3d/shader3d";
 import { UniformPool, UniformError, reserveBlock, writeBlock } from "../void3d/uniformPool";
-import { bitcastF32toU32 } from "../shader/std";
 
 function near(a: Vec3, b: Vec3): boolean {
 	return approx(a.x, b.x) && approx(a.y, b.y) && approx(a.z, b.z);
@@ -169,21 +168,14 @@ function labelLanes(uv: LabelUv, tint: Rgba): Vec<float32> {
 	return pool.values;
 }
 
-function sameLanes(made: Vec<float32>, expected: float32[]): boolean {
-	if (made.length != expected.length) { return false; }
-	for (let i = 0; i < expected.length; i++) {
-		if (bitcastF32toU32(made[i]) != bitcastF32toU32(expected[i])) { return false; }
-	}
-	return true;
-}
-
-test "a label's block holds the tint, the sub-rect's uv and the identity back uv, every other lane zero" {
+test "a label's block holds the tint, the sub-rect's uv and the identity back uv, the rest zero" {
 	const white: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 	const tint: Rgba = { red: 0.2, green: 0.4, blue: 0.6, alpha: 0.8 };
 	const still: LabelUv = { scaleU: 1.0, scaleV: 1.0, offsetV: 0.0 };
 	const used: LabelUv = LabelUv.uvOfSubRect(20, 10, 40, 40, false);
 	assert sameLanes(labelLanes(still, white), [
-		0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	]);
 	assert sameLanes(labelLanes(used, tint), [
 		0, 0, 0, 0, 0.2, 0.4, 0.6, 0.8, 0.5, 0, 0, 0.25, 0, 0.75, 0, 0, 1, 0, 0, 1,
@@ -209,7 +201,8 @@ test "a label's material releases the block it took, so the label's own release 
 	let context: DrawContext = DrawContext.withUniformCapacity(32);
 	const block: TypedBlock<MovingUnlitMaterialParams> = labelBlock(context);
 	const pass: RenderState = RenderState.defaults().withBlendMode(BlendMode.AlphaAdd);
-	const added: Result<MaterialId, MaterialError> = addMaterial(context, labelMaterial(block, pass));
+	const added: Result<MaterialId, MaterialError> =
+		addMaterial(context, labelMaterial(block, pass));
 	assert added.ok;
 	if (!added.ok) { return; }
 	assert context.uniforms.isOwned(block.block) && context.uniforms.freeRanges() == 0;
