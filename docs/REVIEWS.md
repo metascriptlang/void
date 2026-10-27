@@ -570,7 +570,7 @@ after them: 859 tests, D3D11 69 / 69, no golden moved.
 | `splitText` sliced codepoint indices out of a UTF-16 `slice`, so an astral character shifted every later line | `329dab9`: slices each line's byte range; T0 wraps text holding an emoji |
 | Label bounds had become line boxes only, so synthetic italic, negative bearings or a taller fallback lost their ink to filter targets and culling | `cc00e7d`: bounds are line boxes ∪ glyph ink boxes at the layout size; T1 fails without the union |
 | A label placed twice in one frame released its tiles mid-frame; at 16 pages another label could reclaim that page while this frame's quads still sampled it | `5a2e85e`: a page drawn from in the current frame is never reclaimed. The frame serial comes from `void2dFrameEnd`, `begin2d` hands it to the atlas, `emitLabel` marks each page it draws from. T0 pins the fence, T1 the wiring |
-| `glyph.c` handed out unbounded page handles while the GPU side keeps 64 views and returned view 0 past them | `7721356`: one shared cap, `VOID2D_MAX_GLYPH_PAGES`; a page past it is refused with an error and the atlas reports `Full` |
+| `glyph.c` (now `src/void2d/glyph/pages.ms`) handed out unbounded page handles while the GPU side keeps 64 views and returned view 0 past them | `7721356`: one shared cap, `VOID2D_MAX_GLYPH_PAGES`; a page past it is refused with an error and the atlas reports `Full` |
 | An atlas refusal was reported once per process, and then glyphs vanished silently | `a241496`: every placement that loses glyphs reports how many and why |
 | `sizeAdjust` divided by a fallback's line height with no zero guard | `9674309`: a face without a line height is reported and keeps the primary size |
 | A comment carried narrative | `0e4607b`: trimmed to its one hazard |
@@ -1877,7 +1877,7 @@ failure is marked *plausible*.
 | # | site | defect | status |
 |---|---|---|---|
 | D1 | `src/assets/image.c` `void_gif_scan` | stb keeps a frame's disposal for the next frame with no control block, and its `two_back` points before the output buffer (`stb_image.h:7023`); the scan missed the inherited disposal 3, so a GIF of disposal-3 frame 0, a frame with no control block and a third frame read before the heap buffer | **fixed** `407cbda`, two variants pinned in `imageDecodeCheck.ms` (red on the old scan) |
-| D2 | `glyph.c` `void2dGlyphRasterize`, `glyphAtlas.ms` `acquire` | returns void: a sprite ink-box mismatch, a wrong page kind or a dead page logs and returns, and `acquire` caches the blank tile as a success; it also accepts an SDF page | open, builder |
+| D2 | `src/void2d/glyph/pages.ms` `void2dGlyphRasterize`, `glyphAtlas.ms` `acquire` | returns void: a sprite ink-box mismatch, a wrong page kind or a dead page logs and returns, and `acquire` caches the blank tile as a success; it also accepts an SDF page | open, builder |
 | D3 | `glyphAtlas.ms` `acquireSdf`, `acquireOutline`, `acquireSdfOutline` | a rasterizer refusal after `allocate` leaves the shelf space spent and no tile, so a deterministic refusal burns page space every frame; `acquireColour` discards instead | open, builder |
 | D4 | `textLayout.ms` `markShapingBreaks` | a break index outside the text is dropped silently, beside the surrogate-pair case that stops by name | open, builder |
 | D5 | `labelText.ms` `shapeStale` | ignores `textShapingOn()`, so a label refused with shaping off stays blank after `setTextShaping(true)` with the same text | open, builder |
@@ -1887,7 +1887,7 @@ failure is marked *plausible*.
 | D9 | `graphics.ms` `contourFill`, `draw.ms` `edgeMove` | fills pass no inset limit, so a fill thinner than one device pixel inverts its body under the antialiasing inset | *plausible*, needs a capture, builder |
 | D10 | `glyphAtlas.ms` `allocate` | a refused page at the process cap returns `Full` without trying `reclaimPage` | *plausible*, builder |
 | D11 | `icon.ms` `maskSide` | an unbounded device length cast to `int32` can wrap to 0 and hide the icon with no refusal | *plausible*, builder |
-| D12 | `sfnt.c` `chooseIndex` | a platform-0 encoding-5 (format 14) record can win the cmap choice, so coverage reads false for every codepoint; stb makes the same choice, so the glyph path agrees | *plausible*, builder |
+| D12 | `src/void2d/sfnt.ms` `chooseIndex` | a platform-0 encoding-5 (format 14) record can win the cmap choice, so coverage reads false for every codepoint; stb makes the same choice, so the glyph path agrees | *plausible*, builder |
 
 Checked and found sound by the reviewers: UAX #9 X1-X10 to L2 in `bidi.ms`, the shaper's realloc
 and discard paths, every CBLC/CBDT/sbix/COLR/CPAL/cmap offset read, the SVG mask handles, the

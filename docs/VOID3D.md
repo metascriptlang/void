@@ -3218,7 +3218,7 @@ and after: `gate3d.sh` GREEN, 339 PASS with the 3 known skips (tests 1429/1429; 
 **Web.** `build-web.sh`'s default entry (`mainSokol2d.ms`) imports no `meshData`, and on
 `1090f789` it stops in void2d's `textLayout.ms` (routed to void2d). A void3d-only probe that
 calls `addTangents` (`VOID_WEB_ENTRY=out/tmp/mikkWeb/mikkWeb.ms`) built, compiled and linked
-`mikktspace.c` for both the WebGPU and the WebGL2 build, and each wasm run under node printed
+`mikktspace.c` (the C, before the port) for both the WebGPU and the WebGL2 build, and each wasm run under node printed
 `ok, tangent x 1 w 1`, as native. Not run: a browser page, GLES3 and Android.
 
 ### Follow-up stack (2026-10-08), as built
@@ -5126,8 +5126,8 @@ Sphere geometry is CPU-proven; full Mikk, rendered and whole-stack acceptance re
 
 ### Mikk zero-shift UB, root and ownership boundary
 
-Void pins mmikk/MikkTSpace `3e895b49d05ea07e4c2133156cfa94369e19e409` in `setup.sh`;
-`mikkTangents.c` includes its C source. Both `QuickSort` (line 1460) and `QuickSortEdges`
+Before the port, Void pinned mmikk/MikkTSpace `3e895b49d05ea07e4c2133156cfa94369e19e409` in `setup.sh`;
+`mikkTangents.c` included its C source. Both `QuickSort` (line 1460) and `QuickSortEdges`
 (line 1667) contain `(uSeed << t) | (uSeed >> (32 - t))` after `t = uSeed & 31`.
 When t is zero, the right shift is 32: undefined in C. Both sphere sizes actually reached
 the latter site; the former is the same expression by source, not a separately executed crash.

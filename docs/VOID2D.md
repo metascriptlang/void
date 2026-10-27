@@ -13,6 +13,8 @@ Void's 2D layer: draw the **same pixels on every platform** (Metal / D3D11 / GL 
 
 Scale and scene storage: [SCENE-SCALE.md](SCENE-SCALE.md). How any of it is proved — tiers, oracles, goldens, the gate, and the conformance run that turns guardrail 9 into a number: [TESTING.md](TESTING.md).
 
+**C that became MetaScript (arc void-js, 2026-10-27).** `glyph.c`, `sfnt.c`, `grapheme.c`, `lineBreak.c`, `bidiClass.c`, `colourEmoji/colourFace.c`, `svgMask.c` and `src/test/colourSweep.c` no longer exist; their code is `src/void2d/glyph/*.ms`, `sfnt.ms` with `trueType/`, `grapheme.ms`, `lineBreak.ms`, `bidi.ms`, `colourEmoji/colourFace.ms` and `svg/*.ms`, each pinned against digests recorded from the C. A byte count or a symbol check below that names one of those C files is the measurement taken on the C, kept as the number it was; the linked cost of a module is now its row in `tests/bench/wasmBudget.txt`, and `scripts/wasmModuleDelta.sh` measures only the C units left (`batcher.c`, `shaper.c`, `spriteGlyph.c`).
+
 ## Where it sits
 
 ```
@@ -111,7 +113,7 @@ Each line names who supports it: **G** GPUI, **M** Makepad, **Gh** Ghostty, **H*
   - *Transformed* (any other affine) — an **SDF atlas**: one ~32 px/em distance field per glyph serves every size, derivative-scaled ramp, luma bias (M recipe; `stbtt_GetGlyphSDF` exists). Zoom and animation cost nothing and leak nothing. This is also the door to world-space text in void3d. **Until P6's SDF module lands, P3's transformed regime is a coverage bitmap** rasterized at `size × √|det|` and drawn through the affine (`labelText.ms` `placeLabel`): correct, but a scale change re-rasterizes, and the zoom sweep's two-page bound is what keeps it honest.
 - **Gamma/contrast**: GPUI's function and table, ported once — **done at P3 step 4**: one GLSL `@block` (`shader2d.glsl` `textGamma`) serves the UI glyph mode and the colour-pipeline fallback, its T0 copy is `src/void2d/textGamma.ms`, and the ratios come from GPUI's 13-row table at its defaults, gamma 1.8 and grayscale contrast 1.0, through `setTextGamma` (GPUI's `ZED_FONTS_GAMMA` equivalent). Measured on the goldens: only the 12 text scenes moved, max delta 48, and on light-on-dark text every changed pixel got lighter — the direction the table predicts (a half-covered edge 0.50 → 0.69). All three references blend in gamma space on a UNORM target, as Void does. Ghostty's bg-aware `linear-corrected` is an alternative tied to linear blending and needs the destination colour; it is an opt-in only for text that declares a solid background.
 - **Fonts**: `Font { family, weight, style, features, fallbacks }` from bytes (G, M). The collection model is Ghostty's: ordered faces per style, deferred faces, explicit-vs-fallback presentation, a codepoint → face map that caches misses, whole-grapheme selection, **fallback size harmonisation**, synthetic bold/italic, lazy CJK/emoji families (Gh, M). System font discovery is host work: `setFaceResolver(r)` installs the host's answer to "which face has this codepoint in this presentation, at this weight and style", asked after the loaded faces miss in the wanted presentation and before the other-presentation pass, as Ghostty's `CodepointResolver` asks `discoverFallback` (`src/font/CodepointResolver.zig:169-213`, ghostty `765ee6842`). The host answers a ranked list of `{ path, index }` candidates, `index` naming the face inside a collection, and the first that Void can draw (outlines, or colour glyphs with the colour module built), that covers the codepoint and that has the presentation wins, as Ghostty walks its discovery iterator and skips a face that fails the codepoint check (`:184-200`); a list where none passes is a miss. A face with neither outlines nor colour glyphs Void can draw is never a fallback, whether the resolver or `fallbacks` names it, except a **platform face** on Apple: a face whose `cmap`/`head`/`hhea`/`hmtx`/`maxp` Void reads and whose outlines only the OS draws (`hvgl`, `CFF2`; macOS's PingFang is `hvgl`-only) is a candidate once CoreText opens it (`platformFaceApple.m`, approved as a NEW MECHANISM on 2026-10-22). Its metrics, cmap, kerning and shaping come from the file's own tables as for any face, and only its ink box and coverage come from CoreText, drawn with smoothing and quantization off straight into the atlas tile, as Ghostty's `coretext.zig` `renderGlyph` does (ghostty `765ee6842`). Measured against stb_truetype on Inter forced through CoreText (`src/test/platformFaceCheck.ms`, 2026-10-23): identical metrics and advances, ink boxes within a pixel, ink within 10 % and centred within 0.14 px across; CoreText puts the x-height edge about half a pixel higher at small sizes, which is how native macOS text looks. First use costs 15-21 µs a PingFang glyph against 44-45 µs for an STHeiti glyph through stb_truetype. A platform face has no SDF or outline-stroke tiles: SDF text falls back to coverage for it and a stroked glyph is refused, as for a sprite face. The face draws its default instance, so a variable face's named weights are not reached, and the whole file is read into memory as for any face (61 MB for PingFang, 55 MB for the STHeiti it replaces); answers and misses are cached per codepoint, presentation, weight and style, and an answer joins the font's fallbacks without clearing the resolved map. With no resolver installed (the web, tests) resolution is unchanged. **Landed at P3 step 5** (`font.ms`): `registerFace(path, family, weight, style)` registers a face without loading it; `registerFaceBytes`, `addFontBytes` and `defaultFontBytes` take a face's bytes for an app whose assets have no path (an APK), held under a name that the peek and the load read in place of a file, refused when that name was already read from its file or holds other bytes; `resolveFont(Font)` interns the value, picks the face in the CSS Fonts 4 weight order with italic preferred for italic, loads it, and synthesizes bold (weight ≥ 600 over a lighter face) and italic from the outline — Ghostty's policy on stb_truetype: `FT_Outline_EmboldenXY` ported to float at `lineHeight / 32` units, the advance widened by that strength as `FT_GlyphSlot_Embolden` does (Ghostty does not widen, because a grid cell is fixed), and a `tan 12°` skew about the baseline. A label takes it as h2d's `text.font = f`, spelled `setFont(id)`: since P4 `addFont` and `resolveFont` return `Result<FontId, FontError>`, so a refused font is the caller's to handle, not a label that silently keeps its old font. `features` honours `kern` only; any other tag refuses the font by name unless the shaper module (`-d:voidShaper`) is built, which takes any four-character tag. Fallback families resolve in the font's own weight and style, synthesized when they lack it. **Size harmonisation is Ghostty's `ic_width → ex_height → cap_height → line_height` chain, off by default** (`Font.sizeAdjust`). Measured on Inter + Noto Sans SC: `IcWidth`, Ghostty's default, draws hanzi 19.6 % larger than the Latin size — right for a terminal cell, wrong for UI text — while `ExHeight` moves them 0.5 %. The other references, read 2026-09-24 at the human's request, agree with off: GPUI does nothing (Rexa on GPUI adds only symbol fallback families), and WezTerm (`b09b56c`) has only an opt-in cap-height match, `use_cap_height_to_scale_fallback_fonts`, default false. **Colour emoji landed in P6 as the compile-time module `-d:voidColourEmoji`** (P6 "Colour emoji" has what was built and measured). stb_truetype reads no colour table and every reference draws colour glyphs through FreeType or the OS, so void reads them itself. Explicit-versus-fallback presentation and deferred faces are in the default glyph layer. **Whole-grapheme selection landed in P4** (`textLayout.ms` `assignFaces`, over `grapheme.ms`'s UAX #29 segmenter): a multi-codepoint grapheme takes the face of its first codepoint whose face covers every codepoint in it, joiners (ZWJ, VS15, VS16) ignored, as Ghostty's `indexForCell` does (`src/font/shaper/run.zig:318-382`). Where no one face covers it, Ghostty draws U+FFFD, because a terminal cell holds one font; a proportional line keeps a face per codepoint instead, so the text stays readable at the cost of a mark placed by another face's metrics.
-- **Runs and decorations**: `TextRun { len, font, color, background, underline, strikethrough }`; a style change splits the shaping run, so a ligature is never two-tone (G, Gh). Backgrounds, underline, strikethrough and wavy are instances of the UI pipeline; thickness and position from the font's `post` / `OS/2` metrics with broken-table fallbacks (Gh), snapped. **The metrics landed at P3 step 6** as `TextLayout.decoration` (`glyph.c` `void2dGlyphDecoration`), float, y-down from the baseline to the top of each stroke, from the primary face: Ghostty's rule exactly, where a zero thickness marks a table broken but keeps a non-zero position, and each missing value is estimated from the ex height (OS/2 v2+, else the measured `x`, else 0.75 of the cap height, itself OS/2, the measured `H`, or 0.75 of the ascent). One divergence: the ascent in that last estimate is stb_truetype's `hhea` ascent, where Ghostty prefers `OS/2` typo metrics; the two agree for Inter. Emission and snapping are P4's, with runs. **Landed in P4** (`setTextRuns`, `textLayout.ms` `layoutRuns`, `labelText.ms` `runDecorations`): `len` counts UTF-16 units and the runs must cover the text exactly, or the label stops and says so; a run's colour multiplies with the label's, as h2d's `setColorSegments` does with `textColor` (GPUI's replaces it); kerning stops at a run boundary, standing in for the shaping-run split until P6's shaper; the decoration boxes are laid out with the text and only transformed and snapped when drawn, so a frame builds no array for them. A decoration runs on across the runs that share it (kind, colour, position and thickness), as GPUI's does (`line.rs:633-663`), so a squiggle under several syntax runs keeps one phase. Each run's decoration sits on its own face's metrics, Ghostty's rule as the P3 metrics have it, so one that crosses faces with different metrics steps there and restarts its wave, where GPUI puts one offset on the whole line: a **W** for metric fidelity. A styled label's bounds reach its widest row's end, so a background or underline over trailing spaces is neither culled nor clipped. The human chose h2d's multiply on 2026-09-27 (asked 2026-09-26); **landed in P5**, before the host contract: a styled label is written white and coloured by its runs, as in h2d, and T1 pins the product. Backgrounds, glyphs and lines bind the same glyph-page view, so `text/decorations`, three styled labels, is one draw call.
+- **Runs and decorations**: `TextRun { len, font, color, background, underline, strikethrough }`; a style change splits the shaping run, so a ligature is never two-tone (G, Gh). Backgrounds, underline, strikethrough and wavy are instances of the UI pipeline; thickness and position from the font's `post` / `OS/2` metrics with broken-table fallbacks (Gh), snapped. **The metrics landed at P3 step 6** as `TextLayout.decoration` (`glyph/faces.ms` `void2dGlyphDecoration`), float, y-down from the baseline to the top of each stroke, from the primary face: Ghostty's rule exactly, where a zero thickness marks a table broken but keeps a non-zero position, and each missing value is estimated from the ex height (OS/2 v2+, else the measured `x`, else 0.75 of the cap height, itself OS/2, the measured `H`, or 0.75 of the ascent). One divergence: the ascent in that last estimate is stb_truetype's `hhea` ascent, where Ghostty prefers `OS/2` typo metrics; the two agree for Inter. Emission and snapping are P4's, with runs. **Landed in P4** (`setTextRuns`, `textLayout.ms` `layoutRuns`, `labelText.ms` `runDecorations`): `len` counts UTF-16 units and the runs must cover the text exactly, or the label stops and says so; a run's colour multiplies with the label's, as h2d's `setColorSegments` does with `textColor` (GPUI's replaces it); kerning stops at a run boundary, standing in for the shaping-run split until P6's shaper; the decoration boxes are laid out with the text and only transformed and snapped when drawn, so a frame builds no array for them. A decoration runs on across the runs that share it (kind, colour, position and thickness), as GPUI's does (`line.rs:633-663`), so a squiggle under several syntax runs keeps one phase. Each run's decoration sits on its own face's metrics, Ghostty's rule as the P3 metrics have it, so one that crosses faces with different metrics steps there and restarts its wave, where GPUI puts one offset on the whole line: a **W** for metric fidelity. A styled label's bounds reach its widest row's end, so a background or underline over trailing spaces is neither culled nor clipped. The human chose h2d's multiply on 2026-09-27 (asked 2026-09-26); **landed in P5**, before the host contract: a styled label is written white and coloured by its runs, as in h2d, and T1 pins the product. Backgrounds, glyphs and lines bind the same glyph-page view, so `text/decorations`, three styled labels, is one draw call.
 - **Caret and selection are their own instances**, never part of a text range, so a blink dirties nothing else (Gh, M). Selection is per-row quads unioned by smooth-min (M).
 - **Text outline** (`-d:voidTextOutline`): Godot's `outline_size` and `outline_color` on a label, a round-join dilation drawn under the fills in both regimes, from the glyph's exact distance at device size (coverage) or a pre-biased SDF tile (zoom and turn); built 2026-10-08, measured against FreeType, and described under P6 "Text outline".
 - **Atlas**: coverage pages and colour pages, 1024², a new page when full (G); 1 px gutter; a CPU mirror per page, dirty pages uploaded once per frame (sokol replaces whole images); ref-counted tiles; **a repack never moves a live tile** (Gh). **Resolved at P3 step 8: R8 coverage pages, with colour glyphs on a separate RGBA page kind**, not four planes per RGBA page (M) — P3 "Atlas page kinds" has the measurement. The R8 coverage kind is always built; the SDF kind is built with `-d:voidSdfText` and the RGBA kind with `-d:voidColourEmoji` (P6); the mask kind is not built. A page is reclaimed whole once no live tile and no quad of the current frame uses it. One divergence from GPUI: a glyph larger than a page (1023 px with the gutter) is refused with `AtlasError.TooLarge`, where GPUI gives an oversized item its own texture (GPUI.md:127); those sizes belong to the SDF regime.
@@ -716,7 +718,7 @@ the baseline was re-taken (see "Baseline" (b)):
 
 *The rasterizer — stb_truetype only, or FreeType as well.* The decision is **not** "module or not". Guardrail 9 requires one rasterizer everywhere, so a FreeType module that is compiled out of the web build would produce different pixels in the browser and break the guardrail it is meant to serve. The real question is whether FreeType ships in **every** build including wasm. Experiment: rasterize the same code-buffer sample at 13 px / 1×, 13 px / 1.5× and 14 px / 1.25× through (a) stb_truetype unhinted with the four x-variants and the gamma table and (b) FreeType with light hinting, both through the same pipeline; capture both through the P0 harness; compare side by side with a Zed capture taken under the T5 protocol. The evidence that decides: at 1×, whether unhinted stems land on the pixel grid darkly enough that the gamma and contrast table cannot close the gap, judged on stem darkness and stem-to-grid alignment; against that, the wasm delta of FreeType in both web backends, measured, not assumed. Constraint if FreeType comes: hinting only in the pixel-exact regime, the outline shifted **before** hinting, and hinted advances never fed back into layout (GHOSTTY.md:42; the integer-advance defect is what fontstash is being removed for). Default if the evidence is ambiguous: stb_truetype only — it is what macOS and Ghostty-on-macOS ship, and it is one dependency rather than two.
 
-**Resolved at P3 step 8: stb_truetype only.** `sh scripts/experiment-rasterizer.sh [--wasm]` (`tests/experiments/`, FreeType 2.13.3 fetched by `VOID_FREETYPE=1 sh setup.sh`) draws one five-line code sample, light on dark, through the same atlas, gamma table and capture path with three rasterizers behind one seam (`void2dGlyphSetRasterizer`), and measures the capture: total ink, the share of ink in pixels covered ≥ 0.85, and the share of touched pixels that are grey. Deterministic run to run. FreeType unhinted matches stb within 1 % of ink and 0.5 pp of solid share, which proves the comparison isolates hinting. Light hinting raises the solid share by **2.5 pp at 13 px / 1×** (0.435 → 0.460), 1.8 pp at 13 px / 1.5× and 3.6 pp at 14 px / 1.25×, and at 1× the text is 3.8 % lighter. The zoomed captures show where: tops of the x-height and the baseline snap, **stems do not move** — light hinting is vertical only, so the `l`, `i` and `|` stems of all three arms are the same two-column greys. The question this experiment was set, whether stems land on the grid, is one FreeType light hinting does not touch. Its price is **+355 880 B in WebGPU and +356 158 B in WebGL2** (759 941 → 1 115 821 and 665 144 → 1 021 302, +47 %), about 12.6× the whole glyph layer. Because light hinting shifts only in y, the constraint "outline shifted before hinting" holds trivially for the x-variants. What stays owed is the T5 look beside Zed (Zed is not installed on this box); it can move the verdict on stem darkness only, and the lever for that is stem darkening or variable-font axes at P6, not a second rasterizer.
+**Resolved at P3 step 8: stb_truetype only.** The experiment (`scripts/experiment-rasterizer.sh` and `tests/experiments/{rasterizer,rasterizerWeb,freetypeRaster}`, FreeType 2.13.3; removed with `glyph.c` because its `void2dGlyphSetRasterizer` seam is gone, last present at `838d31c7`) drew one five-line code sample, light on dark, through the same atlas, gamma table and capture path with three rasterizers behind one seam (`void2dGlyphSetRasterizer`), and measures the capture: total ink, the share of ink in pixels covered ≥ 0.85, and the share of touched pixels that are grey. Deterministic run to run. FreeType unhinted matches stb within 1 % of ink and 0.5 pp of solid share, which proves the comparison isolates hinting. Light hinting raises the solid share by **2.5 pp at 13 px / 1×** (0.435 → 0.460), 1.8 pp at 13 px / 1.5× and 3.6 pp at 14 px / 1.25×, and at 1× the text is 3.8 % lighter. The zoomed captures show where: tops of the x-height and the baseline snap, **stems do not move** — light hinting is vertical only, so the `l`, `i` and `|` stems of all three arms are the same two-column greys. The question this experiment was set, whether stems land on the grid, is one FreeType light hinting does not touch. Its price is **+355 880 B in WebGPU and +356 158 B in WebGL2** (759 941 → 1 115 821 and 665 144 → 1 021 302, +47 %), about 12.6× the whole glyph layer. Because light hinting shifts only in y, the constraint "outline shifted before hinting" holds trivially for the x-variants. What stays owed is the T5 look beside Zed (Zed is not installed on this box); it can move the verdict on stem darkness only, and the lever for that is stem darkening or variable-font axes at P6, not a second rasterizer.
 
 *Atlas page kinds — separate R8 and RGBA pages, or four coverage planes per RGBA page.* Experiment: both allocators behind a flag, one workload — a code buffer at three sizes and two DPIs, plus UI icons and an emoji run — measuring pages allocated, bytes resident, bind-slot changes per frame (which are batch breaks, so T1 sees them), and whether the per-instance plane selector costs any instance bytes. The prediction to test: sokol replaces a **whole image** per update, so a dirty coverage page costs 1 MB on an R8 1024² page and 4 MB on an RGBA four-plane one, and the four-plane page holds 4× the glyphs but is re-uploaded whenever any of its planes is dirty — a 4× upload penalty per new glyph, on the target where "upload bandwidth is scarcer" (see "Web and WebGPU"). Four planes wins only if it removes enough bind-slot changes to pay for that. Default if the measurement is a wash: R8 + RGBA, the simpler allocator and the smaller upload.
 
@@ -899,7 +901,7 @@ web gate, blocked by Yoga's emcc provider.
 - The missing `Object` surface: `parent`, `remove()`, reparent-on-add with a cycle guard, `getChildAt` / `getChildIndex` / `numChildren`, `name`; `localToGlobal` syncing first instead of returning last frame's matrix (`node.ms:344-350`). **Landed at P5 step 6**: `localToGlobal` and `globalToLocal` multiply the node's ancestors' local matrices when asked, so they answer after a write and before any frame.
 - The camera out of every world matrix and into a uniform, as h2d has it, so a camera move stops re-multiplying the tree (`scene.ms:115-121`: `presentAt` hands the camera and scale mode to `sync` as the root's parent world). **Landed at P5 step 10 for the translation**, as the root's scroll scope; a zoom or a rotation still re-multiplies the tree, since a label is rasterised at the scale it is drawn at.
 - A Label that leaves the scene without `dispose` stops pinning its glyph pages. h2d ties allocation to `onAdd` / `onRemove`, and this phase's `remove()`, like the existing `removeChild` and `removeChildren`, is where void does the same; T1 asserts that a removed Label holds no tile reference (closes `tests/PENDING.md label-dispose-pins-page`). **Landed at P5 step 4** for `removeChild` and `removeChildren`: a removed subtree's Labels release their tiles and keep their shaped layout, so a label added back places again from the atlas's index, hitting the tiles still resident, and only `dispose` frees the layout. `remove()` (step 6) goes through `removeChild`.
-- Multi-bracket frames draw every glyph in the frame that first asks for it: a page already uploaded this frame takes no new tile and is not reclaimed (C tracks `s_pageUploaded`), which closes `tests/PENDING.md glyph-page-second-upload`. **Landed at P5 step 4**: the upload state moved from `batcher.c` into `glyph.c` beside the page's dirty flag (`void2dGlyphPageTakeUpload`), so the atlas asks it directly and T1 drives it with no GPU; a glyph that finds every page full or uploaded this frame at the page cap is refused this frame and placed the next, which is F1's retry.
+- Multi-bracket frames draw every glyph in the frame that first asks for it: a page already uploaded this frame takes no new tile and is not reclaimed (C tracks `s_pageUploaded`), which closes `tests/PENDING.md glyph-page-second-upload`. **Landed at P5 step 4**: the upload state moved from `batcher.c` into `glyph.c` (now `glyph/pages.ms`) beside the page's dirty flag (`void2dGlyphPageTakeUpload`), so the atlas asks it directly and T1 drives it with no GPU; a glyph that finds every page full or uploaded this frame at the page cap is refused this frame and placed the next, which is F1's retry.
 - Host-facing rendering services collected into one surface: text measurement, text geometry, hit geometry (`globalToLocal`, world bounds, clip-aware containment), the change flag, and the frame counters from P1.
 - Render bounds apart from h2d's `getBounds`. P4 grew an editing label's query with the selection's gloop and leading because culling and filters shared that box (REVIEWS.md "P4 re-review" F-b). **Built at P5 step 12:** the query excludes editing growth; culling and filters retain it. A run's colour multiplying with the label's, h2d's rule (P4 F2, answered 2026-09-27), landed before this contract.
 
@@ -1667,7 +1669,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   with and without `-d:voidShaper` on msc 0.3.2 gave an executable with no `kbts_` string and no
   `shaper.c` object in the build cache when off (0 and 0), and both when on. The C side is one
   file that holds the implementation (`KB_TEXT_SHAPE_STATIC`), takes the face bytes from
-  `glyph.c` (`void2dGlyphFaceData`), keeps one parsed font and one shape context per face
+  `src/void2d/glyph/faces.ms` (exported as `void2dGlyphFaceData` by `glyphExports.ms`), keeps one parsed font and one shape context per face
   (a synthetic face shares its base's bytes, so it shares both), and hands glyphs back through
   `void2dShapeGlyph` as nine ints (id, advance and offset in font units, the pushed codepoint's
   index, codepoint, run direction, run number), copied during `void2dShapeEnd` because kb reuses
@@ -1767,7 +1769,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   radius 8, pad 4, 32 px/em, as `stbtt_GetGlyphSDF` takes them and Makepad's
   `layouter.rs:249-255` encodes them) and Makepad's linear ramp
   (`draw_text.rs:620-641`) without its luma bias; weight stays the coverage layer's
-  `correctCoverage`. `glyph.c` `void2dGlyphSdfRasterize` is `stbtt_GetGlyphSDF`'s loop
+  `correctCoverage`. `src/void2d/glyph/distanceText.ms` `void2dGlyphSdfRasterize` is `stbtt_GetGlyphSDF`'s loop
   (`stb_truetype.h:4575`) run over `glyphShape`'s vertices so synthetic bold and italic faces
   are seen; it is byte-identical to `stbtt_GetGlyphSDF` on 94 ASCII glyphs of Inter and 40 CJK
   glyphs of the Noto subset (`src/test/glyphSdfCheck.ms`), and a cubic (CFF) outline is refused
@@ -1817,7 +1819,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   Held by `text/designFold` against `text/designFoldDpi` (the same labels at DPI 1.6), which the
   invariant `designFoldMatchesDpi` requires byte-identical. NEW MECHANISM: the runtime regime
   switch (it stays as the headless tests' way to compare the two regimes) and
-  `void2dGlyphSdfStbDiff`, a verification entry that stays in `glyph.c` under `VOID2D_SDF_TEXT` and is called from tests only; the
+  `void2dGlyphSdfStbDiff`, a verification entry that stays in `src/void2d/glyph/distanceText.ms` under `voidSdfText` and is called from tests only; the
   generator itself is the P6 spec's own "SDF generation from void2d's own outline".
   **Shader and draw path, built 2026-10-07 (S5, S7); captured on D3D11 2026-10-08.**
   `shader2d.glsl` block `textSdf` is `textSdf.ms` `sdfCoverage` (edge 191/255, radius 8 texels,
@@ -1884,7 +1886,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   was not measured.
 - **Text outline**, a compile-time module (`-d:voidTextOutline`), the card's "After GPUI parity" line
   (`~/metascript/.wt/void2d-gpui.md`): Godot's `LabelSettings.outline_size` and `outline_color`,
-  both text regimes. **Built 2026-10-08** (`textOutline.ms`, `textOutlineSwitch.ms`, `glyph.c`
+  both text regimes. **Built 2026-10-08** (`textOutline.ms`, `glyph/distanceText.ms`
   `distanceFill` and `void2dGlyphOutline*`, `labelText.ms` `placedOutline`, `render.ms`
   `emitOutline`). GPUI has no text outline (`MonochromeSprite`, `scene.rs:711-719`, carries one
   colour); Makepad has none in its text shader and only a halo of four offset draws in the map
@@ -1920,8 +1922,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
   refusing them by name would make a terminal-style label unusable with an outline.
   **NEW MECHANISM 1, the coverage outline tile from the exact distance at device size.** No
   reference does this: Godot has FreeType's stroker and void has `stb_truetype`, which has none.
-  The tile is `glyph.c`'s distance loop (the one `stbtt_GetGlyphSDF` is ported into, now
-  `distanceFill`, shared under `VOID2D_SDF_TEXT || VOID2D_TEXT_OUTLINE`) run at the label's device
+  The tile is the distance loop of `glyph/distance.ms` (the one `stbtt_GetGlyphSDF` is ported into, now
+  `distanceFill`, shared under `voidSdfText || voidTextOutline`) run at the label's device
   scale with the quarter-pixel shift, `coverage = clamp(0.5 + d + w)`, which is the Minkowski sum
   with a disc, the round-join dilation `FT_STROKER_LINEJOIN_ROUND` draws. It reads `glyphShape`, so
   a synthetic bold or italic is outlined as drawn. Regresses: O(pixels x segments) per new (glyph,
@@ -1976,8 +1978,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
   (TESTING.md "Real-font native panel"). Still owed in `tests/PENDING.md`: unmeasured backend
   evidence (`outline:backends`), a judge on the SDF captures (`outline:capture-oracle`) and a
   human look (`outline:look`).
-- **Glyph page reclamation** (2026-10-08, NEW MECHANISM, void manager's GO). `glyph.c`'s page
-  table is process-wide and capped at the renderer's 64 view slots; a page was never returned, so
+- **Glyph page reclamation** (2026-10-08, NEW MECHANISM, void manager's GO). the glyph page
+  table (`glyph/state.ms`, `glyph/pages.ms`) is process-wide and capped at the renderer's 64 view slots; a page was never returned, so
   every atlas a test created spent slots for the life of the process (58 of 64 at the end of the
   all-modules T0 run before the outline tests, which then ran it out: `AtlasError.Full`).
   `GlyphAtlas.dispose()` releases its pages, as Ghostty drops a grid with its atlases
@@ -1990,7 +1992,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   refused, and a reused slot taking a new generation and size.
 - **Colour emoji**, a compile-time module, decided at P3's review. stb_truetype reads no colour table, so the module reads them itself: CBDT/CBLC and sbix bitmap strikes decoded by `stb_image`, already a void dependency (`src/assets/image.c`), and COLRv0 as layers of stb outlines, each tinted by its palette entry. The module builds the RGBA page kind P3 decided but did not build (P3 "Atlas page kinds"): the page format, its view and a colour draw path at a whole-pixel origin with no gamma correction, as GPUI does (GPUI.md:51). Bitmap strikes are pre-shrunk into 1.25× size buckets, so a zoom does not churn the atlas (MAKEPAD.md:114). Explicit-versus-fallback presentation comes with it (GHOSTTY.md:24), VS15/VS16 over P4's grapheme segmentation. Deferred faces, which let a family answer coverage before it loads, land in the default glyph layer rather than in the module, because the lazy CJK families need them too.
   **Built (`-d:voidColourEmoji`, CBDT/CBLC, sbix and COLR v0), 2026-10-08:** the RGBA page kind is real
-  (`glyph.c` `void2dGlyphPageCreate` four bytes a texel, `void2dGlyphPageBlitRgba`,
+  (`glyph/pages.ms` `void2dGlyphPageCreate` four bytes a texel, `void2dGlyphPageBlitRgba`,
   `void2dGlyphPageTexelRgba`; `batcher.c` `SG_PIXELFORMAT_RGBA8` and the byte-exact upload;
   `glyphAtlas.ms` `acquireBlank` and per-kind `residentBytes`), and a colour-only face loads.
   Draw path (`labelText.ms` `placeLabel`, `render.ms` `emitLabel`/`emitGlyph`): a glyph whose face
@@ -2091,7 +2093,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   and Android (no hardware); sbix on a real Apple face (proprietary, `tests/PENDING.md
   font-sbix-apple`); the halo check of Image mode on an integer-aligned quad, which the capture at
   DPI 1.0, 1.25 and 1.5 is to show.
-  NEW MECHANISM (flagged, needs approval): `colourEmoji/colourFace.c`, an in-tree CBLC/CBDT
+  NEW MECHANISM (flagged, needs approval): `colourEmoji/colourFace.ms` (first written as `colourFace.c`), an in-tree CBLC/CBDT
   parser (index formats 1 to 3, image formats 17, 18 and 19, PNG only), no reference has one
   because GPUI, Makepad and Ghostty all call FreeType or the OS (Ghostty
   `face/freetype.zig:333-352`, `:616-665`); the OpenType CBDT/CBLC text is not read, so the
@@ -2099,7 +2101,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   strike each of index 2 with image 19, index 3 with image 18, index 3 with image 17 and index 1
   with image 18, so every claimed format runs and a mutation of any of them fails a test. Every read is bounds-checked and a
   refusal names the field. Two divergences from the spec: the hook is a direct
-  `#ifdef VOID2D_COLOUR_EMOJI` call from `glyph.c`, the idiom `VOID2D_SDF_TEXT` already uses,
+  `when (voidColourEmoji)` call from `glyph/faces.ms` (first written as `#ifdef VOID2D_COLOUR_EMOJI` in `glyph.c`), the idiom the SDF module uses,
   not a `void2dGlyphSetColourReader` pointer seam; and the colour-only `stbtt_fontinfo` is
   filled by hand with `numGlyphs = 0`, so every stb outline call answers empty, while the
   cmap is read by a checked format 4 and 12 lookup instead of stb's, which trusts offsets.
@@ -2112,8 +2114,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
   left at `(originOffsetX, originOffsetY)`, and a `dupe` takes the target glyph's record
   including its origin, chained at most 8 deep. The origin and `dupe` rules are the Apple
   sbix text as fontTools writes it and are not checked against FreeType, which was not read.
-  COLR v0 with CPAL palette 0 draws as layers: `glyph.c` rasterizes each layer glyph with stb
-  at the exact size (no subpixel shift), `colourFace.c` composites them premultiplied
+  COLR v0 with CPAL palette 0 draws as layers: `glyph/colour.ms` rasterizes each layer glyph with the stb port
+  at the exact size (no subpixel shift), `colourEmoji/colourFace.ms` composites them premultiplied
   source-over in integer, with the tile box the union of the layer boxes. A COLR v1 face with
   no v0 records is refused when it loads (it stays a text face), and a glyph with a layer on
   palette index 0xFFFF, which needs the text colour, is refused by name. The oracle sizes put
@@ -2132,7 +2134,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   The reason string and the box of `void2dGlyphColourBox` are static, one thread like
   `void2dGlyphBox`. A tile that `acquireBlank` recorded and whose fill was refused is given back
   with `GlyphAtlas.discard`, so the key is not cached with no pixels behind it. The truncation
-  sweep is test code, `src/test/colourSweep.c`, and is not compiled into the module. Smoke, local only: `C:/Windows/Fonts/seguiemj.ttf` U+1F300 to U+1FAFF at 32 px
+  sweep is test code, `digestMutants` in `src/test/colourFaceDigest.ms`, and is not part of the module. Smoke, local only: `C:/Windows/Fonts/seguiemj.ttf` U+1F300 to U+1FAFF at 32 px
   gives 1,191 colour glyphs, 0 refused, 9,439 layers, 1,114 inked at the tile centre.
 - Variable-font axes and stem darkening **only if** the T5 capture beside Zed asks for them. The hinting rasterizer is decided out (P3 "Resolved at P3 step 8"). Deferred by name below, with the condition that reopens it.
 - **SVG → R8 mask → tinted sprite**, the icon path, with a single-header C rasterizer.
@@ -2158,9 +2160,9 @@ changes described above on today's compiler; the P4 web archive also takes its r
   79,277 B of wasm (39,842 B gzipped; `snprintf` for the refusal text is part of it). The full web
   build still cannot link (Yoga has no web branch), so this is the module-alone figure the spec
   allows.
-  **Built 2026-10-07 (V1): `svgMask.{h,c,ms}`, test `src/test/svgMaskCheck.ms`, behind
+  **Built 2026-10-07 (V1): `svg/mask.ms` (first `svgMask.{h,c,ms}`), test `src/test/svgMaskCheck.ms`, behind
   `-d:voidSvg`.** Same seam as the shaper: `svgMask.ms` has `when (voidSvg)` around the import of
-  `svgMask.h` and its companion `.c`, and an `else` that stops by name
+  `svg/mask.ms` (first the C `svgMask.h` and its companion `.c`), and an `else` that stops by name
   (`tests/aborts/cases/plainCases.ms` case `svgMaskOff`). A build without the flag has no `linearGradient` and no
   `css selector` string in its executable (0 and 0; 1 and 1 with the flag), and
   `tests/aborts/cases/svgCases.ms` case `svgMaskStaleHandle` pins the stop on a freed handle and
@@ -2228,7 +2230,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   switches the icon in place, as Heaps' `Bitmap.tile` setter does: the hold moves to the new
   id and the old mask goes back to the atlas.
   - **The Mask page kind is real.** `PageKind.Mask` is built under `VOID2D_SVG` (the
-    `svgMaskSwitch.ms` import, as `textSdfSwitch.ms` does for Sdf), an R8 page with its own
+    `when (voidSvg)` blocks of `glyph/pages.ms` and `glyphAtlas.ms`, as `voidSdfText` does for Sdf), an R8 page with its own
     blit `void2dGlyphPageBlitMask` that stops by name on a page of another kind or a tile past
     the page edge, and `glyphPageViewMode` answers 1.0 for it: the same shader path as a
     coverage page, so the contrast and gamma of `textGamma.ms` apply, as GPUI's mono sprite
@@ -2288,8 +2290,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   **Sprite face built 2026-10-08, a module since the same day (`-d:voidSprites`).** Ghostty's
   `CodepointResolver` asks the sprite face before every font, and Terminator turns the flag on;
   an app without it resolves the box, block, braille and powerline codepoints from its font,
-  exactly as before the sprites existed. `src/void2d/spriteSwitch.ms` passes
-  `-DVOID2D_SPRITES` to `glyph.c`, `face.ms` and `font.ms` take the sprite API inside
+  exactly as before the sprites existed. `when (voidSprites)` in `glyph/faces.ms`, `face.ms` and `font.ms` take the sprite API inside
   `when (voidSprites)`, and `isSpriteFace` is the one name that exists in both builds (false
   without the flag) so `labelText.ms` and `textLayout.ms` carry no `when`. A flagless object
   holds no sprite symbol (`scripts/wasmModuleDelta.sh` reads that from the objects, native and
@@ -2302,7 +2303,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   skips it) and `void2dGlyphBox`/`void2dGlyphRasterize` from the drawn cell, trimmed to its ink.
   The tile is an ordinary Coverage tile keyed `(sprite face, dense id, size, variant 0)`; the
   Mask page kind stays the SVG icon's. The cell is Ghostty's `Metrics.calc` over the base face at
-  the device size (`glyph.c` `spriteCell`): width the rounded widest ASCII advance, height the
+  the device size (`glyph/faces.ms` `void2dGlyphSpriteCell`): width the rounded widest ASCII advance, height the
   rounded line height, the baseline centred in it, line thickness the underline thickness
   rounded up, at least 1. `font.ms` `codepointFaceFor` returns the sprite face before the
   coverage probe, so a sprite codepoint costs no probe and no fallback load, in any presentation
@@ -2328,14 +2329,14 @@ changes described above on today's compiler; the P4 web archive also takes its r
   geometry is a stroker in `spriteGlyph.c` that offsets a flattened polyline by half the width
   on each side with miter joins up to ratio 10 (z2d's default) and butt caps; a closed outline
   is the polygon minus its inset, which is how `innerStrokePath` reads. Every polygon with a
-  fractional or diagonal edge goes through `void2dGlyphPolygonCoverage` in `glyph.c`, which
+  fractional or diagonal edge goes through `void2dGlyphPolygonCoverage` in `glyph/pages.ms`, which
   builds int16 vertices at 1/q pixel (q the largest whole number, at most 4096, that keeps the
   canvas inside int16) and calls `stbtt_Rasterize`, the call the synthetic-bold glyphs
   already make, into a scratch canvas that `spriteGlyph.c` composites. Blocks, straight box
   lines, braille, sextants and octants are whole-pixel rectangles and write their spans
   directly; they never reach a rasterizer. The first build carried a second exact-area
   accumulator (about 60 lines, the signed-area scheme of font-rs) because `stbtt_Rasterize` is
-  `STBTT_STATIC` in `glyph.c`; that was the NEW MECHANISM the human was asked about, and it is
+  `STBTT_STATIC` in `glyph.c` (now `trueType/rasterize.ms`); that was the NEW MECHANISM the human was asked about, and it is
   gone. What it can regress: a polyline that doubles back on itself would cancel its own area,
   so `drawArc` stops the path where Ghostty's overshooting `lineTo` would reverse it (measured:
   the reference ink ends at the same half pixel). The reference antialiases with z2d at 4 by 4
@@ -2401,7 +2402,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   oracle beyond `faceCheck`'s own formula (the width and baseline follow `docs/GHOSTTY.md:44`);
   `Metrics.zig` has not been read. A base face that cannot back sprites logs once and the font's
   own glyphs are used. `tests/golden/table.ms` vectors are positional, so a merge with another
-  lane that added rows needs the rows re-aligned by hand. `glyph.c` caches a sprite face's widest
+  lane that added rows needs the rows re-aligned by hand. `glyph/faces.ms` caches a sprite face's widest
   ASCII advance and its last cell; the bench for `void2dGlyphAdvance` is owed.
   **Owed, not run:** a look at the half-tone shades and edges, which
   the contrast and gamma of Glyph mode move; the web column of the three rows. Also owed, since
@@ -3369,7 +3370,7 @@ abort stage) unless named otherwise.
   `targetTextureUnallocated`, `samplerHandleEmpty`, and T0
   `pipelineCheck` "releasing a cache of another GPU context drops its handles without destroying
   them", and `tests/aborts/targetOtherContext2d`.
-- **D, view ids with a generation.** `views.c` hands out `(generation << 5) | (slot + 1)`: opaque,
+- **D, view ids with a generation.** `src/sokol/views.ms` hands out `(generation << 5) | (slot + 1)`: opaque,
   positive, 0 invalid, sixteen slots. An id kept past its view's destroy stops by name ("was
   destroyed"). A slot whose generation reaches `VOID_VIEW_LAST_GENERATION` is retired, as
   `void3d/slots.ms` retires a row, and `voidViewCreate` stops once all sixteen are in use or
