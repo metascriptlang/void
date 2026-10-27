@@ -702,8 +702,8 @@ cross-backend bound, 4 of them pending at delta 1.
 
 - Linux (Windows side, WSL2): `src/platform/linux/` (X11 + GLX, port of `_SAPP_LINUX`),
   `src/sokol/bridgeLinux.c` and the `when (linux)` block of `src/sokol/gpu.ms`. Cross-built from
-  Windows (`msc build --os=linux` with WSL's GL/X11 headers and libs, Yoga built for linux by hand
-  because `yoga/src/yogaH.ms` has no linux branch: note in `~/metascript/.inbox/yoga/`), it runs
+  Windows (`msc build --os=linux` with WSL's GL/X11 headers and libs; Yoga compiles from source
+  under `yoga/src/yogaH.ms`'s linux branch since yoga `1f207c9`), it runs
   in WSLg on llvmpipe at 4b66e809 and draws the whole void2d demo. Linux goldens wait for a
   current `msc` in WSL.
 
@@ -778,9 +778,8 @@ sh scripts/abBench.sh clean                                                     
   commits main gained since; both shas print. `AB_MAIN_SHA=main` (or any sha) overrides it, and a
   re-run of `build` moves the worktree to it.
 - **Flags** per backend: d3d11 none; gl `-d:voidGlCore` plus `--passC=-DSOKOL_GLCORE` on A and
-  `-DVOID_GLCORE` on B (each tree's golden runner define); linux `--os=linux` and a `libyoga.a`
-  built once from `yoga/deps/yoga` by `zig c++` (yoga has no linux link line,
-  `~/metascript/.inbox/yoga/`). Windows exes land in `$TEMP/voidAB/<backend>/<side>/`; Linux exes in
+  `-DVOID_GLCORE` on B (each tree's golden runner define); linux `--os=linux`, with Yoga compiled
+  from source by `yogaH.ms`. Windows exes land in `$TEMP/voidAB/<backend>/<side>/`; Linux exes in
   WSL's `~/voidAB/<side>/`, which is not under `/mnt/c`, with the trees read through `/mnt/c`.
 - **Campfire** (`tests/bench/benchCampfire.ms`) is the void3d scene of gate3d's bench, log group
   turning and particles on. Every draw item applies its pipeline and uniform blocks again, so its
