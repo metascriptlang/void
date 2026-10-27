@@ -6145,6 +6145,36 @@ The overlay ports in steps, each with its own check:
    before, 127.5 after, LDR and HDR) and for the normal fade (full along the box's z, half
    across it).
 
+### Ambient occlusion: what ports, traced (2026-10-27)
+
+Heaps' `ScalableAO` (`h3d/pass/ScalableAO.hx`, shader `h3d/shader/SAO.hx`, McGuire's Scalable
+Ambient Obscurance) is a screen pass the caller runs; the pbr `Renderer` never calls it. Its
+sample (`samples/Sao.hx:24-52`) writes colour, depth and a packed normal as MRT, runs the pass
+into a target of its own, blurs it (`h3d.pass.Blur`) and copies it onto the frame with
+`Multiply`. Each pixel rebuilds its world position from the depth, takes `numSamples` taps on a
+spiral turned by a noise texel, and sums how far each tapped point rises above the pixel's
+normal within `sampleRadius`.
+
+Both inputs exist here: the stored, sampled scene depth of the decal pass (step 2 above) and the
+world normal the outline MRT writes as `n * 0.5 + 0.5` (`shader3d.ms` `litFs`). Bevy's
+`ScreenSpaceAmbientOcclusion` is no reference for the pass: it runs as compute and "is not
+supported on WebGL2, and is not currently supported on WebGPU" (`bevy_pbr/src/ssao/mod.rs:110`
+at `84e2d2c`). SAO is one fragment shader and runs on every backend here.
+
+The port, in steps:
+
+1. The fragment math on the CPU (`post3d.ms` `saoTap`, `saoTapOffset`, `saoScreenRadius`,
+   `saoScalableRadius`, `saoOcclusion`, `saoFaded`), held to SAO's formulas, its `6.28` turn
+   included, by `post3dCheck.ms`. **Built (2026-10-27).** One difference: SAO raises
+   `1 - mean` to `1 + intensity` and saturates after, which leaves a mean above 1 undefined;
+   `saoOcclusion` clamps the base first, which gives the same result wherever SAO's is defined.
+2. The pass: a fullscreen program reading the stored depth and the normal target, with a noise
+   texture, into an occlusion target. It is the seventeenth program, and the program key holds
+   sixteen in four bits (`gpu3d.ms` `ProgramKey`), so the key's program field widens first, as
+   `ProgramMap` widened to 5-bit entries. SAO's noise is `Texture.genNoise(128)`, random per
+   run; a fixed texture here keeps the golden stable.
+3. The blur and the `Multiply` copy onto the frame, then a GPU golden of the composed frame.
+
 ### Cascaded sun shadows, as built so far (2026-10-24)
 
 The sun's single fitted map becomes up to four cascades, each its own orthographic map in one
