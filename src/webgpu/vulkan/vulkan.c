@@ -711,6 +711,7 @@ uint32_t vulkanSurfacePresentMode(uint64_t surface, int32_t index) {
 }
 
 static const char *missingFeature(const VkPhysicalDeviceFeatures *features) {
+	if (!features->robustBufferAccess) return "robustBufferAccess";
 	if (!features->independentBlend) return "independentBlend";
 	if (!features->fullDrawIndexUint32) return "fullDrawIndexUint32";
 	if (!features->imageCubeArray) return "imageCubeArray";
@@ -896,6 +897,7 @@ int32_t vulkanDeviceCreate(void) {
 	queue.pQueuePriorities = &priority;
 
 	VkPhysicalDeviceFeatures enabled = { 0 };
+	enabled.robustBufferAccess = VK_TRUE;
 	enabled.independentBlend = VK_TRUE;
 	enabled.fullDrawIndexUint32 = VK_TRUE;
 	enabled.imageCubeArray = VK_TRUE;
