@@ -29,6 +29,8 @@ import {
 	outlineMaskFs,
 	outlineMixFs,
 	outlineWidthFs,
+	saoFs,
+	saoVs,
 	toneMapFs,
 } from "../src/void3d/post3d";
 
@@ -45,6 +47,8 @@ console.log(stage("fs", "bloomUpsampleFs", glsl(bloomUpsampleFs)));
 console.log(stage("fs", "outlineMaskFs", glsl(outlineMaskFs)));
 console.log(stage("fs", "outlineMixFs", glsl(outlineMixFs)));
 console.log(stage("fs", "outlineWidthFs", glsl(outlineWidthFs)));
+console.log(stage("vs", "saoVs", glsl(saoVs)));
+console.log(stage("fs", "saoFs", glslLinked(saoFs, saoVs)));
 console.log(stage("vs", "particleVisualVs", glsl(particleVisualVs)));
 console.log(stage("vs", "particleVs", glsl(particleVs)));
 console.log(stage("fs", "particleFs", glslLinked(particleFs, particleVs)));

@@ -373,3 +373,4 @@ litTexturedPbrEmissiveMapsNormalMapShadowedUvBParallax LIT_TEXTURED CORE PBR:PBR
 litTexturedPbrEmissiveMapsNormalMapCutoutUvBParallax LIT_TEXTURED CORE PBR:PBR_MAPS:EMISSIVE:NORMAL_MAP:CUTOUT:OCCLUSION_UV_B:PARALLAX litTexturedVs litTexturedFs LIT_TEXTURED_TANGENT_UV_B
 litTexturedPbrEmissiveMapsNormalMapCutoutShadowedUvBParallax LIT_TEXTURED CORE PBR:PBR_MAPS:EMISSIVE:NORMAL_MAP:CUTOUT:SHADOWED:OCCLUSION_UV_B:PARALLAX litTexturedVs litTexturedFs LIT_TEXTURED_TANGENT_UV_B
 decal DECAL CORE - decalVs decalFs LIT
+sao SAO CORE - saoVs saoFs FULLSCREEN

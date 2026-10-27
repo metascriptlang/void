@@ -339,6 +339,104 @@ void main() {
 }
 @end
 
+@vs saoVs
+in vec2 position;
+out vec4 ndc;
+void main() {
+    ndc = vec4(position, 0.0, 0.0);
+    gl_Position = vec4(position, 0.5, 1.0);
+    return;
+}
+@end
+
+@fs saoFs
+@image_sample_type saoDepth unfilterable_float
+layout(binding=0) uniform texture2D saoDepth;
+layout(binding=1) uniform texture2D saoNormal;
+layout(binding=2) uniform texture2D saoNoiseTexture;
+@sampler_type saoPointSampler nonfiltering
+layout(binding=0) uniform sampler saoPointSampler;
+layout(binding=1) uniform sampler saoNoiseSampler;
+layout(binding=0) uniform saoParams {
+    mat4 saoInverseViewProj;
+    vec4 saoViewDepth;
+    vec4 saoRadius;
+    vec4 saoTaps;
+    vec4 saoNoise;
+    vec4 saoEye;
+    vec4 saoFade;
+};
+in vec4 ndc;
+layout(location=0) out vec4 fragColor;
+float ndcDepthOf(float stored, float zeroToOne) {
+    return (zeroToOne == 1.0) ? stored : ((stored * 2.0) - 1.0);
+}
+vec3 saoPositionAt(ivec2 pixel, vec2 ndc_1) {
+    float stored = texelFetch(sampler2D(saoDepth, saoPointSampler), pixel, 0).x;
+    float depth = ndcDepthOf(stored, saoNoise.z);
+    vec4 world = saoInverseViewProj * vec4(ndc_1.x, ndc_1.y, depth, 1.0);
+    return world.xyz / world.w;
+}
+float saoScreenRadius(float sampleRadius, float fovTan, float viewDepth) {
+    return (sampleRadius * fovTan) / viewDepth;
+}
+float saoViewDepthOf(vec3 at) {
+    return dot(saoViewDepth, vec4(at, 1.0));
+}
+vec2 saoTapOffset(int tap, int samples, int spiralTurns, float rotation) {
+    float alpha = (float(tap) + 0.5) / float(samples);
+    float angle = (alpha * (float(spiralTurns) * 6.28)) + rotation;
+    return vec2(cos(angle), sin(angle)) * alpha;
+}
+float saoScalableRadius(float sampleRadius, float viewDepth) {
+    return sampleRadius * (max(0.0, log((1.0 + viewDepth))) + 1.0);
+}
+float saoTap(vec3 offset, vec3 normal, float radius, float bias) {
+    float vv = dot(offset, offset);
+    float vn = dot(offset, normal) - (bias * radius);
+    float radius2 = radius * radius;
+    float f = max((radius2 - vv), 0.0) / radius2;
+    return ((f * f) * f) * max((vn / (0.01 + vv)), 0.0);
+}
+float saoFaded(float occlusion, float distance_1, float startFadeStart, float startFadeEnd, float fadeStart, float fadeEnd) {
+    float started = mix(1.0, occlusion, clamp(((distance_1 - startFadeStart) / (startFadeEnd - startFadeStart)), 0.0, 1.0));
+    return mix(started, 1.0, clamp(((distance_1 - fadeStart) / (fadeEnd - fadeStart)), 0.0, 1.0));
+}
+float saoOcclusion(float sum, int samples, float intensity) {
+    return pow(clamp((1.0 - (sum / float(samples))), 0.0, 1.0), (1.0 + intensity));
+}
+void main() {
+    ivec2 size = textureSize(sampler2D(saoDepth, saoPointSampler), 0);
+    ivec2 pixel = ivec2(gl_FragCoord.xy);
+    vec2 ndc_1 = ndc.xy;
+    vec2 ndcDx = dFdx(ndc_1);
+    vec2 ndcDy = dFdy(ndc_1);
+    vec3 origin = saoPositionAt(pixel, ndc_1);
+    vec3 normal = (texelFetch(sampler2D(saoNormal, saoPointSampler), pixel, 0).xyz * 2.0) - vec3(1.0);
+    float height = float(size.y);
+    vec2 noiseUv = (gl_FragCoord.xy / height) * saoNoise.xy;
+    float noise = texture(sampler2D(saoNoiseTexture, saoNoiseSampler), noiseUv).x;
+    float rotation = 6.28318530717958 * noise;
+    vec4 radius = saoRadius;
+    vec4 taps = saoTaps;
+    float radiusSS = (taps.z == 1.0) ? (radius.x * radius.w) : saoScreenRadius(radius.x, radius.w, saoViewDepthOf(origin));
+    int samples = int(taps.x);
+    int turns = int(taps.y);
+    float sum = 0.0;
+    for (int tap = 0; tap < samples; tap++) {
+        vec2 offset = roundEven((saoTapOffset(tap, samples, turns, rotation) * (radiusSS * height)));
+        ivec2 at = clamp((pixel + ivec2(offset)), ivec2(0, 0), (size - ivec2(1, 1)));
+        vec3 q = saoPositionAt(at, ((ndc_1 + (ndcDx * offset.x)) + (ndcDy * offset.y)));
+        float tapRadius = (taps.w == 1.0) ? saoScalableRadius(radius.x, saoViewDepthOf(q)) : radius.x;
+        sum = sum + saoTap((q - origin), normal, tapRadius, radius.z);
+    }
+    vec4 fade = saoFade;
+    float occlusion = saoFaded(saoOcclusion(sum, samples, radius.y), distance(origin, saoEye.xyz), fade.x, fade.y, fade.z, fade.w);
+    fragColor = vec4(occlusion, occlusion, occlusion, 1.0);
+    return;
+}
+@end
+
 @vs particleVisualVs
 layout(binding=0) uniform vertexParams {
     mat4 viewProj;

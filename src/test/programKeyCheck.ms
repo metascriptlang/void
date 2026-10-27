@@ -83,6 +83,14 @@ import {
 	withNormalMap,
 	describe,
 	bits,
+	isScreenProgram,
+	SAO_UNIFORM_SLOT,
+	SAO_UNIFORM_LENGTH,
+	SAO_DEPTH_VIEW_SLOT,
+	SAO_NORMAL_VIEW_SLOT,
+	SAO_NOISE_VIEW_SLOT,
+	SAO_POINT_SAMPLER_SLOT,
+	SAO_NOISE_SAMPLER_SLOT,
 } from "../void3d/gpu3d";
 import { UNIFORM_SLOTS } from "../gpu/door";
 import { GPU3D_BINDING_VIEWS, GPU3D_BINDING_SAMPLERS } from "../void3d/gpu3d.h";
@@ -197,7 +205,7 @@ const EVERY_PROGRAM: Vec<Program> = [
 	Program.Lit, Program.Particle, Program.Billboard, Program.Copy, Program.Post, Program.Blit,
 	Program.LitTextured, Program.UnlitTextured, Program.BloomDownsampleFirst,
 	Program.BloomDownsample, Program.BloomUpsample, Program.OutlineMask, Program.OutlineMix,
-	Program.OutlineWidth, Program.ParticleVisual, Program.Decal,
+	Program.OutlineWidth, Program.ParticleVisual, Program.Decal, Program.Sao,
 ];
 
 const SCENE_PROGRAMS: Vec<Program> = [
@@ -226,6 +234,7 @@ function layoutFor(key: ProgramKey): VertexLayout {
 		Program.OutlineMask => VertexLayout.Fullscreen,
 		Program.OutlineMix => VertexLayout.Fullscreen,
 		Program.OutlineWidth => VertexLayout.Fullscreen,
+		Program.Sao => VertexLayout.Fullscreen,
 		Program.LitTextured => VertexLayout.LitTextured,
 		Program.UnlitTextured => VertexLayout.LitTextured,
 	};
@@ -269,7 +278,19 @@ test "every key packs to bits of its own, and each declared one reads its progra
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 174 + 6 + 1;
+	assert declared == 174 + 6 + 1 + 1;
+}
+
+test "the SAO program is a screen program of the core, with its block, three views and two samplers" {
+	const key: ProgramKey = ProgramKey.of(Program.Sao);
+	assert (Program.Sao as int32) == 16 && declares(key) && isScreenProgram(Program.Sao);
+	assert !declares(key.withPreset(Preset.PixelArt)) && !declares(key.withPreset(Preset.Shadow));
+	assert vertexLayoutOf(key) == VertexLayout.Fullscreen;
+	assert uniformBlockLength(key, SAO_UNIFORM_SLOT) == SAO_UNIFORM_LENGTH;
+	assert textureSlotMask(key) == (1 << (SAO_DEPTH_VIEW_SLOT as uint32)) +
+		(1 << (SAO_NORMAL_VIEW_SLOT as uint32)) + (1 << (SAO_NOISE_VIEW_SLOT as uint32));
+	assert samplerSlotMask(key) == (1 << (SAO_POINT_SAMPLER_SLOT as uint32)) +
+		(1 << (SAO_NOISE_SAMPLER_SLOT as uint32));
 }
 
 test "the decal program is the core's alone, on the Lit layout, and reads the scene depth" {

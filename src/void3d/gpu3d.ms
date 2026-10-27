@@ -63,6 +63,8 @@ export enum Program {
 	ParticleVisual,
 	// Heaps' DecalOverlay: a box's Lit-layout mesh, drawn in the Decal phase only (DECAL_*).
 	Decal,
+	// Heaps' ScalableAO over a caller's depth and normal targets (SAO_*).
+	Sao,
 }
 
 // Heaps adds a pass's output shaders to a material's (h3d.pass.Output); sokol-shdc programs
@@ -320,6 +322,7 @@ export function isScreenProgram(program: Program): boolean {
 		Program.OutlineMix => true,
 		Program.OutlineWidth => true,
 		Program.Decal => false,
+		Program.Sao => true,
 	};
 }
 
@@ -527,6 +530,22 @@ export const DECAL_TONE_MAPPED: int32 = 11;
 export const DECAL_NORMAL_FADE_START: int32 = 12;
 export const DECAL_NORMAL_FADE_END: int32 = 13;
 export const DECAL_NORMAL_FADE: int32 = 14;
+// The SAO program's block (post3d.ms SaoParams) at the screen slot, then its views: the depth and
+// the normal target read through the point sampler, the noise through its own.
+export const SAO_UNIFORM_SLOT: int32 = 0;
+export const SAO_UNIFORM_LENGTH: int32 = 40;
+export const SAO_INVERSE_VIEW_PROJ: int32 = 0;
+export const SAO_VIEW_DEPTH: int32 = 16;
+export const SAO_RADIUS: int32 = 20;
+export const SAO_TAPS: int32 = 24;
+export const SAO_NOISE: int32 = 28;
+export const SAO_EYE: int32 = 32;
+export const SAO_FADE: int32 = 36;
+export const SAO_DEPTH_VIEW_SLOT: int32 = 0;
+export const SAO_NORMAL_VIEW_SLOT: int32 = 1;
+export const SAO_NOISE_VIEW_SLOT: int32 = 2;
+export const SAO_POINT_SAMPLER_SLOT: int32 = 0;
+export const SAO_NOISE_SAMPLER_SLOT: int32 = 1;
 // A lit material's own block (binding=3). The core reads the saturation it applies to the
 // material's colour before lighting (0 leaves it alone, -1 is grey) and, at 1 in
 // MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal, and discards a pixel

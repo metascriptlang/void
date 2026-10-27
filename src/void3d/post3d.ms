@@ -1,8 +1,10 @@
-// void3d's fullscreen passes written as MetaScript shader functions: tone map, bloom and outline.
+// void3d's fullscreen passes written as MetaScript shader functions: tone map, bloom, outline and
+// ambient occlusion.
 // tools/genShaders.ms writes their GLSL into shader3dGen.glsl; src/test/post3dCheck.ms runs them on
 // the CPU.
 
 import {
+	Mat4x4f,
 	Sampler,
 	Texture2d,
 	Vec2f,
@@ -14,7 +16,10 @@ import {
 	builtin,
 	clamp,
 	cos,
+	distance,
 	dot,
+	dpdx,
+	dpdy,
 	log,
 	max,
 	min,
@@ -34,7 +39,7 @@ import {
 	vec3f,
 	vec4f,
 } from "../shader/std";
-import { linearToSrgb, toneCurved } from "./shader3d";
+import { linearToSrgb, ndcDepthOf, toneCurved } from "./shader3d";
 
 // ScalableAO's shader (h3d/shader/SAO.hx, McGuire's Scalable Ambient Obscurance): one tap's
 // obscurance, from the tapped point's offset to the shaded point, against the shaded normal.
@@ -86,6 +91,77 @@ export function saoFaded(
 	return mix(started, 1.0, saturate((distance - fadeStart) / (fadeEnd - fadeStart)));
 }
 
+// gpu3d.ms SAO_* offsets: the inverse viewProj; the camera row whose dot with a world point is its view
+// depth; sampleRadius, intensity, bias and fovTan (1 / ortho height when ORTHO); numSamples,
+// numSpiralTurns, ORTHO and USE_SCALABLE_BIAS; noiseScale and the door's depthZeroToOne; the
+// camera position; startFadeStart, startFadeEnd, fadeStart and fadeEnd.
+export struct SaoParams {
+	saoInverseViewProj: Mat4x4f;
+	saoViewDepth: Vec4f;
+	saoRadius: Vec4f;
+	saoTaps: Vec4f;
+	saoNoise: Vec4f;
+	saoEye: Vec4f;
+	saoFade: Vec4f;
+}
+
+export struct SaoBindings {
+	@binding(0) @sampleType(unfilterable_float) saoDepth: Texture2d;
+	@binding(1) saoNormal: Texture2d;
+	@binding(2) saoNoiseTexture: Texture2d;
+	@binding(0) @samplerType(nonfiltering) saoPointSampler: Sampler;
+	@binding(1) saoNoiseSampler: Sampler;
+	@binding(0) saoParams: SaoParams;
+}
+
+// SAO.getPosition on the stored depth under `pixel`, whose NDC is `ndc`.
+function saoPositionAt(b: SaoBindings, pixel: Vec2i, ndc: Vec2f): Vec3f {
+	const stored = textureLoad(b.saoDepth, b.saoPointSampler, pixel, 0).x;
+	const depth = ndcDepthOf(stored, b.saoParams.saoNoise.z);
+	const world = b.saoParams.saoInverseViewProj * vec4f(ndc.x, ndc.y, depth, 1.0);
+	return world.xyz / world.w;
+}
+
+function saoViewDepthOf(b: SaoBindings, at: Vec3f): float32 {
+	return dot(b.saoParams.saoViewDepth, vec4f(at, 1.0));
+}
+
+// SAO.fragment over the normal target the forward outline MRT writes as n * 0.5 + 0.5. A tap
+// reads the depth at the nearest pixel, as the depth is unfilterable here, and finds its NDC
+// along dpdx and dpdy, which run the way the pixel rows do on every backend.
+export function saoFs(input: SaoInput, b: SaoBindings): Vec4f {
+	const size = textureDimensions(b.saoDepth, b.saoPointSampler, 0);
+	const pixel = vec2i(input.position.xy);
+	const ndc = input.ndc.xy;
+	const ndcDx = dpdx(ndc);
+	const ndcDy = dpdy(ndc);
+	const origin = saoPositionAt(b, pixel, ndc);
+	const normal = textureLoad(b.saoNormal, b.saoPointSampler, pixel, 0).xyz * 2.0 - vec3f(1.0);
+	const height = size.y as float32;
+	const noiseUv = input.position.xy / height * b.saoParams.saoNoise.xy;
+	const noise = textureSample(b.saoNoiseTexture, b.saoNoiseSampler, noiseUv).x;
+	const rotation = 2.0 * 3.14159265358979 * noise;
+	const radius = b.saoParams.saoRadius;
+	const taps = b.saoParams.saoTaps;
+	const radiusSS = taps.z == 1.0 ? radius.x * radius.w :
+		saoScreenRadius(radius.x, radius.w, saoViewDepthOf(b, origin));
+	const samples = taps.x as int32;
+	const turns = taps.y as int32;
+	let sum: float32 = 0.0;
+	for (let tap = 0; tap < samples; tap++) {
+		const offset = round(saoTapOffset(tap, samples, turns, rotation) * (radiusSS * height));
+		const at = clamp(pixel + vec2i(offset), vec2i(0, 0), size - vec2i(1, 1));
+		const q = saoPositionAt(b, at, ndc + ndcDx * offset.x + ndcDy * offset.y);
+		const tapRadius = taps.w == 1.0 ? saoScalableRadius(radius.x, saoViewDepthOf(b, q)) :
+			radius.x;
+		sum = sum + saoTap(q - origin, normal, tapRadius, radius.z);
+	}
+	const fade = b.saoParams.saoFade;
+	const occlusion = saoFaded(saoOcclusion(sum, samples, radius.y),
+		distance(origin, b.saoParams.saoEye.xyz), fade.x, fade.y, fade.z, fade.w);
+	return vec4f(occlusion, occlusion, occlusion, 1.0);
+}
+
 export struct FullscreenAttributes {
 	position: Vec2f;
 }
@@ -100,6 +176,21 @@ export function fullscreenVs(input: FullscreenAttributes): FullscreenVaryings {
 
 export struct PostInput {
 	@builtin(position) position: Vec4f;
+}
+
+// The fullscreen triangle's NDC as a varying, for a pass that rebuilds positions off the screen.
+export struct SaoVaryings {
+	ndc: Vec4f;
+	@builtin(position) clip: Vec4f;
+}
+
+export struct SaoInput {
+	ndc: Vec4f;
+	@builtin(position) position: Vec4f;
+}
+
+export function saoVs(input: FullscreenAttributes): SaoVaryings {
+	return { ndc: vec4f(input.position, 0.0, 0.0), clip: vec4f(input.position, 0.5, 1.0) };
 }
 
 export struct ToneMapParams {
