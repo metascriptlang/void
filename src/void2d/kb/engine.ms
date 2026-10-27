@@ -100,15 +100,15 @@ function shapeDirect(
 	s: KbScratch,
 	m: Span<uint8>,
 	runDirection: uint32,
-	variationVectorNormalized: int32[],
+	variationVectorNormalized: int32[] | null,
 	observe: ((s: KbScratch) => void) | null,
 ): void {
 	const config = s.config;
 	const storage = s.storage;
 	const g = storage.glyphs;
 
-	s.variationVectorNormalized = variationVectorNormalized;
-	s.hasVariationVector = variationVectorNormalized.length > 0;
+	s.variationVectorNormalized = variationVectorNormalized ?? [];
+	s.hasVariationVector = variationVectorNormalized != null;
 
 	if (config == null || g[KB_GLYPH_SENTINEL].next == KB_GLYPH_SENTINEL) {
 		return;
@@ -192,7 +192,12 @@ function shapeDirect(
 	}
 }
 
-export function kbShapeDirect(s: KbScratch, m: Span<uint8>, runDirection: uint32, variationVectorNormalized: int32[]): void {
+export function kbShapeDirect(
+	s: KbScratch,
+	m: Span<uint8>,
+	runDirection: uint32,
+	variationVectorNormalized: int32[] | null,
+): void {
 	shapeDirect(s, m, runDirection, variationVectorNormalized, null);
 }
 
@@ -201,7 +206,7 @@ export function kbShapeDirectObserved(
 	s: KbScratch,
 	m: Span<uint8>,
 	runDirection: uint32,
-	variationVectorNormalized: int32[],
+	variationVectorNormalized: int32[] | null,
 	observe: (s: KbScratch) => void,
 ): void {
 	shapeDirect(s, m, runDirection, variationVectorNormalized, observe);

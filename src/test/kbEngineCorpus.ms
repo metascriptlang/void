@@ -376,7 +376,7 @@ export function kbEnginePortRun(
 	config: KbShapeConfig,
 	codepoints: int32[],
 	direction: uint32,
-	normalized: int32[],
+	normalized: int32[] | null,
 ): int32[] {
 	const storage = new KbGlyphStorage();
 	for (let i: int32 = 0; i < codepoints.length; i++) {
@@ -404,7 +404,7 @@ export function kbEngineDigestOf(font: KbFont, perPool: int32): uint32 {
 		const m: Span<uint8> = font.blob[0..font.blob.length];
 		try {
 			h = kbConfigDigestStep(h, kbEnginePortRun(m, config, item.codepoints, item.direction,
-				item.varied ? normalizedVaried : []));
+				item.varied ? normalizedVaried : null));
 		} catch (e) {
 			if (e instanceof KbFontBoundsError) {
 				h = kbConfigDigestStep(h, [-1]);
