@@ -92,6 +92,9 @@ import {
 	DOOR_BINDING_VERTEX_BUFFER,
 	DOOR_BINDING_VIEW,
 } from "./doorWords.h";
+when (c) {
+	import "./doorExports";
+}
 
 export const DOOR_UNIFORM_SLOTS: int32 = 8;
 export const DOOR_MAX_COLOR_ATTACHMENTS: int32 = 4;
@@ -241,7 +244,6 @@ let cubeImages: Vec<uint32> = [];
 // before a new setup are stale, which doorContextGeneration tells the layers above. It starts at
 // 1 and only a setup after the first moves it, as bridgeWin.c and bridgeWeb.c counted, so 0 stays
 // the generation nothing current carries.
-@exportName("doorSetup")
 export function doorSetup(
 	nativeDevice: Ptr<void> | null,
 	nativeContext: Ptr<void> | null,
@@ -282,7 +284,6 @@ export function doorSetup(
 	everSetUp = true;
 }
 
-@exportName("doorShutdown")
 export function doorShutdown(): void {
 	if (device.id == 0) { return; }
 	device.destroy();
@@ -412,10 +413,8 @@ function makeBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 	return buffer;
 }
 
-@exportName("doorValid")
 export function doorValid(): int32 { return device.id != 0 ? 1 : 0; }
 
-@exportName("doorContextGeneration")
 export function doorContextGeneration(): int32 { return generation; }
 
 // ---- registries ----
@@ -892,7 +891,6 @@ export function doorMakeTargetImage(width: int32, height: int32, format: int32):
 	}, true).id;
 }
 
-@exportName("doorMakeTextureView")
 export function doorMakeTextureView(image: uint32): uint32 {
 	const texture: GPUTexture = { id: image };
 	if (cubeImages.includes(image)) {
@@ -1106,7 +1104,6 @@ export function doorBufferSize(id: uint32): int64 {
 }
 
 // A sampled texture of PixelFormat `format`; `data` empty leaves it to doorUpdateTexture.
-@exportName("doorMakeTexture")
 export function doorMakeTexture(
 	width: int32,
 	height: int32,
@@ -1453,7 +1450,6 @@ function swapchainTexture(): GPUTexture {
 }
 
 // The screen pass's color target as of the last frame that drew it: the whole swapchain buffer.
-@exportName("doorReadScreen")
 export function doorReadScreen(out: Span<uint8>): int32 {
 	return readTexture(
 		swapchainTexture(),
@@ -1560,7 +1556,6 @@ export function doorBeginPass(
 	current = -1;
 }
 
-@exportName("doorBeginColorPass")
 export function doorBeginColorPass(
 	view: uint32,
 	red: float32,
@@ -1589,7 +1584,6 @@ export function doorBeginColorPass(
 	current = -1;
 }
 
-@exportName("doorBeginScreenPass")
 export function doorBeginScreenPass(
 	red: float32,
 	green: float32,
@@ -1624,7 +1618,6 @@ export function doorBeginScreenPass(
 	current = -1;
 }
 
-@exportName("doorEndPass")
 export function doorEndPass(): void {
 	if (openPass == PassState.None) { stop("endPass with no pass open"); }
 	pass.end();
@@ -1637,13 +1630,11 @@ import { commitFrame } from "./frameCommit";
 
 // The frame's end as the door's contract has it: the bridge's voidCommit submits through
 // doorSubmitFrame, then runs the commit hook and presents.
-@exportName("doorCommit")
 export function doorCommit(): void {
 	stopOnOpenPass("commit");
 	commitFrame();
 }
 
-@exportName("doorSubmitFrame")
 export function doorSubmitFrame(): void {
 	stopOnOpenPass("commit");
 	if (timerState() == GPU_TIMER_ON) { timerFrameEnd(frameEncoder()); }
@@ -1654,7 +1645,6 @@ export function doorSubmitFrame(): void {
 	endFrameStats();
 }
 
-@exportName("doorPassState")
 export function doorPassState(): int32 { return openPass as int32; }
 
 export function doorPassAttachesView(view: uint32): boolean {

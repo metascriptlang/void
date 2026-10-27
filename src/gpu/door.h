@@ -5,7 +5,7 @@
 
 #include "doorWords.h"
 
-// What C layers call; MetaScript defines each (src/gpu/doorGpu.ms, `@exportName`). A pointer
+// What C layers call; MetaScript defines each (src/gpu/doorExports.cms, `@exportName`). A pointer
 // and int64 pair is one MetaScript Span: the length counts elements.
 static const int32_t DOOR_PIXEL_FORMAT_NONE = 0;
 static const int32_t DOOR_PIXEL_FORMAT_RGBA8 = 2;
