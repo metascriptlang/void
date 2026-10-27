@@ -2,7 +2,7 @@
 // size and devicePixelRatio, the requestAnimationFrame loop. No backend is imported here, so a GL
 // bundle and a WebGPU bundle both load it.
 
-extern class Js {}
+export extern class Js {}
 
 extern function cssWidth(canvas: Js): float64 from "#.clientWidth";
 extern function cssHeight(canvas: Js): float64 from "#.clientHeight";
@@ -10,7 +10,7 @@ extern function devicePixelRatio(): float64 from "(window.devicePixelRatio || 1)
 extern function setDrawingSize(canvas: Js, width: int32, height: int32): void from "((c,w,h)=>{c.width=w;c.height=h;})(#,#,#)";
 extern function setAttribute(element: Js, name: string, value: string): void from "#.setAttribute(#,#)";
 extern function removeAttribute(element: Js, name: string): void from "#.removeAttribute(#)";
-extern function requestFrame(callback: () => void): float64 from "requestAnimationFrame(#)";
+extern function requestFrame(callback: (time: float64) => void): float64 from "requestAnimationFrame(#)";
 extern function cancelFrame(handle: float64): void from "cancelAnimationFrame(#)";
 extern function publishStart(start: (canvas: Js, onError: (message: string) => void) => () => void): void from "((f)=>{globalThis.voidStart=(c,e)=>f(c,(m)=>e?e(new Error(m)):console.error(m));if(globalThis.onVoidReady)globalThis.onVoidReady();})(#)";
 
@@ -20,6 +20,8 @@ export struct CanvasSize {
 	width: int32;
 	height: int32;
 	scale: float32;
+	cssWidth: int32;
+	cssHeight: int32;
 }
 
 function measure(canvas: Js): CanvasSize {
@@ -28,6 +30,8 @@ function measure(canvas: Js): CanvasSize {
 		width: Math.max(1, Math.round(cssWidth(canvas) * scale)) as int32,
 		height: Math.max(1, Math.round(cssHeight(canvas) * scale)) as int32,
 		scale: scale as float32,
+		cssWidth: Math.max(1, Math.round(cssWidth(canvas))) as int32,
+		cssHeight: Math.max(1, Math.round(cssHeight(canvas))) as int32,
 	};
 }
 
@@ -36,7 +40,7 @@ export class CanvasView {
 	canvas: Js;
 	size: CanvasSize;
 	resize: (size: CanvasSize) => void = (size: CanvasSize): void => {};
-	frame: () => void = (): void => {};
+	frame: (time: float64) => void = (time: float64): void => {};
 	constructor(id: int32, canvas: Js) {
 		this.id = id;
 		this.canvas = canvas;
@@ -50,10 +54,11 @@ let nextId: int32 = 1;
 let pending: float64 = 0;
 
 function sameSize(a: CanvasSize, b: CanvasSize): boolean {
-	return a.width == b.width && a.height == b.height && a.scale == b.scale;
+	return a.width == b.width && a.height == b.height && a.scale == b.scale &&
+		a.cssWidth == b.cssWidth && a.cssHeight == b.cssHeight;
 }
 
-function tick(): void {
+function tick(time: float64): void {
 	pending = 0;
 	for (const view of live.slice(0)) {
 		if (!live.includes(view)) { continue; }
@@ -63,7 +68,7 @@ function tick(): void {
 			setDrawingSize(view.canvas, size.width, size.height);
 			view.resize(size);
 		}
-		view.frame();
+		view.frame(time);
 	}
 	if (live.length > 0) { pending = requestFrame(tick); }
 }
@@ -81,7 +86,11 @@ export function installStart(open: (view: CanvasView, onError: (message: string)
 	});
 }
 
-export function enter(view: CanvasView, resize: (size: CanvasSize) => void, frame: () => void): void {
+export function enter(
+	view: CanvasView,
+	resize: (size: CanvasSize) => void,
+	frame: (time: float64) => void,
+): void {
 	view.resize = resize;
 	view.frame = frame;
 	live.push(view);

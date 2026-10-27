@@ -3,6 +3,7 @@
 
 import { CanvasSize, CanvasView, enter, installStart, leave } from "../platform/web/window";
 import { PixelFormat, doorSetup } from "../gpu/doorGpu";
+import { browserWindow } from "./appWindowBrowser";
 import { Views, ViewsPlatform } from "./views";
 
 when (webgl2) {
@@ -22,8 +23,24 @@ export type ViewId = int32;
 export const ViewInvalid: ViewId = 0 as int32;
 
 class Start {
+	canvas: CanvasView;
 	stopped: boolean = false;
 	view: ViewId = ViewInvalid;
+
+	constructor(canvas: CanvasView) {
+		this.canvas = canvas;
+	}
+
+	stop(): void {
+		if (this.stopped) { return; }
+		this.stopped = true;
+		liveStarts--;
+		if (browserWindow.valid()) { browserWindow.end(); }
+		if (this.view != ViewInvalid) {
+			leave(this.canvas);
+			views.destroy(this.view);
+		}
+	}
 }
 
 class BrowserPlatform extends ViewsPlatform {
@@ -70,29 +87,30 @@ async function begin(canvas: CanvasView, onError: (message: string) => void, sta
 	}
 	if (start.stopped) { return; }
 	const size = canvas.size;
+	browserWindow.begin(canvas);
 	const view = views.create(0, size.width, size.height, size.scale);
 	start.view = view;
+	browserWindow.initDone();
 	enter(
 		canvas,
-		(resized: CanvasSize): void => { views.resize(view, resized.width, resized.height, resized.scale); },
-		(): void => { views.frame(view); },
+		(resized: CanvasSize): void => {
+			views.resize(view, resized.width, resized.height, resized.scale);
+			browserWindow.resized(resized);
+		},
+		(time: float64): void => {
+			browserWindow.beginFrame(time);
+			views.frame(view);
+			if (browserWindow.endFrame()) { start.stop(); }
+		},
 	);
 }
 
 function open(canvas: CanvasView, onError: (message: string) => void): () => void {
 	if (liveStarts > 0) { platform.fail("voidStart: the js target runs one view at a time; stop the live view first"); }
 	liveStarts++;
-	const start = new Start();
+	const start = new Start(canvas);
 	begin(canvas, onError, start);
-	return (): void => {
-		if (start.stopped) { return; }
-		start.stopped = true;
-		liveStarts--;
-		if (start.view != ViewInvalid) {
-			leave(canvas);
-			views.destroy(start.view);
-		}
-	};
+	return (): void => { start.stop(); };
 }
 
 export function embedRegister(init: () => void, frame: () => void): void {
