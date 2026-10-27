@@ -894,11 +894,13 @@ export function shadowCoverage(
 	return coverage;
 }
 
-// The underline's signed distance: shape.x the thickness, shape.y above 0.5 a wavy line, else the
-// straight bar filling the quad.
-export function underlineDistance(p: Vec2f, half: Vec2f, shape: Vec4f): float32 {
+// The underline's signed distance: shape.x the thickness, shape.y the pattern (1 wavy, 2 dotted,
+// 3 dashed, else the straight bar filling the quad), shape.z the quad's x on its line and shape.w
+// the cell a dotted or dashed pattern repeats in.
+export function underlineDistance(p: Vec2f, half: Vec2f, shape: Vec4f, aa: float32): float32 {
 	const thickness = shape.x;
-	if (shape.y > 0.5) {
+	const pattern = (shape.y + 0.5) as int32;
+	if (pattern == 1) {
 		const height = half.y * 2.0;
 		const frequency = 6.283185307179586 * thickness / height;
 		const amplitude = thickness * 0.8 / height;
@@ -908,7 +910,31 @@ export function underlineDistance(p: Vec2f, half: Vec2f, shape: Vec4f): float32 
 			sqrt(1.0 + slope * slope);
 		return abs(distance) - thickness * 0.5;
 	}
-	return roundedRectDistance(p, half, 0.0);
+	const bar = roundedRectDistance(p, half, 0.0);
+	const cell = shape.w;
+	if (pattern < 2 || cell <= 0.0) {
+		return bar;
+	}
+	const u = floorMod(p.x + half.x + shape.z, cell);
+	const dotted = dotDistance(u, cell, thickness, aa);
+	return max(bar, select(dashDistance(u, cell, aa), dotted, pattern == 2));
+}
+
+// Ghostty's underline_dotted (font/sprite/draw/special.zig:61-90): dots max(thickness, 3 px)
+// wide, half the cell's room or at least one, the rest of the cell shared out as gaps.
+export function dotDistance(u: float32, cell: float32, thickness: float32, aa: float32): float32 {
+	const dot = max(thickness, 3.0 * aa);
+	const count = max(floor(cell / dot * 0.5), 1.0);
+	const pitch = cell / count;
+	const v = floorMod(u, pitch);
+	return min(max(-v, v - dot), pitch - v);
+}
+
+// Ghostty's underline_dashed (special.zig:92-117): a dash of a third of the cell and a pixel,
+// a gap as long, and the rest of the cell dashed, so a run of cells reads as long dashes.
+export function dashDistance(u: float32, cell: float32, aa: float32): float32 {
+	const dash = cell / 3.0 + aa;
+	return min(max(-u, u - dash), max(2.0 * dash - u, u - cell));
 }
 
 export function uiFs(input: UiInput, b: UiBindings): Vec4f {
@@ -939,7 +965,7 @@ export function uiFs(input: UiInput, b: UiBindings): Vec4f {
 		return withEffect(b, vec4f(rgb, alpha), keyTexel);
 	}
 	if (mode == 4) {
-		const coverage = coverageFromDistance(underlineDistance(p, half, input.vBorders), aa);
+		const coverage = coverageFromDistance(underlineDistance(p, half, input.vBorders, aa), aa);
 		const alpha = input.vFill.w * coverage;
 		return withEffect(b, vec4f(input.vFill.xyz * alpha, alpha), vec3f(1.0));
 	}

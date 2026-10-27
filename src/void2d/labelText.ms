@@ -15,6 +15,7 @@ import {
 	TextLayout,
 	TextStyle,
 	TextRun,
+	UnderlineStyle,
 	LaidGlyph,
 	LineBox,
 	LineOptions,
@@ -37,6 +38,9 @@ import {
 	ColourGlyph,
 	ColourTileBox,
 	decorationMetrics,
+	faceMetrics,
+	glyphAdvance,
+	glyphIndex,
 	hasColourTables,
 	colourTileBox,
 	isSpriteFace,
@@ -106,6 +110,10 @@ export enum DecorationKind {
 	Underline,
 	WavyUnderline,
 	Strikethrough,
+	DoubleUnderline,
+	DottedUnderline,
+	DashedUnderline,
+	Overline,
 }
 
 export struct Decoration {
@@ -115,6 +123,7 @@ export struct Decoration {
 	w: float32;
 	h: float32;
 	color: Color;
+	cell: float32;
 }
 
 export interface LabelText {
@@ -339,30 +348,51 @@ export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 	entry.style = style;
 	entry.selectionStale = true;
 	entry.layout = wrapOnGrid(entry.shaped, style, entry.options, entry.cellWidths);
-	entry.decorations = entry.layout.runDecorations(entry.runs, style.size);
+	entry.decorations = entry.layout.runDecorations(entry.runs, style.size, entry.options.forceWidth);
 }
 
 // GPUI's segments (line.rs:790-937): one per run per line; the backgrounds fill the line box,
-// underline and strikethrough sit where the run's face puts them.
+// underline and strikethrough sit where the run's face puts them. A dotted or dashed underline
+// repeats per cell as Ghostty's sprites do (font/sprite/draw/special.zig:15-140), the grid's
+// cell, or else the run's `0` advance as CSS's `ch`.
 function runDecorations(
 	this layout: TextLayout,
 	runs: Readonly<Span<TextRun>>,
 	size: float32,
+	gridCell: float32,
 ): Vec<Decoration> {
 	let out: Vec<Decoration> = new Array(0);
 	if ((runs.length as int32) == 0) { return out; }
 	for (let li = 0; li < (layout.lines.length as int32); li++) {
-		layout.lineDecorations(runs, size, li, DecorationKind.Background, out);
-		layout.lineDecorations(runs, size, li, DecorationKind.Underline, out);
-		layout.lineDecorations(runs, size, li, DecorationKind.Strikethrough, out);
+		layout.lineDecorations(runs, size, gridCell, li, DecorationKind.Background, out);
+		layout.lineDecorations(runs, size, gridCell, li, DecorationKind.Underline, out);
+		layout.lineDecorations(runs, size, gridCell, li, DecorationKind.Strikethrough, out);
+		layout.lineDecorations(runs, size, gridCell, li, DecorationKind.Overline, out);
 	}
 	return out;
+}
+
+function underlineKind(run: TextRun): DecorationKind {
+	if (run.wavy) { return DecorationKind.WavyUnderline; }
+	return match (run.underlineStyle) {
+		UnderlineStyle.Solid => DecorationKind.Underline,
+		UnderlineStyle.Double => DecorationKind.DoubleUnderline,
+		UnderlineStyle.Dotted => DecorationKind.DottedUnderline,
+		UnderlineStyle.Dashed => DecorationKind.DashedUnderline,
+		UnderlineStyle.Wavy => DecorationKind.WavyUnderline,
+	};
+}
+
+function cellOf(face: int32, size: float32, gridCell: float32): float32 {
+	if (gridCell > 0.0) { return gridCell; }
+	return glyphAdvance(face, glyphIndex(face, "0".code), size);
 }
 
 function lineDecorations(
 	this layout: TextLayout,
 	runs: Readonly<Span<TextRun>>,
 	size: float32,
+	gridCell: float32,
 	li: int32,
 	slot: DecorationKind,
 	ref out: Vec<Decoration>,
@@ -374,6 +404,7 @@ function lineDecorations(
 	let openRight: float32 = 0.0;
 	let openY: float32 = 0.0;
 	let openH: float32 = 0.0;
+	let openCell: float32 = 0.0;
 	let openColor: Color = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
 	for (const segment of layout.runSegments(li)) {
 		const run: int32 = segment.run;
@@ -383,15 +414,28 @@ function lineDecorations(
 		let kind: DecorationKind = slot;
 		let y: float32 = line.top;
 		let h: float32 = line.height;
+		let cell: float32 = 0.0;
 		if (run != NO_RUN) {
 			const style: TextRun = runs[run];
-			const deco = decorationMetrics(fontFace(style.font), size);
+			const face: int32 = fontFace(style.font);
+			const deco = decorationMetrics(face, size);
 			if (slot == DecorationKind.Background) {
 				color = style.background;
 			} else if (slot == DecorationKind.Underline) {
 				color = style.underline;
-				kind = style.wavy ? DecorationKind.WavyUnderline : DecorationKind.Underline;
+				kind = underlineKind(style);
 				y = line.baseline + deco.underlineTop;
+				h = deco.underlineThickness;
+				if (kind == DecorationKind.DoubleUnderline) {
+					y = y - h;
+					h = h * 3.0;
+				}
+				if (kind == DecorationKind.DottedUnderline || kind == DecorationKind.DashedUnderline) {
+					cell = cellOf(face, size, gridCell);
+				}
+			} else if (slot == DecorationKind.Overline) {
+				color = style.overline;
+				y = line.baseline - faceMetrics(face, size).ascent;
 				h = deco.underlineThickness;
 			} else {
 				color = style.strikethrough;
@@ -400,7 +444,7 @@ function lineDecorations(
 			}
 		}
 		const same: boolean = open && color.a > 0.0 && kind == openKind && y == openY &&
-			h == openH && color.r == openColor.r && color.g == openColor.g &&
+			h == openH && cell == openCell && color.r == openColor.r && color.g == openColor.g &&
 			color.b == openColor.b && color.a == openColor.a;
 		if (same) {
 			openRight = right;
@@ -409,7 +453,7 @@ function lineDecorations(
 		if (open) {
 			out.push({
 				kind: openKind, x: openX, y: openY, w: openRight - openX, h: openH,
-				color: openColor,
+				color: openColor, cell: openCell,
 			});
 		}
 		open = color.a > 0.0;
@@ -418,11 +462,13 @@ function lineDecorations(
 		openRight = right;
 		openY = y;
 		openH = h;
+		openCell = cell;
 		openColor = color;
 	}
 	if (open) {
 		out.push({
 			kind: openKind, x: openX, y: openY, w: openRight - openX, h: openH, color: openColor,
+			cell: openCell,
 		});
 	}
 }
@@ -444,7 +490,9 @@ export function setLabelRuns(index: int32, runs: Readonly<Span<TextRun>>): boole
 	if (reshapes) {
 		entry.reshape = true;
 	} else {
-		entry.decorations = entry.layout.runDecorations(entry.runs, entry.style.size);
+		entry.decorations = entry.layout.runDecorations(
+			entry.runs, entry.style.size, entry.options.forceWidth,
+		);
 	}
 	return reshapes;
 }
