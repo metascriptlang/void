@@ -3,9 +3,9 @@
 // messages, and call voidEmit(json) to send messages back to JS. Messages are JSON strings.
 
 @include("bridge.h");
-@compile("../sokol/voidRelay.c");
-@compile("../sokol/voidMessage.c");
-import { voidRelayEmit, voidRelayNext } from "../sokol/voidMessage.h";
+@compile("../host/voidRelay.c");
+@compile("../host/voidMessage.c");
+import { voidRelayEmit, voidRelayNext } from "../host/voidMessage.h";
 
 extern function voidEmbedSetMessagePump(pump: () => void): void;
 

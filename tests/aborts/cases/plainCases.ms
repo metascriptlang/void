@@ -36,7 +36,7 @@
 // expect writeBufferRewriteUniform: rewrites bytes this frame already wrote, up to 16
 // expect shaperOff: void2d shaper: shaperBegin needs the shaper module; build with -d:voidShaper
 import { argv } from "std/process";
-import "../../../src/sokol/gpu";
+import "../../../src/host/gpu";
 import { fakeTexture } from "../../../src/test/helpers";
 import { Scene2D, TileCell } from "../../../src/void2d/node";
 import "../../../src/void2d/scene";

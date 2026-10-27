@@ -3,15 +3,15 @@
 // mouse lock (a mouse button locks in a browser), M hides and shows the pointer, X cycles the
 // cursor, Q asks to quit and the first ask is cancelled. Drop files or touch to see their events.
 
-import "../sokol/gpu";
+import "../host/gpu";
 import { beginScreenPassWith, endPass, commit } from "../gpu/door";
 import {
 	AppEvent, AppEventType, MouseCursor, onAppEvent, requestQuit, cancelQuit, frameDuration,
 	setClipboard, clipboard, setMouseCursor, mouseCursor, showMouse, mouseShown, lockMouse,
 	mouseLocked, toggleFullscreen, isFullscreen, droppedFiles,
-} from "../sokol/window";
+} from "../host/window";
 
-@include("../sokol/bridge.h");
+@include("../host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 const keyC = 67;

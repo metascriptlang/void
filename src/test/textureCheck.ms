@@ -321,7 +321,8 @@ test "both presets refuse a frame whose own screen material's texture changed" {
 
 // A LitTextured material of `key` over a block of its length, its base texture a raw view.
 function movingLit(context: DrawContext, key: ProgramKey): Material {
-	let values: Vec<float32> = key.moves() ? movingDefaults(key) : [4.0, 0.0, 0.0, 0.0];
+	let values: Vec<float32> =
+		key.moves() ? movingDefaults(key) : [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (key.emissive) {
 		for (let i = 0; i < EMISSIVE_LENGTH; i++) { values.push(1.0); }
 	}

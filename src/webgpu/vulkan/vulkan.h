@@ -21,6 +21,7 @@
 #define VULKAN_FEATURE_BC 0x2
 #define VULKAN_FEATURE_ETC2 0x4
 #define VULKAN_FEATURE_ASTC 0x8
+#define VULKAN_FEATURE_INDIRECT_FIRST_INSTANCE 0x400
 
 #define VULKAN_LIMIT_TEXTURE_DIMENSION_1D 0
 #define VULKAN_LIMIT_TEXTURE_DIMENSION_2D 1
@@ -55,7 +56,6 @@
 #define VULKAN_SURFACE_MIN_HEIGHT 5
 #define VULKAN_SURFACE_MAX_WIDTH 6
 #define VULKAN_SURFACE_MAX_HEIGHT 7
-#define VULKAN_SURFACE_CURRENT_TRANSFORM 8
 #define VULKAN_SURFACE_TRANSFORMS 9
 #define VULKAN_SURFACE_COMPOSITE_ALPHA 10
 #define VULKAN_SURFACE_USAGE 11
@@ -72,18 +72,18 @@ int32_t vulkanValidationEnabled(void);
 int32_t vulkanValidationErrors(void);
 int32_t vulkanValidationWarnings(void);
 
-int32_t vulkanSurfaceCreateWin32(void *hinstance, void *hwnd);
-int32_t vulkanSurfaceCreateXlib(void *display, uint64_t window);
-int32_t vulkanSurfaceCreateAndroid(void *window);
-int32_t vulkanSurfaceQuery(void);
-uint32_t vulkanSurfaceCapability(int32_t field);
-int32_t vulkanSurfaceFormatCount(void);
-int32_t vulkanSurfaceFormat(int32_t index, int32_t *format, uint32_t *colorSpace);
-int32_t vulkanSurfacePresentModeCount(void);
-uint32_t vulkanSurfacePresentMode(int32_t index);
-int32_t vulkanSurfaceDestroy(void);
+int32_t vulkanSurfaceCreateWin32(void *hinstance, void *hwnd, uint64_t *surface);
+int32_t vulkanSurfaceCreateXlib(void *display, uint64_t window, uint64_t *surface);
+int32_t vulkanSurfaceCreateAndroid(void *window, uint64_t *surface);
+int32_t vulkanSurfaceQuery(uint64_t surface);
+uint32_t vulkanSurfaceCapability(uint64_t surface, int32_t field);
+int32_t vulkanSurfaceFormatCount(uint64_t surface);
+int32_t vulkanSurfaceFormat(uint64_t surface, int32_t index, int32_t *format, uint32_t *colorSpace);
+int32_t vulkanSurfacePresentModeCount(uint64_t surface);
+uint32_t vulkanSurfacePresentMode(uint64_t surface, int32_t index);
+int32_t vulkanSurfaceDestroy(uint64_t surface);
 
-int32_t vulkanAdapterSelect(int32_t powerPreference);
+int32_t vulkanAdapterSelect(int32_t powerPreference, uint64_t compatibleSurface);
 uint32_t vulkanAdapterVendorId(void);
 uint32_t vulkanAdapterDeviceId(void);
 const char *vulkanAdapterName(void);
@@ -296,11 +296,12 @@ int32_t vulkanCmdBlendConstants(float r, float g, float b, float a);
 int32_t vulkanCmdStencilReference(uint32_t reference);
 int32_t vulkanCmdDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance);
 int32_t vulkanCmdDrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t baseVertex, uint32_t firstInstance);
-int32_t vulkanCmdDrawIndirect(uint64_t buffer, uint64_t offset, int32_t indexed);
+int32_t vulkanCmdDrawIndexedIndirect(uint64_t buffer, uint64_t offset, uint32_t drawCount);
 int32_t vulkanCmdDispatch(uint32_t x, uint32_t y, uint32_t z);
 int32_t vulkanCmdDispatchIndirect(uint64_t buffer, uint64_t offset);
 
 int32_t vulkanSwapchainCreate(
+	uint64_t surface,
 	int32_t format,
 	uint32_t colorSpace,
 	uint32_t width,
@@ -310,13 +311,13 @@ int32_t vulkanSwapchainCreate(
 	uint32_t preTransform,
 	uint32_t compositeAlpha,
 	uint32_t presentMode);
-uint32_t vulkanSwapchainImageCount(void);
-uint64_t vulkanSwapchainImage(uint32_t index);
-uint64_t vulkanSwapchainView(uint32_t index);
+uint32_t vulkanSwapchainImageCount(uint64_t surface);
+uint64_t vulkanSwapchainImage(uint64_t surface, uint32_t index);
+uint64_t vulkanSwapchainView(uint64_t surface, uint32_t index);
 int32_t vulkanSwapchainTarget(void *renderView, uint64_t *image, uint64_t *view);
-int32_t vulkanSwapchainAcquire(uint32_t *index);
-int32_t vulkanSwapchainPresent(void);
-int32_t vulkanSwapchainDestroy(void);
+int32_t vulkanSwapchainAcquire(uint64_t surface, uint32_t *index);
+int32_t vulkanSwapchainPresent(uint64_t surface);
+int32_t vulkanSwapchainDestroy(uint64_t surface);
 
 int32_t vulkanFramesCreate(uint32_t count);
 int32_t vulkanFrameBegin(uint32_t slot, uint64_t waitSerial);

@@ -5,11 +5,11 @@
 @compile("./macWindowHost.m", "-fobjc-arc");
 extern function macHostKey(down: int32, keyCode: int32, chars: cstring, flags: uint32): void;
 
-import { gfxSetup } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/host/gpu";
 import { beginScreenPassWith, endPass, commit } from "../../src/gpu/door";
 import { exit } from "std/process";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 extern function voidKeyDown(keycode: int32): int32;
 

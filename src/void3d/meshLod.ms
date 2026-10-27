@@ -1,3 +1,5 @@
+import { Mat4, Vec3, determinant3x3 } from "../math/math3d";
+
 export enum MeshLodError {
 	NonFiniteSize,
 	InvalidSize,
@@ -207,4 +209,49 @@ export function rangeAt(
 		range.base as int64, range.count as int64, table.elementCount as int64,
 	);
 	return Result.ok({ base: range.base, count: range.count });
+}
+
+export interface MeshLodPick {
+	config: MeshLod;
+	ranges: MeshLodRanges;
+	material: int32;
+	localOriginRadius: float64;
+	forcedLod: int32;
+	range: MeshLodRange;
+	culled: boolean;
+}
+
+function rowLength(x: float32, y: float32, z: float32): float64 {
+	return Math.sqrt((x * x + y * y + z * z) as float64);
+}
+
+export function pickFor(
+	this pick: MeshLodPick,
+	world: Mat4,
+	eye: Vec3,
+	projectionX: float32,
+	projectionY: float32,
+	nearPlane: float32,
+	meshLodScale: float64,
+): Result<void, MeshLodError> {
+	const dx: float64 = (world.m41 - eye.x) as float64;
+	const dy: float64 = (world.m42 - eye.y) as float64;
+	const dz: float64 = (world.m43 - eye.z) as float64;
+	const size: MeshLodProjectedSize = {
+		localOriginRadius: pick.localOriginRadius,
+		worldScaleX: rowLength(world.m11, world.m12, world.m13),
+		worldScaleY: rowLength(world.m21, world.m22, world.m23),
+		worldScaleZ: rowLength(world.m31, world.m32, world.m33),
+		worldMirrored: world.determinant3x3() < 0.0,
+		cameraDistanceFromWorldOrigin: Math.sqrt(dx * dx + dy * dy + dz * dz),
+		projectionDiagonalX: projectionX as float64,
+		projectionDiagonalY: projectionY as float64,
+		nearPlane: nearPlane as float64,
+		meshLodScale: meshLodScale,
+	};
+	const ratio: float64 = try size.referenceScreenRatioHeuristic();
+	const chosen = try pick.config.select(ratio, pick.forcedLod);
+	pick.culled = chosen.culled;
+	if (!chosen.culled) { pick.range = try pick.ranges.rangeAt(pick.material, chosen.lod); }
+	return Result.ok(null);
 }

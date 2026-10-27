@@ -108,7 +108,7 @@ write_entry() {
 		fi
 		echo "} from \"../campfireScene\";"
 		echo "import { PixelArtSettings$extra } from \"../../../src/void3d/pixelArtRenderer\";"
-		echo "@include(\"../../../src/sokol/bridge.h\");"
+		echo "@include(\"../../../src/host/bridge.h\");"
 		echo "@include(\"capture3d.h\");"
 		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
@@ -150,7 +150,7 @@ prepare_harness() {
 		replace_if_changed "$WORK/$file.new" "$CAPTURE/$file"
 	done
 	sed -e 's|from "./campfireScene"|from "../campfireScene"|' \
-		-e 's|@include("../sokol/|@include("../../../src/sokol/|' \
+		-e 's|@include("../host/|@include("../../../src/host/|' \
 		src/examples/androidCampfireEntry.ms > "$WORK/androidEntry.new"
 	replace_if_changed "$WORK/androidEntry.new" "$TMP/android/campfireEntry.ms"
 }
@@ -158,7 +158,7 @@ prepare_harness() {
 write_perspective_entry() {
 	{
 		echo 'import { initPerspective, framePerspective } from "../../../tests/integration/perspectiveFrame";'
-		echo '@include("../../../src/sokol/bridge.h");'
+		echo '@include("../../../src/host/bridge.h");'
 		echo '@include("capture3d.h");'
 		echo '@compile("./capture3d.c");'
 		echo 'extern function voidRunConfigured('
@@ -190,7 +190,7 @@ write_perspective_entry() {
 write_frame_entry() {
 	{
 		echo "import { $4, $5, $6 } from \"../../../tests/integration/$3\";"
-		echo '@include("../../../src/sokol/bridge.h");'
+		echo '@include("../../../src/host/bridge.h");'
 		echo '@include("capture3d.h");'
 		echo '@compile("./capture3d.c");'
 		echo 'extern function voidRunConfigured('
@@ -317,7 +317,7 @@ configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 
 # msc 0.2.53 on Windows does not call main(): a module that only declares `function main()`
 # builds into a binary that exits at once, and under --os=emcc it links the renderer out
-# entirely. It has now been the same bug five times — mainSokol2d (fixed in ef1de70), and the
+# entirely. It has now been the same bug five times — main2d (fixed in ef1de70), and the
 # four void3d entries mainSokol, mainCampfire, iosEntryAnim and iosEmbedEntry. A recurring bug
 # class is infrastructure, not a fifth spot fix, so the sixth one fails here instead of
 # shipping. Compiler card: 2026-09-20-main-not-called-windows.md.
@@ -342,7 +342,7 @@ run_entries() {
 	for entry in src/examples/*.ms; do
 		grep -qE '^(export )?function main\(' "$entry" || continue
 		case "$(basename "$entry")" in
-			ios*|android*|mainSokol2d.ms) continue ;;
+			ios*|android*|main2d.ms) continue ;;
 		esac
 		msc build "$entry" > "$WORK/entry-build.log" 2>&1 || broken="$broken $(basename "$entry")"
 	done
@@ -351,7 +351,7 @@ run_entries() {
 		tail -4 "$WORK/entry-build.log" | sed 's/^/         /'
 		return
 	fi
-	pass "entries: $checked entry points declare main() and call it; the host ones build (mainSokol2d in scripts/gate.sh)"
+	pass "entries: $checked entry points declare main() and call it; the host ones build (main2d in scripts/gate.sh)"
 }
 
 # The bench entry: warm up, measure, print machine-readable rows, quit. It reuses the capture
@@ -370,7 +370,7 @@ write_bench_entry() {
 		echo "	CampfireStats,"
 		echo "} from \"../campfireScene\";"
 		echo "import { PixelArtSettings } from \"../../../src/void3d/pixelArtRenderer\";"
-		echo "@include(\"../../../src/sokol/bridge.h\");"
+		echo "@include(\"../../../src/host/bridge.h\");"
 		echo "@include(\"capture3d.h\");"
 		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
@@ -436,7 +436,7 @@ write_churn_entry() {
 		echo "	ChurnStats,"
 		echo "	ChurnError,"
 		echo "} from \"../../../src/examples/churnScene\";"
-		echo "@include(\"../../../src/sokol/bridge.h\");"
+		echo "@include(\"../../../src/host/bridge.h\");"
 		echo "@include(\"capture3d.h\");"
 		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
@@ -531,11 +531,11 @@ import { CampfireError } from "../campfireScene";
 import { beginScreenPass } from "../../../src/gpu/target";
 import { endPass, commit } from "../../../src/gpu/door";
 import { Vec4 } from "../../../src/math/math3d";
-import { fbWidth, fbHeight } from "../../../src/sokol/gpu";
+import { fbWidth, fbHeight } from "../../../src/host/gpu";
 import { setup2d, begin2d, flushTargets, end2d, fillQuad } from "../../../src/void2d/draw";
 import { Color, vec2, rgba } from "../../../src/void2d/types";
 import { BlendMode } from "../../../src/gpu/state";
-@include("../../../src/sokol/bridge.h");
+@include("../../../src/host/bridge.h");
 @include("capture3d.h");
 @compile("./capture3d.c");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
@@ -617,7 +617,7 @@ write_pick_entry() {
 		echo "import { NodeId3D } from \"../../../src/void3d/scene\";"
 		echo "import { PickHit, PickError } from \"../../../src/void3d/pick\";"
 		echo "import { Vec3 } from \"../../../src/math/math3d\";"
-		echo "@include(\"../../../src/sokol/bridge.h\");"
+		echo "@include(\"../../../src/host/bridge.h\");"
 		echo "@include(\"capture3d.h\");"
 		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
@@ -938,7 +938,8 @@ STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms
 	src/test/animationCheck.ms tests/integration/cameraRigFrame.ms
 	tests/integration/reparentFrame.ms tests/integration/dirShadow.ms src/test/dirShadowCheck.ms
 	src/test/programKeyCheck.ms tests/integration/movingMaterial.ms
-	tests/integration/mapMaterial.ms tests/integration/billboardBlend.ms"
+	tests/integration/mapMaterial.ms tests/integration/billboardBlend.ms
+	tests/integration/lightShadows.ms tests/integration/parallaxFrame.ms"
 
 run_style() {
 	long=$(
@@ -1191,26 +1192,31 @@ run_mesh_lod() {
 	fi
 	for index32 in 0 1; do
 		for outline in 0 1; do
-			status=0
-			log="$WORK/meshLod.$index32.$outline.0.log"
-			VOID_MESH_LOD_CONTROL=0 VOID_MESH_LOD_INDEX32=$index32 \
-				VOID_MESH_LOD_OUTLINE=$outline "$exe" > "$log" 2>&1 || status=$?
-			if [ "$status" -eq 3 ]; then
-				skip "mesh-lod: no readback backend"
-				return
-			fi
-			if [ "$status" -ne 0 ] || ! grep -q '^PASS mesh LOD:' "$log"; then
-				fail "mesh-lod: index32=$index32 outline=$outline — see $log"
-				return
-			fi
+			for picked in 0 1; do
+				status=0
+				log="$WORK/meshLod.$index32.$outline.0.$picked.log"
+				VOID_MESH_LOD_CONTROL=0 VOID_MESH_LOD_INDEX32=$index32 VOID_MESH_LOD_SCENE=$picked \
+					VOID_MESH_LOD_OUTLINE=$outline "$exe" > "$log" 2>&1 || status=$?
+				if [ "$status" -eq 3 ]; then
+					skip "mesh-lod: no readback backend"
+					return
+				fi
+				if [ "$status" -ne 0 ] || ! grep -q '^PASS mesh LOD:' "$log"; then
+					fail "mesh-lod: index32=$index32 outline=$outline scene=$picked — see $log"
+					return
+				fi
+			done
 			controls=""
 			if [ "$index32" = "1" ]; then controls="6 7"
-			elif [ "$outline" = "0" ]; then controls="1 2 3 4 5"; fi
+			elif [ "$outline" = "0" ]; then controls="1 2 3 4 5 8"; fi
 			for control in $controls; do
 				status=0
+				picked=0
+				[ "$control" = "8" ] && picked=1
 				log="$WORK/meshLod.$index32.$outline.$control.log"
 				VOID_MESH_LOD_CONTROL=$control VOID_MESH_LOD_INDEX32=$index32 \
-					VOID_MESH_LOD_OUTLINE=$outline "$exe" > "$log" 2>&1 || status=$?
+					VOID_MESH_LOD_SCENE=$picked VOID_MESH_LOD_OUTLINE=$outline "$exe" > "$log" 2>&1 \
+					|| status=$?
 				if [ "$status" -ne 1 ] || ! grep -qE \
 					'^FAIL mesh LOD: stage .* (silhouette did not match|material was replaced)' \
 					"$log"; then
@@ -1220,7 +1226,7 @@ run_mesh_lod() {
 			done
 		done
 	done
-	pass "mesh-lod: u16/u32, outline, ranges/materials, LOD/reupload/pins/close; nine controls red"
+	pass "mesh-lod: u16/u32, outline, ranges/materials, LOD picked by hand and by Scene3D, reupload/pins/close; ten controls red"
 }
 
 run_particle_fade() {
@@ -2455,6 +2461,69 @@ run_map_material() {
 	pass "map-material: an emissive map and its strength over a black surface, and a normal map tilting toward +u and the image's top, mirrored islands included, in both presets; the featureless control fails on each"
 }
 
+# Cases are tests/integration/lightShadows.ms `Case` ordinals: a spot, then the cube map's point,
+# rectangle and capsule. The control draws each without its shadow and must find the ground under
+# the light at least as bright as the open ground, so the darkening is the shadow's.
+LIGHT_SHADOW_CASES="0 1 2 3"
+
+run_light_shadows() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "light-shadows: GATE_SKIP_CAPTURE=1 — no spot or cube shadow was read back"
+		return
+	fi
+	exe="$WORK/lightShadows.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/lightShadows.ms --output="$exe" 		> "$WORK/lightShadows.build.log" 2>&1; then
+		fail "light-shadows: tests/integration/lightShadows.ms does not build — see $WORK/lightShadows.build.log"
+		return
+	fi
+	for case in $LIGHT_SHADOW_CASES; do
+		for mode in "0 0 0" "1 0 0" "0 1 0" "0 0 1" "1 0 1"; do
+			set -- $mode
+			log="$WORK/lightShadows.$case.$1.$2.$3.log"
+			status=0
+			VOID_LIGHT_SHADOW_CASE=$case VOID_LIGHT_SHADOW_PCF=$1 VOID_LIGHT_SHADOW_CONTROL=$2 \
+				VOID_LIGHT_SHADOW_NORMAL_BIAS=$3 				"$exe" > "$log" 2>&1 || status=$?
+			if [ "$status" -eq 3 ]; then
+				skip "light-shadows: no native readback backend"
+				return
+			fi
+			if [ "$status" -ne 0 ] || ! grep -q '^PASS light shadow: ' "$log"; then
+				fail "light-shadows: case $case, pcf $1, control $2, normal bias $3 (exit $status) — see $log"
+				return
+			fi
+		done
+	done
+	pass "light-shadows: a spot's map and the cube map of a point, rectangle and capsule darken the ground under a caster, compared and with PCF; each control without its shadow does not; a normal bias pulls the footprint in from its rim"
+}
+
+run_parallax() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "parallax: GATE_SKIP_CAPTURE=1 — no parallax was read back"
+		return
+	fi
+	exe="$WORK/parallaxFrame.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/parallaxFrame.ms --output="$exe" 		> "$WORK/parallaxFrame.build.log" 2>&1; then
+		fail "parallax: tests/integration/parallaxFrame.ms does not build — see $WORK/parallaxFrame.build.log"
+		return
+	fi
+	for control in 0 1; do
+		log="$WORK/parallaxFrame.$control.log"
+		status=0
+		VOID_PARALLAX_CONTROL=$control "$exe" > "$log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "parallax: no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS parallax' "$log"; then
+			fail "parallax: control $control (exit $status) — see $log"
+			return
+		fi
+	done
+	pass "parallax: the pbr-maps height moves a base texture's edge along the view, and the amount-0 control leaves it in place"
+}
+
 # Cases are tests/integration/dirShadow.ms `Case` ordinals; 1 (Detached) is the control, and
 # 7 (DissolveControl) the control of 6 (Dissolve), and 8 (BackFace) of 9 (BackFaceBothSides);
 DIR_SHADOW_CASES="0 2 3 4 5 6 8 9 14 15"
@@ -2884,6 +2953,8 @@ stage run_render_order
 stage run_dir_shadow
 stage run_moving_material
 stage run_map_material
+stage run_light_shadows
+stage run_parallax
 stage run_camera_rig
 stage run_reparent
 stage run_gltf

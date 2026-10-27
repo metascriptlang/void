@@ -35,6 +35,8 @@ import {
 	clearingPass,
 	colourTarget,
 	colourUniforms,
+	drawIndirectRows,
+	drawMaskedTriangle,
 	drawOverLoadedStencil,
 	pixel,
 	readBack,
@@ -44,7 +46,7 @@ import {
 	uniformGroup,
 	vertexBuffer,
 } from "./webgpuFixtures.ms";
-import { spirvCompute, spirvFlat, spirvTextured, spirvTint } from "./vulkanSpirv.ms";
+import { spirvColoured, spirvCompute, spirvFlat, spirvTextured, spirvTint } from "./vulkanSpirv.ms";
 
 @passC("-I../../deps/vulkan-headers/include");
 when (linux) {
@@ -58,7 +60,7 @@ const ROW = SIZE * 4;
 const TINT_BLOCK = 32;
 
 function openDevice(): GPUDevice {
-	if (vulkanLoaderOpen() != 0 || vulkanInstanceCreate() != 0 || vulkanAdapterSelect(VULKAN_POWER_HIGH) != 0 || vulkanDeviceCreate() != 0) {
+	if (vulkanLoaderOpen() != 0 || vulkanInstanceCreate() != 0 || vulkanAdapterSelect(VULKAN_POWER_HIGH, 0) != 0 || vulkanDeviceCreate() != 0) {
 		console.log(`webgpuVulkanCheck: ${vulkanError()}`);
 		unreachable;
 	}
@@ -87,6 +89,16 @@ function flatShader(device: GPUDevice): GPUShaderModule {
 	};
 	descriptor.bindings[0] = { group: GPU_UNIFORM_GROUP, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16 };
 	return device.createShaderModule(descriptor);
+}
+
+function colouredShader(device: GPUDevice): GPUShaderModule {
+	return device.createShaderModule({
+		label: "coloured",
+		vertexEntryPoint: "vs",
+		fragmentEntryPoint: "fs",
+		vertexBytecode: spirvColoured(),
+		fragmentBytecode: spirvColoured(),
+	});
 }
 
 function flatPipeline(device: GPUDevice, sampleCount: int32): GPURenderPipeline {
@@ -178,6 +190,27 @@ test "a Vulkan triangle takes its colour from the uniform block at the dynamic o
 	assert pixel(pixels, 63, 63) == BLUE;
 	const live = device.liveCounts();
 	assert live.buffers == 3 && live.textures == 1 && live.views == 1 && live.shaderModules == 1 && live.pipelines == 1;
+	assert validationErrorsAfterClose(device) == 0;
+}
+
+test "a colour target with writeMask 0 keeps its clear colour where an omitted mask takes the triangle" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawMaskedTriangle(device, flatShader(device), 0, target);
+	assert pixel(readTexture(device, target), 32, 32) == BLUE;
+	drawMaskedTriangle(device, flatShader(device), null, target);
+	assert pixel(readTexture(device, target), 32, 32) == RED;
+	assert validationErrorsAfterClose(device) == 0;
+}
+
+test "two indexed indirect records in one call honour firstIndex, baseVertex and firstInstance" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawIndirectRows(device, colouredShader(device), target);
+	const pixels = readTexture(device, target);
+	assert pixel(pixels, 2, 32) == GREEN;
+	assert pixel(pixels, 61, 32) == RED;
+	assert pixel(pixels, 32, 32) == BLUE;
 	assert validationErrorsAfterClose(device) == 0;
 }
 

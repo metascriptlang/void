@@ -30,6 +30,7 @@ import {
 	sampleBase,
 	isAtomic,
 	isUniformLoad,
+	zeroOf,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import {
@@ -55,6 +56,7 @@ import {
 	splitStructName,
 } from "./spelling";
 import { claimName } from "./names";
+import { demotedDiscards } from "./demote";
 import { printableEntry } from "./specialize";
 
 function hlslKeywords(): string[] {
@@ -162,6 +164,7 @@ class Printer {
 	ioNames: string[] = [];
 	functionNames: string[] = [];
 	workgroupNames: string[] = [];
+	privateNames: string[] = [];
 	effects: int32[] = [];
 	scope: string[] = [];
 	current: ShaderFunction = new ShaderFunction();
@@ -982,6 +985,7 @@ function expr(p: Printer, e: ShaderExpr): string {
 		ExprKind.Param => p.scope[e.index],
 		ExprKind.Constant => p.constantNames[e.index],
 		ExprKind.Workgroup => p.workgroupNames[e.index],
+		ExprKind.Private => p.privateNames[e.index],
 		ExprKind.Io => p.ioNames[e.index] != "" ? p.ioNames[e.index] :
 			fail(p, "io '" + m.ios[e.index].name + "' belongs to the " +
 				m.ios[e.index].stage.toString() + " stage"),
@@ -1410,10 +1414,13 @@ function mainText(p: Printer, entryIndex: int32): string {
 // Matrices print transposed: an HLSL row holds an IR column, so `row_major` storage reads the
 // host's column-major data and M * v is mul(v, M).
 export function printHlsl(
-	m: ShaderModule,
+	source: ShaderModule,
 	entryIndex: int32,
 	slots: BindingSlot[],
 ): Result<string, string> {
+	const demoted = demotedDiscards(source, entryIndex);
+	if (!demoted.ok) { return Result.err("printHlsl: " + demoted.error); }
+	const m = demoted.value;
 	const printable = printableEntry(m, entryIndex);
 	if (!printable.ok) { return Result.err("printHlsl: " + printable.error); }
 	const reads = printable.value;
@@ -1435,6 +1442,7 @@ export function printHlsl(
 	p.ioNames = m.ios.map((_io) => "");
 	p.functionNames = m.functions.map((_f) => "");
 	p.workgroupNames = m.workgroups.map((_w) => "");
+	p.privateNames = m.privates.map((_v) => "");
 	p.effects = m.functions.map((_f) => 0);
 
 	let functions: int32[] = [];
@@ -1500,6 +1508,9 @@ export function printHlsl(
 	for (const w of reads.workgroups) {
 		p.workgroupNames[w] = claim(p, p.globals, m.workgroups[w].name);
 	}
+	for (const v of reads.privates) {
+		p.privateNames[v] = claim(p, p.globals, m.privates[v].name);
+	}
 
 	let head = "";
 	for (const s of structs) {
@@ -1521,6 +1532,11 @@ export function printHlsl(
 	}
 	for (const w of reads.workgroups) {
 		head += "groupshared " + declaration(p, m.workgroups[w].type, p.workgroupNames[w]) + ";\n";
+	}
+	for (const v of reads.privates) {
+		const t = m.privates[v].type;
+		head += "static " + declaration(p, t, p.privateNames[v]) + " = " + expr(p, zeroOf(t)) +
+			";\n";
 	}
 	head += "\n";
 	const bodies = functions.map((f) => functionText(p, f)).join("\n");

@@ -7,7 +7,7 @@ import {
 	DrawItem, EXTERNAL_GENERATION, meshFor, closeContext, releaseMesh, releaseMaterial,
 } from "../void3d/draw";
 import { Program, ProgramKey, withSkin } from "../void3d/gpu3d";
-import { indexAt, indexCount } from "../void3d/meshData";
+import { indexAt, indexCount, vertexCount } from "../void3d/meshData";
 import { GltfMeshBinding, GltfSceneError, addGltfBoundNodes } from "../void3d/gltfScene";
 import {
 	Scene3D, Transform3D, fromTranslation, rootId, nodeIdAt, closeScene, refreshChecked,
@@ -110,6 +110,26 @@ test "glTF nonindexed skin keeps implicit corner source ids through palette part
 		}
 		assert skin.influences.joints[4] == 1;
 		assert skin.influences.weights[8] == 0.25 && skin.influences.weights[9] == 0.75;
+	}
+}
+
+test "glTF skin without NORMAL keeps each duplicated corner's joints and weights" {
+	for (const wide of [false, true]) {
+		const json = document(wide, true, true).replace(`"NORMAL":1,`, "")
+			.replace(`"attributes":`, `"mode":6,"attributes":`);
+		const loaded = loadGltf(json, payload(wide));
+		assert loaded.ok;
+		if (!loaded.ok) { continue; }
+		assert loaded.value.meshes[0].vertexCount() == 3;
+		assert loaded.value.meshes[0].indexCount() == 0;
+		const skin = loaded.value.skinMeshes[0];
+		assert skin !== null;
+		if (skin === null) { continue; }
+		assert skin.vertexSources.length == 3;
+		assert skin.vertexSources[0] == 1 && skin.vertexSources[1] == 2;
+		assert skin.vertexSources[2] == 0;
+		assert skin.influences.joints[0] == 1 && skin.influences.joints[4] == 0;
+		assert skin.influences.weights[4] == 0.25 && skin.influences.weights[5] == 0.75;
 	}
 }
 

@@ -6,7 +6,7 @@ if [ "${1:-}" = --record ]; then
 	recordFile="${2:-tests/bench/wasmBudget.txt}"
 	awk '
 		BEGIN {
-			split("modulesWeb mainSokol2d", entries)
+			split("modulesWeb main2d", entries)
 			split("shaper sdf bidi colour sprites outline", modules)
 			split("wgpu gl", backends)
 			for (e in entries) for (m in modules) for (b in backends)
@@ -30,7 +30,7 @@ if [ "${1:-}" = --record ]; then
 		}
 	' "$recordFile"
 	while read -r key backend offTag off onTag on rest || [ -n "$key" ]; do
-		case "$key" in modulesWeb-*|mainSokol2d-*)
+		case "$key" in modulesWeb-*|main2d-*)
 			on=$(printf '%s' "$on" | tr -d '\r')
 			if ! [ "$off" -ge 0 ] 2>/dev/null || ! [ "$on" -ge 0 ] 2>/dev/null; then
 				echo 'FAIL linked wasm budget declarations: byte count exceeds the integer range'
@@ -77,7 +77,7 @@ check oversizedOff 1 'modulesWeb-shaper wgpu off 999999999999999999999999999999 
 check oversizedOn 1 'modulesWeb-shaper wgpu off 4 on 999999999999999999999999999999'
 cr=$(printf '\r')
 check crlf 0 "modulesWeb-shaper wgpu off 4 on 6$cr"
-for entry in modulesWeb mainSokol2d; do
+for entry in modulesWeb main2d; do
 	for module in shaper sdf bidi colour sprites outline; do
 		for backend in wgpu gl; do
 			printf '%s-%s %s off 4 on 6\n' "$entry" "$module" "$backend"

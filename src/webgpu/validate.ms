@@ -5,6 +5,7 @@ import {
 	GPUBuffer,
 	GPUBufferUsage,
 	GPUCanvasConfiguration,
+	GPUColorWrite,
 	GPUPrimitiveState,
 	GPURenderPassDescriptor,
 	GPUQuerySetDescriptor,
@@ -13,6 +14,7 @@ import {
 	GPUShaderBinding,
 	GPUShaderModuleDescriptor,
 	GPUShaderStage,
+	GPUSupportedFeatures,
 	GPUSupportedLimits,
 	GPUExtent3D,
 	GPUIndexFormat,
@@ -22,6 +24,8 @@ import {
 	GPUTextureFormat,
 	GPUTextureUsage,
 	GPUTextureViewDescriptor,
+	GPUVertexBufferLayout,
+	GPU_DRAW_INDEXED_INDIRECT_STRIDE,
 	GPU_MAX_ANISOTROPY,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
@@ -37,6 +41,7 @@ import {
 	checkedResolveQuerySet,
 	cubeViewRefusal,
 	depthSliceRefusal,
+	featureBit,
 	firstInstanceRefusal,
 	labelOf,
 	noDepthSliceRefusal,
@@ -46,6 +51,7 @@ import {
 	singleSubresourceRefusal,
 	samplerMaxLod,
 	stop,
+	vertexFormatSize,
 	vertexOffsetRefusal,
 	view3dRefusal,
 	viewLayersRefusal,
@@ -59,6 +65,7 @@ import {
 	QueryState,
 	ShaderRecord,
 	TextureRecord,
+	VertexBufferRecord,
 	ViewRecord,
 	bindGroupRecords,
 	bufferRecords,
@@ -217,6 +224,7 @@ export function shutdownRefusal(this s: EncoderState): string {
 
 let encoder: EncoderState = { open: false };
 let deviceLimits: GPUSupportedLimits = { maxBindGroups: 0 };
+let deviceFeatures: GPUSupportedFeatures = { bits: 0 };
 let canvas: GPUCanvasConfiguration = { format: "rgba8unorm", depthFormat: "depth32float", sampleCount: 1 };
 let frame: int64 = 0;
 
@@ -253,6 +261,7 @@ export let boundFacts: BoundFacts = { pipeline: 0 };
 
 export function resetEncoder(): void { encoder = { open: false }; }
 export function cacheLimits(limits: GPUSupportedLimits): void { deviceLimits = limits; }
+export function cacheFeatures(features: GPUSupportedFeatures): void { deviceFeatures = features; }
 export function resetFrame(): void { frame = 0; }
 export function advanceFrame(): void { frame += 1; }
 
@@ -312,6 +321,53 @@ export function checkedDrawState(call: string, indexed: boolean): void {
 	checkGroupOwners(pipelineRecords.slots[p].groups, false);
 	if (indexed) { refuse(stripDrawRefusal(pipelineRecords.slots[p].strip, pipelineRecords.slots[p].stripIndexFormat == boundFacts.indexFormat)); }
 }
+
+// WebGPU draw and drawIndexed: every vertex and index a draw fetches lies inside the range bound
+// to its slot (Dawn CommandBufferStateTracker.cpp:405-510, RenderEncoderBase.cpp:136-190). An
+// indexed draw checks only its instance-step slots, since its indices pick the vertices.
+export function drawSignRefusal(call: string, indexed: boolean, count: int32, instanceCount: int32, first: int32, firstInstance: int32): string {
+	const unsigned = indexed ? ["indexCount", "instanceCount", "firstIndex", "firstInstance"] : ["vertexCount", "instanceCount", "firstVertex", "firstInstance"];
+	const values = [count, instanceCount, first, firstInstance];
+	for (let i = 0; i < 4; i++) {
+		if (values[i] < 0) { return `${call} with ${unsigned[i]} ${values[i]}: WebGPU takes it as unsigned`; }
+	}
+	return "";
+}
+
+export function vertexRangeRefusal(call: string, slot: int32, layout: VertexBufferRecord, boundSize: int64, first: int32, count: int32): string {
+	const strideCount = (first as int64) + (count as int64);
+	if (strideCount == 0) { return ""; }
+	const required = layout.stride == 0 ? layout.lastStride as int64 : (strideCount - 1) * (layout.stride as int64) + (layout.lastStride as int64);
+	if (required <= boundSize) { return ""; }
+	const step = layout.instance ? "instance" : "vertex";
+	return `${call} ${step} range (first ${first}, count ${count}) needs ${required} bytes of the vertex buffer at slot ${slot}, which has ${boundSize} bound`;
+}
+
+export function indexRangeRefusal(call: string, format: GPUIndexFormat, boundSize: int64, firstIndex: int32, indexCount: int32): string {
+	const required = ((firstIndex as int64) + (indexCount as int64)) * (format == "uint32" ? 4 : 2);
+	if (required <= boundSize) { return ""; }
+	return `${call} index range (first ${firstIndex}, count ${indexCount}, ${format}) needs ${required} bytes of the index buffer, which has ${boundSize} bound`;
+}
+
+function boundSize(buffer: uint32, offset: int64): int64 { return bufferRecords.slots[bufferRecords.slotIndex(buffer)].size - offset; }
+
+export function checkedDrawRange(call: string, indexed: boolean, count: int32, instanceCount: int32, first: int32, firstInstance: int32): void {
+	refuse(drawSignRefusal(call, indexed, count, instanceCount, first, firstInstance));
+	if (indexed) {
+		refuse(indexRangeRefusal(call, boundFacts.indexFormat, boundSize(boundFacts.indexBuffer, boundFacts.indexOffset), first, count));
+	}
+	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
+	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
+		if ((pipelineRecords.slots[p].vertexSlots & (1 << slot)) == 0) { continue; }
+		const layout = pipelineRecords.slots[p].vertexBuffers[slot];
+		if (indexed && !layout.instance) { continue; }
+		const size = boundSize(boundFacts.vertexBuffers[slot], boundFacts.vertexOffsets[slot]);
+		refuse(layout.instance
+			? vertexRangeRefusal(call, slot, layout, size, firstInstance, instanceCount)
+			: vertexRangeRefusal(call, slot, layout, size, first, count));
+	}
+}
+
 export function checkedDispatchBound(): void {
 	const groups = pipelineRecords.slots[pipelineRecords.slotIndex(boundFacts.pipeline)].groups;
 	refuse(boundRefusal(0, groups, true));
@@ -349,6 +405,17 @@ export function boundRefusal(vertexSlots: int32, groups: int32, compute: boolean
 		return `the pipeline reads vertex buffer ${(missingSlots & 1) != 0 ? 0 : 1}, which is not set`;
 	}
 	return "";
+}
+
+export function vertexBufferRecordOf(layout: GPUVertexBufferLayout): VertexBufferRecord {
+	let lastStride = 0;
+	for (let a = 0; a < GPU_MAX_VERTEX_ATTRIBUTES; a++) {
+		const format: string = layout.attributes[a].format;
+		if (format == "") { continue; }
+		const end = layout.attributes[a].offset + vertexFormatSize(layout.attributes[a].format);
+		if (end > lastStride) { lastStride = end; }
+	}
+	return { stride: layout.arrayStride, lastStride: lastStride, instance: layout.stepMode == "instance" };
 }
 
 export function vertexSlotsOf(descriptor: GPURenderPipelineDescriptor): int32 {
@@ -615,6 +682,7 @@ export function resolvedRenderPipeline(descriptor: GPURenderPipelineDescriptor):
 }
 
 export function stencilMask(mask: uint32 | null): uint32 { return mask ?? 0xFFFFFFFF; }
+export function colorWriteBits(mask: int32 | null): int32 { return mask ?? GPUColorWrite.ALL as int32; }
 export function stencil8Mask(mask: uint32 | null): int32 { return (stencilMask(mask) & 0xFF) as int32; }
 
 export function renderPipelineRefusal(descriptor: GPURenderPipelineDescriptor): string {
@@ -655,6 +723,38 @@ export function drawOffsetRefusal(pipeline: PipelineRecord, call: string, vertex
 
 export function checkedDrawOffsets(call: string, vertexMember: string, vertexOffset: int32, firstInstance: int32): void {
 	refuse(drawOffsetRefusal(pipelineRecords.record(boundFacts.pipeline), call, vertexMember, vertexOffset, firstInstance));
+}
+
+export function drawIndirectRefusal(call: string, buffer: uint32, usage: int32, bufferSize: int64, offset: int64, drawCount: int32): string {
+	if ((usage & (GPUBufferUsage.INDIRECT as int32)) == 0) { return `${call}: GPUBuffer ${buffer} was created without INDIRECT`; }
+	if (drawCount < 0) { return `${call} with maxDrawCount ${drawCount}: the count cannot be negative`; }
+	if (offset < 0 || offset % 4 != 0 || offset + (drawCount as int64) * GPU_DRAW_INDEXED_INDIRECT_STRIDE > bufferSize) {
+		return `${call} offset ${offset} is not a multiple of 4 with ${drawCount} records of ${GPU_DRAW_INDEXED_INDIRECT_STRIDE} bytes inside GPUBuffer ${buffer} of ${bufferSize}`;
+	}
+	return "";
+}
+
+export function indirectPipelineRefusal(pipeline: PipelineRecord, call: string): string {
+	if (pipeline.readsInstanceIndex) {
+		return `${call} on pipeline ${labelOf(pipeline.label)}: the vertex stage reads instance_index, which backends count from different bases, and an indirect record sets its firstInstance on the GPU`;
+	}
+	if (pipeline.readsVertexIndex) {
+		return `${call} on pipeline ${labelOf(pipeline.label)}: the vertex stage reads vertex_index, which backends count from different bases, and an indirect record sets its baseVertex on the GPU`;
+	}
+	return "";
+}
+
+export function indirectFeatureRefusal(call: string, firstInstance: boolean): string {
+	if (firstInstance) { return ""; }
+	return `${call} on a device without 'indirect-first-instance': a record's firstInstance would be undefined there`;
+}
+
+export function checkedDrawIndirect(call: string, buffer: uint32, offset: int64, drawCount: int32): void {
+	checkedDrawState(call, true);
+	const record = bufferRecords.record(buffer);
+	refuse(drawIndirectRefusal(call, buffer, record.usage, record.size, offset, drawCount));
+	refuse(indirectPipelineRefusal(pipelineRecords.record(boundFacts.pipeline), call));
+	refuse(indirectFeatureRefusal(call, (deviceFeatures.bits & featureBit("indirect-first-instance")) != 0));
 }
 
 // `matches` is whether the pipeline's strip index format is the bound index format; none never matches.
@@ -1117,12 +1217,12 @@ export function attachmentFactsOf(view: ViewRecord, texture: TextureRecord): Att
 
 function colorAttachmentRefusal(i: int32, descriptor: GPURenderPassDescriptor, view: AttachmentFacts, resolve: AttachmentFacts): string {
 	if (view.depth || !view.renderable) { return `colorAttachments[${i}].view is not a color RENDER_ATTACHMENT`; }
-	const single = singleSubresourceRefusal(`colorAttachments[${i}].view`, view.single);
+	const single = singleSubresourceRefusal(i, "view", view.single);
 	if (single != "") { return single; }
 	const slice = descriptor.colorAttachments[i].depthSlice;
 	const slices = view.volume ? depthSliceRefusal(i, slice, Math.max(1, view.layers >> view.baseMip), view.baseMip, view.texture) : noDepthSliceRefusal(i, slice);
 	if (slices != "" || descriptor.colorAttachments[i].resolveTarget.id == 0) { return slices; }
-	const resolveSingle = singleSubresourceRefusal(`colorAttachments[${i}].resolveTarget`, resolve.single);
+	const resolveSingle = singleSubresourceRefusal(i, "resolveTarget", resolve.single);
 	if (resolveSingle != "") { return resolveSingle; }
 	const sizes = resolveTargetRefusal(i, view.sampleCount, view.width, view.height, mipWidth(resolve), mipHeight(resolve));
 	if (sizes != "") { return sizes; }
@@ -1162,7 +1262,7 @@ export function renderPassRefusal(descriptor: GPURenderPassDescriptor, facts: Re
 		if (!view.depth || !view.renderable) { return "depthStencilAttachment.view is not a depth RENDER_ATTACHMENT"; }
 		const stencilOps = stencilOpsRefusal(descriptor.depthStencilAttachment.stencilLoadOp, descriptor.depthStencilAttachment.stencilStoreOp, view.stencil);
 		if (stencilOps != "") { return stencilOps; }
-		const single = singleSubresourceRefusal("depthStencilAttachment.view", view.single);
+		const single = singleSubresourceRefusal(-1, "view", view.single);
 		if (single != "") { return single; }
 		const extent = passExtentRefusal(width, height, mipWidth(view), mipHeight(view));
 		if (extent != "") { return extent; }

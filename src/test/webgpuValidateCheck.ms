@@ -17,6 +17,7 @@ import {
 	GPUTextureDescriptor,
 	GPUTextureUsage,
 	GPUTextureViewDescriptor,
+	GPUVertexBufferLayout,
 } from "../webgpu/types";
 import {
 	AttachmentFacts,
@@ -45,19 +46,25 @@ import {
 	resolvedRenderPipeline,
 	stencil8Mask,
 	stencilMask,
+	colorWriteBits,
 	clampedAnisotropy,
 	computeModuleRefusal,
 	computePipelineRefusal,
 	createRefusal,
 	dispatchRefusal,
+	drawIndirectRefusal,
 	drawOffsetRefusal,
 	drawRefusal,
+	drawSignRefusal,
 	endOcclusionRefusal,
 	entryBytes,
 	endPassRefusal,
 	finishRefusal,
 	groupOfKind,
 	inPassRefusal,
+	indirectFeatureRefusal,
+	indirectPipelineRefusal,
+	indexRangeRefusal,
 	isDepthFormat,
 	isStencilFormat,
 	isStripTopology,
@@ -94,12 +101,14 @@ import {
 	stripDrawRefusal,
 	textureRefusal,
 	uniformEntryRefusal,
+	vertexBufferRecordOf,
+	vertexRangeRefusal,
 	vertexSlotRefusal,
 	vertexSlotsOf,
 	viewportRefusal,
 	writeBufferRefusal,
 } from "../webgpu/validate";
-import { BufferRecord, PipelineRecord, QuerySetRecord, QueryState, ShaderRecord, TextureRecord } from "../webgpu/pool";
+import { BufferRecord, PipelineRecord, QuerySetRecord, QueryState, ShaderRecord, TextureRecord, VertexBufferRecord } from "../webgpu/pool";
 
 function openEncoder(): EncoderState {
 	let s: EncoderState = { open: false };
@@ -355,6 +364,63 @@ test "a draw refuses firstInstance and firstVertex or baseVertex only where the 
 	assert drawOffsetRefusal(reads, "draw", "firstVertex", 0, 2) == "draw with firstInstance 2 on pipeline 'quad': firstInstance must be 0 because the vertex stage reads instance_index";
 	assert drawOffsetRefusal(reads, "draw", "firstVertex", 6, 0) == "draw with firstVertex 6 on pipeline 'quad': firstVertex must be 0 because the vertex stage reads vertex_index";
 	assert drawOffsetRefusal(reads, "drawIndexed", "baseVertex", -3, 0) == "drawIndexed with baseVertex -3 on pipeline 'quad': baseVertex must be 0 because the vertex stage reads vertex_index";
+}
+
+test "an indexed indirect draw takes an INDIRECT buffer holding every record at a 4-byte offset" {
+	const indirect = GPUBufferUsage.INDIRECT as int32;
+	assert drawIndirectRefusal("multiDrawIndexedIndirect", 5, indirect, 40, 0, 2) == "";
+	assert drawIndirectRefusal("multiDrawIndexedIndirect", 5, indirect, 40, 20, 1) == "";
+	assert drawIndirectRefusal("multiDrawIndexedIndirect", 5, indirect, 40, 0, 0) == "";
+	assert drawIndirectRefusal("drawIndexedIndirect", 5, GPUBufferUsage.VERTEX as int32, 40, 0, 1) == "drawIndexedIndirect: GPUBuffer 5 was created without INDIRECT";
+	assert drawIndirectRefusal("multiDrawIndexedIndirect", 5, indirect, 40, 0, -1) == "multiDrawIndexedIndirect with maxDrawCount -1: the count cannot be negative";
+	assert drawIndirectRefusal("multiDrawIndexedIndirect", 5, indirect, 40, 4, 2) == "multiDrawIndexedIndirect offset 4 is not a multiple of 4 with 2 records of 20 bytes inside GPUBuffer 5 of 40";
+	assert drawIndirectRefusal("drawIndexedIndirect", 5, indirect, 40, 2, 1) == "drawIndexedIndirect offset 2 is not a multiple of 4 with 1 records of 20 bytes inside GPUBuffer 5 of 40";
+}
+
+test "a draw fetches only the vertices and indices inside the range bound to each slot" {
+	const vertex: VertexBufferRecord = { stride: 8, lastStride: 8 };
+	const instance: VertexBufferRecord = { stride: 64, lastStride: 64, instance: true };
+	const packed: VertexBufferRecord = { stride: 0, lastStride: 12 };
+	assert vertexRangeRefusal("draw", 0, vertex, 24, 0, 3) == "";
+	assert vertexRangeRefusal("draw", 0, vertex, 24, 1, 2) == "";
+	assert vertexRangeRefusal("draw", 0, vertex, 0, 0, 0) == "";
+	assert vertexRangeRefusal("draw", 0, vertex, 24, 0, 4) == "draw vertex range (first 0, count 4) needs 32 bytes of the vertex buffer at slot 0, which has 24 bound";
+	assert vertexRangeRefusal("draw", 0, vertex, 24, 3, 1) == "draw vertex range (first 3, count 1) needs 32 bytes of the vertex buffer at slot 0, which has 24 bound";
+	assert vertexRangeRefusal("draw", 0, vertex, 24, 2147483647, 2147483647) == "draw vertex range (first 2147483647, count 2147483647) needs 34359738352 bytes of the vertex buffer at slot 0, which has 24 bound";
+	assert vertexRangeRefusal("drawIndexed", 1, instance, 128, 1, 1) == "";
+	assert vertexRangeRefusal("drawIndexed", 1, instance, 128, 2, 1) == "drawIndexed instance range (first 2, count 1) needs 192 bytes of the vertex buffer at slot 1, which has 128 bound";
+	assert vertexRangeRefusal("draw", 0, packed, 12, 0, 100) == "";
+	assert vertexRangeRefusal("draw", 0, packed, 8, 0, 1) == "draw vertex range (first 0, count 1) needs 12 bytes of the vertex buffer at slot 0, which has 8 bound";
+	assert indexRangeRefusal("drawIndexed", "uint16", 16, 0, 8) == "";
+	assert indexRangeRefusal("drawIndexed", "uint16", 16, 1, 8) == "drawIndexed index range (first 1, count 8, uint16) needs 18 bytes of the index buffer, which has 16 bound";
+	assert indexRangeRefusal("drawIndexed", "uint32", 16, 0, 5) == "drawIndexed index range (first 0, count 5, uint32) needs 20 bytes of the index buffer, which has 16 bound";
+	assert drawSignRefusal("draw", false, 3, 1, 0, 0) == "";
+	assert drawSignRefusal("draw", false, -1, 1, 0, 0) == "draw with vertexCount -1: WebGPU takes it as unsigned";
+	assert drawSignRefusal("drawIndexed", true, 3, 1, -2, 0) == "drawIndexed with firstIndex -2: WebGPU takes it as unsigned";
+	assert drawSignRefusal("drawIndexed", true, 3, 1, 0, -1) == "drawIndexed with firstInstance -1: WebGPU takes it as unsigned";
+}
+
+test "a pipeline records each vertex slot's stride, the end of its last attribute and its step mode" {
+	let layout: GPUVertexBufferLayout = { arrayStride: 20 };
+	layout.attributes[0] = { format: "unorm8x4", offset: 16, shaderLocation: 1 };
+	layout.attributes[1] = { format: "float32x3", offset: 0, shaderLocation: 0 };
+	const vertex = vertexBufferRecordOf(layout);
+	assert vertex.stride == 20;
+	assert vertex.lastStride == 20;
+	assert !vertex.instance;
+	layout.stepMode = "instance";
+	assert vertexBufferRecordOf(layout).instance;
+}
+
+test "an indirect draw refuses a vertex stage reading instance_index or vertex_index and a device without indirect-first-instance" {
+	const instance: PipelineRecord = { id: 3, label: "rows", readsInstanceIndex: true };
+	const vertex: PipelineRecord = { id: 4, label: "strip", readsVertexIndex: true };
+	const plain: PipelineRecord = { id: 5, label: "plain" };
+	assert indirectPipelineRefusal(plain, "drawIndexedIndirect") == "";
+	assert indirectPipelineRefusal(instance, "drawIndexedIndirect") == "drawIndexedIndirect on pipeline 'rows': the vertex stage reads instance_index, which backends count from different bases, and an indirect record sets its firstInstance on the GPU";
+	assert indirectPipelineRefusal(vertex, "multiDrawIndexedIndirect") == "multiDrawIndexedIndirect on pipeline 'strip': the vertex stage reads vertex_index, which backends count from different bases, and an indirect record sets its baseVertex on the GPU";
+	assert indirectFeatureRefusal("drawIndexedIndirect", true) == "";
+	assert indirectFeatureRefusal("drawIndexedIndirect", false) == "drawIndexedIndirect on a device without 'indirect-first-instance': a record's firstInstance would be undefined there";
 }
 
 test "a texture size is positive and inside the backend's limits for its dimension" {
@@ -944,6 +1010,12 @@ test "a canvas names a color format and, when it has one, a depth format" {
 	assert canvasRefusal("depth32float", "", 1) == "NativeEnvironment.colorFormat 'depth32float' is not supported";
 	assert canvasRefusal("bgra8unorm", "rgba8unorm", 1) == "NativeEnvironment.depthFormat 'rgba8unorm' is not supported";
 	assert canvasRefusal("bgra8unorm", "", -1) == "NativeEnvironment.sampleCount -1 is negative";
+}
+
+test "an omitted color writeMask writes every channel and an explicit 0 writes none" {
+	assert colorWriteBits(null) == 0xF;
+	assert colorWriteBits(0) == 0;
+	assert colorWriteBits(0x9) == 0x9;
 }
 
 test "a render pipeline's zero sample count and omitted stencil masks resolve to WebGPU's defaults" {

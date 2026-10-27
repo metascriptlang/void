@@ -5,6 +5,10 @@ import { LowResView, ViewPoint } from "./blit";
 import { Ray } from "./ray";
 
 export const CAMERA_BLOCK_LENGTH: int32 = 28;
+export const CAMERA_PROJECTION_X: int32 = 19;
+export const CAMERA_PROJECTION_Y: int32 = 23;
+export const CAMERA_EYE: int32 = 24;
+export const CAMERA_NEAR: int32 = 27;
 
 export enum ProjectionKind {
 	Orthographic,
@@ -69,6 +73,9 @@ export struct CameraView {
 	// The low-res target this view was resolved for.
 	texelWidth: int32;
 	texelHeight: int32;
+	projectionX: float32;
+	projectionY: float32;
+	nearPlane: float32;
 }
 
 export enum CameraError {
@@ -357,6 +364,9 @@ export function resolve(
 		remainderY: placed.remainderY,
 		texelWidth: texelWidth,
 		texelHeight: texelHeight,
+		projectionX: matrix.m11,
+		projectionY: matrix.m22,
+		nearPlane: camera.nearPlane,
 	});
 }
 
@@ -370,15 +380,15 @@ export function writeCameraBlock(this view: CameraView, out: Span<float32>): voi
 	out[16] = view.basis.right.x;
 	out[17] = view.basis.right.y;
 	out[18] = view.basis.right.z;
-	out[19] = 0.0;
+	out[CAMERA_PROJECTION_X] = view.projectionX;
 	out[20] = view.basis.up.x;
 	out[21] = view.basis.up.y;
 	out[22] = view.basis.up.z;
-	out[23] = 0.0;
-	out[24] = view.eye.x;
-	out[25] = view.eye.y;
-	out[26] = view.eye.z;
-	out[27] = 0.0;
+	out[CAMERA_PROJECTION_Y] = view.projectionY;
+	out[CAMERA_EYE] = view.eye.x;
+	out[CAMERA_EYE + 1] = view.eye.y;
+	out[CAMERA_EYE + 2] = view.eye.z;
+	out[CAMERA_NEAR] = view.nearPlane;
 }
 
 // ---- Screen and back ----

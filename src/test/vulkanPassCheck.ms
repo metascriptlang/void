@@ -39,15 +39,12 @@ import {
 	SurfaceError,
 	SurfaceInfo,
 	TRANSFORM_IDENTITY,
-	TRANSFORM_ROTATE_270,
-	TRANSFORM_ROTATE_90,
 	UNDEFINED_EXTENT,
 	chooseCompositeAlpha,
 	chooseFormat,
 	chooseImageCount,
 	choosePresentMode,
 	planSwapchain,
-	rotationDegrees,
 } from "../webgpu/vulkan/surface";
 import { frameSubmitted, newFrameRing, reuseSerial, slot } from "../webgpu/vulkan/frame";
 
@@ -58,7 +55,7 @@ const D24S8: int32 = 129;
 const D32: int32 = 126;
 const COLOR_ACCESS: uint32 = ACCESS_COLOR_ATTACHMENT_READ | ACCESS_COLOR_ATTACHMENT_WRITE;
 
-function caps(width: uint32, height: uint32, transform: uint32): SurfaceCaps {
+function caps(width: uint32, height: uint32): SurfaceCaps {
 	return {
 		minImages: 2,
 		maxImages: 8,
@@ -68,16 +65,15 @@ function caps(width: uint32, height: uint32, transform: uint32): SurfaceCaps {
 		minHeight: 16,
 		maxWidth: 4096,
 		maxHeight: 4096,
-		currentTransform: transform,
-		transforms: TRANSFORM_IDENTITY | TRANSFORM_ROTATE_90 | TRANSFORM_ROTATE_270,
+		transforms: TRANSFORM_IDENTITY,
 		compositeAlpha: ALPHA_OPAQUE,
 		usage: 0x10,
 	};
 }
 
-function surface(width: uint32, height: uint32, transform: uint32): SurfaceInfo {
+function surface(width: uint32, height: uint32): SurfaceInfo {
 	return {
-		caps: caps(width, height, transform),
+		caps: caps(width, height),
 		formats: [{ native: BGRA8, colorSpace: 0 }, { native: BGRA8_SRGB, colorSpace: 0 }],
 		presentModes: [PRESENT_FIFO, PRESENT_MAILBOX],
 	};
@@ -139,7 +135,7 @@ test "present modes fall back immediate, mailbox, fifo-relaxed, fifo as Dawn doe
 }
 
 test "the image count is two, three for mailbox, clamped to the surface's range" {
-	let c = caps(64, 48, TRANSFORM_IDENTITY);
+	let c = caps(64, 48);
 	assert chooseImageCount(c, PRESENT_FIFO) == 2;
 	assert chooseImageCount(c, PRESENT_MAILBOX) == 3;
 	c.minImages = 3;
@@ -153,13 +149,13 @@ test "the image count is two, three for mailbox, clamped to the surface's range"
 }
 
 test "the format is the one asked, else its other channel order, keeping srgb" {
-	const formats = surface(64, 48, TRANSFORM_IDENTITY).formats;
+	const formats = surface(64, 48).formats;
 	assert chooseFormat(formats, "bgra8unorm") == "bgra8unorm";
 	assert chooseFormat(formats, "rgba8unorm") == "bgra8unorm";
 	assert chooseFormat(formats, "rgba8unorm-srgb") == "bgra8unorm-srgb";
 }
 
-test "the extent is the surface's current one, the asked one clamped when undefined, swapped when rotated" {
+test "the extent is the asked one inside the surface's range, else its current one, else the asked one clamped" {
 	const config: SurfaceConfig = {
 		format: "bgra8unorm",
 		usage: GPUTextureUsage.RENDER_ATTACHMENT as int32,
@@ -167,23 +163,21 @@ test "the extent is the surface's current one, the asked one clamped when undefi
 		height: 9000,
 		presentMode: "fifo",
 	};
-	const current = planSwapchain(surface(640, 480, TRANSFORM_IDENTITY), config);
-	assert current.ok && current.value.width == 640 && current.value.height == 480 && current.value.rotation == 0;
-	const undefinedExtent = planSwapchain(surface(UNDEFINED_EXTENT, UNDEFINED_EXTENT, TRANSFORM_IDENTITY), config);
+	const current = planSwapchain(surface(640, 480), config);
+	assert current.ok && current.value.width == 640 && current.value.height == 480;
+	const undefinedExtent = planSwapchain(surface(UNDEFINED_EXTENT, UNDEFINED_EXTENT), config);
 	assert undefinedExtent.ok && undefinedExtent.value.width == 16 && undefinedExtent.value.height == 4096;
-	const rotated = planSwapchain(surface(640, 480, TRANSFORM_ROTATE_90), config);
-	assert rotated.ok && rotated.value.width == 480 && rotated.value.height == 640;
-	assert rotated.value.preTransform == TRANSFORM_ROTATE_90 && rotated.value.rotation == 90;
-	const minimized = planSwapchain(surface(0, 0, TRANSFORM_IDENTITY), config);
+	const minimized = planSwapchain(surface(0, 0), config);
 	assert !minimized.ok && minimized.error == SurfaceError.ZeroExtent;
+	const landscape: SurfaceConfig = { ...config, width: 640, height: 320 };
+	const rotated = planSwapchain(surface(320, 640), landscape);
+	assert rotated.ok && rotated.value.width == 640 && rotated.value.height == 320;
 }
 
-test "composite alpha takes opaque, pre, post, inherit in that order; rotation reads the transform" {
+test "composite alpha takes opaque, pre, post, inherit in that order" {
 	assert chooseCompositeAlpha(ALPHA_INHERIT | ALPHA_OPAQUE) == ALPHA_OPAQUE;
 	assert chooseCompositeAlpha(ALPHA_INHERIT | ALPHA_POST_MULTIPLIED) == ALPHA_POST_MULTIPLIED;
 	assert chooseCompositeAlpha(ALPHA_INHERIT) == ALPHA_INHERIT;
-	assert rotationDegrees(TRANSFORM_ROTATE_270) == 270;
-	assert rotationDegrees(TRANSFORM_IDENTITY) == 0;
 }
 
 test "the frame ring reuses a slot only after the serial submitted two frames earlier" {

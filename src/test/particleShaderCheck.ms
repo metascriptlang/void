@@ -6,6 +6,7 @@ import {
 	ParticleVisualAttributes, VertexBindings, billboardFs, billboardVs, particleFs, particleVs,
 	particleVisualVs, particleVisualPixelArtVs,
 } from "../void3d/shader3d";
+import { SceneLights, sceneLights } from "./lightHelpers";
 
 test "typed particle VS rotates asymmetric anchored tile in world camera basis" {
 	let input: ParticleVisualAttributes = {
@@ -83,13 +84,13 @@ function none(): Vec4f {
 
 // A white texture and tint, no point light, the identity tone.
 function plainBillboard(): BillboardBindings {
+	const lights: SceneLights = sceneLights(none(), vec4f(0, 0, 1, 0.5), vec4f(1, 1, 1, 0), []);
 	return {
 		billboardParams: { billboardColor: vec4f(1, 1, 1, 1), billboard: none() },
-		lightParams: {
-			ambient: none(), dirLight: vec4f(0, 0, 1, 0.5), dirColor: vec4f(1, 1, 1, 0),
-			pointLight: [none(), none(), none(), none()],
-			pointColor: [none(), none(), none(), none()],
-		},
+		lightParams: lights.lightParams,
+		lightRecords: lights.lightRecords,
+		clusterRecords: lights.clusterRecords,
+		clusterIndices: lights.clusterIndices,
 		frameParams: { frame: vec4f(0, 1, 0, 0) },
 		billboardTexture: { width: 1, height: 1, texels: [1.0, 1.0, 1.0, 1.0] },
 		billboardSampler: { nearest: true },

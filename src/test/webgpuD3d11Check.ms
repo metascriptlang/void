@@ -41,6 +41,8 @@ import {
 	clearingPass,
 	colourTarget,
 	colourUniforms,
+	drawIndirectRows,
+	drawMaskedTriangle,
 	drawOverLoadedStencil,
 	drawTriangleIn,
 	pixel,
@@ -497,8 +499,7 @@ test "a line-list draws a horizontal line and a triangle-strip fills a quad" {
 const COLOURED_VERTEX_HLSL = "struct Out { float4 position : SV_Position; float4 color : TEXCOORD0; };\nOut main(float2 position : TEXCOORD0, float4 color : TEXCOORD1) { Out o; o.position = float4(position, 0.0, 1.0); o.color = color; return o; }";
 const COLOURED_FRAGMENT_HLSL = "float4 main(float4 p : SV_Position, float4 color : TEXCOORD0) : SV_Target0 { return color; }";
 
-test "a unorm8x4 vertex colour from a second vertex buffer reaches the fragment shader" {
-	const device = openDevice();
+function colouredShader(device: GPUDevice): GPUShaderModule {
 	let descriptor: GPUShaderModuleDescriptor = {
 		label: "coloured",
 		vertexCode: COLOURED_VERTEX_HLSL,
@@ -508,7 +509,12 @@ test "a unorm8x4 vertex colour from a second vertex buffer reaches the fragment 
 	};
 	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
 	descriptor.attributes[1] = { location: 1, nativeName: null, semanticIndex: 1 };
-	const module = device.createShaderModule(descriptor);
+	return device.createShaderModule(descriptor);
+}
+
+test "a unorm8x4 vertex colour from a second vertex buffer reaches the fragment shader" {
+	const device = openDevice();
+	const module = colouredShader(device);
 	let pipelineDescriptor: GPURenderPipelineDescriptor = { label: "coloured" };
 	pipelineDescriptor.vertex.module = module;
 	pipelineDescriptor.vertex.buffers[0].arrayStride = 8;
@@ -536,6 +542,17 @@ test "a unorm8x4 vertex colour from a second vertex buffer reaches the fragment 
 	const pixels = readPixels(target);
 	assert pixel(pixels, 32, 32) == GREEN;
 	assert pixel(pixels, 2, 2) == BLUE;
+	device.destroy();
+}
+
+test "two indexed indirect records in one call honour firstIndex, baseVertex and firstInstance" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawIndirectRows(device, colouredShader(device), target);
+	const pixels = readPixels(target);
+	assert pixel(pixels, 2, 32) == GREEN;
+	assert pixel(pixels, 61, 32) == RED;
+	assert pixel(pixels, 32, 32) == BLUE;
 	device.destroy();
 }
 
@@ -701,6 +718,16 @@ test "a stencil cleared to 1 and stored is loaded by the next pass while that pa
 	drawOverLoadedStencil(device, stencilPipeline(device, flatShader(device), "equal", "keep"), target);
 	const pixels = readPixels(target);
 	assert pixel(pixels, 0, 0) == GREEN && pixel(pixels, 63, 63) == GREEN;
+	device.destroy();
+}
+
+test "a colour target with writeMask 0 keeps its clear colour where an omitted mask takes the triangle" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawMaskedTriangle(device, flatShader(device), 0, target);
+	assert pixel(readPixels(target), 32, 32) == BLUE;
+	drawMaskedTriangle(device, flatShader(device), null, target);
+	assert pixel(readPixels(target), 32, 32) == RED;
 	device.destroy();
 }
 

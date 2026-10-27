@@ -44,6 +44,7 @@ import { metalLabel, metalReadback, metalSystemDevice } from "./metalDevice.h";
 import { doorApplyScissor, doorBeginColorPass, doorEndPass, doorMakeTargetImage, doorMakeTextureView, doorSetup, doorShutdown } from "../gpu/doorGpu.ms";
 
 import { Cell, PlainBindings, ScaledBindings, WORKGROUP, plainKernel, scaledKernel, shadyComputeDescriptor } from "./metalShadyCompute";
+import { drawIndirectRows, drawMaskedTriangle, drawOverLoadedStencil } from "./webgpuFixtures.ms";
 
 @compile("./metalDevice.m");
 
@@ -491,7 +492,8 @@ function stencilPipeline(
 	module: GPUShaderModule,
 	compare: GPUCompareFunction,
 	passOp: GPUStencilOperation,
-	writeMask: uint32,
+	writeMask: uint32 | null,
+	topology: GPUPrimitiveTopology,
 ): GPURenderPipeline {
 	let descriptor: GPURenderPipelineDescriptor = { label: "stencil" };
 	descriptor.vertex.module = module;
@@ -504,13 +506,14 @@ function stencilPipeline(
 	descriptor.depthStencil.stencilFront = { compare: compare, passOp: passOp };
 	descriptor.depthStencil.stencilBack = { compare: compare, passOp: passOp };
 	descriptor.depthStencil.stencilWriteMask = writeMask;
+	descriptor.primitive.topology = topology;
 	return device.createRenderPipeline(descriptor);
 }
 
-function stencilScene(device: GPUDevice, writerReference: uint32, testerReference: uint32, writerMask: uint32): Vec<uint8> {
+function stencilScene(device: GPUDevice, writerReference: uint32, testerReference: uint32, writerMask: uint32 | null): Vec<uint8> {
 	const module = flatShader(device);
-	const writer = stencilPipeline(device, module, "always", "replace", writerMask);
-	const tester = stencilPipeline(device, module, "equal", "keep", 0);
+	const writer = stencilPipeline(device, module, "always", "replace", writerMask, "triangle-list");
+	const tester = stencilPipeline(device, module, "equal", "keep", null, "triangle-list");
 	const uniforms = colourUniforms(device);
 	const group = uniformGroup(device, writer, uniforms);
 	const vertices = vertexBuffer(device, 96);
@@ -557,16 +560,25 @@ function stencilScene(device: GPUDevice, writerReference: uint32, testerReferenc
 
 test "a stencil write at a reference masks a later equal-test draw, by reference and by write mask" {
 	const device = openDevice();
-	const matched = stencilScene(device, 1, 1, 0);
+	const matched = stencilScene(device, 1, 1, null);
 	assert pixel(matched, 16, 32) == GREEN;
 	assert pixel(matched, 48, 32) == BLUE;
-	const mismatched = stencilScene(device, 1, 2, 0);
+	const mismatched = stencilScene(device, 1, 2, null);
 	assert pixel(mismatched, 16, 32) == RED;
 	assert pixel(mismatched, 48, 32) == BLUE;
 	const masked = stencilScene(device, 3, 2, 2);
 	assert pixel(masked, 16, 32) == GREEN;
 	const maskedMismatch = stencilScene(device, 3, 3, 2);
 	assert pixel(maskedMismatch, 16, 32) == RED;
+	device.destroy();
+}
+
+test "a stencil cleared to 1 and stored is loaded by the next pass while that pass clears its depth" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawOverLoadedStencil(device, stencilPipeline(device, flatShader(device), "equal", "keep", null, "triangle-strip"), target);
+	const pixels = readPixels(target);
+	assert pixel(pixels, 0, 0) == GREEN && pixel(pixels, 63, 63) == GREEN;
 	device.destroy();
 }
 
@@ -2435,4 +2447,39 @@ test "the door clamps a scissor that runs past its attachment instead of handing
 	doorApplyScissor(9, 9, 3, 3);
 	doorEndPass();
 	doorShutdown();
+}
+
+test "a colour target with writeMask 0 keeps its clear colour where an omitted mask takes the triangle" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawMaskedTriangle(device, flatShader(device), 0, target);
+	assert pixel(readPixels(target), 32, 32) == BLUE;
+	drawMaskedTriangle(device, flatShader(device), null, target);
+	assert pixel(readPixels(target), 32, 32) == RED;
+	device.destroy();
+}
+
+function colouredShader(device: GPUDevice): GPUShaderModule {
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "coloured",
+		vertexCode: FLOAT_COLOUR_MSL,
+		vertexEntryPoint: "cmain",
+		fragmentCode: FLOAT_COLOUR_MSL,
+		fragmentEntryPoint: "fcolour",
+	};
+	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	descriptor.attributes[1] = { location: 1, nativeName: null, semanticIndex: 1 };
+	return device.createShaderModule(descriptor);
+}
+
+test "two indexed indirect records in one call honour firstIndex, baseVertex and firstInstance" {
+	const device = openDevice();
+	assert device.features().has("indirect-first-instance");
+	const target = colourTarget(device, 1);
+	drawIndirectRows(device, colouredShader(device), target);
+	const pixels = readPixels(target);
+	assert pixel(pixels, 2, 32) == GREEN;
+	assert pixel(pixels, 61, 32) == RED;
+	assert pixel(pixels, 32, 32) == BLUE;
+	device.destroy();
 }

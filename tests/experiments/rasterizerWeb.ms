@@ -5,7 +5,7 @@
 import { init2d, frame2d } from "../../src/examples/renderer2d";
 import { void2dFreetypeInstall } from "./freetypeRaster.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 function main(): int32 {

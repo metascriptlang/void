@@ -129,6 +129,7 @@ export enum ExprKind {
 	Swizzle,
 	Index,
 	Workgroup,
+	Private,
 }
 
 export enum UnaryOp {
@@ -773,6 +774,7 @@ export class ShaderModule {
 	entries: ShaderEntry[] = [];
 	declarations: ShaderDeclaration[] = [];
 	workgroups: ShaderField[] = [];
+	privates: ShaderField[] = [];
 }
 
 export function scalarType(scalar: ScalarKind): ShaderType {
@@ -959,6 +961,11 @@ export function stmtOf(kind: StmtKind, expr: ShaderExpr, body: ShaderStmt[]): Sh
 	return s;
 }
 
+export function zeroOf(t: ShaderType): ShaderExpr {
+	if (t.kind == ShaderTypeKind.Scalar) { return literal(t, 0.0); }
+	return exprOf(ExprKind.Construct, t, -1, [literal(scalarType(t.scalar), 0.0)]);
+}
+
 export function assignOf(target: ShaderExpr, value: ShaderExpr): ShaderStmt {
 	let s = stmtOf(StmtKind.Assign, value, []);
 	s.target = target;
@@ -1138,6 +1145,8 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 		},
 		ExprKind.Workgroup =>
 			inRange(c, e.index, m.workgroups.length as int32, "workgroup variable", owner),
+		ExprKind.Private =>
+			inRange(c, e.index, m.privates.length as int32, "private variable", owner),
 		_ => {},
 	}
 	if (e.kind == ExprKind.Intrinsic && isFragmentOnly(e.intrinsic)) {
@@ -1385,6 +1394,11 @@ export function irErrors(m: ShaderModule): string[] {
 		if (!isWorkgroupType(w.type)) {
 			c.errors.push("workgroup variable '" + w.name + "': it holds a scalar, a vector or " +
 				"an array of them");
+		}
+	}
+	for (const v of m.privates) {
+		if (v.type.kind != ShaderTypeKind.Scalar && v.type.kind != ShaderTypeKind.Vector) {
+			c.errors.push("private variable '" + v.name + "': it holds a scalar or a vector");
 		}
 	}
 	for (const d of m.declarations) {

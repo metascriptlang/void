@@ -216,6 +216,7 @@ void d3dCsSetSampler(D3dContext context, int32_t slot, D3dSampler sampler);
 void d3dCsClearViews(D3dContext context);
 void d3dDispatch(D3dContext context, int32_t x, int32_t y, int32_t z);
 void d3dDispatchIndirect(D3dContext context, D3dBuffer arguments, int64_t offset);
+void d3dDrawIndexedInstancedIndirect(D3dContext context, D3dBuffer arguments, int64_t offset);
 
 void d3dSetName(void *object, const char *name);
 #define D3D_FORMAT_CAP_SAMPLE 1

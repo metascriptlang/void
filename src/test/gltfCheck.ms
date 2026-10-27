@@ -5,7 +5,7 @@ import { Mat4, composeTransform, writeTo } from "../math/math3d";
 import { loadGltf, GltfError } from "../void3d/gltf";
 import { addGltfNodes, GltfMeshBinding, GltfSceneError } from "../void3d/gltfScene";
 import { Scene3D, SceneError, syncWorld, findByName, worldOf, rootId } from "../void3d/scene";
-import { MeshData, vertexCount, triangleCount } from "../void3d/meshData";
+import { MeshData, vertexCount, triangleCount, indexCount } from "../void3d/meshData";
 // The buffer a test builds by hand, in the bit patterns the decoder must see: every float
 // here is 0.0 (0x00000000) or 1.0 (0x3F800000), so the bytes below are the IEEE-754
 // little-endian encodings of those two values and nothing else.
@@ -350,6 +350,110 @@ test "COLOR_0 absent means white, and a wrong count is refused" {
 	);
 	assert !mismatch.ok;
 	if (!mismatch.ok) { assert mismatch.error == GltfError.CountMismatch; }
+}
+
+// positions at 0: (0,0,0) (1,0,0) (0,1,0) (0,0,1); indices at 48: 0 1 2, 0 3 1, 0 1 1.
+function bentBuffer(): Vec<uint8> {
+	let out: Vec<uint8> = [];
+	for (const bits of [
+		F32_ZERO, F32_ZERO, F32_ZERO, F32_ONE, F32_ZERO, F32_ZERO,
+		F32_ZERO, F32_ONE, F32_ZERO, F32_ZERO, F32_ZERO, F32_ONE,
+	]) { pushLe32(out, bits); }
+	for (const index of [0, 1, 2, 0, 3, 1, 0, 1, 1]) {
+		out.push(index as uint8); out.push(0 as uint8);
+	}
+	return out;
+}
+
+function bentDocument(primitive: string): string {
+	return "{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":[{\"mesh\":0}],"
+		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}" + primitive + "}]}],"
+		+ "\"accessors\":["
+		+ "{\"bufferView\":0,\"componentType\":5126,\"count\":4,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":1,\"componentType\":5123,\"count\":9,\"type\":\"SCALAR\"}],"
+		+ "\"bufferViews\":["
+		+ "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":48},"
+		+ "{\"buffer\":0,\"byteOffset\":48,\"byteLength\":18}],"
+		+ "\"buffers\":[{\"byteLength\":66}]}";
+}
+
+function normalIs(mesh: MeshData, vertex: int32, x: float32, y: float32, z: float32): boolean {
+	const at: int32 = vertex * 10 + 3;
+	return approx(mesh.vertices[at], x) && approx(mesh.vertices[at + 1], y)
+		&& approx(mesh.vertices[at + 2], z);
+}
+
+test "a primitive without NORMAL gets a vertex per corner and its triangle's flat normal" {
+	const indexed = loadGltf(bentDocument(",\"indices\":1"), bentBuffer());
+	assert indexed.ok;
+	if (!indexed.ok) { return; }
+	const mesh: MeshData = indexed.value.meshes[0];
+	assert mesh.vertexCount() == 9 && mesh.indexCount() == 0;
+	for (let corner = 0; corner < 3; corner++) {
+		assert normalIs(mesh, corner, 0.0, 0.0, 1.0);
+		assert normalIs(mesh, corner + 3, 0.0, 1.0, 0.0);
+		assert normalIs(mesh, corner + 6, 0.0, 0.0, 0.0);
+	}
+	assert approx(mesh.vertices[40], 0.0) && approx(mesh.vertices[42], 1.0);
+	const half: float32 = Math.sqrt(1.0 / 3.0) as float32;
+	const strip = loadGltf(bentDocument(",\"mode\":5"), bentBuffer());
+	assert strip.ok;
+	if (!strip.ok) { return; }
+	assert strip.value.meshes[0].vertexCount() == 6;
+	assert normalIs(strip.value.meshes[0], 0, 0.0, 0.0, 1.0);
+	assert normalIs(strip.value.meshes[0], 4, -half, -half, -half);
+	assert !normalIs(strip.value.meshes[0], 4, 0.0, 0.0, 1.0);
+}
+
+// triangleBuffer() in base64.
+const TRIANGLE_BASE64: string =
+	"AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/"
+	+ "AAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAABAAIA";
+
+function embedded(uri: string): string {
+	return "{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":[{\"mesh\":0}],"
+		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1},"
+		+ "\"indices\":2}]}],"
+		+ "\"accessors\":["
+		+ "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+		+ "\"bufferViews\":["
+		+ "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+		+ "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":36},"
+		+ "{\"buffer\":0,\"byteOffset\":108,\"byteLength\":6}],"
+		+ "\"buffers\":[{\"byteLength\":114,\"uri\":\"" + uri + "\"}]}";
+}
+
+test "a buffer embedded as a base64 data: URI loads as the same bytes supplied would" {
+	const supplied = loadGltf(embedded("triangle.bin"), triangleBuffer());
+	assert supplied.ok;
+	if (!supplied.ok) { return; }
+	for (const mime of ["application/octet-stream", "application/gltf-buffer"]) {
+		const inline = loadGltf(embedded(`data:${mime};base64,${TRIANGLE_BASE64}`), []);
+		assert inline.ok;
+		if (!inline.ok) { continue; }
+		const mesh: MeshData = inline.value.meshes[0];
+		assert mesh.vertexCount() == 3 && mesh.indexCount() == 3;
+		for (let i = 0; i < mesh.vertices.length; i++) {
+			assert mesh.vertices[i] == supplied.value.meshes[0].vertices[i];
+		}
+	}
+	const both = loadGltf(embedded(`data:application/octet-stream;base64,${TRIANGLE_BASE64}`),
+		triangleBuffer());
+	assert !both.ok && both.error == GltfError.Unsupported;
+	for (const uri of [
+		`data:image/png;base64,${TRIANGLE_BASE64}`,
+		`data:application/octet-stream,${TRIANGLE_BASE64}`,
+		`data:application/octet-stream;base64,${TRIANGLE_BASE64.substring(1)}`,
+	]) {
+		const refused = loadGltf(embedded(uri), []);
+		assert !refused.ok && refused.error == GltfError.Unsupported;
+	}
+	const short = loadGltf(embedded("data:application/gltf-buffer;base64,AAAA"), []);
+	assert !short.ok && short.error == GltfError.OutOfRange;
 }
 
 test "malformed TRS, cyclic nodes and accessors past their buffer view fail loudly" {

@@ -17,6 +17,8 @@ import {
 	postFs,
 	toonPointLightAt,
 } from "../void3d/pixelArt3d";
+import { oneCascade, oneLayer } from "./shadowHelpers";
+import { SceneLights, pointRecord, sceneLights } from "./lightHelpers";
 
 function within(a: float32, b: float32): boolean {
 	return Math.abs(a - b) <= 1e-4;
@@ -52,20 +54,21 @@ function put(texture: Texture2d, x: int32, y: int32, value: Vec4f): void {
 // White ambient light, no directional or point light, the identity tone.
 function plainLit(): LitBindings {
 	const white = grid(1, 1, vec4f(1, 1, 1, 1));
+	const lights: SceneLights = sceneLights(vec4f(1, 1, 1, 0), none(), none(), []);
 	return {
-		materialParams: { material: vec4f(4.0, 0.0, 0.0, 0.5) },
-		lightParams: {
-			ambient: vec4f(1, 1, 1, 0), dirLight: none(), dirColor: none(),
-			pointLight: [none(), none(), none(), none()],
-			pointColor: [none(), none(), none(), none()],
+		materialParams: {
+			material: vec4f(4.0, 0.0, 0.0, 0.5),
+			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 		},
+		lightParams: lights.lightParams,
+		lightRecords: lights.lightRecords,
+		clusterRecords: lights.clusterRecords,
+		clusterIndices: lights.clusterIndices,
 		frameParams: { frame: vec4f(0, 1, 0, 0) },
-		shadowParams: {
-			shadowMatrix: identity(), shadow: none(),
-			spotMatrix: identity(), spotShadow: none(),
-		},
-		shadowMap: white,
-		spotShadowMap: white,
+		shadowParams: oneCascade(identity(), none(), identity(), none(), 1.0),
+		shadowMap: oneLayer(white),
+		spotShadowMap: oneLayer(white),
+		cubeShadowMap: oneLayer(white),
 		baseTexture: white, baseSampler: { nearest: true },
 		backTexture: white, dissolveTexture: white, dissolveSampler: { nearest: true },
 		emissiveTexture: white, normalTexture: white,
@@ -113,10 +116,13 @@ test "pixel-art lit stages carry the clip depth into the normal target" {
 				vec4f(0, 0, 0.5, 0), vec4f(0, 0, 0, 1)),
 			cameraRight: vec4f(1, 0, 0, 0), cameraUp: vec4f(0, 1, 0, 0), cameraPosition: none(),
 		},
-		modelParams: { model: identity(), normalModel: identity() },
 	};
 	const point = pixelArtLitVs(
-		{ position: vec3f(1, 2, 3), normal: vec3f(0, 0, 1), color: vec4f(1, 1, 1, 1) },
+		{
+			position: vec3f(1, 2, 3), normal: vec3f(0, 0, 1), color: vec4f(1, 1, 1, 1),
+			instanceRow0: vec4f(1.0, 0.0, 0.0, 0.0), instanceRow1: vec4f(0.0, 1.0, 0.0, 0.0),
+			instanceRow2: vec4f(0.0, 0.0, 1.0, 0.0), instanceColor: vec4f(1.0),
+		},
 		bindings, noKey(),
 	);
 	assert point.depth01 == 1.5 && point.clip.z == 1.5 && point.worldNormal.z == 1;
@@ -133,13 +139,14 @@ test "pixel-art billboard lights by distance and writes cutout alpha 0" {
 		uv: vec2f(0.5, 0.5), rootPosition: vec3f(0.0), instanceColor: vec4f(0.5, 0.25, 1, 0.75),
 		depth01: 0.5,
 	};
+	const lights: SceneLights = sceneLights(vec4f(0, 0, 0, 1), none(), none(),
+		[pointRecord(vec4f(0, 0, 1, 1), vec4f(1, 1, 1, 4))]);
 	let b: BillboardBindings = {
 		billboardParams: { billboardColor: vec4f(1, 1, 1, 1), billboard: none() },
-		lightParams: {
-			ambient: vec4f(0, 0, 0, 1), dirLight: none(), dirColor: none(),
-			pointLight: [vec4f(0, 0, 1, 1), none(), none(), none()],
-			pointColor: [vec4f(1, 1, 1, 4), none(), none(), none()],
-		},
+		lightParams: lights.lightParams,
+		lightRecords: lights.lightRecords,
+		clusterRecords: lights.clusterRecords,
+		clusterIndices: lights.clusterIndices,
 		frameParams: { frame: vec4f(0, 1, 0, 0) },
 		billboardTexture: grid(1, 1, vec4f(1, 1, 1, 1)),
 		billboardSampler: { nearest: true },

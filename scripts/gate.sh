@@ -115,10 +115,10 @@ for target in "--os=windows" "--os=windows -d:voidGlCore" "--os=linux" "--os=and
 		"--os=windows -d:voidVulkan" "--os=linux -d:voidVulkan" "--os=android -d:voidVulkan" \
 		"--os=emcc -d:webgpu" "--os=emcc -d:webgl2" "-d:voidDummy"; do
 	log="out/gate-backend-check$(echo "$target" | tr -c 'a-zA-Z0-9\n' '-').log"
-	if "$MSC" check $target src/examples/mainSokol2d.ms > "$log" 2>&1; then
+	if "$MSC" check $target src/examples/main2d.ms > "$log" 2>&1; then
 		pass "backend contract, msc check $target: device.ms and its backend type-check"
 	else
-		fail "backend contract, msc check $target src/examples/mainSokol2d.ms — see $log"
+		fail "backend contract, msc check $target src/examples/main2d.ms — see $log"
 	fi
 done
 if "${PYTHON:-python}" tests/isolated/colourMemory.py > out/gate-colour-memory.log 2>&1 \
@@ -164,8 +164,8 @@ fi
 
 echo
 section "2. the demo still builds and runs"
-if "$MSC" build src/examples/mainSokol2d.ms --output=out/demo2d.exe > out/gate-demo.log 2>&1; then
-	pass "src/examples/renderer2d.ms builds through src/examples/mainSokol2d.ms"
+if "$MSC" build src/examples/main2d.ms --output=out/demo2d.exe > out/gate-demo.log 2>&1; then
+	pass "src/examples/renderer2d.ms builds through src/examples/main2d.ms"
 	# Building is not enough. The entry used to declare `function main()` with nothing
 	# calling it, so it built a binary that exited at once — a defect a build check cannot
 	# see. A windowed app never exits on its own, so the timeout IS the pass.
@@ -720,7 +720,7 @@ if [ "$(uname -s)" = Darwin ]; then
 			fi
 		done
 	else
-		skip "window behaviour ($window_tests): pass --window when src/platform/macos/*, src/sokol/bridgeEmbed.m, or tests/capture/capture.c changed; they need a visible focused window, and macWindow toggles full screen"
+		skip "window behaviour ($window_tests): pass --window when src/platform/macos/*, src/host/bridgeEmbed.m, or tests/capture/capture.c changed; they need a visible focused window, and macWindow toggles full screen"
 	fi
 	if "$MSC" build tests/integration/metalReadback.ms --output=out/metalReadback.exe > out/gate-metal-readback.log 2>&1; then
 		if out/metalReadback.exe > out/gate-metal-readback-run.log 2>&1; then
@@ -1149,10 +1149,10 @@ else
 	fail "module off or wasm delta — see out/gate-wasm-delta.log"
 	grep -E '^FAIL' out/gate-wasm-delta.log | sed 's/^/      /' || true
 fi
-if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dOff.exe > out/gate-module-off.log 2>&1 \
-		&& "$MSC" build -d:voidColourEmoji src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dColour.exe >> out/gate-module-off.log 2>&1; then
-	module_off_bytes=$(wc -c < out/tmp/mainSokol2dOff.exe)
-	module_on_bytes=$(wc -c < out/tmp/mainSokol2dColour.exe)
+if "$MSC" build src/examples/main2d.ms --release --output=out/tmp/main2dOff.exe > out/gate-module-off.log 2>&1 \
+		&& "$MSC" build -d:voidColourEmoji src/examples/main2d.ms --release --output=out/tmp/main2dColour.exe >> out/gate-module-off.log 2>&1; then
+	module_off_bytes=$(wc -c < out/tmp/main2dOff.exe)
+	module_on_bytes=$(wc -c < out/tmp/main2dColour.exe)
 	module_symbols() {
 		if [ -f "${1%.exe}.pdb" ]; then
 			llvm-pdbutil dump -publics "${1%.exe}.pdb" 2> /dev/null
@@ -1160,22 +1160,22 @@ if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol
 			llvm-nm "$1" 2> /dev/null
 		fi
 	}
-	named_on=$(module_symbols out/tmp/mainSokol2dColour.exe | grep -c 'void2dColour' || true)
-	named_off=$(module_symbols out/tmp/mainSokol2dOff.exe | grep -c 'void2dColour\|void2dGlyphSdf\|kbts_\|void2dShape\|void2dBidi\|void2dSprite\(Count\|Index\|Codepoint\|TableFault\|Padding\|Canvas\|Draw\|Ink\)\|void2dGlyphFaceSprite\|void2dGlyphPolygonCoverage' || true)
+	named_on=$(module_symbols out/tmp/main2dColour.exe | grep -c 'void2dColour' || true)
+	named_off=$(module_symbols out/tmp/main2dOff.exe | grep -c 'void2dColour\|void2dGlyphSdf\|kbts_\|void2dShape\|void2dBidi\|void2dSprite\(Count\|Index\|Codepoint\|TableFault\|Padding\|Canvas\|Draw\|Ink\)\|void2dGlyphFaceSprite\|void2dGlyphPolygonCoverage' || true)
 	if [ "$named_on" -eq 0 ]; then
 		skip "module off: the colour executable names no void2dColour symbol, so the executables get no symbol check"
 	elif [ "$named_off" -gt 0 ]; then
-		fail "module off: mainSokol2d.exe with every module flag off names $named_off colour, SDF, shaper, BiDi or sprite symbols"
+		fail "module off: main2d.exe with every module flag off names $named_off colour, SDF, shaper, BiDi or sprite symbols"
 	else
-		pass "module off: mainSokol2d.exe names no colour, SDF, shaper, BiDi or sprite symbol, the colour build names $named_on void2dColour"
+		pass "module off: main2d.exe names no colour, SDF, shaper, BiDi or sprite symbol, the colour build names $named_on void2dColour"
 	fi
 	if [ "$module_on_bytes" -gt "$module_off_bytes" ]; then
-		pass "module off: mainSokol2d.exe is $module_off_bytes B, with the colour module $module_on_bytes B (+$((module_on_bytes - module_off_bytes)) B)"
+		pass "module off: main2d.exe is $module_off_bytes B, with the colour module $module_on_bytes B (+$((module_on_bytes - module_off_bytes)) B)"
 	else
-		fail "module off: mainSokol2d.exe is $module_off_bytes B without the colour module and $module_on_bytes B with it, so the flag changed nothing"
+		fail "module off: main2d.exe is $module_off_bytes B without the colour module and $module_on_bytes B with it, so the flag changed nothing"
 	fi
 else
-	fail "module off: mainSokol2d.exe did not build both ways — see out/gate-module-off.log"
+	fail "module off: main2d.exe did not build both ways — see out/gate-module-off.log"
 fi
 if sh scripts/wasmBudget.test.sh --record > out/gate-wasm-budget-record.log 2>&1; then
 	pass "linked wasm budgets: 24 measured declarations valid; remeasure with scripts/experiment-modulesWeb.sh (not linked again by this native stage)"
@@ -1298,7 +1298,7 @@ else
 fi
 if [ "$WEB" -eq 1 ]; then
 	if sh scripts/build-web.sh > out/gate-web.log 2>&1; then
-		pass "web build: both backends build ($(wc -c < web/wgpu/mainSokol2d.wasm) B wgpu, $(wc -c < web/gl/mainSokol2d.wasm) B gl)"
+		pass "web build: both backends build ($(wc -c < web/wgpu/main2d.wasm) B wgpu, $(wc -c < web/gl/main2d.wasm) B gl)"
 		# Liveness prints its own PASS/SKIP/FAIL per backend, with the reason. Its skips and
 		# fails have to reach the counters or the summary undercounts them.
 		sh scripts/web-liveness.sh > out/gate-liveness.log 2>&1 || true

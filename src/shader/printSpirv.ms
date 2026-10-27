@@ -39,6 +39,7 @@ import {
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
 import { builtinType, ioLocation } from "./irWalk";
+import { demotedDiscards } from "./demote";
 import { Reads, printableEntry } from "./specialize";
 import { componentCompare, isComponentCompare, isMath } from "./spelling";
 
@@ -225,6 +226,7 @@ const INPUT = 1;
 const UNIFORM = 2;
 const OUTPUT = 3;
 const WORKGROUP = 4;
+const PRIVATE = 6;
 const FUNCTION = 7;
 const STORAGE_BUFFER = 12;
 
@@ -277,6 +279,7 @@ class Spirv {
 	resourceVars: int32[] = [];
 	ioVars: int32[] = [];
 	workgroupVars: int32[] = [];
+	privateVars: int32[] = [];
 	functionIds: int32[] = [];
 	constantValues: int32[] = [];
 	constantOwner: string = "";
@@ -781,7 +784,7 @@ function effectful(e: ShaderExpr): boolean {
 
 function isPlace(p: Spirv, e: ShaderExpr): boolean {
 	return match (e.kind) {
-		ExprKind.Local | ExprKind.Param | ExprKind.Io | ExprKind.Workgroup |
+		ExprKind.Local | ExprKind.Param | ExprKind.Io | ExprKind.Workgroup | ExprKind.Private |
 			ExprKind.BlockMember => true,
 		ExprKind.Resource => p.module.resources[e.index].kind == ResourceKind.StorageBuffer,
 		ExprKind.Field | ExprKind.Index => isPlace(p, e.operands[0]) && !hoistedMember(p, e.operands[0]),
@@ -818,6 +821,10 @@ function placeOf(p: Spirv, e: ShaderExpr): Place {
 		ExprKind.Workgroup => {
 			place.base = p.workgroupVars[e.index];
 			place.storage = WORKGROUP;
+		},
+		ExprKind.Private => {
+			place.base = p.privateVars[e.index];
+			place.storage = PRIVATE;
 		},
 		ExprKind.BlockMember => {
 			place.base = p.resourceVars[e.index];
@@ -1677,7 +1684,7 @@ function value(p: Spirv, e: ShaderExpr): int32 {
 	if (p.error != "") { return 0; }
 	return match (e.kind) {
 		ExprKind.Literal => literalId(p, e.type, e.value),
-		ExprKind.Local | ExprKind.Param | ExprKind.Io | ExprKind.Workgroup |
+		ExprKind.Local | ExprKind.Param | ExprKind.Io | ExprKind.Workgroup | ExprKind.Private |
 			ExprKind.BlockMember => load(p, e),
 		ExprKind.Resource => resourceValue(p, e),
 		ExprKind.Constant => moduleConstant(p, e.index),
@@ -2174,8 +2181,11 @@ function assembled(p: Spirv, e: ShaderEntry, interfaces: int32[]): uint32[] {
 	return words.map((w) => uint32Bits(w));
 }
 
-export function printSpirv(m: ShaderModule, entry: int32, bindings: BindingSlot[]):
+export function printSpirv(source: ShaderModule, entry: int32, bindings: BindingSlot[]):
 	Result<uint32[], string> {
+	const demoted = demotedDiscards(source, entry);
+	if (!demoted.ok) { return Result.err("printSpirv: " + demoted.error); }
+	const m = demoted.value;
 	const printable = printableEntry(m, entry);
 	if (!printable.ok) { return Result.err("printSpirv: " + printable.error); }
 	const reads = printable.value;
@@ -2197,6 +2207,7 @@ export function printSpirv(m: ShaderModule, entry: int32, bindings: BindingSlot[
 	p.resourceVars = m.resources.map((): int32 => 0);
 	p.ioVars = m.ios.map((): int32 => 0);
 	p.workgroupVars = m.workgroups.map((): int32 => 0);
+	p.privateVars = m.privates.map((): int32 => 0);
 	p.functionIds = m.functions.map((): int32 => 0);
 	p.constantValues = m.constants.map((): int32 => 0);
 	layouts(p, reads);
@@ -2210,6 +2221,14 @@ export function printSpirv(m: ShaderModule, entry: int32, bindings: BindingSlot[
 		inst(p.globals, OP_VARIABLE, [pointerTypeId(p, WORKGROUP, typeId(p, v.type)), id, WORKGROUP]);
 		name(p, id, v.name);
 		p.workgroupVars[w] = id;
+	}
+	for (const v of reads.privates) {
+		const type = typeId(p, m.privates[v].type);
+		const id = fresh(p);
+		inst(p.globals, OP_VARIABLE, [pointerTypeId(p, PRIVATE, type), id, PRIVATE,
+			nullConstant(p, type)]);
+		name(p, id, m.privates[v].name);
+		p.privateVars[v] = id;
 	}
 	let functions = reads.functions.map((i) => i);
 	if (!functions.includes(e.functionIndex)) { functions.push(e.functionIndex); }

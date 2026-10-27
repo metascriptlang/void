@@ -1,4 +1,4 @@
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3, srgbToLinear, linearToSrgb } from "../../src/math/math3d";
 import { RenderState, BlendMode, FilterMode, Wrap } from "../../src/gpu/state";
 import { PipelineCache, declaresBlock } from "../../src/gpu/pipeline";
@@ -109,7 +109,7 @@ function madeMaterial(image: TextureId, lit: boolean, tinted: boolean): Material
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, length);
 	if (!reserved.ok) { unreachable; }
-	let values: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	let values: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (!lit) {
 		values = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 		if (tinted) {

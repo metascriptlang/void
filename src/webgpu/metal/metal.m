@@ -685,6 +685,22 @@ void mtlDrawIndexed(
 	}
 }
 
+void mtlDrawIndexedIndirect(
+	MtlEncoder encoder,
+	int32_t primitive,
+	MtlBuffer indexBuffer,
+	int32_t indexType,
+	int64_t indexOffset,
+	MtlBuffer records,
+	int64_t recordOffset) {
+	[(id<MTLRenderCommandEncoder>)encoder drawIndexedPrimitives:(MTLPrimitiveType)primitive
+		indexType:(MTLIndexType)indexType
+		indexBuffer:(id<MTLBuffer>)indexBuffer
+		indexBufferOffset:(NSUInteger)indexOffset
+		indirectBuffer:(id<MTLBuffer>)records
+		indirectBufferOffset:(NSUInteger)recordOffset];
+}
+
 static NSString *labelString(const char *label) { return [NSString stringWithUTF8String:label]; }
 
 void mtlSetLabel(void *object, const char *label) {
@@ -710,6 +726,15 @@ int32_t mtlSupportsFloat32Filtering(MtlDevice device) {
 	return 1;
 #else
 	return [(id<MTLDevice>)device supports32BitFloatFiltering] ? 1 : 0;
+#endif
+}
+
+int32_t mtlSupportsIndirectBaseInstance(MtlDevice device) {
+#if TARGET_OS_OSX
+	(void)device;
+	return 1;
+#else
+	return [(id<MTLDevice>)device supportsFamily:MTLGPUFamilyApple3] ? 1 : 0;
 #endif
 }
 

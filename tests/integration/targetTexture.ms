@@ -1,5 +1,5 @@
 import { env } from "std/process";
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3, srgbToLinear, linearToSrgb } from "../../src/math/math3d";
 import { RenderState, BlendMode, FilterMode, Wrap } from "../../src/gpu/state";
 import {
@@ -45,7 +45,7 @@ import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,
@@ -129,7 +129,7 @@ function block(lit: boolean): UniformBlock {
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, length);
 	if (!reserved.ok) { unreachable; }
-	const values: Vec<float32> = lit ? [4.0, 0.0, 0.0, 0.0] :
+	const values: Vec<float32> = lit ? [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] :
 		[0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
 	return reserved.value;

@@ -174,6 +174,7 @@ void oglDrawElementsInstancedBaseVertexBaseInstance(
 	int32_t instances,
 	int32_t baseVertex,
 	int32_t baseInstance);
+void oglMultiDrawElementsIndirectUncached(int32_t mode, int32_t type, uint32_t buffer, int64_t offset, int32_t drawCount);
 
 int32_t oglCapabilities(void);
 int64_t oglGetInteger64(int32_t name);

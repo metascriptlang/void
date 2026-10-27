@@ -73,6 +73,7 @@ import {
 	drawShadowPass,
 	exposureMultiplier,
 } from "./renderer";
+import { CameraView } from "./camera";
 
 export interface ForwardRenderer {
 	core: Renderer;
@@ -119,12 +120,14 @@ export enum ForwardError {
 	SkinPose,
 	Instances,
 	DrawRange,
+	MeshLod,
 	CameraPosition,
 	MeshWrite,
-	// RendererError.TooManyShadowedSpots, BadShadowSpot and SpotShadowUnattached.
-	TooManyShadowedSpots,
+	// RendererError.BadShadowSpot and SpotShadowUnattached, and their cube counterparts.
 	BadShadowSpot,
 	SpotShadowUnattached,
+	BadCubeShadow,
+	CubeShadowUnattached,
 	TargetSize,
 	// The device cannot render into an Rgba16f target (GLES3 and WebGL2 without a
 	// color-buffer-float extension); there is no LDR fallback.
@@ -132,6 +135,13 @@ export enum ForwardError {
 	OutlineBlendedOpaque,
 	OutlineOpaqueDepth,
 	OutlineTranslucentDepthWrite,
+	// RendererError.ClusterViewUnset, ClusterViewStale, ClusterAssign and ClusterUpload.
+	ClusterViewUnset,
+	ClusterViewStale,
+	ClusterAssign,
+	ClusterUpload,
+	// The view set with setCameraView was resolved for another size than the scene target.
+	ClusterViewSize,
 }
 
 // Floats of the uniform pool the preset needs: the core's blocks, and nothing of its own.
@@ -267,12 +277,18 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.SkinPose => ForwardError.SkinPose,
 		RendererError.Instances => ForwardError.Instances,
 		RendererError.DrawRange => ForwardError.DrawRange,
+		RendererError.MeshLod => ForwardError.MeshLod,
 		RendererError.CameraPosition => ForwardError.CameraPosition,
 		RendererError.MeshWrite => ForwardError.MeshWrite,
 		RendererError.ShapedLightPreset => { unreachable; },
-		RendererError.TooManyShadowedSpots => ForwardError.TooManyShadowedSpots,
 		RendererError.BadShadowSpot => ForwardError.BadShadowSpot,
 		RendererError.SpotShadowUnattached => ForwardError.SpotShadowUnattached,
+		RendererError.BadCubeShadow => ForwardError.BadCubeShadow,
+		RendererError.CubeShadowUnattached => ForwardError.CubeShadowUnattached,
+		RendererError.ClusterViewUnset => ForwardError.ClusterViewUnset,
+		RendererError.ClusterViewStale => ForwardError.ClusterViewStale,
+		RendererError.ClusterAssign => ForwardError.ClusterAssign,
+		RendererError.ClusterUpload => ForwardError.ClusterUpload,
 	};
 }
 
@@ -379,6 +395,11 @@ export function prepareFrame(
 		if (phases !== null) { return Result.err(phases); }
 	}
 	renderer.core.normalMrt = outlined;
+	const clusterView: CameraView | null = renderer.core.cameraView;
+	if (clusterView !== null &&
+		(clusterView.texelWidth != width || clusterView.texelHeight != height)) {
+		return Result.err(ForwardError.ClusterViewSize);
+	}
 	const began: Result<boolean, RendererError> =
 		beginFrame(renderer.core, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }

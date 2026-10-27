@@ -10,7 +10,7 @@ import {
 	ProgramKey,
 	MOVING_UV_MATRIX,
 	MOVING_BACK_UV_MATRIX,
-	UNLIT_MATERIAL_COLOR,
+	MATERIAL_COLOR,
 	BACK_VIEW_SLOT,
 	DISSOLVE_VIEW_SLOT,
 	DISSOLVE_SAMPLER_SLOT,
@@ -322,7 +322,7 @@ export function rawSampler(this material: Material, slot: int32): uint32 {
 }
 
 // The block of a moving key (gpu3d.ms MOVING_*) with both UV transforms the identity, no scroll,
-// no dissolve, an unlit key's colour white, and every other float 0; the caller sets its own
+// no dissolve, the material colour white, and every other float 0; the caller sets its own
 // values over it.
 export function movingDefaults(key: ProgramKey): Vec<float32> {
 	if (!key.moves()) {
@@ -331,9 +331,7 @@ export function movingDefaults(key: ProgramKey): Vec<float32> {
 	}
 	let values: Vec<float32> = new Array(uniformBlockLength(key, MATERIAL_UNIFORM_SLOT));
 	const base: int32 = movingBase(key);
-	if (key.program == Program.UnlitTextured) {
-		for (let i = 0; i < 4; i++) { values[UNLIT_MATERIAL_COLOR + i] = 1.0; }
-	}
+	for (let i = 0; i < 4; i++) { values[MATERIAL_COLOR + i] = 1.0; }
 	for (const matrix of [base + MOVING_UV_MATRIX, base + MOVING_BACK_UV_MATRIX]) {
 		values[matrix] = 1.0;
 		values[matrix + 3] = 1.0;
@@ -341,10 +339,10 @@ export function movingDefaults(key: ProgramKey): Vec<float32> {
 	return values;
 }
 
-// The block of a pbr key (gpu3d.ms PBR_*) holding `properties` and the identity UV transform,
-// every other float 0 for the caller to set. Roughness 0 is refused: Heaps' BRDF has no guard at
-// that endpoint (BRDF.hx:48-53), and pbrResponse.ms reports it as ZeroRoughness rather than invent
-// a floor.
+// The block of a pbr key (gpu3d.ms PBR_*) holding `properties`, the material colour white and the
+// identity UV transform, every other float 0 for the caller to set. Roughness 0 is refused:
+// Heaps' BRDF has no guard at that endpoint (BRDF.hx:48-53), and pbrResponse.ms reports it as
+// ZeroRoughness rather than invent a floor.
 export function pbrBlock(
 	key: ProgramKey,
 	properties: PbrProperties,
@@ -361,6 +359,7 @@ export function pbrBlock(
 	values[PBR_METALNESS] = checked.metalness;
 	values[PBR_ROUGHNESS] = checked.roughness;
 	values[PBR_OCCLUSION] = checked.occlusion;
+	for (let i = 0; i < 4; i++) { values[MATERIAL_COLOR + i] = 1.0; }
 	values[PBR_UV_MATRIX] = 1.0;
 	values[PBR_UV_MATRIX + 3] = 1.0;
 	return Result.ok(values);

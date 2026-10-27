@@ -79,6 +79,7 @@ import {
 	samplerMaxLod,
 	checkedTexelWritePitch,
 	featureBit,
+	GPU_DRAW_INDEXED_INDIRECT_STRIDE,
 	GPUTexture,
 	GPUTextureDescriptor,
 	GPUTextureFormat,
@@ -100,6 +101,7 @@ import {
 	renderPassOpen,
 	boundFacts,
 	stencilMask,
+	colorWriteBits,
 } from "../validate.ms";
 import {
 	MtlBufferImpl,
@@ -152,6 +154,7 @@ import {
 	mtlSetLabel,
 	mtlSetVisibility,
 	mtlSupportsFloat32Filtering,
+	mtlSupportsIndirectBaseInstance,
 	mtlSupportsRg11b10Render,
 	mtlSupportsTimestamps,
 	mtlNewStagingBuffer,
@@ -161,6 +164,7 @@ import {
 	mtlDeviceFrom,
 	mtlDraw,
 	mtlDrawIndexed,
+	mtlDrawIndexedIndirect,
 	mtlEndPass,
 	mtlErrorLog,
 	mtlFrameSemaphoreCreate,
@@ -542,8 +546,8 @@ const STENCIL_OPERATIONS: int32[] = [0, 1, 2, 5, 3, 4, 6, 7];
 
 function stencilOperation(operation: string, member: string): int32 { return stencilOperationNative(STENCIL_OPERATIONS, operation, member, "metal"); }
 
-function colorWriteMask(mask: int32): int32 {
-	const bits = mask == 0 ? GPUColorWrite.ALL as int32 : mask;
+function colorWriteMask(mask: int32 | null): int32 {
+	const bits = colorWriteBits(mask);
 	let native = 0;
 	if (has(bits, GPUColorWrite.RED as int32)) { native |= WRITE_RED; }
 	if (has(bits, GPUColorWrite.GREEN as int32)) { native |= WRITE_GREEN; }
@@ -1564,6 +1568,24 @@ export function drawIndexed(
 	);
 }
 
+export function multiDrawIndexedIndirect(buffer: GPUBuffer, offset: int64, drawCount: int32): void {
+	flush();
+	const primitive = pipelines[slotOf(boundFacts.pipeline)].primitive;
+	const indices = liveBuffer(bufferRecords.slotIndex(boundFacts.indexBuffer));
+	const records = liveBuffer(slotOf(buffer.id));
+	for (let i = 0; i < drawCount; i++) {
+		mtlDrawIndexedIndirect(
+			encoder,
+			primitive,
+			indices,
+			bound.indexType,
+			boundFacts.indexOffset,
+			records,
+			offset + (i as int64) * GPU_DRAW_INDEXED_INDIRECT_STRIDE,
+		);
+	}
+}
+
 
 function flush(): void {
 	if (bound.appliedPipeline != boundFacts.pipeline) { applyPipeline(); }
@@ -1948,6 +1970,7 @@ export function features(): GPUSupportedFeatures {
 	if (mtlSupportsTimestamps(device) == 1) { bits |= featureBit("timestamp-query"); }
 	if (mtlSupportsFloat32Filtering(device) == 1) { bits |= featureBit("float32-filterable"); }
 	if (mtlSupportsRg11b10Render(device) == 1) { bits |= featureBit("rg11b10ufloat-renderable"); }
+	if (mtlSupportsIndirectBaseInstance(device) == 1) { bits |= featureBit("indirect-first-instance"); }
 	return { bits: bits };
 }
 

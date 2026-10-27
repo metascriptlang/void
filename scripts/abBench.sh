@@ -9,17 +9,17 @@
 #   sh scripts/abBench.sh clean              delete the exes and the main worktree
 #
 # Environment: AB_MAIN_SHA (default: the merge base of HEAD and main, so a delta is the GPU layer
-# and not newer void2d on main; main's tip is `AB_MAIN_SHA=main`), AB_BACKENDS (default "d3d11 gl"; add linux,
-# web-wgpu, web-gl; `build web` alone defaults it to "web-wgpu web-gl"),
-# AB_LINUX_DRIVER (d3d12 default, or llvmpipe),
-# AB_SCENES (default "Ui Sprites Text Editor Scroll"), AB_TOL percent of slack on a .ms row
+# and not newer void2d on main; main's tip is `AB_MAIN_SHA=main`), AB_BACKENDS (default "d3d11 gl"; add vulkan,
+# which main lacks and so runs on B alone, linux, web-wgpu, web-gl; `build web` alone defaults it to
+# "web-wgpu web-gl"), AB_LINUX_DRIVER (d3d12 default, or llvmpipe),
+# AB_SCENES (default "Ui Sprites Text Editor Scroll Campfire"), AB_TOL percent of slack on a .ms row
 # (default 3), AB_LOAD_LIMIT percent CPU load that voids a run (default 25), AB_OUT, MSC.
 # Run `build` as `bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build`.
 set -eu
 cd "$(dirname "$0")/.."
 B="$(pwd)"
 MSC="${MSC:-msc}"
-SCENES="${AB_SCENES:-Ui Sprites Text Editor Scroll}"
+SCENES="${AB_SCENES:-Ui Sprites Text Editor Scroll Campfire}"
 BACKENDS="${AB_BACKENDS:-d3d11 gl}"
 TOL="${AB_TOL:-3}"
 LIMIT="${AB_LOAD_LIMIT:-25}"
@@ -33,11 +33,18 @@ backendFlags() {
 	case "$1" in
 		d3d11) echo "" ;;
 		gl) if [ "$2" = A ]; then echo "-d:voidGlCore --passC=-DSOKOL_GLCORE"; else echo "-d:voidGlCore --passC=-DVOID_GLCORE"; fi ;;
-		*) echo "abBench.sh: backend '$1' is not built on this machine (d3d11, gl)" >&2; exit 2 ;;
+		vulkan) echo "-d:voidVulkan" ;;
+		*) echo "abBench.sh: backend '$1' is not built on this machine (d3d11, gl, vulkan)" >&2; exit 2 ;;
 	esac
 }
 
 winPath() { cygpath -w "$1"; }
+
+# A tree with uncommitted tracked edits builds what no sha names, so env.txt says so.
+dirtyOf() {
+	n=$(git -C "$1" status --porcelain --untracked-files=no | wc -l | tr -d ' ')
+	[ "$n" = 0 ] || echo " +dirty ($n tracked files differ)"
+}
 
 provision() {
 	sha="${AB_MAIN_SHA:-$(git merge-base HEAD main)}"
@@ -48,9 +55,17 @@ provision() {
 	elif [ "$(git -C "$A" rev-parse HEAD)" != "$(git rev-parse "$sha")" ]; then
 		git -C "$A" checkout --detach "$sha"
 	fi
+	# An entry sits above void2d and void3d, so a scene main has no entry for runs B's entry on A.
+	for scene in $SCENES; do
+		entry="tests/bench/bench$scene.ms"
+		if ! git -C "$A" cat-file -e "HEAD:$entry" 2>/dev/null; then
+			cp "$B/$entry" "$A/$entry"
+			echo "ENTRY $scene: A runs B's $entry"
+		fi
+	done
 	{
-		echo "A main-side $(git -C "$A" rev-parse HEAD) (main tip $(git rev-parse main))"
-		echo "B gpu-ms $(git rev-parse HEAD)"
+		echo "A main-side $(git -C "$A" rev-parse HEAD)$(dirtyOf "$A") (main tip $(git rev-parse main))"
+		echo "B gpu-ms $(git rev-parse HEAD)$(dirtyOf "$B")"
 		echo "msc $("$MSC" --version | sed 's/\x1b\[[0-9;]*m//g' | head -1)"
 		echo "BUILD $(head -1 "$(dirname "$(command -v "$MSC")")/../BUILD")"
 	} | tee "$OUT/env.txt"
@@ -87,6 +102,7 @@ build() {
 	for backend in $BACKENDS; do
 		case "$backend" in web-*) continue ;; esac
 		for side in A B; do
+			if [ "$backend" = vulkan ] && [ "$side" = A ]; then echo "SKIP       vulkan A (main has no Vulkan backend)"; continue; fi
 			flags="$(backendFlags "$backend" "$side")"
 			tree="$A"; [ "$side" = B ] && tree="$B"
 			mkdir -p "$OUT/$backend/$side"
@@ -110,15 +126,14 @@ build() {
 
 # Linux runs in WSL on the real GPU through Mesa's d3d12 driver (GALLIUM_DRIVER=d3d12), or on
 # llvmpipe with AB_LINUX_DRIVER=llvmpipe. Exes live in a WSL-native dir, never under /mnt/c, so the
-# load path is not a variable; each tree is read through /mnt/c. msc has no yoga link line for
-# linux (~/metascript/.inbox/yoga/), so libyoga.a is built once by zig c++ from deps/yoga.
+# load path is not a variable; each tree is read through /mnt/c.
 # The WSL script comes on stdin; \$ is WSL's, $ is expanded here first.
 wsl() { MSYS_NO_PATHCONV=1 wsl.exe -e bash -l -s; }
 wslTree() { MSYS_NO_PATHCONV=1 wsl.exe -e wslpath -u "$(winPath "$1")" | tr -d '\r'; }
 wslOut() { echo "$(echo 'echo $HOME' | wsl | tr -d '\r')/voidAB"; }
 
 buildLinux() {
-	out="$(wslOut)"; yoga="$(wslTree "$MAIN_REPO/../yoga")"
+	out="$(wslOut)"
 	wsl > "$OUT/linuxProvision.log" 2>&1 <<EOF || { echo "BUILD FAIL linux provision (see $OUT/linuxProvision.log)"; return 1; }
 set -e
 mkdir -p $out/A $out/B
@@ -126,13 +141,6 @@ for d in d3d12 llvmpipe; do
 	printf '#!/bin/bash -l\nexport GALLIUM_DRIVER=%s DISPLAY=\${DISPLAY:-:0}\nexec "\$@"\n' \$d > $out/run.\$d.sh
 	chmod +x $out/run.\$d.sh
 done
-if [ ! -f $out/libyoga.a ]; then
-	mkdir -p $out/yoga && cd $out/yoga
-	for f in \$(find '$yoga/deps/yoga/yoga' -name '*.cpp'); do
-		zig c++ -target x86_64-linux-gnu -std=c++20 -O2 -fPIC -I'$yoga/deps/yoga' -c \$f -o \$(echo \$f | md5sum | cut -c1-12).o
-	done
-	ar rcs ../libyoga.a *.o
-fi
 EOF
 	for side in A B; do
 		tree="$A"; [ "$side" = B ] && tree="$B"; wtree="$(wslTree "$tree")"
@@ -141,7 +149,7 @@ EOF
 export MSC_NO_GLOBAL_CACHE=1
 rm -f $out/$side/bench$scene.exe
 cd '$wtree'
-msc build --os=linux --passL=$out/libyoga.a tests/bench/bench$scene.ms --release --output=$out/$side/bench$scene.exe
+msc build --os=linux tests/bench/bench$scene.ms --release --output=$out/$side/bench$scene.exe
 [ -x $out/$side/bench$scene.exe ]
 EOF
 			then
@@ -182,6 +190,31 @@ runWeb() {
 	AB_RUN="node $(cygpath -m "$B")/scripts/webBench.mjs $dir" 		AB_DIR_A="$(cygpath -m "$OUT")/web/A/$dir" AB_DIR_B="$(cygpath -m "$OUT")/web/B/$dir" 		AB_RAW="$OUT/raw-$1.tsv" AB_LABEL="$1" AB_TOL="$TOL" AB_LOAD_LIMIT="$LIMIT" 		sh scripts/bench-ab.sh "$A" "$B" "$2" $SCENES
 }
 
+# Main has no Vulkan backend, so its rows are B's alone: the median, low and high of the runs.
+runAlone() {
+	raw="$OUT/raw-$1.tsv"
+	echo "=== $1 (B only, absolute: main has no $1 backend)"
+	for scene in $SCENES; do
+		rep=1
+		while [ "$rep" -le "$2" ]; do
+			(cd "$B" && "$OUT/$1/B/bench$scene.exe" 2>/dev/null) | tr -d '\r' | awk -v l="$1" -v s="$scene" -v r="$rep" \
+				'/^[A-Za-z0-9]+\.[A-Za-z0-9.]+ -?[0-9.eE+-]+$/ { print l "\t" s "\t" r "\t" $1 "\t" $2 }' >> "$raw"
+			rep=$((rep + 1))
+		done
+	done
+	awk -F'\t' -f scripts/benchFlow.awk -e '
+		{ key = $2 SUBSEP $4; if (!(key in cnt)) keys[++nk] = key; val[key, ++cnt[key]] = $5 }
+		END {
+			printf "%-7s %-8s %-34s %14s %14s %14s %5s\n", "label", "flow", "metric", "B median", "low", "high", "runs"
+			for (i = 1; i <= nk; i++) {
+				key = keys[i]; split(key, q, SUBSEP); n = cnt[key]
+				for (j = 1; j <= n; j++) v[j] = val[key, j]
+				for (j = 2; j <= n; j++) { x = v[j]; k = j - 1; while (k >= 1 && v[k] > x) { v[k + 1] = v[k]; k-- } v[k + 1] = x }
+				printf "%-7s %-8s %-34s %14.4g %14.4g %14.4g %5d\n", label, flow(q[2]), q[2], n % 2 ? v[(n + 1) / 2] : (v[n / 2] + v[n / 2 + 1]) / 2, v[1], v[n], n
+			}
+		}' label="$1" "$raw"
+}
+
 # The protocol (interleaving, load sampling, NOISY, AB_MIN_CLEAN, the all-row table) is
 # scripts/bench-ab.sh's; this only points it at each backend's exes.
 run() {
@@ -191,6 +224,7 @@ run() {
 	cat "$OUT/env.txt"
 	for backend in $BACKENDS; do
 		if [ "$backend" = linux ]; then runLinux "$reps"; continue; fi
+		if [ "$backend" = vulkan ]; then runAlone vulkan "$reps"; continue; fi
 		case "$backend" in web-*) runWeb "$backend" "$reps"; continue ;; esac
 		echo "=== $backend"
 		# shellcheck disable=SC2086

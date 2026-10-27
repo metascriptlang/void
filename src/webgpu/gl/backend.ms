@@ -88,6 +88,7 @@ import {
 	openDebugGroups,
 	stencil8Mask,
 	boundFacts,
+	colorWriteBits,
 	isIntegerFormat,
 } from "../validate.ms";
 import {
@@ -237,6 +238,7 @@ when (webgl2 || android || (linux && voidGles3)) {
 		oglDisablei,
 		oglDrawElementsInstancedBaseVertexBaseInstance,
 		oglEnablei,
+		oglMultiDrawElementsIndirectUncached,
 		oglSamplerBorderColor,
 		oglTexStorage2DMultisample,
 	} from "./gl.h";
@@ -419,6 +421,8 @@ const GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS = 0x8B4D;
 const GL_MAX_SAMPLES = 0x8D57;
 const GL_MAJOR_VERSION = 0x821B;
 const GL_MINOR_VERSION = 0x821C;
+const GL_CONTEXT_FLAGS = 0x821E;
+const GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT = 0x4;
 const GL_CURRENT_PROGRAM = 0x8B8D;
 const GL_SHADER_STORAGE_BUFFER = 0x90D2;
 const GL_COMPUTE_SHADER = 0x91B9;
@@ -1143,7 +1147,7 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	}
 	checkMirroredConstants();
 	const version = oglGetInteger(GL_MAJOR_VERSION) * 100 + oglGetInteger(GL_MINOR_VERSION) * 10;
-	checkContextVersion(version);
+	checkContext(version);
 	maxVertexAttributes = smaller(oglGetInteger(GL_MAX_VERTEX_ATTRIBS), GPU_MAX_VERTEX_ATTRIBUTES);
 	maxTextureUnits = smaller(oglGetInteger(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS), MAX_TEXTURE_UNITS);
 	if (cachedCanvas().sampleCount > oglGetInteger(GL_MAX_SAMPLES)) { stopOnMember("NativeEnvironment.sampleCount", `${cachedCanvas().sampleCount}`); }
@@ -1850,7 +1854,7 @@ function describeBlend(descriptor: GPURenderPipelineDescriptor, ref slot: Pipeli
 		if (format == "") { continue; }
 		const info = formatInfo(descriptor.fragment.targets[i].format, `fragment.targets[${i}].format`);
 		const writeMask = descriptor.fragment.targets[i].writeMask;
-		slot.writeMasks[i] = writeMask == 0 ? COLOR_WRITE_ALL : writeMask;
+		slot.writeMasks[i] = colorWriteBits(writeMask);
 		slot.colorCount = i + 1;
 		const color: GPUBlendComponent = descriptor.fragment.targets[i].blend.color;
 		const alpha: GPUBlendComponent = descriptor.fragment.targets[i].blend.alpha;
@@ -2256,6 +2260,14 @@ export function drawIndexed(
 	drawElementsBaseVertex(mode, indexCount, indexType, offset, instanceCount, baseVertex, firstInstance);
 }
 
+export function multiDrawIndexedIndirect(buffer: GPUBuffer, offset: int64, drawCount: int32): void {
+	if (boundFacts.indexOffset != 0) {
+		stop(`multiDrawIndexedIndirect with the index buffer set at offset ${boundFacts.indexOffset}: a GL indirect draw reads indices from offset 0, so set it there`);
+	}
+	flush(true);
+	multiDrawElementsIndirect(pipelines[slotOf(boundFacts.pipeline)].primitive, bound.indexType, bufferName(slotOf(buffer.id)), offset, drawCount);
+}
+
 
 function flush(indexed: boolean): void {
 	if (bound.appliedPipeline != boundFacts.pipeline) { applyPipeline(); }
@@ -2393,7 +2405,7 @@ when (webgl2 || android || (linux && voidGles3)) {
 	const COMPUTE_CONTEXT_VERSION = 310;
 	const DEBUG_CONTEXT_VERSION = 320;
 
-	function checkContextVersion(version: int32): void {
+	function checkContext(version: int32): void {
 		if (version < 300) { stop(`the current context is GLES ${version}; the GLES3 backend needs 300`); }
 	}
 
@@ -2451,6 +2463,12 @@ when (webgl2 || android || (linux && voidGles3)) {
 		stop(`drawIndexed with baseVertex ${baseVertex} and firstInstance ${firstInstance}: GLES3 has neither`);
 	}
 
+	function indirectFeatureBits(): uint32 { return 0; }
+
+	function multiDrawElementsIndirect(mode: int32, indexType: int32, buffer: uint32, offset: int64, drawCount: int32): void {
+		stop("multiDrawIndexedIndirect: a GLES indirect draw has no base instance");
+	}
+
 	function applyBlend(i: int32, next: BlendState, current: BlendState): void {
 		if (i == 0) { applyBlendAll(next, current); }
 	}
@@ -2462,8 +2480,11 @@ when (webgl2 || android || (linux && voidGles3)) {
 	const COMPUTE_CONTEXT_VERSION = 430;
 	const DEBUG_CONTEXT_VERSION = 430;
 
-	function checkContextVersion(version: int32): void {
+	function checkContext(version: int32): void {
 		if (version < 430) { stop(`the current context is GL ${version}; the GL backend needs 430`); }
+		if ((oglGetInteger(GL_CONTEXT_FLAGS) & GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT) == 0) {
+			stop("the current GL context lacks robust buffer access; create it with the robust access flag");
+		}
 	}
 
 	function multisampleTarget(): int32 { return GL_TEXTURE_2D_MULTISAMPLE; }
@@ -2529,6 +2550,12 @@ when (webgl2 || android || (linux && voidGles3)) {
 		} else {
 			oglDrawElementsBaseVertex(mode, indexCount, indexType, offset, baseVertex);
 		}
+	}
+
+	function indirectFeatureBits(): uint32 { return featureBit("indirect-first-instance"); }
+
+	function multiDrawElementsIndirect(mode: int32, indexType: int32, buffer: uint32, offset: int64, drawCount: int32): void {
+		oglMultiDrawElementsIndirectUncached(mode, indexType, buffer, offset, drawCount);
 	}
 
 	function applyBlend(i: int32, next: BlendState, current: BlendState): void {
@@ -3029,6 +3056,7 @@ function queryFeatures(): GPUSupportedFeatures {
 	let bits: uint32 = 0;
 	if (timerSupported) { bits |= featureBit("timestamp-query"); }
 	bits |= floatFeatureBits();
+	if (computeSupported) { bits |= indirectFeatureBits(); }
 	return { bits: bits };
 }
 

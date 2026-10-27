@@ -288,7 +288,7 @@ function ownerCase(name: string, context: DrawContext): boolean {
 		const _r: Result<MeshFrameAnimation, AnimationError> =
 			MeshFrameAnimation.forMeshes(context, clock.value, "frames", frames);
 	} else if (name == "addGltfAssets") {
-		let block: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+		let block: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 		const _r: Result<GltfAssets, GltfSceneError> =
 			addGltfAssets(context, document(), { pass: RenderState.defaults(), block: block });
 	} else {

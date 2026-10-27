@@ -8,6 +8,7 @@ import {
 	vulkanCmdDispatchIndirect,
 	vulkanCmdDraw,
 	vulkanCmdDrawIndexed,
+	vulkanCmdDrawIndexedIndirect,
 	vulkanCmdScissor,
 	vulkanCmdStencilReference,
 	vulkanCmdViewport,
@@ -79,7 +80,6 @@ import {
 	GPUBuffer,
 	GPUBufferUsage,
 	GPUColor,
-	GPUColorWrite,
 	GPUComputePipelineDescriptor,
 	GPUIndexFormat,
 	GPURenderPipelineDescriptor,
@@ -98,7 +98,7 @@ import {
 	stop,
 	stopOnUnportedShaderBindings,
 } from "../types.ms";
-import { boundFacts, checkedComputeModule, checkedRenderModule, entryBytes, isStripTopology, stencilMask } from "../validate.ms";
+import { boundFacts, checkedComputeModule, checkedRenderModule, colorWriteBits, entryBytes, isStripTopology, stencilMask } from "../validate.ms";
 import {
 	bindGroupRecords,
 	bufferRecords,
@@ -334,7 +334,7 @@ function colorTargetWords(ref words: Vec<uint32>, descriptor: GPURenderPipelineD
 	words.push(sourceFactor(target.blend.alpha.srcFactor, `${member}.blend.alpha.srcFactor`));
 	words.push(destinationFactor(target.blend.alpha.dstFactor, `${member}.blend.alpha.dstFactor`));
 	words.push(blendOp(target.blend.alpha.operation, `${member}.blend.alpha.operation`));
-	words.push((target.writeMask == 0 ? GPUColorWrite.ALL as int32 : target.writeMask) as uint32);
+	words.push(colorWriteBits(target.writeMask) as uint32);
 }
 
 function unusedTargetWords(ref words: Vec<uint32>): void {
@@ -720,6 +720,11 @@ export function drawIndexed(
 ): void {
 	applyBindings(p, r);
 	commanded(vulkanCmdDrawIndexed(indexCount as uint32, instanceCount as uint32, firstIndex as uint32, baseVertex, firstInstance as uint32));
+}
+
+export function multiDrawIndexedIndirect(ref p: VulkanPipelines, ref r: VulkanResources, buffer: GPUBuffer, offset: int64, drawCount: int32): void {
+	applyBindings(p, r);
+	commanded(vulkanCmdDrawIndexedIndirect(r.buffers[slotOf(buffer.id)].native, offset as uint64, drawCount as uint32));
 }
 
 export function dispatchWorkgroups(ref p: VulkanPipelines, ref r: VulkanResources, x: int32, y: int32, z: int32): Result<void, ResourceError> {

@@ -633,6 +633,10 @@ export function drawIndexed(
 	flush();
 }
 
+export function multiDrawIndexedIndirect(buffer: GPUBuffer, offset: int64, drawCount: int32): void {
+	flush();
+}
+
 
 function flush(): void {
 	const p = slotOf(boundFacts.pipeline);
@@ -811,7 +815,8 @@ export function features(): GPUSupportedFeatures {
 	const bits = featureBit("timestamp-query")
 		| featureBit("float32-filterable")
 		| featureBit("float32-blendable")
-		| featureBit("rg11b10ufloat-renderable");
+		| featureBit("rg11b10ufloat-renderable")
+		| featureBit("indirect-first-instance");
 	return { bits: bits };
 }
 

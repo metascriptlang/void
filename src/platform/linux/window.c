@@ -23,6 +23,7 @@
 #if defined(VOID_GLES3) || defined(VOID_FORCE_EGL)
 #define VOID_LINUX_EGL 1
 #include <EGL/egl.h>
+#include <EGL/eglext.h>
 #endif
 
 #define X11_KEYCODES 256
@@ -49,6 +50,7 @@
 #define GLX_CONTEXT_MAJOR_VERSION_ARB 0x2091
 #define GLX_CONTEXT_MINOR_VERSION_ARB 0x2092
 #define GLX_CONTEXT_FLAGS_ARB 0x2094
+#define GLX_CONTEXT_ROBUST_ACCESS_BIT_ARB 0x00000004
 
 typedef XID GLXWindow;
 typedef XID GLXDrawable;
@@ -999,6 +1001,7 @@ static struct {
 		bool ARB_multisample;
 		bool ARB_create_context;
 		bool ARB_create_context_profile;
+		bool ARB_create_context_robustness;
 	} glx;
 #endif
 } s;
@@ -1315,7 +1318,6 @@ static void querySystemDpi(void) {
 	XrmDestroyDatabase(db);
 }
 
-#if !defined(VOID_LINUX_EGL)
 static bool hasExtension(const char *ext, const char *extensions) {
 	if (extensions == NULL) return false;
 	const char *start = extensions;
@@ -1327,6 +1329,8 @@ static bool hasExtension(const char *ext, const char *extensions) {
 		start = terminator;
 	}
 }
+
+#if !defined(VOID_LINUX_EGL)
 
 static void *glxProcAddress(const char *name) {
 	if (s.glx.GetProcAddress) return (void *)s.glx.GetProcAddress(name);
@@ -1376,6 +1380,7 @@ static void initGlx(void) {
 		s.glx.ARB_create_context = s.glx.CreateContextAttribsARB != NULL;
 	}
 	s.glx.ARB_create_context_profile = hasExtension("GLX_ARB_create_context_profile", exts);
+	s.glx.ARB_create_context_robustness = hasExtension("GLX_ARB_create_context_robustness", exts);
 }
 
 static int glxAttrib(GLXFBConfig config, int attrib) {
@@ -1482,12 +1487,13 @@ static void createContext(void) {
 	if (!(s.glx.ARB_create_context && s.glx.ARB_create_context_profile)) {
 		fail("GLX extensions ARB_create_context and ARB_create_context_profile missing");
 	}
+	if (!s.glx.ARB_create_context_robustness) fail("GLX extension ARB_create_context_robustness missing: Void needs bounded buffer reads");
 	grabErrorHandler();
 	const int attribs[] = {
 		GLX_CONTEXT_MAJOR_VERSION_ARB, 4,
 		GLX_CONTEXT_MINOR_VERSION_ARB, 3,
 		GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
-		GLX_CONTEXT_FLAGS_ARB, GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
+		GLX_CONTEXT_FLAGS_ARB, GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB | GLX_CONTEXT_ROBUST_ACCESS_BIT_ARB,
 		0, 0,
 	};
 	s.glx.ctx = s.glx.CreateContextAttribsARB(s.x11.display, native, NULL, True, attribs);
@@ -1623,6 +1629,15 @@ static bool eglConfigIs(EGLConfig c, EGLint alpha, EGLint depth, EGLint stencil,
 		&& st == stencil && n == samples;
 }
 
+#if defined(VOID_LINUX_EGL)
+static EGLint eglRobustAccessAttrib(EGLDisplay display, EGLint major, EGLint minor) {
+	if (major > 1 || minor >= 5) return EGL_CONTEXT_OPENGL_ROBUST_ACCESS;
+	if (hasExtension("EGL_EXT_create_context_robustness", eglQueryString(display, EGL_EXTENSIONS))) return EGL_CONTEXT_OPENGL_ROBUST_ACCESS_EXT;
+	fail("EGL 1.4 without EGL_EXT_create_context_robustness: Void needs bounded buffer reads");
+	return EGL_NONE;
+}
+#endif
+
 static void initEgl(void) {
 #if defined(VOID_GLES3)
 	if (!eglBindAPI(EGL_OPENGL_ES_API)) fail("eglBindAPI(EGL_OPENGL_ES_API) failed");
@@ -1697,6 +1712,7 @@ static void initEgl(void) {
 		EGL_CONTEXT_MINOR_VERSION, 3,
 		EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
 #endif
+		eglRobustAccessAttrib(s.egl.display, major, minor), EGL_TRUE,
 		EGL_NONE,
 	};
 	s.egl.context = eglCreateContext(s.egl.display, config, EGL_NO_CONTEXT, contextAttribs);

@@ -1,4 +1,4 @@
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3, quatBetween, identity } from "../../src/math/math3d";
 import {
 	Material, MaterialKind, Phase, ShadowCasting, ShadowCulling, UniformBlock, movingDefaults,
@@ -48,7 +48,7 @@ import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureEnvInt, voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,
@@ -161,7 +161,7 @@ function material(
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!reserved.ok) { unreachable; }
-	const values: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	const values: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
 	const base = Material.ofKind(Program.Lit, MaterialKind.Opaque).withShadows(cast, receive)
 		.withShadowCulling(culling);
@@ -204,7 +204,7 @@ function dissolvingCaster(): void {
 	const lit: ProgramKey = ProgramKey.of(Program.LitTextured);
 	const key: ProgramKey = shadowCase == Case.DissolveEmissive ?
 		lit.withDissolve().withEmissive() : shadowCase == Case.Dissolve ? lit.withDissolve() : lit;
-	let values: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	let values: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (key.dissolve) {
 		values = movingDefaults(key);
 		values[0] = 4.0;

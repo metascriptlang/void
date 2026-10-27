@@ -242,6 +242,14 @@ void mtlDrawIndexed(
 	int32_t instanceCount,
 	int32_t baseVertex,
 	int32_t firstInstance);
+void mtlDrawIndexedIndirect(
+	MtlEncoder encoder,
+	int32_t primitive,
+	MtlBuffer indexBuffer,
+	int32_t indexType,
+	int64_t indexOffset,
+	MtlBuffer records,
+	int64_t recordOffset);
 
 void mtlSetLabel(void *object, const char *label);
 void mtlPushDebugGroup(MtlCommandBuffer commandBuffer, const char *label);
@@ -254,6 +262,7 @@ int64_t mtlMaxBufferLength(MtlDevice device);
 int32_t mtlMaxThreadsPerThreadgroup(MtlDevice device, int32_t axis);
 int32_t mtlSupportsFloat32Filtering(MtlDevice device);
 int32_t mtlSupportsRg11b10Render(MtlDevice device);
+int32_t mtlSupportsIndirectBaseInstance(MtlDevice device);
 int32_t mtlSupportsTimestamps(MtlDevice device);
 
 MtlComputePipeline mtlNewComputePipeline(MtlDevice device, MtlFunction compute, const char *label);

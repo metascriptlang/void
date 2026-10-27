@@ -334,7 +334,7 @@ export struct GPUColorTargetState {
 	format: GPUTextureFormat;
 	blendEnabled: boolean;
 	blend: GPUBlendState;
-	writeMask: int32;
+	writeMask: int32 | null;
 }
 
 export struct GPUFragmentState {
@@ -1059,9 +1059,11 @@ export function passExtentRefusal(passWidth: int32, passHeight: int32, width: in
 	return passWidth != 0 && (passWidth != width || passHeight != height) ? "render pass attachments differ in size" : "";
 }
 
-// `member` is the attachment's field, such as `colorAttachments[0].view`.
-export function singleSubresourceRefusal(member: string, attachable: boolean): string {
-	return attachable ? "" : `${member} spans several mips or layers: a render attachment is one mip of one layer`;
+// `attachment` is the color attachment's index, or -1 for depthStencilAttachment.
+export function singleSubresourceRefusal(attachment: int32, field: string, attachable: boolean): string {
+	if (attachable) { return ""; }
+	const member = attachment < 0 ? `depthStencilAttachment.${field}` : `colorAttachments[${attachment}].${field}`;
+	return `${member} spans several mips or layers: a render attachment is one mip of one layer`;
 }
 
 // The sizes are the color view's and the resolve view's own mip.
@@ -1082,7 +1084,7 @@ export function resolveTargetRefusal(
 
 export function checkedNoDepthSlice(attachment: int32, slice: int32): void { refuse(noDepthSliceRefusal(attachment, slice)); }
 export function checkedPassExtent(passWidth: int32, passHeight: int32, width: int32, height: int32): void { refuse(passExtentRefusal(passWidth, passHeight, width, height)); }
-export function checkedSingleSubresource(member: string, attachable: boolean): void { refuse(singleSubresourceRefusal(member, attachable)); }
+export function checkedSingleSubresource(attachment: int32, field: string, attachable: boolean): void { refuse(singleSubresourceRefusal(attachment, field, attachable)); }
 
 export function checkedResolveTarget(attachment: int32, colorSamples: int32, colorWidth: int32, colorHeight: int32, resolveWidth: int32, resolveHeight: int32): void {
 	refuse(resolveTargetRefusal(attachment, colorSamples, colorWidth, colorHeight, resolveWidth, resolveHeight));
@@ -1102,6 +1104,8 @@ export function samplerMaxLod(lodMaxClamp: float32): float32 { return lodMaxClam
 	if (maxLod < lodMinClamp) { stop(`GPUSamplerDescriptor.lodMaxClamp ${maxLod} is below lodMinClamp ${lodMinClamp}`); }
 	return maxLod;
 }
+
+export const GPU_DRAW_INDEXED_INDIRECT_STRIDE = 20;
 
 @noinline export function checkedDispatchIndirect(id: uint32, usage: int32, bufferSize: int64, offset: int64): void {
 	if ((usage & (GPUBufferUsage.INDIRECT as int32)) == 0) { stop(`dispatchWorkgroupsIndirect: GPUBuffer ${id} was created without INDIRECT`); }

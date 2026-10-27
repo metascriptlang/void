@@ -54,6 +54,7 @@ typedef int GLint;
 #define GL_NEAREST 0x2600
 #define GL_COLOR 0x1800
 #define GL_DEPTH 0x1801
+#define GL_STENCIL 0x1802
 #define GL_DEPTH_STENCIL 0x84F9
 #define GL_DEPTH_COMPONENT 0x1902
 #define GL_DEPTH_ATTACHMENT 0x8D00
@@ -195,6 +196,7 @@ typedef int GLint;
 	OGL_XMACRO(glBlitFramebuffer,          void, (GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter)) \
 	OGL_XMACRO(glClearBufferfv,            void, (GLenum buffer, GLint drawbuffer, const GLfloat *value)) \
 	OGL_XMACRO(glClearBufferfi,            void, (GLenum buffer, GLint drawbuffer, GLfloat depth, GLint stencil)) \
+	OGL_XMACRO(glClearBufferiv,            void, (GLenum buffer, GLint drawbuffer, const GLint *value)) \
 	OGL_XMACRO(glVertexAttribPointer,      void, (GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer)) \
 	OGL_XMACRO(glVertexAttribIPointer,     void, (GLuint index, GLint size, GLenum type, GLsizei stride, const void *pointer)) \
 	OGL_XMACRO(glVertexAttribDivisor,      void, (GLuint index, GLuint divisor)) \
@@ -207,7 +209,8 @@ typedef int GLint;
 	OGL_XMACRO(glDrawElementsBaseVertex,   void, (GLenum mode, GLsizei count, GLenum type, const void *indices, GLint basevertex)) \
 	OGL_XMACRO(glDrawElementsInstanced,    void, (GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei instancecount)) \
 	OGL_XMACRO(glDrawElementsInstancedBaseVertex, void, (GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei instancecount, GLint basevertex)) \
-	OGL_XMACRO(glDrawElementsInstancedBaseVertexBaseInstance, void, (GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei instancecount, GLint basevertex, GLuint baseinstance))
+	OGL_XMACRO(glDrawElementsInstancedBaseVertexBaseInstance, void, (GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei instancecount, GLint basevertex, GLuint baseinstance)) \
+	OGL_XMACRO(glMultiDrawElementsIndirect, void, (GLenum mode, GLenum type, const void *indirect, GLsizei drawcount, GLsizei stride))
 
 #define OGL_XMACRO(name, ret, args) typedef ret (GL_APIENTRY *PFN_ogl_##name) args;
 OGL_FUNCS
@@ -288,6 +291,9 @@ void oglUnload(void) {
 #endif
 #ifndef GL_DISPATCH_INDIRECT_BUFFER
 #define GL_DISPATCH_INDIRECT_BUFFER 0x90EE
+#endif
+#ifndef GL_DRAW_INDIRECT_BUFFER
+#define GL_DRAW_INDIRECT_BUFFER 0x8F3F
 #endif
 #ifndef GL_DEBUG_SOURCE_APPLICATION
 #define GL_DEBUG_SOURCE_APPLICATION 0x824A
@@ -815,6 +821,12 @@ void oglDrawElementsInstancedBaseVertexBaseInstance(
 	int32_t baseInstance) {
 	glDrawElementsInstancedBaseVertexBaseInstance((GLenum)mode, count, (GLenum)type, (const void *)(intptr_t)offset,
 		instances, baseVertex, (GLuint)baseInstance);
+}
+
+void oglMultiDrawElementsIndirectUncached(int32_t mode, int32_t type, uint32_t buffer, int64_t offset, int32_t drawCount) {
+	glBindBuffer(GL_DRAW_INDIRECT_BUFFER, buffer);
+	glMultiDrawElementsIndirect((GLenum)mode, (GLenum)type, (const void *)(intptr_t)offset, drawCount, (GLsizei)(5 * sizeof(GLuint)));
+	glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 }
 #endif
 

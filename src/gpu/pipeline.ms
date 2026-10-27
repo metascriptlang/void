@@ -1,5 +1,5 @@
 // Port of h3d.impl.PipelineCache / PipelineBuilder: render state + program + vertex layout +
-// target formats → one key → one sokol pipeline, created on first use and reused after.
+// target formats → one key → one GPU pipeline, created on first use and reused after.
 //
 // A program or layout here is a door registry id (door.ms), not a layer's enum: the door is
 // what both render layers build pipelines through, and each adds its own base to its
@@ -165,7 +165,7 @@ export function record(cache: PipelineCache, key: PipelineKey, pipeline: uint32)
 }
 
 @noinline function stopOnRefusedShader(program: int32): never {
-	stop(`sokol refused the shader of program ${program}; ` +
+	stop(`the GPU device refused the shader of program ${program}; ` +
 		"its pool is full or it did not compile");
 }
 
@@ -179,7 +179,7 @@ function stencilRefusal(key: PipelineKey): string {
 }
 
 @noinline function stopOnRefusedPipeline(key: PipelineKey): never {
-	stop(`sokol refused pipeline ${key.toString()}; ` +
+	stop(`the GPU device refused pipeline ${key.toString()}; ` +
 		"its pool is full or its description is invalid");
 }
 

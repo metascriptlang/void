@@ -4,6 +4,8 @@
 // expect uniformOverrun: dynamic offset 512 at index 0 overruns its uniform buffer
 // expect groupFromOtherPipeline: was made for GPURenderPipeline 65538, not the bound pipeline 65537
 // expect shaderDestroyed: the shader module of GPURenderPipeline 65537 was destroyed
+// expect indexRangeOverrun: drawIndexed index range (first 0, count 9, uint16) needs 18 bytes of the index buffer, which has 16 bound
+// expect vertexRangeOverrun: draw vertex range (first 0, count 4) needs 32 bytes of the vertex buffer at slot 0, which has 24 bound
 import { argv } from "std/process";
 import {
 	GPUBindGroupDescriptor,
@@ -44,7 +46,8 @@ function run(name: string): void {
 		console.log("an indirect dispatch from a buffer without INDIRECT returned");
 		return;
 	}
-	if (name != "stripIndexMismatch" && name != "shaderDestroyed" && name != "uniformOverrun" && name != "groupFromOtherPipeline") {
+	const draws = ["stripIndexMismatch", "shaderDestroyed", "uniformOverrun", "groupFromOtherPipeline", "indexRangeOverrun", "vertexRangeOverrun"];
+	if (!draws.includes(name)) {
 		console.log(`no case named '${name}'`);
 		process.exit(2);
 	}
@@ -88,8 +91,12 @@ function run(name: string): void {
 	pass.setVertexBuffer(0, vertexBuffer(device, 24), 0);
 	pass.setBindGroup(0, group, offsets);
 	pass.setIndexBuffer(indices, name == "stripIndexMismatch" ? "uint32" : "uint16", 0);
-	pass.drawIndexed(3, 1, 0, 0, 0);
-	console.log(`${name}: the indexed draw returned`);
+	if (name == "vertexRangeOverrun") {
+		pass.draw(4, 1, 0, 0);
+	} else {
+		pass.drawIndexed(name == "indexRangeOverrun" ? 9 : 3, 1, 0, 0, 0);
+	}
+	console.log(`${name}: the draw returned`);
 }
 
 run((argv.length as int32) > 1 ? argv[1] : "");

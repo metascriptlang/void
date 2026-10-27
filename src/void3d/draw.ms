@@ -5,9 +5,10 @@
 // DrawContext owns everything items point into: GPU meshes, materials, textures, the uniform pool
 // and the pipeline cache. Items and materials are plain values holding indices and handles.
 
-import { Mat4, normalMatrix, writeTo } from "../math/math3d";
+import { Mat4 } from "../math/math3d";
 import { SkinPose } from "./skinPose";
 import { SkinGeometry, spatialReady } from "./skinGeometry";
+import { MeshLodPick } from "./meshLod";
 import { isLive } from "./scene";
 import {
 	VertexLayout,
@@ -16,7 +17,7 @@ import {
 	Program,
 	drawsQuads,
 	vertexLayoutOf,
-	meshLayoutOf,
+	readsInstanceRows,
 	doorProgram,
 	applyPipeline,
 	applyBindings,
@@ -28,6 +29,7 @@ import {
 	makeIndexBuffer32,
 	makeStreamBuffer,
 	updateBuffer,
+	appendBuffer,
 	destroyBuffer,
 	destroyImage,
 	textureSlotMask,
@@ -41,9 +43,14 @@ import {
 	SHADOW_SAMPLER_SLOT,
 	SPOT_SHADOW_VIEW_SLOT,
 	SPOT_SHADOW_SAMPLER_SLOT,
+	CUBE_SHADOW_VIEW_SLOT,
 	ENV_DIFFUSE_VIEW_SLOT,
 	ENV_SPECULAR_VIEW_SLOT,
 	ENV_SAMPLER_SLOT,
+	LIGHT_RECORDS_VIEW_SLOT,
+	CLUSTER_RECORDS_VIEW_SLOT,
+	CLUSTER_INDICES_VIEW_SLOT,
+	CLUSTER_SAMPLER_SLOT,
 	NORMAL_VIEW_SLOT,
 } from "./gpu3d";
 import {
@@ -208,18 +215,26 @@ export struct DrawItem {
 	skinPalette: int32;
 	range: DrawRange | null;
 	instances: InstanceRun | null;
+	lod: MeshLodPick | null;
 }
 
-// What an instanced program draws the item's mesh once each for: `count` instances of the
-// stream `stream` from instance `first` (docs/PARTICLES-RENDER.md A.2.1).
+// The instance rows a mesh item draws its mesh once each for, in place of the one row its world
+// matrix makes: `count` rows of the MeshInstances stream `stream` from row `first`
+// (docs/PARTICLES-RENDER.md A.2.1).
 export struct InstanceRun {
 	stream: MeshId;
 	first: int32;
 	count: int32;
 }
 
+export function drawnRange(this item: Readonly<DrawItem>): DrawRange | null {
+	const pick = item.lod;
+	if (pick === null) { return item.range; }
+	return { base: pick.range.base, count: pick.range.count };
+}
+
 export function validRange(this item: Readonly<DrawItem>, total: int32): boolean {
-	const range = item.range;
+	const range = item.drawnRange();
 	return range === null || (range.base >= 0 && range.count >= 0 &&
 		range.base <= total && range.count <= total - range.base);
 }
@@ -230,10 +245,13 @@ export function validInstances(
 	program: ProgramKey,
 ): boolean {
 	const run = item.instances;
-	if (!program.instanced) { return run === null; }
-	if (run === null || !context.hasMesh(run.stream)) { return false; }
+	if (run === null) { return true; }
+	if (program.skinned || !readsInstanceRows(vertexLayoutOf(program)) ||
+		!context.hasMesh(run.stream)) {
+		return false;
+	}
 	const stream: GpuMesh = context.meshes[run.stream.index];
-	return stream.layout == VertexLayout.InstancedLitTextured && run.first >= 0 &&
+	return stream.layout == VertexLayout.MeshInstances && run.first >= 0 &&
 		run.count >= 0 && run.first <= stream.instanceCount &&
 		run.count <= stream.instanceCount - run.first;
 }
@@ -255,11 +273,6 @@ export function validSkin(this item: Readonly<DrawItem>, program: ProgramKey): b
 	}
 	return pose.blocks[item.skinPalette].length == SKIN_UNIFORM_LENGTH;
 }
-
-// Slot 4, matching `@binding(4) modelParams` in shader3d.ms, a slot no
-// other block uses: a program gets the model matrix exactly when it declares that slot.
-export const MODEL_SLOT: int32 = 4;
-export const MODEL_LENGTH: int32 = 32;
 
 export struct DoomedBuffer {
 	buffer: uint32;
@@ -308,7 +321,15 @@ export interface DrawContext {
 	doomed: Vec<DoomedBuffer>;
 	pipelines: PipelineCache;
 	bindings: Vec<uint32>;
-	model: Vec<float32>;
+	// The rows of the draw being made (writeInstanceRow), and the stream buffer every draw of a
+	// frame appends its rows to, as Bevy's batches index one MeshUniform buffer: `rowFloats` is
+	// its size, `rowFrame` the frame whose appends `rowsUsed` counts.
+	rows: Vec<float32>;
+	rowBuffer: uint32;
+	rowGeneration: int32;
+	rowFloats: int32;
+	rowsUsed: int32;
+	rowFrame: uint32;
 	closed: boolean;
 }
 
@@ -382,10 +403,6 @@ function contextOf(uniforms: UniformPool): DrawContext {
 	for (let i = 0; i < GPU3D_BINDING_LENGTH; i++) {
 		bindings[i] = 0;
 	}
-	let model: Vec<float32> = new Array(MODEL_LENGTH);
-	for (let i = 0; i < MODEL_LENGTH; i++) {
-		model[i] = 0.0;
-	}
 	let samplers: Vec<uint32> = new Array(SAMPLER_SETTINGS);
 	for (let i = 0; i < SAMPLER_SETTINGS; i++) {
 		samplers[i] = 0;
@@ -427,7 +444,12 @@ function contextOf(uniforms: UniformPool): DrawContext {
 		doomed: [],
 		pipelines: PipelineCache.empty(),
 		bindings: bindings,
-		model: model,
+		rows: [],
+		rowBuffer: 0,
+		rowGeneration: 0,
+		rowFloats: 0,
+		rowsUsed: 0,
+		rowFrame: 0,
 		closed: false,
 	};
 }
@@ -516,6 +538,13 @@ export function addMesh(context: DrawContext, mesh: GpuMesh): Result<MeshId, Mes
 }
 
 function layoutOf(this data: MeshData): VertexLayout {
+	if (data.hasUvB) {
+		if (data.hasSkin) {
+			return data.hasTangents
+				? VertexLayout.SkinLitTexturedTangentUvB : VertexLayout.SkinLitTexturedUvB;
+		}
+		return data.hasTangents ? VertexLayout.LitTexturedTangentUvB : VertexLayout.LitTexturedUvB;
+	}
 	if (data.hasSkin) {
 		if (data.hasTangents) { return VertexLayout.SkinLitTexturedTangent; }
 		return data.hasUvs ? VertexLayout.SkinLitTextured : VertexLayout.SkinLit;
@@ -740,6 +769,7 @@ export function setMeshVertices(
 		context.meshData[index].indexCount() != source.indexCount() ||
 		context.meshData[index].hasUvs != source.hasUvs ||
 		context.meshData[index].hasTangents != source.hasTangents ||
+		context.meshData[index].hasUvB != source.hasUvB ||
 		context.meshData[index].hasSkin != source.hasSkin) {
 		return Result.err(MeshWriteError.Shape);
 	}
@@ -778,6 +808,9 @@ export function uploadDirtyMeshes(context: DrawContext): Result<int32, MeshWrite
 }
 
 export const STREAM_INSTANCE_STRIDE: int32 = 8;
+// A mesh instance row: the world affine's three rows, then a straight RGBA colour the mesh's
+// vertex colour is multiplied by (shader3d.ms instanceWorld).
+export const MESH_INSTANCE_STRIDE: int32 = 16;
 
 export enum StreamError {
 	StaleMesh,
@@ -796,7 +829,7 @@ export function isStream(this mesh: GpuMesh): boolean {
 function streamStride(layout: VertexLayout): int32 {
 	if (layout == VertexLayout.Particle) { return STREAM_INSTANCE_STRIDE; }
 	if (layout == VertexLayout.ParticleVisual) { return 36; }
-	if (layout == VertexLayout.InstancedLitTextured) { return 16; }
+	if (layout == VertexLayout.MeshInstances) { return MESH_INSTANCE_STRIDE; }
 	console.error(`void3d: ${layout.toString()} is not a particle stream layout`);
 	unreachable;
 }
@@ -1743,39 +1776,42 @@ function stopOnLongBlock(program: ProgramKey, block: UniformBlock, declared: int
 	unreachable;
 }
 
-// An hxsl global texture (Heaps' `shadow.map`) of the sun and of the shadowing spot, and the
-// environment's cubes (pbrIndirect's irrDiffuse and irrSpecular), bound past a material's slots.
+// An hxsl global texture (Heaps' `shadow.map`) of the sun, the shadowing spot and point, the
+// environment's cubes (pbrIndirect's irrDiffuse and irrSpecular) and the frame's clustered
+// lights (clusterFrame.ms), bound past a material's slots.
 export struct SceneTexture {
 	view: uint32;
 	sampler: uint32;
 	spotView: uint32;
 	spotSampler: uint32;
+	cubeView: uint32;
 	envDiffuse: uint32;
 	envSpecular: uint32;
 	envSampler: uint32;
+	lightRecords: uint32;
+	clusterRecords: uint32;
+	clusterIndices: uint32;
+	clusterSampler: uint32;
 }
 
 export const NO_SCENE_TEXTURE: SceneTexture = {
-	view: 0, sampler: 0, spotView: 0, spotSampler: 0, envDiffuse: 0, envSpecular: 0, envSampler: 0,
+	view: 0, sampler: 0, spotView: 0, spotSampler: 0, cubeView: 0, envDiffuse: 0, envSpecular: 0,
+	envSampler: 0, lightRecords: 0, clusterRecords: 0, clusterIndices: 0, clusterSampler: 0,
 };
 
+// `rows` and `rowOffset` are slot 1's buffer and byte offset, 0 for a layout that reads none.
 function bindItem(
 	context: DrawContext,
 	mesh: GpuMesh,
-	instances: InstanceRun | null,
+	rows: uint32,
+	rowOffset: int32,
 	material: Material,
 	scene: SceneTexture,
 ): void {
 	context.bindings[GPU3D_BINDING_VERTEX_BUFFER] =
 		drawsQuads(mesh.layout) ? mesh.instanceBuffer : mesh.vertexBuffer;
-	context.bindings[GPU3D_BINDING_VERTEX_BUFFER + 1] = 0;
-	context.bindings[GPU3D_BINDING_VERTEX_OFFSET] = 0;
-	if (instances !== null) {
-		const stream: GpuMesh = context.meshes[instances.stream.index];
-		context.bindings[GPU3D_BINDING_VERTEX_BUFFER + 1] = stream.instanceBuffer;
-		context.bindings[GPU3D_BINDING_VERTEX_OFFSET] =
-			(instances.first * streamStride(stream.layout) * 4) as uint32;
-	}
+	context.bindings[GPU3D_BINDING_VERTEX_BUFFER + 1] = rows;
+	context.bindings[GPU3D_BINDING_VERTEX_OFFSET] = rowOffset as uint32;
 	context.bindings[GPU3D_BINDING_INDEX_BUFFER] = mesh.indexBuffer;
 	context.bindings[GPU3D_BINDING_VIEW] = material.texture0;
 	context.bindings[GPU3D_BINDING_VIEW + 1] = material.texture1;
@@ -1798,9 +1834,14 @@ function bindItem(
 	context.bindings[GPU3D_BINDING_SAMPLER + SHADOW_SAMPLER_SLOT] = scene.sampler;
 	context.bindings[GPU3D_BINDING_VIEW + SPOT_SHADOW_VIEW_SLOT] = scene.spotView;
 	context.bindings[GPU3D_BINDING_SAMPLER + SPOT_SHADOW_SAMPLER_SLOT] = scene.spotSampler;
+	context.bindings[GPU3D_BINDING_VIEW + CUBE_SHADOW_VIEW_SLOT] = scene.cubeView;
 	context.bindings[GPU3D_BINDING_VIEW + ENV_DIFFUSE_VIEW_SLOT] = scene.envDiffuse;
 	context.bindings[GPU3D_BINDING_VIEW + ENV_SPECULAR_VIEW_SLOT] = scene.envSpecular;
 	context.bindings[GPU3D_BINDING_SAMPLER + ENV_SAMPLER_SLOT] = scene.envSampler;
+	context.bindings[GPU3D_BINDING_VIEW + LIGHT_RECORDS_VIEW_SLOT] = scene.lightRecords;
+	context.bindings[GPU3D_BINDING_VIEW + CLUSTER_RECORDS_VIEW_SLOT] = scene.clusterRecords;
+	context.bindings[GPU3D_BINDING_VIEW + CLUSTER_INDICES_VIEW_SLOT] = scene.clusterIndices;
+	context.bindings[GPU3D_BINDING_SAMPLER + CLUSTER_SAMPLER_SLOT] = scene.clusterSampler;
 	applyBindings(context.bindings);
 }
 
@@ -1902,6 +1943,133 @@ export function drawItemWith(
 	scene: SceneTexture,
 ): void {
 	if (context.closed) { stopOnClosedContext("drawItem"); }
+	stageRows(context, 1);
+	writeInstanceRow(context, 0, item.world);
+	drawStaged(context, item, 1, program, state, targets, globals, scene);
+}
+
+// The items at `batch`, neighbours that differ only in their world matrices, as one instanced
+// draw of their rows in their order (Bevy's batch_and_prepare_binned_render_phase). The pass
+// list makes the batches: opaque items whose mesh, material and range are the same (sameBatch),
+// so their program and state are too.
+export function drawBatchWith(
+	context: DrawContext,
+	items: Readonly<Span<DrawItem>>,
+	batch: Readonly<Span<int32>>,
+	program: ProgramKey,
+	state: RenderState,
+	targets: TargetLayout,
+	globals: Readonly<Span<UniformBlock>>,
+	scene: SceneTexture,
+): void {
+	if (context.closed) { stopOnClosedContext("drawItem"); }
+	const count: int32 = batch.length as int32;
+	if (count == 0) { return; }
+	const first: Readonly<DrawItem> = items[batch[0]];
+	stageRows(context, count);
+	for (let i = 0; i < count; i++) {
+		if (!first.sameBatch(items[batch[i]])) { stopOnMixedBatch(i); }
+		writeInstanceRow(context, i, items[batch[i]].world);
+	}
+	drawStaged(context, first, count, program, state, targets, globals, scene);
+}
+
+// Whether `item` can share an instanced draw with `first`: the same mesh, material and range,
+// and nothing but a world matrix of its own.
+export function sameBatch(this first: Readonly<DrawItem>, item: Readonly<DrawItem>): boolean {
+	const range = item.drawnRange();
+	const firstRange = first.drawnRange();
+	const sameRange: boolean = range === null ? firstRange === null :
+		firstRange !== null && range.base == firstRange.base && range.count == firstRange.count;
+	return item.mesh.index == first.mesh.index && item.mesh.generation == first.mesh.generation &&
+		item.material.index == first.material.index &&
+		item.material.generation == first.material.generation && sameRange &&
+		alone(first) && alone(item);
+}
+
+function alone(item: Readonly<DrawItem>): boolean {
+	return item.skin === null && item.skinGeometry === null && item.instances === null;
+}
+
+function stopOnMixedBatch(at: int32): void {
+	console.log(`void3d: drawBatchWith item ${at} differs from the first in more than its world ` +
+		"matrix");
+	unreachable;
+}
+
+function stageRows(context: DrawContext, count: int32): void {
+	const floats: int32 = count * MESH_INSTANCE_STRIDE;
+	while ((context.rows.length as int32) < floats) { context.rows.push(0.0); }
+}
+
+// Heaps' Mat4 holds the translation in m41..m43, so row i of the affine is column i of the
+// fields; the colour is white.
+function writeInstanceRow(context: DrawContext, at: int32, world: Mat4): void {
+	const base: int32 = at * MESH_INSTANCE_STRIDE;
+	context.rows[base] = world.m11;
+	context.rows[base + 1] = world.m21;
+	context.rows[base + 2] = world.m31;
+	context.rows[base + 3] = world.m41;
+	context.rows[base + 4] = world.m12;
+	context.rows[base + 5] = world.m22;
+	context.rows[base + 6] = world.m32;
+	context.rows[base + 7] = world.m42;
+	context.rows[base + 8] = world.m13;
+	context.rows[base + 9] = world.m23;
+	context.rows[base + 10] = world.m33;
+	context.rows[base + 11] = world.m43;
+	for (let i = 12; i < MESH_INSTANCE_STRIDE; i++) { context.rows[base + i] = 1.0; }
+}
+
+const MIN_ROW_FLOATS: int32 = 1024 * MESH_INSTANCE_STRIDE;
+
+// Appends the `count` staged rows to the frame's row buffer and answers their byte offset. A
+// frame that outgrows the buffer moves on to one twice as large; draws already made keep
+// reading the old one, which goes at the next buryDoomed.
+function appendRows(context: DrawContext, count: int32): int32 {
+	const floats: int32 = count * MESH_INSTANCE_STRIDE;
+	const generation: int32 = contextGeneration();
+	if (context.rowBuffer != 0 && context.rowGeneration != generation) { context.rowBuffer = 0; }
+	const frame: uint32 = frameIndex();
+	if (context.rowFrame != frame) {
+		context.rowFrame = frame;
+		context.rowsUsed = 0;
+	}
+	if (context.rowBuffer == 0 || context.rowsUsed + floats > context.rowFloats) {
+		let size: int32 = Math.max(context.rowFloats * 2, MIN_ROW_FLOATS);
+		while (size < floats) { size = size * 2; }
+		doom(context, context.rowBuffer, context.rowGeneration);
+		context.rowBuffer = makeStreamBuffer(size);
+		if (context.rowBuffer == 0) {
+			console.log(`void3d: drawItem could not make a row buffer of ${size} floats`);
+			unreachable;
+		}
+		context.rowGeneration = generation;
+		context.rowFloats = size;
+		context.rowsUsed = 0;
+	}
+	const offset: int32 = appendBuffer(context.rowBuffer, context.rows[0..floats]);
+	if (offset < 0) {
+		console.log(`void3d: drawItem appended ${floats} row floats past the ` +
+			`${context.rowFloats} its buffer holds`);
+		unreachable;
+	}
+	context.rowsUsed = context.rowsUsed + floats;
+	return offset;
+}
+
+// One draw of `item`'s mesh, material and range, over the `staged` rows stageRows holds, or
+// over its InstanceRun when it has one.
+function drawStaged(
+	context: DrawContext,
+	item: Readonly<DrawItem>,
+	staged: int32,
+	program: ProgramKey,
+	state: RenderState,
+	targets: TargetLayout,
+	globals: Readonly<Span<UniformBlock>>,
+	scene: SceneTexture,
+): void {
 	if (!context.hasMesh(item.mesh) || !context.hasMaterial(item.material)) { stopOnUnheldItem(); }
 	for (const block of globals) {
 		if (!context.uniforms.holds(block)) { stopOnUnheldBlock(block.slot); }
@@ -1915,12 +2083,10 @@ export function drawItemWith(
 		console.log("void3d: drawItem with invalid skin pose or element range");
 		unreachable;
 	}
-	if (!item.validInstances(context, program) ||
-		(program.instanced && mesh.layout != meshLayoutOf(program))) {
-		stopOnUntakenInstances(program, mesh.layout);
-	}
+	if (!item.validInstances(context, program)) { stopOnUntakenInstances(program, mesh.layout); }
 	const run = item.instances;
-	const instanceCount: int32 = run === null ? mesh.instanceCount : run.count;
+	const rowsRead: boolean = readsInstanceRows(mesh.layout);
+	const instanceCount: int32 = run !== null ? run.count : rowsRead ? staged : mesh.instanceCount;
 	if (mesh.hasNothingToDraw() || instanceCount == 0) { return; }
 	if (context.meshStorage[item.mesh.index] == VertexStorage.Pending) {
 		console.log("void3d: drawItem on a dynamic mesh whose vertices were not uploaded; " +
@@ -1946,23 +2112,24 @@ export function drawItemWith(
 	const pipeline: uint32 = pipelineFor(
 		context.pipelines,
 		program,
-		program.instanced ? vertexLayoutOf(program) : mesh.layout,
+		mesh.layout,
 		mesh.isIndexed(),
 		state,
 		targets,
 		mesh.indexType(),
 	);
 	applyPipeline(pipeline);
-	bindItem(context, mesh, run, material, scene);
-	let globalProgram: int32 = doorProgram(program);
-	if (context.pipelines.declaresBlock(globalProgram, MODEL_SLOT)) {
-		const modelLength: int32 = uniformBlockLength(program, MODEL_SLOT);
-		item.world.writeTo(context.model[0..MODEL_LENGTH], 0);
-		if (modelLength == MODEL_LENGTH) {
-			item.world.normalMatrix().writeTo(context.model[0..MODEL_LENGTH], 16);
-		}
-		applyUniforms(MODEL_SLOT, context.model[0..modelLength]);
+	if (run !== null) {
+		const stream: GpuMesh = context.meshes[run.stream.index];
+		bindItem(context, mesh, stream.instanceBuffer, run.first * MESH_INSTANCE_STRIDE * 4,
+			material, scene);
+	} else if (rowsRead) {
+		const offset: int32 = appendRows(context, staged);
+		bindItem(context, mesh, context.rowBuffer, offset, material, scene);
+	} else {
+		bindItem(context, mesh, 0, 0, material, scene);
 	}
+	let globalProgram: int32 = doorProgram(program);
 	const pose = item.skinPoseOf();
 	if (pose !== null) { applyUniforms(SKIN_UNIFORM_SLOT, pose.blocks[item.skinPalette]); }
 	for (const block of globals) {
@@ -1976,7 +2143,7 @@ export function drawItemWith(
 		const declared: int32 = uniformBlockLength(program, material.uniforms.slot);
 		context.applyBlockHead(material.uniforms, program, declared);
 	}
-	const range = item.range;
+	const range = item.drawnRange();
 	if (range === null) {
 		draw(0, mesh.elementCount(), instanceCount);
 	} else {
@@ -1998,6 +2165,8 @@ export function closeContext(context: DrawContext): void {
 		stopOnLiveHolds(context, meshes, materials, textures, ranges);
 	}
 	const generation: int32 = contextGeneration();
+	doom(context, context.rowBuffer, context.rowGeneration);
+	context.rowBuffer = 0;
 	const _buried: int32 = buryDoomed(context, generation);
 	if (context.samplerGeneration == generation) {
 		for (const sampler of context.samplers) {

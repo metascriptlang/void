@@ -4,10 +4,13 @@ import {
 	GPUBuffer,
 	GPUBufferUsage,
 	GPUDevice,
+	GPULoadOp,
 	GPUMapMode,
 	GPURenderPassDescriptor,
 	GPURenderPassEncoder,
 	GPURenderPipeline,
+	GPURenderPipelineDescriptor,
+	GPUShaderModule,
 	GPUTexture,
 	GPUTextureUsage,
 	GPUTextureView,
@@ -51,7 +54,7 @@ export function colourTarget(device: GPUDevice, sampleCount: int32): GPUTexture 
 	});
 }
 
-export function drawOverLoadedStencil(device: GPUDevice, tester: GPURenderPipeline, target: GPUTexture): void {
+export function drawOverLoadedStencil(device: GPUDevice, tester: GPURenderPipeline, target: GPUTexture, depthLoadOp: GPULoadOp = "clear"): void {
 	const vertices = vertexBuffer(device, 32);
 	const full: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0];
 	device.queue.writeBuffer(vertices, 0, full);
@@ -66,7 +69,7 @@ export function drawOverLoadedStencil(device: GPUDevice, tester: GPURenderPipeli
 	first.depthStencilAttachment = {
 		view: depth.createView({ label: null }),
 		depthClearValue: 1.0,
-		depthLoadOp: "clear",
+		depthLoadOp: depthLoadOp,
 		depthStoreOp: "store",
 		stencilClearValue: 1,
 		stencilLoadOp: "clear",
@@ -83,6 +86,66 @@ export function drawOverLoadedStencil(device: GPUDevice, tester: GPURenderPipeli
 	pass.setVertexBuffer(0, vertices, 0);
 	pass.setBindGroup(GPU_UNIFORM_GROUP, uniformGroup(device, tester, colourUniforms(device)), green);
 	pass.draw(4, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+}
+
+export function drawMaskedTriangle(device: GPUDevice, module: GPUShaderModule, writeMask: int32 | null, target: GPUTexture): void {
+	let descriptor: GPURenderPipelineDescriptor = { label: "masked" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	descriptor.fragment.targets[0].writeMask = writeMask;
+	const pipeline = device.createRenderPipeline(descriptor);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	drawTriangleIn(device, pipeline, pass);
+	pass.end();
+	device.queue.submit(encoder.finish());
+}
+
+// Two indirect records in one call: the left triangle in instance 1's colour, then the right one
+// reached only through firstIndex 3 and baseVertex 3, in instance 2's colour.
+export function drawIndirectRows(device: GPUDevice, module: GPUShaderModule, target: GPUTexture): void {
+	let descriptor: GPURenderPipelineDescriptor = { label: "indirect rows" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.vertex.buffers[1].arrayStride = 4;
+	descriptor.vertex.buffers[1].stepMode = "instance";
+	descriptor.vertex.buffers[1].attributes[0] = { format: "unorm8x4", offset: 0, shaderLocation: 1 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	const pipeline = device.createRenderPipeline(descriptor);
+	const positions = vertexBuffer(device, 72);
+	const corners: Vec<float32> = [-1.0, -1.0, 0.0, -1.0, -1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1.0, 1.0, 1.0, 0.0, 1.0];
+	device.queue.writeBuffer(positions, 0, corners);
+	const colours = vertexBuffer(device, 12);
+	const rows: Vec<uint8> = [0, 0, 0, 255, 0, 255, 0, 255, 255, 0, 0, 255];
+	device.queue.writeBuffer(colours, 0, rows);
+	const indices = device.createBuffer({
+		label: "indirect indices",
+		size: 12,
+		usage: (GPUBufferUsage.INDEX as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const order: Vec<uint16> = [0, 1, 2, 3, 4, 5];
+	device.queue.writeBuffer(indices, 0, order);
+	const records = device.createBuffer({
+		label: "indirect records",
+		size: 40,
+		usage: (GPUBufferUsage.INDIRECT as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const draws: Vec<uint32> = [3, 1, 0, 0, 1, 3, 1, 3, 3, 2];
+	device.queue.writeBuffer(records, 0, draws);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, positions, 0);
+	pass.setVertexBuffer(1, colours, 0);
+	pass.setIndexBuffer(indices, "uint16", 0);
+	pass.multiDrawIndexedIndirect(records, 0, 2);
 	pass.end();
 	device.queue.submit(encoder.finish());
 }

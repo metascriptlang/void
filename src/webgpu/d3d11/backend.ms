@@ -64,6 +64,7 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	GPU_DRAW_INDEXED_INDIRECT_STRIDE,
 	checkedDepthTexelCopy,
 	samplerMaxLod,
 	checkedTexelBufferLayout,
@@ -85,6 +86,7 @@ import {
 	occlusionSetId,
 	stencil8Mask,
 	boundFacts,
+	colorWriteBits,
 } from "../validate.ms";
 import {
 	TextureRecord,
@@ -171,6 +173,7 @@ import {
 	d3dDraw,
 	d3dDrawIndexed,
 	d3dDrawIndexedInstanced,
+	d3dDrawIndexedInstancedIndirect,
 	d3dDrawInstanced,
 	d3dDsvFrom,
 	d3dIaSetIndexBuffer,
@@ -1003,6 +1006,7 @@ export function features(): GPUSupportedFeatures {
 	if ((float32 & FORMAT_CAP_SAMPLE) != 0) { bits |= featureBit("float32-filterable"); }
 	if ((float32 & FORMAT_CAP_BLEND) != 0) { bits |= featureBit("float32-blendable"); }
 	if ((formatCaps("rg11b10ufloat") & FORMAT_CAP_RENDER) != 0) { bits |= featureBit("rg11b10ufloat-renderable"); }
+	bits |= featureBit("indirect-first-instance");
 	return { bits: bits };
 }
 
@@ -1187,8 +1191,18 @@ export function destroyTexture(texture: GPUTexture): void {
 	vacate(textures, texture.id);
 }
 
+function nativeOf(index: int32): Ptr<D3dTextureImpl> {
+	const swapchainView = textureRecords.slots[index].swapchainView;
+	if (textures[index].native == null && swapchainView != 0) {
+		const v = viewRecords.slotIndex(swapchainView);
+		const multisampled = textureRecords.slots[index].sampleCount > 1;
+		textures[index].native = d3dRtvTexture(multisampled ? views[v].swapchainResolve : views[v].renderTarget);
+	}
+	return textures[index].native;
+}
+
 export function nativeTexture(texture: GPUTexture): Ptr<void> {
-	return d3dTextureNative(textures[textureRecords.slotIndex(texture.id)].native);
+	return d3dTextureNative(nativeOf(textureRecords.slotIndex(texture.id)));
 }
 
 export function writeTexture<T>(
@@ -1222,7 +1236,7 @@ export function writeTexture<T>(
 	if (volume) {
 		d3dUpdateTexture(
 			context,
-			textures[index].native,
+			nativeOf(index),
 			data[0],
 			layout.offset,
 			rowPitch,
@@ -1240,7 +1254,7 @@ export function writeTexture<T>(
 	for (let i = 0; i < size.depthOrArrayLayers; i++) {
 		d3dUpdateTexture(
 			context,
-			textures[index].native,
+			nativeOf(index),
 			data[0],
 			layout.offset + imageBytes * (i as int64),
 			rowPitch,
@@ -1272,7 +1286,7 @@ function copyDestinationBuffer(buffer: GPUBuffer, member: string): int32 {
 
 function copyableTexture(info: GPUTexelCopyTextureInfo, member: string): int32 {
 	const index = textureRecords.slotIndex(info.texture.id);
-	if (textureRecords.slots[index].swapchainView != 0 && textures[index].native == null) { stop(`${member}: the swapchain texture has no resolved back buffer to copy`); }
+	if (textureRecords.slots[index].swapchainView != 0 && nativeOf(index) == null) { stop(`${member}: the swapchain texture has no resolved back buffer to copy`); }
 	return index;
 }
 
@@ -1309,7 +1323,7 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 		const copied = d3dCopyTextureToBuffer(
 			device,
 			context,
-			textures[from].native,
+			nativeOf(from),
 			source.mipLevel + (source.origin.z + i) * mips,
 			source.origin.x,
 			source.origin.y,
@@ -1349,7 +1363,7 @@ export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination:
 			readable,
 			offset + imageBytes * (i as int64),
 			bytesPerRow,
-			textures[to].native,
+			nativeOf(to),
 			destination.mipLevel + (destination.origin.z + i) * mips,
 			destination.origin.x,
 			destination.origin.y,
@@ -1367,12 +1381,12 @@ export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destinatio
 	if (textureRecords.slots[from].volume) {
 		d3dCopyTexture(
 			context,
-			textures[to].native,
+			nativeOf(to),
 			destination.mipLevel,
 			destination.origin.x,
 			destination.origin.y,
 			destination.origin.z,
-			textures[from].native,
+			nativeOf(from),
 			source.mipLevel,
 			source.origin.x,
 			source.origin.y,
@@ -1386,12 +1400,12 @@ export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destinatio
 	for (let i = 0; i < size.depthOrArrayLayers; i++) {
 		d3dCopyTexture(
 			context,
-			textures[to].native,
+			nativeOf(to),
 			destination.mipLevel + (destination.origin.z + i) * textureRecords.slots[to].mipLevels,
 			destination.origin.x,
 			destination.origin.y,
 			0,
-			textures[from].native,
+			nativeOf(from),
 			source.mipLevel + (source.origin.z + i) * textureRecords.slots[from].mipLevels,
 			source.origin.x,
 			source.origin.y,
@@ -1456,7 +1470,7 @@ export function createView(view: ViewRecord, descriptor: GPUTextureViewDescripto
 		swapchainResolve: NO_RTV,
 		volumeTarget: volumeTarget,
 	};
-	const native = textures[t].native;
+	const native = nativeOf(t);
 	if (has(usage, GPUTextureUsage.TEXTURE_BINDING as int32)) {
 		if (dimension == VIEW_2D && baseLayer > 0) { dimension = VIEW_2D_ARRAY; }
 		slot.shaderResource = d3dCreateSrv(device, native, info.shaderResource, multisampled, dimension, baseMip, mipCount, baseLayer, layerCount);
@@ -1496,8 +1510,7 @@ export function acquireSwapchain(swapchain: NativeSwapchain): void {
 	const v = viewRecords.slotIndex(textureRecords.slots[textureRecords.slotIndex(swapchainColor)].swapchainView);
 	views[v].renderTarget = d3dRtvFrom(swapchain.renderView);
 	views[v].swapchainResolve = d3dRtvFrom(swapchain.resolveView);
-	const resolved = swapchain.sampleCount > 1 ? views[v].swapchainResolve : views[v].renderTarget;
-	textures[textureRecords.slotIndex(swapchainColor)].native = d3dRtvTexture(resolved);
+	textures[textureRecords.slotIndex(swapchainColor)].native = NO_TEXTURE;
 	if (swapchainDepth != 0) {
 		const d = viewRecords.slotIndex(textureRecords.slots[textureRecords.slotIndex(swapchainDepth)].swapchainView);
 		views[d].depthStencil = d3dDsvFrom(swapchain.depthStencilView);
@@ -1779,7 +1792,7 @@ function createBlendState(descriptor: GPURenderPipelineDescriptor): Ptr<D3dBlend
 		targets[count * BLEND_TARGET_INTS + 5] = blendFactor(alpha.srcFactor, true, "blend.alpha.srcFactor");
 		targets[count * BLEND_TARGET_INTS + 6] = destinationFactor(alpha.dstFactor, true, "blend.alpha.dstFactor");
 		targets[count * BLEND_TARGET_INTS + 7] = blendOperation(alpha.operation, "blend.alpha.operation");
-		targets[count * BLEND_TARGET_INTS + 8] = writeMask == 0 ? COLOR_WRITE_ALL : writeMask;
+		targets[count * BLEND_TARGET_INTS + 8] = colorWriteBits(writeMask);
 		count += 1;
 	}
 	return d3dCreateBlendState(device, targets[0], count);
@@ -1867,7 +1880,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		if (views[v].volumeTarget) {
 			const volume = textureRecords.slotIndex(viewRecords.slots[v].texture);
 			const format = textures[volume].info.renderTarget;
-			pass.sliceTargets[i] = d3dCreateRtv3d(device, textures[volume].native, format, viewRecords.slots[v].baseMip, slice);
+			pass.sliceTargets[i] = d3dCreateRtv3d(device, nativeOf(volume), format, viewRecords.slots[v].baseMip, slice);
 			if (pass.sliceTargets[i] == null) { stop(`CreateRenderTargetView failed for slice ${slice} of GPUTexture ${textureRecords.slots[volume].id}`); }
 			targets[i] = pass.sliceTargets[i];
 		} else {
@@ -1946,7 +1959,7 @@ export function endPass(): void {
 			const format = textures[source].info.renderTarget;
 			const target = viewRecords.slotIndex(pass.resolveViews[i]);
 			const subresource = viewRecords.slots[target].baseMip + viewRecords.slots[target].baseLayer * textureRecords.slots[destination].mipLevels;
-			d3dResolveSubresource(context, textures[destination].native, subresource, textures[source].native, format);
+			d3dResolveSubresource(context, nativeOf(destination), subresource, nativeOf(source), format);
 		}
 		if (pass.sliceTargets[i] != null) {
 			d3dRelease(pass.sliceTargets[i] as Ptr<void>);
@@ -2106,6 +2119,14 @@ export function drawIndexed(
 		d3dDrawIndexedInstanced(context, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 	} else {
 		d3dDrawIndexed(context, indexCount, firstIndex, baseVertex);
+	}
+}
+
+export function multiDrawIndexedIndirect(buffer: GPUBuffer, offset: int64, drawCount: int32): void {
+	flush(true);
+	const native = buffers[slotOf(buffer.id)].native;
+	for (let i = 0; i < drawCount; i++) {
+		d3dDrawIndexedInstancedIndirect(context, native, offset + (i as int64) * GPU_DRAW_INDEXED_INDIRECT_STRIDE);
 	}
 }
 

@@ -4,6 +4,7 @@
 
 import { mkdir, readFile, writeFile } from "std/fs";
 import {
+	Access,
 	AssignOp,
 	Builtin,
 	ExprKind,
@@ -40,6 +41,7 @@ import {
 	U32,
 	VEC3,
 	VEC4,
+	block,
 	blurModule,
 	caseOf,
 	computeModule,
@@ -47,6 +49,7 @@ import {
 	depthModule,
 	entry,
 	f32,
+	field,
 	fragmentModule,
 	i32,
 	io,
@@ -55,9 +58,11 @@ import {
 	local,
 	prepend,
 	resource,
+	resourceOf,
 	ret,
 	shaderFunction,
 	single,
+	tiny,
 	update,
 	vertexModule,
 } from "./shaderProbeModules";
@@ -177,8 +182,8 @@ test "the fragment probe spells every intrinsic and statement on both targets" {
 			"v2 = fwidth(v2);\n", "f = dFdy(f);\n", "i = sign(i);\n",
 			"v4 = texelFetch(albedo_albedoSmp, i2, 0);\n", "v4 *= m4;\n",
 			"f = f - 2.0 * trunc(f / 2.0);\n", "u = u % 4u;\n", "v4.zw = v2;\n", "shade_1(v3, f);\n",
-			"if (f < 0.0)\n    {\n        discard;\n    }\n    else\n",
-			"int k = 0; k < 3; k++)\n", "f += weights[k];\n",
+			"bool demoted = false;\n", "if (f < 0.0)\n    {\n        demoted = true;\n    }\n    else\n",
+			"if (demoted)\n    {\n        discard;\n    }\n    return;\n}\n", "int k = 0; k < 3; k++)\n", "f += weights[k];\n",
 			"int j = 3;\n        for (; k < j; k++, j--)\n",
 			"        case 0:\n        case 1:\n        {\n            f += 1.0;\n            break;\n",
 			"        default:\n", "b = v3 == v3;\n", "b = v3 != v3;\n", "i = i / 2;\n",
@@ -212,6 +217,34 @@ test "the fragment probe spells every intrinsic and statement on both targets" {
 		if (!es.includes(piece)) { console.log("missing: " + piece); }
 		assert es.includes(piece);
 	}
+}
+
+function discardBeforeStoreModule(): ShaderModule {
+	let m = tiny(ShaderStage.Fragment, literal(VEC4, 1.0));
+	m.structs.push(block("Hit", [field("count", F32)]));
+	let hits = resource(ResourceKind.StorageBuffer, "hits", 1, arrayType(structType(1), -1));
+	hits.access = Access.ReadWrite;
+	m.resources.push(hits);
+	const count = exprOf(ExprKind.Field, F32, 0, [exprOf(ExprKind.Index, structType(1), -1,
+		[resourceOf(m, 1), i32(0.0)])]);
+	prepend(m.functions[0], assignOf(count, f32(1.0)));
+	prepend(m.functions[0], stmtOf(StmtKind.If, literal(BOOL, 1.0), [single(StmtKind.Discard)]));
+	return m;
+}
+
+test "a discarded fragment runs on as a helper and skips its storage writes" {
+	const m = discardBeforeStoreModule();
+	assert irErrors(m).length == 0;
+	const text = printed(m, 0, [0], GlslTarget.Glsl430);
+	for (const piece of [
+		"bool demoted = false;\n", "if (true)\n    {\n        demoted = true;\n    }\n",
+		"if (!demoted)\n    {\n        hits.data[0].count = 1.0;\n    }\n",
+		"if (demoted)\n    {\n        discard;\n    }\n    return;\n}\n",
+	]) {
+		if (!text.includes(piece)) { console.log("missing: " + piece + "\n" + text); }
+		assert text.includes(piece);
+	}
+	assert text.split("discard;").length == 2;
 }
 
 test "the compute probe declares std430 buffers and images on GLSL 430" {

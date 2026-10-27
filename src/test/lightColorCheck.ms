@@ -3,7 +3,7 @@ import {
 	addLightNode, setLightColor, setVisible, collectLights, closeScene,
 } from "../void3d/scene";
 import { DrawContext } from "../void3d/draw";
-import { LIGHT_UNIFORM_LENGTH, MAX_POINT_LIGHTS } from "../void3d/gpu3d";
+import { LIGHT_RECORD_COLOR, LIGHT_UNIFORM_LENGTH } from "../void3d/gpu3d";
 import { Vec3, vec3 } from "../math/math3d";
 
 function light(scene: Scene3D, kind: LightKind, color: Vec3): NodeId3D {
@@ -47,7 +47,7 @@ test "hidden light retains its new color until visible collection resumes" {
 	const visible = collectLights(scene, values);
 	assert visible.ok;
 	if (visible.ok) { assert visible.value == 1; }
-	const colorAt: int32 = 12 + MAX_POINT_LIGHTS * 4;
+	const colorAt: int32 = LIGHT_UNIFORM_LENGTH + LIGHT_RECORD_COLOR;
 	assert values[colorAt] == 0.5 && values[colorAt + 1] == 0.25;
 	assert values[colorAt + 2] == 0.75;
 }

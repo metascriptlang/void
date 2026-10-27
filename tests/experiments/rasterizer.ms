@@ -6,7 +6,7 @@
 //   VOID_RASTERIZER  0 stb_truetype unhinted, 1 FreeType unhinted, 2 FreeType light hinting
 //   VOID_SAMPLE      0 13 px @ 1x, 1 13 px @ 1.5x, 2 14 px @ 1.25x
 
-import { gfxSetup } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/host/gpu";
 import { setup2d } from "../../src/void2d/draw";
 import { Scene2D } from "../../src/void2d/node";
 import { add, presentAt } from "../../src/void2d/scene";
@@ -23,7 +23,7 @@ import {
 } from "../capture/capture.h";
 import { void2dFreetypeInstall } from "./freetypeRaster.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 
 extern function voidRunConfigured(
 	w: int32,

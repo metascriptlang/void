@@ -65,6 +65,7 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	GPU_DRAW_INDEXED_INDIRECT_STRIDE,
 	checkedDepthTexelCopy,
 	samplerMaxLod,
 	checkedTexelBufferLayout,
@@ -85,6 +86,7 @@ import {
 	entryBytes,
 	stencil8Mask,
 	boundFacts,
+	colorWriteBits,
 } from "../validate.ms";
 import {
 	TextureRecord,
@@ -137,6 +139,7 @@ import {
 	wgDispatchIndirect,
 	wgDraw,
 	wgDrawIndexed,
+	wgDrawIndexedIndirect,
 	wgEndComputePass,
 	wgEndOcclusionQuery,
 	wgEndPass,
@@ -1412,7 +1415,7 @@ function describeColorTargets(descriptor: GPURenderPipelineDescriptor, state: in
 		state[at + 5] = blendOperation(alpha.operation, "blend.alpha.operation");
 		state[at + 6] = blendFactor(alpha.srcFactor, "blend.alpha.srcFactor");
 		state[at + 7] = destinationFactor(alpha.dstFactor, "blend.alpha.dstFactor");
-		state[at + 9] = writeMask == 0 ? COLOR_WRITE_ALL : writeMask;
+		state[at + 9] = colorWriteBits(writeMask);
 		count = i + 1;
 	}
 	return count;
@@ -1699,6 +1702,11 @@ export function setStencilReference(reference: uint32): void {
 	firstInstance: int32,
 ): void {
 	wgDrawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
+}
+
+export function multiDrawIndexedIndirect(buffer: GPUBuffer, offset: int64, drawCount: int32): void {
+	const native = buffers[slotOf(buffer.id)].native;
+	for (let i = 0; i < drawCount; i++) { wgDrawIndexedIndirect(native, offset + (i as int64) * GPU_DRAW_INDEXED_INDIRECT_STRIDE); }
 }
 
 function copyableTexture(info: GPUTexelCopyTextureInfo, member: string): int32 {

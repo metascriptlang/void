@@ -102,7 +102,7 @@ The device and the per-frame target were already Void's on every platform except
 `sokol_app` drove the Windows window (`SOKOL_NOAPI`, `docs/SOKOL.md`) and the web window path
 (with `sokol_glue`). The Windows window is ported from `sokol_app.h` (Win32 `:8635-10514`) into
 `src/platform/win32/`, keeping `sapp_event`'s fields and ordinals in `src/platform/appEvent.h`
-because `src/sokol/window.ms` `AppEventType` mirrors them. The frame clock is
+because `src/host/window.ms` `AppEventType` mirrors them. The frame clock is
 `src/platform/clock.h`, sokol_time's four readings (`QueryPerformanceCounter`,
 `mach_absolute_time`, `emscripten_get_now`, `clock_gettime`) behind one function. The web window
 is ported from the emscripten backend (`:7466-8350`, the WebGPU device and surface `:3909-4366`)
@@ -167,6 +167,7 @@ them. A caller that arrives gets a row above.
 | copy of a depth texture, and of the swapchain texture, to a buffer | no copy (see readback) | D3D11 "a depth16unorm texture round-trips a buffer copy…", "the swapchain texture copies out of the back buffer…" |
 | `copyBufferToBuffer`, `copyBufferToTexture`, `copyTextureToTexture`, `writeMappedRange` | no copy | D3D11 and GL "a buffer range copies to a MAP_READ buffer…", "a MAP_WRITE buffer filled through a mapped range…", "copyTextureToTexture copies mip 1…", "a buffer region at an offset…" |
 | `dispatchWorkgroupsIndirect` | `sg_dispatch` `:27469` only; `indirect` has no match | D3D11 and GL "a compute pass doubles a storage buffer, directly and through an indirect dispatch" |
+| `drawIndexedIndirect`, `multiDrawIndexedIndirect`, `doorDrawIndirect` | `indirect` has no match | D3D11 and Vulkan "two indexed indirect records in one call honour firstIndex, baseVertex and firstInstance" |
 | timestamp writes, occlusion queries, `resolveQuerySet` | `timestamp`, `occlusion` have no match | D3D11 and GL "two timestamps around a render pass…", "an occlusion query counts samples…" |
 | `doorReadTexture` (any texture, door level) | no readback | D3D11 "the door reads a cleared bgra8 target back as RGBA…" |
 
@@ -265,7 +266,11 @@ The Vulkan backend ports Mach's `src/sysgpu/vulkan.zig`:
 - Vulkan 1.1 with a negative viewport height (vulkan.zig:14, 3320);
 - the render-pass key cache (vulkan.zig:726-863);
 - the barrier tracker's hazard rules with resting layouts (vulkan.zig:2755-3088);
-- the swapchain handoff through `oldSwapchain` (vulkan.zig:1001, 1117).
+- the swapchain handoff through `oldSwapchain` (vulkan.zig:1001, 1117);
+- one swapchain per surface, so a window and every host view present on their own
+  (vulkan.zig:388, 983). The adapter's queue family must present to the surface named at
+  `vulkanAdapterSelect`, and a surface made later is refused when that family cannot present to
+  it, as Dawn checks a configured surface (`SwapChainVk.cpp:168`); Mach checks neither.
 
 The port leaves Mach where Mach's code is wrong, each case pinned by `vulkanResourcesCheck.ms`,
 `vulkanMemoryCheck.ms` or `webgpuVulkanCheck.ms`:
@@ -333,8 +338,16 @@ Where neither has the concern, the backend goes elsewhere. Heaps' `VulkanDriver.
 - **Mobile driver workarounds:** Dawn's vendor toggles (`PhysicalDeviceVk.cpp:1025-1417`).
 - **Validation layer:** wgpu `100c142` probes for it before enabling it (`instance.rs:847-915`),
   which also works from an APK.
-- **Android pre-rotation:** Godot `876b290` `rendering_device_driver_vulkan.cpp` (3162, 3235-3282).
-  Dawn and wgpu present at identity.
+- **Android pre-rotation:** the swapchain presents at identity and the compositor rotates, as
+  Dawn does (`SwapChainVk.cpp:326-331`), and `VK_SUBOPTIMAL_KHR` counts as success on acquire and
+  present, as in Dawn (482-486) and Godot `876b290` (`rendering_device_driver_vulkan.cpp:2826-2842`),
+  so a rotated display does not recreate the swapchain every frame. The swapchain takes the
+  configured size whenever it lies in the surface's image-extent range, as Dawn does (279-286),
+  because a rotated Android surface reports `currentExtent` in the display's native orientation;
+  only a size outside the range falls back to `currentExtent`. Godot pre-rotates instead
+  (3235-3282) and turns the image in its final compositor blit; the door draws straight into the
+  swapchain image and has no such blit. Godot's path becomes worth its extra pass once a rotated
+  device measures the compositor's rotation as a cost.
 - **Lifecycle:** Void's own Android host owns it (`bridgeAndroidApp.c:277-298`). The swapchain
   and surface go down in `nativeSurfaceGone`, before the window is released.
 
@@ -386,6 +399,18 @@ Each item is built once a probe shows the cost it removes; the A/B against main 
 - **Draw order:** void3d sorts opaque draws by layer, shader and texture, using ids renumbered
   each frame. Alpha draws sort by layer, then depth back to front (Heaps `SortByMaterial.hx:15-29`,
   `scene/Renderer.hx:104-131`). Neither reference packs a radix key.
+- **Indirect draws:** `doorDrawIndirect` is Heaps' `drawInstanced` with a command buffer, records
+  of 20 bytes read on the GPU. D3D11 issues one `DrawIndexedInstancedIndirect` per record
+  (`DirectXDriver.hx:1426-1443`) and GL one `glMultiDrawElementsIndirect` for all of them
+  (`GlDriver.hx:1664-1701`). Vulkan takes them in one `vkCmdDrawIndexedIndirect` when the device
+  has `multiDrawIndirect`, else one call per record. The surface is Dawn's
+  `multiDrawIndexedIndirect` without its count buffer.
+  Dawn validates every record on the GPU (`IndirectDrawValidationEncoder.cpp`); the door refuses
+  instead the three cases that pass would make safe: a device without `indirect-first-instance`,
+  a vertex stage reading `instance_index` or `vertex_index`, and on GL an index buffer set at a
+  nonzero offset, which Dawn folds into firstIndex (`:199-200`). Heaps binds its index buffer at 0
+  (`DirectXDriver.hx:1431`). The upgrade is that validation pass, once a caller needs one of the
+  three; the count buffer waits on GPU culling (Heaps `h3d/shader/InstanceIndirect.hx`).
 - **Instance data:** void2d builds instances in a CPU `Vec` and uploads once per flush, as Heaps
   (`h2d/RenderContext.hx:595-605`) and Mach (`gfx/Sprite.zig:540-561`) do. Writing straight
   into mapped memory (GPUI `metal_renderer.rs:1531-1574`) waits on a measured copy cost,

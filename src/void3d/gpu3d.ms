@@ -100,18 +100,22 @@ export struct ProgramKey {
 	// metalness, roughness and occlusion (PBR_* below) instead of the legacy lambert.
 	pbr: boolean;
 	pbrMaps: boolean;
-	// Draws the mesh once per particle from a per-instance world affine and colour in vertex
-	// buffer slot 1 (docs/PARTICLES-RENDER.md A.2.1).
-	instanced: boolean;
+	// Samples the occlusion map at the mesh's second uv set (MeshData.hasUvB), as Bevy's
+	// occlusion_channel Uv1.
+	occlusionUvB: boolean;
+	// Heaps' Parallax as PbrMaterial adds it: the UV steps along the view, in the normal map's
+	// tangent basis, until it passes the height in the pbr-maps texture's alpha.
+	parallax: boolean;
 }
 
-const KEY_LIMIT: int32 = 524288;
+const KEY_LIMIT: int32 = 1048576;
 
 export function of(this typeof ProgramKey, program: Program): ProgramKey {
 	return {
 		program: program, preset: Preset.Core, premultiplied: false, cutout: false, shadowed: false,
 		uvTransform: false, backTexture: false, dissolve: false, emissive: false, normalMap: false,
-		skinned: false, normalMrt: false, pbr: false, pbrMaps: false, instanced: false,
+		skinned: false, normalMrt: false, pbr: false, pbrMaps: false, occlusionUvB: false,
+		parallax: false,
 	};
 }
 
@@ -198,11 +202,14 @@ export function withPbrMaps(this key: ProgramKey): ProgramKey {
 	return { ...key, pbrMaps: true };
 }
 
-export function withInstanced(this key: ProgramKey): ProgramKey {
-	const textured: boolean = key.program == Program.LitTextured ||
-		key.program == Program.UnlitTextured;
-	if (!textured || key.skinned || key.normalMap) { return stopOnFeature(key, "instancing"); }
-	return { ...key, instanced: true };
+export function withOcclusionUvB(this key: ProgramKey): ProgramKey {
+	if (!key.pbrMaps) { return stopOnFeature(key, "second uv set"); }
+	return { ...key, occlusionUvB: true };
+}
+
+export function withParallax(this key: ProgramKey): ProgramKey {
+	if (!key.pbrMaps || !key.normalMap) { return stopOnFeature(key, "parallax"); }
+	return { ...key, parallax: true };
 }
 
 export function withNormalMrt(this key: ProgramKey): ProgramKey {
@@ -230,7 +237,7 @@ export function bits(this key: ProgramKey): int32 {
 		((key.emissive ? 1 : 0) << 12) | ((key.normalMap ? 1 : 0) << 13) |
 		((key.skinned ? 1 : 0) << 14) | ((key.normalMrt ? 1 : 0) << 15) |
 		((key.pbr ? 1 : 0) << 16) | ((key.pbrMaps ? 1 : 0) << 17) |
-		((key.instanced ? 1 : 0) << 18);
+		((key.occlusionUvB ? 1 : 0) << 18) | ((key.parallax ? 1 : 0) << 19);
 }
 
 export function describe(this key: ProgramKey): string {
@@ -244,11 +251,11 @@ export function describe(this key: ProgramKey): string {
 	const normalMap: string = key.normalMap ? " normal-map" : "";
 	const skin: string = key.skinned ? " skinned" : "";
 	const normalMrt: string = key.normalMrt ? " normal-MRT" : "";
-	const pbr: string = (key.pbr ? " pbr" : "") + (key.pbrMaps ? " pbr-maps" : "");
-	const instanced: string = key.instanced ? " instanced" : "";
+	const pbr: string = (key.pbr ? " pbr" : "") + (key.pbrMaps ? " pbr-maps" : "") +
+		(key.occlusionUvB ? " occlusion-uv-b" : "") + (key.parallax ? " parallax" : "");
 	const features: string =
 		`${premultiplied}${cutout}${shadowed}${uv}${back}${dissolve}${emissive}${normalMap}` +
-		skin + normalMrt + pbr + instanced;
+		skin + normalMrt + pbr;
 	return `${key.preset.toString()} ${key.program.toString()}${features}`;
 }
 
@@ -346,13 +353,15 @@ export function castIn(key: ProgramKey): Result<ProgramKey, ProgramError> {
 	const cast: ProgramKey = {
 		...key.withPreset(Preset.Shadow), premultiplied: false, shadowed: false,
 		uvTransform: key.uvTransform && key.cutout, backTexture: key.backTexture && key.cutout,
-		emissive: false, normalMrt: false, pbr: false, pbrMaps: false,
+		emissive: false, normalMrt: false, pbr: false, pbrMaps: false, occlusionUvB: false,
+		parallax: key.parallax && key.cutout,
 	};
 	if (!declares(cast)) { return Result.err(ProgramError.NotDrawn); }
 	return Result.ok(cast);
 }
 
-// Vertex buffer layouts gpu3d.c describes (describeLayout).
+// Vertex buffer layouts vertexLayouts.ms describes, then MeshInstances: a stream of the
+// instance rows a mesh layout reads in slot 1, which no program reads as its mesh.
 export enum VertexLayout {
 	Lit,
 	Particle,
@@ -364,18 +373,15 @@ export enum VertexLayout {
 	SkinLitTextured,
 	SkinLitTexturedTangent,
 	ParticleVisual,
-	InstancedLitTextured,
+	LitTexturedUvB,
+	LitTexturedTangentUvB,
+	SkinLitTexturedUvB,
+	SkinLitTexturedTangentUvB,
+	MeshInstances,
 }
 
 export function vertexLayoutOf(program: ProgramKey): VertexLayout {
 	return (doorProgramLayout(doorProgram(program)) - layoutBase) as VertexLayout;
-}
-
-// The layout of the mesh a draw item names: an instanced program reads that mesh in slot 0 and
-// its instances from a stream in slot 1.
-export function meshLayoutOf(program: ProgramKey): VertexLayout {
-	const layout: VertexLayout = vertexLayoutOf(program);
-	return layout == VertexLayout.InstancedLitTextured ? VertexLayout.LitTextured : layout;
 }
 
 export function drawsQuads(layout: VertexLayout): boolean {
@@ -387,9 +393,25 @@ export function drawsQuads(layout: VertexLayout): boolean {
 		VertexLayout.Fullscreen => false,
 		VertexLayout.LitTextured => false,
 		VertexLayout.LitTexturedTangent => false,
-		VertexLayout.InstancedLitTextured => false,
+		VertexLayout.MeshInstances => false,
 		VertexLayout.SkinLit | VertexLayout.SkinLitTextured |
 			VertexLayout.SkinLitTexturedTangent => false,
+		VertexLayout.LitTexturedUvB | VertexLayout.LitTexturedTangentUvB |
+			VertexLayout.SkinLitTexturedUvB | VertexLayout.SkinLitTexturedTangentUvB => false,
+	};
+}
+
+// The mesh layouts, whose draws read one instance row each from slot 1 (vertexLayouts.ms
+// mesh).
+export function readsInstanceRows(layout: VertexLayout): boolean {
+	return match (layout) {
+		VertexLayout.Lit | VertexLayout.LitTextured | VertexLayout.LitTexturedTangent => true,
+		VertexLayout.SkinLit | VertexLayout.SkinLitTextured |
+			VertexLayout.SkinLitTexturedTangent => true,
+		VertexLayout.LitTexturedUvB | VertexLayout.LitTexturedTangentUvB |
+			VertexLayout.SkinLitTexturedUvB | VertexLayout.SkinLitTexturedTangentUvB => true,
+		VertexLayout.Particle | VertexLayout.Billboard | VertexLayout.ParticleVisual => false,
+		VertexLayout.Fullscreen | VertexLayout.MeshInstances => false,
 	};
 }
 
@@ -399,37 +421,61 @@ export const SKIN_UNIFORM_LENGTH: int32 = 768;
 export const VERTEX_UNIFORM_SLOT: int32 = 0;
 export const VERTEX_UNIFORM_LENGTH: int32 = 28;
 export const LIGHT_UNIFORM_SLOT: int32 = 1;
-// ambient (rgb + point count), dirLight (direction + power), dirColor, then pointLight[4]
-// (position + power) and pointColor[4] (rgb + radius): two vec4 arrays of one vec4 per light,
-// packoffset(c3) and packoffset(c7) in the HLSL, so four floats per light in each.
-export const MAX_POINT_LIGHTS: int32 = 4;
-// The shape block follows, four vec4 arrays of one vec4 per light (shader3d.ms LightParams
-// shapeA..shapeD): shapeA is forward or axis with the kind in w, B, C and D the shape's own
-// numbers (scene.ms collectLights). Kind 0, a point light, reads none of them.
-export const LIGHT_SHAPE_BASE: int32 = 12 + 2 * MAX_POINT_LIGHTS * 4;
-export const LIGHT_SHAPE_ARRAY_LENGTH: int32 = MAX_POINT_LIGHTS * 4;
-export const LIGHT_UNIFORM_LENGTH: int32 = LIGHT_SHAPE_BASE + 4 * LIGHT_SHAPE_ARRAY_LENGTH;
+// Laid out as shader3d.ms LightParams: ambient, dirLight, dirColor, then the clusters. ambient.w
+// and dirColor.w name the records that cast the spot map and the cube map, as record + 1 (0 none).
+export const LIGHT_SPOT_CASTER: int32 = 3;
+export const LIGHT_CUBE_CASTER: int32 = 11;
+export const LIGHT_CLUSTER_GRID: int32 = 12;
+export const LIGHT_CLUSTER_FACTORS: int32 = 16;
+export const LIGHT_CLUSTER_VIEW: int32 = 20;
+export const LIGHT_CLUSTER_SCREEN: int32 = 24;
+export const LIGHT_UNIFORM_LENGTH: int32 = 28;
+// A positioned light's record, following the block in collectLights' span: position and power,
+// colour and range, then shapeA..shapeD (kind in shapeA.w; a point light reads no shape).
+export const LIGHT_RECORD_TEXELS: int32 = 6;
+export const LIGHT_RECORD_LENGTH: int32 = LIGHT_RECORD_TEXELS * 4;
+export const LIGHT_RECORD_COLOR: int32 = 4;
+export const LIGHT_RECORD_SHAPE: int32 = 8;
 export const LIGHT_KIND_POINT: float32 = 0.0;
 export const LIGHT_KIND_SPOT: float32 = 1.0;
 export const LIGHT_KIND_RECTANGLE: float32 = 2.0;
 export const LIGHT_KIND_CAPSULE: float32 = 3.0;
-// The scene's shadow block (binding=5, shader3d.ms ShadowParams): one light's half is the
-// world-to-map matrix, then the bias and the opacity. The sun's half comes first and the one
-// shadowing spot's at SHADOW_SPOT_BASE; a half nobody wrote is zero and shades nothing.
+// The scene's shadow block (binding=5), laid out as shader3d.ms ShadowParams: the sun's cascades,
+// then the shadowing spot's part, then the cube's. A part nobody wrote is zero and shades nothing.
 export const SHADOW_UNIFORM_SLOT: int32 = 5;
-export const SHADOW_SPOT_BASE: int32 = 20;
-export const SHADOW_UNIFORM_LENGTH: int32 = SHADOW_SPOT_BASE * 2;
-export const SHADOW_BIAS: int32 = 16;
-export const SHADOW_OPACITY: int32 = 17;
+export const SHADOW_CASCADE_FAR: int32 = 64;
+export const SHADOW_CASCADE_INFO: int32 = 68;
+export const SHADOW_CASCADE_VIEW: int32 = 72;
+// Each part's PCF scale in texels (h3d.pass.Shadows pcfScale), 0 for one compared texel.
+export const SHADOW_CASCADE_FILTER: int32 = 76;
+export const SHADOW_CASCADE_NORMAL_BIAS: int32 = SHADOW_CASCADE_FILTER + 1;
+export const SHADOW_SPOT_BASE: int32 = 80;
+export const SHADOW_SPOT_LENGTH: int32 = 24;
+export const SHADOW_SPOT_BIAS: int32 = SHADOW_SPOT_BASE + 16;
+export const SHADOW_SPOT_OPACITY: int32 = SHADOW_SPOT_BASE + 17;
+export const SHADOW_SPOT_FILTER: int32 = SHADOW_SPOT_BASE + 19;
+export const SHADOW_SPOT_NORMAL_BIAS: int32 = SHADOW_SPOT_BASE + 20;
+export const SHADOW_SPOT_POSITION: int32 = SHADOW_SPOT_BASE + 21;
+export const SHADOW_CUBE_FACES: int32 = 6;
+export const SHADOW_CUBE_BASE: int32 = SHADOW_SPOT_BASE + SHADOW_SPOT_LENGTH;
+export const SHADOW_CUBE_BIAS: int32 = SHADOW_CUBE_BASE + SHADOW_CUBE_FACES * 16;
+export const SHADOW_CUBE_OPACITY: int32 = SHADOW_CUBE_BIAS + 1;
+export const SHADOW_CUBE_FILTER: int32 = SHADOW_CUBE_BIAS + 3;
+export const SHADOW_CUBE_POSITION: int32 = SHADOW_CUBE_BIAS + 4;
+export const SHADOW_CUBE_RANGE: int32 = SHADOW_CUBE_POSITION + 4;
+export const SHADOW_CUBE_NORMAL_BIAS: int32 = SHADOW_CUBE_RANGE + 2;
+export const SHADOW_UNIFORM_LENGTH: int32 = SHADOW_CUBE_RANGE + 4;
 // The shadow maps' view and sampler slots (dirShadow's `binding=`), past a material's: the sun's
-// map, then the spot's.
+// map, then the spot's, then the cube's, which reads with the spot's sampler.
 export const SHADOW_VIEW_SLOT: int32 = 4;
 export const SHADOW_SAMPLER_SLOT: int32 = 2;
 export const SPOT_SHADOW_VIEW_SLOT: int32 = 6;
 export const SPOT_SHADOW_SAMPLER_SLOT: int32 = 3;
+export const CUBE_SHADOW_VIEW_SLOT: int32 = 12;
 // The slots a shadowed program reads the scene's maps at, which no material binds.
 export const SHADOW_SCENE_VIEWS: uint32 =
-	(1 << (SHADOW_VIEW_SLOT as uint32)) | (1 << (SPOT_SHADOW_VIEW_SLOT as uint32));
+	(1 << (SHADOW_VIEW_SLOT as uint32)) | (1 << (SPOT_SHADOW_VIEW_SLOT as uint32)) |
+	(1 << (CUBE_SHADOW_VIEW_SLOT as uint32));
 export const SHADOW_SCENE_SAMPLERS: uint32 =
 	(1 << (SHADOW_SAMPLER_SLOT as uint32)) | (1 << (SPOT_SHADOW_SAMPLER_SLOT as uint32));
 // The environment's cubes (shader3d.ms pbrEnvironmentLight), which a pbr program reads and the
@@ -440,16 +486,28 @@ export const ENV_SAMPLER_SLOT: int32 = 4;
 export const ENV_SCENE_VIEWS: uint32 =
 	(1 << (ENV_DIFFUSE_VIEW_SLOT as uint32)) | (1 << (ENV_SPECULAR_VIEW_SLOT as uint32));
 export const ENV_SCENE_SAMPLERS: uint32 = 1 << (ENV_SAMPLER_SLOT as uint32);
+export const LIGHT_RECORDS_VIEW_SLOT: int32 = 9;
+export const CLUSTER_RECORDS_VIEW_SLOT: int32 = 10;
+export const CLUSTER_INDICES_VIEW_SLOT: int32 = 11;
+export const CLUSTER_SAMPLER_SLOT: int32 = 5;
+export const CLUSTER_SCENE_VIEWS: uint32 = (1 << (LIGHT_RECORDS_VIEW_SLOT as uint32)) |
+	(1 << (CLUSTER_RECORDS_VIEW_SLOT as uint32)) | (1 << (CLUSTER_INDICES_VIEW_SLOT as uint32));
+export const CLUSTER_SCENE_SAMPLERS: uint32 = 1 << (CLUSTER_SAMPLER_SLOT as uint32);
 // A lit material's own block (binding=3). The core reads the saturation it applies to the
 // material's colour before lighting (0 leaves it alone, -1 is grey) and, at 1 in
 // MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal, and discards a pixel
 // whose alpha is below MATERIAL_ALPHA_KILL (material.ms MaterialKind.AlphaKill); a preset may
-// give the other floats a meaning of its own (pixelArtRenderer.ms RAMP_LEVELS).
+// give the other floats a meaning of its own (pixelArtRenderer.ms RAMP_LEVELS). At
+// MATERIAL_COLOR the colour (gamma-encoded rgba) the surface is multiplied by, Heaps' BaseMesh
+// `color` and Bevy's `base_color`: white leaves it alone, and a block of zeros draws black.
 export const MATERIAL_UNIFORM_SLOT: int32 = 3;
-export const MATERIAL_UNIFORM_LENGTH: int32 = 4;
+export const MATERIAL_UNIFORM_LENGTH: int32 = 8;
+// A parallax key's amount (Heaps' Parallax.amount), in UV units at full depth.
+export const MATERIAL_PARALLAX: int32 = 0;
 export const MATERIAL_SATURATION: int32 = 1;
 export const MATERIAL_DOUBLE_SIDED: int32 = 2;
 export const MATERIAL_ALPHA_KILL: int32 = 3;
+export const MATERIAL_COLOR: int32 = 4;
 export const UNLIT_MATERIAL_UNIFORM_LENGTH: int32 = 8;
 export const UNLIT_MATERIAL_COLOR: int32 = 4;
 // A moving key's block (movingMaterialParams / movingUnlitMaterialParams in shader3d.ms):
@@ -557,7 +615,7 @@ export function samplerSlotMask(program: ProgramKey): uint32 {
 	return doorSamplerSlotMask(doorProgram(program));
 }
 
-// Floats per element of vertex buffer `buffer` of `layout`, as gpu3d.c registered it.
+// Floats per element of vertex buffer `buffer` of `layout`, as vertexLayouts.ms describes it.
 export function layoutFloats(layout: VertexLayout, buffer: int32): int32 {
 	return doorLayoutFloats(doorLayout(layout), buffer);
 }
@@ -594,6 +652,7 @@ export {
 	makeIndexBuffer32,
 	makeStreamBuffer,
 	updateBuffer,
+	appendBuffer,
 	destroyBuffer,
 	applyPipeline,
 	applyBindings,

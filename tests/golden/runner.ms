@@ -31,7 +31,7 @@ import {
 import { SceneBuilder, sceneBuilders } from "./scenes";
 import { Scene2D } from "../../src/void2d/node";
 import { presentAt } from "../../src/void2d/scene";
-import { gfxSetup } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/host/gpu";
 import { setup2d, drawCallCount } from "../../src/void2d/draw";
 import { renderTargetsAlive } from "../../src/void2d/render";
 when (voidProfiler) {
@@ -51,7 +51,7 @@ import {
 	voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 
 extern function voidRunConfigured(
 	w: int32,

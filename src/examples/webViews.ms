@@ -2,7 +2,7 @@
 // The page starts and stops views itself: Module.voidStart(canvas) starts one and returns its stop
 // (docs/EMBED.md "Web").
 
-import { embedRegister, setViewSampleCount } from "../sokol/gpu";
+import { embedRegister, setViewSampleCount } from "../host/gpu";
 import { beginScreenPassWith, endPass, commit } from "../gpu/door";
 
 let clear: Vec<float32> = [0.1, 0.4];

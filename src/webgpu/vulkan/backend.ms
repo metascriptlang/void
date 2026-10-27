@@ -3,6 +3,7 @@ import {
 	vulkanCmdInsertLabel,
 	vulkanCmdPopLabel,
 	vulkanCmdPushLabel,
+	vulkanDeviceFeatures,
 	vulkanDeviceReady,
 	vulkanFormatOptimalFeatures,
 	vulkanSwapchainTarget,
@@ -329,6 +330,10 @@ export function drawIndexed(indexCount: int32, instanceCount: int32, firstIndex:
 	pipelines.drawIndexed(p, r, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 }
 
+export function multiDrawIndexedIndirect(buffer: GPUBuffer, offset: int64, drawCount: int32): void {
+	pipelines.multiDrawIndexedIndirect(p, r, buffer, offset, drawCount);
+}
+
 export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
 	ran("copyBufferToBuffer", resources.copyBufferToBuffer(r, source, sourceOffset, destination, destinationOffset, size));
 }
@@ -431,6 +436,7 @@ export function features(): GPUSupportedFeatures {
 	if ((float32 & FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND) != 0) { bits |= featureBit("float32-blendable"); }
 	const renderable = FORMAT_FEATURE_COLOR_ATTACHMENT | FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND;
 	if ((formatFeatures("rg11b10ufloat") & renderable) == renderable) { bits |= featureBit("rg11b10ufloat-renderable"); }
+	bits |= vulkanDeviceFeatures() & featureBit("indirect-first-instance");
 	return { bits: bits };
 }
 
