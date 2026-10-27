@@ -33,8 +33,8 @@ function greenFs(): Vec4f {
 shaderProgram(red, quadVs, redFs);
 shaderProgram(green, quadVs, greenFs);
 
-function alphaOnly(): RenderState {
-	return plain().withColorMask(false, false, false, true);
+function stencilOnly(): RenderState {
+	return plain().withColorMask(false, false, false, false);
 }
 
 function maskWriter(reference: uint8, writeMask: uint8): Stencil {
@@ -237,10 +237,10 @@ when (windows && !voidDummy && !voidVulkan) {
 
 	test "a draw tests the stencil against the reference it was given, and each reference takes effect" {
 		const scene: Scene = openScene();
-		const writer: RenderState = alphaOnly().withStencil(maskWriter(1, 0xFF));
+		const writer: RenderState = stencilOnly().withStencil(maskWriter(1, 0xFF));
 		beginStencilPass(scene, 0);
 		drawQuad(scene, red, writer, LEFT);
-		drawQuad(scene, red, alphaOnly().withStencil(maskWriter(2, 0xFF)), RIGHT);
+		drawQuad(scene, red, stencilOnly().withStencil(maskWriter(2, 0xFF)), RIGHT);
 		endPass();
 		beginStencilPass(scene, null);
 		drawQuad(scene, green, plain().withStencil(maskTester(1)), FULL);
@@ -289,19 +289,19 @@ when (windows && !voidDummy && !voidVulkan) {
 	test "a write mask of zero keeps the stencil and a full one replaces it" {
 		const scene: Scene = openScene();
 		beginStencilPass(scene, 1);
-		drawQuad(scene, red, alphaOnly().withStencil(maskWriter(3, 0)), FULL);
+		drawQuad(scene, red, stencilOnly().withStencil(maskWriter(3, 0)), FULL);
 		drawQuad(scene, green, plain().withStencil(maskTester(1)), FULL);
 		endPass();
 		let sides: Vec<uint32> = leftAndRight(scene);
 		assert sides[0] == GREEN && sides[1] == GREEN;
 		beginStencilPass(scene, 1);
-		drawQuad(scene, red, alphaOnly().withStencil(maskWriter(3, 0xFF)), FULL);
+		drawQuad(scene, red, stencilOnly().withStencil(maskWriter(3, 0xFF)), FULL);
 		drawQuad(scene, green, plain().withStencil(maskTester(1)), FULL);
 		endPass();
 		sides = leftAndRight(scene);
 		assert sides[0] == BLACK && sides[1] == BLACK;
 		beginStencilPass(scene, 1);
-		drawQuad(scene, red, alphaOnly().withStencil(maskWriter(3, 0xFF)), FULL);
+		drawQuad(scene, red, stencilOnly().withStencil(maskWriter(3, 0xFF)), FULL);
 		drawQuad(scene, green, plain().withStencil(maskTester(3)), FULL);
 		endPass();
 		sides = leftAndRight(scene);
