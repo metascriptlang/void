@@ -171,14 +171,23 @@ export function releaseRange(
 	return Result.ok(block.length);
 }
 
+function writable(
+	pool: UniformPool,
+	call: string,
+	block: UniformBlock,
+	length: int32,
+): Result<int32, UniformError> {
+	if (pool.closed) { stopOnClosedPool(call); }
+	if (length != block.length) { return Result.err(UniformError.WrongLength); }
+	return pool.admitted(block);
+}
+
 export function writeRange(
 	pool: UniformPool,
 	block: UniformBlock,
 	values: Readonly<Span<float32>>,
 ): Result<int32, UniformError> {
-	if (pool.closed) { stopOnClosedPool("writeRange"); }
-	if ((values.length as int32) != block.length) { return Result.err(UniformError.WrongLength); }
-	const _held: int32 = try pool.admitted(block);
+	const _held: int32 = try writable(pool, "writeRange", block, values.length as int32);
 	for (let i = 0; i < block.length; i++) {
 		pool.values[block.offset + i] = values[i];
 	}
@@ -189,6 +198,7 @@ export function reserveBlock<T>(
 	pool: UniformPool,
 	slot: int32,
 ): Result<TypedBlock<T>, UniformError> {
+	if (pool.closed) { stopOnClosedPool("reserveBlock"); }
 	const block: UniformBlock = try reserveRange(pool, slot, uniformSize<T>() / 4);
 	return Result.ok({ block: block });
 }
@@ -198,11 +208,7 @@ export function writeBlock<T>(
 	handle: TypedBlock<T>,
 	value: T,
 ): Result<int32, UniformError> {
-	if (pool.closed) { stopOnClosedPool("writeBlock"); }
-	if (handle.block.length != uniformSize<T>() / 4) {
-		return Result.err(UniformError.WrongLength);
-	}
-	const _held: int32 = try pool.admitted(handle.block);
+	const _held: int32 = try writable(pool, "writeBlock", handle.block, uniformSize<T>() / 4);
 	writeUniform<T>(pool.values, handle.block.offset, value);
 	return Result.ok(handle.block.length);
 }
