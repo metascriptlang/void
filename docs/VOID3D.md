@@ -6506,6 +6506,19 @@ six clean pairs (a seventh was NOISY). Batching cut the draws, yet the frame sta
 so per-item CPU work dominates at this count; per-flow timers on one frame are the next
 measurement. Bevy has not been run here yet.
 
+**Second run, the per-item worklist (2026-10-27).** The same layout and count, `24eee3f4`
+against `b002410e`, which carries the per-item fixes (a mesh and material pair checked once per
+run of items, no copy of each instance while the draw list is written, no world sync when no
+setter moved a node, the LOD pick loop skipped when no item has a LOD, only the phases the
+frame's materials draw in collected). Both arms were built by msc `c85d84fb8`, each with the
+same type-only patch that `114a60cf` makes (the frame's items a writable `Span`), which that
+msc needs to build either tree. Medians of the per-second averages, six interleaved pairs:
+448.9, 463.6, 447.3, 462.1, 646.8 and 471.7 ms before against 121.8, 118.0, 119.4, 175.1, 120.4
+and 124.4 ms after, a median ratio of 0.265. The box idled at 15-46% CPU, so no pair is clean
+by the 25% rule; leaving out pairs 4 and 5, whose load reached 49% and 99%, keeps the ratio at
+0.265. Not explained: `24eee3f4` took 455 ms here against about 270 ms on 2026-10-26, with a
+different msc and machine state, and the older binary was not kept for a control.
+
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
 The M1–M7 audit freezes tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`.
