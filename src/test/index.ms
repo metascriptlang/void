@@ -38,6 +38,7 @@ import "./pngPortCheck";
 import "./colourFacePortCheck";
 import "./svgMaskPortCheck";
 import "./kbUnicodePortCheck";
+import "./kbBreakPortCheck";
 import "./ucdOracleCheck";
 import "./h2dOracleCheck";
 import "./math3dCheck";
