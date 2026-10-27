@@ -1,4 +1,5 @@
 import { appWindowScriptDigest, appWindowScriptOps, appWindowScriptRun } from "./appWindowPortScript";
+import { AppWindow, AppWindowPlatform } from "../host/appWindow";
 
 // FNV-1a digests of the transcripts of seeds 1 to 8, 400 ops each, recorded from the C
 // appWindow.c before the port replaced it: its shell build (the iOS and Android stand-ins and
@@ -64,4 +65,30 @@ test "a quit request is recorded and a touch past the end is refused by name" {
 	const lines = appWindowScriptRun(appWindowScriptOps(2, 400, false), false);
 	assert count(lines, "quit 1") > 0;
 	assert count(lines, "H touch past the end FAIL voidEventTouchX(") > 0;
+}
+
+class PresentPlatform extends AppWindowPlatform {
+	presenting: boolean = false;
+	valid(): boolean { return this.presenting; }
+}
+
+function presentRefusal(window: AppWindow, mode: int32): string {
+	try {
+		window.setPresentMode(mode);
+		return "";
+	} catch (error) {
+		return (error as Error).message;
+	}
+}
+
+test "the present mode is AutoVsync or AutoNoVsync, set before the window presents" {
+	const platform = new PresentPlatform();
+	const window = new AppWindow(platform);
+	assert window.presentMode == 0;
+	assert presentRefusal(window, 1) == "";
+	assert window.presentMode == 1;
+	assert presentRefusal(window, 2) == "voidSetPresentMode: 2 is neither 0 (AutoVsync) nor 1 (AutoNoVsync)";
+	platform.presenting = true;
+	assert presentRefusal(window, 0) == "voidSetPresentMode: the window already presents; set the mode before voidRun";
+	assert window.presentMode == 1;
 }
