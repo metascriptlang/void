@@ -1020,33 +1020,33 @@ run_style() {
 # fields copies through `<T>ArrayCopy`, not `msArrayCopy`.
 FRAME_PATH_FUNCTIONS="scene:syncWorld scene:refresh scene:refreshChecked
 	scene:refreshItemsSynced scene:fillDrawList scene:syncSceneSkinGeometry scene:collectLights
-	skin80ose:syncSkinPose skin71eometry:deformPublished skin80alette:writePalette
+	skinPose:syncSkinPose skinGeometry:deformPublished skinPalette:writePalette
 	scene:setLocal scene:setMeshOf scene:liveRow scene:kindRow scene:requireOpen scene:requireOwn
 	draw:requireOpen animation:requirePaired animation:update animation:keys animation:blendTo
-	animation:syncPose animation:syncMeshFrame particle87riter:writeParticlePoints
-	particle87riter:drawOrder particle87riter:sortOrder particle87riter:scatter particle87riter:placed
-	particle87riter:finite draw:writeStream draw:pinMesh draw:unpinMesh
+	animation:syncPose animation:syncMeshFrame particleWriter:writeParticlePoints
+	particleWriter:drawOrder particleWriter:sortOrder particleWriter:scatter particleWriter:placed
+	particleWriter:finite draw:writeStream draw:pinMesh draw:unpinMesh
 	draw:letGoOfMesh draw:meshPinned draw:hasMesh draw:issuedMesh slots:isCurrent door:frameIndex"
 RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayoutOf
 	renderer:texturesFit draw:slotBit gpu3d:drawsQuads draw:isQuadShaped draw:hasNothingToDraw
 	renderer:drawPassLists renderer:drawScreen renderer:openPrepare renderer:closePrepare
-	renderer:openScreen pass76ist:collect pass76ist:sortBackToFront pass76ist:sortByLayer
-	pass76ist:drawPassList
+	renderer:openScreen passList:collect passList:sortBackToFront passList:sortByLayer
+	passList:drawPassList
 	draw:drawItem draw:bindItem draw:writeUniforms draw:applyBlock draw:applyBlockHead pipeline:pipelineFor
-	pipeline:pipelineKey pixel65rt82enderer:renderFrame pixel65rt82enderer:prepareFrame
-	pixel65rt82enderer:bindScreenTextures pixel65rt82enderer:writePostParams
-	pixel65rt82enderer:viewFor pixel65rt82enderer:drawScene pixel65rt82enderer:drawPost
-	pixel65rt82enderer:drawBlit pixel65rt82enderer:rampsHaveLevels pixel65rt82enderer:levelsAt
-	pixel65rt82enderer:billboardLevels pixel65rt82enderer:phasesFitTargets
-	pixel65rt82enderer:postReadsDepth pixel65rt82enderer:storeWhen renderer:drawPhase
+	pipeline:pipelineKey pixelArtRenderer:renderFrame pixelArtRenderer:prepareFrame
+	pixelArtRenderer:bindScreenTextures pixelArtRenderer:writePostParams
+	pixelArtRenderer:viewFor pixelArtRenderer:drawScene pixelArtRenderer:drawPost
+	pixelArtRenderer:drawBlit pixelArtRenderer:rampsHaveLevels pixelArtRenderer:levelsAt
+	pixelArtRenderer:billboardLevels pixelArtRenderer:phasesFitTargets
+	pixelArtRenderer:postReadsDepth pixelArtRenderer:storeWhen renderer:drawPhase
 	renderer:phaseCount state:blends
-	gpu3d:drawnIn forward82enderer:renderFrame forward82enderer:prepareFrame
-	forward82enderer:drawToScreen forward82enderer:resizeTargets
+	gpu3d:drawnIn forwardRenderer:renderFrame forwardRenderer:prepareFrame
+	forwardRenderer:drawToScreen forwardRenderer:resizeTargets
 	camera:resolve camera:writeCameraBlock blit:writeBlitParams blit:lowResView palette:upload
 	target:beginPass target:beginScreenPass door:passState door:beginPassWith
 	door:beginScreenPassWith door:endPass draw:hasMaterial draw:keepsItsUniforms draw:buryDoomed
-	uniform80ool:holds uniform80ool:writeRange uniform80ool:admitted draw:issuedMaterial"
-RENDER_PATH_FUNCTIONS="$RENDER_PATH_FUNCTIONS pass76ist:filterFrustum pass76ist:depthOf
+	uniformPool:holds uniformPool:writeRange uniformPool:admitted draw:issuedMaterial"
+RENDER_PATH_FUNCTIONS="$RENDER_PATH_FUNCTIONS passList:filterFrustum passList:depthOf
 	frustum:fromMatrix frustum:absolute frustum:intersectsPlane frustum:intersectsBounds
 	draw:keepsItsTexture material:textureOf material:viewSlotOf
 	material:samplerSlotOf texture:isTexture draw:viewAt draw:textureReady
@@ -1056,39 +1056,39 @@ RENDER_PATH_FUNCTIONS="$RENDER_PATH_FUNCTIONS pass76ist:filterFrustum pass76ist:
 
 # Module names as msc spells them in emitted file names: an upper-case letter becomes its code.
 PICK_PATH_FUNCTIONS="pick:pickNearest scene:requireOpen pick:pickableOwner pick:meshHit bounds:rayIntersection
-	mesh68ata:rayIntersection mesh68ata:interpolateUv mesh68ata:cornerOf mesh68ata:stride
+	meshData:rayIntersection meshData:interpolateUv meshData:cornerOf meshData:stride
 	ray:transformed scene:nodeIdAt"
 PERSPECTIVE_PATH_FUNCTIONS="camera:resolve camera:basisOf camera:sine camera:cosine
 	camera:makeCameraMatrix camera:orthoBounds camera:projectionMatrix camera:snapEye camera:floored
 	camera:writeCameraBlock camera:project camera:rayFromScreen camera:unproject camera:pointAt
 	camera:ndcOf camera:texelOf camera:finitePoint camera:supportsScreenRays
-	renderer:beginFrame pass76ist:filterFrustum
+	renderer:beginFrame passList:filterFrustum
 	frustum:fromMatrix frustum:absolute frustum:intersectsPlane frustum:intersectsBounds"
 CAMERA_RIG_PATH_FUNCTIONS="scene:cameraOf scene:cameraRow scene:syncWorld scene:liveRow
 	scene:requireOpen scene:isLive slots:isCurrent camera:fromWorld camera:finiteWorld
 	scene:connectedRow
 	camera:boundedAxis camera:preciseCross camera:validOrientation camera:resolve camera:basisOf"
-SHADOW_PATH_FUNCTIONS="dir83hadow77ap:drawShadows dir83hadow77ap:castsAll dir83hadow77ap:lightBasis
-	dir83hadow77ap:shadowBounds dir83hadow77ap:casterBounds dir83hadow77ap:widened
-	dir83hadow77ap:mapMatrix dir83hadow77ap:sceneTexture renderer:drawShadowPass
-	renderer:sceneTextureOf pass76ist:collectCasters pass76ist:reserve gpu3d:castIn
+SHADOW_PATH_FUNCTIONS="dirShadowMap:drawShadows dirShadowMap:castsAll dirShadowMap:lightBasis
+	dirShadowMap:shadowBounds dirShadowMap:casterBounds dirShadowMap:widened
+	dirShadowMap:mapMatrix dirShadowMap:sceneTexture renderer:drawShadowPass
+	renderer:sceneTextureOf passList:collectCasters passList:reserve gpu3d:castIn
 	gpu3d:drawnIn draw:drawItemWith material:shadowFace"
-WORLD_LABEL_PATH_FUNCTIONS="world76abel:faceCamera world76abel:facingRotation camera:rotationOfBasis
-	world76abel:refreshLabel world76abel:setLabelTint world76abel:setLabelText
-	world76abel:redraw world76abel:place world76abel:transformOf world76abel:localFor
-	world76abel:writeBlock world76abel:uvOfSubRect world76abel:grown
+WORLD_LABEL_PATH_FUNCTIONS="worldLabel:faceCamera worldLabel:facingRotation camera:rotationOfBasis
+	worldLabel:refreshLabel worldLabel:setLabelTint worldLabel:setLabelText
+	worldLabel:redraw worldLabel:place worldLabel:transformOf worldLabel:localFor
+	worldLabel:writeBlock worldLabel:uvOfSubRect worldLabel:grown
 	scene:setLocal scene:liveRow scene:syncWorld"
-CARD_TABLE_PATH_FUNCTIONS="card84able83cene:frameCardTable card84able83cene:writeOrders
-	card84able83cene:writeDissolve card84able83cene:flicker card84able83cene:stepTorches
-	card84able83cene:advance card84able83cene:draw card84able83cene:tableView
-	card84able83cene:overlayView card84able83cene:showOverlay card84able83cene:cardPoint
-	card84able83cene:shadowOf"
+CARD_TABLE_PATH_FUNCTIONS="cardTableScene:frameCardTable cardTableScene:writeOrders
+	cardTableScene:writeDissolve cardTableScene:flicker cardTableScene:stepTorches
+	cardTableScene:advance cardTableScene:draw cardTableScene:tableView
+	cardTableScene:overlayView cardTableScene:showOverlay cardTableScene:cardPoint
+	cardTableScene:shadowOf"
 REPARENT_PATH_FUNCTIONS="scene:attach scene:insertBefore scene:placeNode scene:detach
 	scene:parentRow scene:linkChild scene:connectedRow scene:collectSubtree scene:ownedRows
 	scene:closeScene scene:checkPins scene:releasePayload scene:requireOpen scene:requireOwn
 	scene:liveRow scene:isLive"
 RENDER_ORDER_PATH_FUNCTIONS="scene:setRenderOrder scene:refresh scene:liveRow
-	pass76ist:collect pass76ist:filterFrustum pass76ist:sortBackToFront pass76ist:sortByLayer"
+	passList:collect passList:filterFrustum passList:sortBackToFront passList:sortByLayer"
 
 # Every `*Copy(` counts, because a struct copy duplicates its Vec (M38 TurbulenceCopy); list a
 # copy here only for a struct that holds no Vec, with its reason.
@@ -1107,8 +1107,11 @@ check_array_copies() {
 	for entry in $3; do
 		module=${entry%%:*}
 		fn=${entry#*:}
-		emitted=$({ ls out/debug/*srcZvoid3dZ${module}Oms.c; ls out/debug/*srcZgpuZ${module}Oms.c;
-			ls out/debug/*srcZexamplesZ${module}Oms.c; } 2>/dev/null | head -1)
+		cModule=$(printf '%s' "$module" | awk '{ for (i = 1; i <= length($0); i++) {
+			c = substr($0, i, 1); p = index("ABCDEFGHIJKLMNOPQRSTUVWXYZ", c)
+			printf "%s", p ? sprintf("U%02X", 64 + p) : c } }')
+		emitted=$({ ls out/debug/*srcZvoid3dZ${cModule}Oms.c; ls out/debug/*srcZgpuZ${cModule}Oms.c;
+			ls out/debug/*srcZexamplesZ${cModule}Oms.c; } 2>/dev/null | head -1)
 		if [ -z "$emitted" ] || ! grep -q "^[a-zA-Z_].*[^a-zA-Z0-9_]${fn}__.*{[[:space:]]*$" "$emitted"; then
 			fail "allocation: the emitted C of $module.ms has no body for $fn — renamed or unreachable?"
 			return 1

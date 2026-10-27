@@ -931,38 +931,38 @@ FRAME_PATH="scene:tick scene:present scene:presentAt scene:prepare scene:drawScr
 	render:placedBounds render:cellBounds render:emitImage render:appendTile render:quadTile
 	render:rewriteTile render:drawScaleGrid
 	render:sharedGlyphView node:clearChanges node:refOf node:liveRow node:imageStyleOf
-	render:renderScaleGrid label84ext:placementCurrent label84ext:placementKey label84ext:uvRect
-	label84ext:markGlyphPageDrawn label84ext:beginGlyphFrame label84ext:glyphPageHandle
-	glyph65tlas:tile glyph65tlas:markDrawn glyph65tlas:beginFrame glyph65tlas:pageHandle
-	display76ist:resetContext display76ist:growTo display76ist:pushUiInstance
-	display76ist:pushSpriteInstance display76ist:pushVertex display76ist:recordDraw
-	display76ist:recordUiDraw display76ist:recordSpriteDraw display76ist:startCommand
-	display76ist:pushEffect display76ist:recordClip draw:openBracket draw:startContext draw:end2d
+	render:renderScaleGrid labelText:placementCurrent labelText:placementKey labelText:uvRect
+	labelText:markGlyphPageDrawn labelText:beginGlyphFrame labelText:glyphPageHandle
+	glyphAtlas:tile glyphAtlas:markDrawn glyphAtlas:beginFrame glyphAtlas:pageHandle
+	displayList:resetContext displayList:growTo displayList:pushUiInstance
+	displayList:pushSpriteInstance displayList:pushVertex displayList:recordDraw
+	displayList:recordUiDraw displayList:recordSpriteDraw displayList:startCommand
+	displayList:pushEffect displayList:recordClip draw:openBracket draw:startContext draw:end2d
 	draw:flushTargets draw:prepare draw:drawScreen
 	draw:drawUiInstance draw:drawSpriteAffine draw:useRun draw:openRun draw:closeRun
 	draw:finishRecording draw:applyClip draw:pushClip draw:popClip draw:setEffect
 	draw:drawMeshRange snap:snapBoxEdges render:showsEditing render:faded render:segmentBox
 	render:emitRunBox render:emitRunLine render:emitDecorations render:neighbourSpan
-	render:emitSelection render:emitCaret label84ext:cursorShown
-	text76ayout:lineBoxAt text76ayout:lineOfIndex
+	render:emitSelection render:emitCaret labelText:cursorShown
+	textLayout:lineBoxAt textLayout:lineOfIndex
 	render:emitTiles render:cellMatrix render:tileBounds render:drawnEnd render:tileTint
 	render:retilable render:queueRetile render:retileRow node:settleTiles draw:beginSprites
-	draw:appendSprite draw:rewriteSprite display76ist:putSpriteInstance render:lanesFor
+	draw:appendSprite draw:rewriteSprite displayList:putSpriteInstance render:lanesFor
 	render:laneParent render:openLanes render:closeEnclosure render:closeLanes
 	render:remapLaneRows render:checkNoOverlap draw:splitRun draw:closeLaneRun
-	draw:restoreLaneRun draw:reopenLast display76ist:layLanes display76ist:lanesReorderable
-	display76ist:laneSourceHolding"
-REBUILD_PATH="render:shapeIfChanged render:drawFiltered label84ext:placeLabel
-	label84ext:shapeLabel label84ext:releasePlacement label84ext:runDecorations
-	label84ext:lineDecorations label84ext:refreshSelection label84ext:rowSpans label84ext:rowEnd
-	label84ext:xOnRow
-	text76ayout:layout text76ayout:shapeText text76ayout:wrapText text76ayout:pushLine
-	text76ayout:pushTruncated text76ayout:forceCells text76ayout:decodeUtf8
-	text76ayout:assignFaces text76ayout:assignGrapheme text76ayout:graphemeFace
-	text76ayout:breakAfter text76ayout:step
-	text76ayout:tallestFaces grapheme:breaksBefore line66reak:lineBreaks line66reak:unitBreak
-	glyph65tlas:acquire glyph65tlas:allocate glyph65tlas:placeOnPage
-	glyph65tlas:ensurePage glyph65tlas:reclaimPage glyph65tlas:release"
+	draw:restoreLaneRun draw:reopenLast displayList:layLanes displayList:lanesReorderable
+	displayList:laneSourceHolding"
+REBUILD_PATH="render:shapeIfChanged render:drawFiltered labelText:placeLabel
+	labelText:shapeLabel labelText:releasePlacement labelText:runDecorations
+	labelText:lineDecorations labelText:refreshSelection labelText:rowSpans labelText:rowEnd
+	labelText:xOnRow
+	textLayout:layout textLayout:shapeText textLayout:wrapText textLayout:pushLine
+	textLayout:pushTruncated textLayout:forceCells textLayout:decodeUtf8
+	textLayout:assignFaces textLayout:assignGrapheme textLayout:graphemeFace
+	textLayout:breakAfter textLayout:step
+	textLayout:tallestFaces grapheme:breaksBefore lineBreak:lineBreaks lineBreak:unitBreak
+	glyphAtlas:acquire glyphAtlas:allocate glyphAtlas:placeOnPage
+	glyphAtlas:ensurePage glyphAtlas:reclaimPage glyphAtlas:release"
 MEASURE_PATH="render:textWidth render:textHeight render:shapedPayload node:labelRow
 	node:requireKind"
 copied=""
