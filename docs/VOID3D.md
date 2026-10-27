@@ -6516,8 +6516,9 @@ msc needs to build either tree. Medians of the per-second averages, six interlea
 448.9, 463.6, 447.3, 462.1, 646.8 and 471.7 ms before against 121.8, 118.0, 119.4, 175.1, 120.4
 and 124.4 ms after, a median ratio of 0.265. The box idled at 15-46% CPU, so no pair is clean
 by the 25% rule; leaving out pairs 4 and 5, whose load reached 49% and 99%, keeps the ratio at
-0.265. Not explained: `24eee3f4` took 455 ms here against about 270 ms on 2026-10-26, with a
-different msc and machine state, and the older binary was not kept for a control.
+0.265. `24eee3f4` took 455 ms here against about 270 ms on 2026-10-26, and the machine, not the
+compiler, moved: built by the msc of that run (`f2debffda`) and by `c85d84fb8`, interleaved
+from the same tree, it took 484.2, 500.8 and 498.7 ms against 477.1, 468.3 and 458.8 ms.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
