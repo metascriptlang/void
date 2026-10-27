@@ -1,6 +1,6 @@
-import { Align, TextRun, Truncate } from "../void2d/textLayout";
+import { Align, TextRun, Truncate, UnderlineStyle } from "../void2d/textLayout";
 import { DEFAULT_FONT, FontId, addFont, fontFace } from "../void2d/font";
-import { decorationMetrics, faceMetrics, glyphLookups } from "../void2d/face";
+import { decorationMetrics, faceMetrics, glyphAdvance, glyphIndex, glyphLookups } from "../void2d/face";
 
 when (voidSprites) {
 	import { spriteCellFor } from "../void2d/font";
@@ -297,6 +297,49 @@ test "a decoration runs on across the runs that share it, as GPUI's does" {
 	assert e.decorations[0].kind == DecorationKind.WavyUnderline;
 	assert approx(e.decorations[0].w, g[4].x + g[4].advance - g[0].x);
 	assert e.decorations[1].kind == DecorationKind.Underline && e.decorations[1].x == g[5].x;
+	releaseLabelText(index);
+}
+
+test "a styled underline keeps its kind and pattern cell, an overline sits on the ascent" {
+	const index = allocateLabelText();
+	const ink = rgba(0.0, 1.0, 0.0, 1.0);
+	const runs: TextRun[] = [
+		{ ...plainRun(2), underline: ink, underlineStyle: UnderlineStyle.Double },
+		{ ...plainRun(2), underline: ink, underlineStyle: UnderlineStyle.Dotted },
+		{ ...plainRun(2), underline: ink, underlineStyle: UnderlineStyle.Dashed, wavy: true },
+		{ ...plainRun(2), overline: ink },
+	];
+	setLabelRuns(index, runs);
+	shapeLabel(index, "abcdefgh", {
+		font: DEFAULT_FONT,
+		size: 13.0,
+		letterSpacing: 0.0,
+		lineSpacing: 0.0,
+		maxWidth: 0.0,
+		align: Align.Left,
+	});
+	const e = labelTexts[index];
+	const line = e.layout.lines[0];
+	const face = fontFace(DEFAULT_FONT);
+	const deco = decorationMetrics(face, 13.0);
+	assert (e.decorations.length as int32) == 4;
+	assert e.decorations[0].kind == DecorationKind.DoubleUnderline;
+	assert approx(e.decorations[0].y, line.baseline + deco.underlineTop - deco.underlineThickness);
+	assert approx(e.decorations[0].h, deco.underlineThickness * 3.0);
+	assert e.decorations[0].cell == 0.0;
+	assert e.decorations[1].kind == DecorationKind.DottedUnderline;
+	assert approx(e.decorations[1].cell, glyphAdvance(face, glyphIndex(face, "0".code), 13.0));
+	assert e.decorations[2].kind == DecorationKind.WavyUnderline;
+	assert e.decorations[3].kind == DecorationKind.Overline;
+	assert approx(e.decorations[3].y, line.baseline - faceMetrics(face, 13.0).ascent);
+	assert e.decorations[3].h == deco.underlineThickness;
+
+	setLabelLines(index, { ...labelLines(index), forceWidth: 10.0 });
+	setLabelRuns(index, [{ ...plainRun(8), underline: ink, underlineStyle: UnderlineStyle.Dashed }]);
+	shapeLabel(index, "abcdefgh", e.style);
+	assert (labelTexts[index].decorations.length as int32) == 1;
+	assert labelTexts[index].decorations[0].kind == DecorationKind.DashedUnderline;
+	assert labelTexts[index].decorations[0].cell == 10.0;
 	releaseLabelText(index);
 }
 

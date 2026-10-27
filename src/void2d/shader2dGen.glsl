@@ -449,9 +449,24 @@ vec4 withEffect(vec4 p, vec3 keyTexel) {
     s = (colorMatrix * s) + colorAdd;
     return vec4((s.xyz * s.w), s.w);
 }
-float underlineDistance(vec2 p, vec2 half_1, vec4 shape) {
+float floorMod(float x, float y) {
+    return x - (y * floor((x / y)));
+}
+float dotDistance(float u, float cell, float thickness, float aa) {
+    float dot_1 = max(thickness, (3.0 * aa));
+    float count = max(floor(((cell / dot_1) * 0.5)), 1.0);
+    float pitch = cell / count;
+    float v = floorMod(u, pitch);
+    return min(max((-v), (v - dot_1)), (pitch - v));
+}
+float dashDistance(float u, float cell, float aa) {
+    float dash = (cell / 3.0) + aa;
+    return min(max((-u), (u - dash)), max(((2.0 * dash) - u), (u - cell)));
+}
+float underlineDistance(vec2 p, vec2 half_1, vec4 shape, float aa) {
     float thickness = shape.x;
-    if (shape.y > 0.5) {
+    int pattern = int(shape.y + 0.5);
+    if (pattern == 1) {
         float height = half_1.y * 2.0;
         float frequency = (6.283185307179586 * thickness) / height;
         float amplitude = (thickness * 0.8) / height;
@@ -460,7 +475,14 @@ float underlineDistance(vec2 p, vec2 half_1, vec4 shape) {
         float distance_1 = (((p.y / height) - (sin(phase) * amplitude)) * height) / sqrt((1.0 + (slope * slope)));
         return abs(distance_1) - (thickness * 0.5);
     }
-    return roundedRectDistance(p, half_1, 0.0);
+    float bar = roundedRectDistance(p, half_1, 0.0);
+    float cell = shape.w;
+    if ((pattern < 2) || (cell <= 0.0)) {
+        return bar;
+    }
+    float u = floorMod(((p.x + half_1.x) + shape.z), cell);
+    float dotted = dotDistance(u, cell, thickness, aa);
+    return max(bar, ((pattern == 2) ? dotted : dashDistance(u, cell, aa)));
 }
 float smoothUnionDistance(float a, float b, float k) {
     if (k <= 0.0) {
@@ -525,9 +547,6 @@ float cornerDashVelocity(float first, float second) {
         return first;
     }
     return min(first, second);
-}
-float floorMod(float x, float y) {
-    return x - (y * floor((x / y)));
 }
 float dashAlpha(float t, float period, float dashLength, float velocity, float aa) {
     if (velocity <= 0.0) {
@@ -781,7 +800,7 @@ void main() {
         return;
     }
     if (mode == 4) {
-        float coverage_1 = coverageFromDistance(underlineDistance(p, half_1, vBorders), aa);
+        float coverage_1 = coverageFromDistance(underlineDistance(p, half_1, vBorders, aa), aa);
         float alpha_1 = vFill.w * coverage_1;
         fragColor = withEffect(vec4((vFill.xyz * alpha_1), alpha_1), vec3(1.0));
         return;

@@ -381,6 +381,8 @@ export function sceneRows(): SceneRow[] {
 			steps: 0, demo: false },
 		{ name: "text/decorations", phase: "P4", width: 320, height: 150, dpi: 1.25,
 			steps: 0, demo: false },
+		{ name: "text/underlineStyles", phase: "P4", width: 320, height: 150, dpi: 1.25,
+			steps: 0, demo: false },
 		{ name: "text/caretSelection", phase: "P4", width: 320, height: 150, dpi: 1.25,
 			steps: 0, demo: false },
 		{ name: "text/ligature", phase: "P6", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
@@ -538,7 +540,7 @@ export function sceneDrawCounts(): int32[] {
 	return [
 		1, 1, 1, 1, 1, 1, 3, 2, 2, 2, 1, 2, 1, 1, 1, 1, 1, 1,
 		1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1,
-		1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 11, 1,
+		1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 11, 1,
 		1, 1, 2, 2, 2, 1, 6, 2, 1, 1, 1, 5, 3, 1, 2, 2, 2,
 		1, 2, 2, 1, 1, 1, 1, 1, 3, 31, 31, 31, 31, 2, 5, 17, 1,
 		2, 4, 2, 18, 4, 1, 2, 1, 3, 5, 5, 2, 2, 1, 1,
@@ -551,7 +553,7 @@ export function sceneRenderTargetCounts(): int32[] {
 	return [
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 5, 5, 5,
 		4, 4, 1, 0, 0, 0, 0, 0, 5, 5, 5, 5, 5, 0, 5, 0, 0,
 		0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

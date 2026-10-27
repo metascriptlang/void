@@ -8,7 +8,7 @@
 // regenerate exactly that group and nothing else.
 
 import { NodeRef, Scene2D, TileCell } from "../../src/void2d/node";
-import { Align, TextRun, Truncate } from "../../src/void2d/textLayout";
+import { Align, TextRun, Truncate, UnderlineStyle } from "../../src/void2d/textLayout";
 import { TextDirection } from "../../src/void2d/textDirection";
 import {
 	addFont, addFallbackFont, registerFace, resolveFont, Font, FontId, FontStyle, FontFeature,
@@ -875,6 +875,27 @@ function textDecorations(): Scene2D {
 		{ ...decoratedRun(10, plain), underline: rgba(0.45, 0.80, 0.95, 1.0) },
 	];
 	s.add(s.label("struck and underlined", 16.0, white).setTextRuns(lines).at(10.5, 76.4));
+	return s;
+}
+
+function textUnderlineStyles(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const white: Color = rgba(1.0, 1.0, 1.0, 1.0);
+	const plain: Color = rgba(0.86, 0.90, 0.98, 1.0);
+	const ink: Color = rgba(0.45, 0.80, 0.95, 1.0);
+	const styles: UnderlineStyle[] = [UnderlineStyle.Double, UnderlineStyle.Dotted, UnderlineStyle.Dashed];
+	const names: string[] = ["double underline", "dotted underline", "dashed underline"];
+	for (let i = 0; i < 3; i++) {
+		const runs: TextRun[] = [
+			{ ...decoratedRun(names[i].length as int32, plain), underline: ink, underlineStyle: styles[i] },
+		];
+		s.add(s.label(names[i], 16.0, white).setTextRuns(runs).at(10.0, 8.0 + (i as float32) * 30.0));
+	}
+	const over: TextRun[] = [
+		decoratedRun(4, plain),
+		{ ...decoratedRun(8, plain), overline: rgba(0.95, 0.60, 0.40, 1.0) },
+	];
+	s.add(s.label("the overline", 16.0, white).setTextRuns(over).at(10.0, 104.0));
 	return s;
 }
 
@@ -2267,6 +2288,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "text/fontStyles", build: textFontStyles },
 		{ name: "text/filteredDpi125", build: textFilteredDpi125 },
 		{ name: "text/decorations", build: textDecorations },
+		{ name: "text/underlineStyles", build: textUnderlineStyles },
 		{ name: "text/caretSelection", build: textCaretSelection },
 		{ name: "text/ligature", build: textLigature },
 		{ name: "text/colourEmoji", build: textColourEmoji },

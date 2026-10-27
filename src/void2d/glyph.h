@@ -17,6 +17,7 @@ int void2dGlyphFaceSynthetic(int face, int bold, int italic);
 int void2dGlyphFaceSprite(int base);
 int void2dGlyphFacePlatform(int base);
 int void2dGlyphFaceIsPlatform(int face);
+int void2dGlyphFaceBrowser(const char *style, const char *family);
 int void2dGlyphFaceIsSprite(int face);
 void void2dGlyphSpriteCell(int face, float sizePx, int *out, int64_t slots);
 int void2dGlyphPolygonCoverage(unsigned char *coverage, int width, int height, const double *xy,

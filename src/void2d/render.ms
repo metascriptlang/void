@@ -529,22 +529,38 @@ function emitRunBox(
 		uiInstance(InstanceMode.Box, world, origin.x, origin.y, w, h, fill));
 }
 
+const LINE_SOLID: float32 = 0.0;
+const LINE_WAVY: float32 = 1.0;
+const LINE_DOTTED: float32 = 2.0;
+const LINE_DASHED: float32 = 3.0;
+
 function emitRunLine(
 	blend: BlendMode,
 	world: Transform2D,
 	box: [float32, float32, float32, float32],
-	wavy: boolean,
+	pattern: float32,
+	cell: float32,
 	fill: Color,
 ): void {
 	const [x, y, w, h] = box;
 	if (w <= 0.0 || h <= 0.0) { return; }
+	const wavy: boolean = pattern == LINE_WAVY;
 	const quadY: float32 = wavy ? y - h : y;
 	const quadH: float32 = wavy ? h * 3.0 : h;
 	const origin = vec2(x, quadY) * world;
 	drawUiInstance(sharedGlyphView(), blend, {
 		...uiInstance(InstanceMode.Underline, world, origin.x, origin.y, w, quadH, fill),
-		borders: [h, wavy ? 1.0 : 0.0, 0.0, 0.0],
+		borders: [h, pattern, x, cell],
 	});
+}
+
+function linePattern(kind: DecorationKind): float32 {
+	return match (kind) {
+		DecorationKind.WavyUnderline => LINE_WAVY,
+		DecorationKind.DottedUnderline => LINE_DOTTED,
+		DecorationKind.DashedUnderline => LINE_DASHED,
+		_ => LINE_SOLID,
+	};
 }
 
 function emitDecorations(
@@ -559,12 +575,19 @@ function emitDecorations(
 		const d: Decoration = text.decorations[i];
 		const background: boolean = d.kind == DecorationKind.Background;
 		if (background != backgrounds) { continue; }
+		if (d.kind == DecorationKind.DoubleUnderline) {
+			const bar: float32 = d.h / 3.0;
+			const upper = segmentBox(d.x, d.x + d.w, d.y, bar, true, world, scale);
+			const lower = segmentBox(d.x, d.x + d.w, d.y + 2.0 * bar, bar, true, world, scale);
+			emitRunLine(blend, world, upper, LINE_SOLID, 0.0, d.color.faded(na));
+			emitRunLine(blend, world, lower, LINE_SOLID, 0.0, d.color.faded(na));
+			continue;
+		}
 		const box = segmentBox(d.x, d.x + d.w, d.y, d.h, !background, world, scale);
 		if (background) {
 			emitRunBox(blend, world, box, d.color.faded(na));
 		} else {
-			const wavy: boolean = d.kind == DecorationKind.WavyUnderline;
-			emitRunLine(blend, world, box, wavy, d.color.faded(na));
+			emitRunLine(blend, world, box, linePattern(d.kind), d.cell, d.color.faded(na));
 		}
 	}
 }
