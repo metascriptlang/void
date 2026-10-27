@@ -26,6 +26,7 @@ when (macos) {
 import "./syntheticFaceCheck";
 when (voidSprites) {
 	import "./spriteOracleCheck";
+	import "./spritePortCheck";
 } else {
 	import "./spriteOffCheck";
 }
