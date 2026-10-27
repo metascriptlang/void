@@ -126,15 +126,14 @@ build() {
 
 # Linux runs in WSL on the real GPU through Mesa's d3d12 driver (GALLIUM_DRIVER=d3d12), or on
 # llvmpipe with AB_LINUX_DRIVER=llvmpipe. Exes live in a WSL-native dir, never under /mnt/c, so the
-# load path is not a variable; each tree is read through /mnt/c. msc has no yoga link line for
-# linux (~/metascript/.inbox/yoga/), so libyoga.a is built once by zig c++ from deps/yoga.
+# load path is not a variable; each tree is read through /mnt/c.
 # The WSL script comes on stdin; \$ is WSL's, $ is expanded here first.
 wsl() { MSYS_NO_PATHCONV=1 wsl.exe -e bash -l -s; }
 wslTree() { MSYS_NO_PATHCONV=1 wsl.exe -e wslpath -u "$(winPath "$1")" | tr -d '\r'; }
 wslOut() { echo "$(echo 'echo $HOME' | wsl | tr -d '\r')/voidAB"; }
 
 buildLinux() {
-	out="$(wslOut)"; yoga="$(wslTree "$MAIN_REPO/../yoga")"
+	out="$(wslOut)"
 	wsl > "$OUT/linuxProvision.log" 2>&1 <<EOF || { echo "BUILD FAIL linux provision (see $OUT/linuxProvision.log)"; return 1; }
 set -e
 mkdir -p $out/A $out/B
@@ -142,13 +141,6 @@ for d in d3d12 llvmpipe; do
 	printf '#!/bin/bash -l\nexport GALLIUM_DRIVER=%s DISPLAY=\${DISPLAY:-:0}\nexec "\$@"\n' \$d > $out/run.\$d.sh
 	chmod +x $out/run.\$d.sh
 done
-if [ ! -f $out/libyoga.a ]; then
-	mkdir -p $out/yoga && cd $out/yoga
-	for f in \$(find '$yoga/deps/yoga/yoga' -name '*.cpp'); do
-		zig c++ -target x86_64-linux-gnu -std=c++20 -O2 -fPIC -I'$yoga/deps/yoga' -c \$f -o \$(echo \$f | md5sum | cut -c1-12).o
-	done
-	ar rcs ../libyoga.a *.o
-fi
 EOF
 	for side in A B; do
 		tree="$A"; [ "$side" = B ] && tree="$B"; wtree="$(wslTree "$tree")"
@@ -157,7 +149,7 @@ EOF
 export MSC_NO_GLOBAL_CACHE=1
 rm -f $out/$side/bench$scene.exe
 cd '$wtree'
-msc build --os=linux --passL=$out/libyoga.a tests/bench/bench$scene.ms --release --output=$out/$side/bench$scene.exe
+msc build --os=linux tests/bench/bench$scene.ms --release --output=$out/$side/bench$scene.exe
 [ -x $out/$side/bench$scene.exe ]
 EOF
 			then
