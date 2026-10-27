@@ -111,6 +111,26 @@ for jsStage in off on; do
 		fail "JS target, module stage all-$jsStage: msc test --target=js tests/js/targetCheck.ms — see out/gate-js-$jsStage.log"
 	fi
 done
+for jsDriver in views window; do
+	for jsBackend in gl gpu; do
+		jsBundle="out/tmp/js-$jsDriver-$jsBackend.js"
+		jsBackendFlag=""
+		[ "$jsBackend" = gl ] && jsBackendFlag="-d:webgl2"
+		if "$MSC" build --target=js $jsBackendFlag "src/examples/${jsDriver}JsEntry.jms" --output="$jsBundle" > "out/gate-js-$jsDriver-$jsBackend.log" 2>&1 \
+				&& node tests/js/gpuLostHarness.mjs "$jsBundle" "$jsBackend" "$jsDriver" >> "out/gate-js-$jsDriver-$jsBackend.log" 2>&1; then
+			pass "JS $jsDriver driver on $jsBackend: the loss harness (tests/js/gpuLostHarness.mjs) passes"
+		else
+			fail "JS $jsDriver driver on $jsBackend: build or tests/js/gpuLostHarness.mjs — see out/gate-js-$jsDriver-$jsBackend.log"
+		fi
+	done
+done
+for jsBackend in gl gpu; do
+	if node tests/js/gpuViewsHarness.mjs "out/tmp/js-views-$jsBackend.js" "$jsBackend" > "out/gate-js-views-harness-$jsBackend.log" 2>&1; then
+		pass "JS views on $jsBackend: tests/js/gpuViewsHarness.mjs passes"
+	else
+		fail "JS views on $jsBackend: tests/js/gpuViewsHarness.mjs — see out/gate-js-views-harness-$jsBackend.log"
+	fi
+done
 for target in "--os=windows" "--os=windows -d:voidGlCore" "--os=linux" "--os=android" "--os=ios" \
 		"--os=windows -d:voidVulkan" "--os=linux -d:voidVulkan" "--os=android -d:voidVulkan" \
 		"--os=emcc -d:webgpu" "--os=emcc -d:webgl2" "-d:voidDummy"; do
@@ -1181,6 +1201,12 @@ if sh scripts/wasmBudget.test.sh --record > out/gate-wasm-budget-record.log 2>&1
 	pass "linked wasm budgets: 24 measured declarations valid; remeasure with scripts/experiment-modulesWeb.sh (not linked again by this native stage)"
 else
 	fail "linked wasm budget declarations — see out/gate-wasm-budget-record.log"
+fi
+if MSC="$MSC" sh scripts/jsBudget.sh > out/gate-js-budget.log 2>&1; then
+	pass "JS budgets: both entries, six module flags, raw and gzip stay inside tests/bench/jsBudget.txt"
+else
+	fail "JS budgets — see out/gate-js-budget.log"
+	grep -E '^FAIL' out/gate-js-budget.log | sed 's/^/      /' || true
 fi
 
 # The graduation rule for a conformance row: every scene it lists must still fail, and a clean
