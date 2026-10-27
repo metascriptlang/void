@@ -12,7 +12,7 @@ import {
 	sdfKey,
 	sdfRasterRefusal,
 } from "../void2d/glyphAtlas";
-import { void2dGlyphSdfGenerations } from "../void2d/glyph.h";
+import { void2dGlyphSdfGenerations } from "../void2d/glyph";
 
 let loadedFace: int32 = -1;
 

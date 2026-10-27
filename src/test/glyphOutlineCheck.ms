@@ -1,7 +1,6 @@
-import "../void2d/textOutlineSwitch";
 import {
 	void2dGlyphOutlineGenerations,
-} from "../void2d/glyph.h";
+} from "../void2d/glyph";
 import { glyphBox, glyphOutlineBox } from "../void2d/glyphBoxes";
 
 when (voidSdfText) {

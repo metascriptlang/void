@@ -7,7 +7,7 @@ import {
 	glyphRasterizations, glyphRefusals, setSdfRegime,
 } from "../../src/void2d/labelText";
 import { PageKind } from "../../src/void2d/glyphAtlas";
-import { void2dGlyphPageTexel } from "../../src/void2d/glyph.h";
+import { void2dGlyphPageTexel } from "../../src/void2d/glyph";
 import { gfxSetup } from "../../src/sokol/gpu";
 import { setup2d, frameEnd, setTextGamma } from "../../src/void2d/draw";
 import { Color, rgba } from "../../src/void2d/types";

@@ -25,7 +25,7 @@ import {
 	PageKind,
 	NO_GLYPH_PAGE_HANDLE,
 } from "../void2d/glyphAtlas";
-import { void2dGlyphPageTexelRgba } from "../void2d/glyph.h";
+import { void2dGlyphPageTexelRgba } from "../void2d/glyph";
 import { colourEmojiReason } from "../void2d/colourEmoji/colourEmoji";
 import { colourSweepRun, colourSweepRefused } from "./colourSweep.h";
 

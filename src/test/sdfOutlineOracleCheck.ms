@@ -1,5 +1,3 @@
-import "../void2d/textSdfSwitch";
-import "../void2d/textOutlineSwitch";
 import { loadFace, glyphIndex, pageTexel } from "../void2d/face";
 import {
 	GlyphAtlas,

@@ -1,4 +1,3 @@
-import "../void2d/textOutlineSwitch";
 import { add } from "../void2d/scene";
 import { Scene2D, NodeRef } from "../void2d/node";
 import { sync, draw, getBounds } from "../void2d/render";
