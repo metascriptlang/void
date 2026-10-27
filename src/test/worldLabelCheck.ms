@@ -7,15 +7,11 @@ import {
 } from "../void3d/billboard";
 import { MeshData, MeshError, LIT_TEXTURED_VERTEX_STRIDE } from "../void3d/meshData";
 import {
-	LabelUv, labelKey, facingRotation, labelQuad, localFor, grown, uvOfSubRect,
+	LabelUv, labelParams, facingRotation, labelQuad, localFor, grown, uvOfSubRect,
 } from "../void3d/worldLabel";
 import { approx } from "./helpers";
 import { Rgba } from "../void3d/meshData";
-import {
-	MATERIAL_UNIFORM_SLOT, UNLIT_MATERIAL_UNIFORM_LENGTH, UNLIT_MATERIAL_COLOR, MOVING_UV_MATRIX,
-	MOVING_UV_OFFSET,
-} from "../void3d/gpu3d";
-import { movingDefaults } from "../void3d/material";
+import { MATERIAL_UNIFORM_SLOT } from "../void3d/gpu3d";
 import { MovingUnlitMaterialParams } from "../void3d/shader3d";
 import { UniformPool, reserveBlock, writeBlock } from "../void3d/uniformPool";
 import { bitcastF32toU32 } from "../shader/std";
@@ -158,50 +154,33 @@ test "the moved quad shows the target's top rows and left columns and no others"
 	}
 }
 
-function labelByHand(uv: LabelUv, tint: Rgba): Vec<float32> {
-	let block: Vec<float32> = movingDefaults(labelKey());
-	const base: int32 = UNLIT_MATERIAL_UNIFORM_LENGTH;
-	block[base + MOVING_UV_MATRIX] = uv.scaleU;
-	block[base + MOVING_UV_MATRIX + 3] = uv.scaleV;
-	block[base + MOVING_UV_OFFSET + 1] = uv.offsetV;
-	block[UNLIT_MATERIAL_COLOR] = tint.red;
-	block[UNLIT_MATERIAL_COLOR + 1] = tint.green;
-	block[UNLIT_MATERIAL_COLOR + 2] = tint.blue;
-	block[UNLIT_MATERIAL_COLOR + 3] = tint.alpha;
-	return block;
-}
-
-function labelFromBlock(uv: LabelUv, tint: Rgba): Vec<float32> {
+function labelLanes(uv: LabelUv, tint: Rgba): Vec<float32> {
 	let pool: UniformPool = UniformPool.withCapacity(32);
 	for (let i = 0; i < 32; i++) { pool.values[i] = -7.0; }
 	const reserved = reserveBlock<MovingUnlitMaterialParams>(pool, MATERIAL_UNIFORM_SLOT);
 	if (!reserved.ok) { unreachable; }
-	if (!writeBlock(pool, reserved.value, {
-		material: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 },
-		materialColor: { x: tint.red, y: tint.green, z: tint.blue, w: tint.alpha },
-		uvMatrix: { x: uv.scaleU, y: 0.0, z: 0.0, w: uv.scaleV },
-		uvMotion: { x: 0.0, y: uv.offsetV, z: 0.0, w: 0.0 },
-		backUvMatrix: { x: 1.0, y: 0.0, z: 0.0, w: 1.0 },
-		backUvOffset: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 },
-		dissolve: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 },
-		dissolveEdge: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 },
-	}).ok) { unreachable; }
+	if (!writeBlock(pool, reserved.value, labelParams(uv, tint)).ok) { unreachable; }
 	return pool.values;
 }
 
-test "a label's block comes out the way the label writes it by hand, before and after its first redraw" {
+function sameLanes(made: Vec<float32>, expected: float32[]): boolean {
+	if (made.length != expected.length) { return false; }
+	for (let i = 0; i < expected.length; i++) {
+		if (bitcastF32toU32(made[i]) != bitcastF32toU32(expected[i])) { return false; }
+	}
+	return true;
+}
+
+test "a label's block holds the tint, the sub-rect's uv and the identity back uv, every other lane zero" {
 	const white: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 	const tint: Rgba = { red: 0.2, green: 0.4, blue: 0.6, alpha: 0.8 };
 	const still: LabelUv = { scaleU: 1.0, scaleV: 1.0, offsetV: 0.0 };
 	const used: LabelUv = LabelUv.uvOfSubRect(20, 10, 40, 40, false);
-	for (const uv of [still, used]) {
-		for (const color of [white, tint]) {
-			const hand: Vec<float32> = labelByHand(uv, color);
-			const made: Vec<float32> = labelFromBlock(uv, color);
-			assert hand.length == 32;
-			for (let i = 0; i < 32; i++) {
-				assert bitcastF32toU32(hand[i]) == bitcastF32toU32(made[i]);
-			}
-		}
-	}
+	assert sameLanes(labelLanes(still, white), [
+		0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	]);
+	assert sameLanes(labelLanes(used, tint), [
+		0, 0, 0, 0, 0.2, 0.4, 0.6, 0.8, 0.5, 0, 0, 0.25, 0, 0.75, 0, 0, 1, 0, 0, 1,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	]);
 }
