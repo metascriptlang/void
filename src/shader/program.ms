@@ -30,7 +30,7 @@ import { reflectProgram } from "./reflect";
 import { Vec2f, Vec2i, Vec2u, Vec3f, Vec3i, Vec3u, Vec4f, Vec4i, Vec4u } from "./std";
 import { GPUShaderModuleDescriptor } from "../webgpu/types.ms";
 import { DoorLayout, doorRegisterLayouts, doorRegisterPrograms } from "../gpu/doorGpu.ms";
-import { stop } from "../gpu/stop.ms";
+import { registerComputePrograms } from "../gpu/doorCompute.ms";
 
 export function shaderModuleOf(descriptor: GPUShaderModuleDescriptor): GPUShaderModuleDescriptor {
 	return descriptor;
@@ -48,7 +48,7 @@ export function shaderProgramRegister(
 }
 
 export function shaderComputeRegister(descriptor: GPUShaderModuleDescriptor): int32 {
-	stop("shaderCompute needs the door compute registration (wt/shader-render 8ef80a1e)");
+	return registerComputePrograms((index: int32): GPUShaderModuleDescriptor => descriptor, 1);
 }
 
 class StageBlob {

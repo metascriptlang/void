@@ -182,10 +182,9 @@ later replaces the hand-written GLSL source of each base.
   reflects and precompiles for the build's target (`cs_5_0` for DXBC), and returns a call of
   `shaderComputeRegister` on the descriptor. A vertex or fragment entry is refused by
   `glslStage` ("a compute entry returns nothing", `tests/refusals/computeVertexEntry.ms`), and a
-  `@feature` field by `oneProgram` (`tests/refusals/computeFeature.ms`). Parked: this branch has
-  no compute registration, so `shaderComputeRegister` stops with the card's name; the merge with
-  `wt/shader-render` replaces its body with `registerComputePrograms((index) => descriptor, 1)`
-  of `src/gpu/doorCompute.ms`. `src/test/shaderComputeProgramCheck.ms` reads the descriptor
+  `@feature` field by `oneProgram` (`tests/refusals/computeFeature.ms`). `shaderComputeRegister`
+  registers the descriptor through `registerComputePrograms` of `src/gpu/doorCompute.ms`.
+  `src/test/shaderComputeProgramCheck.ms` reads the descriptor
   through `shaderBuild`'s `shaderComputeModule` product, since a registered program cannot be
   read back.
 - **A helper call costs a copy of each argument.** glslang passes every argument through a
