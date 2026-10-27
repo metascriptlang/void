@@ -123,6 +123,7 @@ import "./lightShapeSceneCheck";
 import "./spotShadowCheck";
 import "./spotCookieCheck";
 import "./decalCheck";
+import "./saoCheck";
 import "./cubeShadowCheck";
 import "./morphSkinSceneCheck";
 import "./lightShapeCheck";
