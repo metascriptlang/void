@@ -7,6 +7,7 @@ import { Program, ProgramKey } from "./gpu3d";
 import { PixelFormat, endPass } from "../gpu/door";
 import { Material, Phase, TypedBlock } from "./material";
 import { ToneMapParams } from "./post3d";
+import { uniformSize } from "../shader/uniform";
 import { RenderTarget, ColorAttachment, TargetLayout, NO_DEPTH, beginPass } from "../gpu/target";
 import {
 	DrawContext,
@@ -24,7 +25,7 @@ import { screenState } from "./screenFx";
 import { Renderer, RendererError, ToneMode, drawScreen, exposureMultiplier } from "./renderer";
 
 export const TONE_MAP_UNIFORM_SLOT: int32 = 0;
-export const TONE_MAP_UNIFORM_LENGTH: int32 = 4;
+export const TONE_MAP_UNIFORM_LENGTH: int32 = uniformSize<ToneMapParams>() / 4;
 
 export function toneParamsOf(multiplier: float32, mode: ToneMode): ToneMapParams {
 	return { toneMap: { x: multiplier, y: mode as float32, z: 0.0, w: 0.0 } };

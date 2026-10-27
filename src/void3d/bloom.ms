@@ -11,6 +11,7 @@ import { Material, Phase, TypedBlock } from "./material";
 import { Vec4 } from "../math/math3d";
 import { Vec4f } from "../shader/std";
 import { BloomParams } from "./post3d";
+import { uniformSize } from "../shader/uniform";
 import {
 	RenderTarget,
 	ColorAttachment,
@@ -68,7 +69,7 @@ export function natural(this typeof BloomSettings): BloomSettings {
 // post3d.ms bloomParams: one texel of the source, then of the target; the upsample's blend
 // factor; the soft threshold's precomputations.
 export const BLOOM_UNIFORM_SLOT: int32 = 0;
-export const BLOOM_UNIFORM_LENGTH: int32 = 12;
+export const BLOOM_UNIFORM_LENGTH: int32 = uniformSize<BloomParams>() / 4;
 
 // The pool floats a BloomPass reserves: one block for each of its three programs.
 export const BLOOM_PASS_UNIFORM_LENGTH: int32 = 3 * BLOOM_UNIFORM_LENGTH;

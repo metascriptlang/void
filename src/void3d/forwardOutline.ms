@@ -16,6 +16,7 @@ import {
 } from "./draw";
 import { OutlineMaskParams, OutlineMixParams, OutlineWidthParams } from "./post3d";
 import { UniformError } from "./uniformPool";
+import { uniformSize } from "../shader/uniform";
 import { Renderer, RendererError, drawScreen } from "./renderer";
 import { screenState } from "./screenFx";
 
@@ -121,8 +122,13 @@ export function outlineWidthCoverage(
 	return complement ? 1.0 - maximum : maximum;
 }
 
-export const FORWARD_OUTLINE_PASS_UNIFORM_LENGTH: int32 = 20;
-export const FORWARD_OUTLINE_BLOCKS: Vec<int32> = [8, 8, 4];
+export const FORWARD_OUTLINE_BLOCKS: Vec<int32> = [
+	uniformSize<OutlineMaskParams>() / 4,
+	uniformSize<OutlineMixParams>() / 4,
+	uniformSize<OutlineWidthParams>() / 4,
+];
+export const FORWARD_OUTLINE_PASS_UNIFORM_LENGTH: int32 =
+	FORWARD_OUTLINE_BLOCKS[0] + FORWARD_OUTLINE_BLOCKS[1] + FORWARD_OUTLINE_BLOCKS[2];
 export const OUTLINE_WIDTH_SAMPLES: int32 = 48;
 export const OUTLINE_SCENE_LAYOUT: TargetLayout = {
 	color0: PixelFormat.Rgba8, color1: PixelFormat.Rgba8,

@@ -95,8 +95,7 @@ test "an HDR preset reserves its bloom off, and setBloom turns it on and off" {
 
 import { BloomParams } from "../void3d/post3d";
 import { UniformPool, reserveBlock, writeBlock } from "../void3d/uniformPool";
-import { uniformSize } from "../shader/uniform";
-import { BLOOM_UNIFORM_LENGTH, BLOOM_PASS_UNIFORM_LENGTH, paramsOf } from "../void3d/bloom";
+import { BLOOM_UNIFORM_LENGTH, paramsOf } from "../void3d/bloom";
 
 function sameLanes(made: Vec<float32>, expected: float32[]): boolean {
 	if (made.length != expected.length) { return false; }
@@ -104,11 +103,6 @@ function sameLanes(made: Vec<float32>, expected: float32[]): boolean {
 		if (bitcastF32toU32(made[i]) != bitcastF32toU32(expected[i])) { return false; }
 	}
 	return true;
-}
-
-test "bloom's block is its params struct's floats, three to a pass" {
-	assert BLOOM_UNIFORM_LENGTH == uniformSize<BloomParams>() / 4;
-	assert BLOOM_PASS_UNIFORM_LENGTH == 3 * BLOOM_UNIFORM_LENGTH;
 }
 
 test "bloom writes one texel of the source, one of the target, the blend and the threshold, every lane written" {
@@ -129,7 +123,6 @@ test "bloom writes one texel of the source, one of the target, the blend and the
 }
 
 test "the tone map block is the exposure multiplier and the curve's number, the other lanes zero" {
-	assert TONE_MAP_UNIFORM_LENGTH == uniformSize<ToneMapParams>() / 4;
 	let pool: UniformPool = UniformPool.withCapacity(TONE_MAP_UNIFORM_LENGTH);
 	for (let i = 0; i < TONE_MAP_UNIFORM_LENGTH; i++) { pool.values[i] = -7.0; }
 	const reserved = reserveBlock<ToneMapParams>(pool, TONE_MAP_UNIFORM_SLOT);
