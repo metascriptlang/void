@@ -19,7 +19,7 @@ import {
 	registerIcon,
 } from "../void2d/icon";
 import { SvgMaskError } from "../void2d/svgMask";
-import { void2dGlyphPageTexel } from "../void2d/glyph.h";
+import { void2dGlyphPageTexel } from "../void2d/glyph";
 
 const SQUARE: string = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" ` +
 	`viewBox="0 0 24 24"><rect x="0" y="0" width="24" height="24" fill="#000"/></svg>`;

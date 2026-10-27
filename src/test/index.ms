@@ -12,6 +12,7 @@ import "./filterPlanCheck";
 import "./faceCheck";
 import "./glyphAtlasCheck";
 import "./glyphPageReleaseCheck";
+import "./glyphPortCheck";
 import "./outlineKeyCheck";
 import "./textLayoutCheck";
 import "./labelTextCheck";
@@ -25,12 +26,24 @@ when (macos) {
 import "./syntheticFaceCheck";
 when (voidSprites) {
 	import "./spriteOracleCheck";
+	import "./spritePortCheck";
 } else {
 	import "./spriteOffCheck";
 }
 import "./fontOracleCheck";
 import "./sfntBoundsCheck";
 import "./sfntCmapCheck";
+import "./sfntPortCheck";
+import "./trueTypePortCheck";
+import "./pngPortCheck";
+import "./colourFacePortCheck";
+import "./svgMaskPortCheck";
+import "./kbUnicodePortCheck";
+import "./kbBreakPortCheck";
+import "./kbFontPortCheck";
+import "./kbLookupPortCheck";
+import "./kbConfigPortCheck";
+import "./kbShapeTablesCheck";
 import "./ucdOracleCheck";
 import "./h2dOracleCheck";
 import "./math3dCheck";
@@ -105,6 +118,13 @@ import "./gltfMaterialCheck";
 import "./gltfEmbeddedImageCheck";
 import "./gltfCurveCheck";
 import "./gltfPoseCheck";
+import "./unicodeTablesPortCheck";
+import "./floatBitsPortCheck";
+import "./mat4PortCheck";
+import "./mikkTangentsPortCheck";
+import "./viewsPortCheck";
+import "./appEventPortCheck";
+import "./appWindowPortCheck";
 import "./gltfComposeSceneCheck";
 import "./gltfAccessorCheck";
 import "./gltfColourCheck";
@@ -142,6 +162,10 @@ import "./morphSceneCheck";
 import "./gltfMorphImportCheck";
 import "./colorMatrixPassCheck";
 import "./imageDecodeCheck";
+import "./imagePortCheck";
+import "./coveragePortCheck";
+import "./frameClockPortCheck";
+import "./batcherPortCheck";
 import "./animationSheetCheck";
 import "./scene3dCheck";
 import "./lightColorCheck";
@@ -286,4 +310,7 @@ when (testBuild && voidSdfText && voidShaper) {
 	import "../../tests/integration/fontPanel";
 }
 import "./frameTimingCheck";
+import "./imeInputCheck";
+import "./keyNamesCheck";
 import "./deviceLossCheck";
+import "./frameEndCheck";

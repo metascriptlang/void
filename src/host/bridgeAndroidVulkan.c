@@ -1,5 +1,5 @@
 // Void driver — Android on the Vulkan backend. Host-driven like bridgeAndroid.c: the host owns
-// each view's ANativeWindow and the render loop and drives the views in views.c. Every view is a
+// each view's ANativeWindow and the render loop and drives the views in views.ms. Every view is a
 // Vulkan surface with its own swapchain (src/webgpu/vulkan/window.ms). The device is made against
 // the first view's surface, and the door draws in the colour format that surface lists first.
 
@@ -7,7 +7,7 @@
 #include <stdlib.h>
 
 #include "bridge.h"
-#include "views.h"
+#include "viewsExports.h"
 #include "../gpu/door.h"
 #include "../platform/swapchain.h"
 #include "../webgpu/vulkan/vulkan.h"

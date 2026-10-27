@@ -5,10 +5,10 @@ A host that owns the window and the frame clock (Ion on Windows and macOS, a Rea
 `src/host/bridge.h` (`voidEmbedRegister`, `voidViewCreate`, `voidViewResize`,
 `voidViewFrame`, `voidViewDestroy`, `voidViewSwapChain`, `voidCurrentView`), and MetaScript
 reaches them through `src/host/gpu.ms` (`embedRegister`, `viewCreate`, …). The shared part is
-`src/host/views.c`; each platform's half is the `voidPlatform*` set in `bridgeWin.c`,
+`src/host/views.ms`, its C names in `viewsExports.cms`; each platform's half is the `voidPlatform*` set in `bridgeWin.c`,
 `bridgeIos.m`, `bridgeEmbed.m` (macOS), `bridgeAndroid.c` and `bridgeWeb.c` (browser). macOS and iOS share
 one Metal surface (`metalSurface.m`), and the iOS and Android app shells share their events, typed
-text and framebuffer getters in the mobile section of `appWindow.c`.
+text and framebuffer getters in the mobile section of `src/host/appWindowPlatform.c`.
 
 The split follows `neon/docs/VISION.md` "Many Void areas in one app": the device, pipelines,
 shaders, glyph atlas and textures exist once per process, and each view owns its surface, its
@@ -105,7 +105,7 @@ below show through, as the overlay in `examples/ionViews.ms` does.
 
 `bridgeEmbed.m` follows `bridgeWin.c`: `voidRun` (a Cocoa window, no sokol_app) and the host-view
 driver share one process, the first of the two chooses, and the other aborts. Both draw through
-the door's Metal backend (`src/webgpu/metal/`); `bridge.c` and `views.c` are compiled beside it.
+the door's Metal backend (`src/webgpu/metal/`); `bridge.c` is compiled beside it and `viewsExports.cms` carries the views.
 
 `native` in `viewCreate` is an `NSView*` or 0. With a view, Void adds a `CAMetalLayer` as a
 sublayer of the view's layer (it sets `wantsLayer`), sized to the view's bounds at every
@@ -121,7 +121,7 @@ pixel readback, because the Metal readback reads only the window driver's drawab
 runs as a full-screen UIKit app. sokol_app's iOS path was not used: it has no marked text and no
 hardware-key presses, which a terminal and an editor need. The driver is a host of the view
 driver in `bridgeIos.m`: its one `UIView` calls `viewCreate`, `viewResize` and `viewFrame` from a
-`CADisplayLink`, and it builds `VoidAppEvent` values (`src/platform/appEvent.h`) and hands them to `appWindow.c`, so
+`CADisplayLink`, and it builds `VoidAppEvent` values (`src/platform/appEvent.h`) and hands them to `src/host/appWindow.ms`, so
 `window.ms` reads them as on Windows and the web.
 
 - `voidRun` enters `UIApplicationMain` and does not return. The app's `main()` calls `MsMain`
@@ -144,7 +144,7 @@ driver in `bridgeIos.m`: its one `UIView` calls `viewCreate`, `viewResize` and `
 generator emits. Its one view, `VoidAppView` in the Java library `src/host/android/app`, is a
 `SurfaceView` that hosts the view driver in `bridgeAndroid.c` (EGL, GLES3) from Choreographer
 frames on the main thread, and sends touches, keys, IME text and window insets back as
-`sapp_event` values for `appWindow.c`.
+`sapp_event` values for `src/host/appWindow.ms`.
 
 - The app compiles `src/host/androidAppEntry.c`, which defines Ion's `NativeApp` entry points,
   and declares the Java library with Ion's `androidLibrary`. `NativeApp.start` runs `MsMain`;

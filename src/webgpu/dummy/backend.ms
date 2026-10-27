@@ -91,7 +91,7 @@ import {
 	occlusionSetId,
 	boundFacts,
 } from "../validate.ms";
-import { dummyCopyBytes, dummyZeroBytes } from "./dummy.h";
+import { copyBytes, storeElements, storeTicks, zeroBytes } from "./bytes.ms";
 
 export struct NativeEnvironment {
 	device: Ptr<void> | null;
@@ -289,9 +289,8 @@ export function destroyBuffer(buffer: GPUBuffer): void {
 }
 
 export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
-	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = bufferRecords.slotIndex(buffer.id);
-	dummyCopyBytes(buffers[index].bytes[0], offset, data[0], bytes);
+	storeElements(buffers[index].bytes, offset, data);
 }
 
 export function createTexture(texture: TextureRecord, descriptor: GPUTextureDescriptor): void {
@@ -691,7 +690,7 @@ function texelCopyBytes(index: int32, member: string, writes: boolean, copy: GPU
 export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
 	const from = bufferRecords.slotIndex(source.id);
 	const to = bufferRecords.slotIndex(destination.id);
-	dummyCopyBytes(buffers[to].bytes[0], destinationOffset, buffers[from].bytes[sourceOffset], size);
+	copyBytes(buffers[to].bytes, destinationOffset, buffers[from].bytes, sourceOffset, size);
 }
 
 export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
@@ -705,7 +704,7 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 	for (let i = 0; i < size.depthOrArrayLayers; i++) {
 		for (let y = 0; y < size.height; y++) {
 			const offset = destination.offset + imageBytes * (i as int64) + (bytesPerRow as int64) * (y as int64);
-			dummyZeroBytes(buffers[to].bytes[0], offset, rowBytes);
+			zeroBytes(buffers[to].bytes, offset, rowBytes);
 		}
 	}
 }
@@ -727,14 +726,13 @@ export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, length: 
 export function getMappedRange(buffer: GPUBuffer, offset: int64, length: int64): Vec<uint8> {
 	const index = bufferRecords.slotIndex(buffer.id);
 	let bytes: Vec<uint8> = new Array(length);
-	if (length > 0) { dummyCopyBytes(bytes[0], 0, buffers[index].bytes[offset], length); }
+	if (length > 0) { copyBytes(bytes, 0, buffers[index].bytes, offset, length); }
 	return bytes;
 }
 
 export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
-	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = bufferRecords.slotIndex(buffer.id);
-	dummyCopyBytes(buffers[index].bytes[0], offset, data[0], bytes);
+	storeElements(buffers[index].bytes, offset, data);
 }
 
 export function createComputePipeline(id: uint32, descriptor: GPUComputePipelineDescriptor): void {
@@ -844,8 +842,7 @@ function writeTimestamp(querySet: uint32, queryIndex: int32): void {
 export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryCount: int32, destination: GPUBuffer, destinationOffset: int64): void {
 	const q = querySetRecords.slotIndex(querySet.id);
 	const b = bufferRecords.slotIndex(destination.id);
-	const bytes = (queryCount as int64) * 8;
-	dummyCopyBytes(buffers[b].bytes[0], destinationOffset, querySets[q].values[firstQuery], bytes);
+	storeTicks(buffers[b].bytes, destinationOffset, querySets[q].values, firstQuery, queryCount);
 }
 
 export function beginOcclusionQuery(queryIndex: int32): void {}

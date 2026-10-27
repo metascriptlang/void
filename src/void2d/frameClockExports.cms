@@ -1,0 +1,7 @@
+// The frame profiler on the C targets: frameClock.ms under the voidProfile* names that
+// frameClock.h declares.
+
+import { profileInput } from "./frameClock";
+
+@exportName("voidProfileInput")
+export function exportInput(): void { profileInput(); }

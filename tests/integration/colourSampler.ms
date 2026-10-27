@@ -14,7 +14,7 @@ import {
 	COMMAND_FLOATS, CMD_KIND, CMD_SAMPLER, CommandKind, SOURCE_PREMULTIPLIED,
 } from "../../src/void2d/displayList";
 import { rgba, tile } from "../../src/void2d/types";
-import { void2dGlyphPageTexelRgba } from "../../src/void2d/glyph.h";
+import { void2dGlyphPageTexelRgba } from "../../src/void2d/glyph";
 import {
 	voidCaptureBackend, voidCaptureRenderer, voidCaptureEnvInt, voidCapturePixel,
 	voidCaptureGrab, voidCaptureWidth, voidCaptureHeight, voidCaptureSlotsDiffer,

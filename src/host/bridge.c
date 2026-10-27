@@ -3,7 +3,7 @@
 // bridgeAndroid.c) owns the device and the swapchain.
 
 #include "bridge.h"
-#include "views.h"
+#include "viewsExports.h"
 #include "appWindow.h"
 #include "../gpu/door.h"
 #if !defined(VOID_ANDROID_APP) && !defined(VOID_IOS_APP)
@@ -14,10 +14,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-// The door's GPU submit, which only voidCommit calls, so no consumer can end a frame around the
-// commit hook (door.h offers doorCommit).
-void doorSubmitFrame(void);
 
 void voidFail(const char *fmt, ...) {
 	va_list args;
@@ -91,16 +87,4 @@ void voidRestoreContextIfLost(void (*setup)(void)) {
 
 void voidBeginPass(float r, float g, float b, float a) {
 	doorBeginScreenPass(r, g, b, a);
-}
-
-static void (*s_commitHook)(void);
-static void (*s_presentHook)(int begin);
-void voidSetCommitHook(void (*fn)(void)) { s_commitHook = fn; }
-void voidSetPresentHook(void (*fn)(int begin)) { s_presentHook = fn; }
-void voidCommit(void) {
-	doorSubmitFrame();
-	if (s_commitHook) { s_commitHook(); }
-	if (s_presentHook) { s_presentHook(1); }
-	voidDriverPresent();
-	if (s_presentHook) { s_presentHook(0); }
 }

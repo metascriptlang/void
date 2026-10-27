@@ -219,14 +219,14 @@ import {
 	oglVertexAttribIPointer,
 	oglVertexAttribPointer,
 	oglViewport,
-} from "./gl.h";
+} from "./glCalls";
 
 when (webgl2) {
-	import { oglQueryAvailable } from "./gl.h";
+	import { oglQueryAvailable } from "./glCalls";
 }
 
 when (webgl2 || android || (linux && voidGles3)) {
-	import { oglHasExtension } from "./gl.h";
+	import { oglHasExtension } from "./glCalls";
 } else {
 	import {
 		oglBlendEquationSeparatei,
@@ -241,7 +241,7 @@ when (webgl2 || android || (linux && voidGles3)) {
 		oglMultiDrawElementsIndirectUncached,
 		oglSamplerBorderColor,
 		oglTexStorage2DMultisample,
-	} from "./gl.h";
+	} from "./glCalls";
 }
 
 export struct NativeEnvironment {

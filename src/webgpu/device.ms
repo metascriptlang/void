@@ -158,6 +158,10 @@ import {
 
 when (voidDummy) {
 	import * as backend from "./dummy/backend.ms";
+} else when (js && webgl2) {
+	import * as backend from "./gl/backend.ms";
+} else when (js) {
+	import * as backend from "./js/backend";
 } else when (voidVulkan) {
 	import * as backend from "./vulkan/backend.ms";
 } else when (webgpu) {

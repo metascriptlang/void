@@ -1,0 +1,361 @@
+// The browser window's pointer, wheel, touch, focus and paste events on --target=js, as the
+// handlers of src/platform/web/window.c deliver them under emscripten: the same event types,
+// coordinates in framebuffer pixels, button and modifier mapping, wheel scales and the same
+// answer to preventDefault (a listener returns true to call it). emscripten's field reads
+// (libhtml5.js fillMouseEventData, the touch handler) are kept: integer-truncated client
+// coordinates minus the truncated canvas rect, and the merged touch list.
+// The keyboard is window.c's keyCallback under emscripten's libhtml5.js key event fields (code,
+// key, repeat, charCode, the four modifier flags), through the key names of keyNames.ms.
+// Dropped files and fullscreen are window.c's own handlers; the IME is windowIme.jms, and the key
+// delivery below applies bridgeWeb.c's _event wrapper (the keys a composition takes, the keys
+// kept from the browser).
+
+import { AppWindow } from "../../host/appWindow";
+import {
+	AppEventType,
+	KeyCode,
+	MAX_TOUCHPOINTS,
+	MODIFIER_ALT,
+	MODIFIER_CTRL,
+	MODIFIER_LMB,
+	MODIFIER_MMB,
+	MODIFIER_RMB,
+	MODIFIER_SHIFT,
+	MODIFIER_SUPER,
+	MouseButton,
+	NativeAppEvent,
+} from "../appEvent";
+import { ImeInput } from "./imeInput";
+import { translateKey } from "./keyNames";
+import { Js, flag, intField, listenBubble, numberField, stringField } from "./window";
+import { WindowState } from "./windowCore";
+import { WindowIme } from "./windowIme";
+
+extern function listen(target: Js, name: string, handler: (event: Js) => boolean): () => void
+	from "((t,n,f)=>{const h=(e)=>{if(f(e))e.preventDefault();};t.addEventListener(n,h,true);return ()=>t.removeEventListener(n,h,true);})(#,#,#)";
+extern function documentTarget(): Js from "(document)";
+extern function windowTarget(): Js from "(window)";
+extern function targetX(source: Js, target: Js): int32 from "((e,t)=>((e.clientX-(t.getBoundingClientRect().left|0))|0))(#,#)";
+extern function targetY(source: Js, target: Js): int32 from "((e,t)=>((e.clientY-(t.getBoundingClientRect().top|0))|0))(#,#)";
+extern function touchList(event: Js): Js from "((e)=>{const m={};for(const t of e.touches){m[t.identifier]={identifier:t.identifier,clientX:t.clientX,clientY:t.clientY,isChanged:0};}for(const t of e.changedTouches){m[t.identifier]={identifier:t.identifier,clientX:t.clientX,clientY:t.clientY,isChanged:1};}return Object.values(m);})(#)";
+extern function listLength(list: Js): int32 from "#.length";
+extern function listAt(list: Js, index: int32): Js from "#[#]";
+extern function pointerLockActive(): boolean from "(!!document.pointerLockElement)";
+extern function requestPointerLock(canvas: Js): void from "((c)=>{if(c.requestPointerLock)c.requestPointerLock();})(#)";
+extern function exitPointerLock(): void from "(()=>{if(document.exitPointerLock)document.exitPointerLock();})()";
+extern function setCursorStyle(canvas: Js, cursor: string): void from "(#.style.cursor=#)";
+extern function clipboardText(event: Js): string from "#.clipboardData.getData('text')";
+extern function stopPropagation(event: Js): void from "#.stopPropagation()";
+extern function droppedFiles(event: Js): Js from "#.dataTransfer.files";
+extern function fileName(file: Js): string from "#.name";
+extern function fullscreenActive(): boolean from "(!!(document.fullscreenElement||document.mozFullScreenElement||document.webkitFullscreenElement||document.msFullscreenElement))";
+extern function toggleFullscreenElement(canvas: Js, setFlag: (on: boolean) => void): void
+	from "((canvas,setFlag)=>{const current=document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement;let p;if(!current){if(canvas.requestFullscreen)p=canvas.requestFullscreen();else if(canvas.webkitRequestFullscreen)p=canvas.webkitRequestFullscreen();else if(canvas.mozRequestFullScreen)p=canvas.mozRequestFullScreen();if(p){p.catch((err)=>{console.warn('void: failed to enter fullscreen',err);setFlag(false);});}else{console.warn('void: this browser has no requestFullscreen');setFlag(false);}}else{if(document.exitFullscreen)p=document.exitFullscreen();else if(document.webkitExitFullscreen)p=document.webkitExitFullscreen();else if(document.mozCancelFullScreen)p=document.mozCancelFullScreen();if(p){p.catch((err)=>{console.warn('void: failed to leave fullscreen',err);setFlag(true);});}else{console.warn('void: this browser has no exitFullscreen');}}})(#,#)";
+
+const MOUSE_BUTTONS: int32 = 3;
+const HELD_LEFT: int32 = 1;
+const HELD_RIGHT: int32 = 2;
+const HELD_MIDDLE: int32 = 4;
+const DOM_DELTA_PIXEL: int32 = 0;
+const DOM_DELTA_LINE: int32 = 1;
+const DOM_DELTA_PAGE: int32 = 2;
+const CURSOR_NAMES: string[] = [
+	"auto",
+	"default",
+	"text",
+	"crosshair",
+	"pointer",
+	"ew-resize",
+	"ns-resize",
+	"nwse-resize",
+	"nesw-resize",
+	"all-scroll",
+	"not-allowed",
+];
+
+export class WindowEvents {
+	state: WindowState;
+	canvas: Js;
+	window: AppWindow;
+	ime: WindowIme;
+	imeInput: ImeInput;
+	removers: (() => void)[] = [];
+
+	constructor(state: WindowState, canvas: Js, window: AppWindow, imeInput: ImeInput) {
+		this.state = state;
+		this.canvas = canvas;
+		this.window = window;
+		this.imeInput = imeInput;
+		this.ime = new WindowIme(imeInput, state, canvas, window);
+	}
+
+	enabled(): boolean { return this.state.initCalled; }
+
+	emit(type: AppEventType): void {
+		if (!this.enabled()) { return; }
+		this.window.windowEvent(this.state.initEvent(type));
+	}
+
+	modifiers(event: Js): uint32 {
+		const held = this.state.mouseButtons;
+		let modifiers: uint32 = 0;
+		if ((held & HELD_LEFT) != 0) { modifiers |= MODIFIER_LMB; }
+		if ((held & HELD_RIGHT) != 0) { modifiers |= MODIFIER_RMB; }
+		if ((held & HELD_MIDDLE) != 0) { modifiers |= MODIFIER_MMB; }
+		if (flag(event, "ctrlKey")) { modifiers |= MODIFIER_CTRL; }
+		if (flag(event, "shiftKey")) { modifiers |= MODIFIER_SHIFT; }
+		if (flag(event, "altKey")) { modifiers |= MODIFIER_ALT; }
+		if (flag(event, "metaKey")) { modifiers |= MODIFIER_SUPER; }
+		return modifiers;
+	}
+
+	showCursor(): void {
+		const mouse = this.state.mouse;
+		setCursorStyle(this.canvas, mouse.shown ? CURSOR_NAMES[mouse.cursor] : "none");
+	}
+
+	lockMouse(locked: boolean): void {
+		this.state.mouse.requestedLock = locked;
+		if (!locked) { exitPointerLock(); }
+	}
+
+	updateMouseLock(): void {
+		const mouse = this.state.mouse;
+		if (!mouse.requestedLock) { return; }
+		mouse.requestedLock = false;
+		requestPointerLock(this.canvas);
+	}
+
+	askQuit(): void {
+		const state = this.state;
+		if (state.quitOrdered) { return; }
+		state.quitRequested = true;
+		this.emit(AppEventType.QuitRequested);
+		if (state.quitRequested) { state.quitOrdered = true; }
+	}
+
+	mouse(event: Js, type: AppEventType, buttonEvent: boolean): boolean {
+		const state = this.state;
+		const mouse = state.mouse;
+		state.mouseButtons = intField(event, "buttons");
+		if (mouse.locked) {
+			mouse.dx = intField(event, "movementX") as float32;
+			mouse.dy = intField(event, "movementY") as float32;
+		} else {
+			const x = (targetX(event, this.canvas) as float32) * state.dpiScale;
+			const y = (targetY(event, this.canvas) as float32) * state.dpiScale;
+			if (mouse.posValid) {
+				mouse.dx = x - mouse.x;
+				mouse.dy = y - mouse.y;
+			}
+			mouse.x = x;
+			mouse.y = y;
+			mouse.posValid = true;
+		}
+		const button = intField(event, "button");
+		if (!this.enabled() || button < 0 || button >= MOUSE_BUTTONS) { return true; }
+		if (type == AppEventType.MouseEnter || type == AppEventType.MouseLeave) {
+			mouse.dx = 0;
+			mouse.dy = 0;
+		}
+		let e = state.initEvent(type);
+		e.modifiers = this.modifiers(event);
+		if (buttonEvent) {
+			e.mouseButton = (button == 0
+				? MouseButton.Left
+				: button == 1 ? MouseButton.Middle : MouseButton.Right) as int32;
+		}
+		this.window.windowEvent(e);
+		if (buttonEvent) { this.updateMouseLock(); }
+		return true;
+	}
+
+	wheel(event: Js): boolean {
+		const state = this.state;
+		state.mouseButtons = intField(event, "buttons");
+		if (!this.enabled()) {
+			this.updateMouseLock();
+			return true;
+		}
+		let e = state.initEvent(AppEventType.MouseScroll);
+		e.modifiers = this.modifiers(event);
+		const mode = intField(event, "deltaMode");
+		let scale: float32 = 0;
+		if (mode == DOM_DELTA_PIXEL) { scale = -0.01; }
+		else if (mode == DOM_DELTA_LINE) { scale = -1.33; }
+		else if (mode == DOM_DELTA_PAGE) { scale = -10.0; }
+		else { this.window.platform.fail(`wheel event with delta mode ${mode}`); }
+		e.scrollX = scale * (numberField(event, "deltaX") as float32);
+		e.scrollY = scale * (numberField(event, "deltaY") as float32);
+		this.window.windowEvent(e);
+		this.updateMouseLock();
+		return true;
+	}
+
+	touch(event: Js, type: AppEventType): boolean {
+		if (!this.enabled()) { return true; }
+		const state = this.state;
+		let e = state.initEvent(type);
+		e.modifiers = this.modifiers(event);
+		const list = touchList(event);
+		const count = Math.min(listLength(list), MAX_TOUCHPOINTS) as int32;
+		e.touchCount = count;
+		for (let i: int32 = 0; i < count; i++) {
+			const point = listAt(list, i);
+			e.touches[i] = {
+				identifier: (intField(point, "identifier") as uint32) as uint64,
+				x: (targetX(point, this.canvas) as float32) * state.dpiScale,
+				y: (targetY(point, this.canvas) as float32) * state.dpiScale,
+				changed: flag(point, "isChanged"),
+			};
+		}
+		this.window.windowEvent(e);
+		return true;
+	}
+
+	deliverKey(e: NativeAppEvent): boolean {
+		if (this.ime.tookKey(e.type)) { return false; }
+		this.window.windowEvent(e);
+		return this.imeInput.keepsFromBrowser(e.type, e.keyCode);
+	}
+
+	key(event: Js, type: AppEventType): boolean {
+		if (!this.enabled()) { return false; }
+		let e = this.state.initEvent(type);
+		e.keyRepeat = flag(event, "repeat");
+		e.modifiers = this.modifiers(event);
+		let keyUpFollows = false;
+		if (type == AppEventType.Char) {
+			e.charCode = intField(event, "charCode") as uint32;
+		} else {
+			const code = stringField(event, "code");
+			e.keyCode = translateKey(code != "" ? code : stringField(event, "key"));
+			keyUpFollows = type == AppEventType.KeyDown &&
+				e.keyCode != (KeyCode.LeftSuper as int32) &&
+				e.keyCode != (KeyCode.RightSuper as int32) &&
+				(e.modifiers & MODIFIER_SUPER) != 0;
+		}
+		this.window.keysHeld.track(type, e.keyCode);
+		let consumed = this.deliverKey(e);
+		if (keyUpFollows) {
+			e.type = AppEventType.KeyUp;
+			this.window.keysHeld.track(AppEventType.KeyUp, e.keyCode);
+			if (this.deliverKey(e)) { consumed = true; }
+		}
+		return consumed;
+	}
+
+	releaseKey(key: int32): void {
+		if (!this.enabled()) { return; }
+		let e = this.state.initEvent(AppEventType.KeyUp);
+		e.keyCode = key;
+		this.deliverKey(e);
+	}
+
+	focus(focused: boolean): boolean {
+		if (!focused) { this.window.keysHeld.release((key: int32): void => { this.releaseKey(key); }); }
+		this.emit(focused ? AppEventType.Focused : AppEventType.Unfocused);
+		return true;
+	}
+
+	paste(event: Js): boolean {
+		this.state.clipboard = clipboardText(event);
+		this.emit(AppEventType.ClipboardPasted);
+		return false;
+	}
+
+	toggleFullscreen(): void {
+		this.state.fullscreen = !this.state.fullscreen;
+		toggleFullscreenElement(this.canvas, (on: boolean): void => { this.state.fullscreen = on; });
+	}
+
+	drop(event: Js): boolean {
+		stopPropagation(event);
+		const state = this.state;
+		const files = droppedFiles(event);
+		const count = listLength(files);
+		state.droppedPaths = [];
+		for (let i: int32 = 0; i < count; i++) { state.droppedPaths.push(fileName(listAt(files, i))); }
+		if (count == 0 || !this.enabled()) { return true; }
+		const mouse = state.mouse;
+		mouse.x = (intField(event, "clientX") as float32) * state.dpiScale;
+		mouse.y = (intField(event, "clientY") as float32) * state.dpiScale;
+		mouse.dx = 0;
+		mouse.dy = 0;
+		let e = state.initEvent(AppEventType.FilesDropped);
+		if (flag(event, "shiftKey")) { e.modifiers |= MODIFIER_SHIFT; }
+		if (flag(event, "ctrlKey")) { e.modifiers |= MODIFIER_CTRL; }
+		if (flag(event, "altKey")) { e.modifiers |= MODIFIER_ALT; }
+		if (flag(event, "metaKey")) { e.modifiers |= MODIFIER_SUPER; }
+		this.window.windowEvent(e);
+		return true;
+	}
+
+	add(target: Js, name: string, handler: (event: Js) => boolean): void {
+		this.removers.push(listen(target, name, handler));
+	}
+
+	addMouse(name: string, type: AppEventType, buttonEvent: boolean): void {
+		this.add(this.canvas, name, (event: Js): boolean => this.mouse(event, type, buttonEvent));
+	}
+
+	addTouch(name: string, type: AppEventType): void {
+		this.add(this.canvas, name, (event: Js): boolean => this.touch(event, type));
+	}
+
+	addKey(name: string, type: AppEventType): void {
+		this.add(windowTarget(), name, (event: Js): boolean => this.key(event, type));
+	}
+
+	open(): void {
+		this.addMouse("mousedown", AppEventType.MouseDown, true);
+		this.addMouse("mouseup", AppEventType.MouseUp, true);
+		this.addMouse("mousemove", AppEventType.MouseMove, false);
+		this.addMouse("mouseenter", AppEventType.MouseEnter, false);
+		this.addMouse("mouseleave", AppEventType.MouseLeave, false);
+		this.add(this.canvas, "wheel", (event: Js): boolean => this.wheel(event));
+		this.addTouch("touchstart", AppEventType.TouchesBegan);
+		this.addTouch("touchmove", AppEventType.TouchesMoved);
+		this.addTouch("touchend", AppEventType.TouchesEnded);
+		this.addTouch("touchcancel", AppEventType.TouchesCancelled);
+		this.add(documentTarget(), "pointerlockchange", (event: Js): boolean => {
+			this.state.mouse.locked = pointerLockActive();
+			return true;
+		});
+		this.add(documentTarget(), "pointerlockerror", (event: Js): boolean => {
+			this.state.mouse.locked = false;
+			this.state.mouse.requestedLock = false;
+			return true;
+		});
+		this.addKey("keydown", AppEventType.KeyDown);
+		this.addKey("keyup", AppEventType.KeyUp);
+		this.addKey("keypress", AppEventType.Char);
+		for (const name of ["fullscreenchange", "webkitfullscreenchange"]) {
+			this.add(this.canvas, name, (event: Js): boolean => {
+				this.state.fullscreen = fullscreenActive();
+				return true;
+			});
+		}
+		this.add(windowTarget(), "paste", (event: Js): boolean => this.paste(event));
+		for (const name of ["dragenter", "dragleave", "dragover"]) {
+			this.addBubble(this.canvas, name, (event: Js): boolean => {
+				stopPropagation(event);
+				return true;
+			});
+		}
+		this.addBubble(this.canvas, "drop", (event: Js): boolean => this.drop(event));
+		this.ime.open();
+		this.add(windowTarget(), "focus", (event: Js): boolean => this.focus(true));
+		this.add(windowTarget(), "blur", (event: Js): boolean => this.focus(false));
+	}
+
+	addBubble(target: Js, name: string, handler: (event: Js) => boolean): void {
+		this.removers.push(listenBubble(target, name, handler));
+	}
+
+	close(): void {
+		this.ime.close();
+		for (const remove of this.removers) { remove(); }
+		this.removers = [];
+	}
+}

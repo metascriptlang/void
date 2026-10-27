@@ -3191,8 +3191,8 @@ change is the count: a vertex whose triangles disagree on its tangent is split, 
 `vertexCount()` may exceed the vertices built, and the index list is re-pointed.
 
 **References.** The algorithm is the reference implementation itself, vendored like stb and
-nanosvg: `mmikk/MikkTSpace` pinned in `setup.sh` (zlib), compiled through
-`src/void3d/mikkTangents.c`, which only reads the flat interleaved vertices and writes one tangent
+nanosvg: `mmikk/MikkTSpace` (zlib), since 2026-10-27 transliterated to `src/void3d/mikkTangents.ms`
+(see "Mikk zero-shift UB"), which only reads the flat interleaved vertices and writes one tangent
 per triangle corner. Its header (`mikktspace.h`, `m_setTSpaceBasic`) says the results are per
 corner and that overwriting them through an existing index list gives incorrect results. Godot
 (`SurfaceTool::generate_tangents`, `scene/resources/surface_tool.cpp`) and Bevy
@@ -3219,7 +3219,7 @@ and after: `gate3d.sh` GREEN, 339 PASS with the 3 known skips (tests 1429/1429; 
 **Web.** `build-web.sh`'s default entry (`main2d.ms`) imports no `meshData`, and on
 `1090f789` it stops in void2d's `textLayout.ms` (routed to void2d). A void3d-only probe that
 calls `addTangents` (`VOID_WEB_ENTRY=out/tmp/mikkWeb/mikkWeb.ms`) built, compiled and linked
-`mikktspace.c` for both the WebGPU and the WebGL2 build, and each wasm run under node printed
+`mikktspace.c` (the C, before the port) for both the WebGPU and the WebGL2 build, and each wasm run under node printed
 `ok, tangent x 1 w 1`, as native. Not run: a browser page, GLES3 and Android.
 
 ### Follow-up stack (2026-10-08), as built
@@ -5146,8 +5146,8 @@ Sphere geometry is CPU-proven; full Mikk, rendered and whole-stack acceptance re
 
 ### Mikk zero-shift UB, root and ownership boundary
 
-Void pins mmikk/MikkTSpace `3e895b49d05ea07e4c2133156cfa94369e19e409` in `setup.sh`;
-`mikkTangents.c` includes its C source. Both `QuickSort` (line 1460) and `QuickSortEdges`
+Before the port, Void pinned mmikk/MikkTSpace `3e895b49d05ea07e4c2133156cfa94369e19e409` in `setup.sh`;
+`mikkTangents.c` included its C source. Both `QuickSort` (line 1460) and `QuickSortEdges`
 (line 1667) contain `(uSeed << t) | (uSeed >> (32 - t))` after `t = uSeed & 31`.
 When t is zero, the right shift is 32: undefined in C. Both sphere sizes actually reached
 the latter site; the former is the same expression by source, not a separately executed crash.
@@ -5176,6 +5176,11 @@ includes it and `setup.sh` no longer fetches MikkTSpace. Red: on BUILD 4b5816aea
 aborted at vendor line 1667 (`shift exponent 32`). Green: `sphereTangentsCheck` 2/2, after the
 check read the tangent at its real offset 12 (it read the colour at 8, never reached before the
 abort); `meshDataCheck`, `skinTangentCheck`, `gltfMaterialCheck`, `skinMeshCheck` unchanged green.
+
+**Ported 2026-10-27 (arc void-js).** The tracked copy and `mikkTangents.c` are replaced by
+`src/void3d/mikkTangents.ms`, the triangle path of the same algorithm with the masked rotation and
+the seeded sorts kept, so it runs on C and `--target=js`. `src/test/mikkTangentsPortCheck.ms` pins
+the digest of 177 meshes that were bit-equal to the C before it was deleted.
 
 ### Bounds intersection, Heaps capability acceptance
 

@@ -111,6 +111,46 @@ for jsStage in off on; do
 		fail "JS target, module stage all-$jsStage: msc test --target=js tests/js/targetCheck.ms — see out/gate-js-$jsStage.log"
 	fi
 done
+for jsDriver in views window; do
+	for jsBackend in gl gpu; do
+		jsBundle="out/tmp/js-$jsDriver-$jsBackend.js"
+		jsBackendFlag=""
+		[ "$jsBackend" = gl ] && jsBackendFlag="-d:webgl2"
+		if "$MSC" build --target=js $jsBackendFlag "src/examples/${jsDriver}JsEntry.jms" --output="$jsBundle" > "out/gate-js-$jsDriver-$jsBackend.log" 2>&1 \
+				&& node tests/js/gpuLostHarness.mjs "$jsBundle" "$jsBackend" "$jsDriver" >> "out/gate-js-$jsDriver-$jsBackend.log" 2>&1; then
+			pass "JS $jsDriver driver on $jsBackend: the loss harness (tests/js/gpuLostHarness.mjs) passes"
+		else
+			fail "JS $jsDriver driver on $jsBackend: build or tests/js/gpuLostHarness.mjs — see out/gate-js-$jsDriver-$jsBackend.log"
+		fi
+	done
+done
+for jsBackend in gl gpu; do
+	if node tests/js/gpuViewsHarness.mjs "out/tmp/js-views-$jsBackend.js" "$jsBackend" > "out/gate-js-views-harness-$jsBackend.log" 2>&1; then
+		pass "JS views on $jsBackend: tests/js/gpuViewsHarness.mjs passes"
+	else
+		fail "JS views on $jsBackend: tests/js/gpuViewsHarness.mjs — see out/gate-js-views-harness-$jsBackend.log"
+	fi
+done
+for jsDriver in views window; do
+	for jsBackend in gl gpu; do
+		jsMin="out/tmp/js-$jsDriver-$jsBackend.min.js"
+		if sh scripts/jsMinify.sh --keep-names "out/tmp/js-$jsDriver-$jsBackend.js" "$jsMin" > "out/gate-js-min-$jsDriver-$jsBackend.log" 2>&1 \
+				&& node tests/js/gpuLostHarness.mjs "$jsMin" "$jsBackend" "$jsDriver" >> "out/gate-js-min-$jsDriver-$jsBackend.log" 2>&1; then
+			pass "JS $jsDriver driver on $jsBackend, minified with names kept: the loss harness passes"
+		else
+			fail "JS $jsDriver driver on $jsBackend, minified: scripts/jsMinify.sh or tests/js/gpuLostHarness.mjs — see out/gate-js-min-$jsDriver-$jsBackend.log"
+		fi
+	done
+done
+for jsBackend in gl gpu; do
+	jsMin="out/tmp/js-views-$jsBackend.min.js"
+	if sh scripts/jsMinify.sh --keep-names "out/tmp/js-views-$jsBackend.js" "$jsMin" > "out/gate-js-min-views-harness-$jsBackend.log" 2>&1 \
+			&& node tests/js/gpuViewsHarness.mjs "$jsMin" "$jsBackend" >> "out/gate-js-min-views-harness-$jsBackend.log" 2>&1; then
+		pass "JS views on $jsBackend, minified with names kept: tests/js/gpuViewsHarness.mjs passes"
+	else
+		fail "JS views on $jsBackend, minified: scripts/jsMinify.sh or tests/js/gpuViewsHarness.mjs — see out/gate-js-min-views-harness-$jsBackend.log"
+	fi
+done
 for target in "--os=windows" "--os=windows -d:voidGlCore" "--os=linux" "--os=android" "--os=ios" \
 		"--os=windows -d:voidVulkan" "--os=linux -d:voidVulkan" "--os=android -d:voidVulkan" \
 		"--os=emcc -d:webgpu" "--os=emcc -d:webgl2" "-d:voidDummy"; do
@@ -121,11 +161,11 @@ for target in "--os=windows" "--os=windows -d:voidGlCore" "--os=linux" "--os=and
 		fail "backend contract, msc check $target src/examples/main2d.ms — see $log"
 	fi
 done
-if "${PYTHON:-python}" tests/isolated/colourMemory.py > out/gate-colour-memory.log 2>&1 \
-		&& grep -q '^PASS colour memory:' out/gate-colour-memory.log; then
-	pass "colour allocation failures recover without retrying permanent PNG refusals"
+if "$MSC" test -d:voidColourEmoji tests/isolated/colourMemory/colourRefusal.ms > out/gate-colour-memory.log 2>&1 \
+		&& sed 's/\x1b\[[0-9;]*m//g' out/gate-colour-memory.log | grep -qE '^\s+Tests +[0-9]+ passed \([0-9]+\)$'; then
+	pass "a permanently malformed colour PNG stays refused and is not retried as a memory failure"
 else
-	fail "colour memory recovery — see out/gate-colour-memory.log"
+	fail "colour PNG refusal — see out/gate-colour-memory.log"
 fi
 if MSC="$MSC" "${PYTHON:-python}" tests/isolated/rangeSpan.py > out/gate-range-span.log 2>&1 \
 		&& grep -q '^PASS noteRange spans:' out/gate-range-span.log; then
@@ -1139,10 +1179,10 @@ elif [ -n "$copied" ] || [ -n "$allocated" ]; then
 else
 	pass "allocation: the frame path ($(echo $FRAME_PATH | wc -w) functions) copies no array and builds no fresh one; the rebuild ($(echo $REBUILD_PATH | wc -w)) and measure ($(echo $MEASURE_PATH | wc -w)) paths copy none; $followed functions they call are held to the same rules"
 fi
-# Guardrail 6: a build without the colour module pays none of it. The objects prove it by symbol
-# and record the cost in bytes (tests/bench/wasm.json); the executables show it as a size.
+# Guardrail 6: a build without the modules pays none of them (C objects: tests/bench/wasm.json).
+# srcZvoid2dZcolour and srcZvoid2dZbidi are emitted names of src/void2d/colourEmoji/ and bidi*.ms; moving them turns the check into a skip.
 if sh scripts/wasmModuleDelta.sh > out/gate-wasm-delta.log 2>&1; then
-	pass "module off: no default-layer object names a void2dColour symbol, the cost stays inside tests/bench/wasm.json"
+	pass "module off: no C unit holds stb_image, the C objects stay inside tests/bench/wasm.json"
 	grep -E '^(      default-layer delta|module on)' out/gate-wasm-delta.log | sed 's/^/      /'
 else
 	fail "module off or wasm delta — see out/gate-wasm-delta.log"
@@ -1159,14 +1199,15 @@ if "$MSC" build src/examples/main2d.ms --release --output=out/tmp/main2dOff.exe 
 			llvm-nm "$1" 2> /dev/null
 		fi
 	}
-	named_on=$(module_symbols out/tmp/main2dColour.exe | grep -c 'void2dColour' || true)
-	named_off=$(module_symbols out/tmp/main2dOff.exe | grep -c 'void2dColour\|void2dGlyphSdf\|kbts_\|void2dShape\|void2dBidi\|void2dSprite\(Count\|Index\|Codepoint\|TableFault\|Padding\|Canvas\|Draw\|Ink\)\|void2dGlyphFaceSprite\|void2dGlyphPolygonCoverage' || true)
-	if [ "$named_on" -eq 0 ]; then
-		skip "module off: the colour executable names no void2dColour symbol, so the executables get no symbol check"
+	named_on=$(module_symbols out/tmp/main2dColour.exe | grep -c 'srcZvoid2dZcolour' || true)
+	named_off=$(module_symbols out/tmp/main2dOff.exe | grep -c 'srcZvoid2dZcolour\|void2dGlyphSdf\|kbts_\|void2dShape\|srcZvoid2dZbidi\|srcZvoid2dZsprite\|void2dGlyphFaceSprite' || true)
+	named_batcher=$(module_symbols out/tmp/main2dOff.exe | grep -c 'srcZvoid2dZbatcher' || true)
+	if [ "$named_on" -eq 0 ] || [ "$named_batcher" -eq 0 ]; then
+		skip "module off: the executables name no symbol from src/void2d/colourEmoji or batcher.ms (colour $named_on, batcher $named_batcher), so they get no symbol check"
 	elif [ "$named_off" -gt 0 ]; then
 		fail "module off: main2d.exe with every module flag off names $named_off colour, SDF, shaper, BiDi or sprite symbols"
 	else
-		pass "module off: main2d.exe names no colour, SDF, shaper, BiDi or sprite symbol, the colour build names $named_on void2dColour"
+		pass "module off: main2d.exe names no colour, SDF, shaper, BiDi or sprite symbol, the colour build names $named_on symbols from src/void2d/colourEmoji"
 	fi
 	if [ "$module_on_bytes" -gt "$module_off_bytes" ]; then
 		pass "module off: main2d.exe is $module_off_bytes B, with the colour module $module_on_bytes B (+$((module_on_bytes - module_off_bytes)) B)"
@@ -1180,6 +1221,12 @@ if sh scripts/wasmBudget.test.sh --record > out/gate-wasm-budget-record.log 2>&1
 	pass "linked wasm budgets: 24 measured declarations valid; remeasure with scripts/experiment-modulesWeb.sh (not linked again by this native stage)"
 else
 	fail "linked wasm budget declarations — see out/gate-wasm-budget-record.log"
+fi
+if MSC="$MSC" sh scripts/jsBudget.sh > out/gate-js-budget.log 2>&1; then
+	pass "JS budgets: both entries, six module flags, raw and gzip stay inside tests/bench/jsBudget.txt"
+else
+	fail "JS budgets — see out/gate-js-budget.log"
+	grep -E '^FAIL' out/gate-js-budget.log | sed 's/^/      /' || true
 fi
 
 # The graduation rule for a conformance row: every scene it lists must still fail, and a clean

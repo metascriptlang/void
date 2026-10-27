@@ -1,5 +1,5 @@
 // The window event Void's platform layer delivers. Ordinals, keycodes, modifier bits and mouse
-// buttons are sokol_app.h's (pin 2e75443d), and src/host/window.ms AppEventType mirrors the
+// buttons are sokol_app.h's (pin 2e75443d), and src/platform/appEvent.ms mirrors the
 // event ordinals; the keycodes are GLFW's.
 #ifndef VOID_PLATFORM_APP_EVENT_H
 #define VOID_PLATFORM_APP_EVENT_H
@@ -38,7 +38,7 @@ typedef enum {
 } VoidAppEventType;
 
 _Static_assert(VOID_EVENT_PREEDIT == 24 && VOID_EVENT_TEXT_INPUT == 25 && VOID_EVENT_COUNT == 26,
-	"the event ordinals moved: renumber AppEventType in src/host/window.ms");
+	"the event ordinals moved: renumber AppEventType in src/platform/appEvent.ms");
 
 typedef enum {
 	VOID_KEY_INVALID = 0,
@@ -198,7 +198,7 @@ typedef enum {
 } VoidMouseCursor;
 
 _Static_assert(VOID_CURSOR_NOT_ALLOWED == 10 && VOID_CURSOR_COUNT == 11,
-	"the cursor ordinals moved: renumber MouseCursor in src/host/window.ms");
+	"the cursor ordinals moved: renumber MouseCursor in src/platform/appEvent.ms");
 
 #define VOID_MAX_TOUCHPOINTS 8
 

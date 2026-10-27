@@ -14,18 +14,16 @@
 import {
 	void2dSetup, void2dWhiteView, void2dSetDpiScale, void2dFrameBegin,
 	void2dGlyphPageView, void2dGlyphUploadCount, void2dGlyphUploadBytes, void2dSetTextGamma,
-	void2dReplay, void2dReplayTargets, void2dReplayList, void2dLayoutCheck, void2dSetScopes,
-	void2dSetCoverageSources,
+	void2dReplay, void2dReplayTargets, void2dReplayList,
 	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
-	void2dVertexBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
+	void2dVertexBufferBytes, void2dDroppedFrames,
 	void2dAtlasImagesAlive, void2dFrameEnd, void2dFrameSerial, void2dFailPendingTargets,
 	void2dRememberContext, void2dActivateContext,
-	void2dScissorMin, void2dScissorMax,
-	void2dUiInstanceStride, void2dSpriteInstanceStride,
-	void2dPackChannel,
 	void2dSetPipeline,
-} from "./batcher.h";
-import { void2dGlyphPageCount } from "./glyph.h";
+} from "./batcher";
+import { scissorMin, scissorMax, growthTarget as growthTargetOf } from "./coverage";
+import { setCommitHook } from "../gpu/frameCommit";
+import { void2dGlyphPageCount } from "./glyph";
 import { beginGlyphFrame, setSdfRegime } from "./labelText";
 import { GlyphPageHandle } from "./glyphAtlas";
 import { gammaRatios, DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST } from "./textGamma";
@@ -159,10 +157,10 @@ export function currentRenderScale(): float32 {
 }
 
 export function scissorMinDevice(edge: float32, scale: float32): int32 {
-	return void2dScissorMin(edge, scale);
+	return scissorMin(edge, scale);
 }
 export function scissorMaxDevice(edge: float32, scale: float32): int32 {
-	return void2dScissorMax(edge, scale);
+	return scissorMax(edge, scale);
 }
 
 export function atlasImagesAlive(): int32 { return void2dAtlasImagesAlive(); }
@@ -183,7 +181,7 @@ export function setTextGamma(gamma: float32, contrast: float32): void {
 export function frameEnd(): void { void2dFrameEnd(); }
 
 export function growthTarget(have: int32, need: int32): int32 {
-	return void2dGrowthTarget(have, need);
+	return growthTargetOf(have, need);
 }
 
 // Counted from the stream rather than from the GPU, so T1 can read them with no GPU at all.
@@ -470,34 +468,12 @@ function useRun(pipeline: Pipeline, view: uint32, premultiplied: boolean, blend:
 }
 
 export function setup2d(): void {
+	setCommitHook(void2dFrameEnd);
 	void2dSetup();
 	when (voidProfiler) { profilerSetup(); }
 	when (voidSdfText) { setSdfRegime(true); }
 	setTextGamma(DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST);
-	// The emitter and the replay are two hand-written readers of one byte layout, so they
-	// are made to agree out loud rather than by inspection.
-	if (void2dLayoutCheck(
-		COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS,
-		CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT,
-		CMD_VIEW, CMD_VIEW_HIGH, CMD_BLEND, CMD_SAMPLER, CMD_EFFECT, SAMPLER_COUNT,
-		CMD_CLEAR_R,
-		CMD_CLIP_X, CMD_CLIP_U_X, CMD_CLIP_ROUND_U, CMD_ARG0, CMD_RT_MODE,
-		CommandKind.Draw as int32, CommandKind.Scissor as int32, CommandKind.Blur as int32,
-		CommandKind.TargetBegin as int32, CommandKind.TargetEnd as int32,
-		Program2D.Vertex as int32, Program2D.Sprite as int32, Program2D.Ui as int32,
-		Program2D.Blur as int32, PROGRAMS_2D, BLEND_MODES,
-	) == 0) {
-		console.log("void2d: the display-list layout in displayList.ms and batcher.c disagree");
-		unreachable;
-	}
 }
-
-export function uiInstanceStride(): int32 { return void2dUiInstanceStride(); }
-
-// The colour pack as C does it on the way into the GPU buffer, re-exported so T0 can hold it
-// against `instance.ms`'s `packChannel`: guardrail 9 must not rest on two copies that look alike.
-export function packChannelC(value: float32): int32 { return void2dPackChannel(value); }
-export function spriteInstanceStride(): int32 { return void2dSpriteInstanceStride(); }
 
 
 // h2d has no DPI concept; void2d needs one because snapping and the pixel-exact text regime
@@ -562,29 +538,29 @@ export function flushTargets(): void {
 	resolveScopes();
 	resolvePipelines();
 	void2dSetDpiScale(l.frameDpi);
-	void2dSetScopes(l.scopeValues[0], l.scopeTotal);
-	void2dSetCoverageSources(l.vertices[0], l.spriteInstances[0], l.uiInstances[0]);
 	const targets: int32 = l.targetsPending ? targetCommandCount() : 0;
 	l.targetsPending = false;
 	if (isDefaultContext(l)) {
 		ctx.frameLive = void2dReplayTargets(
-			l.targetCommands[0], targets,
-			l.effects[0], effectCount(),
-			l.vertices[0], vertexCount(),
-			l.spriteInstances[0], spriteInstanceCount(),
-			l.uiInstances[0], uiInstanceCount(),
-		) != 0;
+			l.targetCommands, targets,
+			l.effects, effectCount(),
+			l.scopeValues, l.scopeTotal,
+			l.vertices, vertexCount(),
+			l.spriteInstances, spriteInstanceCount(),
+			l.uiInstances, uiInstanceCount(),
+		);
 	} else {
 		ctx.frameLive = void2dReplayList(
-			l.id, l.targetCommands[0], targets,
-			l.effects[0], effectCount(),
-			l.vertices[0], vertexCount(), (l.uploadAll || l.dirtyVertices) ? 1 : 0,
-			l.spriteInstances[0], spriteInstanceCount(), (l.uploadAll || l.dirtySprites) ? 1 : 0,
-			l.uiInstances[0], uiInstanceCount(),
-			l.dirtyUi[0], l.uploadAll ? -1 : l.dirtyUiTotal,
-		) != 0;
+			l.id, l.targetCommands, targets,
+			l.effects, effectCount(),
+			l.scopeValues, l.scopeTotal,
+			l.vertices, vertexCount(), l.uploadAll || l.dirtyVertices,
+			l.spriteInstances, spriteInstanceCount(), l.uploadAll || l.dirtySprites,
+			l.uiInstances, uiInstanceCount(),
+			l.dirtyUi, l.uploadAll ? -1 : l.dirtyUiTotal,
+		);
 	}
-	void2dRememberContext(l.id, l.frameLive ? 1 : 0);
+	void2dRememberContext(l.id, l.frameLive);
 	uploaded();
 	ctx.targetsFlushed = true;
 }
@@ -713,12 +689,12 @@ export function end2d(): void {
 function replayScreen(l: DrawContext2D, from: int32, to: int32): void {
 	if (to <= from) { return; }
 	void2dSetDpiScale(l.frameDpi);
-	void2dSetScopes(l.scopeValues[0], l.scopeTotal);
-	void2dSetCoverageSources(l.vertices[0], l.spriteInstances[0], l.uiInstances[0]);
-	if (void2dActivateContext(l.id) == 0) { return; }
+	if (!void2dActivateContext(l.id)) { return; }
 	void2dReplay(
-		l.commands[from * COMMAND_FLOATS], to - from,
-		l.effects[0], effectCount(),
+		l.commands[from * COMMAND_FLOATS..to * COMMAND_FLOATS], to - from,
+		l.effects, effectCount(),
+		l.scopeValues, l.scopeTotal,
+		l.vertices, l.spriteInstances, l.uiInstances,
 		l.fbW, l.fbH,
 	);
 }

@@ -1,0 +1,68 @@
+import { GPUBufferUsage, GPUTextureUsage } from "../webgpu/types.ms";
+import { requestDevice } from "../webgpu/device.ms";
+import { acquireDevice } from "../webgpu/js/backend";
+
+const SHADER = `
+@vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
+	var p = array<vec2f, 3>(vec2f(-0.5, -0.5), vec2f(0.0, 0.5), vec2f(0.5, -0.5));
+	return vec4f(p[i], 0.0, 1.0);
+}
+@fragment fn fs() -> @location(0) vec4f { return vec4f(1.0, 0.0, 0.0, 1.0); }
+`;
+
+async function main(): Promise<void> {
+	await acquireDevice(() => {});
+	const device = requestDevice({ device: null, context: null, colorFormat: "rgba8unorm", depthFormat: "depth32float", sampleCount: 1 });
+	const target = device.createTexture({
+		label: "target",
+		size: { width: 64, height: 64, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		dimension: "2d",
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		sampleCount: 1,
+	});
+	const module = device.createShaderModule({
+		label: "triangle",
+		vertexCode: SHADER,
+		vertexEntryPoint: "vs",
+		fragmentCode: SHADER,
+		fragmentEntryPoint: "fs",
+		readsVertexIndex: true,
+	});
+	const pipeline = device.createRenderPipeline({
+		label: "triangle",
+		vertex: { module: module },
+		fragment: { module: module, targets: [{ format: "rgba8unorm" }] },
+	});
+	const vertices = device.createBuffer({
+		label: "vertices",
+		size: 24,
+		usage: (GPUBufferUsage.VERTEX as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const indices = device.createBuffer({
+		label: "indices",
+		size: 8,
+		usage: (GPUBufferUsage.INDEX as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const order: Vec<uint16> = [0, 1, 2];
+	device.queue.writeBuffer(indices, 0, order);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass({
+		label: "frame",
+		colorAttachments: [{
+			view: target.createView({ label: null }),
+			clearValue: { r: 0.0, g: 0.0, b: 1.0, a: 1.0 },
+			loadOp: "clear",
+			storeOp: "store",
+		}],
+	});
+	pass.setPipeline(pipeline);
+	pass.draw(3, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	console.log("webgpu js frame submitted");
+}
+
+main();

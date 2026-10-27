@@ -14,7 +14,7 @@ import {
 	DOOR_BINDING_SAMPLER,
 	DOOR_BINDING_VERTEX_BUFFER,
 	DOOR_BINDING_VIEW,
-} from "../../src/gpu/doorWords.h";
+} from "../../src/gpu/doorWords.ms";
 import { GPUShaderModuleDescriptor } from "../../src/webgpu/types.ms";
 import { gpuCopyShaderModule } from "./gpuCopyModules.ms";
 import { env } from "std/process";

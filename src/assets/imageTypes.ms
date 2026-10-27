@@ -11,7 +11,6 @@ export enum ImageError {
 	TooLarge,
 	NotGif,
 	UnsupportedDisposal,
-	NoDecoderOnJs,
 }
 
 // hxd.Pixels, RGBA8: one 0xAABBGGRR word per pixel, row by row from the top.

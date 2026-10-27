@@ -3,7 +3,10 @@
 
 void frameTimingReset(void);
 void frameTimingPush(double nowSeconds);
+void frameTimingDelta(double dt);
 double frameTimingSmooth(void);
 double frameTimingRaw(void);
+double frameTimingEma(void);
+double frameTimingClamp(double dt);
 
 #endif

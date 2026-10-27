@@ -1,4 +1,3 @@
-import "../void2d/textOutlineSwitch";
 import { Align } from "../void2d/textLayout";
 import { DEFAULT_FONT } from "../void2d/font";
 import {

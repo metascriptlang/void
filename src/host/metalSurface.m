@@ -6,7 +6,7 @@
 #include "metalSurface.h"
 #include "bridge.h"
 #include "presentGate.h"
-#include "views.h"
+#include "viewsExports.h"
 #include "../gpu/door.h"
 #include "../platform/swapchain.h"
 #include "../webgpu/metal/metal.h"

@@ -1,7 +1,3 @@
-import "./textSdfSwitch";
-import "./textOutlineSwitch";
-import "./textColourSwitch";
-import "./svgMaskSwitch";
 import {
 	void2dGlyphRasterize,
 	void2dGlyphPageCreate,
@@ -12,14 +8,11 @@ import {
 	void2dGlyphPageUploaded,
 	void2dGlyphPageTakeUpload,
 	void2dGlyphPagesFrameBegin,
-} from "./glyph.h";
+} from "./glyph";
 import { glyphBox } from "./glyphBoxes";
 
 when (voidSvg) {
-	extern function void2dGlyphPageBlitMask(
-		page: int32, x: int32, y: int32, width: int32, height: int32,
-		alpha: Readonly<Span<uint8>>, stride: int32,
-	): int32;
+	import { void2dGlyphPageBlitMask } from "./glyph";
 }
 
 export const SUBPIXEL_VARIANTS: int32 = 4;
@@ -690,7 +683,7 @@ function record(this atlas: GlyphAtlas, packedKey: uint64, tile: GlyphTile): int
 }
 
 when (voidTextOutline) {
-	import { void2dGlyphOutlineRasterize } from "./glyph.h";
+	import { void2dGlyphOutlineRasterize } from "./glyph";
 	import { glyphOutlineBox } from "./glyphBoxes";
 
 	function outlineRasterRefusal(code: int32): AtlasError {
@@ -767,7 +760,7 @@ when (voidTextOutline) {
 when (voidSdfText) {
 	import {
 		void2dGlyphSdfRasterize,
-	} from "./glyph.h";
+	} from "./glyph";
 	import { glyphSdfBox } from "./glyphBoxes";
 
 	const SDF_RASTER_BAD_HANDLE: int32 = 1;
@@ -839,7 +832,7 @@ when (voidSdfText) {
 }
 
 when (voidSdfText && voidTextOutline) {
-	import { void2dGlyphSdfOutlineRasterize } from "./glyph.h";
+	import { void2dGlyphSdfOutlineRasterize } from "./glyph";
 	import { glyphSdfOutlineBox } from "./glyphBoxes";
 
 	export function acquireSdfOutline(
@@ -893,7 +886,7 @@ when (voidSdfText && voidTextOutline) {
 }
 
 when (voidColourEmoji) {
-	import { void2dGlyphColourRasterize } from "./glyph.h";
+	import { void2dGlyphColourRasterize } from "./glyph";
 
 	export function colourKey(face: int32, glyph: int32, sizePx: float32): GlyphKey {
 		return {

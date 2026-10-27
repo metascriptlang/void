@@ -1,0 +1,6 @@
+// The frame's present through the platform bridge; framePresent.jms is the browser's.
+
+@include("./framePresent.h");
+extern function voidDriverPresent(): void;
+
+export function presentFrame(): void { voidDriverPresent(); }

@@ -14,7 +14,7 @@ import {
 	void2dGlyphPageBytes,
 	void2dGlyphRasterize,
 	void2dGlyphPagesMarkDirty,
-} from "../void2d/glyph.h";
+} from "../void2d/glyph";
 
 let loadedFace: int32 = -1;
 
@@ -121,7 +121,7 @@ test "a blit lands four channels per texel and reads back packed" {
 	const t = atlas.tile(r.value);
 	const handle: int32 = atlas.pageHandle(t.page) as int32;
 	const source: uint32[] = [0x281E140A, 0x50463C32, 0xFFFFFFFF, 0x01000000];
-	assert void2dGlyphPageBlitRgba(handle, t.x, t.y, 2, 2, source[0], 2) == 0;
+	assert void2dGlyphPageBlitRgba(handle, t.x, t.y, 2, 2, source, 2) == 0;
 	assert void2dGlyphPageTexelRgba(handle, t.x, t.y) == 0x281E140A;
 	assert void2dGlyphPageTexelRgba(handle, t.x + 1, t.y) == 0x50463C32;
 	assert void2dGlyphPageTexelRgba(handle, t.x, t.y + 1) == 0xFFFFFFFF;
@@ -148,8 +148,8 @@ test "a blit outside the page or onto a coverage page is refused by name" {
 	const source: uint32[] = [0x04030201, 0x04030201];
 	const colourHandle: int32 = atlas.pageHandle(atlas.tile(r.value).page) as int32;
 	const coverageHandle: int32 = atlas.pageHandle(atlas.tile(coverage.value).page) as int32;
-	assert void2dGlyphPageBlitRgba(colourHandle, 63, 0, 2, 1, source[0], 2) == 3;
-	assert void2dGlyphPageBlitRgba(coverageHandle, 0, 0, 1, 1, source[0], 1) == 2;
+	assert void2dGlyphPageBlitRgba(colourHandle, 63, 0, 2, 1, source, 2) == 3;
+	assert void2dGlyphPageBlitRgba(coverageHandle, 0, 0, 1, 1, source, 1) == 2;
 	assert void2dGlyphPageTexel(colourHandle, 0, 0) == -1;
 	assert void2dGlyphPageTexelRgba(coverageHandle, 0, 0) == 0;
 }
@@ -197,12 +197,12 @@ test "a blit reads each source row at its stride, not at the tile width" {
 	const t = atlas.tile(r.value);
 	const handle: int32 = atlas.pageHandle(t.page) as int32;
 	const source: uint32[] = [0x11111111, 0x22222222, 0xEEEEEEEE, 0x33333333, 0x44444444, 0xEEEEEEEE];
-	assert void2dGlyphPageBlitRgba(handle, t.x, t.y, 2, 2, source[0], 3) == 0;
+	assert void2dGlyphPageBlitRgba(handle, t.x, t.y, 2, 2, source, 3) == 0;
 	assert void2dGlyphPageTexelRgba(handle, t.x, t.y) == 0x11111111;
 	assert void2dGlyphPageTexelRgba(handle, t.x + 1, t.y) == 0x22222222;
 	assert void2dGlyphPageTexelRgba(handle, t.x, t.y + 1) == 0x33333333;
 	assert void2dGlyphPageTexelRgba(handle, t.x + 1, t.y + 1) == 0x44444444;
-	assert void2dGlyphPageBlitRgba(handle, t.x, t.y, 2, 2, source[0], 1) == 1;
+	assert void2dGlyphPageBlitRgba(handle, t.x, t.y, 2, 2, source, 1) == 1;
 }
 
 test "a reclaimed Rgba page is cleared in all four bytes of every texel" {
@@ -214,9 +214,9 @@ test "a reclaimed Rgba page is cleared in all four bytes of every texel" {
 	const t = atlas.tile(first.value);
 	const handle: int32 = atlas.pageHandle(t.page) as int32;
 	const source: uint32[] = [0xFFFFFFFF, 0xFFFFFFFF];
-	assert void2dGlyphPageBlitRgba(handle, 0, 5, 2, 1, source[0], 2) == 0;
-	assert void2dGlyphPageBlitRgba(handle, 62, 63, 1, 1, source[0], 1) == 0;
-	assert void2dGlyphPageBlitRgba(handle, 0, 40, 2, 1, source[0], 2) == 0;
+	assert void2dGlyphPageBlitRgba(handle, 0, 5, 2, 1, source, 2) == 0;
+	assert void2dGlyphPageBlitRgba(handle, 62, 63, 1, 1, source, 1) == 0;
+	assert void2dGlyphPageBlitRgba(handle, 0, 40, 2, 1, source, 2) == 0;
 	atlas.release(first.value);
 	const second = atlas.acquireBlank(colourKey(2, 0), 60, 60, 0, 0);
 	assert second.ok;
@@ -271,7 +271,7 @@ test "a lost device re-arms an Rgba page for a whole upload from its CPU mirror"
 	const t = atlas.tile(r.value);
 	const handle: int32 = atlas.pageHandle(t.page) as int32;
 	const source: uint32[] = [0x281E140A, 0x50463C32, 0xFFFFFFFF, 0x01000000];
-	assert void2dGlyphPageBlitRgba(handle, t.x, t.y, 2, 2, source[0], 2) == 0;
+	assert void2dGlyphPageBlitRgba(handle, t.x, t.y, 2, 2, source, 2) == 0;
 	assert atlas.takePageUpload(t.page);
 	beginUploadFrame();
 	assert !atlas.takePageUpload(t.page);

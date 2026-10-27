@@ -30,7 +30,7 @@ import {
 	REC_UI_AFFINE, REC_UI_PARAMS0, REC_UI_PARAMS1, REC_UI_COLOR_FILL,
 } from "../void2d/instanceLayout";
 import { InstanceMode } from "../void2d/instance";
-import { void2dGlyphPageBlitRgba, void2dGlyphPageTexelRgba } from "../void2d/glyph.h";
+import { void2dGlyphPageBlitRgba, void2dGlyphPageTexelRgba } from "../void2d/glyph";
 
 const LATIN: string = "assets/font.ttf";
 const EMOJI: string = "tests/fonts/NotoColorEmoji-subset.ttf";
@@ -239,7 +239,7 @@ test "a colour tile whose rasterization is refused is discarded and its key is n
 	const t = atlas.tile(right.value);
 	const handle: int32 = atlas.pageHandle(t.page) as int32;
 	const sentinel: uint32[] = [0x12345678];
-	assert void2dGlyphPageBlitRgba(handle, t.x, t.y, 1, 1, sentinel[0], 1) == 0;
+	assert void2dGlyphPageBlitRgba(handle, t.x, t.y, 1, 1, sentinel, 1) == 0;
 	const again = atlas.acquireColour(key, width, height, box.left, box.top);
 	assert again.ok;
 	assert atlas.rasterizations == 1;

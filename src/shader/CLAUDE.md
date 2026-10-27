@@ -176,7 +176,7 @@ later replaces the hand-written GLSL source of each base.
   variable, and SPIRV-Cross prints it at each call (`highp vec4 param_1 = ui_params[1];`), where
   a GLSL builtin or code at the call site costs none. Neither shady nor TypeGPU inlines, so the
   emitter keeps a helper a function. void2d's shader text counts against the default-layer size
-  budget (`tests/bench/wasm.json` "delta"), so its vertex entries compute the clip distance where
+  budget (the `off` column of `tests/bench/wasmBudget.txt`), so its vertex entries compute the clip distance where
   they use it, as the hand-written stages did. Measured 2026-10-18 against the hand-written
   stages: the port first grew the text by 2438 B (GLSL ES) and 1150 B (HLSL), past the budget.
 - **CPU oracle within a tolerance, never pixel-exact.** GLSL allows contraction and looser ULP bounds,

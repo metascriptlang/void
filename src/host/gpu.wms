@@ -4,8 +4,12 @@
 @include("bridge.h");
 @compile("./bridge.c");
 @compile("./bridgeWeb.c");
-@compile("./views.c");
-@compile("./appWindow.c");
+import "../gpu/doorExports";
+import { exportCurrentView, exportRegister, exportSetSampleCount } from "./viewsExports";
+@compile("./appWindowPlatform.c");
+import "./appWindowExports";
+import "../platform/web/imeInputExports";
+import "../platform/web/keyNamesExports";
 @compile("../platform/web/window.c");
 // The native Windows main-thread stack: a particle system's value-struct frames need about 88 KB,
 // beyond emscripten's 64 KB default, and an overflow there corrupts the heap instead of trapping.
@@ -21,20 +25,17 @@ when (webgpu) {
 	@passL("-sMAX_WEBGL_VERSION=2");
 }
 
-extern function voidEmbedRegister(init: () => void, frame: () => void): void;
 extern function voidWebInstall(): void;
-extern function voidViewsSetSampleCount(count: int32): void;
-extern function voidCurrentView(): int32;
 
 export type ViewId = int32;
 export const ViewInvalid: ViewId = 0 as int32;
 
 // The page starts and stops views itself: Module.voidStart(canvas) returns a stop.
 export function embedRegister(init: () => void, frame: () => void): void {
-	voidEmbedRegister(init, frame);
+	exportRegister(init, frame);
 	voidWebInstall();
 }
-export function setViewSampleCount(count: int32): void { voidViewsSetSampleCount(count); }
-export function currentView(): ViewId { return voidCurrentView(); }
+export function setViewSampleCount(count: int32): void { exportSetSampleCount(count); }
+export function currentView(): ViewId { return exportCurrentView(); }
 
 export * from "./gpuCommon";

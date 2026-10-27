@@ -1,6 +1,6 @@
 // Void driver — iOS (Metal). Host-driven: no run-loop, no UIKit window. Each
 // React-Native VoidView owns a CAMetalLayer and a CADisplayLink and drives its view in
-// views.c. One MTLDevice is shared by every view; the GPU door's Metal backend draws on it.
+// views.ms. One MTLDevice is shared by every view; the GPU door's Metal backend draws on it.
 
 #import <Foundation/Foundation.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -9,7 +9,7 @@
 
 #include "bridge.h"
 #include "presentGate.h"
-#include "views.h"
+#include "viewsExports.h"
 #include "iosApp.h"
 #include "metalSurface.h"
 #include "../gpu/door.h"
