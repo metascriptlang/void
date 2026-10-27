@@ -1,7 +1,7 @@
 // The host views of Void: a view id names one host surface for its whole life, and the frame
 // sequence the host drives over it. The platform owns the surfaces, addressed by view slot.
 
-import { formatG } from "./formatG";
+import { formatG } from "../math/formatG";
 
 const MAX_VIEWS: int32 = 16;
 const SLOT_BITS: int32 = 5;
