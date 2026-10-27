@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 
-const [bundlePath, backend] = process.argv.slice(2);
-if (!bundlePath || (backend !== "gl" && backend !== "gpu")) {
-	throw new Error("usage: node tests/js/gpuLostHarness.mjs <viewsJsEntry bundle> gl|gpu   (msc build src/examples/viewsJsEntry.jms --target=js [-d:webgl2] --output=<bundle>)");
+const [bundlePath, backend, driver] = process.argv.slice(2);
+if (!bundlePath || (backend !== "gl" && backend !== "gpu") || (driver !== "views" && driver !== "window")) {
+	throw new Error("usage: node tests/js/gpuLostHarness.mjs <bundle> gl|gpu views|window   (msc build src/examples/viewsJsEntry.jms|windowJsEntry.jms --target=js [-d:webgl2] --output=<bundle>)");
 }
+const windowMode = driver === "window";
 
 const doorStubs = ["doorSetup", "doorShutdown", "doorBeginScreenPass", "doorCommit"];
 let source = readFileSync(bundlePath, "utf8").replace(/^import .* from "node:[a-z_/]+";$/gm, "");
@@ -15,7 +16,12 @@ for (const name of doorStubs) {
 }
 globalThis.__door = [];
 
-process.on("unhandledRejection", (reason) => { console.error("rejection:", reason && (reason.message ?? reason)); process.exit(2); });
+const rejections = [];
+process.on("unhandledRejection", (reason) => {
+	if (windowMode) { rejections.push(reason.message); return; }
+	console.error("rejection:", reason && (reason.message ?? reason));
+	process.exit(2);
+});
 
 function target() {
 	const listeners = new Map();
@@ -75,6 +81,8 @@ if (backend === "gpu") {
 }
 
 const attrs = new Map();
+const selectors = [];
+let pageHasCanvas = true;
 let contextCount = 0;
 const canvas = Object.assign(target(), {
 	clientWidth: 300, clientHeight: 150, width: 0, height: 0, style: {},
@@ -91,7 +99,7 @@ const canvas = Object.assign(target(), {
 });
 globalThis.document = Object.assign(target(), {
 	title: "", pointerLockElement: null, activeElement: null, fullscreenElement: null,
-	querySelector: () => canvas,
+	querySelector: (selector) => { selectors.push(selector); return pageHasCanvas ? canvas : null; },
 	createElement: () => Object.assign(target(), { style: {}, setAttribute() {}, remove() {}, focus() {}, blur() {} }),
 	body: { appendChild() {}, removeChild() {} },
 });
@@ -105,18 +113,19 @@ const realLog = console.log;
 console.log = (...a) => logs.push(a.join(" "));
 (0, eval)(source);
 
-const w = globalThis.voidAppWindow;
+const w = windowMode ? globalThis.voidAppWindow : null;
 const appEvents = [];
-w.setHandler(() => { appEvents.push(w.eventType()); });
+if (w) { w.setHandler(() => { appEvents.push(w.eventType()); }); }
 const SUSPENDED = 19;
 const RESUMED = 20;
+const QUIT_REQUESTED = 21;
 
 let clock = 1000;
 function step() { const q = rafQueue; rafQueue = []; clock += 16; q.forEach((f) => f(clock)); }
 const settle = () => new Promise((r) => setTimeout(r, 20));
-const frames = () => logs.filter((l) => l.startsWith("void js view frame")).length;
+const frames = () => logs.filter((l) => l.startsWith(`void js ${windowMode ? "window" : "view"} frame`)).length;
 const door = () => globalThis.__door.filter((n) => n === "doorSetup" || n === "doorShutdown").join(",");
-const errors = [];
+const errors = windowMode ? rejections : [];
 const onError = (e) => errors.push(e.message);
 
 let failed = 0;
@@ -127,11 +136,21 @@ function check(name, got, want) {
 	realLog(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : `\n     got  ${got}\n     want ${want}`}`);
 }
 
-let stop = globalThis.voidStart(canvas, onError);
+function quit() { w.requestQuit(); step(); }
+function startRun() {
+	if (!windowMode) { return globalThis.voidStart(canvas, onError); }
+	globalThis.voidWindowRestart();
+	return quit;
+}
+let stop = windowMode ? quit : globalThis.voidStart(canvas, onError);
 await settle();
 step();
 check("the first frame runs", frames(), 1);
-const START = "doorShutdown,doorSetup";
+if (windowMode) {
+	check("the window picks #canvas", selectors[0], "#canvas");
+	check("the window's init ran once", logs.filter((l) => l === "void js window init").length, 1);
+}
+const START = windowMode ? "doorSetup" : "doorShutdown,doorSetup";
 const AGAIN = `${START},doorShutdown,doorSetup`;
 check("the door is set up once at start", door(), START);
 
@@ -145,7 +164,7 @@ if (backend === "gl") {
 	await settle();
 	releaseDevices = release;
 }
-check("a loss tells the app it is suspended", appEvents.join(","), `${SUSPENDED}`);
+if (windowMode) { check("a loss tells the app it is suspended", appEvents.join(","), `${SUSPENDED}`); }
 step();
 step();
 check("frames are skipped while the GPU is gone", frames(), before);
@@ -155,11 +174,12 @@ if (backend === "gpu") {
 	check("a lost device asks for a new one", deviceCount, 2);
 	releaseDevices();
 	await settle();
-	check("a new device tells the app it is resumed", appEvents.join(","), `${SUSPENDED},${RESUMED}`);
+	if (windowMode) { check("a new device tells the app it is resumed", appEvents.join(","), `${SUSPENDED},${RESUMED}`); }
 } else {
-	check("a second loss event is not a second suspend", (fire(canvas, "webglcontextlost"), appEvents.join(",")), `${SUSPENDED}`);
+	fire(canvas, "webglcontextlost");
+	if (windowMode) { check("a second loss event is not a second suspend", appEvents.join(","), `${SUSPENDED}`); }
 	fire(canvas, "webglcontextrestored");
-	check("a restored context tells the app it is resumed", appEvents.join(","), `${SUSPENDED},${RESUMED}`);
+	if (windowMode) { check("a restored context tells the app it is resumed", appEvents.join(","), `${SUSPENDED},${RESUMED}`); }
 }
 check("the door waits for the next frame", door(), START);
 step();
@@ -181,14 +201,18 @@ if (backend === "gpu") {
 
 const setups = door().split(",").filter((n) => n === "doorSetup").length;
 stop();
-check("stop shuts the door down", door().split(",").at(-1), "doorShutdown");
-check("stop ends the loop", rafQueue.length, 0);
+check(windowMode ? "quit shuts the door down" : "stop shuts the door down", door().split(",").at(-1), "doorShutdown");
+check(windowMode ? "quit ends the loop" : "stop ends the loop", rafQueue.length, 0);
+if (windowMode) {
+	check("quit tells the app once", appEvents.filter((e) => e === QUIT_REQUESTED).length, 1);
+	check("quit takes the canvas attribute back", attrs.size, 0);
+}
 const eventsAtStop = appEvents.length;
 if (backend === "gl") { fire(canvas, "webglcontextlost"); fire(canvas, "webglcontextrestored"); }
 else { devices[devices.length - 1].loseWith("unknown", "after stop"); await settle(); }
 check("a loss after stop reaches nobody", appEvents.length, eventsAtStop);
 
-stop = globalThis.voidStart(canvas, onError);
+stop = startRun();
 await settle();
 step();
 check("a start after a stop sets the door up again", door().split(",").filter((n) => n === "doorSetup").length, setups + 1);
@@ -204,11 +228,11 @@ if (backend === "gpu") {
 	devices[devices.length - 1].loseWith("unknown", "second loss");
 	await settle();
 	check("a device that cannot be replaced reaches onError, naming the case", /^void: the WebGPU device was lost and a new one could not be made: .*no adapter left/.test(errors.join("|")), true);
-	check("and the app stays suspended", appEvents.slice(seen).join(","), `${SUSPENDED}`);
+	if (windowMode) check("and the app stays suspended", appEvents.slice(seen).join(","), `${SUSPENDED}`);
 	nextDeviceFails = false;
 	stop();
 
-	stop = globalThis.voidStart(canvas, onError);
+	stop = startRun();
 	await settle();
 	step();
 	const quiet = errors.length;
@@ -217,21 +241,33 @@ if (backend === "gpu") {
 	stop();
 	await settle();
 	check("a stop during recovery drops the new device quietly", `${errors.length - quiet} ${appEvents.filter((e) => e === RESUMED).length - resumedBefore}`, "0 0");
-	stop = globalThis.voidStart(canvas, onError);
+	stop = startRun();
 	await settle();
 	step();
 	check("a start after a stop during recovery is not suspended", frames() > 0 && rafQueue.length === 1, true);
 }
 
-let refusal = "";
-try { globalThis.voidStart(canvas, onError); } catch (error) { refusal = error.message; }
-check("a second live view is refused, naming the case", refusal, backend === "gl"
-	? "void: voidViewCreate: WebGL2 runs one view at a time; stop view 2 first"
-	: "void: voidStart: the js target runs one WebGPU view at a time; stop the live view first");
+function refusal(call) {
+	try { call(); } catch (error) { return error.message; }
+	return "";
+}
+if (windowMode) {
+	check("a second live window is refused, naming the case", refusal(() => globalThis.voidRun(800, 600, () => {}, () => {})), "void: voidWebRun: the browser window already runs");
+} else {
+	check("a second live view is refused, naming the case", refusal(() => globalThis.voidStart(canvas, onError)), backend === "gl"
+		? "void: voidViewCreate: WebGL2 runs one view at a time; stop view 2 first"
+		: "void: voidStart: the js target runs one WebGPU view at a time; stop the live view first");
+	check("a window is refused beside host views, naming the case", refusal(() => globalThis.voidRun(800, 600, () => {}, () => {})), "void: voidRun: this document already drives Void through host views");
+}
 const drawn = frames();
 step();
-check("the refusal leaves the live view drawing", frames(), drawn + 1);
+check("the refusal leaves the live run drawing", frames(), drawn + 1);
 stop();
+if (windowMode) {
+	pageHasCanvas = false;
+	check("a page without #canvas is refused, naming the case", refusal(() => globalThis.voidWindowRestart()), "void: no canvas #canvas: the page has no #canvas");
+	pageHasCanvas = true;
+}
 
 realLog(failed === 0 ? `ALL OK (${passed})` : `${failed} FAILED of ${passed + failed}`);
 if (failed !== 0) process.exit(1);
