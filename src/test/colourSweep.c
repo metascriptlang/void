@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../void2d/colourEmoji/colourFace.h"
+#include "../void2d/colourEmoji/colourFace.c"
 
 static int s_refused;
 

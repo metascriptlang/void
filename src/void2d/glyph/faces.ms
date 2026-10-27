@@ -33,11 +33,12 @@ import {
 } from "./state";
 import { findKernLookups, gposKern } from "./gpos";
 import { applySynthetic, shapeBox } from "./outline";
+import { ColourFace } from "../colourEmoji/colourFace";
 import { asInt32, truncInt } from "../trueType/fontInfo";
 
 when (voidColourEmoji) {
-	import { colourFaceGlyphIndex, colourOpen, colourReason } from "./colour";
-	import { COLOUR_NONE, COLOUR_NO_MEMORY, COLOUR_OK } from "./colour";
+	import { colourFaceGlyphIndex, colourInfo, colourOpen, colourReason } from "./colour";
+	import { COLOUR_NONE, COLOUR_NO_MEMORY, COLOUR_OK } from "../colourEmoji/colourFace";
 	import { FACE_BAD_COLOUR, FACE_NO_MEMORY } from "./state";
 }
 
@@ -96,7 +97,7 @@ function findTableSlice(face: GlyphFace, tag: string): TableSlice {
 export function findGlyph(face: GlyphFace, codepoint: int32): int32 {
 	state.glyphLookups++;
 	when (voidColourEmoji) {
-		if (face.colourOnly) { return colourFaceGlyphIndex(face.colour, codepoint); }
+		if (face.colourOnly) { return colourFaceGlyphIndex(face.colour, face.bytes.data, codepoint); }
 	}
 	return findGlyphIndex(face.info, codepoint);
 }
@@ -274,27 +275,39 @@ export function void2dGlyphFaceLoad(path: string, index: int32): int32 {
 	const holder = new FaceBytes(bytes);
 	const face = new GlyphFace(holder, blankInfo(holder.data));
 	const offset = getFontOffsetForIndex(holder.data, index);
+	let colour: ColourFace | null = null;
+	let colourStatus: int32 = 1;
+	let colourGlyphs: int32 = 0;
+	let colourHead: int32 = 0;
+	let colourHhea: int32 = 0;
+	let colourHmtx: int32 = 0;
+	when (voidColourEmoji) {
+		if (offset >= 0) {
+			const opened = colourOpen(holder.data, offset);
+			colourStatus = opened.status;
+			colourGlyphs = opened.numGlyphs;
+			colourHead = opened.head;
+			colourHhea = opened.hhea;
+			colourHmtx = opened.hmtx;
+			colour = opened.face;
+		}
+	}
 	let found: FontInfo | null = offset >= 0 ? initFont(holder.data, offset) : null;
-	let colour: Ptr<void> | null = null;
 	let colourOnly: boolean = false;
 	let glyphCount: int32 = 0;
 	let outlines: boolean = found != null;
 	when (voidColourEmoji) {
-		if (offset >= 0) {
-			const opened = colourOpen(holder.data, offset);
-			if (opened.status == COLOUR_OK) {
-				colour = opened.face;
-				glyphCount = opened.numGlyphs;
-				if (!outlines) {
-					found = opened.info;
-					colourOnly = true;
-					outlines = true;
-				}
-			} else if (opened.status != COLOUR_NONE) {
-				console.error(`void2d: ${path}: colour tables refused: ${colourReason()}`);
-				if (!outlines) {
-					return opened.status == COLOUR_NO_MEMORY ? FACE_NO_MEMORY : FACE_BAD_COLOUR;
-				}
+		if (colourStatus == COLOUR_OK) {
+			glyphCount = colourGlyphs;
+			if (!outlines) {
+				found = colourInfo(holder.data, offset, colourHead, colourHhea, colourHmtx);
+				colourOnly = true;
+				outlines = true;
+			}
+		} else if (colourStatus != COLOUR_NONE) {
+			console.error(`void2d: ${path}: colour tables refused: ${colourReason()}`);
+			if (!outlines) {
+				return colourStatus == COLOUR_NO_MEMORY ? FACE_NO_MEMORY : FACE_BAD_COLOUR;
 			}
 		}
 	}
@@ -323,11 +336,11 @@ export function void2dGlyphFaceLoad(path: string, index: int32): int32 {
 		return FACE_NOT_A_FONT;
 	}
 	face.info = found;
-	face.colour = colour;
 	face.colourOnly = colourOnly;
 	face.platform = platform;
 	face.glyphCount = glyphCount;
 	face.kernLookups = findKernLookups(found);
+	face.colour = colour;
 	state.faces.push(face);
 	return (state.faces.length as int32) - 1;
 }

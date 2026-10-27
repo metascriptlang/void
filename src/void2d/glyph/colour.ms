@@ -16,79 +16,87 @@ import {
 
 when (voidColourEmoji) {
 	import {
+		COLOUR_ABSENT,
+		COLOUR_BAD_TABLE,
+		COLOUR_MAX_LAYERS,
+		COLOUR_MAX_TEXELS,
+		COLOUR_NO_MEMORY,
+		COLOUR_NONE,
+		COLOUR_OK,
+		COLOUR_PRESENT,
+		COLOUR_REFUSED,
 		ColourBox,
 		ColourFace,
 		ColourLayer,
 		ColourSfnt,
-		void2dColourCompose,
-		void2dColourFaceGlyphIndex,
-		void2dColourFaceHasLayers,
-		void2dColourFaceOpen,
-		void2dColourFaceReason,
-		void2dColourFaceSfnt,
-		void2dColourGlyphBox,
-		void2dColourGlyphLayers,
-		void2dColourGlyphRender,
-	} from "../colourEmoji/colourFace.h";
+		colourCompose,
+		colourFaceGlyphIndex as faceGlyphIndex,
+		colourFaceHasLayers,
+		colourFaceOpen,
+		colourFaceReason,
+		colourFaceSfnt,
+		colourGlyphBox,
+		colourGlyphLayers,
+		colourGlyphRender,
+	} from "../colourEmoji/colourFace";
 	import { FontInfo, GlyphBox } from "../trueType/fontInfo";
 	import { getGlyphBitmapBoxSubpixel, makeGlyphBitmapSubpixel } from "../trueType/rasterize";
 	import { scaleForMappingEmToPixels } from "../trueType";
 	import { u16At } from "../trueType/fontInfo";
 
-	export const COLOUR_OK: int32 = 0;
-	export const COLOUR_NONE: int32 = 1;
-	export const COLOUR_BAD_TABLE: int32 = -1;
-	export const COLOUR_NO_MEMORY: int32 = -2;
-
-	const COLOUR_ABSENT: int32 = 0;
-	const COLOUR_PRESENT: int32 = 1;
-	const COLOUR_REFUSED: int32 = -1;
-	const MAX_LAYERS: int32 = 256;
-	const MAX_TEXELS: int64 = 4096 * 4096;
-
 	export class ColourOpened {
 		status: int32 = COLOUR_NONE;
-		face: Ptr<void> | null = null;
+		face: ColourFace | null = null;
 		numGlyphs: int32 = 0;
-		info: FontInfo | null = null;
+		head: int32 = 0;
+		hhea: int32 = 0;
+		hmtx: int32 = 0;
 	}
 
 	export function colourReason(): string {
-		return void2dColourFaceReason();
+		return colourFaceReason();
 	}
 
-	export function colourFaceGlyphIndex(colour: Ptr<void> | null, codepoint: int32): int32 {
-		if (colour == null) { return 0; }
-		return void2dColourFaceGlyphIndex(colour as Ptr<ColourFace>, codepoint);
+	export function colourFaceGlyphIndex(colour: ColourFace | null, bytes: uint8[], codepoint: int32): int32 {
+		return faceGlyphIndex(colour, bytes, codepoint);
 	}
 
 	export function colourOpen(bytes: uint8[], offset: int32): ColourOpened {
 		const result = new ColourOpened();
-		let opened: Ptr<ColourFace>;
-		let status = void2dColourFaceOpen(bytes[0], bytes.length as uint64, offset as uint64, opened);
-		let sfnt: ColourSfnt = { head: 0, hhea: 0, hmtx: 0, hmtxLength: 0, numGlyphs: 0, outlines: 0 };
-		if (status == COLOUR_OK && void2dColourFaceSfnt(opened, sfnt) != COLOUR_OK) {
+		const opened = colourFaceOpen(bytes, offset as int64);
+		let status = opened.status;
+		const sfnt = new ColourSfnt();
+		const face = opened.face;
+		if (status == COLOUR_OK && face != null && colourFaceSfnt(face, bytes, sfnt) != COLOUR_OK) {
 			status = COLOUR_BAD_TABLE;
 		}
 		result.status = status;
 		if (status != COLOUR_OK) { return result; }
-		result.face = opened as Ptr<void>;
+		result.face = face;
 		result.numGlyphs = sfnt.numGlyphs;
+		result.head = sfnt.head as int32;
+		result.hhea = sfnt.hhea as int32;
+		result.hmtx = sfnt.hmtx as int32;
+		return result;
+	}
+
+	// The metrics-only face of a colour font with no outlines.
+	export function colourInfo(bytes: uint8[], offset: int32, head: int32, hhea: int32, hmtx: int32): FontInfo {
 		const data = bytes as Span<uint8>;
-		result.info = {
+		return {
 			data: data,
 			fontstart: offset,
 			numGlyphs: 0,
 			loca: 0,
-			head: sfnt.head as int32,
+			head: head,
 			glyf: 0,
-			hhea: sfnt.hhea as int32,
-			hmtx: sfnt.hmtx as int32,
+			hhea: hhea,
+			hmtx: hmtx,
 			kern: 0,
 			gpos: 0,
 			svg: 0,
 			indexMap: 0,
-			indexToLocFormat: data.u16At((sfnt.head as int64) + 50),
+			indexToLocFormat: data.u16At((head as int64) + 50),
 			cff: { data: data, base: 0, size: 0, cursor: 0 },
 			charstrings: { data: data, base: 0, size: 0, cursor: 0 },
 			gsubrs: { data: data, base: 0, size: 0, cursor: 0 },
@@ -96,23 +104,20 @@ when (voidColourEmoji) {
 			fontdicts: { data: data, base: 0, size: 0, cursor: 0 },
 			fdselect: { data: data, base: 0, size: 0, cursor: 0 },
 		};
-		return result;
 	}
 
-	function colourPtr(f: GlyphFace): Ptr<ColourFace> {
+	function colourOf(f: GlyphFace): ColourFace {
 		const colour = f.colour;
 		if (colour == null) { throw new Error("void2d: a colour call reached a face with no colour tables"); }
-		return colour as Ptr<ColourFace>;
+		return colour;
 	}
 
 	function layersOf(f: GlyphFace, glyph: int32, layers: ColourLayer[]): int32 {
-		return void2dColourGlyphLayers(
-			colourPtr(f), glyph, (layers as Span<ColourLayer>) as Ptr<ColourLayer>, MAX_LAYERS,
-		);
+		return colourGlyphLayers(colourOf(f), f.bytes.data, glyph, layers, COLOUR_MAX_LAYERS);
 	}
 
 	function newLayers(): ColourLayer[] {
-		return new Array<ColourLayer>(MAX_LAYERS);
+		return new Array<ColourLayer>(COLOUR_MAX_LAYERS);
 	}
 
 	export function void2dGlyphColourBuilt(): int32 {
@@ -146,9 +151,9 @@ when (voidColourEmoji) {
 			inked = true;
 		}
 		if (!inked) { return { status: COLOUR_ABSENT, box: box }; }
-		if (((box.x1 - box.x0) as int64) * ((box.y1 - box.y0) as int64) > MAX_TEXELS) {
+		if (((box.x1 - box.x0) as int64) * ((box.y1 - box.y0) as int64) > COLOUR_MAX_TEXELS) {
 			console.error(
-				`void2d: colour glyph ${glyph} is ${box.x1 - box.x0}x${box.y1 - box.y0} at ${fixed(sizePx, 1)} px, over the ${MAX_TEXELS} texel limit`,
+				`void2d: colour glyph ${glyph} is ${box.x1 - box.x0}x${box.y1 - box.y0} at ${fixed(sizePx, 1)} px, over the ${COLOUR_MAX_TEXELS} texel limit`,
 			);
 			return { status: COLOUR_REFUSED, box: box };
 		}
@@ -160,8 +165,8 @@ when (voidColourEmoji) {
 		for (let i: int32 = 0; i < 6; i++) { box[i] = 0; }
 		if (void2dGlyphColourFace(face) == 0) { return; }
 		const f = faceAt(face);
-		let found: ColourBox = { width: 0, height: 0, bearingX: 0, bearingY: 0, ppem: 0 };
-		let status = void2dColourGlyphBox(colourPtr(f), glyph, sizePx, found);
+		const found = new ColourBox();
+		let status = colourGlyphBox(colourOf(f), f.bytes.data, glyph, sizePx, found);
 		if (status == COLOUR_PRESENT) {
 			box[0] = found.bearingX;
 			box[1] = -found.bearingY;
@@ -169,7 +174,7 @@ when (voidColourEmoji) {
 			box[3] = -found.bearingY + found.height;
 			box[5] = found.ppem;
 		} else if (status == COLOUR_ABSENT && glyph > 0 && sizePx > 0.0 &&
-			void2dColourFaceHasLayers(colourPtr(f)) != 0) {
+			colourFaceHasLayers(colourOf(f))) {
 			const layered = colourLayerBox(f, glyph, sizePx);
 			status = layered.status;
 			if (status == COLOUR_PRESENT) {
@@ -225,10 +230,7 @@ when (voidColourEmoji) {
 			const coverage: uint8[] = new Array<uint8>(lw * lh);
 			for (let z: int32 = 0; z < lw * lh; z++) { coverage[z] = 0; }
 			makeGlyphBitmapSubpixel(f.info, coverage, lw, lh, lw, scale, scale, 0.0, 0.0, layers[i].glyph);
-			void2dColourCompose(
-				(at as Span<uint32>) as Ptr<uint32>, w, w, h, coverage[0], lw,
-				b.x0 - box.x0, b.y0 - box.y0, lw, lh, layers[i],
-			);
+			colourCompose(at, w, w, h, coverage, lw, b.x0 - box.x0, b.y0 - box.y0, lw, lh, layers[i]);
 		}
 		return COLOUR_RASTER_OK;
 	}
@@ -257,11 +259,9 @@ when (voidColourEmoji) {
 					((p.texels[t + 2] as uint32) << 16) | ((p.texels[t + 3] as uint32) << 24);
 			}
 		}
-		let status = void2dColourGlyphRender(
-			colourPtr(f), glyph, sizePx, (tile as Span<uint32>) as Ptr<uint32>, w, w, h,
-		);
+		let status = colourGlyphRender(colourOf(f), f.bytes.data, glyph, sizePx, tile, w, w, h);
 		let result: int32 = COLOUR_RASTER_OK;
-		if (status == COLOUR_ABSENT && void2dColourFaceHasLayers(colourPtr(f)) != 0) {
+		if (status == COLOUR_ABSENT && colourFaceHasLayers(colourOf(f))) {
 			result = colourLayerRasterize(f, glyph, sizePx, tile, w, h);
 			if (result != COLOUR_RASTER_OK) { return result; }
 		} else if (status == COLOUR_NO_MEMORY) {
