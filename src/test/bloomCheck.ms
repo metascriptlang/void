@@ -19,7 +19,11 @@ import {
 	setBloom,
 	closeForward,
 } from "../void3d/forwardRenderer";
-import { ToneMapPass } from "../void3d/toneMap";
+import {
+	ToneMapPass, TONE_MAP_UNIFORM_SLOT, TONE_MAP_UNIFORM_LENGTH, TONE_MAP_EXPOSURE, TONE_MAP_MODE,
+} from "../void3d/toneMap";
+import { ToneMode } from "../void3d/renderer";
+import { ToneMapParams } from "../void3d/post3d";
 
 // Bevy 157e1ce6 bevy_post_process/src/bloom, evaluated apart from void3d.
 test "bloom's mip chain is Bevy's: ilog2 of the dimension less one, mip 0 at that height" {
@@ -122,4 +126,21 @@ test "bloom writes one texel of the source, one of the target, the blend and the
 		0.375, 0, 0, 0,
 		1, 0.5, 1, threshold.w,
 	]);
+}
+
+test "the tone map block comes out the way prepare writes it by hand, the lanes it leaves zero" {
+	for (const mode of [ToneMode.Linear, ToneMode.Reinhard, ToneMode.Filmic, ToneMode.Neutral]) {
+		let hand: Vec<float32> = new Array(TONE_MAP_UNIFORM_LENGTH);
+		hand[TONE_MAP_EXPOSURE] = 2.5;
+		hand[TONE_MAP_MODE] = mode as float32;
+		let pool: UniformPool = UniformPool.withCapacity(TONE_MAP_UNIFORM_LENGTH);
+		for (let i = 0; i < TONE_MAP_UNIFORM_LENGTH; i++) { pool.values[i] = -7.0; }
+		const reserved = reserveBlock<ToneMapParams>(pool, TONE_MAP_UNIFORM_SLOT);
+		assert reserved.ok;
+		assert writeBlock(pool, reserved.value, { toneMap: { x: 2.5, y: mode as float32, z: 0.0, w: 0.0 } }).ok;
+		assert hand.length == 4 && pool.values.length == 4;
+		for (let i = 0; i < 4; i++) {
+			assert bitcastF32toU32(hand[i]) == bitcastF32toU32(pool.values[i]);
+		}
+	}
 }
