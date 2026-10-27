@@ -2,7 +2,8 @@
 // drives it, over the backend this bundle selects (-d:webgl2, else WebGPU).
 
 import { CanvasSize, CanvasView, enter, installStart, leave } from "../platform/web/window";
-import { PixelFormat, doorSetup } from "../gpu/doorGpu";
+import { PixelFormat, doorSetup, doorShutdown } from "../gpu/doorGpu";
+import { AppEventType } from "../platform/appEvent";
 import { browserWindow } from "./appWindowBrowser";
 import { Views, ViewsPlatform } from "./views";
 
@@ -24,17 +25,20 @@ export const ViewInvalid: ViewId = 0 as int32;
 
 class Start {
 	canvas: CanvasView;
+	onError: (message: string) => void;
 	stopped: boolean = false;
 	view: ViewId = ViewInvalid;
 
-	constructor(canvas: CanvasView) {
+	constructor(canvas: CanvasView, onError: (message: string) => void) {
 		this.canvas = canvas;
+		this.onError = onError;
 	}
 
 	stop(): void {
 		if (this.stopped) { return; }
 		this.stopped = true;
 		liveStarts--;
+		liveStart = null;
 		if (browserWindow.valid()) { browserWindow.end(); }
 		if (this.view != ViewInvalid) {
 			leave(this.canvas);
@@ -45,44 +49,84 @@ class Start {
 
 class BrowserPlatform extends ViewsPlatform {
 	lost: boolean = false;
+	doorStale: boolean = false;
 
 	fail(message: string): never { throw new Error(`void: ${message}`); }
-	deviceEnsure(): void {}
-	runInit(init: () => void): void {
-		doorSetup(null, null, canvasColor() as int32, PixelFormat.None as int32, views.sampleCount());
-		init();
-	}
+	deviceEnsure(): void { doorRestore(); }
+	runInit(init: () => void): void { init(); }
 	surfaceCreate(slot: int32, native: int64, width: int32, height: int32): boolean { return true; }
 	surfaceResize(slot: int32, width: int32, height: int32): void {}
 	surfaceReady(slot: int32): boolean {
-		if (this.lost) { this.fail("the GPU was lost; recovering it needs the door's setup, which the js target does not port yet"); }
+		if (this.lost) { return false; }
+		if (this.doorStale) {
+			this.doorStale = false;
+			doorRestore();
+		}
 		return true;
 	}
 	surfaceAcquire(slot: int32): boolean { return true; }
 	surfacePresent(slot: int32): void {}
-	surfaceDestroy(slot: int32): void {}
+	surfaceDestroy(slot: int32): void { doorShutdown(); }
 	surfaceNative(slot: int32): int64 { return 0; }
 }
 
 const platform = new BrowserPlatform();
 const views = new Views(platform);
 let liveStarts = 0;
+let liveStart: Start | null = null;
 
-function onLost(): void { platform.lost = true; }
+function doorRestore(): void {
+	doorShutdown();
+	doorSetup(null, null, canvasColor() as int32, PixelFormat.None as int32, views.sampleCount());
+}
+
+function emitApp(type: AppEventType): void {
+	const live = browserWindow.live;
+	if (live !== null) { live.emit(type); }
+}
+
+function onLost(): void {
+	const start = liveStart;
+	if (start === null || platform.lost) { return; }
+	platform.lost = true;
+	emitApp(AppEventType.Suspended);
+	recoverDevice(start);
+}
+
+function onRestored(): void {
+	if (liveStart === null) { return; }
+	platform.lost = false;
+	platform.doorStale = true;
+	emitApp(AppEventType.Resumed);
+}
+
+when (webgl2) {
+	function recoverDevice(start: Start): void {}
+} else {
+	async function recoverDevice(start: Start): Promise<void> {
+		try {
+			await acquireDevice(start.canvas.selector, onLost);
+		} catch (error) {
+			if (!start.stopped) { start.onError(`void: the WebGPU device was lost and a new one could not be made: ${error}`); }
+			return;
+		}
+		if (!start.stopped) { onRestored(); }
+	}
+}
 
 async function acquire(canvas: CanvasView): Promise<void> {
 	when (webgl2) {
-		acquireContext(canvas.selector, views.sampleCount(), onLost);
+		acquireContext(canvas.selector, views.sampleCount(), onLost, onRestored);
 	} else {
 		await acquireDevice(canvas.selector, onLost);
 	}
 }
 
-async function begin(canvas: CanvasView, onError: (message: string) => void, start: Start): Promise<void> {
+async function begin(canvas: CanvasView, start: Start): Promise<void> {
 	try {
 		await acquire(canvas);
 	} catch (error) {
-		if (!start.stopped) { onError(`void: this browser gave no GPU backend: ${error}`); }
+		if (!start.stopped) { start.onError(`void: this browser gave no GPU backend: ${error}`); }
 		return;
 	}
 	if (start.stopped) { return; }
@@ -108,8 +152,11 @@ async function begin(canvas: CanvasView, onError: (message: string) => void, sta
 function open(canvas: CanvasView, onError: (message: string) => void): () => void {
 	if (liveStarts > 0) { platform.fail("voidStart: the js target runs one view at a time; stop the live view first"); }
 	liveStarts++;
-	const start = new Start(canvas);
-	begin(canvas, onError, start);
+	const start = new Start(canvas, onError);
+	liveStart = start;
+	platform.lost = false;
+	platform.doorStale = false;
+	begin(canvas, start);
 	return (): void => { start.stop(); };
 }
 

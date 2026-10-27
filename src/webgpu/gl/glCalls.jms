@@ -97,7 +97,8 @@ extern class Js {
 
 extern function canvasOf(selector: string): Js from "document.querySelector(#)";
 extern function contextOf(canvas: Js, antialias: boolean): Js from "#.getContext('webgl2',{alpha:true,depth:true,stencil:false,antialias:#,premultipliedAlpha:true,preserveDrawingBuffer:false})";
-extern function watchContext(canvas: Js, onRestored: () => void): void from "((c,h)=>{c.addEventListener('webglcontextlost',(e)=>e.preventDefault());c.addEventListener('webglcontextrestored',()=>h());})(#,#)";
+extern function watchContext(canvas: Js, onLost: () => void, onRestored: () => void): () => void
+	from "((c,l,r)=>{const lost=(e)=>{e.preventDefault();l();};const back=()=>r();c.addEventListener('webglcontextlost',lost);c.addEventListener('webglcontextrestored',back);return ()=>{c.removeEventListener('webglcontextlost',lost);c.removeEventListener('webglcontextrestored',back);};})(#,#,#)";
 extern function enableExtensions(context: Js): void from "((g)=>{for(const n of ['EXT_color_buffer_float','EXT_color_buffer_half_float','EXT_float_blend','EXT_texture_norm16','OES_texture_float_linear','EXT_texture_filter_anisotropic','EXT_texture_compression_bptc','EXT_texture_compression_rgtc','WEBGL_compressed_texture_astc','WEBGL_compressed_texture_etc','WEBGL_compressed_texture_etc1','WEBGL_compressed_texture_s3tc','WEBGL_compressed_texture_s3tc_srgb'])g.getExtension(n);})(#)";
 extern function isNone(value: Js): boolean from "(# == null)";
 extern function jsNull(): Js from "(null)";
@@ -160,6 +161,7 @@ let context: Js = NONE;
 let objects: Js = emptyTable();
 let locations: Js = jsList();
 let log = "";
+let unwatch: () => void = (): void => {};
 
 function stop(message: string): never { throw new Error(`webgpu gl js: ${message}`); }
 
@@ -173,7 +175,7 @@ function parked(what: string): never {
 
 function handle(id: uint32): Js { return lookup(objects, id as int32); }
 
-export function acquireContext(canvasSelector: string, sampleCount: int32, onLost: () => void): void {
+export function acquireContext(canvasSelector: string, sampleCount: int32, onLost: () => void, onRestored: () => void): void {
 	const canvas = canvasOf(canvasSelector);
 	if (isNone(canvas)) { stop(`the selector '${canvasSelector}' matches no canvas`); }
 	const opened = contextOf(canvas, sampleCount > 1);
@@ -181,10 +183,11 @@ export function acquireContext(canvasSelector: string, sampleCount: int32, onLos
 	context = opened;
 	objects = emptyTable();
 	enableExtensions(opened);
-	watchContext(canvas, (): void => {
+	unwatch();
+	unwatch = watchContext(canvas, onLost, (): void => {
 		objects = emptyTable();
 		enableExtensions(opened);
-		onLost();
+		onRestored();
 	});
 }
 
