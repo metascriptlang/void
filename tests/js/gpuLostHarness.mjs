@@ -222,6 +222,15 @@ if (backend === "gpu") {
 	step();
 	check("a start after a stop during recovery is not suspended", frames() > 0 && rafQueue.length === 1, true);
 }
+
+let refusal = "";
+try { globalThis.voidStart(canvas, onError); } catch (error) { refusal = error.message; }
+check("a second live view is refused, naming the case", refusal, backend === "gl"
+	? "void: voidViewCreate: WebGL2 runs one view at a time; stop view 2 first"
+	: "void: voidStart: the js target runs one WebGPU view at a time; stop the live view first");
+const drawn = frames();
+step();
+check("the refusal leaves the live view drawing", frames(), drawn + 1);
 stop();
 
 realLog(failed === 0 ? `ALL OK (${passed})` : `${failed} FAILED of ${passed + failed}`);

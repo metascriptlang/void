@@ -150,7 +150,14 @@ async function begin(canvas: CanvasView, start: Start): Promise<void> {
 }
 
 function open(canvas: CanvasView, onError: (message: string) => void): () => void {
-	if (liveStarts > 0) { platform.fail("voidStart: the js target runs one view at a time; stop the live view first"); }
+	const live = liveStart;
+	if (liveStarts > 0 && live !== null) {
+		when (webgl2) {
+			platform.fail(`voidViewCreate: WebGL2 runs one view at a time; stop view ${live.canvas.id} first`);
+		} else {
+			platform.fail("voidStart: the js target runs one WebGPU view at a time; stop the live view first");
+		}
+	}
 	liveStarts++;
 	const start = new Start(canvas, onError);
 	liveStart = start;
