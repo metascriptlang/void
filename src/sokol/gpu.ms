@@ -14,7 +14,7 @@ when (macos && !voidDummy) {
 	@compile("./metalSurface.m", "-fobjc-arc");
 	@compile("./presentGate.m", "-fobjc-arc");
 	@compile("./appWindow.c");
-	@compile("./views.c");
+	import "./viewsExports";
 	@compile("./bridge.c");
 }
 
@@ -29,7 +29,7 @@ when (windows && voidVulkan && !voidDummy) {
 when (windows && !voidDummy) {
 	@compile("../platform/win32/window.c");
 	@compile("./appWindow.c");
-	@compile("./views.c");
+	import "./viewsExports";
 	@compile("./bridge.c");
 	@passL("-ld3d11");
 	@passL("-ldxgi");
@@ -50,7 +50,7 @@ when (android && !voidDummy) {
 	@compile("./bridgeAndroid.c");
 	@compile("./bridgeAndroidApp.c");
 	@compile("./appWindow.c");
-	@compile("./views.c");
+	import "./viewsExports";
 	@compile("./bridge.c");
 	@passL("-lEGL");
 	@passL("-lGLESv3");
@@ -64,7 +64,7 @@ when (ios && !voidDummy) {
 	@compile("./presentGate.m", "-fobjc-arc");
 	@compile("./bridgeIosApp.m", "-fobjc-arc");
 	@compile("./appWindow.c");
-	@compile("./views.c");
+	import "./viewsExports";
 	@compile("./bridge.c");
 	@passL("-framework Metal");
 	@passL("-framework QuartzCore");
@@ -102,34 +102,36 @@ when (voidDummy) {
 }
 
 when ((macos || (windows && !voidGlCore) || ios || android) && !voidDummy) {
-	extern function voidEmbedRegister(init: () => void, frame: () => void): void;
-	extern function voidViewsSetSampleCount(count: int32): void;
-	extern function voidViewCreate(native: int64, w: int32, h: int32, scale: float32): int32;
-	extern function voidViewResize(view: int32, w: int32, h: int32, scale: float32): void;
-	extern function voidViewReady(view: int32): int32;
-	extern function voidViewFrame(view: int32): int32;
-	extern function voidViewDestroy(view: int32): void;
-	extern function voidViewSwapChain(view: int32): int64;
-	extern function voidCurrentView(): int32;
+	import {
+		exportCurrentView,
+		exportRegister,
+		exportSetSampleCount,
+		exportViewCreate,
+		exportViewDestroy,
+		exportViewFrame,
+		exportViewReady,
+		exportViewResize,
+		exportViewSwapChain,
+	} from "./viewsExports";
 
 	export type ViewId = int32;
 	export const ViewInvalid: ViewId = 0 as int32;
 
 	export function embedRegister(init: () => void, frame: () => void): void {
-		voidEmbedRegister(init, frame);
+		exportRegister(init, frame);
 	}
-	export function setViewSampleCount(count: int32): void { voidViewsSetSampleCount(count); }
+	export function setViewSampleCount(count: int32): void { exportSetSampleCount(count); }
 	export function viewCreate(native: int64, w: int32, h: int32, scale: float32): ViewId {
-		return voidViewCreate(native, w, h, scale);
+		return exportViewCreate(native, w, h, scale);
 	}
 	export function viewResize(view: ViewId, w: int32, h: int32, scale: float32): void {
-		voidViewResize(view, w, h, scale);
+		exportViewResize(view, w, h, scale);
 	}
-	export function viewReady(view: ViewId): boolean { return voidViewReady(view) !== 0; }
-	export function viewFrame(view: ViewId): boolean { return voidViewFrame(view) !== 0; }
-	export function viewDestroy(view: ViewId): void { voidViewDestroy(view); }
-	export function viewSwapChain(view: ViewId): int64 { return voidViewSwapChain(view); }
-	export function currentView(): ViewId { return voidCurrentView(); }
+	export function viewReady(view: ViewId): boolean { return exportViewReady(view) !== 0; }
+	export function viewFrame(view: ViewId): boolean { return exportViewFrame(view) !== 0; }
+	export function viewDestroy(view: ViewId): void { exportViewDestroy(view); }
+	export function viewSwapChain(view: ViewId): int64 { return exportViewSwapChain(view); }
+	export function currentView(): ViewId { return exportCurrentView(); }
 }
 
 export * from "./gpuCommon";

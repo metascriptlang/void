@@ -11,7 +11,7 @@
 
 #include "backend.h"
 #include "bridge.h"
-#include "views.h"
+#include "viewsExports.h"
 #include "windowSurface.h"
 #include "../gpu/door.h"
 #include "../platform/swapchain.h"

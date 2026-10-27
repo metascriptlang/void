@@ -3,7 +3,7 @@
 // bridgeAndroid.c) owns the device and the swapchain.
 
 #include "bridge.h"
-#include "views.h"
+#include "viewsExports.h"
 #include "appWindow.h"
 #include "../gpu/door.h"
 #if !defined(VOID_ANDROID_APP) && !defined(VOID_IOS_APP)

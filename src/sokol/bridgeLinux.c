@@ -1,7 +1,7 @@
 // Void driver — Linux: the X11 window and its GLX or EGL context (src/platform/linux/window.c)
 // drive voidRun; the GPU door's GL backend (src/webgpu/gl, GL core or GLES3) draws into
 // framebuffer 0.
-// Host views are not offered on Linux, so views.c is not part of this build.
+// Host views are not offered on Linux, so views.ms is not part of this build.
 
 #include <stdbool.h>
 #include <stdint.h>

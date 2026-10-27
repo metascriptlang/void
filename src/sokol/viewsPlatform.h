@@ -1,10 +1,32 @@
-#ifndef VOID_SOKOL_VIEWS_H
-#define VOID_SOKOL_VIEWS_H
+#ifndef VOID_SOKOL_VIEWS_PLATFORM_H
+#define VOID_SOKOL_VIEWS_PLATFORM_H
+
+#include <stddef.h>
 
 #include "bridge.h"
 
+#ifdef __APPLE__
+extern void *objc_autoreleasePoolPush(void);
+extern void objc_autoreleasePoolPop(void *pool);
+#endif
+
+static inline void *voidViewsPoolPush(void) {
+#ifdef __APPLE__
+	return objc_autoreleasePoolPush();
+#else
+	return NULL;
+#endif
+}
+
+static inline void voidViewsPoolPop(void *pool) {
+#ifdef __APPLE__
+	objc_autoreleasePoolPop(pool);
+#else
+	(void)pool;
+#endif
+}
+
 void voidPlatformDeviceEnsure(void);
-int voidViewsSampleCount(void);
 void voidPlatformRunInit(msClosure init);
 void *voidPlatformSurfaceCreate(const void *native, int w, int h);
 void voidPlatformSurfaceResize(void *surface, int w, int h);
@@ -13,14 +35,6 @@ int voidPlatformSurfaceAcquire(void *surface);
 void voidPlatformSurfacePresent(void *surface);
 void voidPlatformSurfaceDestroy(void *surface);
 long long voidPlatformSurfaceNative(void *surface);
-
-int voidViewsFbWidth(void);
-int voidViewsFbHeight(void);
-float voidViewsDpiScale(void);
-// The surface of the view whose frame is running; stops outside a view frame.
-void *voidViewsCurrentSurface(void);
-void voidViewsPresent(void);
-void voidViewsEachSurface(void (*fn)(void *surface));
 
 void voidDriverPresent(void);
 

@@ -5,7 +5,7 @@ A host that owns the window and the frame clock (Ion on Windows and macOS, a Rea
 `src/sokol/bridge.h` (`voidEmbedRegister`, `voidViewCreate`, `voidViewResize`,
 `voidViewFrame`, `voidViewDestroy`, `voidViewSwapChain`, `voidCurrentView`), and MetaScript
 reaches them through `src/sokol/gpu.ms` (`embedRegister`, `viewCreate`, …). The shared part is
-`src/sokol/views.c`; each platform's half is the `voidPlatform*` set in `bridgeWin.c`,
+`src/sokol/views.ms`, its C names in `viewsExports.cms`; each platform's half is the `voidPlatform*` set in `bridgeWin.c`,
 `bridgeIos.m`, `bridgeEmbed.m` (macOS), `bridgeAndroid.c` and `bridgeWeb.c` (browser). macOS and iOS share
 one Metal surface (`metalSurface.m`), and the iOS and Android app shells share their events, typed
 text and framebuffer getters in the mobile section of `appWindow.c`.
@@ -105,7 +105,7 @@ below show through, as the overlay in `examples/ionViews.ms` does.
 
 `bridgeEmbed.m` follows `bridgeWin.c`: `voidRun` (a Cocoa window, no sokol_app) and the host-view
 driver share one process, the first of the two chooses, and the other aborts. Both draw through
-the door's Metal backend (`src/webgpu/metal/`); `bridge.c` and `views.c` are compiled beside it.
+the door's Metal backend (`src/webgpu/metal/`); `bridge.c` is compiled beside it and `viewsExports.cms` carries the views.
 
 `native` in `viewCreate` is an `NSView*` or 0. With a view, Void adds a `CAMetalLayer` as a
 sublayer of the view's layer (it sets `wantsLayer`), sized to the view's bounds at every

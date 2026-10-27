@@ -113,16 +113,7 @@ int voidDroppedFileCount(void);
 void voidSetTextInput(int on);
 void voidSetImeRect(int x, int y, int w, int h);
 
-typedef int VoidViewId;
 void voidEmbedRegister(msClosure init, msClosure frame);
-void voidViewsSetSampleCount(int count);
-VoidViewId voidViewCreate(long long native, int w, int h, float scale);
-void voidViewResize(VoidViewId v, int w, int h, float scale);
-int voidViewReady(VoidViewId v);
-int voidViewFrame(VoidViewId v);
-void voidViewDestroy(VoidViewId v);
-long long voidViewSwapChain(VoidViewId v);
-VoidViewId voidCurrentView(void);
 void voidEmbedSetMessagePump(msClosure pump);
 void voidEmbedPumpMessages(void);
 

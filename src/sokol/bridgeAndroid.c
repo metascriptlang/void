@@ -1,6 +1,6 @@
 // Void driver — Android (GLES3 via EGL). Host-driven: no sokol_app. The host (RN Fabric
 // SurfaceView, or a headless pbuffer view) owns the surface and the render loop and drives the
-// views in views.c. One EGL context is shared by every view; each view has its own EGL window
+// views in views.ms. One EGL context is shared by every view; each view has its own EGL window
 // surface. The GPU door's GL backend (src/webgpu/gl, OGL_GLES) draws on that context.
 
 #include <EGL/egl.h>
@@ -10,7 +10,7 @@
 #include <string.h>
 
 #include "bridge.h"
-#include "views.h"
+#include "viewsExports.h"
 #include "../gpu/door.h"
 #include "../platform/swapchain.h"
 #include "androidApp.h"

@@ -1,5 +1,5 @@
 // Void sokol driver — Android app (GLES3). voidRun is an activity whose root view
-// (android/app VoidAppView.java) renders through the views driver (bridgeAndroid.c, views.c) and
+// (android/app VoidAppView.java) renders through the views driver (bridgeAndroid.c, viewsExports.cms) and
 // feeds the window event surface (appWindow.c), as bridgeIosApp.m does on iOS. NativeApp.start runs
 // MsMain, whose main_ calls voidRun, which records the closures and returns; start then adds the view.
 
@@ -14,7 +14,7 @@
 
 #include "../platform/frameTiming.h"
 #include "bridge.h"
-#include "views.h"
+#include "viewsExports.h"
 #include "appWindow.h"
 #include "androidApp.h"
 

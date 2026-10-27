@@ -12,7 +12,7 @@
 
 #include "backend.h"
 #include "bridge.h"
-#include "views.h"
+#include "viewsExports.h"
 #include "appWindow.h"
 #include "../gpu/door.h"
 #include "../platform/swapchain.h"

@@ -156,7 +156,7 @@ int voidWindowTitleSet(void) { return s_titleSet ? 1 : 0; }
 
 #if defined(VOID_ANDROID_APP) || defined(VOID_IOS_APP)
 #include <unistd.h>
-#include "views.h"
+#include "viewsExports.h"
 
 #define CLIPBOARD_SIZE 8192
 static char s_clipboard[CLIPBOARD_SIZE];
