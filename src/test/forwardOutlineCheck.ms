@@ -283,3 +283,68 @@ test "forwardOutline RGBA8 partial coverage interval rejects old four-pixel widt
 	assert 380 >= low && 380 <= high;
 	assert fullLow == 127 && fullHigh == 128;
 }
+
+import { OutlineMaskParams, OutlineMixParams, OutlineWidthParams } from "../void3d/post3d";
+import { UniformPool, reserveBlock, writeBlock } from "../void3d/uniformPool";
+import { bitcastF32toU32 } from "../shader/std";
+
+const OUTLINE_FLOATS: int32 = 20;
+const UNWRITTEN: float32 = -7.0;
+
+function outlineByHand(settings: ForwardOutlineSettings, blend: float32, zeroToOne: boolean): Vec<float32> {
+	let out: Vec<float32> = new Array(OUTLINE_FLOATS);
+	for (let i = 0; i < OUTLINE_FLOATS; i++) { out[i] = 0.0; }
+	out[0] = 2.0;
+	out[1] = settings.depthThreshold;
+	out[2] = settings.normalThreshold;
+	out[3] = zeroToOne ? 1.0 : 2.0;
+	out[4] = zeroToOne ? 0.0 : -1.0;
+	out[5] = blend;
+	out[8] = settings.color.x * settings.color.w;
+	out[9] = settings.color.y * settings.color.w;
+	out[10] = settings.color.z * settings.color.w;
+	out[11] = settings.color.w;
+	out[12] = blend;
+	out[16] = (Math.abs(settings.pixelWidth - 2.0) * 0.5) as float32;
+	out[17] = settings.pixelWidth < 2.0 ? 1.0 : 0.0;
+	return out;
+}
+
+function outlineFromBlocks(settings: ForwardOutlineSettings, blend: float32, zeroToOne: boolean): Vec<float32> {
+	let pool: UniformPool = UniformPool.withCapacity(OUTLINE_FLOATS);
+	for (let i = 0; i < OUTLINE_FLOATS; i++) { pool.values[i] = UNWRITTEN; }
+	const mask = reserveBlock<OutlineMaskParams>(pool, 0);
+	const mix = reserveBlock<OutlineMixParams>(pool, 0);
+	const width = reserveBlock<OutlineWidthParams>(pool, 0);
+	if (!mask.ok || !mix.ok || !width.ok) { unreachable; }
+	const color: Vec4 = settings.color;
+	if (!writeBlock(pool, mask.value, {
+		outlineEdge: { x: 2.0, y: settings.depthThreshold, z: settings.normalThreshold, w: zeroToOne ? 1.0 : 2.0 },
+		outlineDepthMap: { x: zeroToOne ? 0.0 : -1.0, y: blend, z: 0.0, w: 0.0 },
+	}).ok) { unreachable; }
+	if (!writeBlock(pool, mix.value, {
+		outlineColor: { x: color.x * color.w, y: color.y * color.w, z: color.z * color.w, w: color.w },
+		outlineMix: { x: blend, y: 0.0, z: 0.0, w: 0.0 },
+	}).ok) { unreachable; }
+	if (!writeBlock(pool, width.value, {
+		outlineWidth: { x: (Math.abs(settings.pixelWidth - 2.0) * 0.5) as float32, y: settings.pixelWidth < 2.0 ? 1.0 : 0.0, z: 0.0, w: 0.0 },
+	}).ok) { unreachable; }
+	return pool.values;
+}
+
+test "forwardOutline mask, mix and width blocks come out the way prepare writes them by hand" {
+	for (const zeroToOne of [true, false]) {
+		const widths: Vec<float32> = [1.0, 2.0, 3.5];
+		for (const pixelWidth of widths) {
+			const settings: ForwardOutlineSettings = {
+				color: { x: 0.3, y: 0.6, z: 0.9, w: 0.5 }, pixelWidth: pixelWidth,
+				depthThreshold: 0.002, normalThreshold: 0.8,
+			};
+			const hand: Vec<float32> = outlineByHand(settings, 0.75, zeroToOne);
+			const made: Vec<float32> = outlineFromBlocks(settings, 0.75, zeroToOne);
+			for (let i = 0; i < OUTLINE_FLOATS; i++) {
+				assert bitcastF32toU32(hand[i]) == bitcastF32toU32(made[i]);
+			}
+		}
+	}
+}
