@@ -12,12 +12,12 @@ import {
 	typeKind,
 } from "std/meta";
 import { glslIr, glslLinkedIr } from "./emit";
-import { programModule, programSource, targetArms, wordsBase64 } from "./descriptor";
+import { isComputeSource, programModule, programSource, targetArms, wordsBase64 } from "./descriptor";
 import { shaderBytecodeFromBase64 } from "./dxbc";
 import { ShaderTarget } from "./layout";
 import { reflectProgram } from "./reflect";
 import { Vec2f, Vec2i, Vec2u, Vec3f, Vec3i, Vec3u, Vec4f, Vec4i, Vec4u } from "./std";
-import { GPUShaderModuleDescriptor } from "../webgpu/types.ms";
+import { GPUShaderModuleDescriptor, UNLIMITED_UNIFORM_BYTES, shaderBindingsRefusal } from "../webgpu/types.ms";
 import { DoorLayout, doorRegisterLayouts, doorRegisterPrograms } from "../gpu/doorGpu.ms";
 
 export function shaderModuleOf(descriptor: GPUShaderModuleDescriptor): GPUShaderModuleDescriptor {
@@ -237,6 +237,8 @@ export macro shaderBuild(
 	if (!source.ok) { refused(source.error); }
 	const s = source.value;
 	if (s.refusal != "") { refused(s.refusal); }
+	const bindingRefusal = shaderBindingsRefusal(s.reflection.bindings, isComputeSource(s), UNLIMITED_UNIFORM_BYTES);
+	if (bindingRefusal != "") { refused(bindingRefusal); }
 	const bindings: Node[] = [];
 	for (const b of s.reflection.bindings) {
 		const bindingKind: string = b.kind;

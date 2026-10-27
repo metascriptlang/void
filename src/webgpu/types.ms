@@ -300,6 +300,63 @@ export struct GPUShaderModuleDescriptor {
 	attributes: GPUShaderAttribute[GPU_MAX_VERTEX_ATTRIBUTES];
 }
 
+export const UNLIMITED_UNIFORM_BYTES: int64 = 0x7FFFFFFF;
+
+function visibilityRefusal(binding: GPUShaderBinding, compute: boolean): string {
+	const render = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
+	const allowed = compute ? GPUShaderStage.COMPUTE as int32 : render;
+	if (binding.visibility == 0 || (binding.visibility & ~allowed) != 0) {
+		return `shader binding ${binding.binding} has visibility ${binding.visibility}, but a ${compute ? "compute" : "vertex and fragment"} module allows only ${allowed}`;
+	}
+	return "";
+}
+
+// A uint or sint texture cannot be filtered (WebGPU's bind group layout rule, sokol's
+// VALIDATE_SHADERDESC_NONFILTERING_SAMPLER_REQUIRED), so a sampler paired with one must be non-filtering.
+function integerTexturePairRefusal(bindings: Readonly<Span<GPUShaderBinding>>): string {
+	for (let i = 0; i < bindings.length; i++) {
+		const kind: string = bindings[i].kind;
+		const samplerType: string = bindings[i].samplerType;
+		if (kind != "sampler" || bindings[i].textureBinding < 0 || samplerType == "non-filtering") { continue; }
+		for (let j = 0; j < bindings.length; j++) {
+			const textureKind: string = bindings[j].kind;
+			const sampleType: string = bindings[j].sampleType;
+			if (textureKind == "texture" && bindings[j].binding == bindings[i].textureBinding && (sampleType == "uint" || sampleType == "sint")) {
+				return `sampler binding ${bindings[i].binding} is '${samplerType == "" ? "filtering" : samplerType}' but pairs with the ${sampleType} texture binding ${bindings[j].binding}; an integer texture needs a non-filtering sampler`;
+			}
+		}
+	}
+	return "";
+}
+
+export function shaderBindingsRefusal(bindings: Readonly<Span<GPUShaderBinding>>, compute: boolean, maxUniformBytes: int64): string {
+	let uniforms = 0;
+	let resources = 0;
+	for (let i = 0; i < bindings.length; i++) {
+		const kind: string = bindings[i].kind;
+		if (kind == "") { continue; }
+		const visibility = visibilityRefusal(bindings[i], compute);
+		if (visibility != "") { return visibility; }
+		const binding = bindings[i].binding;
+		const group = bindings[i].group;
+		const expected = kind == "uniform" ? GPU_UNIFORM_GROUP : GPU_RESOURCE_GROUP;
+		if (group != expected) { return `shader binding ${binding} (${kind}) belongs in group ${expected}, not ${group}`; }
+		if (kind == "uniform") {
+			const size = bindings[i].size;
+			if (size <= 0) { return `uniform binding ${binding} needs its block size`; }
+			if ((size as int64) > maxUniformBytes) {
+				return `uniform binding ${binding} of ${size} bytes is over the limit of ${maxUniformBytes}`;
+			}
+			uniforms += 1;
+			if (uniforms > GPU_MAX_UNIFORM_BLOCKS) { return `a shader module has over ${GPU_MAX_UNIFORM_BLOCKS} uniform blocks`; }
+		} else {
+			resources += 1;
+			if (resources > GPU_MAX_BIND_GROUP_ENTRIES) { return `a shader module has over ${GPU_MAX_BIND_GROUP_ENTRIES} resources`; }
+		}
+	}
+	return integerTexturePairRefusal(bindings);
+}
+
 export struct GPUVertexAttribute {
 	format: GPUVertexFormat;
 	offset: int32;
