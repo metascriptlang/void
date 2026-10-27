@@ -1,0 +1,11 @@
+// The frame's screen target on the browser: the view being drawn, on the backend's own canvas
+// texture, so the door reads no native views.
+
+import { fbHeight, fbWidth, viewSampleCount } from "../sokol/gpu";
+
+export function voidSwapchainWidth(): int32 { return fbWidth(); }
+export function voidSwapchainHeight(): int32 { return fbHeight(); }
+export function voidSwapchainSampleCount(): int32 { return viewSampleCount(); }
+export function voidSwapchainRenderView(): Ptr<void> | null { return null; }
+export function voidSwapchainResolveView(): Ptr<void> | null { return null; }
+export function voidSwapchainDepthStencilView(): Ptr<void> | null { return null; }

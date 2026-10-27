@@ -1,4 +1,5 @@
-import { embedRegister, fbHeight, fbWidth, presentView } from "../sokol/gpu";
+import { doorBeginScreenPass, doorCommit } from "../gpu/doorGpu";
+import { embedRegister, fbHeight, fbWidth } from "../sokol/gpu";
 
 function init(): void {
 	console.log("void js view init");
@@ -6,7 +7,8 @@ function init(): void {
 
 function frame(): void {
 	console.log(`void js view frame ${fbWidth()}x${fbHeight()}`);
-	presentView();
+	doorBeginScreenPass(0.1, 0.2, 0.3, 1.0);
+	doorCommit();
 }
 
 embedRegister(init, frame);

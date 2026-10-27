@@ -59,7 +59,7 @@ import {
 	voidSwapchainResolveView,
 	voidSwapchainSampleCount,
 	voidSwapchainWidth,
-} from "../platform/swapchain.h";
+} from "../platform/swapchainFrame";
 import "../sokol/gpu";
 import { stop } from "./stop";
 import {
@@ -1663,15 +1663,14 @@ export function doorEndPass(): void {
 	current = -1;
 }
 
-@include("./bridgeCommit.h");
-extern function voidCommit(): void;
+import { commitFrame } from "./frameCommit";
 
 // The frame's end as the door's contract has it: the bridge's voidCommit submits through
 // doorSubmitFrame, then runs the commit hook and presents.
 @exportName("doorCommit")
 export function doorCommit(): void {
 	stopOnOpenPass("commit");
-	voidCommit();
+	commitFrame();
 }
 
 @exportName("doorSubmitFrame")
