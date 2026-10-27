@@ -436,6 +436,12 @@ static void shapeBox(stbtt_vertex *v, int count, float scale, float shiftX, int 
 }
 
 static stbtt_uint8 *findTable(GlyphFace *face, const char *tag, int *length) {
+#ifdef VOID2D_BROWSER_FACES
+	if (!face->bytes) {
+		*length = 0;
+		return NULL;
+	}
+#endif
 	stbtt_uint8 *font = face->bytes + face->info.fontstart;
 	int tables = ttUSHORT(font + 4);
 	*length = 0;
@@ -455,7 +461,29 @@ static int findGlyph(GlyphFace *face, int codepoint) {
 		return void2dColourFaceGlyphIndex((ColourFace *)face->colour, codepoint);
 	}
 #endif
+#ifdef VOID2D_BROWSER_FACES
+	if (!face->bytes) { return void2dPlatformFaceGlyph(face->platform, codepoint); }
+#endif
 	return stbtt_FindGlyphIndex(&face->info, codepoint);
+}
+
+static void faceVMetrics(GlyphFace *face, int *ascent, int *descent, int *lineGap) {
+#ifdef VOID2D_BROWSER_FACES
+	if (!face->bytes) {
+		void2dPlatformFaceVMetrics(face->platform, ascent, descent, lineGap);
+		return;
+	}
+#endif
+	stbtt_GetFontVMetrics(&face->info, ascent, descent, lineGap);
+}
+
+static int advanceUnits(GlyphFace *face, int glyph) {
+#ifdef VOID2D_BROWSER_FACES
+	if (!face->bytes) { return void2dPlatformFaceAdvance(face->platform, glyph); }
+#endif
+	int advance = 0, bearing = 0;
+	stbtt_GetGlyphHMetrics(&face->info, glyph, &advance, &bearing);
+	return advance;
 }
 
 unsigned int void2dGlyphLookups(void) { return s_glyphLookups; }
@@ -487,8 +515,7 @@ static void asciiExtent(GlyphFace *face, float *height, float *cellWidth) {
 	for (int c = ' '; c < 127; c++) {
 		int glyph = findGlyph(face, c);
 		if (glyph == 0) { continue; }
-		int advance = 0, bearing = 0, x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-		stbtt_GetGlyphHMetrics(&face->info, glyph, &advance, &bearing);
+		int advance = advanceUnits(face, glyph), x0 = 0, y0 = 0, x1 = 0, y1 = 0;
 		if (advance > widest) { widest = advance; }
 		if (glyphInk(face, glyph, &x0, &y0, &x1, &y1)) {
 			if (y1 > top) { top = y1; }
@@ -502,15 +529,14 @@ static void asciiExtent(GlyphFace *face, float *height, float *cellWidth) {
 static float ideographWidth(GlyphFace *face) {
 	int glyph = findGlyph(face, 0x6C34);
 	if (glyph == 0) { return 0.0f; }
-	int advance = 0, bearing = 0, x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-	stbtt_GetGlyphHMetrics(&face->info, glyph, &advance, &bearing);
+	int advance = advanceUnits(face, glyph), x0 = 0, y0 = 0, x1 = 0, y1 = 0;
 	if (glyphInk(face, glyph, &x0, &y0, &x1, &y1) && x1 - x0 > advance) { return 0.0f; }
 	return (float)advance;
 }
 
 static void measureHeights(GlyphFace *f, FaceHeights *h) {
 	int ascent = 0, descent = 0, lineGap = 0;
-	stbtt_GetFontVMetrics(&f->info, &ascent, &descent, &lineGap);
+	faceVMetrics(f, &ascent, &descent, &lineGap);
 	int os2Length = 0;
 	stbtt_uint8 *os2 = findTable(f, "OS/2", &os2Length);
 	if (os2 && ttUSHORT(os2) >= 2 && os2Length >= 90) {
@@ -784,7 +810,7 @@ int void2dGlyphFaceSynthetic(int face, int bold, int italic) {
 	GlyphFace synthetic = s_faces[face];
 	if (bold) {
 		int ascent = 0, descent = 0, lineGap = 0;
-		stbtt_GetFontVMetrics(&synthetic.info, &ascent, &descent, &lineGap);
+		faceVMetrics(&synthetic, &ascent, &descent, &lineGap);
 		synthetic.emboldenUnits = (float)(ascent - descent + lineGap) / 32.0f;
 	}
 	if (italic) { synthetic.skew = GLYPH_ITALIC_SKEW; }
@@ -795,7 +821,9 @@ int void2dGlyphFaceSynthetic(int face, int bold, int italic) {
 #ifdef VOID2D_SPRITES
 int void2dGlyphFaceSprite(int base) {
 	if (!validFace(base)) { return VOID2D_FACE_NO_BASE; }
-	if (s_faces[base].sprite || s_faces[base].colourOnly) { return VOID2D_FACE_NO_BASE; }
+	if (s_faces[base].sprite || s_faces[base].colourOnly || !s_faces[base].bytes) {
+		return VOID2D_FACE_NO_BASE;
+	}
 	if (!growFaces()) { return VOID2D_FACE_NO_MEMORY; }
 	GlyphFace sprite = s_faces[base];
 	sprite.emboldenUnits = 0.0f;
@@ -809,6 +837,26 @@ int void2dGlyphFaceSprite(int base) {
 }
 
 int void2dGlyphFaceIsSprite(int face) { return validFace(face) && s_faces[face].sprite; }
+#endif
+
+#ifdef VOID2D_BROWSER_FACES
+int void2dGlyphFaceBrowser(const char *style, const char *family) {
+	void *platform = void2dPlatformFaceOpenBrowser(style, family);
+	if (!platform) {
+		fprintf(stderr, "void2d: the browser gives no 2D canvas for %s %s\n", style, family);
+		return VOID2D_FACE_NOT_A_FONT;
+	}
+	if (!growFaces()) {
+		free(platform);
+		return VOID2D_FACE_NO_MEMORY;
+	}
+	GlyphFace face;
+	memset(&face, 0, sizeof(face));
+	face.platform = platform;
+	face.glyphCount = 0x110000;
+	s_faces[s_faceCount] = face;
+	return s_faceCount++;
+}
 #endif
 
 int void2dGlyphFaceIsPlatform(int face) {
@@ -826,6 +874,9 @@ void void2dGlyphSetRasterizer(GlyphRasterBox box, GlyphRasterFill fill) {
 
 float void2dGlyphScale(int face, float sizePx) {
 	if (!validFace(face)) { return 0.0f; }
+#ifdef VOID2D_BROWSER_FACES
+	if (!s_faces[face].bytes) { return sizePx / (float)VOID2D_BROWSER_UNITS_PER_EM; }
+#endif
 	return stbtt_ScaleForMappingEmToPixels(&s_faces[face].info, sizePx);
 }
 
@@ -834,7 +885,7 @@ void void2dGlyphFaceMetrics(int face, float sizePx, float *out, int64_t slots) {
 	out[0] = 0.0f; out[1] = 0.0f; out[2] = 0.0f;
 	if (!validFace(face)) { return; }
 	int ascent = 0, descent = 0, lineGap = 0;
-	stbtt_GetFontVMetrics(&s_faces[face].info, &ascent, &descent, &lineGap);
+	faceVMetrics(&s_faces[face], &ascent, &descent, &lineGap);
 	float scale = void2dGlyphScale(face, sizePx);
 	out[0] = (float)ascent * scale;
 	out[1] = (float)-descent * scale;
@@ -958,8 +1009,7 @@ float void2dGlyphAdvance(int face, int glyph, float sizePx) {
 		(glyph < 0 || glyph >= s_faces[face].glyphCount)) {
 		return 0.0f;
 	}
-	int advance = 0, bearing = 0;
-	stbtt_GetGlyphHMetrics(&s_faces[face].info, glyph, &advance, &bearing);
+	int advance = advanceUnits(&s_faces[face], glyph);
 	return ((float)advance + s_faces[face].emboldenUnits) * void2dGlyphScale(face, sizePx);
 }
 
@@ -971,7 +1021,7 @@ float void2dGlyphEmbolden(int face, float sizePx) {
 float void2dGlyphKern(int face, int left, int right, float sizePx) {
 	if (!validFace(face)) { return 0.0f; }
 	GlyphFace *f = &s_faces[face];
-	if (f->sprite) { return 0.0f; }
+	if (f->sprite || !f->bytes) { return 0.0f; }
 	int units = f->kernLookupCount > 0
 		? gposKern(f, left, right)
 		: stbtt__GetGlyphKernInfoAdvance(&f->info, left, right);

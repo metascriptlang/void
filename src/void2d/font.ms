@@ -20,6 +20,10 @@ when (voidSprites) {
 	import { SPRITE_FIRST_CODEPOINT, spriteIndex } from "./spriteGlyph";
 }
 
+when (emcc) {
+	import { browserFace } from "./face";
+}
+
 export enum FontStyle { Normal, Italic }
 
 export enum SizeAdjust { None, IcWidth, ExHeight, CapHeight, LineHeight }
@@ -151,6 +155,18 @@ when (voidSprites) {
 }
 let fonts: Vec<FontEntry> = [];
 let fallbacks: Vec<Fallback> = [];
+when (emcc) {
+	const BROWSER_SLOT: int32 = -2;
+	const BROWSER_FAMILY: string = "sans-serif";
+
+	struct BrowserFallback {
+		font: FontId;
+		face: int32;
+		scale: float32;
+	}
+
+	let browserFallbacks: Vec<BrowserFallback> = [];
+}
 let resolved: Map<uint64, int32> = new Map<uint64, int32>();
 let faceResolver: FaceResolver | null = null;
 let discovered: Map<uint64, int32> = new Map<uint64, int32>();
@@ -705,6 +721,37 @@ function fallbackUsable(index: int32): boolean {
 	return false;
 }
 
+when (emcc) {
+	function browserFallback(font: FontId): int32 {
+		for (let i: int32 = 0; i < (browserFallbacks.length as int32); i++) {
+			if (browserFallbacks[i].font == font) { return i; }
+		}
+		const entry: FontEntry = fonts[fontIndex(font)];
+		const weight: int32 = entry.described ? entry.description.weight : 400;
+		const italic: boolean = entry.described && entry.description.style == FontStyle.Italic;
+		const face = browserFace(`${italic ? "italic " : ""}${weight}`, BROWSER_FAMILY);
+		if (!face.ok) {
+			console.log(
+				`void2d: the browser's ${BROWSER_FAMILY} face did not open ` +
+				`(${face.error.toString()}); codepoints no loaded face covers stay undrawn`,
+			);
+			browserFallbacks.push({ font: font, face: LOAD_FAILED, scale: 1.0 });
+		} else {
+			browserFallbacks.push({
+				font: font,
+				face: face.value,
+				scale: adjustedScale(fontFace(font), face.value, entry.sizeAdjust),
+			});
+		}
+		return (browserFallbacks.length as int32) - 1;
+	}
+
+	function browserAnswers(font: FontId, codepoint: int32): boolean {
+		const face: int32 = browserFallbacks[browserFallback(font)].face;
+		return face >= 0 && glyphIndex(face, codepoint) != 0;
+	}
+}
+
 function fallbackAnswers(
 	font: FontId, index: int32, codepoint: int32, exact: boolean, want: Presentation,
 ): boolean {
@@ -744,11 +791,23 @@ export function faceSlotFor(font: FontId, codepoint: int32, mode: Presentation):
 			slot = discoveredSlot(font, codepoint, want);
 			found = slot != PRIMARY_SLOT;
 		}
+		when (emcc) {
+			if (!found && want == Presentation.Text && browserAnswers(font, codepoint)) {
+				slot = BROWSER_SLOT;
+				found = true;
+			}
+		}
 	}
 	if (!found && glyphIndex(fontFace(font), codepoint) != 0) { found = true; }
 	for (let i = 0; !found && i < (fallbacks.length as int32); i++) {
 		if (fallbackAnswers(font, i, codepoint, false, want)) {
 			slot = i;
+			found = true;
+		}
+	}
+	when (emcc) {
+		if (!found && browserAnswers(font, codepoint)) {
+			slot = BROWSER_SLOT;
 			found = true;
 		}
 	}
@@ -776,6 +835,12 @@ export function codepointFaceFor(
 	while (true) {
 		const slot: int32 = faceSlotFor(font, codepoint, mode);
 		if (slot == PRIMARY_SLOT) { return { face: fontFace(font), scale: 1.0 }; }
+		when (emcc) {
+			if (slot == BROWSER_SLOT) {
+				const browser: BrowserFallback = browserFallbacks[browserFallback(font)];
+				return { face: browser.face, scale: browser.scale };
+			}
+		}
 		const face: int32 = fallbackFace(slot);
 		if (face < 0) {
 			forgetResolved(font);

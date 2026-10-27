@@ -48,6 +48,11 @@ when (macos || ios) {
 	import { void2dGlyphFacePlatform, void2dGlyphFaceIsPlatform } from "./glyph.h";
 }
 
+when (emcc) {
+	@compile("./platformFaceWeb.c");
+	import { void2dGlyphFaceBrowser, void2dGlyphFaceIsPlatform } from "./glyph.h";
+}
+
 import {
 	void2dSfntPeek,
 	void2dSfntCovers,
@@ -200,7 +205,7 @@ export function platformFacesBuilt(): boolean {
 }
 
 export function isPlatformFace(face: int32): boolean {
-	when (macos || ios) {
+	when (macos || ios || emcc) {
 		return void2dGlyphFaceIsPlatform(face) != 0;
 	} else {
 		return false;
@@ -241,6 +246,12 @@ when (voidSprites) {
 when (macos || ios) {
 	export function platformFace(base: int32): Result<int32, FaceError> {
 		return faceResult(void2dGlyphFacePlatform(base));
+	}
+}
+
+when (emcc) {
+	export function browserFace(style: string, family: string): Result<int32, FaceError> {
+		return faceResult(void2dGlyphFaceBrowser(style, family));
 	}
 }
 
