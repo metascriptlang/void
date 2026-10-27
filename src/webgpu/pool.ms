@@ -1,4 +1,4 @@
-import { BindingKind, GPUIndexFormat, GPUTextureFormat, GPU_MAX_BIND_GROUP_ENTRIES, GPU_MAX_SHADER_BINDINGS } from "./types.ms";
+import { BindingKind, GPUIndexFormat, GPUTextureFormat, GPU_MAX_BIND_GROUP_ENTRIES, GPU_MAX_SHADER_BINDINGS, GPU_MAX_VERTEX_BUFFERS } from "./types.ms";
 
 export const SLOT_SHIFT = 16;
 export const SLOT_MASK = 0xFFFF;
@@ -144,10 +144,17 @@ export struct ViewRecord {
 	swapchain: boolean;
 }
 
+export struct VertexBufferRecord {
+	stride: int32;
+	lastStride: int32;
+	instance: boolean;
+}
+
 export struct PipelineRecord {
 	id: uint32;
 	shader: uint32;
 	vertexSlots: int32;
+	vertexBuffers: VertexBufferRecord[GPU_MAX_VERTEX_BUFFERS];
 	groups: int32;
 	layouts: uint32[2];
 	label: string | null;
