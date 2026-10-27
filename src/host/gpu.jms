@@ -1,36 +1,34 @@
 // Void GPU on the browser's JS target: gpu.wms's surface over the backend this bundle selects
-// (-d:webgl2, else WebGPU), driven as bridgeWeb.c drives it. voidRun is the window driver: one
-// canvas, the AppWindow events, the frame timing. voidStart is the views driver: a root per
-// canvas, no AppWindow. A document uses one of the two.
+// (-d:webgl2, else WebGPU), and the device and door its two drivers share, as bridgeWeb.c drives
+// them. The window driver is gpuWindow.jms (one canvas, the AppWindow events, the frame timing),
+// the views driver gpuViews.jms (a root per canvas, no AppWindow); an entry imports the one it
+// runs, so its bundle carries no other. A document uses one of the two.
 
-import { CanvasSize, CanvasView, detach, enter, installStart, leave, pageCanvas, publishRun } from "../platform/web/window";
+import { CanvasView, publishRun } from "../platform/web/window";
 import { PixelFormat, doorSetup, doorShutdown } from "../gpu/doorGpu";
-import { AppEventType } from "../platform/appEvent";
-import { appWindow, browserWindow } from "./appWindowBrowser";
-import { Views, ViewsPlatform } from "./views";
 
 when (webgl2) {
 	import { acquireContext } from "../webgpu/gl/glCalls";
 
-	class GpuSurface {}
-	function surfaceOpen(selector: string): GpuSurface { return new GpuSurface(); }
-	function surfaceReconfigure(surface: GpuSurface): void {}
-	function surfaceClose(surface: GpuSurface): void {}
-	function surfaceBind(surface: GpuSurface): void {}
-	function doorDrop(): void { doorShutdown(); }
-	function framesStopWhenLost(): boolean { return false; }
+	export class GpuSurface {}
+	export function surfaceOpen(selector: string): GpuSurface { return new GpuSurface(); }
+	export function surfaceReconfigure(surface: GpuSurface): void {}
+	export function surfaceClose(surface: GpuSurface): void {}
+	export function surfaceBind(surface: GpuSurface): void {}
+	export function doorDrop(): void { doorShutdown(); }
+	export function framesStopWhenLost(): boolean { return false; }
 } else {
-	import {
+	import { acquireDevice } from "../webgpu/js/backend";
+	export {
 		Surface as GpuSurface,
-		acquireDevice,
 		surfaceCreate as surfaceOpen,
 		surfaceDestroy as surfaceClose,
 		surfaceResize as surfaceReconfigure,
 		surfaceUse as surfaceBind,
 	} from "../webgpu/js/backend";
 
-	function doorDrop(): void {}
-	function framesStopWhenLost(): boolean { return true; }
+	export function doorDrop(): void {}
+	export function framesStopWhenLost(): boolean { return true; }
 }
 
 when (webgl2) {
@@ -40,12 +38,9 @@ when (webgl2) {
 	function canvasColor(): PixelFormat { return prefersBgra() ? PixelFormat.Bgra8 : PixelFormat.Rgba8; }
 }
 
-export type ViewId = int32;
-export const ViewInvalid: ViewId = 0 as int32;
+export enum Driver { None, Window, Views }
 
-enum Driver { None, Window, Views }
-
-class Start {
+export class Start {
 	canvas: CanvasView;
 	onError: (message: string) => void;
 	stopped: boolean = false;
@@ -67,129 +62,59 @@ class Start {
 	}
 }
 
-class ViewStart extends Start {
-	view: ViewId = ViewInvalid;
+export class HostDriver {
+	name: string;
 
-	release(): void {
-		if (this.view != ViewInvalid) {
-			leave(this.canvas);
-			views.destroy(this.view);
-		}
+	constructor(name: string) { this.name = name; }
+
+	absent(operation: string): never {
+		return fail(`${operation}: this bundle has no ${this.name}`);
 	}
+
+	live(): boolean { return this.absent("live"); }
+	sampleCount(): int32 { return this.absent("sampleCount"); }
+	fbWidth(): int32 { return this.absent("fbWidth"); }
+	fbHeight(): int32 { return this.absent("fbHeight"); }
+	dpiScale(): float32 { return this.absent("dpiScale"); }
+	keyDown(code: int32): boolean { return this.absent("keyDown"); }
+	present(): void { this.absent("present"); }
 }
 
-class WindowRun extends Start {
-	init: () => void;
-	frame: () => void;
-	inited: boolean = false;
-	surface: GpuSurface | null = null;
-
-	constructor(canvas: CanvasView, onError: (message: string) => void, init: () => void, frame: () => void) {
-		super(canvas, onError);
-		this.init = init;
-		this.frame = frame;
-	}
-
-	suspend(): void { emitApp(AppEventType.Suspended); }
-	resume(): void { emitApp(AppEventType.Resumed); }
-
-	release(): void {
-		if (!browserWindow.valid()) { return; }
-		leave(this.canvas);
-		browserWindow.end();
-		const surface = this.surface;
-		if (surface !== null) { surfaceClose(surface); }
-		doorShutdown();
-		detach(this.canvas);
-	}
-
-	tick(time: float64): void {
-		browserWindow.beginFrame(time);
-		let ran = false;
-		if (!(platform.lost && framesStopWhenLost())) {
-			if (!this.inited) {
-				this.init();
-				browserWindow.initDone();
-				this.inited = true;
-			}
-			platform.restoreStale();
-			const surface = this.surface;
-			if (surface !== null) { surfaceBind(surface); }
-			this.frame();
-			ran = true;
-		}
-		if (browserWindow.endFrame(ran)) { this.stop(); }
-	}
-}
-
-class BrowserPlatform extends ViewsPlatform {
+class GpuState {
 	lost: boolean = false;
 	doorStale: boolean = false;
 	doorUp: boolean = false;
-	surfaces: (GpuSurface | null)[] = [];
-
-	fail(message: string): never { throw new Error(`void: ${message}`); }
-	deviceEnsure(): void { doorEnsure(); }
-	runInit(init: () => void): void { init(); }
-
-	surfaceCreate(slot: int32, native: int64, width: int32, height: int32): boolean {
-		while (this.surfaces.length <= slot) { this.surfaces.push(null); }
-		this.surfaces[slot] = surfaceOpen(startFor(native).canvas.selector);
-		return true;
-	}
-
-	surfaceResize(slot: int32, width: int32, height: int32): void { surfaceReconfigure(this.surfaceAt(slot)); }
-	surfaceReady(slot: int32): boolean { return this.ready(); }
-
-	surfaceAcquire(slot: int32): boolean {
-		surfaceBind(this.surfaceAt(slot));
-		return true;
-	}
-
-	surfacePresent(slot: int32): void {}
-
-	surfaceDestroy(slot: int32): void {
-		surfaceClose(this.surfaceAt(slot));
-		this.surfaces[slot] = null;
-		doorDrop();
-	}
-
-	surfaceNative(slot: int32): int64 { return 0; }
-
-	surfaceAt(slot: int32): GpuSurface {
-		const surface = slot < this.surfaces.length ? this.surfaces[slot] : null;
-		if (surface === null) { return this.fail(`view slot ${slot} has no surface`); }
-		return surface;
-	}
-
-	restoreStale(): void {
-		if (this.doorStale) { doorRestore(); }
-	}
-
-	ready(): boolean {
-		if (this.lost) { return false; }
-		this.restoreStale();
-		return true;
-	}
+	runEpoch: int32 = 0;
 }
 
-const platform = new BrowserPlatform();
-const views = new Views(platform);
-const WINDOW_CANVAS = "#canvas";
+export const gpuState = new GpuState();
+export const starts: Start[] = [];
 let driver = Driver.None;
-let windowSamples: int32 = 1;
-let runEpoch = 0;
-const starts: Start[] = [];
+let windowDriver = new HostDriver("window driver; its entry imports src/host/gpuWindow");
+let viewsDriver = new HostDriver("views driver; its entry imports src/host/gpuViews");
 
-function startFor(native: int64): Start {
-	const id = native as int32;
-	for (const start of starts) {
-		if (start.canvas.id == id) { return start; }
+export function useWindowDriver(hooks: HostDriver): void { windowDriver = hooks; }
+export function useViewsDriver(hooks: HostDriver): void { viewsDriver = hooks; }
+
+export function fail(message: string): never { throw new Error(`void: ${message}`); }
+
+function refuseBesideOther(kind: Driver): void {
+	if (kind == Driver.Views && driver == Driver.Window) {
+		fail("voidViewCreate: this document already runs a Void canvas window");
 	}
-	return platform.fail(`voidViewCreate: no live start for canvas ${id}`);
+	if (kind == Driver.Window && driver == Driver.Views) {
+		fail("voidRun: this document already drives Void through host views");
+	}
 }
 
-function sampleCount(): int32 { return driver == Driver.Window ? windowSamples : views.sampleCount(); }
+export function claimDriver(kind: Driver): void {
+	refuseBesideOther(kind);
+	driver = kind;
+}
+
+function sampleCount(): int32 {
+	return driver == Driver.Window ? windowDriver.sampleCount() : viewsDriver.sampleCount();
+}
 
 function doorOpen(): void {
 	const depth = driver == Driver.Window ? PixelFormat.Depth : PixelFormat.None;
@@ -199,45 +124,44 @@ function doorOpen(): void {
 function doorRestore(): void {
 	doorShutdown();
 	doorOpen();
-	platform.doorStale = false;
-	platform.doorUp = true;
+	gpuState.doorStale = false;
+	gpuState.doorUp = true;
 }
 
-function doorEnsure(): void {
+export function doorEnsure(): void {
 	when (webgl2) {
 		doorRestore();
 	} else {
-		if (!platform.doorUp || platform.doorStale) { doorRestore(); }
+		if (!gpuState.doorUp || gpuState.doorStale) { doorRestore(); }
 	}
 }
 
-function driverFor(operation: string): Driver {
-	if (driver == Driver.None || (driver == Driver.Views && !views.deviceMade)) {
-		platform.fail(`${operation} before voidRun or voidViewCreate chose a driver`);
-	}
-	if (driver == Driver.Window && !browserWindow.valid()) {
-		platform.fail(`${operation}: the window does not exist; call it from the event handler or after init`);
-	}
-	return driver;
+export function restoreStale(): void {
+	if (gpuState.doorStale) { doorRestore(); }
 }
 
-function emitApp(type: AppEventType): void {
-	const live = browserWindow.live;
-	if (live !== null) { live.emit(type); }
+function driverFor(operation: string): HostDriver {
+	if (driver == Driver.None || (driver == Driver.Views && !viewsDriver.live())) {
+		fail(`${operation} before voidRun or voidViewCreate chose a driver`);
+	}
+	if (driver == Driver.Window && !windowDriver.live()) {
+		fail(`${operation}: the window does not exist; call it from the event handler or after init`);
+	}
+	return driver == Driver.Window ? windowDriver : viewsDriver;
 }
 
 function onLost(): void {
-	platform.doorUp = false;
-	if (starts.length == 0 || platform.lost) { return; }
-	platform.lost = true;
+	gpuState.doorUp = false;
+	if (starts.length == 0 || gpuState.lost) { return; }
+	gpuState.lost = true;
 	for (const start of starts.slice(0)) { start.suspend(); }
-	recoverDevice(runEpoch);
+	recoverDevice(gpuState.runEpoch);
 }
 
 function onRestored(): void {
 	if (starts.length == 0) { return; }
-	platform.lost = false;
-	platform.doorStale = true;
+	gpuState.lost = false;
+	gpuState.doorStale = true;
 	for (const start of starts.slice(0)) { start.resume(); }
 }
 
@@ -248,16 +172,16 @@ when (webgl2) {
 		try {
 			await acquireDevice(onLost);
 		} catch (error) {
-			if (epoch == runEpoch) {
-				for (const start of starts.slice(0)) { start.onError(`void: the WebGPU device was lost and a new one could not be made: ${error}`); }
+			if (epoch == gpuState.runEpoch) {
+				for (const start of starts.slice(0)) { start.onError(`void: the WebGPU device was lost and a new one could not be made: ${error.message}`); }
 			}
 			return;
 		}
-		if (epoch == runEpoch) { onRestored(); }
+		if (epoch == gpuState.runEpoch) { onRestored(); }
 	}
 }
 
-async function acquire(canvas: CanvasView, start: Start): Promise<boolean> {
+export async function acquire(canvas: CanvasView, start: Start): Promise<boolean> {
 	try {
 		when (webgl2) {
 			acquireContext(canvas.selector, sampleCount(), onLost, onRestored);
@@ -265,103 +189,41 @@ async function acquire(canvas: CanvasView, start: Start): Promise<boolean> {
 			await acquireDevice(onLost);
 		}
 	} catch (error) {
-		if (!start.stopped) { start.onError(`void: this browser gave no GPU backend: ${error}`); }
+		if (!start.stopped) { start.onError(`void: this browser gave no GPU backend: ${error.message}`); }
 		return false;
 	}
 	return !start.stopped;
 }
 
-async function beginViews(canvas: CanvasView, start: ViewStart): Promise<void> {
-	if (!(await acquire(canvas, start))) { return; }
-	const size = canvas.size;
-	const view = views.create(canvas.id as int64, size.width, size.height, size.scale);
-	start.view = view;
-	enter(
-		canvas,
-		(resized: CanvasSize): void => { views.resize(view, resized.width, resized.height, resized.scale); },
-		(time: float64): void => { views.frame(view); },
-	);
+function noWindowRun(width: int32, height: int32, init: () => void, frame: () => void): void {
+	refuseBesideOther(Driver.Window);
+	windowDriver.absent("voidRun");
 }
 
-async function beginWindow(canvas: CanvasView, run: WindowRun): Promise<void> {
-	if (!(await acquire(canvas, run))) { return; }
-	run.surface = surfaceOpen(canvas.selector);
-	browserWindow.begin(canvas);
-	enter(
-		canvas,
-		(resized: CanvasSize): void => {
-			browserWindow.resized(resized);
-			const surface = run.surface;
-			if (surface !== null) { surfaceReconfigure(surface); }
-		},
-		(time: float64): void => { run.tick(time); },
-	);
+function noWindowRunConfigured(width: int32, height: int32, samples: int32, highDpi: int32, init: () => void, frame: () => void): void {
+	refuseBesideOther(Driver.Window);
+	windowDriver.absent("voidRunConfigured");
 }
 
-function open(canvas: CanvasView, onError: (message: string) => void): () => void {
-	if (driver == Driver.Window) { platform.fail("voidViewCreate: this document already runs a Void canvas window"); }
-	if (starts.length > 0) {
-		when (webgl2) {
-			platform.fail(`voidViewCreate: WebGL2 runs one view at a time; stop view ${starts[0].canvas.id} first`);
-		}
-	}
-	driver = Driver.Views;
-	if (starts.length == 0) {
-		runEpoch++;
-		platform.lost = false;
-	}
-	const start = new ViewStart(canvas, onError);
-	starts.push(start);
-	beginViews(canvas, start);
-	return (): void => { start.stop(); };
-}
+publishRun(noWindowRun, noWindowRunConfigured);
 
-function fatal(message: string): void { throw new Error(message); }
-
-function voidRunConfigured(width: int32, height: int32, samples: int32, highDpi: int32, init: () => void, frame: () => void): void {
-	if (driver == Driver.Views) { platform.fail("voidRun: this document already drives Void through host views"); }
-	driver = Driver.Window;
-	if (starts.length > 0) { platform.fail("voidWebRun: the browser window already runs"); }
-	const canvas = pageCanvas(WINDOW_CANVAS, highDpi != 0);
-	if (canvas === null) { return platform.fail(`no canvas ${WINDOW_CANVAS}: the page has no ${WINDOW_CANVAS}`); }
-	windowSamples = samples <= 0 ? 1 : samples;
-	const run = new WindowRun(canvas, fatal, init, frame);
-	starts.push(run);
-	runEpoch++;
-	platform.lost = false;
-	platform.doorStale = false;
-	beginWindow(canvas, run);
-}
-
-function voidRun(width: int32, height: int32, init: () => void, frame: () => void): void {
-	voidRunConfigured(width, height, 4, 1, init, frame);
-}
-
-publishRun(voidRun, voidRunConfigured);
-
-export function embedRegister(init: () => void, frame: () => void): void {
-	views.register(init, frame);
-	installStart(open);
-}
-
-export function setViewSampleCount(count: int32): void { views.setSampleCount(count); }
 export function viewSampleCount(): int32 { return sampleCount(); }
-export function currentView(): ViewId { return views.currentView; }
 export function viewsPresent(): void {
-	if (driver == Driver.Views) { views.present(); }
+	if (driver == Driver.Views) { viewsDriver.present(); }
 }
 
 export function gfxSetup(): void {
-	if (driverFor("gfxSetup") == Driver.Window) { doorOpen(); }
+	driverFor("gfxSetup");
+	if (driver == Driver.Window) { doorOpen(); }
 }
-export function fbWidth(): int32 { return driverFor("fbWidth") == Driver.Window ? browserWindow.framebufferWidth() : views.fbWidth(); }
-export function fbHeight(): int32 { return driverFor("fbHeight") == Driver.Window ? browserWindow.framebufferHeight() : views.fbHeight(); }
-export function dpiScale(): float32 { return driverFor("dpiScale") == Driver.Window ? browserWindow.running("dpiScale").state.dpiScale : views.dpiScale(); }
-export function keyDown(code: int32): boolean { return driver == Driver.Window && appWindow.keysHeld.isDown(code); }
+export function fbWidth(): int32 { return driverFor("fbWidth").fbWidth(); }
+export function fbHeight(): int32 { return driverFor("fbHeight").fbHeight(); }
+export function dpiScale(): float32 { return driverFor("dpiScale").dpiScale(); }
+export function keyDown(code: int32): boolean { return driver == Driver.Window && windowDriver.keyDown(code); }
 
 export function makeImage(rgba: Ptr<void>, w: int32, h: int32): uint32 {
-	return platform.fail("makeImage waits for the door on js; its pointer argument is ~/metascript/.inbox/compiler/2026-10-27-js-element-address-as-pointer-argument.md");
+	return fail("makeImage waits for the door on js; its pointer argument is ~/metascript/.inbox/compiler/2026-10-27-js-element-address-as-pointer-argument.md");
 }
 export function makeView(image: uint32): uint32 {
-	return platform.fail("makeView waits for the door on js");
+	return fail("makeView waits for the door on js");
 }
