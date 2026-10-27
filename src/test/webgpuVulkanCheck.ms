@@ -60,7 +60,7 @@ const ROW = SIZE * 4;
 const TINT_BLOCK = 32;
 
 function openDevice(): GPUDevice {
-	if (vulkanLoaderOpen() != 0 || vulkanInstanceCreate() != 0 || vulkanAdapterSelect(VULKAN_POWER_HIGH) != 0 || vulkanDeviceCreate() != 0) {
+	if (vulkanLoaderOpen() != 0 || vulkanInstanceCreate() != 0 || vulkanAdapterSelect(VULKAN_POWER_HIGH, 0) != 0 || vulkanDeviceCreate() != 0) {
 		console.log(`webgpuVulkanCheck: ${vulkanError()}`);
 		unreachable;
 	}

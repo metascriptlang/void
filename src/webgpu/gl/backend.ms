@@ -421,6 +421,8 @@ const GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS = 0x8B4D;
 const GL_MAX_SAMPLES = 0x8D57;
 const GL_MAJOR_VERSION = 0x821B;
 const GL_MINOR_VERSION = 0x821C;
+const GL_CONTEXT_FLAGS = 0x821E;
+const GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT = 0x4;
 const GL_CURRENT_PROGRAM = 0x8B8D;
 const GL_SHADER_STORAGE_BUFFER = 0x90D2;
 const GL_COMPUTE_SHADER = 0x91B9;
@@ -1145,7 +1147,7 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	}
 	checkMirroredConstants();
 	const version = oglGetInteger(GL_MAJOR_VERSION) * 100 + oglGetInteger(GL_MINOR_VERSION) * 10;
-	checkContextVersion(version);
+	checkContext(version);
 	maxVertexAttributes = smaller(oglGetInteger(GL_MAX_VERTEX_ATTRIBS), GPU_MAX_VERTEX_ATTRIBUTES);
 	maxTextureUnits = smaller(oglGetInteger(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS), MAX_TEXTURE_UNITS);
 	if (cachedCanvas().sampleCount > oglGetInteger(GL_MAX_SAMPLES)) { stopOnMember("NativeEnvironment.sampleCount", `${cachedCanvas().sampleCount}`); }
@@ -2403,7 +2405,7 @@ when (webgl2 || android || (linux && voidGles3)) {
 	const COMPUTE_CONTEXT_VERSION = 310;
 	const DEBUG_CONTEXT_VERSION = 320;
 
-	function checkContextVersion(version: int32): void {
+	function checkContext(version: int32): void {
 		if (version < 300) { stop(`the current context is GLES ${version}; the GLES3 backend needs 300`); }
 	}
 
@@ -2478,8 +2480,11 @@ when (webgl2 || android || (linux && voidGles3)) {
 	const COMPUTE_CONTEXT_VERSION = 430;
 	const DEBUG_CONTEXT_VERSION = 430;
 
-	function checkContextVersion(version: int32): void {
+	function checkContext(version: int32): void {
 		if (version < 430) { stop(`the current context is GL ${version}; the GL backend needs 430`); }
+		if ((oglGetInteger(GL_CONTEXT_FLAGS) & GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT) == 0) {
+			stop("the current GL context lacks robust buffer access; create it with the robust access flag");
+		}
 	}
 
 	function multisampleTarget(): int32 { return GL_TEXTURE_2D_MULTISAMPLE; }

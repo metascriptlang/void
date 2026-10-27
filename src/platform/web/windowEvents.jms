@@ -10,7 +10,7 @@
 // delivery below applies bridgeWeb.c's _event wrapper (the keys a composition takes, the keys
 // kept from the browser).
 
-import { AppWindow } from "../../sokol/appWindow";
+import { AppWindow } from "../../host/appWindow";
 import {
 	AppEventType,
 	KeyCode,

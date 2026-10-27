@@ -65,6 +65,7 @@ function copiedMesh(source: Readonly<MeshData>): MeshData {
 	let mesh = MeshData.empty();
 	mesh.hasUvs = source.hasUvs;
 	mesh.hasTangents = source.hasTangents;
+	mesh.hasUvB = source.hasUvB;
 	mesh.hasSkin = source.hasSkin;
 	for (const value of source.vertices) { mesh.vertices.push(value); }
 	for (const index of source.indices) { mesh.indices.push(index); }
@@ -182,7 +183,8 @@ export function rebased(
 		const from: Readonly<MeshData> = data.primitives[primitive].base;
 		if (!meshShape(bases[primitive]) || bases[primitive].vertexCount() != from.vertexCount() ||
 			bases[primitive].hasUvs != from.hasUvs ||
-			bases[primitive].hasTangents != from.hasTangents) {
+			bases[primitive].hasTangents != from.hasTangents ||
+			bases[primitive].hasUvB != from.hasUvB) {
 			return Result.err(MorphGeometryError.Shape);
 		}
 		const fields: int32 = from.stride();
@@ -253,6 +255,7 @@ function stagePrimitive(
 		pending.indices.length != primitive.base.indices.length ||
 		pending.hasUvs != primitive.base.hasUvs ||
 		pending.hasTangents != primitive.base.hasTangents ||
+		pending.hasUvB != primitive.base.hasUvB ||
 		pending.hasSkin != primitive.base.hasSkin) {
 		return Result.err(MorphGeometryError.Shape);
 	}

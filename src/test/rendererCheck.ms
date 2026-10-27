@@ -138,11 +138,13 @@ function itemOnItsLayout(context: DrawContext, material: MaterialId): DrawItem {
 		VertexLayout.Billboard => GpuMesh.billboards(0, 0),
 		VertexLayout.Fullscreen => GpuMesh.fullscreen(0, 3),
 		VertexLayout.LitTextured => ({ ...litShape(), layout: VertexLayout.LitTextured }),
-		VertexLayout.InstancedLitTextured => ({ ...litShape(), layout: VertexLayout.LitTextured }),
+		VertexLayout.MeshInstances => GpuMesh.streamMesh(1, 0, 0, VertexLayout.MeshInstances),
 		VertexLayout.LitTexturedTangent =>
 			({ ...litShape(), layout: VertexLayout.LitTexturedTangent }),
 		VertexLayout.SkinLit | VertexLayout.SkinLitTextured |
-			VertexLayout.SkinLitTexturedTangent =>
+			VertexLayout.SkinLitTexturedTangent | VertexLayout.LitTexturedUvB |
+			VertexLayout.LitTexturedTangentUvB | VertexLayout.SkinLitTexturedUvB |
+			VertexLayout.SkinLitTexturedTangentUvB =>
 			({ ...litShape(), layout: vertexLayoutOf(program) }),
 	};
 	return { ...itemAt(context, material.index, 0.0), mesh: added(context, mesh) };
@@ -538,7 +540,7 @@ function presetOver(context: DrawContext, program: Program, levels: float32): Pi
 		const block: Result<UniformBlock, UniformError> =
 			reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 		if (!block.ok) { unreachable; }
-		const values: Vec<float32> = [levels, 0.0, 0.0, 0.0];
+		const values: Vec<float32> = [levels, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 		if (!writeUniforms(context, block.value, values).ok) { unreachable; }
 		material = { ...material, uniforms: block.value };
 	}

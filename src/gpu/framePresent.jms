@@ -1,5 +1,5 @@
 // The frame's present on the browser: the view's.
 
-import { viewsPresent } from "../sokol/gpu";
+import { viewsPresent } from "../host/gpu";
 
 export function presentFrame(): void { viewsPresent(); }

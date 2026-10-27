@@ -1,11 +1,11 @@
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3 } from "../../src/math/math3d";
 import { RenderState, Face } from "../../src/gpu/state";
 import { IndexType } from "../../src/gpu/pipeline";
 import {
 	liveBuffers, liveImages, liveViews, liveSamplers, liveShaders, livePipelines, contextGeneration,
 } from "../../src/gpu/door";
-import { Bounds3D } from "../../src/void3d/bounds";
+import { boundingRadius } from "../../src/void3d/bounds";
 import { MeshData, Rgba, addVertex, addTriangle } from "../../src/void3d/meshData";
 import { Material, Phase, UniformBlock } from "../../src/void3d/material";
 import {
@@ -18,7 +18,7 @@ import {
 	releaseMesh, releaseMaterial, closeContext, rebuildMeshes,
 } from "../../src/void3d/draw";
 import {
-	Scene3D, NodeId3D, Transform3D, addMeshNode, remove, closeScene,
+	Scene3D, NodeId3D, Transform3D, addMeshNode, addLodMeshNode, setForcedLod, remove, closeScene,
 	setAmbient, collectLights, refresh,
 } from "../../src/void3d/scene";
 import { Camera3D, CameraView, ProjectionKind } from "../../src/void3d/camera";
@@ -35,7 +35,7 @@ import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureEnvInt, voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,
@@ -51,6 +51,7 @@ const SCREEN: LowResView = { width: WIDTH, height: HEIGHT, scale: 1, offsetX: 0.
 let control: int32 = voidCaptureEnvInt("VOID_MESH_LOD_CONTROL", 0);
 let outlined: boolean = voidCaptureEnvInt("VOID_MESH_LOD_OUTLINE", 0) != 0;
 let wide: boolean = voidCaptureEnvInt("VOID_MESH_LOD_INDEX32", 0) != 0;
+let scenePicked: boolean = voidCaptureEnvInt("VOID_MESH_LOD_SCENE", 0) != 0;
 let context: DrawContext = DrawContext.withUniformCapacity(
 	(outlined ? FORWARD_OUTLINE_UNIFORM_LENGTH : FORWARD_UNIFORM_LENGTH) +
 	2 * MATERIAL_UNIFORM_LENGTH,
@@ -116,21 +117,12 @@ function appendGroup(ref data: MeshData, group: int32): void {
 	if (!a.ok || !b.ok || !c.ok) { unreachable; }
 }
 
-function originRadius(this bounds: Readonly<Bounds3D>): float64 {
-	const x: float64 = (bounds.max.x as float64) - (bounds.min.x as float64);
-	const y: float64 = (bounds.max.y as float64) - (bounds.min.y as float64);
-	const z: float64 = (bounds.max.z as float64) - (bounds.min.z as float64);
-	const cx: float64 = ((bounds.max.x as float64) + (bounds.min.x as float64)) * 0.5;
-	const cy: float64 = ((bounds.max.y as float64) + (bounds.min.y as float64)) * 0.5;
-	const cz: float64 = ((bounds.max.z as float64) + (bounds.min.z as float64)) * 0.5;
-	return Math.sqrt(x * x + y * y + z * z) * 0.5 + Math.sqrt(cx * cx + cy * cy + cz * cz);
-}
-
 function materialAt(amount: float32): MaterialId {
 	const block = reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!block.ok) { unreachable; }
 	const owned: UniformBlock = block.value;
-	if (!writeUniforms(context, owned, [4.0, amount, 0.0, 0.0]).ok) { unreachable; }
+	const values: Vec<float32> = [4.0, amount, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+	if (!writeUniforms(context, owned, values).ok) { unreachable; }
 	const made = addMaterial(context, {
 		...Material.plain(Program.Lit, RenderState.defaults().withCulling(Face.None), Phase.Opaque),
 		uniforms: owned,
@@ -141,7 +133,9 @@ function materialAt(amount: float32): MaterialId {
 
 function init(): void {
 	if (voidCaptureBackend() == 0) { voidCaptureExit(3); }
-	if (control < 0 || control > 7 || (!wide && control > 5)) { fail("unknown control"); }
+	const known: boolean = scenePicked ? control == 0 || control == 8 :
+		control >= 0 && control <= (wide ? 7 : 5);
+	if (!known) { fail("unknown control"); }
 	gfxSetup();
 	let data: MeshData = MeshData.empty();
 	const vertexBase: int32 = wide ? 65536 : 0;
@@ -158,16 +152,20 @@ function init(): void {
 		const base: int32 = (control == 7 ? 0 : vertexBase) + group * 3;
 		if (!addTriangle(data, base, base + 1, base + 2).ok) { unreachable; }
 	}
-	radius = data.bounds.originRadius();
+	radius = data.bounds.boundingRadius();
 	const uploaded = addMeshData(context, data);
 	if (!uploaded.ok) { fail(`mesh upload ${uploaded.error.toString()}`); unreachable; }
 	mesh = uploaded.value;
 	materials.push(materialAt(0.0));
 	materials.push(materialAt(-1.0));
-	for (const material of materials) {
-		const node = addMeshNode(scene, scene.rootId(), Transform3D.identity(), mesh, material);
+	for (let slot = 0; slot < 2; slot++) {
+		const node = scenePicked ?
+			addLodMeshNode(scene, scene.rootId(), Transform3D.identity(), mesh, materials[slot], lod,
+				ranges, slot) :
+			addMeshNode(scene, scene.rootId(), Transform3D.identity(), mesh, materials[slot]);
 		if (!node.ok) { fail(`node attachment ${node.error.toString()}`); unreachable; }
 		nodes.push(node.value);
+		if (control == 8 && !setForcedLod(scene, node.value, 0).ok) { unreachable; }
 	}
 	if (!releaseMesh(context, mesh).ok) { unreachable; }
 	for (const material of materials) {
@@ -190,6 +188,10 @@ function cameraAt(): Camera3D {
 
 function selectItems(camera: Camera3D): void {
 	while (selected.length > 0) { selected.pop(); }
+	if (scenePicked) {
+		for (const item of source) { selected.push(item); }
+		return;
+	}
 	const projection = camera.orthoBounds(WIDTH, HEIGHT).projectionMatrix();
 	const size: MeshLodProjectedSize = {
 		localOriginRadius: radius,
@@ -250,17 +252,21 @@ function checkPixels(view: CameraView): void {
 	}
 }
 
+function visibleItems(): int32 {
+	return stage == 4 ? 0 : (stage == 3 ? 1 : 2);
+}
+
 function checkOutlinedFrame(view: CameraView): void {
 	const plain: Vec<DrawItem> = selected;
 	setOutlineBlend(forward, 1.0);
 	const drawn = renderFrame(forward, selected, cameraValues, lights, WIDTH, HEIGHT);
 	if (!drawn.ok) { fail(`outline renderer ${drawn.error.toString()}`); unreachable; }
-	if (drawn.value != (plain.length as int32) || selected.length != plain.length) {
+	if (drawn.value != visibleItems() || selected.length != plain.length) {
 		fail("outline changed selected item count");
 	}
 	for (let i = 0; i < (plain.length as int32); i++) {
-		const before = plain[i].range;
-		const after = selected[i].range;
+		const before = plain[i].drawnRange();
+		const after = selected[i].drawnRange();
 		if (before == null || after == null) { fail("outline lost selected range"); unreachable; }
 		if (before.base != after.base || before.count != after.count) {
 			fail("outline changed selected range");
@@ -344,9 +350,13 @@ function frame(): void {
 	if (voidCaptureGrab(0) == 0) { fail("readback failed"); }
 	checkPixels(view);
 	if (outlined) { checkOutlinedFrame(view); }
-	const expectedItems: int32 = stage == 4 ? 0 : (stage == 3 ? 1 : 2);
-	if ((selected.length as int32) != expectedItems || drawn.value != expectedItems) {
-		fail("selected or rendered item count changed");
+	const expectedItems: int32 = visibleItems();
+	const handed: int32 = scenePicked ? consumers : expectedItems;
+	const culled: int32 = scenePicked ? handed - expectedItems : 0;
+	if ((selected.length as int32) != handed || drawn.value != expectedItems ||
+		forward.core.culledCount != culled) {
+		fail(`selected ${selected.length}, rendered ${drawn.value} or culled ` +
+			`${forward.core.culledCount} items changed`);
 	}
 	console.log(`mesh LOD: stage ${stage}, selected ${selected.length}, ` +
 		`renderedItems ${drawn.value}`);

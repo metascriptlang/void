@@ -78,7 +78,8 @@ export function lineTo(
 		((z as float64) - graphics.current.z) as float32,
 	);
 	if (!finitePoint(delta)) { return Result.err(GraphicsError.DeltaRange); }
-	if (!graphics.data.hasUvs || graphics.data.hasTangents || graphics.data.hasSkin ||
+	if (!graphics.data.hasUvs || graphics.data.hasTangents || graphics.data.hasUvB ||
+		graphics.data.hasSkin ||
 		graphics.data.vertices.length % LIT_TEXTURED_VERTEX_STRIDE != 0 ||
 		!graphics.data.validIndexStorage() || graphics.data.vertexCount() % 4 != 0 ||
 		graphics.data.indexCount() / 6 != graphics.data.vertexCount() / 4 ||

@@ -1,6 +1,6 @@
 // Real-renderer RGBA/visibility/width/motion/lifetime pins, never a phone performance claim.
 import { prepareOutlineOutput } from "./forwardOutlineOutput";
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3, identity, translation } from "../../src/math/math3d";
 import { endPass, commit } from "../../src/gpu/door";
 import { PipelineCache, pipelineFor, closePipelines } from "../../src/gpu/pipeline";
@@ -34,7 +34,7 @@ import {
 	voidCaptureWritePng,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,
@@ -113,7 +113,7 @@ function init(): void {
 	const block: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!block.ok) { unreachable; }
-	const values: Vec<float32> = [1.0, 0.0, 0.0, 0.0];
+	const values: Vec<float32> = [1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (!writeUniforms(context, block.value, values).ok) { unreachable; }
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque), uniforms: block.value,

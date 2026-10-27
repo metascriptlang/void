@@ -8,7 +8,7 @@ import {
 } from "../../src/void2d/labelText";
 import { PageKind } from "../../src/void2d/glyphAtlas";
 import { void2dGlyphPageTexel } from "../../src/void2d/glyph";
-import { gfxSetup } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/host/gpu";
 import { setup2d, frameEnd, setTextGamma } from "../../src/void2d/draw";
 import { Color, rgba } from "../../src/void2d/types";
 import {
@@ -17,7 +17,7 @@ import {
 	voidCaptureUniform, voidCapturePixel, voidCaptureWritePng, voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, samples: int32, highDpi: int32,
 	init: () => void, frame: () => void,

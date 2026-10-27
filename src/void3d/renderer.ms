@@ -22,14 +22,17 @@ import {
 	drawnIn,
 	VertexLayout,
 	SKIN_UNIFORM_SLOT,
-	meshLayoutOf,
+	vertexLayoutOf,
 	drawsQuads,
 	VERTEX_UNIFORM_SLOT,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_SLOT,
 	LIGHT_UNIFORM_LENGTH,
-	LIGHT_SHAPE_BASE,
-	MAX_POINT_LIGHTS,
+	LIGHT_RECORD_LENGTH,
+	LIGHT_RECORD_SHAPE,
+	LIGHT_CLUSTER_GRID,
+	CLUSTER_SCENE_VIEWS,
+	CLUSTER_SCENE_SAMPLERS,
 	SHADOW_UNIFORM_SLOT,
 	SHADOW_VIEW_SLOT,
 	FRAME_UNIFORM_SLOT,
@@ -66,7 +69,7 @@ import {
 	samplerSlotOf,
 } from "./material";
 import { TextureId } from "./texture";
-import { Vec3 } from "../math/math3d";
+import { Vec3, vec3 } from "../math/math3d";
 import { TargetLayout } from "../gpu/target";
 import {
 	PassState,
@@ -81,6 +84,7 @@ import {
 	destroyImage,
 	destroyView,
 	destroySampler,
+	originTopLeft,
 } from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
 import { Environment, compute, isCurrent, specLevels } from "./environment";
@@ -104,7 +108,6 @@ import {
 	validSkin,
 	validRange,
 	elementCount,
-	MODEL_SLOT,
 	SceneTexture,
 	NO_SCENE_TEXTURE,
 	slotBit,
@@ -116,8 +119,28 @@ import {
 import { screenMesh, screenItem, makeScreenTriangle } from "./screenFx";
 import { Mat4 } from "../math/math3d";
 import { Frustum3D } from "./frustum";
-import { DirShadowMap, castsAll, drawShadows, carrySpot, sceneTexture } from "./dirShadowMap";
-import { shadowedSpotCount, firstShadowedSpot, spotShadowView } from "./spotShadow";
+import {
+	DirShadowMap, ShadowKind, castsAll, drawShadows, carryShadows, sceneTexture,
+} from "./dirShadowMap";
+import { SpotShadowError, spotCaster, spotShadowView } from "./spotShadow";
+import { CubeShadowError, cubeCaster, cubeShadowViews } from "./cubeShadow";
+import {
+	CameraView, CAMERA_EYE, CAMERA_NEAR, CAMERA_PROJECTION_X, CAMERA_PROJECTION_Y,
+} from "./camera";
+import { pickFor } from "./meshLod";
+import { ClusterAssignment, ClusterConfig } from "./clusters";
+import {
+	ClusterFrame,
+	ClusterFrameError,
+	assignFrame,
+	closeClusterFrame,
+	clusterSampler,
+	clustersView,
+	indicesView,
+	recordCountOf,
+	recordsView,
+	uploadFrame,
+} from "./clusterFrame";
 
 export interface Renderer {
 	readonly context: DrawContext;
@@ -150,6 +173,12 @@ export interface Renderer {
 	// The eye a pbr key's view vector starts from (setCameraPosition); a frame drawing a pbr key
 	// without one is refused.
 	cameraPosition: Vec3 | null;
+	// The view the camera block was resolved from (setCameraView), which the frame's lights are
+	// clustered in; a frame with a positioned light and no view is refused.
+	cameraView: CameraView | null;
+	clusters: ClusterFrame;
+	// The light block as written: the caller's ambient and sun, then the clusters' fields.
+	lightValues: Vec<float32>;
 	// The last frame drew a material whose UV transform scrolls.
 	readsTime: boolean;
 	preset: Preset;
@@ -157,6 +186,7 @@ export interface Renderer {
 	drawn: Vec<ProgramKey>;
 	shadow: DirShadowMap | null;
 	spotShadow: DirShadowMap | null;
+	cubeShadow: DirShadowMap | null;
 	// h3d.scene.pbr.Renderer's `env`: the image-based light of every pbr key (attachEnvironment).
 	environment: Environment | null;
 	// What a pbr key reads with no environment attached, made once per GPU context.
@@ -172,6 +202,7 @@ export interface Renderer {
 	prepared: boolean;
 	preparedFrame: uint32;
 	culledCount: int32;
+	meshLodScale: float64;
 	closed: boolean;
 }
 
@@ -195,17 +226,29 @@ export enum RendererError {
 	SkinPose,
 	Instances,
 	DrawRange,
+	MeshLod,
 	CameraPosition,
 	MeshWrite,
 	// The pixel-art preset's toon lights are points: a spot, rectangle or capsule slot has no
 	// toon term there, and drawing it as a point would light the wrong place.
 	ShapedLightPreset,
-	// Two spot slots of the light block cast: the frame has one spot shadow map.
-	TooManyShadowedSpots,
-	// The shadowing spot's slot does not make a camera (lightShape.ms perspectiveCamera).
+	// The light block's spot caster is no spot record of it, or makes no camera
+	// (lightShape.ms perspectiveCamera).
 	BadShadowSpot,
-	// A spot slot asks to cast and no spot map is attached (attachSpotShadow).
+	// The light block names a spot caster and no spot map is attached (attachSpotShadow).
 	SpotShadowUnattached,
+	// The light block's cube caster is no point, rectangle or capsule record of it, or its range
+	// does not reach past its near plane (cubeShadow.ms).
+	BadCubeShadow,
+	// The light block names a cube caster and no cube map is attached (attachCubeShadow).
+	CubeShadowUnattached,
+	// The frame has a positioned light and no view to cluster it in (setCameraView).
+	ClusterViewUnset,
+	// The camera block is not the view's viewProj: the lights would be clustered in another view.
+	ClusterViewStale,
+	// clusters.ms refused the view or a light (a zero-sized target, a light out of range).
+	ClusterAssign,
+	ClusterUpload,
 }
 
 // Floats of the uniform pool the core reserves: camera, lights and the frame block.
@@ -278,11 +321,15 @@ export function createDrawing(
 		normalMrt: false,
 		frameValues: new Array(FRAME_UNIFORM_LENGTH),
 		cameraPosition: null,
+		cameraView: null,
+		clusters: ClusterFrame.create(ClusterConfig.defaults()),
+		lightValues: new Array(LIGHT_UNIFORM_LENGTH),
 		readsTime: false,
 		preset: preset,
 		drawn: [],
 		shadow: null,
 		spotShadow: null,
+		cubeShadow: null,
 		environment: null,
 		blackCube: 0,
 		blackCubeView: 0,
@@ -293,6 +340,7 @@ export function createDrawing(
 		prepared: false,
 		preparedFrame: 0,
 		culledCount: 0,
+		meshLodScale: 1.0,
 		closed: false,
 	});
 }
@@ -317,7 +365,9 @@ export function attachShadow(renderer: Renderer, shadow: DirShadowMap | null): v
 	if (renderer.closed) { stopOnClosed("attachShadow"); }
 	if (shadow !== null && shadow.context !== renderer.context) { stopOnForeignShadow(); }
 	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("attachShadow"); }
-	if (shadow !== null && shadow.spot) { stopOnWrongShadow("attachShadow", "a spot"); }
+	if (shadow !== null && shadow.kind != ShadowKind.Sun) {
+		stopOnWrongShadow("attachShadow", shadow.kind);
+	}
 	renderer.shadow = shadow;
 	renderer.sceneGlobals = shadowGlobals(renderer);
 	renderer.changed = true;
@@ -327,8 +377,22 @@ export function attachSpotShadow(renderer: Renderer, shadow: DirShadowMap | null
 	if (renderer.closed) { stopOnClosed("attachSpotShadow"); }
 	if (shadow !== null && shadow.context !== renderer.context) { stopOnForeignShadow(); }
 	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("attachSpotShadow"); }
-	if (shadow !== null && !shadow.spot) { stopOnWrongShadow("attachSpotShadow", "a sun"); }
+	if (shadow !== null && shadow.kind != ShadowKind.Spot) {
+		stopOnWrongShadow("attachSpotShadow", shadow.kind);
+	}
 	renderer.spotShadow = shadow;
+	renderer.sceneGlobals = shadowGlobals(renderer);
+	renderer.changed = true;
+}
+
+export function attachCubeShadow(renderer: Renderer, shadow: DirShadowMap | null): void {
+	if (renderer.closed) { stopOnClosed("attachCubeShadow"); }
+	if (shadow !== null && shadow.context !== renderer.context) { stopOnForeignShadow(); }
+	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("attachCubeShadow"); }
+	if (shadow !== null && shadow.kind != ShadowKind.Cube) {
+		stopOnWrongShadow("attachCubeShadow", shadow.kind);
+	}
+	renderer.cubeShadow = shadow;
 	renderer.sceneGlobals = shadowGlobals(renderer);
 	renderer.changed = true;
 }
@@ -379,22 +443,26 @@ function castError(error: ProgramError): RendererError {
 		: RendererError.ProgramNotCast;
 }
 
-function stopOnWrongShadow(call: string, found: string): void {
-	console.log(`void3d: ${call} with ${found} shadow map; DirShadowMap.create makes the sun's ` +
-		"and createSpot the spot's");
+function stopOnWrongShadow(call: string, found: ShadowKind): void {
+	console.log(`void3d: ${call} with a ${found.toString()} shadow map; DirShadowMap.create ` +
+		"makes the sun's, createSpot the spot's and createCube the point's");
 	unreachable;
 }
 
-// One shadow block reaches the programs, the sun's with the spot's half carried in
-// (dirShadowMap.ms carrySpot); with no sun map it is the spot map's own, whose sun half is zero.
-function shadowGlobals(renderer: Renderer): Vec<UniformBlock> {
+// The map whose block reaches the programs: the first of the sun's, the spot's and the point's,
+// with the others' parts carried in (dirShadowMap.ms carryShadows).
+function shadowOwner(renderer: Renderer): DirShadowMap | null {
 	const sun: DirShadowMap | null = renderer.shadow;
+	if (sun !== null) { return sun; }
 	const spot: DirShadowMap | null = renderer.spotShadow;
-	if (sun !== null) {
-		return [renderer.cameraBlock, renderer.lightBlock, renderer.frameBlock, sun.shadowBlock];
-	}
-	if (spot !== null) {
-		return [renderer.cameraBlock, renderer.lightBlock, renderer.frameBlock, spot.shadowBlock];
+	if (spot !== null) { return spot; }
+	return renderer.cubeShadow;
+}
+
+function shadowGlobals(renderer: Renderer): Vec<UniformBlock> {
+	const owner: DirShadowMap | null = shadowOwner(renderer);
+	if (owner !== null) {
+		return [renderer.cameraBlock, renderer.lightBlock, renderer.frameBlock, owner.shadowBlock];
 	}
 	return [renderer.cameraBlock, renderer.lightBlock, renderer.frameBlock];
 }
@@ -448,6 +516,24 @@ export function setCameraPosition(renderer: Renderer, eye: Vec3): void {
 	renderer.changed = true;
 }
 
+export function setCameraView(renderer: Renderer, view: CameraView): void {
+	if (renderer.closed) { stopOnClosed("setCameraView"); }
+	renderer.cameraView = view;
+	renderer.changed = true;
+}
+
+function viewMatches(view: CameraView, camera: Readonly<Span<float32>>): boolean {
+	const m: Mat4 = view.viewProj;
+	const values: Vec<float32> = [
+		m.m11, m.m12, m.m13, m.m14, m.m21, m.m22, m.m23, m.m24,
+		m.m31, m.m32, m.m33, m.m34, m.m41, m.m42, m.m43, m.m44,
+	];
+	for (let i = 0; i < 16; i++) {
+		if (values[i] != camera[i]) { return false; }
+	}
+	return true;
+}
+
 export function setTimeWrap(renderer: Renderer, seconds: float64): void {
 	if (renderer.closed) { stopOnClosed("setTimeWrap"); }
 	if (!(seconds >= 0.0)) {
@@ -496,9 +582,11 @@ export function beginFrame(
 	}
 	const shadow: DirShadowMap | null = renderer.shadow;
 	const spotShadow: DirShadowMap | null = renderer.spotShadow;
+	const cubeShadow: DirShadowMap | null = renderer.cubeShadow;
 	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
 	if (spotShadow !== null && spotShadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
-	const shadowed: boolean = shadow !== null || spotShadow !== null;
+	if (cubeShadow !== null && cubeShadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
+	const shadowed: boolean = shadow !== null || spotShadow !== null || cubeShadow !== null;
 	for (const item of items) {
 		if (!context.hasMesh(item.mesh)) { return Result.err(meshError(context, item.mesh)); }
 		if (!item.validRange(context.logicalElementCount(item.mesh.index))) {
@@ -529,7 +617,7 @@ export function beginFrame(
 			return Result.err(RendererError.MaterialBlock);
 		}
 		const layout: VertexLayout = context.meshes[item.mesh.index].layout;
-		if (layout != meshLayoutOf(drawn.value)) {
+		if (layout != vertexLayoutOf(drawn.value)) {
 			return Result.err(RendererError.VertexLayout);
 		}
 		if (drawsQuads(layout) && !context.meshes[item.mesh.index].isQuadShaped()) {
@@ -547,32 +635,64 @@ export function beginFrame(
 		const cast: Result<int32, ProgramError> = spotShadow.castsAll(items);
 		if (!cast.ok) { return Result.err(castError(cast.error)); }
 	}
+	if (cubeShadow !== null) {
+		const cast: Result<int32, ProgramError> = cubeShadow.castsAll(items);
+		if (!cast.ok) { return Result.err(castError(cast.error)); }
+	}
 	if ((camera.length as int32) != renderer.cameraBlock.length) {
 		return Result.err(RendererError.CameraBlockLength);
 	}
-	if ((lights.length as int32) != renderer.lightBlock.length) {
-		return Result.err(RendererError.LightBlockLength);
-	}
-	if (renderer.preset == Preset.PixelArt) {
-		for (let i = 0; i < MAX_POINT_LIGHTS; i++) {
-			if (lights[LIGHT_SHAPE_BASE + i * 4 + 3] != 0.0) {
-				return Result.err(RendererError.ShapedLightPreset);
-			}
+	const lodEye: Vec3 = vec3(camera[CAMERA_EYE], camera[CAMERA_EYE + 1], camera[CAMERA_EYE + 2]);
+	for (let i = 0; i < (items.length as int32); i++) {
+		const pick = items[i].lod;
+		if (pick === null) { continue; }
+		if (!pick.pickFor(items[i].world, lodEye, camera[CAMERA_PROJECTION_X],
+			camera[CAMERA_PROJECTION_Y], camera[CAMERA_NEAR], renderer.meshLodScale).ok) {
+			return Result.err(RendererError.MeshLod);
 		}
 	}
-	if (shadowedSpotCount(lights) > 1) { return Result.err(RendererError.TooManyShadowedSpots); }
-	const shadowedSpot: int32 = firstShadowedSpot(lights);
+	const counted: Result<int32, ClusterFrameError> = recordCountOf(lights);
+	if (!counted.ok) { return Result.err(RendererError.LightBlockLength); }
+	const records: int32 = counted.value;
+	if (renderer.preset == Preset.PixelArt) {
+		for (let i = 0; i < records; i++) {
+			const record: int32 = LIGHT_UNIFORM_LENGTH + i * LIGHT_RECORD_LENGTH;
+			const kind: int32 = record + LIGHT_RECORD_SHAPE + 3;
+			if (lights[kind] != 0.0) { return Result.err(RendererError.ShapedLightPreset); }
+		}
+	}
+	const spotCast: Result<int32, SpotShadowError> = spotCaster(lights);
+	if (!spotCast.ok) { return Result.err(RendererError.BadShadowSpot); }
+	const shadowedSpot: int32 = spotCast.value;
 	if (shadowedSpot >= 0 && !spotShadowView(lights, shadowedSpot).ok) {
 		return Result.err(RendererError.BadShadowSpot);
 	}
 	if (shadowedSpot >= 0 && spotShadow === null) {
 		return Result.err(RendererError.SpotShadowUnattached);
 	}
+	const cubeCast: Result<int32, CubeShadowError> = cubeCaster(lights);
+	if (!cubeCast.ok) { return Result.err(RendererError.BadCubeShadow); }
+	const shadowedCube: int32 = cubeCast.value;
+	if (shadowedCube >= 0 && !cubeShadowViews(lights, shadowedCube).ok) {
+		return Result.err(RendererError.BadCubeShadow);
+	}
+	if (shadowedCube >= 0 && cubeShadow === null) {
+		return Result.err(RendererError.CubeShadowUnattached);
+	}
+	const view: CameraView | null = renderer.cameraView;
+	if (records > 0 && view === null) { return Result.err(RendererError.ClusterViewUnset); }
+	if (records > 0 && view !== null && !viewMatches(view, camera)) {
+		return Result.err(RendererError.ClusterViewStale);
+	}
 	const cameraWritten: Result<int32, UniformError> =
 		writeUniforms(context, renderer.cameraBlock, camera);
 	if (!cameraWritten.ok) { return Result.err(RendererError.CameraBlockLength); }
+	for (let i = 0; i < LIGHT_CLUSTER_GRID; i++) { renderer.lightValues[i] = lights[i]; }
+	const assigned: Result<ClusterAssignment, ClusterFrameError> = renderer.clusters.assignFrame(
+		lights, view, !originTopLeft(), renderer.lightValues);
+	if (!assigned.ok) { return Result.err(RendererError.ClusterAssign); }
 	const lightsWritten: Result<int32, UniformError> =
-		writeUniforms(context, renderer.lightBlock, lights);
+		writeUniforms(context, renderer.lightBlock, renderer.lightValues);
 	if (!lightsWritten.ok) { return Result.err(RendererError.LightBlockLength); }
 	renderer.time = renderer.time + renderer.elapsedTime;
 	renderer.frameValues[FRAME_TIME] = frameTime(renderer.time, renderer.timeWrap);
@@ -613,6 +733,9 @@ export function beginFrame(
 		renderer.changed = true;
 	}
 	if (!uploadDirtyMeshes(context).ok) { return Result.err(RendererError.MeshWrite); }
+	if (!renderer.clusters.uploadFrame(lights, assigned.value).ok) {
+		return Result.err(RendererError.ClusterUpload);
+	}
 	const environment: Environment | null = renderer.environment;
 	if (environment !== null && !environment.isCurrent()) { environment.compute(); }
 	collect(renderer.opaque, items, context.materials);
@@ -644,17 +767,29 @@ export function drawShadowPass(
 	if (renderer.closed) { stopOnClosed("drawShadowPass"); }
 	const shadow: DirShadowMap | null = renderer.shadow;
 	const spotShadow: DirShadowMap | null = renderer.spotShadow;
+	const cubeShadow: DirShadowMap | null = renderer.cubeShadow;
 	let casters: int32 = 0;
 	if (shadow !== null) { casters = drawShadows(shadow, items, camera, lights); }
 	if (spotShadow !== null) { casters = casters + drawShadows(spotShadow, items, camera, lights); }
-	if (shadow !== null) { carrySpot(shadow, spotShadow); }
+	if (cubeShadow !== null) {
+		casters = casters + drawShadows(cubeShadow, items, camera, lights);
+	}
+	const owner: DirShadowMap | null = shadowOwner(renderer);
+	if (owner !== null) { carryShadows(owner, spotShadow, cubeShadow); }
 	return casters;
 }
 
-// A frame with one of the two maps binds it at both slots: the absent light's half of the
+// A frame without one of the maps binds another in its slot: the absent light's part of the
 // block is zero, so its lookup answers lit before it reads the map.
 function sceneTextureOf(renderer: Renderer): SceneTexture {
-	const shadows: SceneTexture = shadowTextureOf(renderer);
+	const clusters: ClusterFrame = renderer.clusters;
+	const shadows: SceneTexture = {
+		...shadowTextureOf(renderer),
+		lightRecords: clusters.recordsView(),
+		clusterRecords: clusters.clustersView(),
+		clusterIndices: clusters.indicesView(),
+		clusterSampler: clusters.clusterSampler(),
+	};
 	const environment: Environment | null = renderer.environment;
 	if (environment === null) {
 		return {
@@ -673,27 +808,19 @@ function sceneTextureOf(renderer: Renderer): SceneTexture {
 }
 
 function shadowTextureOf(renderer: Renderer): SceneTexture {
+	const owner: DirShadowMap | null = shadowOwner(renderer);
+	if (owner === null) { return NO_SCENE_TEXTURE; }
+	const first: SceneTexture = owner.sceneTexture();
 	const shadow: DirShadowMap | null = renderer.shadow;
 	const spotShadow: DirShadowMap | null = renderer.spotShadow;
-	if (shadow !== null) {
-		const sun: SceneTexture = shadow.sceneTexture();
-		if (spotShadow === null) {
-			return {
-				view: sun.view, sampler: sun.sampler, spotView: sun.view, spotSampler: sun.sampler,
-			};
-		}
-		const spot: SceneTexture = spotShadow.sceneTexture();
-		return {
-			view: sun.view, sampler: sun.sampler, spotView: spot.view, spotSampler: spot.sampler,
-		};
-	}
-	if (spotShadow !== null) {
-		const spot: SceneTexture = spotShadow.sceneTexture();
-		return {
-			view: spot.view, sampler: spot.sampler, spotView: spot.view, spotSampler: spot.sampler,
-		};
-	}
-	return NO_SCENE_TEXTURE;
+	const cubeShadow: DirShadowMap | null = renderer.cubeShadow;
+	const sun: SceneTexture = shadow === null ? first : shadow.sceneTexture();
+	const spot: SceneTexture = spotShadow === null ? first : spotShadow.sceneTexture();
+	const point: SceneTexture = cubeShadow === null ? first : cubeShadow.sceneTexture();
+	return {
+		view: sun.view, sampler: sun.sampler, spotView: spot.view, spotSampler: spot.sampler,
+		cubeView: point.view,
+	};
 }
 
 // fwd.Renderer's default, alpha and additive passes, into the current pass (`targets` is
@@ -797,13 +924,13 @@ function scrolls(context: DrawContext, index: int32, key: ProgramKey): boolean {
 }
 
 // The one block a material brings for `program`: the slot it declares that is neither pass-wide
-// nor the model matrix, at the length its shader declares; none when it declares no such slot.
+// nor the skin pose, at the length its shader declares; none when it declares no such slot.
 function blockFits(program: ProgramKey, block: UniformBlock): boolean {
 	let own: int32 = -1;
 	for (let slot = 0; slot < UNIFORM_SLOTS; slot++) {
 		const passWide: boolean = slot == VERTEX_UNIFORM_SLOT || slot == LIGHT_UNIFORM_SLOT ||
 			slot == SHADOW_UNIFORM_SLOT || slot == FRAME_UNIFORM_SLOT;
-		if (passWide || slot == MODEL_SLOT || slot == SKIN_UNIFORM_SLOT ||
+		if (passWide || slot == SKIN_UNIFORM_SLOT ||
 			uniformBlockLength(program, slot) == 0) {
 			continue;
 		}
@@ -816,11 +943,11 @@ function blockFits(program: ProgramKey, block: UniformBlock): boolean {
 
 // Every texture view and sampler `program` declares is bound on `material`, each by one field: a
 // raw view or sampler, or a context texture's role. The shadow map's are the scene's to bind for
-// a shadowed program.
+// a shadowed program, and the clustered lights' for every program.
 function texturesFit(program: ProgramKey, material: Material): boolean {
-	const sceneViews: uint32 =
+	const sceneViews: uint32 = CLUSTER_SCENE_VIEWS |
 		(program.shadowed ? SHADOW_SCENE_VIEWS : 0) | (program.pbr ? ENV_SCENE_VIEWS : 0);
-	const sceneSamplers: uint32 =
+	const sceneSamplers: uint32 = CLUSTER_SCENE_SAMPLERS |
 		(program.shadowed ? SHADOW_SCENE_SAMPLERS : 0) | (program.pbr ? ENV_SCENE_SAMPLERS : 0);
 	const views: uint32 = textureSlotMask(program) & ~sceneViews;
 	const samplers: uint32 = samplerSlotMask(program) & ~sceneSamplers;
@@ -919,6 +1046,7 @@ export function closeRenderer(renderer: Renderer): void {
 	renderer.blackCube = 0;
 	renderer.blackCubeView = 0;
 	renderer.blackCubeSampler = 0;
+	closeClusterFrame(renderer.clusters);
 	context.meshes[screen].vertexBuffer = 0;
 	const released: Result<int32, HandleError> = releaseMesh(context, renderer.screenMesh);
 	if (!released.ok) { stopOnLostScreenMesh(context, renderer); }

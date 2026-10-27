@@ -1,4 +1,4 @@
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec4, vec3 } from "../../src/math/math3d";
 import { RenderState, BlendMode } from "../../src/gpu/state";
 import { SWAPCHAIN_LAYOUT, beginScreenPass } from "../../src/gpu/target";
@@ -75,7 +75,7 @@ import {
 	voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,
@@ -201,7 +201,7 @@ function litMaterial(): MaterialId {
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(contextB, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!reserved.ok) { unreachable; }
-	const levels: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	const levels: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	const written: Result<int32, UniformError> = writeUniforms(contextB, reserved.value, levels);
 	if (!written.ok) { unreachable; }
 	const plain: Material = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);

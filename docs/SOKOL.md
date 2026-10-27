@@ -1,5 +1,7 @@
 # sokol — Void's GPU layer, and how we treat it (2026-09-20)
 
+**Superseded on `wt/gpu-ms`:** Void's GPU layer is its own (`docs/GPU.md`), and sokol at pin `2e75443d` is the reference it ports. This doc records the sokol period and how Void treated sokol upstream.
+
 Void's GPU layer is [sokol](https://github.com/floooh/sokol): `sokol_gfx` is the driver, `sokol-shdc` is the shader compiler, and `sokol_app` provides the window where Void does not bring its own host glue. This doc records why it stays after a deliberate review against the alternatives, and how Void relates to it: **we are ready to hack sokol and to contribute upstream, not only consume it.**
 
 ## Stance: hack it, and send it upstream
@@ -26,7 +28,7 @@ Neon's canvas skips idle frames: a frame that made no `voidCommit` draws nothing
 
 - **Rejected: the fork patch `sapp_skip_present()`** (fork commits `7b7a84d5` D3D11 and `68bd4de8` WGL on `2e75443d`). It worked, but pinned a commit floooh/sokol lacks.
 - **Rejected: render into a Void-owned texture and blit it into sokol_app's back buffer every frame.** It follows sokol_app's contract, but an idle frame still costs a fullscreen copy and a present.
-- **Chosen: `sokol_app` with `SOKOL_NOAPI`** (`src/sokol/sokolAppWin.c`), which keeps the window, events, DPI and resize and never presents. Void owns the device and swapchain (`src/sokol/windowSurface.h`; D3D11 in `bridgeWin.c`, GL core in `windowGl.c`), the way macOS, iOS, Android and the host views already do, presents at the end of a frame that called `voidCommit` (as `sokol_app` did, so a readback after `voidCommit` still sees that frame; a present inside `voidCommit` read back zeros from the discarded `FLIP_DISCARD` buffer, gate 2026-10-21), and waits an undrawn frame on `DwmFlush`. A side effect: `-d:voidGlCore` now runs on `bridgeWin.c`, so it gains the IME path.
+- **Chosen: `sokol_app` with `SOKOL_NOAPI`** (`src/host/sokolAppWin.c`), which keeps the window, events, DPI and resize and never presents. Void owns the device and swapchain (`src/host/windowSurface.h`; D3D11 in `bridgeWin.c`, GL core in `windowGl.c`), the way macOS, iOS, Android and the host views already do, presents at the end of a frame that called `voidCommit` (as `sokol_app` did, so a readback after `voidCommit` still sees that frame; a present inside `voidCommit` read back zeros from the discarded `FLIP_DISCARD` buffer, gate 2026-10-21), and waits an undrawn frame on `DwmFlush`. A side effect: `-d:voidGlCore` now runs on `bridgeWin.c`, so it gains the IME path.
 - **What the no-API backend changes:** with `high_dpi` off the process is DPI-unaware and Windows scales the window (sokol_app's GL behaviour), where the D3D11 backend stretched a smaller swapchain; the framebuffer is the requested size either way.
 
 Measured 2026-10-20 with a throwaway probe on `voidRun` that clears 3 red and 3 green frames at 640x480, MSAA 4, then idles 5 s, reporting wakeups per second, process CPU, and the centre pixel read through `PrintWindow` once a second; 165 Hz display, two runs each, the box at 25-49% CPU under a recompiler gate. The fork rows ran on tree `c1196936`, the Void-owned rows on tree `1f66803b` (the upstream pin; the probe binary predates a comment move only):
@@ -47,7 +49,7 @@ Ordered by how soon Void hits them. None is started; each waits for the Void nee
 | Sub-rect texture updates that persist across frames | Glyph atlas: VOID2D.md P3 | Pinned rev: `sg_update_image` replaces a whole mip level, once per frame. Upstream `sg_write_image_transient` writes sub-rects but does not survive the frame. `write_persistent` is announced. Coordinate on that. |
 | GPU→CPU readback | Golden-image tests on every backend | No API. `out/tmp/capture/capture.c` does it for D3D11 through native handles. Async `read-buffer`/`read-image` is announced. |
 | Android host-owned EGL: context loss, preview and live side by side | Hibernal V6 (`hibernal/docs/ROADMAP.md`) | `sokol_gfx` works on an external GL context (`SOKOL_EXTERNAL_GL_LOADER`, hand-filled `sg_environment`/`sg_swapchain`), but has no context-loss rebuild. `sokol_app` on Android is NativeActivity only. |
-| Embedding `sokol_app` in a host view | Neon hosts, host views (docs/EMBED.md) | No embed mode (issues #520, #335, per the 2026-09 research; not re-read). Void keeps its own host glue: `src/sokol/views.ms` and a `voidPlatform*` half per OS. |
+| Embedding `sokol_app` in a host view | Neon hosts, host views (docs/EMBED.md) | No embed mode (issues #520, #335, per the 2026-09 research; not re-read). Void keeps its own host glue: `src/host/views.ms` and a `voidPlatform*` half per OS. |
 | Async pipeline creation on WebGPU | Only if first-frame hitches show up on the web | The pin calls synchronous `wgpuDeviceCreateRenderPipeline`, forwarded by emdawn to Browser `device.createRenderPipeline`. Current startup is `batcher.c` `void2dSetup`; D1's cache/creation decision is in VOID2D.md "D1 direction agreed for the fresh session". No Browser hitch measurement or async implementation is claimed. |
 
 ## Why sokol stays

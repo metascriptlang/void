@@ -26,6 +26,7 @@ import {
 	isShift,
 	isArrayTexture,
 	isAtomic,
+	zeroOf,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import {
@@ -51,6 +52,7 @@ import {
 	repeatedBitsOperand,
 } from "./spelling";
 import { claimName } from "./names";
+import { demotedDiscards } from "./demote";
 import { printableEntry } from "./specialize";
 
 export enum GlslTarget {
@@ -165,6 +167,7 @@ class Printer {
 	ioNames: string[] = [];
 	functionNames: string[] = [];
 	workgroupNames: string[] = [];
+	privateNames: string[] = [];
 	exchangeNames: string[] = ["", ""];
 	effects: int32[] = [];
 	pairs: Pair[] = [];
@@ -823,6 +826,7 @@ function expr(p: Printer, e: ShaderExpr): string {
 		ExprKind.Param => p.scope[e.index],
 		ExprKind.Constant => p.constantNames[e.index],
 		ExprKind.Workgroup => p.workgroupNames[e.index],
+		ExprKind.Private => p.privateNames[e.index],
 		ExprKind.Io => ioText(p, e.index),
 		ExprKind.Resource => resourceText(p, e.index),
 		ExprKind.BlockMember => memberText(p, e),
@@ -1119,11 +1123,14 @@ function ioDeclarations(p: Printer): string {
 // A uniform block is one `vec4 <block>[size / 16]` and each texture-sampler pair one combined
 // sampler, both bound by name (src/webgpu/gl/backend.ms resolveUniforms, resolveTextureUnits).
 export function printGlsl(
-	m: ShaderModule,
+	source: ShaderModule,
 	entryIndex: int32,
 	slots: BindingSlot[],
 	target: GlslTarget,
 ): Result<string, string> {
+	const demoted = demotedDiscards(source, entryIndex);
+	if (!demoted.ok) { return Result.err("printGlsl: " + demoted.error); }
+	const m = demoted.value;
 	const printable = printableEntry(m, entryIndex);
 	if (!printable.ok) { return Result.err("printGlsl: " + printable.error); }
 	const reads = printable.value;
@@ -1148,6 +1155,7 @@ export function printGlsl(
 	p.ioNames = m.ios.map((_io) => "");
 	p.functionNames = m.functions.map((_f) => "");
 	p.workgroupNames = m.workgroups.map((_w) => "");
+	p.privateNames = m.privates.map((_v) => "");
 	p.effects = m.functions.map((_f) => 0);
 
 	let functions: int32[] = [];
@@ -1234,6 +1242,9 @@ export function printGlsl(
 	for (const w of reads.workgroups) {
 		p.workgroupNames[w] = claim(p, p.globals, m.workgroups[w].name);
 	}
+	for (const v of reads.privates) {
+		p.privateNames[v] = claim(p, p.globals, m.privates[v].name);
+	}
 	for (const f of functions) {
 		p.functionNames[f] = f == entry.functionIndex ? "main" :
 			claim(p, p.globals, m.functions[f].name);
@@ -1279,6 +1290,11 @@ export function printGlsl(
 		head += "shared " + declaration(p, m.workgroups[w].type, p.workgroupNames[w]) + ";\n";
 	}
 	if (reads.workgroups.length > 0) { head += "\n"; }
+	for (const v of reads.privates) {
+		const t = m.privates[v].type;
+		head += declaration(p, t, p.privateNames[v]) + " = " + expr(p, zeroOf(t)) + ";\n";
+	}
+	if (reads.privates.length > 0) { head += "\n"; }
 	const bodies = functions.map((f) => functionText(p, f)).join("\n");
 	if (p.error != "") { return Result.err(p.error); }
 	return Result.ok(head + bodies);

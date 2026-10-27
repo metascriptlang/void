@@ -121,6 +121,17 @@ export function center(this bounds: Bounds3D): Vec3 {
 	return (bounds.min + bounds.max).scaled(0.5);
 }
 
+export function boundingRadius(this bounds: Bounds3D): float64 {
+	if (bounds.isEmpty()) { return 0.0; }
+	const x: float64 = (bounds.max.x as float64) - (bounds.min.x as float64);
+	const y: float64 = (bounds.max.y as float64) - (bounds.min.y as float64);
+	const z: float64 = (bounds.max.z as float64) - (bounds.min.z as float64);
+	const cx: float64 = ((bounds.max.x as float64) + (bounds.min.x as float64)) * 0.5;
+	const cy: float64 = ((bounds.max.y as float64) + (bounds.min.y as float64)) * 0.5;
+	const cz: float64 = ((bounds.max.z as float64) + (bounds.min.z as float64)) * 0.5;
+	return Math.sqrt(x * x + y * y + z * z) * 0.5 + Math.sqrt(cx * cx + cy * cy + cz * cz);
+}
+
 // Heaps' `add` merges axis by axis with no emptiness test, so adding an empty box drags the
 // result out to ±1e20. This returns early instead — a divergence, and the reason `addBounds`
 // over a mixed list of boxes gives the union of the non-empty ones.

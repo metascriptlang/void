@@ -44,7 +44,7 @@ import { metalLabel, metalReadback, metalSystemDevice } from "./metalDevice.h";
 import { doorApplyScissor, doorBeginColorPass, doorEndPass, doorMakeTargetImage, doorMakeTextureView, doorSetup, doorShutdown } from "../gpu/doorGpu.ms";
 
 import { Cell, PlainBindings, ScaledBindings, WORKGROUP, plainKernel, scaledKernel, shadyComputeDescriptor } from "./metalShadyCompute";
-import { drawOverLoadedStencil } from "./webgpuFixtures.ms";
+import { drawIndirectRows, drawMaskedTriangle, drawOverLoadedStencil } from "./webgpuFixtures.ms";
 
 @compile("./metalDevice.m");
 
@@ -2447,4 +2447,39 @@ test "the door clamps a scissor that runs past its attachment instead of handing
 	doorApplyScissor(9, 9, 3, 3);
 	doorEndPass();
 	doorShutdown();
+}
+
+test "a colour target with writeMask 0 keeps its clear colour where an omitted mask takes the triangle" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawMaskedTriangle(device, flatShader(device), 0, target);
+	assert pixel(readPixels(target), 32, 32) == BLUE;
+	drawMaskedTriangle(device, flatShader(device), null, target);
+	assert pixel(readPixels(target), 32, 32) == RED;
+	device.destroy();
+}
+
+function colouredShader(device: GPUDevice): GPUShaderModule {
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "coloured",
+		vertexCode: FLOAT_COLOUR_MSL,
+		vertexEntryPoint: "cmain",
+		fragmentCode: FLOAT_COLOUR_MSL,
+		fragmentEntryPoint: "fcolour",
+	};
+	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	descriptor.attributes[1] = { location: 1, nativeName: null, semanticIndex: 1 };
+	return device.createShaderModule(descriptor);
+}
+
+test "two indexed indirect records in one call honour firstIndex, baseVertex and firstInstance" {
+	const device = openDevice();
+	assert device.features().has("indirect-first-instance");
+	const target = colourTarget(device, 1);
+	drawIndirectRows(device, colouredShader(device), target);
+	const pixels = readPixels(target);
+	assert pixel(pixels, 2, 32) == GREEN;
+	assert pixel(pixels, 61, 32) == RED;
+	assert pixel(pixels, 32, 32) == BLUE;
+	device.destroy();
 }

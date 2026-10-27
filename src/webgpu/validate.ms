@@ -24,6 +24,7 @@ import {
 	GPUTextureFormat,
 	GPUTextureUsage,
 	GPUTextureViewDescriptor,
+	GPUVertexBufferLayout,
 	GPU_DRAW_INDEXED_INDIRECT_STRIDE,
 	GPU_MAX_ANISOTROPY,
 	GPU_MAX_BIND_GROUP_ENTRIES,
@@ -50,6 +51,7 @@ import {
 	singleSubresourceRefusal,
 	samplerMaxLod,
 	stop,
+	vertexFormatSize,
 	vertexOffsetRefusal,
 	view3dRefusal,
 	viewLayersRefusal,
@@ -63,6 +65,7 @@ import {
 	QueryState,
 	ShaderRecord,
 	TextureRecord,
+	VertexBufferRecord,
 	ViewRecord,
 	bindGroupRecords,
 	bufferRecords,
@@ -318,6 +321,53 @@ export function checkedDrawState(call: string, indexed: boolean): void {
 	checkGroupOwners(pipelineRecords.slots[p].groups, false);
 	if (indexed) { refuse(stripDrawRefusal(pipelineRecords.slots[p].strip, pipelineRecords.slots[p].stripIndexFormat == boundFacts.indexFormat)); }
 }
+
+// WebGPU draw and drawIndexed: every vertex and index a draw fetches lies inside the range bound
+// to its slot (Dawn CommandBufferStateTracker.cpp:405-510, RenderEncoderBase.cpp:136-190). An
+// indexed draw checks only its instance-step slots, since its indices pick the vertices.
+export function drawSignRefusal(call: string, indexed: boolean, count: int32, instanceCount: int32, first: int32, firstInstance: int32): string {
+	const unsigned = indexed ? ["indexCount", "instanceCount", "firstIndex", "firstInstance"] : ["vertexCount", "instanceCount", "firstVertex", "firstInstance"];
+	const values = [count, instanceCount, first, firstInstance];
+	for (let i = 0; i < 4; i++) {
+		if (values[i] < 0) { return `${call} with ${unsigned[i]} ${values[i]}: WebGPU takes it as unsigned`; }
+	}
+	return "";
+}
+
+export function vertexRangeRefusal(call: string, slot: int32, layout: VertexBufferRecord, boundSize: int64, first: int32, count: int32): string {
+	const strideCount = (first as int64) + (count as int64);
+	if (strideCount == 0) { return ""; }
+	const required = layout.stride == 0 ? layout.lastStride as int64 : (strideCount - 1) * (layout.stride as int64) + (layout.lastStride as int64);
+	if (required <= boundSize) { return ""; }
+	const step = layout.instance ? "instance" : "vertex";
+	return `${call} ${step} range (first ${first}, count ${count}) needs ${required} bytes of the vertex buffer at slot ${slot}, which has ${boundSize} bound`;
+}
+
+export function indexRangeRefusal(call: string, format: GPUIndexFormat, boundSize: int64, firstIndex: int32, indexCount: int32): string {
+	const required = ((firstIndex as int64) + (indexCount as int64)) * (format == "uint32" ? 4 : 2);
+	if (required <= boundSize) { return ""; }
+	return `${call} index range (first ${firstIndex}, count ${indexCount}, ${format}) needs ${required} bytes of the index buffer, which has ${boundSize} bound`;
+}
+
+function boundSize(buffer: uint32, offset: int64): int64 { return bufferRecords.slots[bufferRecords.slotIndex(buffer)].size - offset; }
+
+export function checkedDrawRange(call: string, indexed: boolean, count: int32, instanceCount: int32, first: int32, firstInstance: int32): void {
+	refuse(drawSignRefusal(call, indexed, count, instanceCount, first, firstInstance));
+	if (indexed) {
+		refuse(indexRangeRefusal(call, boundFacts.indexFormat, boundSize(boundFacts.indexBuffer, boundFacts.indexOffset), first, count));
+	}
+	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
+	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
+		if ((pipelineRecords.slots[p].vertexSlots & (1 << slot)) == 0) { continue; }
+		const layout = pipelineRecords.slots[p].vertexBuffers[slot];
+		if (indexed && !layout.instance) { continue; }
+		const size = boundSize(boundFacts.vertexBuffers[slot], boundFacts.vertexOffsets[slot]);
+		refuse(layout.instance
+			? vertexRangeRefusal(call, slot, layout, size, firstInstance, instanceCount)
+			: vertexRangeRefusal(call, slot, layout, size, first, count));
+	}
+}
+
 export function checkedDispatchBound(): void {
 	const groups = pipelineRecords.slots[pipelineRecords.slotIndex(boundFacts.pipeline)].groups;
 	refuse(boundRefusal(0, groups, true));
@@ -355,6 +405,17 @@ export function boundRefusal(vertexSlots: int32, groups: int32, compute: boolean
 		return `the pipeline reads vertex buffer ${(missingSlots & 1) != 0 ? 0 : 1}, which is not set`;
 	}
 	return "";
+}
+
+export function vertexBufferRecordOf(layout: GPUVertexBufferLayout): VertexBufferRecord {
+	let lastStride = 0;
+	for (let a = 0; a < GPU_MAX_VERTEX_ATTRIBUTES; a++) {
+		const format: string = layout.attributes[a].format;
+		if (format == "") { continue; }
+		const end = layout.attributes[a].offset + vertexFormatSize(layout.attributes[a].format);
+		if (end > lastStride) { lastStride = end; }
+	}
+	return { stride: layout.arrayStride, lastStride: lastStride, instance: layout.stepMode == "instance" };
 }
 
 export function vertexSlotsOf(descriptor: GPURenderPipelineDescriptor): int32 {

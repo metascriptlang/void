@@ -51,7 +51,7 @@ import {
 } from "../void3d/gpu3d";
 
 function setupOf(): GltfMaterialSetup {
-	return { pass: RenderState.defaults(), block: [3.0, -1.0, 0.0, 0.0] };
+	return { pass: RenderState.defaults(), block: [3.0, -1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] };
 }
 
 function pbrMaterial(

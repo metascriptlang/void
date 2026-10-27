@@ -29,7 +29,7 @@ import {
 	trs2d,
 	vec2,
 } from "./types";
-import { fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
+import { fbWidth, fbHeight, dpiScale } from "../host/gpu";
 import {
 	PassState, passState, beginScreenPassWith, endPass, commit, contextGeneration,
 } from "../gpu/door";

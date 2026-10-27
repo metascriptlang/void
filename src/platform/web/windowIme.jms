@@ -4,7 +4,7 @@
 // Char (its input event only empties the textarea); a composition arrives once, at compositionend.
 // The decisions (text input on, the rectangle, the keys a composition takes) are imeInput.ms.
 
-import { AppWindow } from "../../sokol/appWindow";
+import { AppWindow } from "../../host/appWindow";
 import { AppEventType } from "../appEvent";
 import { ImeInput } from "./imeInput";
 import { Js, flag, intField, listenBubble, stringField } from "./window";

@@ -68,7 +68,7 @@ when (voidProfiler) {
 import { PipelineCache, pipelineFor } from "../gpu/pipeline";
 import { RenderState, Face, Compare, Blend, BlendMode } from "../gpu/state";
 import { RenderTarget, TargetLayout, SWAPCHAIN_LAYOUT } from "../gpu/target";
-import { fbWidth, fbHeight } from "../sokol/gpu";
+import { fbWidth, fbHeight } from "../host/gpu";
 
 const OFFSCREEN_LAYOUT: TargetLayout = {
 	color0: PixelFormat.Rgba8,

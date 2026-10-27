@@ -1,4 +1,4 @@
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3, eulerQuat, srgbToLinear, linearToSrgb } from "../../src/math/math3d";
 import { RenderState, FilterMode, Wrap } from "../../src/gpu/state";
 import { beginScreenPass } from "../../src/gpu/target";
@@ -63,6 +63,7 @@ import {
 } from "../../src/void3d/scene";
 import { Camera3D, ProjectionKind, CameraView, CameraError } from "../../src/void3d/camera";
 import { LowResView } from "../../src/void3d/blit";
+import { setCameraView } from "../../src/void3d/renderer";
 import { PickHit, PickError, pickNearest } from "../../src/void3d/pick";
 import {
 	ForwardRenderer,
@@ -177,7 +178,7 @@ function texturedMaterial(image: TextureId): MaterialId {
 	let reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!reserved.ok) { unreachable; }
-	let levels: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	let levels: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (!writeUniforms(context, reserved.value, levels).ok) { unreachable; }
 	let plain: Material =
 		Material.plain(Program.LitTextured, RenderState.defaults(), Phase.Opaque);
@@ -542,7 +543,8 @@ function checkRemade(): void {
 	}
 }
 
-function presetFrame(renderer: PixelArtRenderer): int32 {
+function presetFrame(renderer: PixelArtRenderer, view: CameraView): int32 {
+	setCameraView(renderer.core, view);
 	let frame: Result<int32, PixelArtError> =
 		renderPixelArt(renderer, items, cameraBlock, lights, SCREEN_MAPPING);
 	if (frame.ok) { return frame.value; }
@@ -550,9 +552,10 @@ function presetFrame(renderer: PixelArtRenderer): int32 {
 	return 0;
 }
 
-function drawn(): int32 {
-	if (outlined) { return presetFrame(outlinedPreset); }
-	if (pixelArt) { return presetFrame(preset); }
+function drawn(view: CameraView): int32 {
+	if (outlined) { return presetFrame(outlinedPreset, view); }
+	if (pixelArt) { return presetFrame(preset, view); }
+	setCameraView(forward.core, view);
 	let frame: Result<int32, ForwardError> =
 		prepareFrame(forward, items, cameraBlock, lights, WIDTH, HEIGHT);
 	if (!frame.ok) {
@@ -575,7 +578,7 @@ export function frameTextured(frameIndex: int32): void {
 	if (!collected.ok) { unreachable; }
 	let view: CameraView = viewOf();
 	view.writeCameraBlock(cameraBlock);
-	if (drawn() != 1) { fail("the frame did not draw the cube"); }
+	if (drawn(view) != 1) { fail("the frame did not draw the cube"); }
 	if (frameIndex == rebuildAt) { checkRemade(); }
 	if (frameIndex == 1 || frameIndex == 6 || frameIndex == 11 || frameIndex == 16) {
 		if (voidCaptureGrab(0) == 0 || voidCaptureGrab(1) == 0) { fail("D3D11 readback failed"); }

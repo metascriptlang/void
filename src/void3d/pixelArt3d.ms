@@ -12,7 +12,6 @@ import {
 	binding,
 	builtin,
 	clamp,
-	determinant,
 	discard,
 	dot,
 	feature,
@@ -67,9 +66,15 @@ import {
 	materialOf,
 	movedUv,
 	saturated,
+	tintedSurface,
 	skinNormal,
 	skinWorld,
+	handednessOf,
 	instanceWorld,
+	litClusterOf,
+	litLightOf,
+	litTexelOf,
+	billboardTexelOf,
 	srgbToLinear,
 	straightTexel,
 	toneMapped,
@@ -93,6 +98,7 @@ export struct PixelArtLitFragmentInput {
 	baseColor: Vec4f;
 	depth01: float32;
 	@builtin(frontFacing) frontFacing: boolean;
+	@builtin(position) fragCoord: Vec4f;
 }
 
 export struct PixelArtLitTexturedVaryings {
@@ -113,6 +119,7 @@ export struct PixelArtLitTexturedFragmentInput {
 	baseColor: Vec4f;
 	depth01: float32;
 	@builtin(frontFacing) frontFacing: boolean;
+	@builtin(position) fragCoord: Vec4f;
 }
 
 export struct PixelArtUnlitTexturedVaryings {
@@ -202,7 +209,9 @@ export function toonPointLightAt(
 // The core's litShade with the point lights on the toon ramp, material.x bands.
 export function toonShade(
 	n: Vec3f,
+	surfaceNormal: Vec3f,
 	position: Vec3f,
+	frag: Vec2f,
 	surfaceColor: Vec4f,
 	b: LitBindings,
 	key: LitKey,
@@ -211,14 +220,15 @@ export function toonShade(
 	const dir = b.lightParams.dirLight;
 	let lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
 	if (key.shadowed) {
-		lambert = lambert * dirShadowAt(position, b);
+		lambert = lambert * dirShadowAt(position, surfaceNormal, b);
 	}
 	let light = srgbToLinear(b.lightParams.ambient.rgb) +
 		srgbToLinear(b.lightParams.dirColor.rgb) * lambert;
-	for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
-		const at = b.lightParams.pointLight[i];
+	const cluster = litClusterOf(frag, position, b);
+	for (let k = 0; k < cluster.y + cluster.z; k++) {
+		const i = litLightOf(b, cluster, k);
 		light = light + toonPointLightAt(
-			position, n, at, b.lightParams.pointColor[i], 1.0, params.x,
+			position, n, litTexelOf(b, i, 0), litTexelOf(b, i, 1), 1.0, params.x,
 		);
 	}
 	const surface = srgbToLinear(saturated(surfaceColor.rgb, params.y));
@@ -242,12 +252,13 @@ export function pixelArtLitVs(
 			clip: clip,
 		};
 	} else {
-		const world = b.modelParams.model * vec4f(input.position, 1.0);
+		const matrix = instanceWorld(input.instanceRow0, input.instanceRow1, input.instanceRow2);
+		const world = matrix * vec4f(input.position, 1.0);
 		const clip = b.vertexParams.viewProj * world;
 		return {
 			worldPosition: world.xyz,
-			worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
-			baseColor: input.color,
+			worldNormal: skinNormal(matrix, input.normal),
+			baseColor: input.color * input.instanceColor,
 			// PENDING3D: pixel-art-depth-orthographic
 			depth01: clip.z,
 			clip: clip,
@@ -262,7 +273,8 @@ export function pixelArtLitFs(
 ): PixelArtOutput {
 	const params = materialOf(b, key);
 	const n = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
-	const shaded = toonShade(n, input.worldPosition, input.baseColor, b, key);
+	const surfaceColor = tintedSurface(b, key, input.baseColor);
+	const shaded = toonShade(n, n, input.worldPosition, input.fragCoord.xy, surfaceColor, b, key);
 	if (key.cutout) {
 		if (shaded.a < params.w) {
 			discard();
@@ -283,12 +295,11 @@ export function pixelArtLitTexturedVs(
 		const matrix = skinWorld(b, input.skinJoints, input.skinWeights);
 		const world = matrix * vec4f(input.position, 1.0);
 		const clip = b.vertexParams.viewProj * world;
-		const handedness: float32 = determinant(upperLeft3x3(matrix)) < 0.0 ? -1.0 : 1.0;
 		return {
 			worldPosition: world.xyz,
 			worldNormal: skinNormal(matrix, input.normal),
 			worldTangent: vec4f(
-				upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w * handedness,
+				upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w * handednessOf(matrix),
 			),
 			surfaceUv: input.uv,
 			baseColor: input.color,
@@ -296,36 +307,20 @@ export function pixelArtLitTexturedVs(
 			clip: clip,
 		};
 	} else {
-		if (key.instanced) {
-			const matrix = instanceWorld(
-				input.instanceRow0, input.instanceRow1, input.instanceRow2,
-			);
-			const world = matrix * vec4f(input.position, 1.0);
-			const clip = b.vertexParams.viewProj * world;
-			return {
-				worldPosition: world.xyz,
-				worldNormal: skinNormal(matrix, input.normal),
-				worldTangent: vec4f(upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w),
-				surfaceUv: input.uv,
-				baseColor: input.color * input.instanceColor,
-				depth01: clip.z,
-				clip: clip,
-			};
-		} else {
-			const world = b.modelParams.model * vec4f(input.position, 1.0);
-			const clip = b.vertexParams.viewProj * world;
-			return {
-				worldPosition: world.xyz,
-				worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
-				worldTangent: vec4f(
-					upperLeft3x3(b.modelParams.model) * input.tangent.xyz, input.tangent.w,
-				),
-				surfaceUv: input.uv,
-				baseColor: input.color,
-				depth01: clip.z,
-				clip: clip,
-			};
-		}
+		const matrix = instanceWorld(input.instanceRow0, input.instanceRow1, input.instanceRow2);
+		const world = matrix * vec4f(input.position, 1.0);
+		const clip = b.vertexParams.viewProj * world;
+		return {
+			worldPosition: world.xyz,
+			worldNormal: skinNormal(matrix, input.normal),
+			worldTangent: vec4f(
+				upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w * handednessOf(matrix),
+			),
+			surfaceUv: input.uv,
+			baseColor: input.color * input.instanceColor,
+			depth01: clip.z,
+			clip: clip,
+		};
 	}
 }
 
@@ -356,14 +351,18 @@ export function pixelArtLitTexturedFs(
 	if (key.premultiplied) {
 		texel = straightTexel(texel);
 	}
-	let n = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
+	const surfaceNormal = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
+	let n = surfaceNormal;
 	if (key.normalMap) {
 		const normalTexel = textureSample(b.normalTexture, b.baseSampler, uv).rgb;
 		const face = faceOf(params.z, input.frontFacing);
 		n = mappedNormal(normalize(input.worldNormal), input.worldTangent, face, normalTexel);
 	}
-	const surfaceColor = vec4f(input.baseColor.rgb * texel.rgb, input.baseColor.a * texel.a);
-	let shaded = toonShade(n, input.worldPosition, surfaceColor, b, key);
+	const surfaceColor = tintedSurface(
+		b, key, vec4f(input.baseColor.rgb * texel.rgb, input.baseColor.a * texel.a),
+	);
+	let shaded = toonShade(n, surfaceNormal, input.worldPosition, input.fragCoord.xy,
+		surfaceColor, b, key);
 	if (key.emissive) {
 		const glow = textureSample(b.emissiveTexture, b.baseSampler, uv).rgb;
 		shaded = emittedOver(shaded, glow, emissiveOf(b, key));
@@ -399,29 +398,15 @@ export function pixelArtUnlitTexturedVs(
 			clip: clip,
 		};
 	} else {
-		if (key.instanced) {
-			const matrix = instanceWorld(
-				input.instanceRow0, input.instanceRow1, input.instanceRow2,
-			);
-			const clip = b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0);
-			return {
-				worldNormal: skinNormal(matrix, input.normal),
-				surfaceUv: input.uv,
-				baseColor: input.color * input.instanceColor,
-				depth01: clip.z,
-				clip: clip,
-			};
-		} else {
-			const clip =
-				b.vertexParams.viewProj * b.modelParams.model * vec4f(input.position, 1.0);
-			return {
-				worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
-				surfaceUv: input.uv,
-				baseColor: input.color,
-				depth01: clip.z,
-				clip: clip,
-			};
-		}
+		const matrix = instanceWorld(input.instanceRow0, input.instanceRow1, input.instanceRow2);
+		const clip = b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0);
+		return {
+			worldNormal: skinNormal(matrix, input.normal),
+			surfaceUv: input.uv,
+			baseColor: input.color * input.instanceColor,
+			depth01: clip.z,
+			clip: clip,
+		};
 	}
 }
 
@@ -492,7 +477,9 @@ export function pixelArtBillboardVs(
 }
 
 // Lit by the point lights at the root raised billboard.z, on billboard.x bands. A cutout pixel
-// writes alpha 0, so the post pass outlines it as background.
+// writes alpha 0, so the post pass outlines it as background. The point it is lit at is not the
+// fragment, whose cluster need not list that point's lights, so every light of the frame is read
+// (clusterScreen.z of them): a pixel-art scene's few lights, not a clustered scene's many.
 export function pixelArtBillboardFs(
 	input: PixelArtBillboardFragmentInput,
 	b: BillboardBindings,
@@ -514,12 +501,10 @@ export function pixelArtBillboardFs(
 	if (shape.y != 0.0) {
 		const lightPoint = input.rootPosition + vec3f(0.0, shape.z, 0.0);
 		let points = vec3f(0.0);
-		for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
-			const at = b.lightParams.pointLight[i];
+		for (let i = 0; i < ((b.lightParams.clusterScreen.z + 0.5) as int32); i++) {
 			const up = vec3f(0.0, 1.0, 0.0);
-			points = points + toonPointLightAt(
-				lightPoint, up, at, b.lightParams.pointColor[i], 0.0, shape.x,
-			);
+			points = points + toonPointLightAt(lightPoint, up, billboardTexelOf(b, i, 0),
+				billboardTexelOf(b, i, 1), 0.0, shape.x);
 		}
 		rgb = linearToSrgb(srgbToLinear(rgb) + points);
 	}

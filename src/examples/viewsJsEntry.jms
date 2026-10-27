@@ -1,5 +1,5 @@
 import { doorBeginScreenPass, doorCommit } from "../gpu/doorGpu";
-import { embedRegister, fbHeight, fbWidth } from "../sokol/gpu";
+import { embedRegister, fbHeight, fbWidth } from "../host/gpu";
 
 function init(): void {
 	console.log("void js view init");

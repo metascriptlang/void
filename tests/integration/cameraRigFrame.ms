@@ -1,4 +1,4 @@
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, Mat4, vec3, eulerQuat } from "../../src/math/math3d";
 import { RenderState } from "../../src/gpu/state";
 import { Material, Phase, UniformBlock } from "../../src/void3d/material";
@@ -110,7 +110,7 @@ export function initCameraRig(): void {
 	const block: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!block.ok) { unreachable; }
-	const parameters: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	const parameters: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (!writeUniforms(context, block.value, parameters).ok) { unreachable; }
 	const material: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque), uniforms: block.value,

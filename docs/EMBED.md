@@ -2,13 +2,13 @@
 
 A host that owns the window and the frame clock (Ion on Windows and macOS, a React-Native
 `VoidView` on iOS, a `SurfaceView` on Android) drives Void through **views**. The entry points are in
-`src/sokol/bridge.h` (`voidEmbedRegister`, `voidViewCreate`, `voidViewResize`,
+`src/host/bridge.h` (`voidEmbedRegister`, `voidViewCreate`, `voidViewResize`,
 `voidViewFrame`, `voidViewDestroy`, `voidViewSwapChain`, `voidCurrentView`), and MetaScript
-reaches them through `src/sokol/gpu.ms` (`embedRegister`, `viewCreate`, …). The shared part is
-`src/sokol/views.ms`, its C names in `viewsExports.cms`; each platform's half is the `voidPlatform*` set in `bridgeWin.c`,
+reaches them through `src/host/gpu.ms` (`embedRegister`, `viewCreate`, …). The shared part is
+`src/host/views.ms`, its C names in `viewsExports.cms`; each platform's half is the `voidPlatform*` set in `bridgeWin.c`,
 `bridgeIos.m`, `bridgeEmbed.m` (macOS), `bridgeAndroid.c` and `bridgeWeb.c` (browser). macOS and iOS share
 one Metal surface (`metalSurface.m`), and the iOS and Android app shells share their events, typed
-text and framebuffer getters in the mobile section of `src/sokol/appWindowPlatform.c`.
+text and framebuffer getters in the mobile section of `src/host/appWindowPlatform.c`.
 
 The split follows `neon/docs/VISION.md` "Many Void areas in one app": the device, pipelines,
 shaders, glyph atlas and textures exist once per process, and each view owns its surface, its
@@ -121,7 +121,7 @@ pixel readback, because the Metal readback reads only the window driver's drawab
 runs as a full-screen UIKit app. sokol_app's iOS path was not used: it has no marked text and no
 hardware-key presses, which a terminal and an editor need. The driver is a host of the view
 driver in `bridgeIos.m`: its one `UIView` calls `viewCreate`, `viewResize` and `viewFrame` from a
-`CADisplayLink`, and it builds `VoidAppEvent` values (`src/platform/appEvent.h`) and hands them to `src/sokol/appWindow.ms`, so
+`CADisplayLink`, and it builds `VoidAppEvent` values (`src/platform/appEvent.h`) and hands them to `src/host/appWindow.ms`, so
 `window.ms` reads them as on Windows and the web.
 
 - `voidRun` enters `UIApplicationMain` and does not return. The app's `main()` calls `MsMain`
@@ -141,12 +141,12 @@ driver in `bridgeIos.m`: its one `UIView` calls `viewCreate`, `viewResize` and `
 ## Android: an app driver on the host views
 
 `bridgeAndroidApp.c` is the Android twin of `bridgeIosApp.m`, for the activity Ion's Android
-generator emits. Its one view, `VoidAppView` in the Java library `src/sokol/android/app`, is a
+generator emits. Its one view, `VoidAppView` in the Java library `src/host/android/app`, is a
 `SurfaceView` that hosts the view driver in `bridgeAndroid.c` (EGL, GLES3) from Choreographer
 frames on the main thread, and sends touches, keys, IME text and window insets back as
-`sapp_event` values for `src/sokol/appWindow.ms`.
+`sapp_event` values for `src/host/appWindow.ms`.
 
-- The app compiles `src/sokol/androidAppEntry.c`, which defines Ion's `NativeApp` entry points,
+- The app compiles `src/host/androidAppEntry.c`, which defines Ion's `NativeApp` entry points,
   and declares the Java library with Ion's `androidLibrary`. `NativeApp.start` runs `MsMain`;
   `voidRun` records the closures and returns, and `start` then adds the view. Void imports
   nothing from Ion; a Neon widget app defines the same entry points, so only a `voidRun` app

@@ -8,7 +8,7 @@
 #   sh scripts/jsBudget.sh            build, measure, compare with tests/bench/jsBudget.txt
 #   sh scripts/jsBudget.sh --record   build, measure, rewrite tests/bench/jsBudget.txt
 #
-# mainSokol2d.ms does not build for JS yet (inbox card js-element-address-as-pointer-argument), so the entries
+# main2d.ms does not build for JS yet (inbox card js-element-address-as-pointer-argument), so the entries
 # are the two harness entries; neither reaches src/void2d, and an on column equal to off says its flag reaches no JS.
 set -eu
 cd "$(dirname "$0")/.."

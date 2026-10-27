@@ -100,7 +100,7 @@ The device and the per-frame target were already Void's on every platform except
 `sokol_app` drove the Windows window (`SOKOL_NOAPI`, `docs/SOKOL.md`) and the web window path
 (with `sokol_glue`). The Windows window is ported from `sokol_app.h` (Win32 `:8635-10514`) into
 `src/platform/win32/`, keeping `sapp_event`'s fields and ordinals in `src/platform/appEvent.h`
-because `src/sokol/window.ms` `AppEventType` mirrors them. The frame clock is
+because `src/host/window.ms` `AppEventType` mirrors them. The frame clock is
 `src/platform/clock.h`, sokol_time's four readings (`QueryPerformanceCounter`,
 `mach_absolute_time`, `emscripten_get_now`, `clock_gettime`) behind one function. The web window
 is ported from the emscripten backend (`:7466-8350`, the WebGPU device and surface `:3909-4366`)
@@ -264,7 +264,11 @@ The Vulkan backend ports Mach's `src/sysgpu/vulkan.zig`:
 - Vulkan 1.1 with a negative viewport height (vulkan.zig:14, 3320);
 - the render-pass key cache (vulkan.zig:726-863);
 - the barrier tracker's hazard rules with resting layouts (vulkan.zig:2755-3088);
-- the swapchain handoff through `oldSwapchain` (vulkan.zig:1001, 1117).
+- the swapchain handoff through `oldSwapchain` (vulkan.zig:1001, 1117);
+- one swapchain per surface, so a window and every host view present on their own
+  (vulkan.zig:388, 983). The adapter's queue family must present to the surface named at
+  `vulkanAdapterSelect`, and a surface made later is refused when that family cannot present to
+  it, as Dawn checks a configured surface (`SwapChainVk.cpp:168`); Mach checks neither.
 
 The port leaves Mach where Mach's code is wrong, each case pinned by `vulkanResourcesCheck.ms`,
 `vulkanMemoryCheck.ms` or `webgpuVulkanCheck.ms`:
@@ -335,7 +339,10 @@ Where neither has the concern, the backend goes elsewhere. Heaps' `VulkanDriver.
 - **Android pre-rotation:** the swapchain presents at identity and the compositor rotates, as
   Dawn does (`SwapChainVk.cpp:326-331`), and `VK_SUBOPTIMAL_KHR` counts as success on acquire and
   present, as in Dawn (482-486) and Godot `876b290` (`rendering_device_driver_vulkan.cpp:2826-2842`),
-  so a rotated display does not recreate the swapchain every frame. Godot pre-rotates instead
+  so a rotated display does not recreate the swapchain every frame. The swapchain takes the
+  configured size whenever it lies in the surface's image-extent range, as Dawn does (279-286),
+  because a rotated Android surface reports `currentExtent` in the display's native orientation;
+  only a size outside the range falls back to `currentExtent`. Godot pre-rotates instead
   (3235-3282) and turns the image in its final compositor blit; the door draws straight into the
   swapchain image and has no such blit. Godot's path becomes worth its extra pass once a rotated
   device measures the compositor's rotation as a cost.

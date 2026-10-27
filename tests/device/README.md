@@ -104,7 +104,7 @@ The build, install and screenshot are the recipe above, with that entry in place
 
 M14's forward preset on GLES3: the campfire drawn with the core's own `Lit` and `Particle`
 programs into the preset's colour and depth targets, then `Copy` to the swapchain. The Android
-swapchain has no depth buffer (`src/sokol/bridgeAndroid.c` sets `depth_format` to none), which is
+swapchain has no depth buffer (`src/host/bridgeAndroid.c` sets `depth_format` to none), which is
 why the preset draws the scene into targets of its own; this frame is that path running, stones
 occluding each other and the snow. Taken on the **Android emulator** (`pixellight` AVD) on
 2026-09-26 at `bec89e5`. The frame has 385 colours: the core's lights are continuous and there

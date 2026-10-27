@@ -1,7 +1,7 @@
 // A scripted run of the host views over a recording platform: the same op stream the C views.c
 // ran in the differential, so its transcript digest can be pinned against what that C printed.
 
-import { Views, ViewsPlatform } from "../sokol/views";
+import { Views, ViewsPlatform } from "../host/views";
 
 const KIND_CREATE: int32 = 0;
 const KIND_RESIZE: int32 = 1;

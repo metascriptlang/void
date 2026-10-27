@@ -30,16 +30,16 @@ extern function macHostLayerDrawableHeight(): int32;
 extern function macHostDrop(path: cstring): int32;
 extern function macHostScale(): float32;
 
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { beginScreenPassWith, endPass, commit } from "../../src/gpu/door";
 import {
 	AppEvent, AppEventType, MouseCursor, onAppEvent, setWindowTitle, requestQuit, cancelQuit,
 	frameDuration, setClipboard, clipboard, setMouseCursor, mouseCursor, showMouse, mouseShown,
 	lockMouse, mouseLocked, toggleFullscreen, isFullscreen, droppedFiles, setTextInput, setImeRect,
-} from "../../src/sokol/window";
+} from "../../src/host/window";
 import { exit } from "std/process";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 const shiftFlag: uint32 = 131072;
@@ -116,7 +116,7 @@ function stepTiming(): void {
 	if (frames < 30) return;
 	const d: float64 = frameDuration();
 	check(d > 0.005 && d < 0.05, `frame duration ${d} is outside 5..50 ms`);
-	check(macHostTitle() === "Void — sokol", `initial title '${macHostTitle()}'`);
+	check(macHostTitle() === "Void", `initial title '${macHostTitle()}'`);
 	setWindowTitle("Void ü window");
 	check(macHostTitle() === "Void ü window", `title '${macHostTitle()}' after setWindowTitle`);
 	step = step + 1;

@@ -140,14 +140,14 @@ Velocity), stretch parameters `lengthScale` (PSR:260), `velocityScale` (PSR:316)
 | Stretch (`lengthScale`, `velocityScale`, `cameraVelocityScale`) | none (Heaps' nearest is `emitTrail`, which links consecutive particles, HP:184-260) | `Z_BILLBOARD_Y_TO_VELOCITY`: screen-projected velocity (GC:182-198) | `AlongVelocity` + size | VS: axis = screen-projected `velocity*velocityScale - cameraVelocity*cameraVelocityScale` (camera velocity a uniform). Measured (`stretch_*` goldens): direction d is the particle's total velocity, length = `size.y*lengthScale + abs(v)*velocityScale`, width = size.x, head at the particle and tail at `p - length*d`; rotation is ignored; pivot moves the head by `pivot.x*size.x` across and `2*pivot.y*size.y` along d; a still particle draws nothing. `freeformStretching`, `rotateWithStretchDirection` are uniform branches. Measured with `freeformStretching` on (`stretch_freeform*` goldens): the particle's own quad (pivot shift `pivot*size`, then rotation) is stretched about the particle along d by `(size.y*lengthScale + abs(v)*velocityScale) / size.y`, a parallelogram centred on the particle; `rotateWithStretchDirection` adds the stretch rotation `atan2(dy, -dx)` to the particle's rotation first, and with `freeformStretching` off it changes nothing. Unity's freeform quad foreshortens by the viewing angle even under an orthographic camera (area 4.4995 against 4.5 at 0.15 units off axis), which 2D has no analogue of. | CPU: a plain stretch is affine column 0 = stretched velocity, column 1 = its perpendicular x size. A freeform one is a parallelogram: the cell's `skew` (a shear between the rotation and the scale, `cellMatrix`) holds it, so it is one cell of the same tile group as every other particle and keeps its draw order. |
 | HorizontalBillboard | none | none | none | VS: basis = world X, world Z (quad in the XZ plane, normal +Y). | n/a |
 | VerticalBillboard | none | none | none | VS: right = camera right projected on the horizontal plane, up = world Y. | n/a |
-| Mesh (`mesh` PSR:787, `SetMeshes` PSR:832, `SetMeshWeightings` PSR:905, `meshDistribution` PSR:150, PSE:33-40) | none: `Particles` (HP:19) and `GpuParticles` (HG:687-700) draw quads built from their own buffers, `MeshBatch` (HMB:20) instances a mesh but is not a particle system | multimesh of one mesh (runtime report §1.2) | one mesh per effect (`EffectAsset::mesh`, HA:325-335), each vertex expanded along the particle axes (HR:272-275) | Two vertex buffers: the mesh's own vertices in slot 0, a per-instance buffer in slot 1 stepped `SG_VERTEXSTEP_PER_INSTANCE` (SG:2666). Program-key feature `INSTANCED` on `LitTextured`/`UnlitTextured`, which selects a new vertex layout the way `SKINNED` and `NORMAL_MAP` do; instance = 3x4 affine + rgba, 64 B. `meshDistribution`: the mesh index is drawn at spawn; the CPU groups the written instances by it for a depth-tested material, one draw per mesh, and keeps the draw order for a blended one, one draw per run of a mesh (`MeshDrawOrder`). Mechanism, layout and what changes: §A.2.1. | not used in 2D; skip |
+| Mesh (`mesh` PSR:787, `SetMeshes` PSR:832, `SetMeshWeightings` PSR:905, `meshDistribution` PSR:150, PSE:33-40) | none: `Particles` (HP:19) and `GpuParticles` (HG:687-700) draw quads built from their own buffers, `MeshBatch` (HMB:20) instances a mesh but is not a particle system | multimesh of one mesh (runtime report §1.2) | one mesh per effect (`EffectAsset::mesh`, HA:325-335), each vertex expanded along the particle axes (HR:272-275) | Two vertex buffers: the mesh's own vertices in slot 0, a per-instance buffer in slot 1 stepped `SG_VERTEXSTEP_PER_INSTANCE` (SG:2666). Every non-skinned mesh program reads that row (VOID3D.md "Every mesh draw reads an instance row"), so no key feature selects it; instance = 3x4 affine + rgba, 64 B. `meshDistribution`: the mesh index is drawn at spawn; the CPU groups the written instances by it for a depth-tested material, one draw per mesh, and keeps the draw order for a blended one, one draw per run of a mesh (`MeshDrawOrder`). Mechanism, layout and what changes: §A.2.1. | not used in 2D; skip |
 | None | n/a | n/a | n/a | No draw; module side effects only (trails, lights, sub-emitters). | same |
 
 **Decision: render mode and alignment are uniform-selected branches inside one vertex entry,
 not program-key features.** They change neither the instance layout nor the varyings, the branch
 is dynamically uniform (the same for every vertex of a draw), and 5 render modes x 5 alignments
 as key features would multiply programs in a key whose `Program` field has one free slot.
-Features stay for what changes the interface: `INSTANCED` (mesh), `SOFT`, `FLIPBOOK_BLEND`
+Features stay for what changes the interface: `SOFT`, `FLIPBOOK_BLEND`
 (below). Heaps and hanabi compile a constant per mode instead (`@const is3D` HPS:32; hanabi's
 pipeline key, HM:2095-2097, :2206-2208); the branch's cost is a measurement item (§D), and a
 backend that shows a difference gets a constant for that mode.
@@ -238,7 +238,7 @@ selected by the key, the binding needing an offset word, and sort order across m
    the same kernel as everything else (§0 item 1). Nothing about the orientation is limited to
    the camera plane, which is what billboard mode does in the vertex shader; this is the
    hanabi expansion (HR:272-275) done before upload, and Unity's per-vertex path
-   (PSE:482-483). The vertex shader reads `modelParams.model` no longer: it builds the matrix
+   (PSE:482-483). The vertex shader has no model uniform: it builds the matrix
    from the three rows, and the normal is `skinNormal` (`shader3d.ms:306-313`), the cofactor
    with the mirror sign, correct for non-uniform size and for a negative one.
 4. **One draw per mesh.** The CPU writes each particle's instance at the position its mesh
@@ -268,31 +268,20 @@ selected by the key, the binding needing an offset word, and sort order across m
    draw per particle; the trigger to revisit is a bench where the run count, not the
    instance count, bounds the frame, and Unity's own default path (one CPU-expanded mesh in
    particle order, PSE:482-497) is the reference way past it.
-5. **The key feature.** `INSTANCED` joins `ProgramKey` as one feature bit. The key is already
-   16 bits (program 4, preset 2, ten features, `GPU3D_PROGRAM_KEY` in `gpu3d.c`, bit 15 is
-   `normalMrt`) and `KEY_LIMIT` is 65536 (`gpu3d.ms:97`), so this is a 17th bit: it needs the
-   key widening of §A.10 and risk 5 first, and is a reason to do that slice early. It is
-   declared on `LitTextured` and `UnlitTextured`. Like `SKINNED` and `NORMAL_MAP` it changes the
-   interface, so it selects a different layout row of `programKeys.txt`
-   (`INSTANCED_LIT_TEXTURED`, a new `VertexLayout`, `gpu3d.ms` enum; `describeLayout` in
-   `gpu3d.c`; `attributesOf` in `scripts/regen-shaders.sh`), and the regenerate script's
-   `#ifdef INSTANCED` check keeps a row from naming a feature its stages never read. The
-   combinations with `SKINNED` and `NORMAL_MAP` are not declared: a row that does not exist
-   is already an error naming the key (`stopOnFeature`, `gpu3d.ms:107`), and a normal-mapped
-   mesh particle would put `tangent` at location 4, so it is its own row when asked for.
+5. **No key feature.** Every mesh layout carries the 16-float row in slot 1 and every
+   non-skinned mesh program reads it; a lone mesh draw is a run of one row. So the particle
+   draw is the mesh's own program with a `VertexLayout.MeshInstances` stream bound in place of
+   the frame's staged rows (`DrawItem.instances`). The `INSTANCED` bit this section first
+   proposed was built and then removed (VOID3D.md, "Every mesh draw reads an instance row").
 
 **What it changes in Void.**
-- `src/void3d/programKeys.txt` (rows), `scripts/regen-shaders.sh` (the feature, the layout's
-  attribute list), `src/void3d/gpu3d.ms` (`ProgramKey.instanced`, `VertexLayout`, `of`,
-  `declares`, `bits`), `src/void3d/gpu3d.c` (the layout in `describeLayout`, the key macro, the
-  attribute `_Static_assert`), `src/void3d/shader3d.ms` (`TexturedAttributes` and the two
-  vertex entries read the instance rows under `@feature(INSTANCED)`), `src/void3d/draw.ms`
-  (`bindItem`: slot 0 and slot 1 both set for this layout; a `DrawItem` field beside `range`
-  (`draw.ms:182`) naming the stream buffer's byte offset and instance count), `gpu3d.h` and
-  `gpu3dApplyBindings` (`GPU3D_BINDING_LENGTH` 12 carries no vertex-buffer offsets, so one
-  word is added for slot 1's, `gpu3d.c:296-313`), and the particle writer for the sort.
-- A shadow caster keeps `INSTANCED` in its key (`castIn` strips features it does not need,
-  `gpu3d.ms:304`), or an instanced mesh would cast from its model matrix.
+- `src/void3d/shader3d.ms` and `pixelArt3d.ms` (the attribute structs carry the row; the vertex
+  entries read it outside the skinned path), `scripts/regen-shaders.sh` (each mesh layout's
+  attribute list), `src/void3d/gpu3d.c` (`describeInstanceRow` in every mesh layout), and
+  `src/void3d/draw.ms` (`InstanceRun` on a `MeshInstances` stream, `bindItem` binding slot 1 at
+  the run's byte offset).
+- A shadow caster reads the row like its colour program, so an instanced mesh casts from its
+  instances.
 
 **What it can regress.**
 - `src/test/drawCheck.ms:194-195` asserts that `drawsQuads(layout) == layoutPerInstance(layout)`
@@ -301,15 +290,12 @@ selected by the key, the binding needing an offset word, and sort order across m
   per-instance data in slot 1 with a per-vertex slot 0, so both assertions and the door helper
   state the old rule; they are changed to ask about each buffer, and the new layout gets its own
   check (this is a deliberate change of an invariant, not a loosening).
-- The renderer refuses a mesh whose layout differs from the program's (`renderer.ms:385-387`):
-  a `LitTextured` mesh drawn with an `INSTANCED` program is `VertexLayout`, so the instanced
-  mesh is registered as a mesh of the new layout (its vertices are the same bytes).
-- Program count: each `INSTANCED` row is a full shdc compile for each preset and
-  `PREMULTIPLIED`/`CUTOUT`/`SHADOWED`/`NORMAL_MRT` combination it is declared with; declare
-  only what an effect asks for (additive and cutout first).
+- The renderer refuses a mesh whose layout differs from the program's (`renderer.ms`): the
+  particle's mesh keeps its own layout, and the stream is checked separately
+  (`validInstances`: a non-skinned program on a row layout, a `MeshInstances` stream, in range).
 - Backend behaviour of a per-instance slot 1 beside a per-vertex slot 0 with a buffer offset is
   new to Void (every current layout uses slot 0 only): probe on D3D11 and a WebGL2 build
-  before the layout lands (risk 12). Probed on 2026-10-24 at `0d3d4ecf`, raw sokol, D3D11 and
+  before the layout lands (risk 12). Probed on 2026-10-24 at `b73eeab5`, raw sokol, D3D11 and
   WebGL2 alike: three quads of two `FLOAT2` corners per vertex in slot 0, `FLOAT2` offset and
   `FLOAT4` colour per instance in slot 1, bound at `vertex_buffer_offsets[1]` = one instance
   (24 B) and drawn with 2 instances, read back exactly the clear colour, then green and blue;
@@ -475,7 +461,7 @@ Byte counts are from the field lists (est.), to be held by a layout check like
 | optional columns | FLOAT4 size3D + rotation, FLOAT4 or HALF4 quaternion (Rotation3D), FLOAT4 Custom1, FLOAT4 Custom2 | +16 each | only when a module or a custom shader reads them (A.9) |
 | `PARTICLE_SPAWN` (T1) | a0 FLOAT4 spawn position, spawn time; a1 FLOAT4 start velocity, lifetime; a2 FLOAT4 start rotation, angular velocity, start size, spare; a3 UBYTE4N start colour; a4 UINT seed | **56**, written on spawn only | procedural effects |
 | `PARTICLE_VISUAL` (as built) | root(4), shape(4), tile(4), color(4), velocity(3), look(4), scale(4), pull(3), emitterRight(3), emitterUp(3) | **144** (36 floats, was 64 B); the pass uniform gained the camera position (28 floats) | Billboard, Stretch, Horizontal and Vertical modes |
-| `PARTICLE_MESH` | slot 0 (per vertex): the mesh's own layout, 48 B for `LitTextured`; slot 1 (per instance): 3 x FLOAT4 world-space affine rows + FLOAT4 colour (A.2.1) | **64** per instance (+16 per custom column) | Mesh render mode, feature `INSTANCED` |
+| `PARTICLE_MESH` | slot 0 (per vertex): the mesh's own layout, 48 B for `LitTextured`; slot 1 (per instance): 3 x FLOAT4 world-space affine rows + FLOAT4 colour (A.2.1) | **64** per instance (+16 per custom column) | Mesh render mode, on the mesh's own program |
 | `RIBBON_POINT` | FLOAT4 position, width; UBYTE4N colour; FLOAT u; UINT chain id | **28** (32 HDR) | trails, both modes, and the Trail object |
 | today: `PARTICLE`, `PARTICLE_VISUAL` | `gpu3d.c:80-102` | 32, 64 | kept for the Heaps-compatibility front end the authoring report proposes, retired with it |
 
@@ -487,12 +473,12 @@ that the runtime report lists as cost item 2 (`particles.ms:669-727`) leave the 
 **Programs and key.** Two program bases: `ParticleSystem` (one vertex entry serving `STATE`
 and, under a `PROCEDURAL` feature, `SPAWN`; fragment = `billboardFs` grown by `SOFT` and
 `FLIPBOOK_BLEND`) and `Ribbon` (vertex entry over four `RIBBON_POINT` taps, same fragment). Mesh
-particles are a feature `INSTANCED` on `LitTextured`/`UnlitTextured`. Lighting stays a uniform
+particles are the mesh's own program reading a `MeshInstances` stream. Lighting stays a uniform
 switch, as `billboardFs` already does (`shader3d.ms:473`, `billboard.y != 0.0`), which is the
 precedent for A.2's uniform branches. Consequences in the key:
 - `Program` has 15 values in 4 bits (`gpu3d.ms:46-62`, `gpu3d.c:56`): adding two bases needs a
   5th bit, unless `Particle` and `ParticleVisual` retire first.
-- Three or four new feature bits (`INSTANCED` among them, A.2.1) move the key from 16 to about 20 bits. `KEY_LIMIT` is 65536
+- Two or three new feature bits move the key from 16 to about 19 bits. `KEY_LIMIT` is 65536
   with a dense index of that many entries (`gpu3d.ms:97`, `:222`); at 20 bits the dense index is
   1M entries (4 MB est.), so widening the key also means replacing the dense index with a sorted
   table of the declared rows (`programKeys.txt` has 256 rows). Existing mechanism, a measured
@@ -537,7 +523,7 @@ design and measurements in `src/shader/CLAUDE.md`; tiers in `docs/SHADER.md:5-47
 
 | Capability | State | Evidence |
 |---|---|---|
-| Compute pass, compute pipeline, dispatch | **none** in the GPU door, `src/sokol`, void2d or void3d (no `sg_dispatch`, no `.compute` pass) | grep of `src/gpu/*.c`, `src/gpu/*.ms`, `src/sokol/bridge.c` |
+| Compute pass, compute pipeline, dispatch | **none** in the GPU door, `src/host`, void2d or void3d (no `sg_dispatch`, no `.compute` pass) | grep of `src/gpu/*.c`, `src/gpu/*.ms`, `src/host/bridge.c` |
 | Storage buffers | **none**: buffers are vertex or index, optionally dynamic | `src/gpu/draw.c:15-17`; `src/void3d/gpu3d.c:213-270` |
 | sokol's compute matrix | Metal, D3D11, GL 4.3, GLES 3.1, WebGPU; **not** WebGL2, macOS GL or iOS GLES3; storage buffers have the same restriction | SG:815-830 |
 | Indirect draw, readback | none in sokol | docs/SHADER.md walls via src/shader/CLAUDE.md:217-219; runtime report §3.8 |
@@ -671,7 +657,7 @@ hot simulation and shares the kernel only for appearance (2D writes) and the ora
 | 9 | soft particles need a scene-depth texture, which the single forward pass does not expose (`forwardRenderer.ms:393-399`) | adds a depth copy or a depth-prepass per frame when any soft emitter is visible | only pay it when a `SOFT` program is in the frame; measure (D.6) |
 | 10 | T2 has no bit-exact CPU match and no readback | goldens per backend instead of one; a red cannot be bisected against the CPU | the person's decision (B.5 item 3) before any T2 work |
 | 11 | sort with T1: the CPU must evaluate motion to sort, so sorted procedural emitters keep a CPU cost per particle (HG:813-835) | sorted alpha effects gain less from T1 | document per emitter; additive and cutout effects need no sort |
-| 12 | mesh particles (A.2.1): the first layout with a per-instance slot 1 beside a per-vertex slot 0, drawn at a `vertex_buffer_offsets[1]` | every current layout uses slot 0 only, `drawCheck.ms:194-195` and `doorLayoutPerInstance` state the one-slot rule, and `INSTANCED` is the 17th key bit | probe the layout and the offset on D3D11 and WebGL2 with sokol validation on before the layout lands; change the two assertions to per-buffer ones in the same slice; do the key widening (risk 5) first |
+| 12 | mesh particles (A.2.1): the first layout with a per-instance slot 1 beside a per-vertex slot 0, drawn at a `vertex_buffer_offsets[1]` | every current layout uses slot 0 only, `drawCheck.ms:194-195` and `doorLayoutPerInstance` state the one-slot rule | probe the layout and the offset on D3D11 and WebGL2 with sokol validation on before the layout lands; change the two assertions to per-buffer ones in the same slice |
 
 ## D. Measurement plan
 

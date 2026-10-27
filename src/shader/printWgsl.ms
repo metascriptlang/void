@@ -171,6 +171,7 @@ class Printer {
 	ios: string[] = [];
 	functions: string[] = [];
 	workgroups: string[] = [];
+	privateVars: string[] = [];
 	fn: ShaderFunction = new ShaderFunction();
 	scope: string[] = [];
 	params: string[] = [];
@@ -526,6 +527,7 @@ function exprText(p: Printer, e: ShaderExpr): string {
 		ExprKind.Io => ioName(p, e.index),
 		ExprKind.Resource => p.resources[e.index],
 		ExprKind.Workgroup => p.workgroups[e.index],
+		ExprKind.Private => p.privateVars[e.index],
 		ExprKind.BlockMember => p.resources[e.index] + "." +
 			memberName(p, m.resources[e.index].type, e.member),
 		ExprKind.Unary => match (e.unary) {
@@ -842,6 +844,7 @@ export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]
 	p.ios = m.ios.map((io) => io.stage == e.stage ? nameIn(p, p.taken, io.name) : "");
 	p.functions = m.functions.map((x) => nameIn(p, p.taken, x.name));
 	p.workgroups = m.workgroups.map((w) => nameIn(p, p.taken, w.name));
+	p.privateVars = m.privates.map((v) => nameIn(p, p.taken, v.name));
 
 	let functions: string[] = [];
 	for (let i = 0; i < m.functions.length; i++) {
@@ -907,6 +910,9 @@ export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]
 	for (const w of reads.workgroups) {
 		decls.push("var<workgroup> " + p.workgroups[w] + " : " + typeText(p, m.workgroups[w].type) +
 			";");
+	}
+	for (const v of reads.privates) {
+		decls.push("var<private> " + p.privateVars[v] + " : " + typeText(p, m.privates[v].type) + ";");
 	}
 	for (const v of privates) { decls.push(v); }
 	if (p.upperLeft) {

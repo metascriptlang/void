@@ -43,6 +43,7 @@ import {
 	GPUTextureViewDescriptor,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
+	GPU_MAX_VERTEX_BUFFERS,
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
 	GPUTextureUsage,
@@ -56,6 +57,7 @@ import {
 } from "./types.ms";
 import {
 	allocate,
+	PipelineRecord,
 	ShaderRecord,
 	alive,
 	bindGroupRecords,
@@ -100,6 +102,7 @@ import {
 	checkedDispatch,
 	checkedDrawIndirect,
 	checkedDrawOffsets,
+	checkedDrawRange,
 	checkedDrawState,
 	checkedEndOcclusion,
 	checkedEndPass,
@@ -145,6 +148,7 @@ import {
 	dynamicRoomOf,
 	groupOfKind,
 	uniformEntryCount,
+	vertexBufferRecordOf,
 	vertexSlotsOf,
 	advanceFrame,
 	cacheCanvas,
@@ -280,7 +284,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	checkedRenderPipeline(descriptor);
 	const shader = shaderRecords.record(descriptor.vertex.module.id);
 	const id = allocate(pipelineRecords);
-	store(pipelineRecords, {
+	let record: PipelineRecord = {
 		id: id,
 		shader: descriptor.vertex.module.id,
 		vertexSlots: vertexSlotsOf(descriptor),
@@ -290,7 +294,9 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 		readsVertexIndex: shader.readsVertexIndex,
 		strip: isStripTopology(descriptor.primitive.topology),
 		stripIndexFormat: descriptor.primitive.stripIndexFormat,
-	});
+	};
+	for (let b = 0; b < GPU_MAX_VERTEX_BUFFERS; b++) { record.vertexBuffers[b] = vertexBufferRecordOf(descriptor.vertex.buffers[b]); }
+	store(pipelineRecords, record);
 	backend.createRenderPipeline(id, resolvedRenderPipeline(descriptor));
 	return { id: id };
 }
@@ -741,6 +747,7 @@ function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offse
 @inline export function draw(this self: GPURenderPassEncoder, vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	checkedInPass(PASS_RENDER, "draw");
 	checkedDrawState("draw", false);
+	checkedDrawRange("draw", false, vertexCount, instanceCount, firstVertex, firstInstance);
 	if (instanceCount != 0) { checkedDrawOffsets("draw", "firstVertex", firstVertex, firstInstance); }
 	backend.draw(vertexCount, instanceCount, firstVertex, firstInstance);
 }
@@ -755,6 +762,7 @@ function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offse
 ): void {
 	checkedInPass(PASS_RENDER, "drawIndexed");
 	checkedDrawState("drawIndexed", true);
+	checkedDrawRange("drawIndexed", true, indexCount, instanceCount, firstIndex, firstInstance);
 	if (instanceCount != 0) { checkedDrawOffsets("drawIndexed", "baseVertex", baseVertex, firstInstance); }
 	backend.drawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 }

@@ -2,7 +2,7 @@
 // and the SDF generator (-d:voidSdfText) are linked when their flag is on and absent when it is
 // off.
 
-import { gfxSetup, dpiScale } from "../../src/sokol/gpu";
+import { gfxSetup, dpiScale } from "../../src/host/gpu";
 import { setup2d } from "../../src/void2d/draw";
 import {
 	allocateLabelText,
@@ -14,7 +14,7 @@ import { DEFAULT_FONT } from "../../src/void2d/font";
 import { Align } from "../../src/void2d/textLayout";
 import { trs2d } from "../../src/void2d/types";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 const LABEL_TEXT: string = "fn layout(width: f32) -> Size { width } // ffi -> =>";

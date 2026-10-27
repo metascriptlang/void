@@ -30,6 +30,7 @@ import {
 	MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
 	UNLIT_MATERIAL_UNIFORM_LENGTH,
 	UNLIT_MATERIAL_COLOR,
+	MATERIAL_COLOR,
 	BACK_VIEW_SLOT,
 	DISSOLVE_VIEW_SLOT,
 	DISSOLVE_SAMPLER_SLOT,
@@ -49,6 +50,7 @@ import {
 	BILLBOARD_UNIFORM_LENGTH,
 	uniformBlockLength,
 	vertexLayoutOf,
+	readsInstanceRows,
 	MATERIAL_ALPHA_KILL,
 	METAL_ROUGH_VIEW_SLOT,
 	OCCLUSION_VIEW_SLOT,
@@ -58,10 +60,14 @@ import {
 	SHADOW_SAMPLER_SLOT,
 	SPOT_SHADOW_VIEW_SLOT,
 	SPOT_SHADOW_SAMPLER_SLOT,
+	CUBE_SHADOW_VIEW_SLOT,
 	SHADOW_SCENE_VIEWS,
 	SHADOW_SCENE_SAMPLERS,
 	ENV_SCENE_VIEWS,
 	ENV_SCENE_SAMPLERS,
+	CLUSTER_SCENE_VIEWS,
+	LIGHT_RECORDS_VIEW_SLOT,
+	CLUSTER_SCENE_SAMPLERS,
 	ENV_DIFFUSE_VIEW_SLOT,
 	ENV_SPECULAR_VIEW_SLOT,
 	ENV_SAMPLER_SLOT,
@@ -87,8 +93,6 @@ import {
 	MeshId,
 	MaterialId,
 	MaterialError,
-	MODEL_SLOT,
-	MODEL_LENGTH,
 	addMesh,
 	addMaterial,
 	releaseMaterial,
@@ -261,7 +265,7 @@ test "every key packs to bits of its own, and each declared one reads its progra
 	assert declared == 174 + 6;
 }
 
-test "skin programs own slot7, omit mesh model and keep matching colour/shadow layouts" {
+test "skin programs own slot7 and keep matching colour/shadow layouts" {
 	for (const program of [Program.Lit, Program.LitTextured, Program.UnlitTextured]) {
 		const key = ProgramKey.of(program).withSkin();
 		assert key.bits() == (ProgramKey.of(program).bits() | (1 << 14));
@@ -270,7 +274,6 @@ test "skin programs own slot7, omit mesh model and keep matching colour/shadow l
 			assert drawn.ok;
 			if (!drawn.ok) { continue; }
 			assert uniformBlockLength(drawn.value, SKIN_UNIFORM_SLOT) == SKIN_UNIFORM_LENGTH;
-			assert uniformBlockLength(drawn.value, MODEL_SLOT) == 0;
 			const expected: int32 = program == Program.Lit ? 18 : 20;
 			assert layoutFloats(vertexLayoutOf(drawn.value), 0) == expected;
 		}
@@ -312,7 +315,6 @@ test "every core normal MRT mesh key retains its skinned palette and separate fe
 			assert skin.bits() == (key.bits() | (1 << 14));
 			assert skin.bits() >= (1 << 15) && skin.bits() < 65536;
 			assert uniformBlockLength(skin, SKIN_UNIFORM_SLOT) == SKIN_UNIFORM_LENGTH;
-			assert uniformBlockLength(skin, MODEL_SLOT) == 0;
 			checked++;
 		}
 	}
@@ -541,9 +543,8 @@ test "every block the CPU writes is the length its shader declares, read off the
 		assert uniformBlockLength(lit, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
 		assert uniformBlockLength(lit, LIGHT_UNIFORM_SLOT) == LIGHT_UNIFORM_LENGTH;
 		assert uniformBlockLength(lit, MATERIAL_UNIFORM_SLOT) == MATERIAL_UNIFORM_LENGTH;
-		assert uniformBlockLength(lit, MODEL_SLOT) == MODEL_LENGTH;
 		assert uniformBlockLength(lit, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
-		assert declaredSlots(lit) == 5;
+		assert declaredSlots(lit) == 4;
 	}
 	for (const billboard of [ProgramKey.of(Program.Billboard), pixelArt(Program.Billboard)]) {
 		assert uniformBlockLength(billboard, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
@@ -735,7 +736,7 @@ test "the core owns its camera and light blocks, so only it could give them back
 }
 
 const UNIFORM_SLOTS_OF_LIT: Vec<int32> =
-	[VERTEX_UNIFORM_SLOT, LIGHT_UNIFORM_SLOT, MATERIAL_UNIFORM_SLOT, MODEL_SLOT];
+	[VERTEX_UNIFORM_SLOT, LIGHT_UNIFORM_SLOT, MATERIAL_UNIFORM_SLOT];
 
 test "each cutout key keeps the uncut key's layout and blocks, in both presets" {
 	for (const program of [Program.Lit, Program.LitTextured, Program.UnlitTextured]) {
@@ -763,7 +764,7 @@ test "a cutout program refuses a block without a positive alpha-kill threshold" 
 		const reserved: Result<UniformBlock, UniformError> =
 			reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 		if (!reserved.ok) { unreachable; }
-		let values: Vec<float32> = [0.0, 0.0, 0.0, 0.0];
+		let values: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 		values[MATERIAL_ALPHA_KILL] = threshold;
 		if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
 		const made: Result<MaterialId, MaterialError> = addMaterial(context, {
@@ -849,12 +850,10 @@ test "unlit textured programs require colour data and no light uniform block" {
 		assert uniformBlockLength(program, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
 		assert uniformBlockLength(program, MATERIAL_UNIFORM_SLOT) == 8;
 	}
-	assert uniformBlockLength(ProgramKey.of(Program.UnlitTextured), MODEL_SLOT) == 16;
-	assert uniformBlockLength(pixelArt(Program.UnlitTextured), MODEL_SLOT) == MODEL_LENGTH;
 }
 
-test "an unlit material refuses a missing colour block or the old lit block size" {
-	for (const length of [0, MATERIAL_UNIFORM_LENGTH]) {
+test "an unlit material refuses a missing block or one that stops before its colour" {
+	for (const length of [0, UNLIT_MATERIAL_COLOR]) {
 		const context: DrawContext =
 			DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH + length);
 		let block: UniformBlock = NO_UNIFORMS;
@@ -895,7 +894,7 @@ function bit(mask: uint32, slot: int32): boolean {
 	return (mask & ((1 as uint32) << (slot as uint32))) != 0;
 }
 
-test "a shadowed key loads the sun map at view 4; a core one the spot map at 6; neither samples" {
+test "a shadowed key loads the sun map at view 4, a core one the spot and point maps, unsampled" {
 	let shadowedKeys: int32 = 0;
 	for (const key of everyKey()) {
 		if (!declares(key)) { continue; }
@@ -908,6 +907,7 @@ test "a shadowed key loads the sun map at view 4; a core one the spot map at 6; 
 		assert !bit(samplers, SHADOW_SAMPLER_SLOT);
 		assert spot == bit(views, SPOT_SHADOW_VIEW_SLOT);
 		assert !bit(samplers, SPOT_SHADOW_SAMPLER_SLOT);
+		assert spot == bit(views, CUBE_SHADOW_VIEW_SLOT);
 		assert uniformBlockLength(key, SHADOW_UNIFORM_SLOT) == (sun ? SHADOW_UNIFORM_LENGTH : 0);
 		if (sun) {
 			assert key.shadowed;
@@ -915,7 +915,7 @@ test "a shadowed key loads the sun map at view 4; a core one the spot map at 6; 
 		}
 	}
 	assert shadowedKeys > 0;
-	assert SHADOW_VIEW_SLOT == 4 && SPOT_SHADOW_VIEW_SLOT == 6;
+	assert SHADOW_VIEW_SLOT == 4 && SPOT_SHADOW_VIEW_SLOT == 6 && CUBE_SHADOW_VIEW_SLOT == 12;
 	assert SHADOW_SAMPLER_SLOT == 2 && SPOT_SHADOW_SAMPLER_SLOT == 3;
 }
 
@@ -924,8 +924,8 @@ test "an untextured shadowed key reads only the scene maps, in either preset" {
 		const key: ProgramKey = ProgramKey.of(Program.Lit).withShadowed().withPreset(preset);
 		assert declares(key);
 		assert textureSlotMask(key) != 0;
-		assert (textureSlotMask(key) & ~SHADOW_SCENE_VIEWS) == 0;
-		assert (samplerSlotMask(key) & ~SHADOW_SCENE_SAMPLERS) == 0;
+		assert (textureSlotMask(key) & ~(SHADOW_SCENE_VIEWS | CLUSTER_SCENE_VIEWS)) == 0;
+		assert (samplerSlotMask(key) & ~(SHADOW_SCENE_SAMPLERS | CLUSTER_SCENE_SAMPLERS)) == 0;
 	}
 }
 
@@ -995,11 +995,10 @@ test "movingDefaults makes both UV transforms and an unlit colour the identity, 
 		for (let i = 0; i < (values.length as int32); i++) {
 			if (values[i] == 1.0) { ones = ones + 1; } else { assert values[i] == 0.0; }
 		}
-		if (program == Program.UnlitTextured) {
-			for (let i = 0; i < 4; i++) { assert values[UNLIT_MATERIAL_COLOR + i] == 1.0; }
-		}
-		const colour: int32 = program == Program.UnlitTextured ? 4 : 0;
-		assert ones == 4 + colour;
+		const colour: int32 =
+			program == Program.UnlitTextured ? UNLIT_MATERIAL_COLOR : MATERIAL_COLOR;
+		for (let i = 0; i < 4; i++) { assert values[colour + i] == 1.0; }
+		assert ones == 8;
 		for (const matrix of [base + MOVING_UV_MATRIX, base + MOVING_BACK_UV_MATRIX]) {
 			assert values[matrix] == 1.0 && values[matrix + 1] == 0.0;
 			assert values[matrix + 2] == 0.0 && values[matrix + 3] == 1.0;
@@ -1116,7 +1115,7 @@ test "a premultiplied card can cut and dissolve, and its caster cuts and dissolv
 			assert castCut.value.cutout && !castCut.value.premultiplied;
 			assert uniformBlockLength(castCut.value, MATERIAL_UNIFORM_SLOT) ==
 				uniformBlockLength(cut, MATERIAL_UNIFORM_SLOT);
-			assert textureSlotMask(castCut.value) == textureSlotMask(cut);
+			assert textureSlotMask(castCut.value) == (textureSlotMask(cut) & ~CLUSTER_SCENE_VIEWS);
 		}
 		const castMelting: Result<ProgramKey, ProgramError> = castIn(melting);
 		assert castMelting.ok;
@@ -1174,7 +1173,11 @@ test "particleVisual declares additive program14 layout9 with original billboard
 		assert uniformBlockLength(key, BILLBOARD_UNIFORM_SLOT) == BILLBOARD_UNIFORM_LENGTH;
 		assert uniformBlockLength(key, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
 		assert uniformBlockLength(key, 4) == 0 && uniformBlockLength(key, SKIN_UNIFORM_SLOT) == 0;
-		assert textureSlotMask(key) == 1 && samplerSlotMask(key) == 1;
+		const lightViews: uint32 = preset == Preset.PixelArt
+			? 1 << (LIGHT_RECORDS_VIEW_SLOT as uint32)
+			: CLUSTER_SCENE_VIEWS;
+		assert textureSlotMask(key) == 1 + lightViews;
+		assert samplerSlotMask(key) == 1 + CLUSTER_SCENE_SAMPLERS;
 		const skin: ProgramKey = { ...key, skinned: true };
 		assert !declares(skin);
 	}
@@ -1188,24 +1191,22 @@ test "particleVisual declares additive program14 layout9 with original billboard
 	assert layoutFloats(VertexLayout.Billboard, 0) == 15;
 }
 
-test "an instanced key sets bit 18, is declared lit and unlit in each preset and casts instanced" {
-	const lit: ProgramKey = ProgramKey.of(Program.LitTextured).withInstanced();
-	assert lit.bits() == ProgramKey.of(Program.LitTextured).bits() + 262144;
-	assert describe(lit).includes(" instanced");
-	const programs: Vec<Program> = [Program.LitTextured, Program.UnlitTextured];
+test "every mesh program and its shadow casters have a layout carrying the instance row" {
+	const programs: Vec<Program> = [Program.Lit, Program.LitTextured, Program.UnlitTextured];
 	const presets: Vec<Preset> = [Preset.Core, Preset.PixelArt];
 	for (const program of programs) {
 		for (const preset of presets) {
-			const key = ProgramKey.of(program).withPreset(preset).withInstanced();
-			assert declares(key) && declares(key.withCutout()) && declares(key.withPremultiplied());
-			assert vertexLayoutOf(key) == VertexLayout.InstancedLitTextured;
+			const key = ProgramKey.of(program).withPreset(preset);
+			assert declares(key) && readsInstanceRows(vertexLayoutOf(key));
+			assert readsInstanceRows(vertexLayoutOf(key.withSkin()));
 		}
-		const cast = castIn(ProgramKey.of(program).withInstanced().withCutout());
-		assert cast.ok && cast.value.instanced && cast.value.preset == Preset.Shadow;
-		const plain = castIn(ProgramKey.of(program).withInstanced());
-		assert plain.ok && plain.value.instanced;
-		assert !declares({ ...ProgramKey.of(program).withInstanced(), skinned: true });
+		for (const caster of [ProgramKey.of(program), ProgramKey.of(program).withCutout()]) {
+			const cast = castIn(caster);
+			assert cast.ok && cast.value.preset == Preset.Shadow;
+			if (cast.ok) { assert readsInstanceRows(vertexLayoutOf(cast.value)); }
+		}
 	}
+	assert !readsInstanceRows(vertexLayoutOf(ProgramKey.of(Program.Billboard)));
 }
 
 test "a pbr-maps key sets bit 17, is declared in all four variants and binds slots 0, 1 and 2" {
@@ -1221,14 +1222,86 @@ test "a pbr-maps key sets bit 17, is declared in all four variants and binds slo
 			assert !cast.ok || !cast.value.pbrMaps;
 		}
 	}
-	assert textureSlotMask(base) == 7 + ENV_SCENE_VIEWS;
-	assert samplerSlotMask(base) == 1 + ENV_SCENE_SAMPLERS;
-	assert textureSlotMask(base.withShadowed()) == 23 + 64 + ENV_SCENE_VIEWS;
-	assert textureSlotMask(tangent) == 39 + ENV_SCENE_VIEWS;
+	assert textureSlotMask(base) == 7 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
+	assert samplerSlotMask(base) == 1 + ENV_SCENE_SAMPLERS + CLUSTER_SCENE_SAMPLERS;
+	assert textureSlotMask(base.withShadowed()) ==
+		23 + 64 + 4096 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
+	assert textureSlotMask(tangent) == 39 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
 	assert viewSlotOf(5) == METAL_ROUGH_VIEW_SLOT && viewSlotOf(6) == OCCLUSION_VIEW_SLOT;
 	assert METAL_ROUGH_VIEW_SLOT == 1 && OCCLUSION_VIEW_SLOT == 2;
 	assert MATERIAL_TEXTURE_ROLES == 7 && !colorRole(5) && !colorRole(6) && colorRole(0);
 	assert !declares({ ...ProgramKey.of(Program.Lit).withPbr(), pbrMaps: true });
+}
+
+function uvBLayoutOf(key: ProgramKey): VertexLayout {
+	if (key.skinned) {
+		return key.normalMap
+			? VertexLayout.SkinLitTexturedTangentUvB : VertexLayout.SkinLitTexturedUvB;
+	}
+	return key.normalMap ? VertexLayout.LitTexturedTangentUvB : VertexLayout.LitTexturedUvB;
+}
+
+test "an occlusion-uv-b key sets bit 18 and is declared on a uv-b layout wherever pbr-maps is" {
+	const maps: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps();
+	assert maps.withOcclusionUvB().bits() == maps.bits() + 262144;
+	assert describe(maps.withOcclusionUvB()).includes(" occlusion-uv-b");
+	const emitting: ProgramKey = maps.withEmissive();
+	const variants: Vec<ProgramKey> = [
+		maps, maps.withNormalMap(), maps.withSkin(), maps.withNormalMap().withSkin(),
+		emitting, emitting.withNormalMap(),
+	];
+	for (const key of variants) {
+		for (const cut of [false, true]) {
+			for (const shadowed of [false, true]) {
+				let made: ProgramKey = cut ? key.withCutout() : key;
+				made = shadowed ? made.withShadowed() : made;
+				const second: ProgramKey = made.withOcclusionUvB();
+				assert declares(made) && declares(second);
+				assert vertexLayoutOf(second) == uvBLayoutOf(made);
+				assert textureSlotMask(second) == textureSlotMask(made);
+				assert samplerSlotMask(second) == samplerSlotMask(made);
+				assert uniformBlockLength(second, MATERIAL_UNIFORM_SLOT) ==
+					uniformBlockLength(made, MATERIAL_UNIFORM_SLOT);
+				const cast = castIn(second);
+				const plain = castIn(made);
+				assert cast.ok == plain.ok;
+				if (cast.ok && plain.ok) { assert cast.value.bits() == plain.value.bits(); }
+			}
+		}
+	}
+	assert !declares({ ...ProgramKey.of(Program.LitTextured).withPbr(), occlusionUvB: true });
+}
+
+test "a parallax key sets bit 19 on a normal-mapped pbr-maps key and binds no view of its own" {
+	const maps: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps()
+		.withNormalMap();
+	assert maps.withParallax().bits() == maps.bits() + 524288;
+	assert describe(maps.withParallax()).includes(" parallax");
+	const variants: Vec<ProgramKey> = [
+		maps, maps.withSkin(), maps.withEmissive(), maps.withOcclusionUvB(),
+		maps.withSkin().withOcclusionUvB(), maps.withEmissive().withOcclusionUvB(),
+	];
+	for (const key of variants) {
+		for (const cut of [false, true]) {
+			for (const shadowed of [false, true]) {
+				let made: ProgramKey = cut ? key.withCutout() : key;
+				made = shadowed ? made.withShadowed() : made;
+				const stepped: ProgramKey = made.withParallax();
+				assert declares(made) && declares(stepped);
+				assert vertexLayoutOf(stepped) == vertexLayoutOf(made);
+				assert textureSlotMask(stepped) == textureSlotMask(made);
+				assert samplerSlotMask(stepped) == samplerSlotMask(made);
+				assert uniformBlockLength(stepped, MATERIAL_UNIFORM_SLOT) ==
+					uniformBlockLength(made, MATERIAL_UNIFORM_SLOT);
+				const cast = castIn(stepped);
+				const plain = castIn(made);
+				assert cast.ok == (plain.ok && !cut);
+				if (cast.ok && plain.ok) { assert cast.value.bits() == plain.value.bits(); }
+			}
+		}
+	}
+	const unmapped: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps();
+	assert !declares({ ...unmapped, parallax: true });
 }
 
 test "a skinned pbr key is declared on the skinned layout in every variant a glTF material makes" {
@@ -1282,9 +1355,10 @@ test "an emitting pbr key keeps its emissive vec4 after the pbr one and binds vi
 			}
 		}
 	}
-	assert textureSlotMask(base) == 9 + ENV_SCENE_VIEWS;
-	assert textureSlotMask(maps) == 15 + ENV_SCENE_VIEWS;
-	assert NORMAL_VIEW_SLOT == 5 && textureSlotMask(base.withNormalMap()) == 41 + ENV_SCENE_VIEWS;
+	const scene: uint32 = ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
+	assert textureSlotMask(base) == 9 + scene;
+	assert textureSlotMask(maps) == 15 + scene;
+	assert NORMAL_VIEW_SLOT == 5 && textureSlotMask(base.withNormalMap()) == 41 + scene;
 }
 
 test "every pbr key reads the environment's cubes past the shadow maps, and no other key does" {

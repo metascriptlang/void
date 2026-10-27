@@ -4,6 +4,7 @@ import {
 	GPUBuffer,
 	GPUBufferUsage,
 	GPUDevice,
+	GPULoadOp,
 	GPUMapMode,
 	GPURenderPassDescriptor,
 	GPURenderPassEncoder,
@@ -53,7 +54,7 @@ export function colourTarget(device: GPUDevice, sampleCount: int32): GPUTexture 
 	});
 }
 
-export function drawOverLoadedStencil(device: GPUDevice, tester: GPURenderPipeline, target: GPUTexture): void {
+export function drawOverLoadedStencil(device: GPUDevice, tester: GPURenderPipeline, target: GPUTexture, depthLoadOp: GPULoadOp = "clear"): void {
 	const vertices = vertexBuffer(device, 32);
 	const full: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0];
 	device.queue.writeBuffer(vertices, 0, full);
@@ -68,7 +69,7 @@ export function drawOverLoadedStencil(device: GPUDevice, tester: GPURenderPipeli
 	first.depthStencilAttachment = {
 		view: depth.createView({ label: null }),
 		depthClearValue: 1.0,
-		depthLoadOp: "clear",
+		depthLoadOp: depthLoadOp,
 		depthStoreOp: "store",
 		stencilClearValue: 1,
 		stencilLoadOp: "clear",

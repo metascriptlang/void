@@ -1,5 +1,5 @@
 import { readFile } from "std/fs";
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3, quatBetween } from "../../src/math/math3d";
 import { RenderState } from "../../src/gpu/state";
 import { beginScreenPass } from "../../src/gpu/target";
@@ -32,7 +32,7 @@ import {
 	voidCaptureWritePng, voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,
@@ -91,7 +91,7 @@ function decoded(): GltfData {
 function bind(): void {
 	const data: GltfData = decoded();
 	const added: Result<GltfAssets, GltfSceneError> = addGltfAssets(context, data, {
-		pass: RenderState.defaults(), block: [4.0, 0.0, 0.0, 0.0],
+		pass: RenderState.defaults(), block: [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
 	});
 	if (!added.ok) { fail(`assets refused: ${added.error.toString()}`); return; }
 	model = addGroup(scene, scene.rootId(), Transform3D.identity());

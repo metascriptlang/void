@@ -1,5 +1,5 @@
 import { Vec3, vec3, Mat4, eulerQuat } from "../math/math3d";
-import { LIGHT_UNIFORM_LENGTH, MAX_POINT_LIGHTS } from "../void3d/gpu3d";
+import { LIGHT_RECORD_COLOR, LIGHT_RECORD_LENGTH, LIGHT_UNIFORM_LENGTH } from "../void3d/gpu3d";
 import { DrawContext, DrawItem } from "../void3d/draw";
 import {
 	Scene3D,
@@ -497,15 +497,18 @@ test "nameOf reads back what setName wrote, and a fresh node is unnamed" {
 // ---- lights, in the role of h3d.scene.Light / fwd.DirLight / fwd.PointLight ----
 
 const AMBIENT_AT: int32 = 0;
-const COUNT_AT: int32 = 3;
 const DIR_AT: int32 = 4;
 const DIR_COLOR_AT: int32 = 8;
-const POINT_AT: int32 = 12;
-const COLOR_AT: int32 = POINT_AT + MAX_POINT_LIGHTS * 4;
-const POINT_STRIDE: int32 = 4;
+const POINT_AT: int32 = LIGHT_UNIFORM_LENGTH;
+const COLOR_AT: int32 = POINT_AT + LIGHT_RECORD_COLOR;
+const POINT_STRIDE: int32 = LIGHT_RECORD_LENGTH;
 
 function blockOf(): Vec<float32> {
-	return new Array(LIGHT_UNIFORM_LENGTH);
+	return [];
+}
+
+function holdsRecords(block: Vec<float32>, count: int32): boolean {
+	return (block.length as int32) == LIGHT_UNIFORM_LENGTH + count * LIGHT_RECORD_LENGTH;
 }
 
 function oneLight(
@@ -548,7 +551,7 @@ test "collectLights writes a point light's world place, color and radius" {
 	const collected: Result<int32, LightError> = collectLights(scene, block);
 	assert collected.ok;
 	if (collected.ok) { assert collected.value == 1; }
-	assert approx(block[COUNT_AT], 1.0);
+	assert holdsRecords(block, 1);
 	assert nearAt(block, POINT_AT, 1.0, 2.0, 3.0);
 	assert approx(block[POINT_AT + 3], 1.35);
 	assert nearAt(block, COLOR_AT, 1.0, 0.45, 0.16);
@@ -595,7 +598,7 @@ test "a directional light's direction is its front vector negated and normalized
 	assert nearAt(block, DIR_COLOR_AT, 1.0, 1.0, 1.0);
 }
 
-test "point lights sort by priority and keep declaration order on ties" {
+test "every point light is a record, in the order the scene holds them, whatever its priority" {
 	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const _low: NodeId3D = oneLight(scene, vec3(1.0, 0.0, 0.0), {
 		kind: LightKind.Point, color: vec3(1.0, 0.0, 0.0), radius: 1.0, power: 1.0, priority: 0,
@@ -610,8 +613,8 @@ test "point lights sort by priority and keep declaration order on ties" {
 	const collected: Result<int32, LightError> = collectLights(scene, block);
 	assert collected.ok;
 	if (collected.ok) { assert collected.value == 3; }
-	assert approx(block[POINT_AT], 2.0);
-	assert approx(block[POINT_AT + POINT_STRIDE], 1.0);
+	assert approx(block[POINT_AT], 1.0);
+	assert approx(block[POINT_AT + POINT_STRIDE], 2.0);
 	assert approx(block[POINT_AT + 2 * POINT_STRIDE], 3.0);
 }
 
@@ -630,12 +633,12 @@ test "light setters reach collectLights for that light alone" {
 	const collected: Result<int32, LightError> = collectLights(scene, block);
 	assert collected.ok;
 	if (collected.ok) { assert collected.value == 2; }
-	assert approx(block[POINT_AT], 2.0);
-	assert nearAt(block, COLOR_AT, 0.0, 1.0, 0.0);
-	assert approx(block[COLOR_AT + 3], 2.0);
-	assert approx(block[POINT_AT + POINT_STRIDE], 1.0);
-	assert nearAt(block, COLOR_AT + POINT_STRIDE, 0.0, 0.0, 1.0);
-	assert approx(block[COLOR_AT + POINT_STRIDE + 3], 7.0);
+	assert approx(block[POINT_AT], 1.0);
+	assert nearAt(block, COLOR_AT, 0.0, 0.0, 1.0);
+	assert approx(block[COLOR_AT + 3], 7.0);
+	assert approx(block[POINT_AT + POINT_STRIDE], 2.0);
+	assert nearAt(block, COLOR_AT + POINT_STRIDE, 0.0, 1.0, 0.0);
+	assert approx(block[COLOR_AT + POINT_STRIDE + 3], 2.0);
 }
 
 test "a directional light's color setter reaches its block slot" {
@@ -650,17 +653,18 @@ test "a directional light's color setter reaches its block slot" {
 	assert nearAt(block, DIR_COLOR_AT, 0.2, 0.3, 0.4);
 }
 
-test "a light beyond the block's slots is an error, not a silent drop" {
+test "lights past the old four slots are all collected, none dropped" {
 	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
-	for (let i = 0; i <= MAX_POINT_LIGHTS; i++) {
+	for (let i = 0; i < 9; i++) {
 		const _each: NodeId3D = oneLight(scene, vec3(0.0, 0.0, 0.0), {
 			kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
 		});
 	}
 	let block: Vec<float32> = blockOf();
 	const collected: Result<int32, LightError> = collectLights(scene, block);
-	assert !collected.ok;
-	if (!collected.ok) { assert collected.error == LightError.TooManyPointLights; }
+	assert collected.ok;
+	if (collected.ok) { assert collected.value == 9; }
+	assert holdsRecords(block, 9);
 }
 
 test "a second directional light is an error" {
@@ -695,7 +699,7 @@ test "an invisible light is not collected" {
 	const collected: Result<int32, LightError> = collectLights(scene, block);
 	assert collected.ok;
 	if (collected.ok) { assert collected.value == 0; }
-	assert approx(block[COUNT_AT], 0.0);
+	assert holdsRecords(block, 0);
 }
 
 test "ambient comes from the scene and zeroed slots mean unlit" {

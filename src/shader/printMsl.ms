@@ -703,6 +703,8 @@ function exprText(p: Printer, e: ShaderExpr): string {
 		ExprKind.Io => ioText(p, e.index),
 		ExprKind.Resource => p.resources[e.index],
 		ExprKind.Workgroup => p.workgroups[e.index],
+		ExprKind.Private => fail(p, "private variable '" + m.privates[e.index].name +
+			"' has no MSL form yet"),
 		ExprKind.BlockMember => p.resources[e.index] + "." +
 			memberName(p, m.resources[e.index].type, e.member),
 		ExprKind.Unary => match (e.unary) {

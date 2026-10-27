@@ -108,7 +108,9 @@ function checkU8(mode: string, alphaMode: GltfAlphaMode): boolean {
 		nodes: [],
 		sceneRoots: [],
 	};
-	const setup: GltfMaterialSetup = { pass: RenderState.defaults(), block: [0.0, 0.0, 0.0, 0.0] };
+	const setup: GltfMaterialSetup = {
+		pass: RenderState.defaults(), block: [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+	};
 	const assets = addGltfAssets(context, materialData, setup);
 	if (!assets.ok) { return false; }
 	let owned = assets.value;

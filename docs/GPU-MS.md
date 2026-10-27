@@ -48,6 +48,7 @@ End-game done when, in addition:
 | Browser | WebGPU (`src/webgpu/wgpu`, `-d:webgpu`) | `scripts/build-web.sh`, headless Chrome shows the full void2d demo |
 | Browser | WebGL2 (`src/webgpu/gl`, GLES3 path, `-d:webgl2`) | same page, same picture outside the animated node tree |
 | Android | GLES3 (`src/webgpu/gl`, `OGL_GLES`) | check-only: NDK clang `-fsyntax-only` clean, `msc check --os=android` 114 modules; never linked or run |
+| Android | Vulkan (`src/webgpu/vulkan`, `-d:voidVulkan`, views on `src/sokol/bridgeAndroidVulkan.c`) | link-only: the campfire `.so` built with NDK clang needs no EGL or GLES and resolves under `voidJni.c` with `--no-undefined`, tree `9c872362`; never run on a device |
 
 On those targets nothing includes sokol any more. The windows are Void's own: Win32
 (`src/platform/win32/`, ported from `sokol_app.h`), browser (`src/platform/web/`), Android EGL
@@ -701,8 +702,8 @@ cross-backend bound, 4 of them pending at delta 1.
 
 - Linux (Windows side, WSL2): `src/platform/linux/` (X11 + GLX, port of `_SAPP_LINUX`),
   `src/sokol/bridgeLinux.c` and the `when (linux)` block of `src/sokol/gpu.ms`. Cross-built from
-  Windows (`msc build --os=linux` with WSL's GL/X11 headers and libs, Yoga built for linux by hand
-  because `yoga/src/yogaH.ms` has no linux branch: note in `~/metascript/.inbox/yoga/`), it runs
+  Windows (`msc build --os=linux` with WSL's GL/X11 headers and libs; Yoga compiles from source
+  under `yoga/src/yogaH.ms`'s linux branch since yoga `1f207c9`), it runs
   in WSLg on llvmpipe at 4b66e809 and draws the whole void2d demo. Linux goldens wait for a
   current `msc` in WSL.
 
@@ -757,15 +758,17 @@ cross-backend bound, 4 of them pending at delta 1.
 `scripts/abBench.sh` provisions and `scripts/bench-ab.sh` measures (its protocol is docs/TESTING.md
 "T4": interleaved pairs, load sampled on both sides of a run, NOISY pairs and `AB_MIN_CLEAN`).
 The performance clause of "End-game done when" is read from the `tests/bench` entries
-`Ui Sprites Text Editor Scroll`, built `--release` by one `msc` (`msc --version` and
+`Ui Sprites Text Editor Scroll Campfire`, built `--release` by one `msc` (`msc --version` and
 `~/.metascript/BUILD` go to `$TEMP/voidAB/env.txt`) from side A, a detached worktree
 `../void-ab-main` with `deps/` junctioned to the main checkout's, and side B, this tree.
 
 ```sh
 bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build        # d3d11 and gl, CPU only
+AB_BACKENDS="d3d11 gl vulkan" bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build  # vulkan: B only
 bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build linux  # both sides in WSL, CPU only
 bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build web    # wasm of both sides, wgpu and gl, CPU only (about 6 min)
 AB_BACKENDS="d3d11 gl linux" sh scripts/abBench.sh run 5                         # opens windows: only inside a granted GO
+AB_SCENES=Campfire AB_BACKENDS="d3d11 gl vulkan" sh scripts/abBench.sh run 1     # the smoke: one scene, one pair, inside a GO
 AB_BACKENDS=linux AB_LINUX_DRIVER=llvmpipe sh scripts/abBench.sh run 5          # the software-GL alternative
 AB_BACKENDS="web-wgpu web-gl" sh scripts/abBench.sh run 5                       # headless Chrome on the GPU: only inside a granted GO
 sh scripts/abBench.sh clean                                                     # deletes $TEMP/voidAB and the main worktree
@@ -775,10 +778,22 @@ sh scripts/abBench.sh clean                                                     
   commits main gained since; both shas print. `AB_MAIN_SHA=main` (or any sha) overrides it, and a
   re-run of `build` moves the worktree to it.
 - **Flags** per backend: d3d11 none; gl `-d:voidGlCore` plus `--passC=-DSOKOL_GLCORE` on A and
-  `-DVOID_GLCORE` on B (each tree's golden runner define); linux `--os=linux` and a `libyoga.a`
-  built once from `yoga/deps/yoga` by `zig c++` (yoga has no linux link line,
-  `~/metascript/.inbox/yoga/`). Windows exes land in `$TEMP/voidAB/<backend>/<side>/`; Linux exes in
+  `-DVOID_GLCORE` on B (each tree's golden runner define); linux `--os=linux`, with Yoga compiled
+  from source by `yogaH.ms`. Windows exes land in `$TEMP/voidAB/<backend>/<side>/`; Linux exes in
   WSL's `~/voidAB/<side>/`, which is not under `/mnt/c`, with the trees read through `/mnt/c`.
+- **Campfire** (`tests/bench/benchCampfire.ms`) is the void3d scene of gate3d's bench, log group
+  turning and particles on. Every draw item applies its pipeline and uniform blocks again, so its
+  `present.ms` prices the door's per-draw uniform path: it is the d3d11 uniform-ring bench. Main
+  has no such entry, so `build` copies B's into the A worktree (it imports only the campfire API,
+  the same on both sides) and says `ENTRY Campfire: A runs B's ...`.
+- **Flows**: each row of the table carries its flow (`scripts/benchFlow.awk`): `submit` is
+  `present.ms`, the CPU time of recording and submitting a frame; `frame` is `frame.ms`, the wall
+  time between frames, vsync-bound on both sides (Present interval 1, sokol_app's default
+  swap interval), so it says whether a frame missed vsync rather than how fast it was; `upload`
+  is `firstPaint.ms` and the upload counters; `count` is the scene's shape. Upload time inside a
+  steady frame is not split out of `submit`: that needs a timer in the door, which side A lacks.
+- **Vulkan** runs on B alone (main has no Vulkan backend): `run` prints the median, low and high
+  of the runs per row, with no load sampling, so it is read only from a quiet window.
 - **Rows**: `bench-ab.sh` with `AB_RAW` keeps every bench row of every run and prints, per scene and
   label, the median of the clean pairs. A `.ms` row is `RED` when B is more than `AB_TOL` (3 %)
   slower than A; a counter that differs is `DIFF` (a higher `draws`, `uploads` or `uploadBytes` is a
@@ -1057,3 +1072,82 @@ per record, and reports `indirect-first-instance` on macOS and on iOS from `MTLG
 (`mtlSupportsIndirectBaseInstance`). Without that feature the door refuses every indirect draw.
 The fixture is `drawIndirectRows` in `webgpuFixtures.ms`; a Metal twin needs a module with a
 float32x2 position at location 0 and a per-instance unorm8x4 colour at location 1 passed through.
+
+### 2026-10-27, Mac: writeMask 0 and indexed indirect draws run on Metal
+
+At `838d31c7`, `webgpuMetalCheck` passes 441/441 before the twins and 443/443 with them. The two
+Metal twins:
+- "a colour target with writeMask 0 keeps its clear colour where an omitted mask takes the
+  triangle", through `drawMaskedTriangle`;
+- "two indexed indirect records in one call honour firstIndex, baseVertex and firstInstance",
+  through `drawIndirectRows`, with a per-instance unorm8x4 colour (`FLOAT_COLOUR_MSL`). It
+  asserts that the Mac reports `indirect-first-instance`.
+
+No Metal test passed `writeMask` 0 to mean all channels, so no existing test changed. `b874ce69`
+and `36a40d6b` now hold on darwin. Not run: iOS (`MTLGPUFamilyApple3` path).
+
+### 2026-10-27, Mac: the sokol names are gone from paths; what Windows picks up
+
+The person asked for the rename now, so that the branch stops reading as if Void still ran on
+sokol:
+- **`d0ccda71`** moves `src/sokol/` to `src/host/` and `src/examples/mainSokol2d.ms` to
+  `src/examples/main2d.ms`. It rewrites every path reference (`src/sokol`, `../sokol/`,
+  `mainSokol2d`) across 140 tracked files, scripts and the Android project included.
+  - It is pure moves plus path edits, so a merge carries your edits under `src/sokol/` across
+    the rename.
+  - New code or local commands that still name `src/sokol` or `mainSokol2d` need the new names.
+  - This channel and `docs/REVIEWS.md` keep the old paths as history.
+- **`73eddd80`:**
+  - the default window title is `"Void"`, and `tests/integration/macWindow.ms` follows;
+  - `src/gpu/pipeline.ms` says "the GPU device refused" where it said "sokol refused".
+- **`03400d83`** rewrites `CLAUDE.md` for the layer as it is: the backend table follows
+  `device.ms`'s `when` chain. **`29045b8e`** marks `docs/SOKOL.md` as the record of the sokol
+  period.
+
+**Verified on the Mac:**
+- `msc check src/examples/main2d.ms` passes for all 11 gate targets: windows, windows GlCore,
+  linux, android, ios, the three Vulkan, emcc webgpu and webgl2, dummy.
+- `scripts/checkBridgePass.sh` passes.
+- A script that resolves every relative `@include`, `@compile`, `import` and `#include "…"`
+  finds the same 23 pre-existing misses before and after the rename. Those are `-I` lookups and
+  repo-root paths. A planted stale path raises the count to 24.
+
+**Not verified:** any native build or run. The installed `msc` e5c088569 (synced 04:31) lacks
+`vendor/mbedtls/tf-psa-crypto`, so every native build stops at `bignum.c`. Card:
+`~/metascript/.inbox/compiler/2026-10-27-installed-msc-e5c088569-lacks-vendor-tf-psa-crypto.md`.
+
+**For Windows, after you merge:**
+1. Build and run on the Windows backends: `main2d` on D3D11, GL and Vulkan, `webgpuD3d11Check`,
+   `webgpuVulkanCheck`, and the Android Vulkan link. This is the native proof of the rename that
+   the Mac cannot give today.
+2. Your capture and golden scripts, plus any local or CI command that names `mainSokol2d` or
+   `src/sokol`.
+3. The D3D11/GL frame-path items still open in "Frame-path items only Windows can measure"
+   above.
+4. The landing into `main` stays yours. The six DXBC blobs are done (`43cf3828`), and
+   `webgpuD3d11Check` 47/47 on the RTX 5090 covers the moved checks the WARP request was for.
+
+### 2026-10-27, Mac: the rename builds natively; what the land into main still needs
+
+**The rename, now proven natively on the Mac.** `msc` bc5428a82 (synced 14:51) has its vendor tree
+back. `msc build src/examples/main2d.ms` succeeds and its binary carries 0 sokol symbols.
+`webgpuMetalCheck` passes 455/455 at `e6149759`. 3D entries such as `mainCampfire` still stop on
+the macro VM card (`nullableEquals`), so no 3D build, golden or gate can run yet.
+
+**Readiness for main, measured on the Mac at `e6149759`:**
+- **main moved 273 commits since the merge base `d81e5346` (2026-10-25).** A trial
+  `git merge-tree` shows 44 conflicts:
+  - 21 content conflicts;
+  - 14 add/add: particles, the environment light, the PBR and spot-shadow tests;
+  - 9 modify/delete: main kept editing files this branch deleted (`src/gpu/door.c`,
+    `src/void3d/gpu3d.{c,h}`, `programTable.h`, the generated `.glsl`, `src/sokol/gpu.wms`,
+    two aborts cases).
+  
+  The modify/delete set is a port of main's sokol-era changes onto the new layer, not a text
+  merge.
+- **Neon names `void/src/sokol/` in 24 code files.** The rename breaks Neon the moment it reaches
+  Void `main`. Note for Neon:
+  `~/metascript/.inbox/neon/2026-10-27-void-src-sokol-renamed-to-src-host.md`. The land needs a
+  Neon session to update those paths in the same window. Haro (terminator) names none; Lightcube
+  names it only in a doc.
+- **The gate cannot run** until the macro VM card is fixed in an installed `msc`.

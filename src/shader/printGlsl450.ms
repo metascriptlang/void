@@ -339,6 +339,9 @@ function expr(p: Glsl, e: ShaderExpr): string {
 		ExprKind.Io => ioName(p, e.index),
 		ExprKind.Resource => m.resources[e.index].name,
 		ExprKind.Workgroup => p.workgroupNames[e.index],
+		ExprKind.Private => {
+			broken("private variable '" + m.privates[e.index].name + "' has no GLSL 450 form");
+		},
 		ExprKind.BlockMember =>
 			m.structs[m.resources[e.index].type.structIndex].members[e.member].name,
 		ExprKind.Call => p.functionNames[e.index] + listed(p, e.operands),

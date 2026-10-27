@@ -1,0 +1,299 @@
+// The window's app-facing half on the C targets: appWindow.ms over the voidAppPlatform* set
+// appWindowPlatform.c defines, and the names the window drivers call (appWindow.h).
+
+@include("bridge.h");
+@include("appWindowPlatform.h");
+
+import { AppWindow, AppWindowPlatform } from "./appWindow";
+import { AppEventType, NativeAppEvent } from "../platform/appEvent";
+import "../platform/frameTimingExports";
+
+extern function voidFail(format: cstring, message: cstring): never;
+extern function voidAppPlatformValid(): int32;
+extern function voidAppPlatformFrameCount(): uint64;
+extern function voidAppPlatformWidth(): int32;
+extern function voidAppPlatformHeight(): int32;
+extern function voidAppPlatformSetTitle(title: cstring): void;
+extern function voidAppPlatformProfileInput(): void;
+extern function voidAppPlatformRequestQuit(): void;
+extern function voidAppPlatformCancelQuit(): void;
+extern function voidAppPlatformFrameDuration(): float64;
+extern function voidAppPlatformSetClipboard(utf8: cstring): void;
+extern function voidAppPlatformClipboard(): cstring;
+extern function voidAppPlatformSetCursor(cursor: int32): void;
+extern function voidAppPlatformCursor(): int32;
+extern function voidAppPlatformShowMouse(shown: int32): void;
+extern function voidAppPlatformMouseShown(): int32;
+extern function voidAppPlatformLockMouse(locked: int32): void;
+extern function voidAppPlatformMouseLocked(): int32;
+extern function voidAppPlatformToggleFullscreen(): void;
+extern function voidAppPlatformIsFullscreen(): int32;
+extern function voidAppPlatformDroppedCount(): int32;
+extern function voidAppPlatformDroppedPath(index: int32): cstring;
+
+class CPlatform extends AppWindowPlatform {
+	fail(message: string): never { voidFail("%s", message); }
+	valid(): boolean { return voidAppPlatformValid() != 0; }
+	frameCount(): uint64 { return voidAppPlatformFrameCount(); }
+	framebufferWidth(): int32 { return voidAppPlatformWidth(); }
+	framebufferHeight(): int32 { return voidAppPlatformHeight(); }
+	profileInput(): void { voidAppPlatformProfileInput(); }
+	setTitle(title: string): void { voidAppPlatformSetTitle(title); }
+	requestQuit(): void { voidAppPlatformRequestQuit(); }
+	cancelQuit(): void { voidAppPlatformCancelQuit(); }
+	frameDuration(): float64 { return voidAppPlatformFrameDuration(); }
+	setClipboard(text: string): void { voidAppPlatformSetClipboard(text); }
+	clipboard(): string { return voidAppPlatformClipboard() as string; }
+	setCursor(cursor: int32): void { voidAppPlatformSetCursor(cursor); }
+	cursor(): int32 { return voidAppPlatformCursor(); }
+	showMouse(shown: boolean): void { voidAppPlatformShowMouse(shown ? 1 : 0); }
+	mouseShown(): boolean { return voidAppPlatformMouseShown() != 0; }
+	lockMouse(locked: boolean): void { voidAppPlatformLockMouse(locked ? 1 : 0); }
+	mouseLocked(): boolean { return voidAppPlatformMouseLocked() != 0; }
+	toggleFullscreen(): void { voidAppPlatformToggleFullscreen(); }
+	isFullscreen(): boolean { return voidAppPlatformIsFullscreen() != 0; }
+	droppedCount(): int32 { return voidAppPlatformDroppedCount(); }
+	droppedPath(index: int32): string { return voidAppPlatformDroppedPath(index) as string; }
+}
+
+when ((android || ios) && !voidDummy) {
+	import { exportCurrentView, exportDpiScale, exportFbHeight, exportFbWidth } from "./viewsExports";
+
+
+	extern function voidAppPlatformModifiers(): uint32;
+	extern function voidAppPlatformScale(): float32;
+
+	class MobilePlatform extends CPlatform {
+		modifiers(): uint32 { return voidAppPlatformModifiers(); }
+		scale(): float32 { return voidAppPlatformScale(); }
+		viewsCurrent(): int32 { return exportCurrentView(); }
+		viewsFbWidth(): int32 { return exportFbWidth(); }
+		viewsFbHeight(): int32 { return exportFbHeight(); }
+		viewsDpiScale(): float32 { return exportDpiScale(); }
+	}
+
+	const platform = new MobilePlatform();
+} else {
+	const platform = new CPlatform();
+}
+
+const appWindow = new AppWindow(platform);
+
+function copyEvent(source: Ptr<NativeAppEvent>): NativeAppEvent { return source[0]; }
+
+@exportName("voidSetEventHandler")
+export function exportSetEventHandler(handler: () => void): void { appWindow.setHandler(handler); }
+
+@exportName("voidAppEventHandlerSet")
+export function exportEventHandlerSet(): int32 { return appWindow.handlerSet() ? 1 : 0; }
+
+@exportName("voidAppDeliver")
+export function exportDeliver(event: Ptr<NativeAppEvent>): int32 {
+	return appWindow.deliver(copyEvent(event)) ? 1 : 0;
+}
+
+@exportName("voidAppWindowEvent")
+export function exportWindowEvent(event: Ptr<NativeAppEvent>): void {
+	appWindow.windowEvent(copyEvent(event));
+}
+
+@exportName("voidEventType")
+export function exportEventType(): int32 { return appWindow.eventType(); }
+
+@exportName("voidEventKeyCode")
+export function exportEventKeyCode(): int32 { return appWindow.eventKeyCode(); }
+
+@exportName("voidEventCharCode")
+export function exportEventCharCode(): uint32 { return appWindow.eventCharCode(); }
+
+@exportName("voidEventKeyRepeat")
+export function exportEventKeyRepeat(): int32 { return appWindow.eventKeyRepeat(); }
+
+@exportName("voidEventModifiers")
+export function exportEventModifiers(): uint32 { return appWindow.eventModifiers(); }
+
+@exportName("voidEventMouseButton")
+export function exportEventMouseButton(): int32 { return appWindow.eventMouseButton(); }
+
+@exportName("voidEventMouseX")
+export function exportEventMouseX(): float32 { return appWindow.eventMouseX(); }
+
+@exportName("voidEventMouseY")
+export function exportEventMouseY(): float32 { return appWindow.eventMouseY(); }
+
+@exportName("voidEventMouseDx")
+export function exportEventMouseDx(): float32 { return appWindow.eventMouseDx(); }
+
+@exportName("voidEventMouseDy")
+export function exportEventMouseDy(): float32 { return appWindow.eventMouseDy(); }
+
+@exportName("voidEventScrollX")
+export function exportEventScrollX(): float32 { return appWindow.eventScrollX(); }
+
+@exportName("voidEventScrollY")
+export function exportEventScrollY(): float32 { return appWindow.eventScrollY(); }
+
+@exportName("voidEventFramebufferWidth")
+export function exportEventFramebufferWidth(): int32 {
+	return appWindow.eventFramebufferWidth();
+}
+
+@exportName("voidEventFramebufferHeight")
+export function exportEventFramebufferHeight(): int32 {
+	return appWindow.eventFramebufferHeight();
+}
+
+@exportName("voidEventTouchCount")
+export function exportEventTouchCount(): int32 { return appWindow.eventTouchCount(); }
+
+@exportName("voidEventTouchId")
+export function exportEventTouchId(index: int32): int64 {
+	return appWindow.eventTouchId(index);
+}
+
+@exportName("voidEventTouchX")
+export function exportEventTouchX(index: int32): float32 { return appWindow.eventTouchX(index); }
+
+@exportName("voidEventTouchY")
+export function exportEventTouchY(index: int32): float32 { return appWindow.eventTouchY(index); }
+
+@exportName("voidEventTouchChanged")
+export function exportEventTouchChanged(index: int32): int32 {
+	return appWindow.eventTouchChanged(index);
+}
+
+@exportName("voidEventCursor")
+export function exportEventCursor(): int32 { return appWindow.eventCursor(); }
+
+@exportName("voidEventText")
+export function exportEventText(): string { return appWindow.eventText(); }
+
+@exportName("voidAppTextDeliver")
+export function exportTextDeliver(type: int32, utf8: cstring, cursor: int32): void {
+	appWindow.deliverText(type as AppEventType, utf8 as string, cursor);
+}
+
+@exportName("voidAppSetSafeArea")
+export function exportSetSafeArea(top: float32, left: float32, bottom: float32, right: float32): void {
+	appWindow.setSafeArea(top, left, bottom, right);
+}
+
+@exportName("voidSafeAreaTop")
+export function exportSafeAreaTop(): float32 { return appWindow.safeTop; }
+
+@exportName("voidSafeAreaLeft")
+export function exportSafeAreaLeft(): float32 { return appWindow.safeLeft; }
+
+@exportName("voidSafeAreaBottom")
+export function exportSafeAreaBottom(): float32 { return appWindow.safeBottom; }
+
+@exportName("voidSafeAreaRight")
+export function exportSafeAreaRight(): float32 { return appWindow.safeRight; }
+
+@exportName("voidAppSetKeyboard")
+export function exportSetKeyboard(height: float32): void { appWindow.keyboard = height; }
+
+@exportName("voidKeyboardHeight")
+export function exportKeyboardHeight(): float32 { return appWindow.keyboard; }
+
+@exportName("voidSetWindowTitle")
+export function exportSetWindowTitle(title: cstring): void { appWindow.setTitle(title as string); }
+
+@exportName("voidWindowTitle")
+export function exportWindowTitle(): cstring { return appWindow.title as cstring; }
+
+@exportName("voidWindowTitleSet")
+export function exportWindowTitleSet(): int32 { return appWindow.titleSet ? 1 : 0; }
+
+@exportName("voidSetPresentMode")
+export function exportSetPresentMode(mode: int32): void { appWindow.setPresentMode(mode); }
+
+@exportName("voidPresentMode")
+export function exportPresentMode(): int32 { return appWindow.presentMode; }
+
+@exportName("voidRequestQuit")
+export function exportRequestQuit(): void { appWindow.requestQuit(); }
+
+@exportName("voidCancelQuit")
+export function exportCancelQuit(): void { appWindow.cancelQuit(); }
+
+@exportName("voidFrameDuration")
+export function exportFrameDuration(): float64 { return appWindow.frameDuration(); }
+
+@exportName("voidSetClipboard")
+export function exportSetClipboard(utf8: cstring): void { appWindow.setClipboard(utf8 as string); }
+
+@exportName("voidClipboard")
+export function exportClipboard(): string { return appWindow.clipboard(); }
+
+@exportName("voidSetMouseCursor")
+export function exportSetMouseCursor(cursor: int32): void { appWindow.setMouseCursor(cursor); }
+
+@exportName("voidMouseCursor")
+export function exportMouseCursor(): int32 { return appWindow.mouseCursor(); }
+
+@exportName("voidShowMouse")
+export function exportShowMouse(shown: int32): void { appWindow.showMouse(shown); }
+
+@exportName("voidMouseShown")
+export function exportMouseShown(): int32 { return appWindow.mouseShown() ? 1 : 0; }
+
+@exportName("voidLockMouse")
+export function exportLockMouse(locked: int32): void { appWindow.lockMouse(locked); }
+
+@exportName("voidMouseLocked")
+export function exportMouseLocked(): int32 { return appWindow.mouseLocked() ? 1 : 0; }
+
+@exportName("voidToggleFullscreen")
+export function exportToggleFullscreen(): void { appWindow.toggleFullscreen(); }
+
+@exportName("voidIsFullscreen")
+export function exportIsFullscreen(): int32 { return appWindow.isFullscreen() ? 1 : 0; }
+
+@exportName("voidDroppedFileCount")
+export function exportDroppedFileCount(): int32 { return appWindow.droppedFileCount(); }
+
+@exportName("voidDroppedFilePath")
+export function exportDroppedFilePath(index: int32): string { return appWindow.droppedFilePath(index); }
+
+when ((android || ios) && !voidDummy) {
+	@exportName("voidKeyDown")
+	export function exportKeyDown(keycode: int32): int32 { return appWindow.keysHeld.isDown(keycode) ? 1 : 0; }
+
+	@exportName("voidFbWidth")
+	export function exportFbWidthMobile(): int32 { return appWindow.fbWidth(); }
+
+	@exportName("voidFbHeight")
+	export function exportFbHeightMobile(): int32 { return appWindow.fbHeight(); }
+
+	@exportName("voidDpiScale")
+	export function exportDpiScaleMobile(): float32 { return appWindow.dpiScale(); }
+
+	@exportName("voidMobileEvent")
+	export function exportMobileEvent(type: int32): NativeAppEvent {
+		return appWindow.mobileEvent(type as AppEventType);
+	}
+
+	@exportName("voidMobileSend")
+	export function exportMobileSend(type: int32): void { appWindow.mobileSend(type as AppEventType); }
+
+	@exportName("voidMobileKey")
+	export function exportMobileKey(type: int32, code: int32, repeat: boolean): void {
+		appWindow.mobileKey(type as AppEventType, code, repeat);
+	}
+
+	@exportName("voidMobileReleaseKeys")
+	export function exportMobileReleaseKeys(): void { appWindow.mobileReleaseKeys(); }
+
+	@exportName("voidMobileCommit")
+	export function exportMobileCommit(
+		textInput: int32,
+		utf8: cstring,
+		codepoints: Ptr<uint32>,
+		count: uint64,
+	): void {
+		const units: uint32[] = [];
+		for (let i: uint64 = 0; i < count; i++) { units.push(codepoints[i]); }
+		appWindow.mobileCommit(textInput, utf8 as string, units);
+	}
+}

@@ -6,7 +6,7 @@
 # ms-prelude: import { Scene3D,NodeId3D,Transform3D,LightKind,
 # ms-prelude: addLightNode,setLightColor,collectLights } from "../../../src/void3d/scene";
 # ms-prelude: import { DrawContext } from "../../../src/void3d/draw";
-# ms-prelude: import { LIGHT_UNIFORM_LENGTH,MAX_POINT_LIGHTS } from "../../../src/void3d/gpu3d";
+# ms-prelude: import { LIGHT_UNIFORM_LENGTH,LIGHT_RECORD_COLOR } from "../../../src/void3d/gpu3d";
 # ms-prelude: import { Vec3,vec3 } from "../../../src/math/math3d";
 # ms-prelude: function light(scene: Scene3D,kind: LightKind): NodeId3D {
 # ms-prelude: return addLightNode(scene,scene.rootId(),Transform3D.identity(),
@@ -16,7 +16,7 @@
 # ms-prelude: let values: Vec<float32> = [];
 # ms-prelude: for (let i=0;i<LIGHT_UNIFORM_LENGTH;i++) {values.push(0);}
 # ms-prelude: const result=collectLights(scene,values); if (!result.ok) {unreachable;}
-# ms-prelude: const at: int32=directional ? 8 : 12+MAX_POINT_LIGHTS*4;
+# ms-prelude: const at: int32=directional ? 8 : LIGHT_UNIFORM_LENGTH+LIGHT_RECORD_COLOR;
 # ms-prelude: return vec3(values[at],values[at+1],values[at+2]);
 # ms-prelude: }
 

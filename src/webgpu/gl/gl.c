@@ -54,6 +54,7 @@ typedef int GLint;
 #define GL_NEAREST 0x2600
 #define GL_COLOR 0x1800
 #define GL_DEPTH 0x1801
+#define GL_STENCIL 0x1802
 #define GL_DEPTH_STENCIL 0x84F9
 #define GL_DEPTH_COMPONENT 0x1902
 #define GL_DEPTH_ATTACHMENT 0x8D00
@@ -195,6 +196,7 @@ typedef int GLint;
 	OGL_XMACRO(glBlitFramebuffer,          void, (GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter)) \
 	OGL_XMACRO(glClearBufferfv,            void, (GLenum buffer, GLint drawbuffer, const GLfloat *value)) \
 	OGL_XMACRO(glClearBufferfi,            void, (GLenum buffer, GLint drawbuffer, GLfloat depth, GLint stencil)) \
+	OGL_XMACRO(glClearBufferiv,            void, (GLenum buffer, GLint drawbuffer, const GLint *value)) \
 	OGL_XMACRO(glVertexAttribPointer,      void, (GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer)) \
 	OGL_XMACRO(glVertexAttribIPointer,     void, (GLuint index, GLint size, GLenum type, GLsizei stride, const void *pointer)) \
 	OGL_XMACRO(glVertexAttribDivisor,      void, (GLuint index, GLuint divisor)) \

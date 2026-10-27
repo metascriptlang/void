@@ -32,7 +32,7 @@ export function openTestDevice(): GPUDevice {
 			sampleCount: 1,
 		});
 	} else when (voidVulkan) {
-		if (vulkanLoaderOpen() != 0 || vulkanInstanceCreate() != 0 || vulkanAdapterSelect(VULKAN_POWER_HIGH) != 0 || vulkanDeviceCreate() != 0) {
+		if (vulkanLoaderOpen() != 0 || vulkanInstanceCreate() != 0 || vulkanAdapterSelect(VULKAN_POWER_HIGH, 0) != 0 || vulkanDeviceCreate() != 0) {
 			console.log(`openTestDevice: ${vulkanError()}`);
 			unreachable;
 		}

@@ -32,6 +32,7 @@ function copied(source: Readonly<MeshData>): MeshData {
 	let mesh = MeshData.empty();
 	mesh.hasUvs = source.hasUvs;
 	mesh.hasTangents = source.hasTangents;
+	mesh.hasUvB = source.hasUvB;
 	mesh.hasSkin = source.hasSkin;
 	mesh.bounds = source.bounds;
 	for (const value of source.vertices) { mesh.vertices.push(value); }

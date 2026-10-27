@@ -1,7 +1,7 @@
-import { fbWidth, fbHeight } from "../sokol/gpu";
+import { fbWidth, fbHeight } from "../host/gpu";
 import { setupCardTable, frameCardTable } from "./cardTableScene";
 
-@include("../sokol/bridge.h");
+@include("../host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 let frames: int32 = 0;

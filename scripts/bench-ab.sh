@@ -10,7 +10,8 @@
 # exes (absolute, or relative to its tree), so one tree can hold one build per backend.
 # AB_RAW=<file> also keeps every bench row of every run there and prints the all-row table:
 # the median of the clean pairs per row, `.ms` rows RED when B is more than AB_TOL percent
-# (default 3) slower than A, a counter that differs DIFF. AB_LABEL tags the rows (the backend).
+# (default 3) slower than A, a counter that differs DIFF, each row with its flow (scripts/benchFlow.awk).
+# AB_LABEL tags the rows (the backend).
 # AB_RUN is a command prefix for the exe (a WSL wrapper), so a side can run elsewhere than Windows.
 set -eu
 A="$1"; B="$2"; PAIRS="${3:-6}"
@@ -96,7 +97,7 @@ awk -v limit="$LIMIT" -v minClean="$MIN_CLEAN" '
 		}
 	}' "$ROWS"
 
-[ -z "${AB_RAW:-}" ] || awk -F'	' -v limit="$LIMIT" -v minClean="$MIN_CLEAN" -v tol="${AB_TOL:-3}" '
+[ -z "${AB_RAW:-}" ] || awk -F'	' -v limit="$LIMIT" -v minClean="$MIN_CLEAN" -v tol="${AB_TOL:-3}" -f "$(dirname "$0")/benchFlow.awk" -e '
 	function median(key,   n, i, j, x, v) {
 		n = cnt[key]
 		for (i = 1; i <= n; i++) v[i] = val[key, i]
@@ -124,20 +125,20 @@ awk -v limit="$LIMIT" -v minClean="$MIN_CLEAN" '
 				val[key, ++cnt[key]] = rowKey[pk, w, m]
 			}
 		}
-		printf "%-6s %-34s %14s %14s %9s  %s\n", "label", "metric", "A", "B", "delta %", "verdict"
+		printf "%-6s %-8s %-34s %14s %14s %9s  %s\n", "label", "flow", "metric", "A", "B", "delta %", "verdict"
 		red = 0; same = 0
 		for (i = 1; i <= nk; i++) {
 			split(keys[i], q, SUBSEP); sc = q[1] SUBSEP q[2]; m = q[3]
 			if (clean[sc] < minClean) { if (!(sc in skipped)) { skipped[sc] = 1; printf "%s %s: %d clean pairs, too few for the table\n", q[1], q[2], clean[sc] } continue }
 			ka = keys[i] SUBSEP "A"; kb = keys[i] SUBSEP "B"
-			if (!(ka in cnt) || !(kb in cnt)) { printf "%-6s %-34s %14s %14s %9s  ONLY-%s\n", q[1], m, (ka in cnt) ? median(ka) : "-", (kb in cnt) ? median(kb) : "-", "-", (ka in cnt) ? "A" : "B"; continue }
+			if (!(ka in cnt) || !(kb in cnt)) { printf "%-6s %-8s %-34s %14s %14s %9s  ONLY-%s\n", q[1], flow(m), m, (ka in cnt) ? median(ka) : "-", (kb in cnt) ? median(kb) : "-", "-", (ka in cnt) ? "A" : "B"; continue }
 			a = median(ka); b = median(kb)
 			d = (a == 0) ? (b == 0 ? 0 : 100) : (b - a) / a * 100
 			if (m ~ /\.ms$/) verdict = (d > tol) ? "RED" : "ok"
 			else verdict = (a == b) ? "same" : "DIFF"
 			if (verdict == "RED") red++
 			if (verdict == "same") { same++; continue }
-			printf "%-6s %-34s %14.4g %14.4g %+8.1f%%  %s\n", q[1], m, a, b, d, verdict
+			printf "%-6s %-8s %-34s %14.4g %14.4g %+8.1f%%  %s\n", q[1], flow(m), m, a, b, d, verdict
 		}
 		printf "(%d counter rows identical on both sides, not listed; tolerance %s %% on .ms rows)\nRED rows: %d\n", same, tol, red
 	}' "$AB_RAW"

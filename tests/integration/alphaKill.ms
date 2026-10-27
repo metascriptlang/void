@@ -1,4 +1,4 @@
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3 } from "../../src/math/math3d";
 import { FilterMode, Wrap } from "../../src/gpu/state";
 import { Material, MaterialKind, UniformBlock, alphaKillFor } from "../../src/void3d/material";
@@ -32,7 +32,7 @@ import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureEnvInt, voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,
@@ -175,7 +175,7 @@ function init(): void {
 	const kind: MaterialKind = control ? MaterialKind.Opaque : MaterialKind.AlphaKill;
 	let unlit: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	unlit[MATERIAL_ALPHA_KILL] = alphaKillFor(kind);
-	let lit: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	let lit: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	lit[MATERIAL_ALPHA_KILL] = alphaKillFor(kind);
 	quad(UNLIT_X, HALF, 0.0, material(Program.UnlitTextured, kind, unlit, image));
 	quad(LIT_X, HALF, 0.0, material(Program.LitTextured, kind, lit, image));

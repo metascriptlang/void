@@ -4,7 +4,7 @@
 // mouse state, the voidMobile* events); a desktop run is a window driver's.
 
 import { AppEventType, KeyCode, NativeAppEvent, blankAppEvent } from "../platform/appEvent";
-import { AppWindow, AppWindowPlatform } from "../sokol/appWindow";
+import { AppWindow, AppWindowPlatform } from "../host/appWindow";
 
 const KIND_PLATFORM: int32 = 0;
 const KIND_HANDLER: int32 = 1;
