@@ -1142,7 +1142,7 @@ fi
 # Guardrail 6: a build without the modules pays none of them (C objects: tests/bench/wasm.json).
 # srcZvoid2dZcolour and srcZvoid2dZbidi are emitted names of src/void2d/colourEmoji/ and bidi*.ms; moving them turns the check into a skip.
 if sh scripts/wasmModuleDelta.sh > out/gate-wasm-delta.log 2>&1; then
-	pass "module off: batcher.c names no module symbol and no C unit holds stb_image, the C objects stay inside tests/bench/wasm.json"
+	pass "module off: no C unit holds stb_image, the C objects stay inside tests/bench/wasm.json"
 	grep -E '^(      default-layer delta|module on)' out/gate-wasm-delta.log | sed 's/^/      /'
 else
 	fail "module off or wasm delta — see out/gate-wasm-delta.log"
@@ -1161,8 +1161,9 @@ if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol
 	}
 	named_on=$(module_symbols out/tmp/mainSokol2dColour.exe | grep -c 'srcZvoid2dZcolour' || true)
 	named_off=$(module_symbols out/tmp/mainSokol2dOff.exe | grep -c 'srcZvoid2dZcolour\|void2dGlyphSdf\|kbts_\|void2dShape\|srcZvoid2dZbidi\|srcZvoid2dZsprite\|void2dGlyphFaceSprite' || true)
-	if [ "$named_on" -eq 0 ]; then
-		skip "module off: the colour executable names no symbol from src/void2d/colourEmoji, so the executables get no symbol check"
+	named_batcher=$(module_symbols out/tmp/mainSokol2dOff.exe | grep -c 'srcZvoid2dZbatcher' || true)
+	if [ "$named_on" -eq 0 ] || [ "$named_batcher" -eq 0 ]; then
+		skip "module off: the executables name no symbol from src/void2d/colourEmoji or batcher.ms (colour $named_on, batcher $named_batcher), so they get no symbol check"
 	elif [ "$named_off" -gt 0 ]; then
 		fail "module off: mainSokol2d.exe with every module flag off names $named_off colour, SDF, shaper, BiDi or sprite symbols"
 	else
