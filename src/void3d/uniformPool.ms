@@ -2,7 +2,8 @@
 // next reserve of the same length, a generation later, and the pool never compacts: a material
 // and a renderer hold their block's offset.
 
-import { UniformBlock, NO_UNIFORMS } from "./material";
+import { TypedBlock, UniformBlock, NO_UNIFORMS } from "./material";
+import { uniformSize, writeUniform } from "../shader/uniform";
 import { LAST_GENERATION, nextGeneration } from "./slots";
 
 export enum UniformError {
@@ -182,6 +183,26 @@ export function writeRange(
 		pool.values[block.offset + i] = values[i];
 	}
 	return Result.ok(block.length);
+}
+
+export function reserveBlock<T>(
+	pool: UniformPool,
+	slot: int32,
+): Result<TypedBlock<T>, UniformError> {
+	const block: UniformBlock = try reserveRange(pool, slot, uniformSize<T>() / 4);
+	return Result.ok({ block: block });
+}
+
+export function writeBlock<T>(
+	pool: UniformPool,
+	handle: TypedBlock<T>,
+	value: T,
+): Result<int32, UniformError> {
+	if (pool.closed) { stopOnClosedPool("writeBlock"); }
+	if (handle.block.length != uniformSize<T>() / 4) { return Result.err(UniformError.WrongLength); }
+	const _held: int32 = try pool.admitted(handle.block);
+	writeUniform<T>(pool.values, handle.block.offset, value);
+	return Result.ok(handle.block.length);
 }
 
 export function liveRanges(this pool: UniformPool): int32 {
