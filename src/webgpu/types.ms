@@ -24,7 +24,8 @@ export const GPU_MAX_VERTEX_BUFFERS: int32 = 2;
 export const GPU_MAX_VERTEX_ATTRIBUTES: int32 = 16;
 export const GPU_MAX_BIND_GROUP_ENTRIES: int32 = 16;
 export const GPU_MAX_UNIFORM_BLOCKS: int32 = 8;
-export const GPU_MAX_SHADER_BINDINGS: int32 = 24;
+// sokol_gfx.h SG_MAX_*_BINDSLOTS per shader: 8 uniform blocks, 32 views, 12 samplers, 32 texture-sampler pairs.
+export const GPU_MAX_SHADER_BINDINGS: int32 = 84;
 export const GPU_MAX_ANISOTROPY: int32 = 16;
 export const GPU_UNIFORM_GROUP = 0;
 export const GPU_RESOURCE_GROUP = 1;
