@@ -1078,8 +1078,7 @@ function appendCursorOf(buffer: uint32): int32 {
 
 // sokol's sg_append_buffer: each append lands after the last one this frame, 4-byte aligned,
 // and returns its offset; the first append of a frame starts at 0. -1 when it does not fit.
-@exportName("doorAppendBuffer")
-export function doorAppendBuffer(id: uint32, data: Readonly<Span<uint8>>): int64 {
+export function doorAppendBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int64 {
 	const buffer: GPUBuffer = { id };
 	const frame = device.frameIndex();
 	let at = appendCursorOf(id);
@@ -1091,12 +1090,17 @@ export function doorAppendBuffer(id: uint32, data: Readonly<Span<uint8>>): int64
 		appendCursors[at] = { buffer: id, frame, position: 0 };
 	}
 	const offset = appendCursors[at].position;
-	const bytes = data.length as int64;
+	const bytes = (data.length as int64) * (sizeof(T) as int64);
 	if (offset + bytes > buffer.size()) { return -1; }
 	if (bytes > 0) { device.queue.writeBuffer(buffer, offset, data); }
 	frameStats[DOOR_STAT_BUFFER_BYTES] += bytes;
 	appendCursors[at].position = alignedToFour(offset + bytes);
 	return offset;
+}
+
+@exportName("doorAppendBuffer")
+export function doorAppendBuffer(id: uint32, data: Readonly<Span<uint8>>): int64 {
+	return doorAppendBufferOf(id, data);
 }
 
 @exportName("doorDestroyBuffer")
