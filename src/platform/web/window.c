@@ -631,9 +631,6 @@ static bool wheelCallback(int type, const EmscriptenWheelEvent *e, void *userDat
 	return true;
 }
 
-	return VOID_KEY_INVALID;
-}
-
 static bool keyCallback(int type, const EmscriptenKeyboardEvent *e, void *userData) {
 	(void)userData;
 	if (!voidWindowEventsEnabled()) return false;
