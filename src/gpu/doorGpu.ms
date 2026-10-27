@@ -92,9 +92,6 @@ import {
 	DOOR_BINDING_VERTEX_BUFFER,
 	DOOR_BINDING_VIEW,
 } from "./doorWords.ms";
-when (c) {
-	import "./doorExports";
-}
 
 export const DOOR_UNIFORM_SLOTS: int32 = 8;
 export const DOOR_MAX_COLOR_ATTACHMENTS: int32 = 4;

@@ -3,6 +3,9 @@
 
 @include("bridge.h");
 import "../gpu/doorGpu";
+when (c) {
+	import "../gpu/doorExports";
+}
 
 when (macos && !voidDummy) {
 	@passL("-framework Cocoa");
