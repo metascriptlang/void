@@ -11,7 +11,6 @@ import {
 when (c) {
 	import { registerPresentHook } from "./frameClockExports";
 }
-import { void2dProfilerCompiled } from "./batcher.h";
 import {
 	NO_STAMP, FrameProfiler, FrameRecord, FrameCounters, FramePhase, frameProfiler, noCounters,
 	invalidated, inputBegin, drawBegin, commit, present,
@@ -45,22 +44,8 @@ let lastCounters: FrameCounters = noCounters();
 let lastCoverage: FrameCoverage = { coveredPixels: 0, targetPixels: 0, opaquePixels: 0, framePixels: 0 };
 let lastSerial: int32 = 0;
 let commitsWithoutFrame: int32 = 0;
-let agreed: boolean = false;
-
-function agree(): void {
-	if (agreed) { return; }
-	if (void2dProfilerCompiled() != 1) {
-		console.log(
-			"void2d profiler: MetaScript has the profiler on but the C side was built without " +
-			"VOID_PROFILER; build every unit with -d:voidProfiler",
-		);
-		unreachable;
-	}
-	agreed = true;
-}
 
 export function profilerSetup(): void {
-	agree();
 	when (c) { registerPresentHook(); }
 }
 
@@ -145,7 +130,6 @@ export function profilerCollect(): boolean {
 }
 
 export function profilerFrameOpened(): void {
-	agree();
 	if (frameStats.phase == FramePhase.Drawing) { return; }
 	if (frameClock.state != FRAME_OPEN) {
 		console.log(

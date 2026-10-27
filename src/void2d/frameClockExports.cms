@@ -4,35 +4,10 @@
 @include("frameClockHook.h");
 extern function voidProfileSetup(): void;
 
-import { clockNow } from "../platform/clockNow";
-import {
-	doorValid, doorFrameStat, DOOR_STAT_DRAWS, DOOR_STAT_PIPELINES, DOOR_STAT_PASSES,
-	DOOR_STAT_BUFFER_BYTES, DOOR_STAT_IMAGE_BYTES,
-} from "../gpu/doorGpu";
-import {
-	frameClock, profileBegin, profileInput, profilePresent, VOID2D_COUNTER_SLOTS,
-} from "./frameClock";
+import { profileInput, profilePresent } from "./frameClock";
 
 @exportName("voidProfileInput")
 export function exportInput(): void { profileInput(); }
-
-@exportName("voidProfileBegin")
-export function exportBegin(): void { profileBegin(); }
-
-@exportName("voidProfileCommit")
-export function exportCommit(serial: int32, void2dCounters: Ptr<int32>): void {
-	let counters: int32[9] = [0, 0, 0, 0, 0, 0, 0, 0, 0];
-	for (let i: int32 = 0; i < VOID2D_COUNTER_SLOTS; i++) { counters[i] = void2dCounters[i]; }
-	const valid: boolean = doorValid() != 0;
-	frameClock.commit(clockNow(), serial, counters[0..9], {
-		valid,
-		draws: valid ? doorFrameStat(DOOR_STAT_DRAWS) : 0,
-		pipelines: valid ? doorFrameStat(DOOR_STAT_PIPELINES) : 0,
-		passes: valid ? doorFrameStat(DOOR_STAT_PASSES) : 0,
-		bufferBytes: valid ? doorFrameStat(DOOR_STAT_BUFFER_BYTES) : 0,
-		imageBytes: valid ? doorFrameStat(DOOR_STAT_IMAGE_BYTES) : 0,
-	});
-}
 
 @exportName("voidProfilePresent")
 export function exportPresent(begin: int32): void { profilePresent(begin); }

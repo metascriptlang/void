@@ -12,7 +12,7 @@ import {
 	enterCamera,
 } from "./draw";
 import { DrawContext2D, NO_REPAINT, PaintState, useContext, retireContext } from "./displayList";
-import { void2dReleaseList } from "./batcher.h";
+import { void2dReleaseList } from "./batcher";
 when (voidProfiler) {
 	import { profilerPolledDirty } from "./frameMarks";
 	import { profilerPrepare, profilerDraw } from "./profilerOverlay";

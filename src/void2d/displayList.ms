@@ -28,10 +28,10 @@ import { Color, rgba } from "./types";
 import { Mat4 } from "../math/math3d";
 import { NO_COLOR_MATRIX, writeColorMatrix, readColorMatrix } from "./effect";
 import { BlendMode } from "../gpu/state";
-import { void2dCommandView, void2dCopyFloats } from "./batcher.h";
 import "./face";
 import {
 	COMMAND_FLOATS,
+	commandViewOf,
 	CMD_KIND,
 	CMD_BREAK,
 	CMD_VERTEX_OFFSET,
@@ -774,7 +774,7 @@ export function copyPainted(old: DrawContext2D, a: PaintIndex, b: PaintIndex): v
 		const to: int32 = activeContext.uiInstanceTotal * REC_UI_FLOATS;
 		const from: int32 = a.uiInstances * REC_UI_FLOATS;
 		growTo(activeContext.uiInstances, to + ui * REC_UI_FLOATS);
-		void2dCopyFloats(activeContext.uiInstances[to], old.uiInstances[from], ui * REC_UI_FLOATS);
+		copyFloats(activeContext.uiInstances, to, old.uiInstances, from, ui * REC_UI_FLOATS);
 		activeContext.uiInstanceTotal = activeContext.uiInstanceTotal + ui;
 	}
 	const sprites: int32 = b.spriteInstances - a.spriteInstances;
@@ -782,7 +782,7 @@ export function copyPainted(old: DrawContext2D, a: PaintIndex, b: PaintIndex): v
 		const to: int32 = activeContext.spriteInstanceTotal * REC_SPRITE_FLOATS;
 		const from: int32 = a.spriteInstances * REC_SPRITE_FLOATS;
 		growTo(activeContext.spriteInstances, to + sprites * REC_SPRITE_FLOATS);
-		void2dCopyFloats(activeContext.spriteInstances[to], old.spriteInstances[from],
+		copyFloats(activeContext.spriteInstances, to, old.spriteInstances, from,
 			sprites * REC_SPRITE_FLOATS);
 		activeContext.spriteInstanceTotal = activeContext.spriteInstanceTotal + sprites;
 	}
@@ -791,7 +791,7 @@ export function copyPainted(old: DrawContext2D, a: PaintIndex, b: PaintIndex): v
 		const to: int32 = activeContext.vertexTotal * VERTEX_FLOATS;
 		const from: int32 = a.vertices * VERTEX_FLOATS;
 		growTo(activeContext.vertices, to + vertices * VERTEX_FLOATS);
-		void2dCopyFloats(activeContext.vertices[to], old.vertices[from], vertices * VERTEX_FLOATS);
+		copyFloats(activeContext.vertices, to, old.vertices, from, vertices * VERTEX_FLOATS);
 		activeContext.vertexTotal = activeContext.vertexTotal + vertices;
 	}
 }
@@ -848,6 +848,12 @@ function commandSlot(): int32 {
 	const at: int32 = activeContext.spill.commands;
 	activeContext.spill = { ...activeContext.spill, commands: at + 1 };
 	return at;
+}
+
+function copyFloats(
+	ref to: Vec<float32>, at: int32, from: Vec<float32>, start: int32, count: int32,
+): void {
+	for (let i: int32 = 0; i < count; i++) { to[at + i] = from[start + i]; }
 }
 
 function growTo(ref stream: Vec<float32>, length: int32): void {
@@ -1406,13 +1412,13 @@ function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
 	}
 	match (pipeline) {
 		Pipeline.Sprite => {
-			void2dCopyFloats(activeContext.laneScratch[0], activeContext.spriteInstances[lo * width], span);
+			copyFloats(activeContext.laneScratch, 0, activeContext.spriteInstances, lo * width, span);
 		},
 		Pipeline.Ui => {
-			void2dCopyFloats(activeContext.laneScratch[0], activeContext.uiInstances[lo * width], span);
+			copyFloats(activeContext.laneScratch, 0, activeContext.uiInstances, lo * width, span);
 		},
 		Pipeline.Vertex => {
-			void2dCopyFloats(activeContext.laneScratch[0], activeContext.vertices[lo * width], span);
+			copyFloats(activeContext.laneScratch, 0, activeContext.vertices, lo * width, span);
 		},
 	}
 	for (const src of activeContext.laneOrder) {
@@ -1423,13 +1429,13 @@ function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
 		const to: int32 = activeContext.laneOffsets[src - c0] * width;
 		match (pipeline) {
 			Pipeline.Sprite => {
-				void2dCopyFloats(activeContext.spriteInstances[to], activeContext.laneScratch[from], n);
+				copyFloats(activeContext.spriteInstances, to, activeContext.laneScratch, from, n);
 			},
 			Pipeline.Ui => {
-				void2dCopyFloats(activeContext.uiInstances[to], activeContext.laneScratch[from], n);
+				copyFloats(activeContext.uiInstances, to, activeContext.laneScratch, from, n);
 			},
 			Pipeline.Vertex => {
-				void2dCopyFloats(activeContext.vertices[to], activeContext.laneScratch[from], n);
+				copyFloats(activeContext.vertices, to, activeContext.laneScratch, from, n);
 			},
 		}
 	}
@@ -1632,8 +1638,8 @@ test "a view id past 2^24 reaches the replay whole, in the stream and in a targe
 	recordBlur(view, 1.0, 0.0);
 	assert commandView(0) == view;
 	assert commandView(1) == view;
-	assert void2dCommandView(activeContext.commands[0]) == view;
-	assert void2dCommandView(activeContext.commands[COMMAND_FLOATS]) == view;
+	assert commandViewOf(activeContext.commands[0..COMMAND_FLOATS]) == view;
+	assert commandViewOf(activeContext.commands[COMMAND_FLOATS..COMMAND_FLOATS * 2]) == view;
 	resetContext();
 	beginTargetList(view, 64.0, 32.0, 1.0, 0.0, 0.0, 0.0, 0.0);
 	recordDraw(BreakReason.First, 0, 6, view, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);

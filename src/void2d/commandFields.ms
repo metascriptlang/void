@@ -48,3 +48,7 @@ export const CMD_CLIP_ROUND_V: int32 = 36;
 export const CMD_CLIP_RADII: int32 = 40;
 export const SCOPE_FLOATS: int32 = 8;
 export const NO_SCOPE: int32 = -1;
+
+export function commandViewOf(cmd: Readonly<Span<float32>>): uint32 {
+	return (cmd[CMD_VIEW] as uint32) | ((cmd[CMD_VIEW_HIGH] as uint32) << 16);
+}
