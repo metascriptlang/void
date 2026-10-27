@@ -311,7 +311,6 @@ export const DOOR_STAT_COUNT: int32 = 11;
 let frameStats: int64[DOOR_STAT_COUNT] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 let lastFrameStats: int64[DOOR_STAT_COUNT] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
-@exportName("doorFrameStat")
 export function doorFrameStat(which: int32): int64 {
 	if (which < 0 || which >= DOOR_STAT_COUNT) {
 		stop("no frame stat " + String(which) + ", the door counts " + String(DOOR_STAT_COUNT));
@@ -902,7 +901,6 @@ export function doorMakeTextureView(image: uint32): uint32 {
 	return texture.createView({ label: "makeTextureView" }).id;
 }
 
-@exportName("doorMakeSampler")
 export function doorMakeSampler(filter: int32, wrap: int32): uint32 {
 	const f = FILTERS[filter as FilterMode as int32];
 	const w = WRAPS[wrap as Wrap as int32];
@@ -943,13 +941,11 @@ export function doorMakeSamplerEx(
 	}).id;
 }
 
-@exportName("doorImageAlive")
 export function doorImageAlive(image: uint32): int32 {
 	const texture: GPUTexture = { id: image };
 	return texture.isAlive() ? 1 : 0;
 }
 
-@exportName("doorViewAlive")
 export function doorViewAlive(view: uint32): int32 {
 	const textureView: GPUTextureView = { id: view };
 	return textureView.isAlive() ? 1 : 0;
@@ -981,7 +977,6 @@ export function doorDestroyPipeline(pipeline: uint32): void {
 	}
 }
 
-@exportName("doorDestroyImage")
 export function doorDestroyImage(image: uint32): void {
 	if (image == 0) { return; }
 	const cube = cubeImages.indexOf(image);
@@ -991,14 +986,12 @@ export function doorDestroyImage(image: uint32): void {
 	texture.destroy();
 }
 
-@exportName("doorDestroyView")
 export function doorDestroyView(view: uint32): void {
 	if (view == 0) { return; }
 	const textureView: GPUTextureView = { id: view };
 	textureView.destroy();
 }
 
-@exportName("doorDestroySampler")
 export function doorDestroySampler(sampler: uint32): void {
 	if (sampler == 0) { return; }
 	const handle: GPUSampler = { id: sampler };
@@ -1016,7 +1009,6 @@ function alignedToFour(bytes: int64): int64 {
 }
 
 // `data` empty makes a buffer of `size` bytes to fill later; otherwise the buffer is `data`.
-@exportName("doorMakeBuffer")
 export function doorMakeBuffer(usage: int32, data: Readonly<Span<uint8>>, size: int64): uint32 {
 	const bytes = data.length > 0 ? data.length as int64 : size;
 	if (bytes <= 0) { return 0; }
@@ -1064,11 +1056,6 @@ export function doorUpdateBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int3
 	return 1;
 }
 
-@exportName("doorUpdateBuffer")
-export function doorUpdateBuffer(id: uint32, data: Readonly<Span<uint8>>): int32 {
-	return doorUpdateBufferOf(id, data);
-}
-
 function appendCursorOf(buffer: uint32): int32 {
 	for (let i = 0; i < appendCursors.length; i++) {
 		if (appendCursors[i].buffer == buffer) { return i as int32; }
@@ -1098,12 +1085,6 @@ export function doorAppendBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int6
 	return offset;
 }
 
-@exportName("doorAppendBuffer")
-export function doorAppendBuffer(id: uint32, data: Readonly<Span<uint8>>): int64 {
-	return doorAppendBufferOf(id, data);
-}
-
-@exportName("doorDestroyBuffer")
 export function doorDestroyBuffer(id: uint32): void {
 	if (id == 0) { return; }
 	untrackBuffer(id);
@@ -1113,7 +1094,6 @@ export function doorDestroyBuffer(id: uint32): void {
 	if (at >= 0) { appendCursors.splice(at, 1); }
 }
 
-@exportName("doorBufferAlive")
 export function doorBufferAlive(id: uint32): int32 {
 	const buffer: GPUBuffer = { id };
 	return buffer.isAlive() ? 1 : 0;
@@ -1147,7 +1127,6 @@ export function doorMakeTexture(
 }
 
 // sokol's sg_update_image: the whole texture, `data` exactly its rows.
-@exportName("doorUpdateTexture")
 export function doorUpdateTexture(id: uint32, data: Readonly<Span<uint8>>): void {
 	doorUpdateTextureOf(id, data);
 }
@@ -1174,7 +1153,6 @@ export function doorUpdateTextureOf<T>(id: uint32, data: Readonly<Span<T>>): voi
 
 // A partial sampled-texture write: `data` starts at the rectangle's first texel and holds rows
 // `bytesPerRow` apart, the last one only as far as the rectangle's width.
-@exportName("doorUpdateTextureRect")
 export function doorUpdateTextureRect(
 	id: uint32,
 	x: int32,
@@ -1207,14 +1185,12 @@ export function doorTextureHeight(id: uint32): int32 {
 	return texture.height();
 }
 
-@exportName("doorViewImage")
 export function doorViewImage(view: uint32): uint32 {
 	const textureView: GPUTextureView = { id: view };
 	return textureView.isAlive() ? textureView.texture().id : 0;
 }
 
 // sokol's sg_query_image_usage(sg_query_view_image(view)).color_attachment.
-@exportName("doorViewIsColorAttachment")
 export function doorViewIsColorAttachment(view: uint32): int32 {
 	const image = doorViewImage(view);
 	if (image == 0) { return 0; }
@@ -1226,7 +1202,6 @@ export function doorViewIsColorAttachment(view: uint32): int32 {
 
 // ---- draw ----
 
-@exportName("doorApplyPipeline")
 export function doorApplyPipeline(pipeline: uint32): void {
 	frameStats[DOOR_STAT_PIPELINES]++;
 	const index = pipelineIndex(pipeline);
@@ -1299,7 +1274,6 @@ function resourceGroup(key: BindKey): GPUBindGroup {
 }
 
 // `vertexOffsets` are sokol's vertex_buffer_offsets, in bytes.
-@exportName("doorApplyBindings")
 export function doorApplyBindings(
 	bindings: Readonly<Span<uint32>>,
 	vertexOffsets: Readonly<Span<int32>>,
@@ -1330,11 +1304,6 @@ export function doorApplyBindings(
 		key.samplers[i] = bindings[DOOR_BINDING_SAMPLER + i];
 	}
 	pass.setBindGroup(GPU_RESOURCE_GROUP, resourceGroup(key), []);
-}
-
-@exportName("doorApplyUniforms")
-export function doorApplyUniforms(slot: int32, data: Readonly<Span<uint8>>): void {
-	doorApplyUniformsOf(slot, data);
 }
 
 export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): void {
@@ -1371,7 +1340,6 @@ function requireAppliedBlocks(): void {
 	}
 }
 
-@exportName("doorDraw")
 export function doorDraw(base: int32, count: int32, instances: int32): void {
 	frameStats[DOOR_STAT_DRAWS]++;
 	if (current >= 0) { requireAppliedBlocks(); }
@@ -1391,7 +1359,6 @@ export function doorDrawIndirect(buffer: uint32, offset: int64, drawCount: int32
 	pass.multiDrawIndexedIndirect({ id: buffer }, offset, drawCount);
 }
 
-@exportName("doorApplyScissor")
 export function doorApplyScissor(x: int32, y: int32, width: int32, height: int32): void {
 	const left = Math.min(Math.max(x, 0), passWidth);
 	const top = Math.min(Math.max(y, 0), passHeight);
@@ -1459,7 +1426,6 @@ function readTexture(
 	return 1;
 }
 
-@exportName("doorReadTexture")
 export function doorReadTexture(
 	image: uint32,
 	x: int32,
@@ -1751,7 +1717,6 @@ export function doorLiveSamplers(): int32 { return device.liveCounts().samplers;
 export function doorLiveShaders(): int32 { return device.liveCounts().shaderModules; }
 export function doorLivePipelines(): int32 { return device.liveCounts().pipelines; }
 
-@exportName("doorOriginTopLeft")
 export function doorOriginTopLeft(): int32 { return device.getAdapterInfo().originTopLeft ? 1 : 0; }
 export function doorDepthZeroToOne(): boolean { return device.getAdapterInfo().depthZeroToOne; }
 
