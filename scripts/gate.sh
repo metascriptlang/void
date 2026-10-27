@@ -965,6 +965,9 @@ REBUILD_PATH="render:shapeIfChanged render:drawFiltered labelText:placeLabel
 	glyphAtlas:ensurePage glyphAtlas:reclaimPage glyphAtlas:release"
 MEASURE_PATH="render:textWidth render:textHeight render:shapedPayload node:labelRow
 	node:requireKind"
+# A struct that holds no Vec copies only its references. The compiler copies these around a
+# call that may run Texture.realloc, a closure that could write the borrowed source.
+VEC_FREE_COPIES="types:TextureSource types:Tile node:Content2D"
 copied=""
 followed=0
 allocated=""
@@ -979,7 +982,7 @@ read_emitted_c() {
 		return 0
 	fi
 	awk -v frame="$(echo $2)" -v copyOnly="$(echo $3)" -v forbidden="$4" \
-		-v named="$(echo $FRAME_PATH $REBUILD_PATH $MEASURE_PATH)" \
+		-v named="$(echo $FRAME_PATH $REBUILD_PATH $MEASURE_PATH)" -v vecFree="$(echo $VEC_FREE_COPIES)" \
 		-f scripts/allocation.awk out/debug/*srcZvoid2dZ*Oms.c > out/gate-allocation-rows.log
 	cat out/gate-allocation-rows.log >> out/gate-allocation.log
 	while read -r kind what; do

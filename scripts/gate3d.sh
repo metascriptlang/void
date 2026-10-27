@@ -1092,7 +1092,7 @@ RENDER_ORDER_PATH_FUNCTIONS="scene:setRenderOrder scene:refresh scene:liveRow
 
 # Every `*Copy(` counts, because a struct copy duplicates its Vec (M38 TurbulenceCopy); list a
 # copy here only for a struct that holds no Vec, with its reason.
-VEC_FREE_COPIES="scene:MeshInstance draw:DrawItem"
+VEC_FREE_COPIES="scene:MeshInstance draw:DrawItem node:NodeRef"
 
 # $1 entry, $2 label, $3 the module:function list. Prints nothing and returns 0 when clean;
 # otherwise records the failure and returns 1.
