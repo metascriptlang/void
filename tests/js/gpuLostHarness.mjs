@@ -1,8 +1,13 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-const [bundlePath, backend, driver] = process.argv.slice(2);
+const minifyAfterPatch = process.argv.includes("--minify");
+
+const [bundlePath, backend, driver] = process.argv.slice(2).filter((a) => a !== "--minify");
 if (!bundlePath || (backend !== "gl" && backend !== "gpu") || (driver !== "views" && driver !== "window")) {
-	throw new Error("usage: node tests/js/gpuLostHarness.mjs <bundle> gl|gpu views|window   (msc build src/examples/viewsJsEntry.jms|windowJsEntry.jms --target=js [-d:webgl2] --output=<bundle>)");
+	throw new Error("usage: node tests/js/gpuLostHarness.mjs <bundle> gl|gpu views|window [--minify]   (msc build src/examples/viewsJsEntry.jms|windowJsEntry.jms --target=js [-d:webgl2] --output=<bundle>)");
 }
 const windowMode = driver === "window";
 
@@ -13,6 +18,13 @@ for (const name of doorStubs) {
 	if (!found) throw new Error(`stub target ${name} is not in the bundle`);
 	const present = name === "doorCommit" ? `${source.match(/function (viewsPresent__\w+)\(/)[1]}();` : "";
 	source = source.replace(`function ${found[1]}(`, `function ${found[1]}() { globalThis.__door.push("${name}"); ${present} } function ${found[1]}Unused(`);
+}
+if (minifyAfterPatch) {
+	const dir = mkdtempSync(join(tmpdir(), "voidMin-"));
+	writeFileSync(join(dir, "patched.js"), source);
+	execFileSync("sh", ["scripts/jsMinify.sh", join(dir, "patched.js"), join(dir, "patched.min.js")], { stdio: "inherit" });
+	source = readFileSync(join(dir, "patched.min.js"), "utf8");
+	rmSync(dir, { recursive: true });
 }
 globalThis.__door = [];
 

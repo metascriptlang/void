@@ -11,6 +11,7 @@ import {
 	KB_VALUE_FORMAT_Y_ADVANCE_DEVICE,
 	KB_VALUE_FORMAT_Y_PLACEMENT,
 	KB_VALUE_FORMAT_Y_PLACEMENT_DEVICE,
+	kbBoundsFail,
 	kbSwap16,
 	kbU16,
 	kbU32,
@@ -253,6 +254,9 @@ export function kbGetLookupList(m: Readonly<Span<uint8>>, gsubGpos: int64): int6
 }
 
 export function kbGetLookup(m: Readonly<Span<uint8>>, list: int64, index: int64): int64 {
+	if (list == 0) {
+		throw kbBoundsFail("lookup list is missing", index);
+	}
 	return list + m.kbU16(list + 2 + index * 2);
 }
 

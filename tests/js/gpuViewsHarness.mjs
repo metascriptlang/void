@@ -1,8 +1,13 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-const [bundlePath, backend] = process.argv.slice(2);
+const minifyAfterPatch = process.argv.includes("--minify");
+
+const [bundlePath, backend] = process.argv.slice(2).filter((a) => a !== "--minify");
 if (!bundlePath || (backend !== "gl" && backend !== "gpu")) {
-	throw new Error("usage: node tests/js/gpuViewsHarness.mjs <bundle> gl|gpu   (msc build src/examples/viewsJsEntry.jms --target=js [-d:webgl2] --output=<bundle>)");
+	throw new Error("usage: node tests/js/gpuViewsHarness.mjs <bundle> gl|gpu [--minify]   (msc build src/examples/viewsJsEntry.jms --target=js [-d:webgl2] --output=<bundle>)");
 }
 
 const doorStubs = ["doorSetup", "doorShutdown", "doorBeginScreenPass", "doorCommit"];
@@ -17,6 +22,13 @@ if (backend === "gpu") {
 	const found = source.match(/function (surfaceUse__\w+)\(/);
 	if (!found) throw new Error("surfaceUse is not in the bundle");
 	source = source.replace(`function ${found[1]}(`, `function ${found[1]}(surface) { globalThis.__door.push("use:" + surface.context.name); ${found[1]}Used(surface); } function ${found[1]}Used(`);
+}
+if (minifyAfterPatch) {
+	const dir = mkdtempSync(join(tmpdir(), "voidMin-"));
+	writeFileSync(join(dir, "patched.js"), source);
+	execFileSync("sh", ["scripts/jsMinify.sh", join(dir, "patched.js"), join(dir, "patched.min.js")], { stdio: "inherit" });
+	source = readFileSync(join(dir, "patched.min.js"), "utf8");
+	rmSync(dir, { recursive: true });
 }
 globalThis.__door = [];
 

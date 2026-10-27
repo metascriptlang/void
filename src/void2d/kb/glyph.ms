@@ -254,3 +254,17 @@ export function kbPopGlyphList(storage: KbGlyphStorage, list: KbGlyphList): void
 	storage.glyphs[storage.glyphs[KB_GLYPH_SENTINEL].prev].next = KB_GLYPH_SENTINEL;
 	storage.glyphs[storage.glyphs[KB_GLYPH_SENTINEL].next].prev = KB_GLYPH_SENTINEL;
 }
+
+export function kbClearActiveGlyphs(storage: KbGlyphStorage): void {
+	const first = storage.glyphs[KB_GLYPH_SENTINEL].next;
+	const last = storage.glyphs[KB_GLYPH_SENTINEL].prev;
+	if (first != KB_GLYPH_SENTINEL) {
+		const freeLast = storage.glyphs[KB_FREE_GLYPH_SENTINEL].prev;
+		storage.glyphs[first].prev = freeLast;
+		storage.glyphs[last].next = KB_FREE_GLYPH_SENTINEL;
+		storage.glyphs[freeLast].next = first;
+		storage.glyphs[KB_FREE_GLYPH_SENTINEL].prev = last;
+	}
+	storage.glyphs[KB_GLYPH_SENTINEL].prev = KB_GLYPH_SENTINEL;
+	storage.glyphs[KB_GLYPH_SENTINEL].next = KB_GLYPH_SENTINEL;
+}
