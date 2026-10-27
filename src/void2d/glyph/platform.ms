@@ -101,7 +101,8 @@ export function postScriptName(bytes: uint8[], offset: int32): string {
 export function platformOpen(
 	path: string | null, bytes: uint8[], name: string, glyphCount: int32, unitsPerEm: int32,
 ): Ptr<void> | null {
-	const opened = void2dPlatformFaceOpen(path ?? "", bytes[0], bytes.length, name, glyphCount, unitsPerEm);
+	const facePath = path ?? "";
+	const opened = void2dPlatformFaceOpen(facePath, bytes[0], bytes.length, name, glyphCount, unitsPerEm);
 	return opened;
 }
 
