@@ -1,0 +1,99 @@
+// The browser window on --target=js, as window.c runs it under emscripten: the canvas, its drawing
+// size and devicePixelRatio, the requestAnimationFrame loop. No backend is imported here, so a GL
+// bundle and a WebGPU bundle both load it.
+
+extern class Js {}
+
+extern function cssWidth(canvas: Js): float64 from "#.clientWidth";
+extern function cssHeight(canvas: Js): float64 from "#.clientHeight";
+extern function devicePixelRatio(): float64 from "(window.devicePixelRatio || 1)";
+extern function setDrawingSize(canvas: Js, width: int32, height: int32): void from "((c,w,h)=>{c.width=w;c.height=h;})(#,#,#)";
+extern function setAttribute(element: Js, name: string, value: string): void from "#.setAttribute(#,#)";
+extern function removeAttribute(element: Js, name: string): void from "#.removeAttribute(#)";
+extern function requestFrame(callback: () => void): float64 from "requestAnimationFrame(#)";
+extern function cancelFrame(handle: float64): void from "cancelAnimationFrame(#)";
+extern function publishStart(start: (canvas: Js, onError: (message: string) => void) => () => void): void from "((f)=>{globalThis.voidStart=(c,e)=>f(c,(m)=>e?e(new Error(m)):console.error(m));if(globalThis.onVoidReady)globalThis.onVoidReady();})(#)";
+
+const VIEW_ATTRIBUTE = "data-void-view";
+
+export struct CanvasSize {
+	width: int32;
+	height: int32;
+	scale: float32;
+}
+
+function measure(canvas: Js): CanvasSize {
+	const scale = devicePixelRatio();
+	return {
+		width: Math.max(1, Math.round(cssWidth(canvas) * scale)) as int32,
+		height: Math.max(1, Math.round(cssHeight(canvas) * scale)) as int32,
+		scale: scale as float32,
+	};
+}
+
+export class CanvasView {
+	id: int32;
+	canvas: Js;
+	size: CanvasSize;
+	resize: (size: CanvasSize) => void = (size: CanvasSize): void => {};
+	frame: () => void = (): void => {};
+	constructor(id: int32, canvas: Js) {
+		this.id = id;
+		this.canvas = canvas;
+		this.size = measure(canvas);
+	}
+	get selector(): string { return `[${VIEW_ATTRIBUTE}="${this.id}"]`; }
+}
+
+let live: CanvasView[] = [];
+let nextId: int32 = 1;
+let pending: float64 = 0;
+
+function sameSize(a: CanvasSize, b: CanvasSize): boolean {
+	return a.width == b.width && a.height == b.height && a.scale == b.scale;
+}
+
+function tick(): void {
+	pending = 0;
+	for (const view of live.slice(0)) {
+		if (!live.includes(view)) { continue; }
+		const size = measure(view.canvas);
+		if (!sameSize(size, view.size)) {
+			view.size = size;
+			setDrawingSize(view.canvas, size.width, size.height);
+			view.resize(size);
+		}
+		view.frame();
+	}
+	if (live.length > 0) { pending = requestFrame(tick); }
+}
+
+export function installStart(open: (view: CanvasView, onError: (message: string) => void) => () => void): void {
+	publishStart((canvas: Js, onError: (message: string) => void): () => void => {
+		const view = new CanvasView(nextId++, canvas);
+		setAttribute(canvas, VIEW_ATTRIBUTE, `${view.id}`);
+		setDrawingSize(canvas, view.size.width, view.size.height);
+		const stop = open(view, onError);
+		return (): void => {
+			stop();
+			removeAttribute(canvas, VIEW_ATTRIBUTE);
+		};
+	});
+}
+
+export function enter(view: CanvasView, resize: (size: CanvasSize) => void, frame: () => void): void {
+	view.resize = resize;
+	view.frame = frame;
+	live.push(view);
+	if (pending == 0) { pending = requestFrame(tick); }
+}
+
+export function leave(view: CanvasView): void {
+	const at = live.indexOf(view);
+	if (at < 0) { return; }
+	live.splice(at, 1);
+	if (live.length == 0 && pending != 0) {
+		cancelFrame(pending);
+		pending = 0;
+	}
+}
