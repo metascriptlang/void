@@ -165,6 +165,7 @@ extern class Js {
 	extern endOcclusionQuery(): void;
 	extern getCurrentTexture(): Js;
 	extern configure(descriptor: Js): void;
+	extern unconfigure(): void;
 	extern push(value: Js): void;
 	extern requestDevice(descriptor: Js): Promise<Js>;
 }
@@ -172,6 +173,7 @@ extern class Js {
 extern function hasWebGpu(): boolean from "(typeof navigator !== 'undefined' && !!navigator.gpu)";
 extern function requestAdapter(): Promise<Js> from "navigator.gpu.requestAdapter()";
 extern function canvasContextOf(selector: string): Js from "document.querySelector(#).getContext('webgpu')";
+extern function preferredFormat(): string from "navigator.gpu.getPreferredCanvasFormat()";
 extern function isNone(value: Js): boolean from "(# == null)";
 extern function same(a: Js, b: Js): boolean from "(# === #)";
 extern function jsNull(): Js from "(null)";
@@ -248,7 +250,6 @@ export const BACKEND = "js";
 
 let device: Js = NONE;
 let queue: Js = NONE;
-let context: Js = NONE;
 let encoder: Js = NONE;
 let commands: Js = NONE;
 let renderPass: Js = NONE;
@@ -257,15 +258,27 @@ let passWidth: int32 = 0;
 let passHeight: int32 = 0;
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
-let msaaTexture: Js = NONE;
-let msaaView: Js = NONE;
-let msaaWidth: int32 = 0;
-let msaaHeight: int32 = 0;
-let depthTexture: Js = NONE;
-let depthView: Js = NONE;
-let depthWidth: int32 = 0;
-let depthHeight: int32 = 0;
 let onDeviceLost: () => void = () => {};
+let deviceLive = false;
+let pendingDevice: Promise<void> | null = null;
+
+export class Surface {
+	context: Js;
+	msaaTexture: Js = NONE;
+	msaaView: Js = NONE;
+	msaaWidth: int32 = 0;
+	msaaHeight: int32 = 0;
+	msaaSamples: int32 = 0;
+	depthTexture: Js = NONE;
+	depthView: Js = NONE;
+	depthWidth: int32 = 0;
+	depthHeight: int32 = 0;
+
+	constructor(context: Js) { this.context = context; }
+}
+
+const surfaces: Surface[] = [];
+let current: Surface | null = null;
 
 let buffers: Vec<BufferSlot> = [{ native: NONE }];
 let textures: Vec<TextureSlot> = [{ info: { index: 0, bytesPerPixel: 0, depth: false, stencil: false }, native: NONE }];
@@ -299,28 +312,84 @@ function labelled(descriptor: Js, label: string | null): Js {
 	return descriptor;
 }
 
-// Await this before requestDevice. canvasSelector names the swapchain canvas, "" is offscreen; onLost runs on a
-// recoverable device loss, when a new device can be asked for.
-export async function acquireDevice(canvasSelector: string, onLost: () => void): Promise<void> {
-	if (!hasWebGpu()) { stop("navigator.gpu is absent: this browser has no WebGPU"); }
-	const adapter = await requestAdapter();
-	if (isNone(adapter)) { stop("navigator.gpu.requestAdapter gave no adapter"); }
-	const opened = await adapter.requestDevice(deviceDescriptor(adapter));
-	device = opened;
-	queue = queueOf(opened);
-	context = canvasSelector == "" ? NONE : canvasContextOf(canvasSelector);
+// Await this before requestDevice. onLost runs on a recoverable device loss, when a new device can be asked for.
+export async function acquireDevice(onLost: () => void): Promise<void> {
 	onDeviceLost = onLost;
-	watchDevice(opened, (reason: int32, message: string): void => {
-		const action = lostAction(reason);
-		if (action == (DeviceLoss.None as int32) || !same(opened, device)) { return; }
-		console.log(`webgpu js: the WebGPU device was lost: ${message}`);
-		if (action == (DeviceLoss.Recover as int32)) {
-			onDeviceLost();
-		} else {
-			stop(`the WebGPU device was lost with reason ${reason}, which Void does not recover from`);
-		}
-	});
+	if (deviceLive) { return; }
+	if (pendingDevice === null) { pendingDevice = openDevice(); }
+	await pendingDevice;
 }
+
+async function openDevice(): Promise<void> {
+	try {
+		if (!hasWebGpu()) { stop("navigator.gpu is absent: this browser has no WebGPU"); }
+		const adapter = await requestAdapter();
+		if (isNone(adapter)) { stop("navigator.gpu.requestAdapter gave no adapter"); }
+		const opened = await adapter.requestDevice(deviceDescriptor(adapter));
+		device = opened;
+		queue = queueOf(opened);
+		deviceLive = true;
+		watchDevice(opened, (reason: int32, message: string): void => {
+			const action = lostAction(reason);
+			if (action == (DeviceLoss.None as int32) || !same(opened, device)) { return; }
+			console.log(`webgpu js: the WebGPU device was lost: ${message}`);
+			if (action == (DeviceLoss.Recover as int32)) {
+				deviceLive = false;
+				onDeviceLost();
+			} else {
+				stop(`the WebGPU device was lost with reason ${reason}, which Void does not recover from`);
+			}
+		});
+		for (const surface of surfaces) {
+			dropAttachments(surface);
+			configure(surface);
+		}
+	} finally {
+		pendingDevice = null;
+	}
+}
+
+function configure(surface: Surface): void {
+	const configuration = jsNew();
+	setObject(configuration, "device", device);
+	setText(configuration, "format", preferredFormat());
+	setNumber(configuration, "usage", (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32));
+	setText(configuration, "alphaMode", "opaque");
+	surface.context.configure(configuration);
+}
+
+function dropAttachments(surface: Surface): void {
+	if (!isNone(surface.msaaTexture)) { surface.msaaTexture.destroy(); }
+	if (!isNone(surface.depthTexture)) { surface.depthTexture.destroy(); }
+	surface.msaaTexture = NONE;
+	surface.depthTexture = NONE;
+	surface.msaaWidth = 0;
+	surface.depthWidth = 0;
+}
+
+export function surfaceCreate(selector: string): Surface {
+	if (!deviceLive) { stop("surfaceCreate needs the device acquireDevice opens; await it first"); }
+	const surface = new Surface(canvasContextOf(selector));
+	configure(surface);
+	surfaces.push(surface);
+	return surface;
+}
+
+export function surfaceResize(surface: Surface): void {
+	dropAttachments(surface);
+	configure(surface);
+}
+
+export function surfaceDestroy(surface: Surface): void {
+	const at = surfaces.indexOf(surface);
+	if (at < 0) { return; }
+	surfaces.splice(at, 1);
+	dropAttachments(surface);
+	surface.context.unconfigure();
+	if (current === surface) { current = null; }
+}
+
+export function surfaceUse(surface: Surface): void { current = surface; }
 
 export function setup(environment: NativeEnvironment): GPUDevice {
 	if (isNone(device)) { stop("requestDevice needs the device acquireDevice opens; await it first"); }
@@ -331,18 +400,6 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	commands = NONE;
 	renderPass = NONE;
 	computePass = NONE;
-	msaaTexture = NONE;
-	depthTexture = NONE;
-	msaaWidth = 0;
-	depthWidth = 0;
-	if (!isNone(context)) {
-		const configuration = jsNew();
-		setObject(configuration, "device", device);
-		setText(configuration, "format", canvas.format);
-		setNumber(configuration, "usage", (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32));
-		setText(configuration, "alphaMode", "opaque");
-		context.configure(configuration);
-	}
 	return { id: 1, queue: { id: 1 } };
 }
 
@@ -368,10 +425,6 @@ export function shutdown(): void {
 	commands = NONE;
 	renderPass = NONE;
 	computePass = NONE;
-	if (!isNone(msaaTexture)) { msaaTexture.destroy(); }
-	if (!isNone(depthTexture)) { depthTexture.destroy(); }
-	msaaTexture = NONE;
-	depthTexture = NONE;
 }
 
 export function adapterInfo(): GPUAdapterInfo {
@@ -496,33 +549,35 @@ function ensureAttachment(format: string, width: int32, height: int32, sampleCou
 }
 
 export function acquireSwapchain(swapchain: NativeSwapchain): void {
-	if (isNone(context)) { stop("getCurrentTexture needs a canvas: pass its selector to acquireDevice"); }
+	const surface = current;
+	if (surface === null) { stop("getCurrentTexture needs a surface: choose one with surfaceUse"); return; }
 	const canvas = cachedCanvas();
 	const v = viewRecords.slotIndex(textureRecords.slots[textureRecords.slotIndex(swapchainColor)].swapchainView);
-	const current = context.getCurrentTexture().createView(jsNew());
+	const texture = surface.context.getCurrentTexture().createView(jsNew());
 	if (swapchain.sampleCount > 1) {
-		if (isNone(msaaTexture) || msaaWidth != swapchain.width || msaaHeight != swapchain.height) {
-			if (!isNone(msaaTexture)) { msaaTexture.destroy(); }
-			msaaTexture = ensureAttachment(canvas.format, swapchain.width, swapchain.height, swapchain.sampleCount, "multisample target");
-			msaaView = msaaTexture.createView(jsNew());
-			msaaWidth = swapchain.width;
-			msaaHeight = swapchain.height;
+		if (isNone(surface.msaaTexture) || surface.msaaWidth != swapchain.width || surface.msaaHeight != swapchain.height || surface.msaaSamples != swapchain.sampleCount) {
+			if (!isNone(surface.msaaTexture)) { surface.msaaTexture.destroy(); }
+			surface.msaaTexture = ensureAttachment(canvas.format, swapchain.width, swapchain.height, swapchain.sampleCount, "multisample target");
+			surface.msaaView = surface.msaaTexture.createView(jsNew());
+			surface.msaaWidth = swapchain.width;
+			surface.msaaHeight = swapchain.height;
+			surface.msaaSamples = swapchain.sampleCount;
 		}
-		views[v].native = msaaView;
-		views[v].swapchainResolve = current;
+		views[v].native = surface.msaaView;
+		views[v].swapchainResolve = texture;
 	} else {
-		views[v].native = current;
+		views[v].native = texture;
 		views[v].swapchainResolve = NONE;
 	}
 	if (swapchainDepth != 0) {
-		if (isNone(depthTexture) || depthWidth != swapchain.width || depthHeight != swapchain.height) {
-			if (!isNone(depthTexture)) { depthTexture.destroy(); }
-			depthTexture = ensureAttachment(canvas.depthFormat, swapchain.width, swapchain.height, swapchain.sampleCount, "depth target");
-			depthView = depthTexture.createView(jsNew());
-			depthWidth = swapchain.width;
-			depthHeight = swapchain.height;
+		if (isNone(surface.depthTexture) || surface.depthWidth != swapchain.width || surface.depthHeight != swapchain.height) {
+			if (!isNone(surface.depthTexture)) { surface.depthTexture.destroy(); }
+			surface.depthTexture = ensureAttachment(canvas.depthFormat, swapchain.width, swapchain.height, swapchain.sampleCount, "depth target");
+			surface.depthView = surface.depthTexture.createView(jsNew());
+			surface.depthWidth = swapchain.width;
+			surface.depthHeight = swapchain.height;
 		}
-		views[viewRecords.slotIndex(textureRecords.slots[textureRecords.slotIndex(swapchainDepth)].swapchainView)].native = depthView;
+		views[viewRecords.slotIndex(textureRecords.slots[textureRecords.slotIndex(swapchainDepth)].swapchainView)].native = surface.depthView;
 	}
 }
 

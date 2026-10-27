@@ -93,7 +93,7 @@ const canvas = Object.assign(target(), {
 	requestPointerLock() {},
 	getContext(kind) {
 		contextCount++;
-		if (kind === "webgpu") return { configure() {} };
+		if (kind === "webgpu") return { configure() {}, unconfigure() {} };
 		return new Proxy({}, { get: (_, n) => (n === "getExtension" ? () => ({}) : () => 0) });
 	},
 });
@@ -167,7 +167,8 @@ if (backend === "gl") {
 if (windowMode) { check("a loss tells the app it is suspended", appEvents.join(","), `${SUSPENDED}`); }
 step();
 step();
-check("frames are skipped while the GPU is gone", frames(), before);
+const duringLoss = windowMode && backend === "gl" ? 2 : 0;
+check(duringLoss ? "a GL window keeps drawing while the context is gone, as the C does" : "frames are skipped while the GPU is gone", frames(), before + duringLoss);
 check("the loop keeps running while the GPU is gone", rafQueue.length, 1);
 check("a loss alone leaves the door alone", door(), START);
 if (backend === "gpu") {
@@ -184,10 +185,10 @@ if (backend === "gpu") {
 check("the door waits for the next frame", door(), START);
 step();
 check("the next frame shuts the door down and sets it up again", door(), AGAIN);
-check("frames resume", frames(), before + 1);
+check("frames resume", frames(), before + duringLoss + 1);
 step();
 check("the door is rebuilt once per loss", door(), AGAIN);
-check("frames keep running", frames(), before + 2);
+check("frames keep running", frames(), before + duringLoss + 2);
 check("no error reached the caller", errors.length, 0);
 
 if (backend === "gpu") {
@@ -201,7 +202,8 @@ if (backend === "gpu") {
 
 const setups = door().split(",").filter((n) => n === "doorSetup").length;
 stop();
-check(windowMode ? "quit shuts the door down" : "stop shuts the door down", door().split(",").at(-1), "doorShutdown");
+const keepsDoor = backend === "gpu" && !windowMode;
+check(windowMode ? "quit shuts the door down" : keepsDoor ? "stop keeps the WebGPU door up, as the C" : "stop shuts the door down", door().split(",").at(-1), keepsDoor ? "doorSetup" : "doorShutdown");
 check(windowMode ? "quit ends the loop" : "stop ends the loop", rafQueue.length, 0);
 if (windowMode) {
 	check("quit tells the app once", appEvents.filter((e) => e === QUIT_REQUESTED).length, 1);
@@ -254,9 +256,14 @@ function refusal(call) {
 if (windowMode) {
 	check("a second live window is refused, naming the case", refusal(() => globalThis.voidRun(800, 600, () => {}, () => {})), "void: voidWebRun: the browser window already runs");
 } else {
-	check("a second live view is refused, naming the case", refusal(() => globalThis.voidStart(canvas, onError)), backend === "gl"
-		? "void: voidViewCreate: WebGL2 runs one view at a time; stop view 2 first"
-		: "void: voidStart: the js target runs one WebGPU view at a time; stop the live view first");
+	if (backend === "gl") {
+		check("a second live view is refused, naming the case", refusal(() => globalThis.voidStart(canvas, onError)), "void: voidViewCreate: WebGL2 runs one view at a time; stop view 2 first");
+	} else {
+		let second;
+		check("a second WebGPU view is accepted", refusal(() => { second = globalThis.voidStart(canvas, onError); }), "");
+		await settle();
+		second();
+	}
 	check("a window is refused beside host views, naming the case", refusal(() => globalThis.voidRun(800, 600, () => {}, () => {})), "void: voidRun: this document already drives Void through host views");
 }
 const drawn = frames();
