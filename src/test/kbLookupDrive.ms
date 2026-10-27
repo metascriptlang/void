@@ -19,7 +19,9 @@ import {
 import {
 	KbScratch,
 	kbBeginLookupApplication,
+	kbBucketEntry,
 	kbBucketGlyph,
+	kbBucketLength,
 	kbBucketedGlyphIsValid,
 	kbEndLookupApplication,
 	kbFreeGlyphBucket,
@@ -85,9 +87,9 @@ function runGsub(s: KbScratch, m: Span<uint8>, config: KbDriveConfig): void {
 		sequentialLookupIndex++) {
 		const lookupIndex = config.lookupIndex[sequentialLookupIndex];
 		const skipFlags = config.skipFlags[sequentialLookupIndex];
-		const bucket = s.buckets[sequentialLookupIndex];
+		const bucketLength = kbBucketLength(s, sequentialLookupIndex);
 
-		if (bucket.entries.length != 0) {
+		if (bucketLength != 0) {
 			const lookupType = m.kbU16(kbGetLookup(m, lookupList, lookupIndex as int64));
 			const lookupTypeIs8 = lookupType == 8;
 
@@ -95,10 +97,10 @@ function runGsub(s: KbScratch, m: Span<uint8>, config: KbDriveConfig): void {
 				kbSortGlyphBucket(s, sequentialLookupIndex);
 			}
 
-			const count = bucket.entries.length;
+			const count = kbBucketLength(s, sequentialLookupIndex);
 			for (let step: int32 = 0; step < count; step++) {
 				const entryIndex = lookupTypeIs8 ? count - 1 - step : step;
-				const entry = bucket.entries[entryIndex];
+				const entry = kbBucketEntry(s, sequentialLookupIndex, entryIndex);
 
 				if (kbBucketedGlyphIsValid(entry)) {
 					const glyph = entry.glyph;
@@ -135,9 +137,9 @@ function runGpos(s: KbScratch, m: Span<uint8>, config: KbDriveConfig): void {
 		sequentialLookupIndex++) {
 		const lookupIndex = config.lookupIndex[sequentialLookupIndex];
 		const skipFlags = config.skipFlags[sequentialLookupIndex];
-		const bucket = s.buckets[sequentialLookupIndex];
+		const bucketLength = kbBucketLength(s, sequentialLookupIndex);
 
-		if (bucket.entries.length != 0) {
+		if (bucketLength != 0) {
 			const packedLookup = kbGetLookup(m, lookupList, lookupIndex as int64);
 			const lookup = kbUnpackLookup(m, gdef, packedLookup);
 
@@ -145,9 +147,9 @@ function runGpos(s: KbScratch, m: Span<uint8>, config: KbDriveConfig): void {
 				kbSortGlyphBucket(s, sequentialLookupIndex);
 			}
 
-			const count = bucket.entries.length;
+			const count = kbBucketLength(s, sequentialLookupIndex);
 			for (let entryIndex: int32 = 0; entryIndex < count; entryIndex++) {
-				const entry = bucket.entries[entryIndex];
+				const entry = kbBucketEntry(s, sequentialLookupIndex, entryIndex);
 
 				if (kbBucketedGlyphIsValid(entry)) {
 					const glyph = entry.glyph;

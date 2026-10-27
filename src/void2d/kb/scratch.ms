@@ -10,6 +10,7 @@ import {
 	kbU16,
 	kbU32,
 } from "./blob";
+import { KbShapeConfig } from "./config";
 import { KbFont } from "./font";
 import {
 	KB_DELETED_SORT_KEY,
@@ -30,9 +31,7 @@ export struct KbBucketed {
 	featureValue: uint16;
 }
 
-export class KbBucket {
-	entries: KbBucketed[] = [];
-}
+export const KB_BUCKETED_GLYPHS_PER_BLOCK: int32 = 64;
 
 export struct KbGsubFrame {
 	inputGlyph: int32;
@@ -62,7 +61,10 @@ export class KbScratch {
 	variationVectorNormalized: int32[] = [];
 	hasVariationVector: boolean = false;
 
-	buckets: KbBucket[] = [];
+	blockEntries: KbBucketed[] = [];
+	blockCounts: int32[] = [];
+	bucketBlocks: int32[][] = [];
+	freeBlocks: int32[] = [];
 
 	cluster: KbGlyphList = { sentinelPrev: 0, sentinelNext: 0, oneBeforeFirst: 0, onePastLast: 0 };
 	lookupOnePastLastGlyph: int32 = 0;
@@ -71,6 +73,15 @@ export class KbScratch {
 
 	frames: KbGsubFrame[] = [];
 	frameCount: int32 = 0;
+
+	config: KbShapeConfig | null = null;
+	realCluster: boolean = false;
+	clusterAtStartOfWord: boolean = false;
+	ip: uint32 = 0;
+	opKind: uint8 = 0;
+	runDirection: uint32 = 0;
+	sequentialLookupIndexIndex: uint32 = 0;
+	featureStagesRead: uint32 = 0;
 
 	constructor(font: KbFont, storage: KbGlyphStorage) {
 		this.font = font;
@@ -106,7 +117,7 @@ export function kbPlaceScratch(
 	}
 
 	for (let i = 0; i < sequentialLookupCount; i++) {
-		result.buckets.push(new KbBucket());
+		result.bucketBlocks.push([]);
 	}
 	for (let i = 0; i < KB_LOOKUP_STACK_SIZE; i++) {
 		result.frames.push({
@@ -114,6 +125,14 @@ export function kbPlaceScratch(
 			recordCount: 0, recordIndex: 0,
 		});
 	}
+	return result;
+}
+
+export function kbPlaceShapeScratch(config: KbShapeConfig, storage: KbGlyphStorage): KbScratch {
+	const stageCount = config.opList.stageFeatureCounts.length as int32;
+	const result = kbPlaceScratch(config.font, storage, config.shaper, config.glyphCount,
+		config.idSequentialLookupMatrix, config.featureStageFirstLookupIndices[stageCount] as int32);
+	result.config = config;
 	return result;
 }
 
@@ -163,8 +182,7 @@ export function kbNextGlyphUid(s: KbScratch): uint16 {
 export function kbUnbucketGlyph(s: KbScratch, glyph: int32): void {
 	const bucketedPlusOne = s.storage.glyphs[glyph].bucketedPlusOne;
 	if (bucketedPlusOne != 0) {
-		const bucket = s.storage.glyphs[glyph].bucketedBucketIndex as int32;
-		s.buckets[bucket].entries[bucketedPlusOne - 1].sortKey = KB_DELETED_SORT_KEY;
+		s.blockEntries[bucketedPlusOne - 1].sortKey = KB_DELETED_SORT_KEY;
 		s.storage.glyphs[glyph].bucketedPlusOne = 0;
 	}
 }
@@ -173,16 +191,55 @@ export function kbBucketedGlyphIsValid(entry: KbBucketed): boolean {
 	return entry.sortKey != KB_DELETED_SORT_KEY;
 }
 
+// The C keeps bucket entries in 64-entry blocks recycled last-freed-first, and a glyph's Bucketed
+// pointer outlives its bucket, so ShapeDirect can write a deletion into an entry another bucket now
+// owns. Blocks are kept so that write lands where the C's lands.
+function newBucketedGlyphBlock(s: KbScratch): int32 {
+	if (s.freeBlocks.length > 0) {
+		const block = s.freeBlocks.pop() as int32;
+		s.blockCounts[block] = 0;
+		return block;
+	}
+	const block = s.blockCounts.length as int32;
+	s.blockCounts.push(0);
+	for (let i = 0; i < KB_BUCKETED_GLYPHS_PER_BLOCK; i++) {
+		s.blockEntries.push({ glyph: 0, sortKey: 0, featureValue: 0 });
+	}
+	return block;
+}
+
+export function kbBucketLength(s: KbScratch, bucketIndex: int32): int32 {
+	const blocks = s.bucketBlocks[bucketIndex];
+	if (blocks.length == 0) { return 0; }
+	return ((blocks.length as int32) - 1) * KB_BUCKETED_GLYPHS_PER_BLOCK +
+		s.blockCounts[blocks[blocks.length - 1]];
+}
+
+function bucketEntryIndex(s: KbScratch, bucketIndex: int32, position: int32): int32 {
+	return s.bucketBlocks[bucketIndex][position / KB_BUCKETED_GLYPHS_PER_BLOCK] *
+		KB_BUCKETED_GLYPHS_PER_BLOCK + position % KB_BUCKETED_GLYPHS_PER_BLOCK;
+}
+
+export function kbBucketEntry(s: KbScratch, bucketIndex: int32, position: int32): KbBucketed {
+	return s.blockEntries[bucketEntryIndex(s, bucketIndex, position)];
+}
+
 function insertGlyphIntoBucket(
 	s: KbScratch,
 	bucketIndex: int32,
 	glyph: int32,
 	featureValue: uint16,
 ): void {
-	s.buckets[bucketIndex].entries.push({
-		glyph, sortKey: s.storage.glyphs[glyph].sortKey, featureValue,
-	});
-	s.storage.glyphs[glyph].bucketedPlusOne = s.buckets[bucketIndex].entries.length as int32;
+	const blocks = s.bucketBlocks[bucketIndex];
+	if (blocks.length == 0 ||
+		s.blockCounts[blocks[blocks.length - 1]] == KB_BUCKETED_GLYPHS_PER_BLOCK) {
+		blocks.push(newBucketedGlyphBlock(s));
+	}
+	const block = blocks[blocks.length - 1];
+	const entry = block * KB_BUCKETED_GLYPHS_PER_BLOCK + s.blockCounts[block];
+	s.blockCounts[block] = s.blockCounts[block] + 1;
+	s.blockEntries[entry] = { glyph, sortKey: s.storage.glyphs[glyph].sortKey, featureValue };
+	s.storage.glyphs[glyph].bucketedPlusOne = entry + 1;
 	s.storage.glyphs[glyph].bucketedBucketIndex = bucketIndex as uint16;
 }
 
@@ -295,23 +352,25 @@ export function kbGsubMutate(
 }
 
 export function kbSortGlyphBucket(s: KbScratch, sequentialLookupIndex: int32): void {
-	const bucket = s.buckets[sequentialLookupIndex];
-	if (bucket.entries.length == 0) { return; }
+	const total = kbBucketLength(s, sequentialLookupIndex);
+	if (total == 0) { return; }
 
-	let deletedCount: int32 = bucket.entries[0].sortKey == KB_DELETED_SORT_KEY ? 1 : 0;
+	let deletedCount: int32 =
+		kbBucketEntry(s, sequentialLookupIndex, 0).sortKey == KB_DELETED_SORT_KEY ? 1 : 0;
 
-	for (let forwardIndex = 1; forwardIndex < bucket.entries.length; forwardIndex++) {
-		const bucketed = bucket.entries[forwardIndex];
+	for (let forwardIndex = 1; forwardIndex < total; forwardIndex++) {
+		const bucketed = kbBucketEntry(s, sequentialLookupIndex, forwardIndex);
 		const sortKey = bucketed.sortKey;
 
 		let backwardIndex = forwardIndex;
 		while (backwardIndex > 0) {
 			const nextBackwardIndex = backwardIndex - 1;
-			if (bucket.entries[nextBackwardIndex].sortKey > sortKey) {
-				bucket.entries[backwardIndex] = bucket.entries[nextBackwardIndex];
-				if (bucket.entries[nextBackwardIndex].sortKey != KB_DELETED_SORT_KEY) {
-					s.storage.glyphs[bucket.entries[backwardIndex].glyph].bucketedPlusOne =
-						backwardIndex + 1;
+			const from = bucketEntryIndex(s, sequentialLookupIndex, nextBackwardIndex);
+			if (s.blockEntries[from].sortKey > sortKey) {
+				const to = bucketEntryIndex(s, sequentialLookupIndex, backwardIndex);
+				s.blockEntries[to] = s.blockEntries[from];
+				if (s.blockEntries[from].sortKey != KB_DELETED_SORT_KEY) {
+					s.storage.glyphs[s.blockEntries[to].glyph].bucketedPlusOne = to + 1;
 				}
 			} else {
 				break;
@@ -319,21 +378,36 @@ export function kbSortGlyphBucket(s: KbScratch, sequentialLookupIndex: int32): v
 			backwardIndex = nextBackwardIndex;
 		}
 
-		bucket.entries[backwardIndex] = bucketed;
+		const to = bucketEntryIndex(s, sequentialLookupIndex, backwardIndex);
+		s.blockEntries[to] = bucketed;
 		if (sortKey != KB_DELETED_SORT_KEY) {
-			s.storage.glyphs[bucketed.glyph].bucketedPlusOne = backwardIndex + 1;
+			s.storage.glyphs[bucketed.glyph].bucketedPlusOne = to + 1;
 		}
 
 		if (sortKey == KB_DELETED_SORT_KEY) { deletedCount++; }
 	}
 
-	for (let i = 0; i < deletedCount; i++) {
-		bucket.entries.pop();
+	const blocks = s.bucketBlocks[sequentialLookupIndex];
+	while (blocks.length > 0) {
+		const block = blocks[blocks.length - 1];
+		const count = s.blockCounts[block];
+		if (deletedCount >= count) {
+			deletedCount -= count;
+			blocks.pop();
+			s.freeBlocks.push(block);
+		} else {
+			s.blockCounts[block] = count - deletedCount;
+			break;
+		}
 	}
 }
 
 export function kbFreeGlyphBucket(s: KbScratch, sequentialLookupIndex: int32): void {
-	s.buckets[sequentialLookupIndex].entries = [];
+	const blocks = s.bucketBlocks[sequentialLookupIndex];
+	for (let i = 0; i < blocks.length; i++) {
+		s.freeBlocks.push(blocks[i]);
+	}
+	s.bucketBlocks[sequentialLookupIndex] = [];
 }
 
 export function kbFreeGlyph(s: KbScratch, glyph: int32): int32 {
