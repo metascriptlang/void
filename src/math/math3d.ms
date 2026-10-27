@@ -15,12 +15,8 @@ export struct Vec3 {
 	z: float32;
 }
 
-export struct Vec4 {
-	x: float32;
-	y: float32;
-	z: float32;
-	w: float32;
-}
+import { Vec4 } from "./vec4";
+export { Vec4 } from "./vec4";
 
 export struct Mat4 {
 	m11: float32; m12: float32; m13: float32; m14: float32;

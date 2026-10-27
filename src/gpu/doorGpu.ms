@@ -75,7 +75,7 @@ import {
 	timerResultMs,
 	timerState,
 } from "./gpuTimer";
-import { Vec4 } from "../math/math3d";
+import { Vec4 } from "../math/vec4";
 import {
 	Blend,
 	Compare,
