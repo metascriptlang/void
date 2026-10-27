@@ -7,7 +7,7 @@ import {
 	MARK_PRESENT_END, FRAME_IDLE, FRAME_COMMITTED, FRAME_PRESENTED,
 } from "../void2d/frameClock";
 import { NO_STAMP } from "../void2d/profiler";
-import { void2dQuadCoverage } from "../void2d/batcher.h";
+import { quadCoverage } from "../void2d/coverage";
 import {
 	frameStats, profilerCollect, profilerInputBegin, lastFrameRecord,
 	lastFrameCounters, frameCommitsWithoutFrame,
@@ -226,7 +226,7 @@ const IDENTITY: float32[] = [1.0, 0.0, 0.0, 1.0];
 const ROTATED: float32[] = [0.0, 1.0, -1.0, 0.0];
 
 function covered(a: float32[], x: float32, y: float32, w: float32, h: float32, scale: float32): float64 {
-	return void2dQuadCoverage(a[0], x, y, w, h, scale, 0, 0, SCREEN_W, SCREEN_H);
+	return quadCoverage(a[0..4], x, y, w, h, scale, 0, 0, SCREEN_W, SCREEN_H);
 }
 
 test "overdraw sums quad area over the screen's pixels: two full-screen quads are 2.0, half a screen is 0.5" {
@@ -240,7 +240,7 @@ test "a quad counts only the area inside its scissor, in device pixels" {
 	assert covered(IDENTITY, 150.0, 50.0, 100.0, 100.0, 1.0) == 50.0 * 50.0;
 	assert covered(IDENTITY, -50.0, -50.0, 100.0, 100.0, 1.0) == 50.0 * 50.0;
 	assert covered(IDENTITY, 300.0, 0.0, 10.0, 10.0, 1.0) == 0.0;
-	assert void2dQuadCoverage(IDENTITY[0], 0.0, 0.0, 50.0, 10.0, 2.0, 0, 0, 40, 40) == 40.0 * 20.0;
+	assert quadCoverage(IDENTITY[0..4], 0.0, 0.0, 50.0, 10.0, 2.0, 0, 0, 40, 40) == 40.0 * 20.0;
 }
 
 test "a rotated quad keeps its area and loses what falls outside" {

@@ -157,6 +157,7 @@ import "./imageDecodeCheck";
 import "./imagePortCheck";
 import "./coveragePortCheck";
 import "./frameClockPortCheck";
+import "./batcherPortCheck";
 import "./animationSheetCheck";
 import "./scene3dCheck";
 import "./lightColorCheck";
