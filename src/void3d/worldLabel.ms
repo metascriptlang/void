@@ -239,7 +239,6 @@ export function create(
 	);
 	if (!placed.ok) {
 		const _material: Result<int32, HandleError> = releaseMaterial(context, material.value);
-		const _block: Result<int32, UniformError> = releaseBlock(context, reserved.value);
 		dropMesh(context, ui, target, shown.value, uploaded.value);
 		return Result.err(WorldLabelError.Node);
 	}
@@ -360,7 +359,6 @@ export function closeLabel(label: WorldLabel): void {
 	const context: DrawContext = label.scene.context;
 	if (!label.scene.isClosed()) { const _nodes: int32 = remove(label.scene, label.node); }
 	const _material: Result<int32, HandleError> = releaseMaterial(context, label.material);
-	const _block: Result<int32, UniformError> = releaseBlock(context, label.uniforms);
 	dropMesh(context, label.ui, label.target, label.texture, label.mesh);
 	label.closed = true;
 }
