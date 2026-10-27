@@ -2,7 +2,8 @@ import { appWindowScriptDigest, appWindowScriptOps, appWindowScriptRun } from ".
 
 // FNV-1a digests of the transcripts of seeds 1 to 8, 400 ops each, recorded from the C
 // appWindow.c before the port replaced it: its shell build (the iOS and Android stand-ins and
-// voidMobile*) and its window-driver build.
+// voidMobile*) and its window-driver build. Mobile seed 8 prints the default title, re-pinned
+// when appWindow.c's default became "Void" (73eddd80); one line differs from the C transcript.
 const MOBILE_PINS: string[] = [
 	"3598159361",
 	"3144506974",
@@ -11,7 +12,7 @@ const MOBILE_PINS: string[] = [
 	"2360007723",
 	"1656989209",
 	"1092655958",
-	"1965617465",
+	"2941399967",
 ];
 const DESKTOP_PINS: string[] = [
 	"883842619",
