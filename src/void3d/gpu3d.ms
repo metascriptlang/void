@@ -107,7 +107,7 @@ export struct ProgramKey {
 	parallax: boolean;
 }
 
-const KEY_LIMIT: int32 = 1048576;
+const KEY_LIMIT: int32 = 2097152;
 
 export function of(this typeof ProgramKey, program: Program): ProgramKey {
 	return {
@@ -229,14 +229,14 @@ export function withPreset(this key: ProgramKey, preset: Preset): ProgramKey {
 
 // GPU3D_PROGRAM_KEY in gpu3d.c packs the same bits.
 export function bits(this key: ProgramKey): int32 {
-	return (key.program as int32) | ((key.preset as int32) << 4) |
-		((key.premultiplied ? 1 : 0) << 6) | ((key.cutout ? 1 : 0) << 7) |
-		((key.shadowed ? 1 : 0) << 8) | ((key.uvTransform ? 1 : 0) << 9) |
-		((key.backTexture ? 1 : 0) << 10) | ((key.dissolve ? 1 : 0) << 11) |
-		((key.emissive ? 1 : 0) << 12) | ((key.normalMap ? 1 : 0) << 13) |
-		((key.skinned ? 1 : 0) << 14) | ((key.normalMrt ? 1 : 0) << 15) |
-		((key.pbr ? 1 : 0) << 16) | ((key.pbrMaps ? 1 : 0) << 17) |
-		((key.occlusionUvB ? 1 : 0) << 18) | ((key.parallax ? 1 : 0) << 19);
+	return (key.program as int32) | ((key.preset as int32) << 5) |
+		((key.premultiplied ? 1 : 0) << 7) | ((key.cutout ? 1 : 0) << 8) |
+		((key.shadowed ? 1 : 0) << 9) | ((key.uvTransform ? 1 : 0) << 10) |
+		((key.backTexture ? 1 : 0) << 11) | ((key.dissolve ? 1 : 0) << 12) |
+		((key.emissive ? 1 : 0) << 13) | ((key.normalMap ? 1 : 0) << 14) |
+		((key.skinned ? 1 : 0) << 15) | ((key.normalMrt ? 1 : 0) << 16) |
+		((key.pbr ? 1 : 0) << 17) | ((key.pbrMaps ? 1 : 0) << 18) |
+		((key.occlusionUvB ? 1 : 0) << 19) | ((key.parallax ? 1 : 0) << 20);
 }
 
 export function describe(this key: ProgramKey): string {

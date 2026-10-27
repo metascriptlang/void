@@ -64,10 +64,10 @@ enum {
 #define GPU3D_PROGRAM_KEY(program, preset, premultiplied, cutout, shadowed, uvTransform, \
 		backTexture, dissolve, emissive, normalMap, skinned, normalMrt, pbr, pbrMaps, occlusionUvB, \
 		parallax) \
-	((program) | ((preset) << 4) | ((premultiplied) << 6) | ((cutout) << 7) | ((shadowed) << 8) | \
-	((uvTransform) << 9) | ((backTexture) << 10) | ((dissolve) << 11) | ((emissive) << 12) | \
-	((normalMap) << 13) | ((skinned) << 14) | ((normalMrt) << 15) | ((pbr) << 16) | \
-	((pbrMaps) << 17) | ((occlusionUvB) << 18) | ((parallax) << 19))
+	((program) | ((preset) << 5) | ((premultiplied) << 7) | ((cutout) << 8) | ((shadowed) << 9) | \
+	((uvTransform) << 10) | ((backTexture) << 11) | ((dissolve) << 12) | ((emissive) << 13) | \
+	((normalMap) << 14) | ((skinned) << 15) | ((normalMrt) << 16) | ((pbr) << 17) | \
+	((pbrMaps) << 18) | ((occlusionUvB) << 19) | ((parallax) << 20))
 
 #include "programTable.h"
 

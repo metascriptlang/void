@@ -109,11 +109,11 @@ test "forwardOutline settings reject nonfinite and contract violations" {
 	assert !valid({ ...settings, color: { x: 0.0, y: 0.0, z: 0.0, w: -1.0 } });
 }
 
-test "forwardOutline normal MRT occupies bit15 never skin bit14" {
+test "forwardOutline normal MRT occupies bit16 never skin bit15" {
 	const normal: ProgramKey = ProgramKey.of(Program.Lit).withNormalMrt();
-	assert normal.bits() == 32768;
-	assert (normal.bits() & 16384) == 0;
-	assert normal.withCutout().bits() == 32896;
+	assert normal.bits() == 65536;
+	assert (normal.bits() & 32768) == 0;
+	assert normal.withCutout().bits() == 65792;
 	assert ProgramKey.of(Program.Lit).bits() == 0;
 }
 

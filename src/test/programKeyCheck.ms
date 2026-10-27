@@ -258,11 +258,11 @@ function everyKey(): Vec<ProgramKey> {
 
 test "every key packs to bits of its own, and each declared one reads its program's layout" {
 	let seen: Vec<boolean> = [];
-	for (let bits = 0; bits < 32768; bits++) { seen.push(false); }
+	for (let bits = 0; bits < 65536; bits++) { seen.push(false); }
 	let declared: int32 = 0;
 	for (const key of everyKey()) {
 		const bits: int32 = key.bits();
-		assert bits >= 0 && bits < 32768 && !seen[bits];
+		assert bits >= 0 && bits < 65536 && !seen[bits];
 		seen[bits] = true;
 		if (declares(key)) {
 			declared = declared + 1;
@@ -286,7 +286,7 @@ test "the decal program is the core's alone, on the Lit layout, and reads the sc
 test "skin programs own slot7 and keep matching colour/shadow layouts" {
 	for (const program of [Program.Lit, Program.LitTextured, Program.UnlitTextured]) {
 		const key = ProgramKey.of(program).withSkin();
-		assert key.bits() == (ProgramKey.of(program).bits() | (1 << 14));
+		assert key.bits() == (ProgramKey.of(program).bits() | (1 << 15));
 		for (const preset of [Preset.Core, Preset.PixelArt]) {
 			const drawn = drawnIn(key, preset, false);
 			assert drawn.ok;
@@ -330,8 +330,8 @@ test "every core normal MRT mesh key retains its skinned palette and separate fe
 			if (!declares(key)) { continue; }
 			const skin = key.withSkin();
 			assert declares(skin) && skin.normalMrt && skin.skinned;
-			assert skin.bits() == (key.bits() | (1 << 14));
-			assert skin.bits() >= (1 << 15) && skin.bits() < 65536;
+			assert skin.bits() == (key.bits() | (1 << 15));
+			assert skin.bits() >= (1 << 16) && skin.bits() < 131072;
 			assert uniformBlockLength(skin, SKIN_UNIFORM_SLOT) == SKIN_UNIFORM_LENGTH;
 			checked++;
 		}
@@ -1249,9 +1249,9 @@ test "every mesh program and its shadow casters have a layout carrying the insta
 	assert !readsInstanceRows(vertexLayoutOf(ProgramKey.of(Program.Billboard)));
 }
 
-test "a pbr-maps key sets bit 17, is declared in all four variants and binds slots 0, 1 and 2" {
+test "a pbr-maps key sets bit 18, is declared in all four variants and binds slots 0, 1 and 2" {
 	const base: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps();
-	assert base.bits() == ProgramKey.of(Program.LitTextured).withPbr().bits() + 131072;
+	assert base.bits() == ProgramKey.of(Program.LitTextured).withPbr().bits() + 262144;
 	assert describe(base).includes("pbr-maps") && !describe(base.withPbr()).includes("pbr-maps-");
 	const tangent: ProgramKey = base.withNormalMap();
 	for (const key of [base, tangent]) {
@@ -1281,9 +1281,9 @@ function uvBLayoutOf(key: ProgramKey): VertexLayout {
 	return key.normalMap ? VertexLayout.LitTexturedTangentUvB : VertexLayout.LitTexturedUvB;
 }
 
-test "an occlusion-uv-b key sets bit 18 and is declared on a uv-b layout wherever pbr-maps is" {
+test "an occlusion-uv-b key sets bit 19 and is declared on a uv-b layout wherever pbr-maps is" {
 	const maps: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps();
-	assert maps.withOcclusionUvB().bits() == maps.bits() + 262144;
+	assert maps.withOcclusionUvB().bits() == maps.bits() + 524288;
 	assert describe(maps.withOcclusionUvB()).includes(" occlusion-uv-b");
 	const emitting: ProgramKey = maps.withEmissive();
 	const variants: Vec<ProgramKey> = [
@@ -1312,10 +1312,10 @@ test "an occlusion-uv-b key sets bit 18 and is declared on a uv-b layout whereve
 	assert !declares({ ...ProgramKey.of(Program.LitTextured).withPbr(), occlusionUvB: true });
 }
 
-test "a parallax key sets bit 19 on a normal-mapped pbr-maps key and binds no view of its own" {
+test "a parallax key sets bit 20 on a normal-mapped pbr-maps key and binds no view of its own" {
 	const maps: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps()
 		.withNormalMap();
-	assert maps.withParallax().bits() == maps.bits() + 524288;
+	assert maps.withParallax().bits() == maps.bits() + 1048576;
 	assert describe(maps.withParallax()).includes(" parallax");
 	const variants: Vec<ProgramKey> = [
 		maps, maps.withSkin(), maps.withEmissive(), maps.withOcclusionUvB(),
@@ -1396,7 +1396,7 @@ test "a skinned pbr key is declared on the skinned layout in every variant a glT
 
 test "an emitting pbr key keeps its emissive vec4 after the pbr one and binds view slot 3" {
 	const base: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withEmissive();
-	assert base.bits() == ProgramKey.of(Program.LitTextured).bits() + 4096 + 65536;
+	assert base.bits() == ProgramKey.of(Program.LitTextured).bits() + 8192 + 131072;
 	assert movingBase(base) == PBR_MATERIAL_UNIFORM_LENGTH &&
 		emissiveBase(base) == movingBase(base);
 	assert movingBase(ProgramKey.of(Program.LitTextured)) == MATERIAL_UNIFORM_LENGTH;
