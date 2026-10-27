@@ -627,7 +627,7 @@ test "the core refuses a lit material without its block, or on a mesh of another
 		const began: Result<boolean, RendererError> =
 			beginFrame(core, litItems, shortCamera, lights);
 		assert !began.ok && began.error == RendererError.CameraBlockLength;
-		const mixed: Vec<DrawItem> = [litItems[0], litItems[0], heldItems[0]];
+		let mixed: Vec<DrawItem> = [litItems[0], litItems[0], heldItems[0]];
 		const late: Result<boolean, RendererError> = beginFrame(core, mixed, shortCamera, lights);
 		assert !late.ok && late.error == RendererError.VertexLayout;
 		assert core.drawn.length == 0 && held.uniforms.values[core.cameraBlock.offset] == 0.0;

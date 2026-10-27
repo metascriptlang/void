@@ -646,7 +646,7 @@ test "a decal pass neither writes nor tests depth, and the pixel-art preset draw
 	const made: Result<MaterialId, MaterialError> =
 		addMaterial(context, Material.plain(Program.Particle, unwritten, Phase.Decal));
 	if (!made.ok) { unreachable; }
-	const items: Vec<DrawItem> = [itemOnItsLayout(context, made.value)];
+	let items: Vec<DrawItem> = [itemOnItsLayout(context, made.value)];
 	const refused: Result<int32, PixelArtError> =
 		renderFrame(renderer, items, camera, lights, view(1080, 2400, 360, 1, 0));
 	assert !refused.ok && refused.error == PixelArtError.Decal;
