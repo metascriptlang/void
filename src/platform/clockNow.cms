@@ -1,0 +1,7 @@
+// Nanoseconds since the first call, from the C targets' platform clock (clock.h); clockNow.jms is
+// the browser's.
+
+@include("clock.h");
+extern function voidPlatformClockNow(): int64;
+
+export function clockNow(): int64 { return voidPlatformClockNow(); }

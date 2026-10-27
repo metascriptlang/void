@@ -3,10 +3,9 @@ import { rgba } from "../void2d/types";
 import { paint, isDirty } from "../void2d/scene";
 import { begin2d, frameEnd } from "../void2d/draw";
 import {
-	voidProfilePresent, voidProfileMark, voidProfileState, voidProfileInput,
-	VOID_MARK_BEGIN, VOID_MARK_COMMIT, VOID_MARK_PRESENT_START, VOID_MARK_PRESENT_END,
-	VOID_FRAME_IDLE, VOID_FRAME_COMMITTED, VOID_FRAME_PRESENTED,
-} from "../void2d/frameClock.h";
+	frameClock, profilePresent, profileInput, MARK_BEGIN, MARK_COMMIT, MARK_PRESENT_START,
+	MARK_PRESENT_END, FRAME_IDLE, FRAME_COMMITTED, FRAME_PRESENTED,
+} from "../void2d/frameClock";
 import { NO_STAMP } from "../void2d/profiler";
 import { void2dQuadCoverage } from "../void2d/batcher.h";
 import {
@@ -33,10 +32,10 @@ test "a frame closed by frameEnd becomes one record and is collected once" {
 	const s = settled();
 	const before: int32 = frameStats.frames;
 	drawFrame(s);
-	assert voidProfileState() == VOID_FRAME_COMMITTED;
+	assert frameClock.state == FRAME_COMMITTED;
 	assert profilerCollect();
 	assert !profilerCollect();
-	assert voidProfileState() == VOID_FRAME_IDLE;
+	assert frameClock.state == FRAME_IDLE;
 	assert frameStats.frames == before + 1;
 	assert lastFrameRecord().serial == frameStats.frames;
 }
@@ -64,13 +63,13 @@ test "two brackets before frameEnd are one record" {
 test "begin, commit, present start and present end are in order and the record carries them" {
 	const s = settled();
 	drawFrame(s);
-	voidProfilePresent(1);
-	voidProfilePresent(0);
-	assert voidProfileState() == VOID_FRAME_PRESENTED;
-	const begin: int64 = voidProfileMark(VOID_MARK_BEGIN);
-	const committed: int64 = voidProfileMark(VOID_MARK_COMMIT);
-	const presentStart: int64 = voidProfileMark(VOID_MARK_PRESENT_START);
-	const presentEnd: int64 = voidProfileMark(VOID_MARK_PRESENT_END);
+	profilePresent(1);
+	profilePresent(0);
+	assert frameClock.state == FRAME_PRESENTED;
+	const begin: int64 = frameClock.mark(MARK_BEGIN);
+	const committed: int64 = frameClock.mark(MARK_COMMIT);
+	const presentStart: int64 = frameClock.mark(MARK_PRESENT_START);
+	const presentEnd: int64 = frameClock.mark(MARK_PRESENT_END);
 	assert begin <= committed && committed <= presentStart && presentStart <= presentEnd;
 	assert profilerCollect();
 	assert lastFrameRecord().drawNs == committed - begin;
@@ -86,9 +85,9 @@ test "a frame with no present call records a present of no time" {
 
 test "a present hook for a commit with no void2d frame records nothing" {
 	settled();
-	voidProfilePresent(1);
-	voidProfilePresent(0);
-	assert voidProfileState() == VOID_FRAME_IDLE;
+	profilePresent(1);
+	profilePresent(0);
+	assert frameClock.state == FRAME_IDLE;
 	assert !profilerCollect();
 }
 
@@ -205,14 +204,14 @@ test "a headless frame has void2d counters of zero and no sokol measurement" {
 
 test "window events join the next frame, and events inside a frame are dropped" {
 	const s = settled();
-	voidProfileInput();
-	voidProfileInput();
+	profileInput();
+	profileInput();
 	drawFrame(s);
 	assert profilerCollect();
 	assert lastFrameRecord().inputEvents == 2;
 	assert lastFrameRecord().inputLatencyNs >= 0;
 	begin2d(100.0, 50.0, 1.0);
-	voidProfileInput();
+	profileInput();
 	frameEnd();
 	assert profilerCollect();
 	assert lastFrameRecord().droppedInputs == 1;

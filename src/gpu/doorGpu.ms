@@ -290,7 +290,7 @@ export function doorShutdown(): void {
 	resetStats();
 }
 
-// sokol's sg_frame_stats, the members frameClock.c reads: counted through a frame and handed
+// sokol's sg_frame_stats, the members frameClock.ms reads: counted through a frame and handed
 // over at commit as the previous frame's (sokol_gfx.h _sg_update_stats). The first
 // DOOR_STAT_PER_FRAME_COUNT are those per-frame counts; the DOOR_STAT_RESIDENT_* after them are
 // the bytes alive now, never reset per frame, and read live rather than from the previous frame.

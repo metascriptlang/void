@@ -156,6 +156,7 @@ import "./colorMatrixPassCheck";
 import "./imageDecodeCheck";
 import "./imagePortCheck";
 import "./coveragePortCheck";
+import "./frameClockPortCheck";
 import "./animationSheetCheck";
 import "./scene3dCheck";
 import "./lightColorCheck";
