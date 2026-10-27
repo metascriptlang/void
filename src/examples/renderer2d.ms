@@ -3,7 +3,7 @@
 // Reads like Heaps h2d, runs functional. Native + WebGPU + WebGL2.
 
 import { Texture } from "../gpu/texture";
-import { VoidKeyCode } from "../platform/appEvent.h";
+import { KeyCode } from "../platform/appEvent";
 import {
 	gfxSetup, makeImage, makeView, keyDown, fbWidth, fbHeight,
 } from "../sokol/gpu";
@@ -204,10 +204,10 @@ export function step2d(dt: float32): void {
 	green.setRotation(green.local().rotation + 0.03);
 
 	const panSpeed: float32 = 5.0;
-	if (keyDown(VoidKeyCode.VOID_KEY_D as int32)) { panX = panX + panSpeed; }
-	if (keyDown(VoidKeyCode.VOID_KEY_A as int32)) { panX = panX - panSpeed; }
-	if (keyDown(VoidKeyCode.VOID_KEY_S as int32)) { panY = panY + panSpeed; }
-	if (keyDown(VoidKeyCode.VOID_KEY_W as int32)) { panY = panY - panSpeed; }
+	if (keyDown(KeyCode.D as int32)) { panX = panX + panSpeed; }
+	if (keyDown(KeyCode.A as int32)) { panX = panX - panSpeed; }
+	if (keyDown(KeyCode.S as int32)) { panY = panY + panSpeed; }
+	if (keyDown(KeyCode.W as int32)) { panY = panY - panSpeed; }
 
 	sc.tick(dt);
 }
