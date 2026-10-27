@@ -14,6 +14,12 @@ import {
 	reserveBlock,
 	writeBlock,
 } from "../void3d/uniformPool";
+import {
+	DrawContext,
+	reserveBlock as reserveContextBlock,
+	writeBlock as writeContextBlock,
+	releaseBlock as releaseContextBlock,
+} from "../void3d/draw";
 import { uniformSize } from "../shader/uniform";
 import { Mat2x2f, Mat3x2f, Mat3x3f, Mat4x4f, Vec2f, Vec3f, Vec4f, bitcastF32toU32 } from "../shader/std";
 
@@ -256,4 +262,24 @@ test "a block of another length is refused, so a write never leaves its range" {
 	const written = writeBlock(pool, forged, builtWide());
 	assert !written.ok && written.error == UniformError.WrongLength;
 	assert same(lanes(pool.values, 0, 4), [SENTINEL, SENTINEL, SENTINEL, SENTINEL]);
+}
+
+test "a draw context reserves, writes and releases a typed block in its own pool" {
+	let context: DrawContext = DrawContext.withUniformCapacity(16);
+	const block: Result<TypedBlock<OutlineMaskParams>, UniformError> =
+		reserveContextBlock<OutlineMaskParams>(context, 3);
+	assert block.ok && block.value.block.slot == 3 && block.value.block.length == 8;
+	const written = writeContextBlock(context, block.value, {
+		outlineEdge: { x: 1.0, y: 2.0, z: 3.0, w: 4.0 },
+		outlineDepthMap: { x: 5.0, y: 6.0, z: 7.0, w: 8.0 },
+	});
+	assert written.ok && written.value == 8;
+	assert same(lanes(context.uniforms.values, 0, 8), [1, 2, 3, 4, 5, 6, 7, 8]);
+	assert releaseContextBlock(context, block.value).ok;
+	const stale = writeContextBlock(context, block.value, {
+		outlineEdge: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 },
+		outlineDepthMap: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 },
+	});
+	assert !stale.ok && stale.error == UniformError.Released;
+	assert same(lanes(context.uniforms.values, 0, 8), [1, 2, 3, 4, 5, 6, 7, 8]);
 }

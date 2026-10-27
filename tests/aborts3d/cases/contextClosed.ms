@@ -23,6 +23,9 @@
 // expect reserveUniforms: void3d: reserveUniforms on a draw context that was closed
 // expect releaseUniforms: void3d: releaseUniforms on a draw context that was closed
 // expect writeUniforms: void3d: writeUniforms on a draw context that was closed
+// expect reserveBlock: void3d: reserveBlock on a draw context that was closed
+// expect releaseBlock: void3d: releaseBlock on a draw context that was closed
+// expect writeBlock: void3d: writeBlock on a draw context that was closed
 // expect drawItem: void3d: drawItem on a draw context that was closed
 // expect closeContext: void3d: closeContext on a draw context that was closed
 // expect forMeshes: void3d: forMeshes on a draw context that was closed
@@ -35,8 +38,9 @@ import { Vec4, identity } from "../../../src/math/math3d";
 import { RenderState } from "../../../src/gpu/state";
 import { SWAPCHAIN_LAYOUT } from "../../../src/gpu/target";
 import { Program, ProgramKey, Preset } from "../../../src/void3d/gpu3d";
-import { Material, Phase, NO_UNIFORMS, UniformBlock } from "../../../src/void3d/material";
+import { Material, Phase, NO_UNIFORMS, TypedBlock, UniformBlock } from "../../../src/void3d/material";
 import { MeshData } from "../../../src/void3d/meshData";
+import { OutlineWidthParams } from "../../../src/void3d/post3d";
 import {
 	TextureData,
 	TextureId,
@@ -80,6 +84,9 @@ import {
 	reserveUniforms,
 	releaseUniforms,
 	writeUniforms,
+	reserveBlock,
+	releaseBlock,
+	writeBlock,
 	drawItem,
 	closeContext,
 } from "../../../src/void3d/draw";
@@ -204,6 +211,13 @@ function drawCase(name: string, context: DrawContext): boolean {
 		const _r: Result<int32, UniformError> = releaseUniforms(context, NO_UNIFORMS);
 	} else if (name == "writeUniforms") {
 		const _r: Result<int32, UniformError> = writeUniforms(context, NO_UNIFORMS, values);
+	} else if (name == "reserveBlock") {
+		const _r: Result<TypedBlock<OutlineWidthParams>, UniformError> = reserveBlock<OutlineWidthParams>(context, 2);
+	} else if (name == "releaseBlock") {
+		const _r: Result<int32, UniformError> = releaseBlock<OutlineWidthParams>(context, { block: NO_UNIFORMS });
+	} else if (name == "writeBlock") {
+		const _r: Result<int32, UniformError> =
+			writeBlock<OutlineWidthParams>(context, { block: NO_UNIFORMS }, { outlineWidth: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 } });
 	} else if (name == "drawItem") {
 		const item: DrawItem = { mesh: NO_MESH, material: NO_MATERIAL, world: identity() };
 		drawItem(context, item, ProgramKey.of(Program.Lit), SWAPCHAIN_LAYOUT, globals);
