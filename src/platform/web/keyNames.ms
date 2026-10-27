@@ -107,7 +107,7 @@ export function translateKey(name: string): int32 {
 		"BracketLeft" => KeyCode.LeftBracket as int32,
 		"Backslash" => KeyCode.Backslash as int32,
 		"BracketRight" => KeyCode.RightBracket as int32,
-		"Quote" => KeyCode.GraveAccent as int32,
+		"Quote" => KeyCode.Apostrophe as int32,
 		_ => KeyCode.Invalid as int32,
 	};
 }

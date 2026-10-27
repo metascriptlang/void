@@ -2,6 +2,7 @@
 // replaced it, with the key code each gave, and names it left unknown; src/platform/web/keyNames.ms
 // must give the same on the native and js targets.
 
+import { KeyCode } from "../platform/appEvent";
 import { translateKey } from "../platform/web/keyNames";
 
 struct KeyRow {
@@ -111,7 +112,7 @@ const RECORDED_KEYS: KeyRow[] = [
 	{ name: "BracketLeft", code: 91 },
 	{ name: "Backslash", code: 92 },
 	{ name: "BracketRight", code: 93 },
-	{ name: "Quote", code: 96 },
+	{ name: "Quote", code: 39 },
 ];
 
 const UNKNOWN_NAMES: string[] = [
@@ -147,6 +148,7 @@ test "a name outside the table is no key" {
 	}
 }
 
-test "the table names Quote as the grave accent, as window.c did" {
-	assert translateKey("Quote") == translateKey("Backquote");
+test "Quote is the apostrophe key and Backquote the grave accent" {
+	assert translateKey("Quote") == KeyCode.Apostrophe as int32;
+	assert translateKey("Backquote") == KeyCode.GraveAccent as int32;
 }
