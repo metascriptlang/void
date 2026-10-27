@@ -249,7 +249,7 @@ when (webgl2) {
 			await acquireDevice(onLost);
 		} catch (error) {
 			if (epoch == runEpoch) {
-				for (const start of starts.slice(0)) { start.onError(`void: the WebGPU device was lost and a new one could not be made: ${error}`); }
+				for (const start of starts.slice(0)) { start.onError(`void: the WebGPU device was lost and a new one could not be made: ${error.message}`); }
 			}
 			return;
 		}
@@ -265,7 +265,7 @@ async function acquire(canvas: CanvasView, start: Start): Promise<boolean> {
 			await acquireDevice(onLost);
 		}
 	} catch (error) {
-		if (!start.stopped) { start.onError(`void: this browser gave no GPU backend: ${error}`); }
+		if (!start.stopped) { start.onError(`void: this browser gave no GPU backend: ${error.message}`); }
 		return false;
 	}
 	return !start.stopped;
