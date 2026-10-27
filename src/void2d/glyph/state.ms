@@ -1,4 +1,3 @@
-import { ColourFace } from "../colourEmoji/colourFace";
 import { FontInfo } from "../trueType";
 
 export const FACE_UNREADABLE: int32 = -1;
@@ -65,7 +64,7 @@ export class GlyphFace {
 	emboldenUnits: float32 = 0.0;
 	skew: float32 = 0.0;
 	measured: boolean = false;
-	colour: ColourFace | null = null;
+	colourHandle: int32 = -1;
 	colourOnly: boolean = false;
 	sprite: boolean = false;
 	platform: Ptr<void> | null = null;

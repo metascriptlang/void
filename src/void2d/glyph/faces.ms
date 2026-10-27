@@ -33,11 +33,10 @@ import {
 } from "./state";
 import { findKernLookups, gposKern } from "./gpos";
 import { applySynthetic, shapeBox } from "./outline";
-import { ColourFace } from "../colourEmoji/colourFace";
 import { asInt32, truncInt } from "../trueType/fontInfo";
 
 when (voidColourEmoji) {
-	import { colourFaceGlyphIndex, colourInfo, colourOpen, colourReason } from "./colour";
+	import { colourFaceGlyphIndex, colourInfo, colourOpen, colourReason, colourRegister } from "./colour";
 	import { COLOUR_NONE, COLOUR_NO_MEMORY, COLOUR_OK } from "../colourEmoji/colourFace";
 	import { FACE_BAD_COLOUR, FACE_NO_MEMORY } from "./state";
 }
@@ -97,7 +96,7 @@ function findTableSlice(face: GlyphFace, tag: string): TableSlice {
 export function findGlyph(face: GlyphFace, codepoint: int32): int32 {
 	state.glyphLookups++;
 	when (voidColourEmoji) {
-		if (face.colourOnly) { return colourFaceGlyphIndex(face.colour, face.bytes.data, codepoint); }
+		if (face.colourOnly) { return colourFaceGlyphIndex(face.colourHandle, face.bytes.data, codepoint); }
 	}
 	return findGlyphIndex(face.info, codepoint);
 }
@@ -275,7 +274,7 @@ export function void2dGlyphFaceLoad(path: string, index: int32): int32 {
 	const holder = new FaceBytes(bytes);
 	const face = new GlyphFace(holder, blankInfo(holder.data));
 	const offset = getFontOffsetForIndex(holder.data, index);
-	let colour: ColourFace | null = null;
+	let colourHandle: int32 = -1;
 	let colourStatus: int32 = 1;
 	let colourGlyphs: int32 = 0;
 	let colourHead: int32 = 0;
@@ -289,7 +288,7 @@ export function void2dGlyphFaceLoad(path: string, index: int32): int32 {
 			colourHead = opened.head;
 			colourHhea = opened.hhea;
 			colourHmtx = opened.hmtx;
-			colour = opened.face;
+			colourHandle = colourRegister(opened.face);
 		}
 	}
 	let found: FontInfo | null = offset >= 0 ? initFont(holder.data, offset) : null;
@@ -340,7 +339,7 @@ export function void2dGlyphFaceLoad(path: string, index: int32): int32 {
 	face.platform = platform;
 	face.glyphCount = glyphCount;
 	face.kernLookups = findKernLookups(found);
-	face.colour = colour;
+	face.colourHandle = colourHandle;
 	state.faces.push(face);
 	return (state.faces.length as int32) - 1;
 }
@@ -351,7 +350,7 @@ function copyFace(base: GlyphFace): GlyphFace {
 	face.emboldenUnits = base.emboldenUnits;
 	face.skew = base.skew;
 	face.measured = base.measured;
-	face.colour = base.colour;
+	face.colourHandle = base.colourHandle;
 	face.colourOnly = base.colourOnly;
 	face.sprite = base.sprite;
 	face.platform = base.platform;
@@ -533,7 +532,7 @@ when (voidSprites) {
 		const sprite = copyFace(faceAt(base));
 		sprite.emboldenUnits = 0.0;
 		sprite.skew = 0.0;
-		sprite.colour = null;
+		sprite.colourHandle = -1;
 		sprite.sprite = true;
 		sprite.platform = null;
 		sprite.asciiUnits = 0.0;

@@ -57,8 +57,16 @@ when (voidColourEmoji) {
 		return colourFaceReason();
 	}
 
-	export function colourFaceGlyphIndex(colour: ColourFace | null, bytes: uint8[], codepoint: int32): int32 {
-		return faceGlyphIndex(colour, bytes, codepoint);
+	export function colourFaceGlyphIndex(handle: int32, bytes: uint8[], codepoint: int32): int32 {
+		return faceGlyphIndex(handle < 0 ? null : colourTable[handle], bytes, codepoint);
+	}
+
+	const colourTable: ColourFace[] = [];
+
+	export function colourRegister(face: ColourFace | null): int32 {
+		if (face == null) { return -1; }
+		colourTable.push(face);
+		return (colourTable.length as int32) - 1;
 	}
 
 	export function colourOpen(bytes: uint8[], offset: int32): ColourOpened {
@@ -107,9 +115,8 @@ when (voidColourEmoji) {
 	}
 
 	function colourOf(f: GlyphFace): ColourFace {
-		const colour = f.colour;
-		if (colour == null) { throw new Error("void2d: a colour call reached a face with no colour tables"); }
-		return colour;
+		if (f.colourHandle < 0) { throw new Error("void2d: a colour call reached a face with no colour tables"); }
+		return colourTable[f.colourHandle];
 	}
 
 	function layersOf(f: GlyphFace, glyph: int32, layers: ColourLayer[]): int32 {
@@ -125,7 +132,7 @@ when (voidColourEmoji) {
 	}
 
 	export function void2dGlyphColourFace(face: int32): int32 {
-		return validFace(face) && state.faces[face].colour != null ? 1 : 0;
+		return validFace(face) && state.faces[face].colourHandle >= 0 ? 1 : 0;
 	}
 
 	struct LayerBox {

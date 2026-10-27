@@ -24,7 +24,9 @@ import { glyphBox } from "./glyphBoxes";
 
 let metricSlots: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
 let boxSlots: Vec<int32> = [0, 0, 0, 0, 0, 0];
-import "./colourEmoji/colourEmoji";
+when (voidColourEmoji) {
+	import "./colourEmoji/colourEmoji";
+}
 
 when (voidSprites) {
 	import "./spriteGlyph";
