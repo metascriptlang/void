@@ -32,7 +32,7 @@ import { add, present, isDirty } from "../void2d/scene";
 import { Color, rgba, tile } from "../void2d/types";
 import { Align, TextRun, calcTextWidth, describe } from "../void2d/textLayout";
 import { glyphLookups } from "../void2d/face";
-import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
+import { loadImageFile } from "../assets/imageFile";
 when (voidProfiler) {
 	import { frameStats, profilerCollect } from "../void2d/frameMarks";
 	import { ringCount, ringPercentile } from "../void2d/profiler";
@@ -212,10 +212,9 @@ export function benchInit(kind: BenchKind): void {
 		warmupFrames = SWEEP_FRAMES + WARMUP_FRAMES;
 	} else {
 		benchName = "sprites";
-		const pixels = loadImageSync("assets/test.png", 4);
-		const image: uint32 = makeImage(pixels, imageWidth(), imageHeight());
-		const view: Texture = Texture.adopt(image, makeView(image), imageWidth(), imageHeight());
-		freeImage(pixels);
+		const sheet = loadImageFile("assets/test.png");
+		const image: uint32 = makeImage(sheet.pixels as Span<uint32> as Ptr<void>, sheet.width, sheet.height);
+		const view: Texture = Texture.adopt(image, makeView(image), sheet.width, sheet.height);
 		for (let row: int32 = 0; row < ROWS; row++) {
 			for (let column: int32 = 0; column < COLUMNS; column++) {
 				s.add(s.sprite(tile(view, CELL_W - 1.0, CELL_H - 1.0))

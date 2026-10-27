@@ -1,6 +1,7 @@
 // Void on --target=js: modules that reach C compile, and what needs C answers with a named error.
 
 import { decodeImage, decodeAnimation, imageFormatOf, ImageError, ImageFormat } from "../../src/assets/image";
+import { rgbaPng } from "../../src/test/imageBytes";
 import { loadGlb, GltfError } from "../../src/void3d/gltf";
 import { loadFace, FaceError } from "../../src/void2d/face";
 import { addFont, FontError } from "../../src/void2d/font";
@@ -18,13 +19,16 @@ test "the image format is read from its signature on JS" {
 	assert format.ok && format.value == ImageFormat.Png;
 }
 
-test "decoding an image or an animation on JS is refused by name" {
-	const image = decodeImage(PNG_SIGNATURE);
-	assert !image.ok;
-	if (!image.ok) { assert image.error == ImageError.NoDecoderOnJs; }
+test "an image and an animation decode on JS" {
+	const image = decodeImage(rgbaPng());
+	assert image.ok;
+	if (image.ok) { assert image.value.width == 2 && image.value.height == 2; }
+	const refused = decodeImage(PNG_SIGNATURE);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == ImageError.Undecodable; }
 	const animation = decodeAnimation(PNG_SIGNATURE);
 	assert !animation.ok;
-	if (!animation.ok) { assert animation.error == ImageError.NoDecoderOnJs; }
+	if (!animation.ok) { assert animation.error == ImageError.NotGif; }
 }
 
 test "a glTF document parses on JS up to its first refusal" {

@@ -1,6 +1,10 @@
 // Void Asset — the PNG decoder: stb_image.h's PNG path (zlib inflate, chunk reader, filters,
 // Adam7, palettes, 1/2/4/8/16-bit depths, tRNS, the req_comp conversion), alike on every target.
 
+import {
+	INT_MAX, mad2Valid, mad3Valid, zeros16, zeros32, zeros8,
+} from "./stbCommon";
+
 export struct PngImage {
 	width: int32;
 	height: int32;
@@ -11,7 +15,6 @@ export struct PngImage {
 const ZFAST_BITS: int32 = 9;
 const ZFAST_MASK: uint32 = 511;
 const ZNSYMS: int32 = 288;
-const INT_MAX: int64 = 2147483647;
 const UINT_MAX: int64 = 4294967295;
 
 const CHUNK_CGBI: uint32 = 0x43674249;
@@ -68,24 +71,6 @@ export function pngFailureReason(): string | null {
 function fail(reason: string): boolean {
 	failureReason = reason;
 	return false;
-}
-
-function zeros8(count: int32): uint8[] {
-	const out: uint8[] = new Array<uint8>(count);
-	for (let i: int32 = 0; i < count; i++) { out[i] = 0; }
-	return out;
-}
-
-function zeros16(count: int32): uint16[] {
-	const out: uint16[] = new Array<uint16>(count);
-	for (let i: int32 = 0; i < count; i++) { out[i] = 0; }
-	return out;
-}
-
-function zeros32(count: int32): int32[] {
-	const out: int32[] = new Array<int32>(count);
-	for (let i: int32 = 0; i < count; i++) { out[i] = 0; }
-	return out;
 }
 
 function untilNul(text: string): string {
@@ -429,6 +414,7 @@ class PngDecoder {
 	interlace: int32 = 0;
 	first: boolean = true;
 	isIphone: boolean = false;
+	headerOnly: boolean = false;
 	palette: uint8[] = zeros8(1024);
 	palLen: int32 = 0;
 	palImgN: int32 = 0;
@@ -494,18 +480,6 @@ function paeth(a: int32, b: int32, c: int32): int32 {
 	const hi = a < b ? b : a;
 	const t0 = hi <= thresh ? lo : c;
 	return thresh <= lo ? hi : t0;
-}
-
-function mulValid(a: int64, b: int64): boolean {
-	return a >= 0 && b >= 0 && (b == 0 || a <= INT_MAX / b);
-}
-
-function mad3Valid(a: int64, b: int64, c: int64, add: int64): boolean {
-	return mulValid(a, b) && mulValid(a * b, c) && a * b * c <= INT_MAX - add;
-}
-
-function mad2Valid(a: int64, b: int64, add: int64): boolean {
-	return mulValid(a, b) && a * b <= INT_MAX - add;
 }
 
 function createPngImageRaw(
@@ -846,6 +820,10 @@ function chunkTrns(this d: PngDecoder, length: uint32): Chunk {
 	if (d.first) { return failed("first not IHDR"); }
 	if (d.ioff > 0) { return failed("tRNS after IDAT"); }
 	if (d.palImgN != 0) {
+		if (d.headerOnly) {
+			d.imgN = 4;
+			return Chunk.Done;
+		}
 		if (d.palLen == 0) { return failed("tRNS before PLTE"); }
 		if (length > (d.palLen as uint32)) { return failed("bad tRNS len"); }
 		d.palImgN = 4;
@@ -856,6 +834,10 @@ function chunkTrns(this d: PngDecoder, length: uint32): Chunk {
 		if ((d.imgN & 1) == 0) { return failed("tRNS with alpha"); }
 		if (length != ((d.imgN * 2) as uint32)) { return failed("bad tRNS len"); }
 		d.hasTrans = true;
+		if (d.headerOnly) {
+			d.imgN++;
+			return Chunk.Done;
+		}
 		for (let k: int32 = 0; k < d.imgN && k < 3; k++) {
 			if (d.depth == 16) {
 				d.tc16[k] = d.get16be() as uint16;
@@ -870,6 +852,10 @@ function chunkTrns(this d: PngDecoder, length: uint32): Chunk {
 function chunkIdat(this d: PngDecoder, length: uint32): Chunk {
 	if (d.first) { return failed("first not IHDR"); }
 	if (d.palImgN != 0 && d.palLen == 0) { return failed("no PLTE"); }
+	if (d.headerOnly) {
+		if (d.palImgN != 0) { d.imgN = d.palImgN; }
+		return Chunk.Done;
+	}
 	if (length > ((1 as uint32) << 30)) { return failed("IDAT size limit"); }
 	if ((d.ioff as int64) + (length as int64) > INT_MAX) { return Chunk.Failed; }
 	const count = length as int32;
@@ -882,6 +868,7 @@ function chunkIdat(this d: PngDecoder, length: uint32): Chunk {
 
 function chunkIend(this d: PngDecoder, reqComp: int32): Chunk {
 	if (d.first) { return failed("first not IHDR"); }
+	if (d.headerOnly) { return Chunk.Done; }
 	if (d.ioff == 0) { return failed("no IDAT"); }
 	const bytesPerLine = ((d.imgX as int64) * (d.depth as int64) + 7) / 8;
 	const guess = bytesPerLine * (d.imgY as int64) * (d.imgN as int64) + (d.imgY as int64);
@@ -1113,4 +1100,19 @@ export function decodePng(
 		}
 	}
 	return Result.ok({ width: d.imgX, height: d.imgY, channels: d.imgN, pixels: pixels });
+}
+
+export struct PngInfo {
+	width: int32;
+	height: int32;
+	channels: int32;
+}
+
+// stbi_info_from_memory for a PNG: the header scan, which reads on to the first IDAT to learn
+// whether a tRNS adds an alpha channel. maxSide is STBI_MAX_DIMENSIONS.
+export function pngInfo(bytes: Readonly<Span<uint8>>, maxSide: int32): Result<PngInfo, string> {
+	const d = new PngDecoder({ bytes: bytes }, maxSide);
+	d.headerOnly = true;
+	if (!d.parsePngFile(0)) { return Result.err(failureReason ?? ""); }
+	return Result.ok({ width: d.imgX, height: d.imgY, channels: d.imgN });
 }

@@ -1,5 +1,6 @@
 import { readFile } from "std/fs";
-import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
+import { readFileBytes } from "../assets/imageFile";
+import { decodePng } from "../assets/png";
 import "../void2d/face";
 import { SpriteCanvas, drawSprite, spriteCodepoint, spriteCount } from "../void2d/spriteGlyph";
 import { trimSpaces, parseInt32, NOT_A_NUMBER } from "../../tests/harness/parse";
@@ -191,11 +192,13 @@ test "blocks, straight box lines, braille, sextants and octants equal Ghostty's 
 	for (const r of EXACT) { tallies.push({ cells: 0, equal: 0 }); }
 	for (const size of SIZES) {
 		for (const bucket of BUCKETS) {
-			const raw = loadImageSync(pngPath(bucket, size), 1);
-			const refWidth: int32 = imageWidth();
-			const reference = raw as Ptr<uint8>;
+			const raw = decodePng(readFileBytes(pngPath(bucket, size)), 1, 16384);
+			assert raw.ok;
+			if (!raw.ok) { return; }
+			const refWidth: int32 = raw.value.width;
+			const reference = raw.value.pixels as Span<uint8> as Ptr<uint8>;
 			assert refWidth == (size.width + 2 * (size.width / 4)) * 16;
-			assert imageHeight() == (size.height + 2 * (size.height / 4)) * 16;
+			assert raw.value.height == (size.height + 2 * (size.height / 4)) * 16;
 			for (let k = 0; k < 256; k++) {
 				const codepoint: int32 = bucket + k;
 				if (!inRanges(codepoint, EXACT)) { continue; }
@@ -208,7 +211,6 @@ test "blocks, straight box lines, braille, sextants and octants equal Ghostty's 
 					}
 				}
 			}
-			freeImage(raw);
 		}
 	}
 	let cells: int32 = 0;
@@ -236,9 +238,11 @@ test "diagonals, arcs, triangles and powerline stay inside the budget listed for
 	for (const f of GRADED) { tallies.push({ cells: 0, pixels: 0, worst: 0 }); }
 	for (const size of SIZES) {
 		for (const bucket of BUCKETS) {
-			const raw = loadImageSync(pngPath(bucket, size), 1);
-			const refWidth: int32 = imageWidth();
-			const reference = raw as Ptr<uint8>;
+			const raw = decodePng(readFileBytes(pngPath(bucket, size)), 1, 16384);
+			assert raw.ok;
+			if (!raw.ok) { return; }
+			const refWidth: int32 = raw.value.width;
+			const reference = raw.value.pixels as Span<uint8> as Ptr<uint8>;
 			for (let k = 0; k < 256; k++) {
 				const codepoint: int32 = bucket + k;
 				const family: int32 = familyOf(codepoint);
@@ -249,7 +253,6 @@ test "diagonals, arcs, triangles and powerline stay inside the budget listed for
 				if (d.pixels > tallies[family].pixels) { tallies[family].pixels = d.pixels; }
 				if (d.worst > tallies[family].worst) { tallies[family].worst = d.worst; }
 			}
-			freeImage(raw);
 		}
 	}
 	for (let i = 0; i < (GRADED.length as int32); i++) {
@@ -279,9 +282,11 @@ test "every sprite the table draws is in exactly one class, exact or graded" {
 
 test "the comparison is not vacuous: another glyph, another line weight or another shape differs" {
 	const size = SIZES[0];
-	const raw = loadImageSync(pngPath(0x2500, size), 1);
-	const refWidth: int32 = imageWidth();
-	const reference = raw as Ptr<uint8>;
+	const raw = decodePng(readFileBytes(pngPath(0x2500, size)), 1, 16384);
+	assert raw.ok;
+	if (!raw.ok) { return; }
+	const refWidth: int32 = raw.value.width;
+	const reference = raw.value.pixels as Span<uint8> as Ptr<uint8>;
 	const lowerHalf = drawn(0x2584, size);
 	assert equalCell(reference, refWidth, 0x2500, 0x2584, lowerHalf);
 	assert !equalCell(reference, refWidth, 0x2500, 0x2580, lowerHalf);
@@ -292,7 +297,6 @@ test "the comparison is not vacuous: another glyph, another line weight or anoth
 	const crossed = distance(reference, refWidth, 0x2500, 0x2571, drawn(0x2572, size));
 	assert honest.pixels <= budget.maxPixels && honest.worst <= budget.maxDelta;
 	assert crossed.pixels > budget.maxPixels && crossed.worst > budget.maxDelta;
-	freeImage(raw);
 }
 
 function litColumns(canvas: SpriteCanvas, row: int32): string {

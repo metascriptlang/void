@@ -23,7 +23,7 @@ import { Align } from "../void2d/textLayout";
 import { add, present, tick } from "../void2d/scene";
 import { Tile, Vec2, rgba, tile, sub, flipX, vec2, Smooth, targetTile } from "../void2d/types";
 import { BlendMode } from "../gpu/state";
-import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
+import { loadImageFile } from "../assets/imageFile";
 
 let sc: Scene2D | null = null;
 let panel: NodeRef | null = null;
@@ -48,12 +48,11 @@ export function init2d(): void {
 	preparePipelines(prepared);
 	const sceneObj = Scene2D.create(rgba(0.08, 0.09, 0.12, 1.0));
 
-	const img = loadImageSync("assets/test.png", 4);
-	const iw: int32 = imageWidth();
-	const ih: int32 = imageHeight();
-	const logoImage: uint32 = makeImage(img, iw, ih);
+	const img = loadImageFile("assets/test.png");
+	const iw: int32 = img.width;
+	const ih: int32 = img.height;
+	const logoImage: uint32 = makeImage(img.pixels as Span<uint32> as Ptr<void>, iw, ih);
 	const logoView: Texture = Texture.adopt(logoImage, makeView(logoImage), iw, ih);
-	freeImage(img);
 	const logoH: float32 = 180.0;
 	const logoW: float32 = logoH * (iw as float32) / (ih as float32);
 
