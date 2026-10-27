@@ -1,0 +1,93 @@
+// The browser window's state, as windowCore.h keeps it in voidWindow, with the frame timing of
+// frameTiming.h (sokol_app.h's _sapp_timing_*, pin 2e75443d). Pure state: the DOM stays in
+// windowEvents.jms.
+
+import { AppEventType, MouseButton, NativeAppEvent, blankAppEvent } from "../appEvent";
+import { CanvasSize } from "./window";
+
+const DT_MIN: float64 = 0.000001;
+const DT_MAX: float64 = 0.1;
+const DT_THRESHOLD: float64 = 0.004;
+const DT_ALPHA: float64 = 0.025;
+const DT_INITIAL: float64 = 1.0 / 60.0;
+
+function clampDelta(dt: float64): float64 {
+	return Math.min(Math.max(dt, DT_MIN), DT_MAX);
+}
+
+export class FrameTiming {
+	last: float64 = 0;
+	ema: float64 = DT_INITIAL;
+	smoothDt: float64 = DT_INITIAL;
+
+	update(nowSeconds: float64): void {
+		if (this.last > 0) { this.delta(nowSeconds - this.last); }
+		this.last = nowSeconds;
+	}
+
+	delta(raw: float64): void {
+		const dt = clampDelta(raw);
+		if (Math.abs(dt - this.smoothDt) > DT_THRESHOLD) {
+			this.ema = dt;
+			this.smoothDt = dt;
+		} else {
+			this.ema = this.ema + DT_ALPHA * (dt - this.ema);
+			this.smoothDt = clampDelta(this.ema);
+		}
+	}
+}
+
+export class WindowMouse {
+	x: float32 = 0;
+	y: float32 = 0;
+	dx: float32 = 0;
+	dy: float32 = 0;
+	posValid: boolean = false;
+	shown: boolean = true;
+	locked: boolean = false;
+	requestedLock: boolean = false;
+	cursor: int32 = 0;
+}
+
+export class WindowState {
+	initCalled: boolean = false;
+	quitRequested: boolean = false;
+	quitOrdered: boolean = false;
+	frameCount: uint64 = 0;
+	dpiScale: float32 = 1;
+	windowWidth: int32 = 0;
+	windowHeight: int32 = 0;
+	framebufferWidth: int32 = 0;
+	framebufferHeight: int32 = 0;
+	mouse: WindowMouse = new WindowMouse();
+	mouseButtons: int32 = 0;
+	clipboard: string = "";
+	timing: FrameTiming = new FrameTiming();
+
+	constructor(size: CanvasSize) {
+		this.resize(size);
+	}
+
+	resize(size: CanvasSize): void {
+		this.dpiScale = size.scale;
+		this.windowWidth = size.cssWidth;
+		this.windowHeight = size.cssHeight;
+		this.framebufferWidth = size.width;
+		this.framebufferHeight = size.height;
+	}
+
+	initEvent(type: AppEventType): NativeAppEvent {
+		let e = blankAppEvent(type);
+		e.frameCount = this.frameCount;
+		e.mouseButton = MouseButton.Invalid as int32;
+		e.windowWidth = this.windowWidth;
+		e.windowHeight = this.windowHeight;
+		e.framebufferWidth = this.framebufferWidth;
+		e.framebufferHeight = this.framebufferHeight;
+		e.mouseX = this.mouse.x;
+		e.mouseY = this.mouse.y;
+		e.mouseDx = this.mouse.dx;
+		e.mouseDy = this.mouse.dy;
+		return e;
+	}
+}
