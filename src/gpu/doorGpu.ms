@@ -91,7 +91,7 @@ import {
 	DOOR_BINDING_SAMPLER,
 	DOOR_BINDING_VERTEX_BUFFER,
 	DOOR_BINDING_VIEW,
-} from "./doorWords.h";
+} from "./doorWords.ms";
 when (c) {
 	import "./doorExports";
 }
@@ -133,7 +133,6 @@ export enum StoreAction {
 	DontCare,
 }
 
-// The ordinals are door.h's DOOR_PASS_NONE, DOOR_PASS_TARGET and DOOR_PASS_SCREEN.
 export enum PassState {
 	None,
 	Target,
@@ -1722,7 +1721,7 @@ test "door tables hold one entry per member of the enum that indexes them" {
 	assert STORE_OPS.length as int32 == (StoreAction.DontCare as int32) + 1;
 }
 
-test "the binding words of door.h agree with the slot counts" {
+test "the binding words of doorWords.ms agree with the slot counts" {
 	assert VIEW_SLOTS == DOOR_BINDING_SAMPLER - DOOR_BINDING_VIEW;
 	assert SAMPLER_SLOTS == DOOR_BINDING_LENGTH - DOOR_BINDING_SAMPLER;
 	assert DOOR_BINDING_INDEX_BUFFER == GPU_MAX_VERTEX_BUFFERS;
@@ -1743,7 +1742,7 @@ test "doorFrameStat answers each stat from its own slot of the previous frame" {
 	resetStats();
 }
 
-test "the door's ordinals stay the numbers door.h gives the C layers" {
+test "the door ordinals stay the numbers the C layers use" {
 	assert (PixelFormat.None as int32) == 0;
 	assert (PixelFormat.Rgba8 as int32) == 2;
 	assert (PixelFormat.Depth as int32) == 3;

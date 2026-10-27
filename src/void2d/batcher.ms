@@ -9,7 +9,7 @@ import {
 } from "../gpu/doorGpu.ms";
 import {
 	DOOR_BINDING_LENGTH, DOOR_BINDING_SAMPLER, DOOR_BINDING_VIEW,
-} from "../gpu/doorWords.h";
+} from "../gpu/doorWords.ms";
 import {
 	CMD_KIND, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_BLEND, CMD_SAMPLER, commandViewOf,
 	CMD_EFFECT, CMD_ARG0, CMD_ARG1, CMD_RT_MODE, CMD_CLEAR_R, CMD_PIPELINE, CMD_INSTANCE_OFFSET,
