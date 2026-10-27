@@ -3555,7 +3555,7 @@ one texture per mip on WebGL :286-312, the mip count and size :326-340, `compute
 alpha :86); `settings.rs` (`NATURAL` :132-145, the threshold precomputations :243-251).
 
 **As built.** `src/void3d/bloom.ms` holds `BloomSettings`, the CPU halves (`bloomMipCount`,
-`bloomMipWidth`, `bloomBlendFactor`, `writeThreshold`, `upsampleState`) and `BloomPass`, which
+`bloomMipWidth`, `bloomBlendFactor`, `thresholdOf`, `upsampleState`) and `BloomPass`, which
 `ToneMapPass` owns, so both presets have it from one place and it runs in `ToneMapPass.draw`
 before the tone map. Three screen programs (`BloomDownsampleFirst`, `BloomDownsample`,
 `BloomUpsample`, core preset, fullscreen layout; `shader3d.glsl`) each read one 12-float block:
