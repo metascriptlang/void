@@ -105,7 +105,13 @@ export function pageCanvas(selector: string, highDpi: boolean): CanvasView | nul
 export function installStart(open: (view: CanvasView, onError: (message: string) => void) => () => void): void {
 	publishStart((canvas: Js, onError: (message: string) => void): () => void => {
 		const view = attach(canvas, true);
-		const stop = open(view, onError);
+		let stop: () => void = (): void => {};
+		try {
+			stop = open(view, onError);
+		} catch (error) {
+			detach(view);
+			throw error;
+		}
 		return (): void => {
 			stop();
 			detach(view);
