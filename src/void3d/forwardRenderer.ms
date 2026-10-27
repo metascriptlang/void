@@ -342,7 +342,7 @@ function screenMaterialError(renderer: ForwardRenderer, material: MaterialId): F
 // anything changes.
 export function prepareFrame(
 	renderer: ForwardRenderer,
-	items: Readonly<Span<DrawItem>>,
+	items: Span<DrawItem>,
 	camera: Readonly<Span<float32>>,
 	lights: Readonly<Span<float32>>,
 	width: int32,
@@ -478,7 +478,7 @@ export function endPrepared(renderer: ForwardRenderer): void {
 
 export function renderFrame(
 	renderer: ForwardRenderer,
-	items: Readonly<Span<DrawItem>>,
+	items: Span<DrawItem>,
 	camera: Readonly<Span<float32>>,
 	lights: Readonly<Span<float32>>,
 	width: int32,

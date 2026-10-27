@@ -353,7 +353,7 @@ function frameOf(lights: Vec<float32>, sun: boolean, point: boolean): RendererEr
 	let core: Renderer = created.value;
 	if (sun) { attachShadow(core, sunMap.value); }
 	if (point) { attachCubeShadow(core, cubeMap.value); }
-	const items: Vec<DrawItem> = [];
+	let items: Vec<DrawItem> = [];
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const began: Result<boolean, RendererError> = beginFrame(core, items, camera, lights);
 	return began.ok ? null : began.error;

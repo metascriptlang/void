@@ -571,7 +571,7 @@ export function needsFrame(this renderer: Renderer): boolean {
 // caller uploaded from buffers only it keeps.
 export function beginFrame(
 	renderer: Renderer,
-	items: Readonly<Span<DrawItem>>,
+	items: Span<DrawItem>,
 	camera: Readonly<Span<float32>>,
 	lights: Readonly<Span<float32>>,
 ): Result<boolean, RendererError> {

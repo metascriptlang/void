@@ -238,7 +238,7 @@ test "the pixel-art preset refuses a shaped slot instead of toon-lighting it as 
 	assert created.ok;
 	if (!created.ok) { return; }
 	const renderer: PixelArtRenderer = created.value;
-	const items: Vec<DrawItem> = [];
+	let items: Vec<DrawItem> = [];
 	const empty: LowResView = { width: 0, height: 0, scale: 0, offsetX: 0.0, offsetY: 0.0 };
 	const drawn: LowResView = try lowResView(1080, 2400, 360, 1, 0) catch empty;
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);

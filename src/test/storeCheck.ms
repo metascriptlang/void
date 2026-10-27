@@ -165,12 +165,12 @@ test "the core refuses another context's mesh or material by name before it writ
 	let core: Renderer = created.value;
 	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-	const foreignMesh: Vec<DrawItem> =
+	let foreignMesh: Vec<DrawItem> =
 		[{ mesh: a.meshAt(0), material: a.materialAt(0), world: identity() }];
 	const meshFrame: Result<boolean, RendererError> =
 		beginFrame(core, foreignMesh, camera, lights);
 	assert !meshFrame.ok && meshFrame.error == RendererError.ForeignMesh;
-	const foreignMaterial: Vec<DrawItem> =
+	let foreignMaterial: Vec<DrawItem> =
 		[{ mesh: b.meshAt(0), material: a.materialAt(0), world: identity() }];
 	const materialFrame: Result<boolean, RendererError> =
 		beginFrame(core, foreignMaterial, camera, lights);

@@ -288,7 +288,7 @@ test "a LUT refuses an empty palette and levels it cannot address" {
 test "pass lists keep item order per phase and sort alpha back to front" {
 	const phases: Vec<Phase> = [Phase.Opaque, Phase.Alpha, Phase.Additive];
 	const context: DrawContext = contextWith(phases);
-	const items: Vec<DrawItem> = [
+	let items: Vec<DrawItem> = [
 		itemAt(context, 0, 0.1),
 		itemAt(context, 1, 0.2),
 		itemAt(context, 0, 0.3),
@@ -490,7 +490,7 @@ test "a camera or light block of the wrong length refuses the frame before it ad
 	assert created.ok;
 	if (created.ok) {
 		let renderer: PixelArtRenderer = created.value;
-		const items: Vec<DrawItem> = [];
+		let items: Vec<DrawItem> = [];
 		const drawn: LowResView = view(1080, 2400, 360, 1, 0);
 		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
@@ -616,7 +616,7 @@ test "the pixel-art preset refuses a blended material in the opaque phase" {
 	const made: Result<MaterialId, MaterialError> =
 		addMaterial(context, Material.plain(Program.Particle, blended, Phase.Opaque));
 	if (!made.ok) { unreachable; }
-	const items: Vec<DrawItem> = [itemOnItsLayout(context, made.value)];
+	let items: Vec<DrawItem> = [itemOnItsLayout(context, made.value)];
 	const refused: Result<int32, PixelArtError> =
 		renderFrame(renderer, items, camera, lights, view(1080, 2400, 360, 1, 0));
 	assert !refused.ok && refused.error == PixelArtError.BlendedOpaque;
@@ -638,7 +638,7 @@ test "with the depth texture sampled, the pixel-art preset refuses a translucent
 	const made: Result<MaterialId, MaterialError> =
 		addMaterial(context, Material.plain(Program.Particle, blended, Phase.Alpha));
 	if (!made.ok) { unreachable; }
-	const items: Vec<DrawItem> = [itemOnItsLayout(context, made.value)];
+	let items: Vec<DrawItem> = [itemOnItsLayout(context, made.value)];
 	const refused: Result<int32, PixelArtError> =
 		renderFrame(renderer, items, camera, lights, view(1080, 2400, 360, 1, 0));
 	assert !refused.ok && refused.error == PixelArtError.TranslucentDepthWrite;
@@ -648,7 +648,7 @@ test "with the depth texture sampled, the pixel-art preset refuses a translucent
 test "the pixel-art preset refuses a material naming a program it does not draw" {
 	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
 	let renderer: PixelArtRenderer = presetOver(context, Program.Copy, -1.0);
-	const items: Vec<DrawItem> = [itemAt(context, (context.materials.length as int32) - 1, 0.0)];
+	let items: Vec<DrawItem> = [itemAt(context, (context.materials.length as int32) - 1, 0.0)];
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	const refused: Result<int32, PixelArtError> =
@@ -665,7 +665,7 @@ test "a lit or textured lit material without ramp levels or its block refuses th
 	const drawn: LowResView = view(1080, 2400, 360, 1, 0);
 	let zero: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let atZero: PixelArtRenderer = presetOver(zero, Program.Lit, 0.0);
-	const zeroItems: Vec<DrawItem> = [itemOnItsLayout(zero, zero.lastMaterial())];
+	let zeroItems: Vec<DrawItem> = [itemOnItsLayout(zero, zero.lastMaterial())];
 	const noLevels: Result<int32, PixelArtError> =
 		renderFrame(atZero, zeroItems, camera, lights, drawn);
 	assert !noLevels.ok && noLevels.error == PixelArtError.RampLevels;
@@ -679,7 +679,7 @@ test "a lit or textured lit material without ramp levels or its block refuses th
 	assert !texturedLevels.ok && texturedLevels.error == PixelArtError.RampLevels;
 	let bare: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let withoutBlock: PixelArtRenderer = presetOver(bare, Program.Lit, -1.0);
-	const bareItems: Vec<DrawItem> = [itemOnItsLayout(bare, bare.lastMaterial())];
+	let bareItems: Vec<DrawItem> = [itemOnItsLayout(bare, bare.lastMaterial())];
 	const noBlock: Result<int32, PixelArtError> =
 		renderFrame(withoutBlock, bareItems, camera, lights, drawn);
 	assert !noBlock.ok && noBlock.error == PixelArtError.MaterialBlock;
@@ -689,7 +689,7 @@ test "a lit or textured lit material without ramp levels or its block refuses th
 	const levelsAt: int32 = notANumber.materials[nanMaterial].uniforms.offset;
 	notANumber.uniforms.values[levelsAt] = (0.0 / 0.0) as float32;
 	assert notANumber.uniforms.values[levelsAt] != notANumber.uniforms.values[levelsAt];
-	const nanItems: Vec<DrawItem> = [itemOnItsLayout(
+	let nanItems: Vec<DrawItem> = [itemOnItsLayout(
 		notANumber,
 		notANumber.materialAt(nanMaterial),
 	)];
@@ -698,7 +698,7 @@ test "a lit or textured lit material without ramp levels or its block refuses th
 	assert !nanLevels.ok && nanLevels.error == PixelArtError.RampLevels;
 	let four: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let atFour: PixelArtRenderer = presetOver(four, Program.Lit, 4.0);
-	const fourItems: Vec<DrawItem> = [itemOnItsLayout(four, four.lastMaterial())];
+	let fourItems: Vec<DrawItem> = [itemOnItsLayout(four, four.lastMaterial())];
 	const past: Result<int32, PixelArtError> =
 		renderFrame(atFour, fourItems, shortCamera, lights, drawn);
 	assert !past.ok && past.error == PixelArtError.CameraBlockLength;
@@ -733,7 +733,7 @@ test "a lit billboard without ramp levels refuses the pixel-art frame; unlit, or
 				});
 				assert material.ok;
 				if (!material.ok) { return; }
-				const items: Vec<DrawItem> = [itemOnItsLayout(context, material.value)];
+				let items: Vec<DrawItem> = [itemOnItsLayout(context, material.value)];
 				const result: Result<int32, PixelArtError> =
 					renderFrame(renderer, items, shortCamera, lights, drawn);
 				const stepped: boolean = light != 0.0 && levels == 0.0;
@@ -755,12 +755,12 @@ test "a released material or mesh refuses the frame by name" {
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	const drawn: LowResView = view(1080, 2400, 360, 1, 0);
 	assert releaseMesh(context, item.mesh).ok;
-	const noMesh: Vec<DrawItem> = [item];
+	let noMesh: Vec<DrawItem> = [item];
 	const meshGone: Result<int32, PixelArtError> =
 		renderFrame(renderer, noMesh, camera, lights, drawn);
 	assert !meshGone.ok && meshGone.error == PixelArtError.StaleMesh;
 	assert releaseMaterial(context, material).ok;
-	const noMaterial: Vec<DrawItem> = [itemOnItsLayout(context, material)];
+	let noMaterial: Vec<DrawItem> = [itemOnItsLayout(context, material)];
 	const materialGone: Result<int32, PixelArtError> =
 		renderFrame(renderer, noMaterial, camera, lights, drawn);
 	assert !materialGone.ok && materialGone.error == PixelArtError.StaleMaterial;
@@ -788,7 +788,7 @@ test "a material's block is its own, and a block put in by hand is refused" {
 	const readded: Result<MaterialId, MaterialError> = addMaterial(context, stale);
 	assert !readded.ok && readded.error == MaterialError.ReleasedUniforms;
 	context.materials[material.index].uniforms = spare.value;
-	const items: Vec<DrawItem> = [itemOnItsLayout(context, material)];
+	let items: Vec<DrawItem> = [itemOnItsLayout(context, material)];
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	const refused: Result<int32, PixelArtError> =
@@ -815,7 +815,7 @@ test "a billboard block too short to hold the ramp levels is refused by the core
 		});
 		assert material.ok;
 		if (!material.ok) { return; }
-		const items: Vec<DrawItem> = [itemOnItsLayout(context, material.value)];
+		let items: Vec<DrawItem> = [itemOnItsLayout(context, material.value)];
 		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 		const result: Result<int32, PixelArtError> =

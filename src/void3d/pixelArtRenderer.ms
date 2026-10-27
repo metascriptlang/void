@@ -793,7 +793,7 @@ function rampsHaveLevels(
 // has no levels, refuses the frame before anything changes.
 export function prepareFrame(
 	renderer: PixelArtRenderer,
-	items: Readonly<Span<DrawItem>>,
+	items: Span<DrawItem>,
 	camera: Readonly<Span<float32>>,
 	lights: Readonly<Span<float32>>,
 	view: LowResView,
@@ -912,7 +912,7 @@ export function endPrepared(renderer: PixelArtRenderer): void {
 
 export function renderFrame(
 	renderer: PixelArtRenderer,
-	items: Readonly<Span<DrawItem>>,
+	items: Span<DrawItem>,
 	camera: Readonly<Span<float32>>,
 	lights: Readonly<Span<float32>>,
 	view: LowResView,

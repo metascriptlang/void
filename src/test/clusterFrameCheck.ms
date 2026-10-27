@@ -157,7 +157,7 @@ function beganWith(view: CameraView | null, drawn: CameraView): RendererError | 
 	if (!created.ok) { unreachable; }
 	let core: Renderer = created.value;
 	if (view !== null) { setCameraView(core, view); }
-	const items: Vec<DrawItem> = [];
+	let items: Vec<DrawItem> = [];
 	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	drawn.writeCameraBlock(camera);
 	const began: Result<boolean, RendererError> = beginFrame(core, items, camera, lightsOf());
