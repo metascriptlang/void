@@ -1,4 +1,5 @@
 #include "window.h"
+#include "keyNames.h"
 
 #include <emscripten.h>
 #include <emscripten/html5.h>
@@ -16,114 +17,6 @@
 
 #define CANVAS "#canvas"
 #define MOUSE_BUTTONS 3
-
-static const struct {
-	const char *name;
-	VoidKeyCode code;
-} keyTable[] = {
-	{ "Backspace", VOID_KEY_BACKSPACE },
-	{ "Tab", VOID_KEY_TAB },
-	{ "Enter", VOID_KEY_ENTER },
-	{ "ShiftLeft", VOID_KEY_LEFT_SHIFT },
-	{ "ShiftRight", VOID_KEY_RIGHT_SHIFT },
-	{ "ControlLeft", VOID_KEY_LEFT_CONTROL },
-	{ "ControlRight", VOID_KEY_RIGHT_CONTROL },
-	{ "AltLeft", VOID_KEY_LEFT_ALT },
-	{ "AltRight", VOID_KEY_RIGHT_ALT },
-	{ "Pause", VOID_KEY_PAUSE },
-	{ "CapsLock", VOID_KEY_CAPS_LOCK },
-	{ "Escape", VOID_KEY_ESCAPE },
-	{ "Space", VOID_KEY_SPACE },
-	{ "PageUp", VOID_KEY_PAGE_UP },
-	{ "PageDown", VOID_KEY_PAGE_DOWN },
-	{ "End", VOID_KEY_END },
-	{ "Home", VOID_KEY_HOME },
-	{ "ArrowLeft", VOID_KEY_LEFT },
-	{ "ArrowUp", VOID_KEY_UP },
-	{ "ArrowRight", VOID_KEY_RIGHT },
-	{ "ArrowDown", VOID_KEY_DOWN },
-	{ "PrintScreen", VOID_KEY_PRINT_SCREEN },
-	{ "Insert", VOID_KEY_INSERT },
-	{ "Delete", VOID_KEY_DELETE },
-	{ "Digit0", VOID_KEY_0 },
-	{ "Digit1", VOID_KEY_1 },
-	{ "Digit2", VOID_KEY_2 },
-	{ "Digit3", VOID_KEY_3 },
-	{ "Digit4", VOID_KEY_4 },
-	{ "Digit5", VOID_KEY_5 },
-	{ "Digit6", VOID_KEY_6 },
-	{ "Digit7", VOID_KEY_7 },
-	{ "Digit8", VOID_KEY_8 },
-	{ "Digit9", VOID_KEY_9 },
-	{ "KeyA", VOID_KEY_A },
-	{ "KeyB", VOID_KEY_B },
-	{ "KeyC", VOID_KEY_C },
-	{ "KeyD", VOID_KEY_D },
-	{ "KeyE", VOID_KEY_E },
-	{ "KeyF", VOID_KEY_F },
-	{ "KeyG", VOID_KEY_G },
-	{ "KeyH", VOID_KEY_H },
-	{ "KeyI", VOID_KEY_I },
-	{ "KeyJ", VOID_KEY_J },
-	{ "KeyK", VOID_KEY_K },
-	{ "KeyL", VOID_KEY_L },
-	{ "KeyM", VOID_KEY_M },
-	{ "KeyN", VOID_KEY_N },
-	{ "KeyO", VOID_KEY_O },
-	{ "KeyP", VOID_KEY_P },
-	{ "KeyQ", VOID_KEY_Q },
-	{ "KeyR", VOID_KEY_R },
-	{ "KeyS", VOID_KEY_S },
-	{ "KeyT", VOID_KEY_T },
-	{ "KeyU", VOID_KEY_U },
-	{ "KeyV", VOID_KEY_V },
-	{ "KeyW", VOID_KEY_W },
-	{ "KeyX", VOID_KEY_X },
-	{ "KeyY", VOID_KEY_Y },
-	{ "KeyZ", VOID_KEY_Z },
-	{ "MetaLeft", VOID_KEY_LEFT_SUPER },
-	{ "MetaRight", VOID_KEY_RIGHT_SUPER },
-	{ "Numpad0", VOID_KEY_KP_0 },
-	{ "Numpad1", VOID_KEY_KP_1 },
-	{ "Numpad2", VOID_KEY_KP_2 },
-	{ "Numpad3", VOID_KEY_KP_3 },
-	{ "Numpad4", VOID_KEY_KP_4 },
-	{ "Numpad5", VOID_KEY_KP_5 },
-	{ "Numpad6", VOID_KEY_KP_6 },
-	{ "Numpad7", VOID_KEY_KP_7 },
-	{ "Numpad8", VOID_KEY_KP_8 },
-	{ "Numpad9", VOID_KEY_KP_9 },
-	{ "NumpadMultiply", VOID_KEY_KP_MULTIPLY },
-	{ "NumpadAdd", VOID_KEY_KP_ADD },
-	{ "NumpadSubtract", VOID_KEY_KP_SUBTRACT },
-	{ "NumpadDecimal", VOID_KEY_KP_DECIMAL },
-	{ "NumpadDivide", VOID_KEY_KP_DIVIDE },
-	{ "F1", VOID_KEY_F1 },
-	{ "F2", VOID_KEY_F2 },
-	{ "F3", VOID_KEY_F3 },
-	{ "F4", VOID_KEY_F4 },
-	{ "F5", VOID_KEY_F5 },
-	{ "F6", VOID_KEY_F6 },
-	{ "F7", VOID_KEY_F7 },
-	{ "F8", VOID_KEY_F8 },
-	{ "F9", VOID_KEY_F9 },
-	{ "F10", VOID_KEY_F10 },
-	{ "F11", VOID_KEY_F11 },
-	{ "F12", VOID_KEY_F12 },
-	{ "NumLock", VOID_KEY_NUM_LOCK },
-	{ "ScrollLock", VOID_KEY_SCROLL_LOCK },
-	{ "Semicolon", VOID_KEY_SEMICOLON },
-	{ "Equal", VOID_KEY_EQUAL },
-	{ "Comma", VOID_KEY_COMMA },
-	{ "Minus", VOID_KEY_MINUS },
-	{ "Period", VOID_KEY_PERIOD },
-	{ "Slash", VOID_KEY_SLASH },
-	{ "Backquote", VOID_KEY_GRAVE_ACCENT },
-	{ "BracketLeft", VOID_KEY_LEFT_BRACKET },
-	{ "Backslash", VOID_KEY_BACKSLASH },
-	{ "BracketRight", VOID_KEY_RIGHT_BRACKET },
-	{ "Quote", VOID_KEY_GRAVE_ACCENT },
-};
 
 static struct {
 	VoidWebDesc desc;
@@ -738,10 +631,6 @@ static bool wheelCallback(int type, const EmscriptenWheelEvent *e, void *userDat
 	return true;
 }
 
-static VoidKeyCode translateKey(const char *name) {
-	for (size_t i = 0; i < sizeof keyTable / sizeof keyTable[0]; i++) {
-		if (strcmp(name, keyTable[i].name) == 0) return keyTable[i].code;
-	}
 	return VOID_KEY_INVALID;
 }
 
@@ -762,7 +651,7 @@ static bool keyCallback(int type, const EmscriptenKeyboardEvent *e, void *userDa
 	if (eventType == VOID_EVENT_CHAR) {
 		voidWindow.event.charCode = e->charCode;
 	} else {
-		voidWindow.event.keyCode = translateKey(e->code[0] != 0 ? e->code : e->key);
+		voidWindow.event.keyCode = voidWebTranslateKey(e->code[0] != 0 ? e->code : e->key);
 		keyUpFollows = eventType == VOID_EVENT_KEY_DOWN && voidWindow.event.keyCode != VOID_KEY_LEFT_SUPER
 			&& voidWindow.event.keyCode != VOID_KEY_RIGHT_SUPER && (voidWindow.event.modifiers & VOID_MODIFIER_SUPER);
 	}

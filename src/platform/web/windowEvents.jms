@@ -4,11 +4,14 @@
 // answer to preventDefault (a listener returns true to call it). emscripten's field reads
 // (libhtml5.js fillMouseEventData, the touch handler) are kept: integer-truncated client
 // coordinates minus the truncated canvas rect, and the merged touch list.
-// Keyboard, IME, drops and fullscreen are later slices.
+// The keyboard is window.c's keyCallback under emscripten's libhtml5.js key event fields (code,
+// key, repeat, charCode, the four modifier flags), through the key names of keyNames.ms.
+// IME, drops and fullscreen are later slices.
 
 import { AppWindow } from "../../sokol/appWindow";
 import {
 	AppEventType,
+	KeyCode,
 	MAX_TOUCHPOINTS,
 	MODIFIER_ALT,
 	MODIFIER_CTRL,
@@ -18,7 +21,9 @@ import {
 	MODIFIER_SHIFT,
 	MODIFIER_SUPER,
 	MouseButton,
+	NativeAppEvent,
 } from "../appEvent";
+import { translateKey } from "./keyNames";
 import { Js } from "./window";
 import { WindowState } from "./windowCore";
 
@@ -28,6 +33,7 @@ extern function documentTarget(): Js from "(document)";
 extern function windowTarget(): Js from "(window)";
 extern function intField(source: Js, name: string): int32 from "(#[#]|0)";
 extern function numberField(source: Js, name: string): float64 from "#[#]";
+extern function stringField(source: Js, name: string): string from "(#[#]||'')";
 extern function flag(source: Js, name: string): boolean from "(!!#[#])";
 extern function targetX(source: Js, target: Js): int32 from "((e,t)=>((e.clientX-(t.getBoundingClientRect().left|0))|0))(#,#)";
 extern function targetY(source: Js, target: Js): int32 from "((e,t)=>((e.clientY-(t.getBoundingClientRect().top|0))|0))(#,#)";
@@ -197,6 +203,43 @@ export class WindowEvents {
 		return true;
 	}
 
+	keptFromBrowser(e: NativeAppEvent): boolean {
+		return e.type == AppEventType.Char ||
+			((e.type == AppEventType.KeyDown || e.type == AppEventType.KeyUp) &&
+				e.keyCode >= (KeyCode.World1 as int32));
+	}
+
+	deliverKey(e: NativeAppEvent): boolean {
+		this.window.windowEvent(e);
+		return this.keptFromBrowser(e);
+	}
+
+	key(event: Js, type: AppEventType): boolean {
+		if (!this.enabled()) { return false; }
+		let e = this.state.initEvent(type);
+		e.keyRepeat = flag(event, "repeat");
+		e.modifiers = this.modifiers(event);
+		let keyUpFollows = false;
+		if (type == AppEventType.Char) {
+			e.charCode = intField(event, "charCode") as uint32;
+		} else {
+			const code = stringField(event, "code");
+			e.keyCode = translateKey(code != "" ? code : stringField(event, "key"));
+			keyUpFollows = type == AppEventType.KeyDown &&
+				e.keyCode != (KeyCode.LeftSuper as int32) &&
+				e.keyCode != (KeyCode.RightSuper as int32) &&
+				(e.modifiers & MODIFIER_SUPER) != 0;
+		}
+		this.window.keysHeld.track(type, e.keyCode);
+		let consumed = this.deliverKey(e);
+		if (keyUpFollows) {
+			e.type = AppEventType.KeyUp;
+			this.window.keysHeld.track(AppEventType.KeyUp, e.keyCode);
+			if (this.deliverKey(e)) { consumed = true; }
+		}
+		return consumed;
+	}
+
 	releaseKey(key: int32): void {
 		if (!this.enabled()) { return; }
 		let e = this.state.initEvent(AppEventType.KeyUp);
@@ -228,6 +271,10 @@ export class WindowEvents {
 		this.add(this.canvas, name, (event: Js): boolean => this.touch(event, type));
 	}
 
+	addKey(name: string, type: AppEventType): void {
+		this.add(windowTarget(), name, (event: Js): boolean => this.key(event, type));
+	}
+
 	open(): void {
 		this.addMouse("mousedown", AppEventType.MouseDown, true);
 		this.addMouse("mouseup", AppEventType.MouseUp, true);
@@ -248,6 +295,9 @@ export class WindowEvents {
 			this.state.mouse.requestedLock = false;
 			return true;
 		});
+		this.addKey("keydown", AppEventType.KeyDown);
+		this.addKey("keyup", AppEventType.KeyUp);
+		this.addKey("keypress", AppEventType.Char);
 		this.add(windowTarget(), "paste", (event: Js): boolean => this.paste(event));
 		this.add(windowTarget(), "focus", (event: Js): boolean => this.focus(true));
 		this.add(windowTarget(), "blur", (event: Js): boolean => this.focus(false));
