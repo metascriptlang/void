@@ -92,7 +92,9 @@ is its slot list and costs no driver object.
 Void's own printers write each language from the shader IR (`src/shader/CLAUDE.md`), with the
 reflection `sokol-shdc` used to give, which `scripts/regen-shaders.sh --oracle-shdc` still compares.
 The generated table is Void's `GPUShaderModule` descriptor, so nothing includes `sokol_gfx.h`. D3D11 compiles HLSL
-source at load with `D3DCompile`, as sokol does (`sokol_gfx.h:14127`, `:14143`).
+source at load with `D3DCompile`, as sokol does (`sokol_gfx.h:14127`, `:14143`), only for a
+program built without fxc: a stage with precompiled DXBC skips it (`docs/SHADER-IR.md` "A program
+the app builds").
 
 ## Window, surface and time
 

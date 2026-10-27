@@ -3,8 +3,8 @@
 
 import { Buffer } from "std/core/buffer";
 import { sha256 } from "std/crypto/sha256";
-import { exists, mkdir, readFile, writeFile } from "std/fs";
-import { argv, execFileResult, exit } from "std/process";
+import { mkdir, readFile, writeFile } from "std/fs";
+import { argv, exit } from "std/process";
 import { glslIr, glslLinkedIr } from "../src/shader/emit";
 import {
 	ProgramSource,
@@ -18,6 +18,7 @@ import {
 	wordsBase64,
 } from "../src/shader/descriptor";
 import { dxbcStage } from "../src/shader/dxbcCache";
+import { metalFlags, metallibStage } from "../src/shader/metallibCache";
 import { irFromText } from "../src/shader/irText";
 import { ResourceKind, ShaderModule, ShaderStage } from "../src/shader/ir";
 import { uniformBlockLayout } from "../src/shader/layout";
@@ -384,45 +385,12 @@ function bytecodeOf(
 	return blobReference(constants, "DXBC_", key, path);
 }
 
-// What each Metal language compiles with: the SDK, MSL 2.4 and the OS it starts on (iOS 15.0 as in
-// scripts/iosDevice.sh, macOS 12.0; the printed stages compile down to MSL 2.2), and the fast math
-// newLibraryWithSource defaults to in src/webgpu/metal/metal.m. A blob built for a newer OS or MSL
-// than the device has fails newLibraryWithData.
-function metalFlags(language: string): string[] {
-	if (language == "metal_macos") {
-		return ["macosx", "-std=macos-metal2.4", "-mmacosx-version-min=12.0", "-ffast-math"];
-	}
-	if (language == "metal_ios") {
-		return ["iphoneos", "-std=ios-metal2.4", "-miphoneos-version-min=15.0", "-ffast-math"];
-	}
-	if (language == "spirv" || language == "wgsl" || language == "glsl300es" || language == "glsl430" ||
-		language == "hlsl5") { return []; }
-	fail("no Metal flags decision for " + language);
-}
-
 class Metallib {
 	cache: string = "";
 	fresh: string = "";
 	used: string[] = [];
 	compiled: int32 = 0;
 	missed: int32 = 0;
-	sdks: Map<string, boolean> = new Map();
-}
-
-function hasMetalSdk(m: Metallib, sdk: string): boolean {
-	const known = m.sdks.get(sdk);
-	if (known !== undefined) { return known; }
-	const run = execFileResult("xcrun", ["-sdk", sdk, "-f", "metal"]);
-	const found = run.started && run.exitCode == 0;
-	m.sdks.set(sdk, found);
-	return found;
-}
-
-function xcrunMetal(sdk: string, args: string[], what: string): void {
-	const run = execFileResult("xcrun", ["-sdk", sdk].concat(args));
-	if (!run.started || run.exitCode != 0) {
-		fail("xcrun " + args.join(" ") + " refused " + what + ":\n" + run.output + run.errorOutput);
-	}
 }
 
 function metallibOf(
@@ -433,29 +401,16 @@ function metallibOf(
 	entry: string,
 	what: string,
 ): string {
-	const flags = metalFlags(language);
-	const sdk = flags[0];
-	const key = sha256((flags.join(" ") + " " + entry + "\n" + code).asBytes()).toHex();
-	let path = m.cache + "/" + key + ".metallib";
-	if (!exists(path)) {
-		path = m.fresh + "/" + key + ".metallib";
-		if (!exists(path)) {
-			if (!hasMetalSdk(m, sdk)) {
-				m.missed++;
-				console.log("metallib miss " + what + " " + key + ": no xcrun " + sdk + " metal");
-				return "[]";
-			}
-			const source = m.fresh + "/" + key + ".metal";
-			const air = m.fresh + "/" + key + ".air";
-			keep(source, code);
-			xcrunMetal(sdk, ["metal", "-c"].concat(flags.slice(1)).concat(["-o", air, source]),
-				what + " (" + source + ")");
-			xcrunMetal(sdk, ["metallib", air, "-o", path], what);
-			m.compiled++;
-		}
+	const stage = metallibStage(m.cache, m.fresh, language, entry, code);
+	if (stage.error != "") { fail(what + ": " + stage.error); }
+	if (stage.path == "") {
+		m.missed++;
+		console.log("metallib miss " + what + " " + stage.key + ": no " + stage.missing);
+		return "[]";
 	}
-	if (!m.used.includes(key)) { m.used.push(key); }
-	return blobReference(constants, "METALLIB_", key, path);
+	if (stage.compiled) { m.compiled++; }
+	if (!m.used.includes(stage.key)) { m.used.push(stage.key); }
+	return blobReference(constants, "METALLIB_", stage.key, stage.path);
 }
 
 function hlslProfile(stage: string): string {
