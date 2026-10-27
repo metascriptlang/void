@@ -15,13 +15,16 @@ import {
 	clamp,
 	cos,
 	dot,
+	log,
 	max,
 	min,
 	mix,
 	normalize,
+	pow,
 	round,
 	sampleType,
 	samplerType,
+	saturate,
 	sin,
 	textureDimensions,
 	textureLoad,
@@ -32,6 +35,56 @@ import {
 	vec4f,
 } from "../shader/std";
 import { linearToSrgb, toneCurved } from "./shader3d";
+
+// ScalableAO's shader (h3d/shader/SAO.hx, McGuire's Scalable Ambient Obscurance): one tap's
+// obscurance, from the tapped point's offset to the shaded point, against the shaded normal.
+export function saoTap(offset: Vec3f, normal: Vec3f, radius: float32, bias: float32): float32 {
+	const vv = dot(offset, offset);
+	const vn = dot(offset, normal) - bias * radius;
+	const radius2 = radius * radius;
+	const f = max(radius2 - vv, 0.0) / radius2;
+	return f * f * f * max(vn / (0.01 + vv), 0.0);
+}
+
+// SAO.sampleAO: where tap `tap` of `samples` lands on a spiral of `spiralTurns` turns turned by
+// `rotation`, as a fraction of the screen radius. 6.28 is SAO's turn, kept so the taps match.
+export function saoTapOffset(
+	tap: int32, samples: int32, spiralTurns: int32, rotation: float32,
+): Vec2f {
+	const alpha = ((tap as float32) + 0.5) / (samples as float32);
+	const angle = alpha * ((spiralTurns as float32) * 6.28) + rotation;
+	return vec2f(cos(angle), sin(angle)) * alpha;
+}
+
+// SAO.fragment: the world radius as a fraction of the screen height at `viewDepth`, where
+// `fovTan` is 1 / (2 tan(fovY / 2)).
+export function saoScreenRadius(
+	sampleRadius: float32, fovTan: float32, viewDepth: float32,
+): float32 {
+	return sampleRadius * fovTan / viewDepth;
+}
+
+// SAO's USE_SCALABLE_BIAS: the tap radius grows with the log of the tapped point's view depth.
+export function saoScalableRadius(sampleRadius: float32, viewDepth: float32): float32 {
+	return sampleRadius * (max(0.0, log(1.0 + viewDepth)) + 1.0);
+}
+
+// SAO.fragment: the taps' mean obscurance as the light left, sharpened by `intensity`. SAO raises
+// 1 - mean before it saturates, which a mean past 1 leaves undefined; the base is clamped first.
+export function saoOcclusion(sum: float32, samples: int32, intensity: float32): float32 {
+	return pow(saturate(1.0 - sum / (samples as float32)), 1.0 + intensity);
+}
+
+// SAO's USE_START_FADE and USE_FADE: no occlusion nearer than `startFadeStart` or past
+// `fadeEnd`, eased in over the start range and out over the end range.
+export function saoFaded(
+	occlusion: float32, distance: float32, startFadeStart: float32, startFadeEnd: float32,
+	fadeStart: float32, fadeEnd: float32,
+): float32 {
+	const started = mix(1.0, occlusion,
+		saturate((distance - startFadeStart) / (startFadeEnd - startFadeStart)));
+	return mix(started, 1.0, saturate((distance - fadeStart) / (fadeEnd - fadeStart)));
+}
 
 export struct FullscreenAttributes {
 	position: Vec2f;
