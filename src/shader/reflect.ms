@@ -30,10 +30,11 @@ import {
 	GPUTextureSampleType,
 	GPUTextureViewDimension,
 } from "../webgpu/types.ms";
-import { DUMMY_SAMPLER_BINDING } from "../webgpu/types.ms";
-
-const MAX_REFLECTED_BINDINGS = 24;
-const MAX_REFLECTED_ATTRIBUTES = 16;
+import {
+	DUMMY_SAMPLER_BINDING,
+	GPU_MAX_SHADER_BINDINGS,
+	GPU_MAX_VERTEX_ATTRIBUTES,
+} from "../webgpu/types.ms";
 
 export class Reflection {
 	bindings: GPUShaderBinding[] = [];
@@ -215,9 +216,9 @@ function bindingsOf(m: ShaderModule, entries: int32[], target: ShaderTarget,
 			out.bindings[held].visibility = out.bindings[held].visibility | b.visibility;
 		}
 	}
-	if (out.bindings.length > MAX_REFLECTED_BINDINGS) {
+	if (out.bindings.length > GPU_MAX_SHADER_BINDINGS) {
 		return Result.err("the program reads " + String(out.bindings.length) + " bindings, more " +
-			"than " + String(MAX_REFLECTED_BINDINGS));
+			"than " + String(GPU_MAX_SHADER_BINDINGS));
 	}
 	return Result.ok(out.bindings.length as int32);
 }
@@ -249,9 +250,9 @@ export function reflectProgram(m: ShaderModule, vertex: int32, fragment: int32,
 		if (gl) { a.nativeName = io.name; } else { a.nativeName = null; }
 		out.attributes.push(a);
 	}
-	if (out.attributes.length > MAX_REFLECTED_ATTRIBUTES) {
+	if (out.attributes.length > GPU_MAX_VERTEX_ATTRIBUTES) {
 		return Result.err("the vertex entry has " + String(out.attributes.length) +
-			" attributes, more than " + String(MAX_REFLECTED_ATTRIBUTES));
+			" attributes, more than " + String(GPU_MAX_VERTEX_ATTRIBUTES));
 	}
 	return Result.ok(out);
 }
