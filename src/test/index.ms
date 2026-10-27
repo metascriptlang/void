@@ -110,6 +110,7 @@ import "./unicodeTablesPortCheck";
 import "./floatBitsPortCheck";
 import "./mat4PortCheck";
 import "./mikkTangentsPortCheck";
+import "./viewsPortCheck";
 import "./gltfComposeSceneCheck";
 import "./gltfAccessorCheck";
 import "./gltfColourCheck";
