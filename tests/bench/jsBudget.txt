@@ -1,0 +1,26 @@
+profile scripts/jsBudget.sh --target=js entries windowJsEntry viewsJsEntry; rows are <entry>-<module> raw|gzip off <bytes> on <bytes>, gzip -9
+measured BUILD c85d84fb8 2026-10-28 tree 1e97fbc6b55781f29aeee7ffce36fca35ade9c06
+windowJsEntry-shaper raw off 978622 on 978622
+windowJsEntry-shaper gzip off 128902 on 128902
+windowJsEntry-sdf raw off 978622 on 978622
+windowJsEntry-sdf gzip off 128902 on 128902
+windowJsEntry-bidi raw off 978622 on 978622
+windowJsEntry-bidi gzip off 128902 on 128902
+windowJsEntry-colour raw off 978622 on 978622
+windowJsEntry-colour gzip off 128902 on 128902
+windowJsEntry-sprites raw off 978622 on 978622
+windowJsEntry-sprites gzip off 128902 on 128902
+windowJsEntry-outline raw off 978622 on 978622
+windowJsEntry-outline gzip off 128902 on 128902
+viewsJsEntry-shaper raw off 978334 on 978334
+viewsJsEntry-shaper gzip off 128837 on 128837
+viewsJsEntry-sdf raw off 978334 on 978334
+viewsJsEntry-sdf gzip off 128837 on 128837
+viewsJsEntry-bidi raw off 978334 on 978334
+viewsJsEntry-bidi gzip off 128837 on 128837
+viewsJsEntry-colour raw off 978334 on 978334
+viewsJsEntry-colour gzip off 128837 on 128837
+viewsJsEntry-sprites raw off 978334 on 978334
+viewsJsEntry-sprites gzip off 128837 on 128837
+viewsJsEntry-outline raw off 978334 on 978334
+viewsJsEntry-outline gzip off 128837 on 128837
