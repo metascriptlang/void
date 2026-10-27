@@ -7,9 +7,6 @@ export const FACE_NO_MEMORY: int32 = -3;
 export const FACE_NO_BASE: int32 = -4;
 export const FACE_BAD_COLOUR: int32 = -5;
 
-export const POLYGON_TOO_LARGE: int32 = 1;
-export const POLYGON_NO_MEMORY: int32 = 2;
-
 export const MAX_GLYPH_PAGES: int32 = 64;
 
 export const PAGE_COVERAGE: int32 = 0;

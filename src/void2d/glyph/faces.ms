@@ -43,7 +43,7 @@ when (voidColourEmoji) {
 }
 
 when (voidSprites) {
-	import { void2dSpriteIndex, void2dSpriteInk } from "../spriteGlyph.h";
+	import { spriteCanvasInk, spriteIndex } from "../spriteGlyph";
 }
 
 when (macos || ios) {
@@ -418,7 +418,7 @@ export function glyphFaceBytes(face: int32): FaceBytes | null {
 export function void2dGlyphIndex(face: int32, codepoint: int32): int32 {
 	if (!validFace(face)) { return 0; }
 	when (voidSprites) {
-		if (state.faces[face].sprite) { return void2dSpriteIndex(codepoint); }
+		if (state.faces[face].sprite) { return spriteIndex(codepoint); }
 	}
 	return findGlyph(state.faces[face], codepoint);
 }
@@ -560,7 +560,8 @@ when (voidSprites) {
 
 	export struct SpriteRows {
 		box: GlyphBox;
-		rows: Ptr<uint8> | null;
+		pixels: uint8[];
+		origin: int32;
 		stride: int32;
 	}
 
@@ -572,25 +573,24 @@ when (voidSprites) {
 			);
 			return null;
 		}
-		let ink: int32[] = [0, 0, 0, 0];
-		let rows: Ptr<uint8>[] = new Array<Ptr<uint8>>(1);
-		let stride: int32[] = [0];
-		const status = void2dSpriteInk(
-			glyph, cell[0], cell[1], cell[3], (ink as Span<int32>) as Ptr<int32>,
-			((rows as Span<Ptr<uint8>>) as Ptr<Ptr<uint8>>) as Ptr<Borrow<uint8>>,
-			(stride as Span<int32>) as Ptr<int32>,
-		);
-		if (status != 0) {
+		const ink = spriteCanvasInk(glyph, cell[0], cell[1], cell[3]);
+		if (!ink.ok) {
 			console.error(
 				`void2d: sprite glyph ${glyph} at ${fixed(sizePx, 2)} px (cell ${cell[0]}x${cell[1]}, line ${cell[3]}) ` +
-				`is refused with status ${status}, it is not drawn`,
+				`is refused with ${ink.error.toString()}, it is not drawn`,
 			);
 			return null;
 		}
 		return {
-			box: { x0: ink[0], y0: ink[1] - cell[2], x1: ink[2], y1: ink[3] - cell[2] },
-			rows: rows[0],
-			stride: stride[0],
+			box: {
+				x0: ink.value.left,
+				y0: ink.value.top - cell[2],
+				x1: ink.value.right,
+				y1: ink.value.bottom - cell[2],
+			},
+			pixels: ink.value.pixels,
+			origin: ink.value.origin,
+			stride: ink.value.stride,
 		};
 	}
 }

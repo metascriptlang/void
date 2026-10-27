@@ -120,7 +120,7 @@ function drawn(codepoint: int32, size: CellSize): SpriteCanvas {
 }
 
 function referenceAt(
-	reference: Ptr<uint8>, refWidth: int32, bucket: int32, codepoint: int32,
+	reference: Readonly<Span<uint8>>, refWidth: int32, bucket: int32, codepoint: int32,
 	canvas: SpriteCanvas, x: int32, y: int32,
 ): int32 {
 	const slot: int32 = codepoint - bucket;
@@ -130,7 +130,7 @@ function referenceAt(
 }
 
 function distance(
-	reference: Ptr<uint8>, refWidth: int32, bucket: int32, codepoint: int32,
+	reference: Readonly<Span<uint8>>, refWidth: int32, bucket: int32, codepoint: int32,
 	canvas: SpriteCanvas,
 ): Distance {
 	let pixels: int32 = 0;
@@ -148,7 +148,7 @@ function distance(
 }
 
 function equalCell(
-	reference: Ptr<uint8>, refWidth: int32, bucket: int32, codepoint: int32,
+	reference: Readonly<Span<uint8>>, refWidth: int32, bucket: int32, codepoint: int32,
 	canvas: SpriteCanvas,
 ): boolean {
 	for (let y = 0; y < canvas.height; y++) {
@@ -196,7 +196,7 @@ test "blocks, straight box lines, braille, sextants and octants equal Ghostty's 
 			assert raw.ok;
 			if (!raw.ok) { return; }
 			const refWidth: int32 = raw.value.width;
-			const reference = raw.value.pixels as Span<uint8> as Ptr<uint8>;
+			const reference = raw.value.pixels as Span<uint8>;
 			assert refWidth == (size.width + 2 * (size.width / 4)) * 16;
 			assert raw.value.height == (size.height + 2 * (size.height / 4)) * 16;
 			for (let k = 0; k < 256; k++) {
@@ -242,7 +242,7 @@ test "diagonals, arcs, triangles and powerline stay inside the budget listed for
 			assert raw.ok;
 			if (!raw.ok) { return; }
 			const refWidth: int32 = raw.value.width;
-			const reference = raw.value.pixels as Span<uint8> as Ptr<uint8>;
+			const reference = raw.value.pixels as Span<uint8>;
 			for (let k = 0; k < 256; k++) {
 				const codepoint: int32 = bucket + k;
 				const family: int32 = familyOf(codepoint);
@@ -286,7 +286,7 @@ test "the comparison is not vacuous: another glyph, another line weight or anoth
 	assert raw.ok;
 	if (!raw.ok) { return; }
 	const refWidth: int32 = raw.value.width;
-	const reference = raw.value.pixels as Span<uint8> as Ptr<uint8>;
+	const reference = raw.value.pixels as Span<uint8>;
 	const lowerHalf = drawn(0x2584, size);
 	assert equalCell(reference, refWidth, 0x2500, 0x2584, lowerHalf);
 	assert !equalCell(reference, refWidth, 0x2500, 0x2580, lowerHalf);

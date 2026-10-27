@@ -73,27 +73,3 @@ when (c) {
 		return (holder.data as Span<uint8>) as Ptr<uint8>;
 	}
 }
-
-when (c && voidSprites) {
-	import { void2dGlyphPolygonCoverage } from "./glyph";
-
-	@exportName("void2dGlyphPolygonCoverage")
-	export function exportPolygonCoverage(
-		coverage: Ptr<uint8>, width: int32, height: int32,
-		xy: Ptr<float64>, counts: Ptr<int32>, contours: int32,
-	): int32 {
-		let total: int32 = 0;
-		let countsCopy: int32[] = [];
-		for (let i: int32 = 0; i < contours; i++) {
-			countsCopy.push(counts[i]);
-			total += counts[i];
-		}
-		let xyCopy: float64[] = [];
-		for (let i: int32 = 0; i < total * 2; i++) { xyCopy.push(xy[i]); }
-		const texels: uint8[] = new Array<uint8>(width * height);
-		for (let i: int32 = 0; i < width * height; i++) { texels[i] = coverage[i]; }
-		const status = void2dGlyphPolygonCoverage(texels, width, height, xyCopy, countsCopy);
-		for (let i: int32 = 0; i < width * height; i++) { coverage[i] = texels[i]; }
-		return status;
-	}
-}

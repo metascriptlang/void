@@ -1,4 +1,3 @@
-import { Vertex, VERTEX_LINE, VERTEX_MOVE, truncInt, wrapInt16 } from "../trueType/fontInfo";
 import { makeGlyphBitmapSubpixel, rasterize } from "../trueType/rasterize";
 import {
 	BLIT_BAD_HANDLE,
@@ -15,7 +14,6 @@ import {
 	PAGE_MASK,
 	PAGE_RGBA,
 	PAGE_SDF,
-	POLYGON_TOO_LARGE,
 	faceAt,
 	state,
 } from "./state";
@@ -199,16 +197,10 @@ export function void2dGlyphRasterize(
 				console.error(`void2d: sprite tile ${w}x${h} does not match glyph ${glyph}'s ink box`);
 				return COVERAGE_RASTER_BOX_MISMATCH;
 			}
-			const rows = ink.rows;
-			if (rows == null) { throw new Error(`void2d: sprite glyph ${glyph} has an ink box and no rows`); }
-			when (c) {
-				for (let row: int32 = 0; row < h; row++) {
-					for (let k: int32 = 0; k < w; k++) {
-						p.texels[at + row * p.size + k] = rows[row * ink.stride + k];
-					}
+			for (let row: int32 = 0; row < h; row++) {
+				for (let k: int32 = 0; k < w; k++) {
+					p.texels[at + row * p.size + k] = ink.pixels[ink.origin + row * ink.stride + k];
 				}
-			} else {
-				throw new Error(`void2d: sprite glyph ${glyph} is drawn by spriteGlyph.c, which has no JS build`);
 			}
 		}
 	}
@@ -243,43 +235,6 @@ export function void2dGlyphRasterize(
 	}
 	markDirtyBox(p, x, y, w, h);
 	return 0;
-}
-
-when (voidSprites) {
-	export function void2dGlyphPolygonCoverage(
-		coverage: Span<uint8>, width: int32, height: int32,
-		xy: Readonly<Span<float64>>, counts: Readonly<Span<int32>>,
-	): int32 {
-		let total: int32 = 0;
-		for (let i: int32 = 0; i < (counts.length as int32); i++) { total += counts[i]; }
-		let reach: float64 = 1.0;
-		for (let i: int32 = 0; i < total * 2; i++) {
-			const magnitude = Math.abs(xy[i]);
-			if (magnitude > reach) { reach = magnitude; }
-		}
-		let quantum: float64 = Math.floor(32000.0 / reach);
-		if (quantum > 4096.0) { quantum = 4096.0; }
-		if (quantum < 1.0) { return POLYGON_TOO_LARGE; }
-		let vertices: Vec<Vertex> = [];
-		let at: int32 = 0;
-		for (let i: int32 = 0; i < (counts.length as int32); i++) {
-			for (let k: int32 = 0; k < counts[i]; k++) {
-				vertices.push({
-					x: wrapInt16(truncInt(Math.floor(xy[2 * at] * quantum + 0.5))),
-					y: wrapInt16(truncInt(Math.floor(xy[2 * at + 1] * quantum + 0.5))),
-					cx: 0,
-					cy: 0,
-					cx1: 0,
-					cy1: 0,
-					kind: k == 0 ? VERTEX_MOVE : VERTEX_LINE,
-				});
-				at++;
-			}
-		}
-		const scale: float32 = (1.0 / quantum) as float32;
-		rasterize(coverage, width, height, width, 0.35, vertices, scale, scale, 0.0, 0.0, 0, 0, false);
-		return 0;
-	}
 }
 
 export function void2dGlyphPageTexel(page: int32, x: int32, y: int32): int32 {
