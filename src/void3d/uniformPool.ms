@@ -199,7 +199,9 @@ export function writeBlock<T>(
 	value: T,
 ): Result<int32, UniformError> {
 	if (pool.closed) { stopOnClosedPool("writeBlock"); }
-	if (handle.block.length != uniformSize<T>() / 4) { return Result.err(UniformError.WrongLength); }
+	if (handle.block.length != uniformSize<T>() / 4) {
+		return Result.err(UniformError.WrongLength);
+	}
 	const _held: int32 = try pool.admitted(handle.block);
 	writeUniform<T>(pool.values, handle.block.offset, value);
 	return Result.ok(handle.block.length);
@@ -227,6 +229,11 @@ export function closeUniformPool(pool: UniformPool): void {
 
 export function isClosed(this pool: UniformPool): boolean {
 	return pool.closed;
+}
+
+export function stopOnFailedWrite(call: string, error: UniformError): void {
+	console.log(`void3d: ${call} could not write its uniform block: ${error.toString()}`);
+	unreachable;
 }
 
 function stopOnClosedPool(call: string): void {

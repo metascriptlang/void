@@ -4,10 +4,10 @@
 // last onto the HDR target, blended by mod.rs compute_blend_factor. Heaps has no 3D bloom (only
 // h2d.filter.Bloom): docs/VOID3D.md "Bloom, as built".
 
-import { Program, ProgramKey } from "./gpu3d";
+import { Program } from "./gpu3d";
 import { PixelFormat, LoadAction, endPass } from "../gpu/door";
 import { Blend, FilterMode, RenderState, Wrap } from "../gpu/state";
-import { Material, Phase, TypedBlock } from "./material";
+import { TypedBlock } from "./material";
 import { Vec4 } from "../math/math3d";
 import { Vec4f } from "../shader/std";
 import { BloomParams } from "./post3d";
@@ -23,15 +23,12 @@ import {
 import {
 	DrawContext,
 	MaterialId,
-	MaterialError,
 	HandleError,
-	addMaterial,
 	releaseMaterial,
-	reserveBlock,
 	writeBlock,
 } from "./draw";
-import { UniformError } from "./uniformPool";
-import { screenState } from "./screenFx";
+import { UniformError, stopOnFailedWrite } from "./uniformPool";
+import { screenState, reserveScreenBlock, addScreenMaterial } from "./screenFx";
 import { Renderer, RendererError, drawScreen } from "./renderer";
 
 // settings.rs BloomCompositeMode.
@@ -176,13 +173,7 @@ export interface BloomPass {
 }
 
 function reserveParams(context: DrawContext): TypedBlock<BloomParams> {
-	const reserved: Result<TypedBlock<BloomParams>, UniformError> =
-		reserveBlock<BloomParams>(context, BLOOM_UNIFORM_SLOT);
-	if (!reserved.ok) {
-		console.log("void3d: BloomPass.reserve found no room for a block it was checked to fit");
-		unreachable;
-	}
-	return reserved.value;
+	return reserveScreenBlock<BloomParams>(context, BLOOM_UNIFORM_SLOT, "BloomPass.reserve");
 }
 
 function addScreen(
@@ -191,12 +182,7 @@ function addScreen(
 	state: RenderState,
 	block: TypedBlock<BloomParams>,
 ): MaterialId {
-	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
-		...Material.keyed(ProgramKey.of(program), state, Phase.Opaque),
-		uniforms: block.block,
-	});
-	if (!added.ok) { unreachable; }
-	return added.value;
+	return addScreenMaterial(context, program, state, block.block, "BloomPass.reserve");
 }
 
 // Reserves the three blocks and adds the three materials to `context`, whose pool the caller
@@ -297,7 +283,7 @@ function drawMip(
 	context.materials[material.index].sampler0 = pass.sampler.asHandle();
 	const written: Result<int32, UniformError> = writeBlock(context, block,
 		paramsOf(source.width, source.height, target.width, target.height, blend, threshold));
-	if (!written.ok) { unreachable; }
+	if (!written.ok) { stopOnFailedWrite("BloomPass.draw", written.error); }
 	pass.colors[0] = target.asColor(load, NO_CLEAR);
 	beginPass(pass.colors, NO_DEPTH);
 	const drawn: Result<int32, RendererError> = drawScreen(core, material, BLOOM_LAYOUT);
