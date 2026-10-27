@@ -131,6 +131,26 @@ for jsBackend in gl gpu; do
 		fail "JS views on $jsBackend: tests/js/gpuViewsHarness.mjs — see out/gate-js-views-harness-$jsBackend.log"
 	fi
 done
+for jsDriver in views window; do
+	for jsBackend in gl gpu; do
+		jsMin="out/tmp/js-$jsDriver-$jsBackend.min.js"
+		if sh scripts/jsMinify.sh --keep-names "out/tmp/js-$jsDriver-$jsBackend.js" "$jsMin" > "out/gate-js-min-$jsDriver-$jsBackend.log" 2>&1 \
+				&& node tests/js/gpuLostHarness.mjs "$jsMin" "$jsBackend" "$jsDriver" >> "out/gate-js-min-$jsDriver-$jsBackend.log" 2>&1; then
+			pass "JS $jsDriver driver on $jsBackend, minified with names kept: the loss harness passes"
+		else
+			fail "JS $jsDriver driver on $jsBackend, minified: scripts/jsMinify.sh or tests/js/gpuLostHarness.mjs — see out/gate-js-min-$jsDriver-$jsBackend.log"
+		fi
+	done
+done
+for jsBackend in gl gpu; do
+	jsMin="out/tmp/js-views-$jsBackend.min.js"
+	if sh scripts/jsMinify.sh --keep-names "out/tmp/js-views-$jsBackend.js" "$jsMin" > "out/gate-js-min-views-harness-$jsBackend.log" 2>&1 \
+			&& node tests/js/gpuViewsHarness.mjs "$jsMin" "$jsBackend" >> "out/gate-js-min-views-harness-$jsBackend.log" 2>&1; then
+		pass "JS views on $jsBackend, minified with names kept: tests/js/gpuViewsHarness.mjs passes"
+	else
+		fail "JS views on $jsBackend, minified: scripts/jsMinify.sh or tests/js/gpuViewsHarness.mjs — see out/gate-js-min-views-harness-$jsBackend.log"
+	fi
+done
 for target in "--os=windows" "--os=windows -d:voidGlCore" "--os=linux" "--os=android" "--os=ios" \
 		"--os=windows -d:voidVulkan" "--os=linux -d:voidVulkan" "--os=android -d:voidVulkan" \
 		"--os=emcc -d:webgpu" "--os=emcc -d:webgl2" "-d:voidDummy"; do
