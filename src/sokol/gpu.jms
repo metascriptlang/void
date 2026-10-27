@@ -1,0 +1,183 @@
+// Void GPU on the browser's JS target: gpu.wms's surface, driven by voidStart as bridgeWeb.c
+// drives it, over the backend this bundle selects (-d:webgl2, else WebGPU).
+
+import { CanvasSize, CanvasView, enter, installStart, leave } from "../platform/web/window";
+
+when (webgl2) {
+	import { acquireContext } from "../webgpu/gl/glCalls";
+} else {
+	import { acquireDevice } from "../webgpu/js/backend";
+}
+
+const MAX_VIEWS = 16;
+
+export type ViewId = int32;
+export const ViewInvalid: ViewId = 0 as int32;
+
+class ViewSlot {
+	used: boolean = false;
+	generation: int32 = 0;
+	width: int32 = 0;
+	height: int32 = 0;
+	scale: float32 = 0;
+}
+
+class Start {
+	stopped: boolean = false;
+	view: ViewId = ViewInvalid;
+}
+
+const slots: ViewSlot[] = [];
+let initClosure: () => void = (): void => { fail("embedRegister was not called before voidStart"); };
+let frameClosure: () => void = (): void => { fail("embedRegister was not called before voidStart"); };
+let inited = false;
+let current: ViewId = ViewInvalid;
+let sampleCount: int32 = 1;
+let deviceMade = false;
+let lost = false;
+let liveStarts = 0;
+
+function fail(message: string): never { throw new Error(`void: ${message}`); }
+
+function slotOf(view: ViewId, operation: string): ViewSlot {
+	const index = (view & 31) - 1;
+	if (view <= 0 || index < 0 || index >= MAX_VIEWS) { fail(`${operation}: view ${view} does not exist`); }
+	const slot = slots[index];
+	if (slot.used && (view >> 5) == slot.generation) { return slot; }
+	if (slot.generation > (view >> 5)) { fail(`${operation}: view ${view} was destroyed; a view id names one view only`); }
+	return fail(`${operation}: view ${view} does not exist`);
+}
+
+function currentSlot(operation: string): ViewSlot {
+	if (current == ViewInvalid) { fail(`${operation} outside a view frame: call it between a view frame's begin and commit`); }
+	return slotOf(current, operation);
+}
+
+function onLost(): void { lost = true; }
+
+async function acquire(canvas: CanvasView): Promise<void> {
+	when (webgl2) {
+		acquireContext(canvas.selector, sampleCount, onLost);
+	} else {
+		await acquireDevice(canvas.selector, onLost);
+	}
+}
+
+function createView(size: CanvasSize): ViewId {
+	if (size.width <= 0 || size.height <= 0 || size.scale <= 0) {
+		fail(`voidViewCreate: ${size.width}x${size.height} at scale ${size.scale} is not a drawable size`);
+	}
+	let index = -1;
+	for (let i = 0; i < MAX_VIEWS; i++) {
+		if (!slots[i].used) { index = i; break; }
+	}
+	if (index < 0) { fail(`voidViewCreate: all ${MAX_VIEWS} views are in use`); }
+	deviceMade = true;
+	const slot = slots[index];
+	slot.used = true;
+	slot.generation = slot.generation == 0 ? 1 : slot.generation;
+	slot.width = size.width;
+	slot.height = size.height;
+	slot.scale = size.scale;
+	const view = (slot.generation << 5) | (index + 1);
+	if (!inited) {
+		inited = true;
+		initClosure();
+	}
+	return view;
+}
+
+function resizeView(view: ViewId, size: CanvasSize): void {
+	const slot = slotOf(view, "voidViewResize");
+	if (current != ViewInvalid) { fail(`voidViewResize(${view}) inside the frame of view ${current}`); }
+	if (size.width <= 0 || size.height <= 0 || size.scale <= 0) {
+		fail(`voidViewResize(${view}): ${size.width}x${size.height} at scale ${size.scale} is not a drawable size`);
+	}
+	slot.width = size.width;
+	slot.height = size.height;
+	slot.scale = size.scale;
+}
+
+function frameView(view: ViewId): void {
+	slotOf(view, "voidViewFrame");
+	if (current != ViewInvalid) { fail(`voidViewFrame(${view}) inside the frame of view ${current}`); }
+	if (lost) { fail("the GPU was lost; recovering it needs the door's setup, which the js target does not port yet"); }
+	current = view;
+	frameClosure();
+	if (current != ViewInvalid) { fail(`the frame closure for view ${view} returned without commit()`); }
+}
+
+function destroyView(view: ViewId): void {
+	const slot = slotOf(view, "voidViewDestroy");
+	if (current != ViewInvalid) { fail(`voidViewDestroy(${view}) inside the frame of view ${current}`); }
+	slot.used = false;
+	slot.generation = slot.generation + 1;
+}
+
+async function begin(canvas: CanvasView, onError: (message: string) => void, start: Start): Promise<void> {
+	try {
+		await acquire(canvas);
+	} catch (error) {
+		if (!start.stopped) { onError(`void: this browser gave no GPU backend: ${error}`); }
+		return;
+	}
+	if (start.stopped) { return; }
+	const view = createView(canvas.size);
+	start.view = view;
+	enter(canvas, (size: CanvasSize): void => { resizeView(view, size); }, (): void => { frameView(view); });
+}
+
+function open(canvas: CanvasView, onError: (message: string) => void): () => void {
+	if (liveStarts > 0) { fail("voidStart: the js target runs one view at a time; stop the live view first"); }
+	liveStarts++;
+	const start = new Start();
+	begin(canvas, onError, start);
+	return (): void => {
+		if (start.stopped) { return; }
+		start.stopped = true;
+		liveStarts--;
+		if (start.view != ViewInvalid) {
+			leave(canvas);
+			destroyView(start.view);
+		}
+	};
+}
+
+export function embedRegister(init: () => void, frame: () => void): void {
+	initClosure = init;
+	frameClosure = frame;
+	for (let i = 0; i < MAX_VIEWS; i++) { slots.push(new ViewSlot()); }
+	installStart(open);
+}
+
+export function setViewSampleCount(count: int32): void {
+	if (count != 1 && count != 2 && count != 4 && count != 8) {
+		fail(`voidViewsSetSampleCount(${count}): a swapchain takes 1, 2, 4 or 8 samples`);
+	}
+	if (deviceMade) {
+		fail(`voidViewsSetSampleCount(${count}) after the first voidViewCreate: the device's pipelines are already made for ${sampleCount} samples`);
+	}
+	sampleCount = count;
+}
+
+export function currentView(): ViewId { return current; }
+
+export function presentView(): void {
+	currentSlot("commit");
+	current = ViewInvalid;
+}
+
+export function gfxSetup(): void {
+	if (!deviceMade) { fail("gfxSetup before voidViewCreate chose a driver"); }
+}
+export function fbWidth(): int32 { return currentSlot("fbWidth").width; }
+export function fbHeight(): int32 { return currentSlot("fbHeight").height; }
+export function dpiScale(): float32 { return currentSlot("dpiScale").scale; }
+export function keyDown(code: int32): boolean { return false; }
+
+export function makeImage(rgba: Ptr<void>, w: int32, h: int32): uint32 {
+	return fail("makeImage waits for the door on js; its pointer argument is ~/metascript/.inbox/compiler/2026-10-27-js-element-address-as-pointer-argument.md");
+}
+export function makeView(image: uint32): uint32 {
+	return fail("makeView waits for the door on js");
+}

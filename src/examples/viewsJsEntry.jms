@@ -1,0 +1,12 @@
+import { embedRegister, fbHeight, fbWidth, presentView } from "../sokol/gpu";
+
+function init(): void {
+	console.log("void js view init");
+}
+
+function frame(): void {
+	console.log(`void js view frame ${fbWidth()}x${fbHeight()}`);
+	presentView();
+}
+
+embedRegister(init, frame);
