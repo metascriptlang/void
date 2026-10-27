@@ -34,6 +34,7 @@ import "./sfntBoundsCheck";
 import "./sfntCmapCheck";
 import "./sfntPortCheck";
 import "./trueTypePortCheck";
+import "./pngPortCheck";
 import "./ucdOracleCheck";
 import "./h2dOracleCheck";
 import "./math3dCheck";
