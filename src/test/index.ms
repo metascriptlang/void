@@ -36,6 +36,7 @@ import "./sfntPortCheck";
 import "./trueTypePortCheck";
 import "./pngPortCheck";
 import "./colourFacePortCheck";
+import "./svgMaskPortCheck";
 import "./ucdOracleCheck";
 import "./h2dOracleCheck";
 import "./math3dCheck";
