@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// The iOS app driver (bridgeIosApp.m) as appWindow.c reads it; the asset dir is bridgeIos.m's.
+// The iOS app driver (bridgeIosApp.m) as appWindow.ms reads it; the asset dir is bridgeIos.m's.
 bool voidIosValid(void);
 int voidIosWidth(void);
 int voidIosHeight(void);

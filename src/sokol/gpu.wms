@@ -5,7 +5,8 @@
 @compile("./bridge.c");
 @compile("./bridgeWeb.c");
 import { exportCurrentView, exportRegister, exportSetSampleCount } from "./viewsExports";
-@compile("./appWindow.c");
+@compile("./appWindowPlatform.c");
+import "./appWindowExports";
 @compile("../platform/web/window.c");
 // The native Windows main-thread stack: a particle system's value-struct frames need about 88 KB,
 // beyond emscripten's 64 KB default, and an overflow there corrupts the heap instead of trapping.

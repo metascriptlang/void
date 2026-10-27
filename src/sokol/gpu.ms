@@ -13,7 +13,8 @@ when (macos && !voidDummy) {
 	@compile("./bridgeEmbed.m");
 	@compile("./metalSurface.m", "-fobjc-arc");
 	@compile("./presentGate.m", "-fobjc-arc");
-	@compile("./appWindow.c");
+	@compile("./appWindowPlatform.c");
+	import "./appWindowExports";
 	import "./viewsExports";
 	@compile("./bridge.c");
 }
@@ -28,7 +29,8 @@ when (windows && voidVulkan && !voidDummy) {
 
 when (windows && !voidDummy) {
 	@compile("../platform/win32/window.c");
-	@compile("./appWindow.c");
+	@compile("./appWindowPlatform.c");
+	import "./appWindowExports";
 	import "./viewsExports";
 	@compile("./bridge.c");
 	@passL("-ld3d11");
@@ -49,7 +51,8 @@ when (windows && voidGlCore && !voidDummy) {
 when (android && !voidDummy) {
 	@compile("./bridgeAndroid.c");
 	@compile("./bridgeAndroidApp.c");
-	@compile("./appWindow.c");
+	@compile("./appWindowPlatform.c");
+	import "./appWindowExports";
 	import "./viewsExports";
 	@compile("./bridge.c");
 	@passL("-lEGL");
@@ -63,7 +66,8 @@ when (ios && !voidDummy) {
 	@compile("./metalSurface.m", "-fobjc-arc");
 	@compile("./presentGate.m", "-fobjc-arc");
 	@compile("./bridgeIosApp.m", "-fobjc-arc");
-	@compile("./appWindow.c");
+	@compile("./appWindowPlatform.c");
+	import "./appWindowExports";
 	import "./viewsExports";
 	@compile("./bridge.c");
 	@passL("-framework Metal");
@@ -76,7 +80,8 @@ when (ios && !voidDummy) {
 when (linux && !voidDummy) {
 	@compile("../platform/linux/window.c");
 	@compile("./bridgeLinux.c");
-	@compile("./appWindow.c");
+	@compile("./appWindowPlatform.c");
+	import "./appWindowExports";
 	@compile("./bridge.c");
 	@passL("-lX11");
 	@passL("-ldl");
@@ -97,7 +102,8 @@ when (linux && voidGles3 && !voidDummy) {
 
 when (voidDummy) {
 	@compile("./bridgeDummy.c");
-	@compile("./appWindow.c", "-DVOID_DUMMY");
+	@compile("./appWindowPlatform.c", "-DVOID_DUMMY");
+	import "./appWindowExports";
 	@compile("./bridge.c", "-DVOID_DUMMY");
 }
 

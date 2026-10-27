@@ -1,6 +1,6 @@
 // Void sokol driver — iOS app (Metal). voidRun is a UIApplication whose root view renders
 // through the views driver (bridgeIos.m, viewsExports.cms) and feeds the window event surface
-// (appWindow.c), as bridgeEmbed.m's voidRun is a Cocoa window. The app's main() runs MsMain,
+// (appWindow.ms), as bridgeEmbed.m's voidRun is a Cocoa window. The app's main() runs MsMain,
 // whose main_ calls voidRun, which enters UIApplicationMain and does not return.
 
 #import <UIKit/UIKit.h>

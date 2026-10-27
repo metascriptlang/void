@@ -111,6 +111,8 @@ import "./floatBitsPortCheck";
 import "./mat4PortCheck";
 import "./mikkTangentsPortCheck";
 import "./viewsPortCheck";
+import "./appEventPortCheck";
+import "./appWindowPortCheck";
 import "./gltfComposeSceneCheck";
 import "./gltfAccessorCheck";
 import "./gltfColourCheck";
