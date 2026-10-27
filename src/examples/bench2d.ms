@@ -38,7 +38,7 @@ when (voidProfiler) {
 	import { ringCount, ringPercentile } from "../void2d/profiler";
 }
 when (voidSdfText) {
-	import { void2dGlyphSdfGenerations } from "../void2d/glyph.h";
+	import { void2dGlyphSdfGenerations } from "../void2d/glyph";
 }
 
 export enum BenchKind {

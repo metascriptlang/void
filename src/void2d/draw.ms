@@ -25,7 +25,7 @@ import {
 	void2dPackChannel,
 	void2dSetPipeline,
 } from "./batcher.h";
-import { void2dGlyphPageCount } from "./glyph.h";
+import { void2dGlyphPageCount } from "./glyph";
 import { beginGlyphFrame, setSdfRegime } from "./labelText";
 import { GlyphPageHandle } from "./glyphAtlas";
 import { gammaRatios, DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST } from "./textGamma";

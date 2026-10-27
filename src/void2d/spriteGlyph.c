@@ -1,5 +1,5 @@
 #include "spriteGlyph.h"
-#include "glyph.h"
+#include "glyphExports.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>

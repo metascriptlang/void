@@ -15,37 +15,28 @@ import {
 	void2dGlyphColourLayerCount,
 	void2dGlyphColourLayerGlyph,
 	void2dGlyphColourLayerRgba,
-} from "./glyph.h";
+	void2dGlyphFaceMetrics,
+	void2dGlyphDecoration,
+	void2dGlyphFaceHeights,
+	void2dGlyphColourBox,
+} from "./glyph";
 import { glyphBox } from "./glyphBoxes";
-
-extern function void2dGlyphFaceMetrics(face: int32, sizePx: float32, out: Span<float32>): void;
-extern function void2dGlyphDecoration(face: int32, sizePx: float32, out: Span<float32>): void;
-extern function void2dGlyphFaceHeights(face: int32, out: Span<float32>): void;
-extern function void2dGlyphColourBox(
-	face: int32, glyph: int32, sizePx: float32, out: Span<int32>,
-): void;
 
 let metricSlots: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
 let boxSlots: Vec<int32> = [0, 0, 0, 0, 0, 0];
 import "./colourEmoji/colourEmoji";
 
 when (voidSprites) {
-	import "./spriteSwitch";
 	import "./spriteGlyph";
 	import {
 		void2dGlyphFaceSprite,
 		void2dGlyphFaceIsSprite,
-	} from "./glyph.h";
-
-	extern function void2dGlyphSpriteCell(face: int32, sizePx: float32, out: Span<int32>): void;
+		void2dGlyphSpriteCell,
+	} from "./glyph";
 }
 
 when (macos || ios) {
-	@compile("./platformFaceApple.m", "-fobjc-arc");
-	@passL("-framework CoreText");
-	@passL("-framework CoreGraphics");
-	@passL("-framework CoreFoundation");
-	import { void2dGlyphFacePlatform, void2dGlyphFaceIsPlatform } from "./glyph.h";
+	import { void2dGlyphFacePlatform, void2dGlyphFaceIsPlatform } from "./glyph";
 }
 
 import {
@@ -59,7 +50,7 @@ import {
 	sfntSummariesRead,
 } from "./sfnt";
 export { SfntError, SfntSequence } from "./sfnt";
-import { void2dFontBytesAdd } from "./fontBytes.h";
+import { fontBytesAdd } from "./fontBytes";
 import { GlyphPageHandle } from "./glyphAtlas";
 
 export struct FaceMetrics {
@@ -124,13 +115,8 @@ export enum FaceBytesError {
 // The same bytes again are accepted; other bytes under a held name are refused.
 export function holdFaceBytes(name: string, bytes: uint8[]): Result<void, FaceBytesError> {
 	if (bytes.length == 0) { return Result.err(FaceBytesError.Empty); }
-	const code: int32 = void2dFontBytesAdd(name, bytes[0], bytes.length as int32);
-	if (code != 0 && code != -3 && code != -4) { unreachable; }
-	return match (code) {
-		0 => Result.ok(null),
-		-4 => Result.err(FaceBytesError.NameHeld),
-		_ => Result.err(FaceBytesError.OutOfMemory),
-	};
+	if (!fontBytesAdd(name, bytes)) { return Result.err(FaceBytesError.NameHeld); }
+	return Result.ok(null);
 }
 
 function summaryOf(id: int32): FaceSummary {

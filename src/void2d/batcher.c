@@ -11,7 +11,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <math.h>
-#include "glyph.h"
+#include "glyphExports.h"
 #ifdef VOID_PROFILER
 #include "frameClock.h"
 #endif
