@@ -225,6 +225,14 @@ test "no feature keeps only what every program reads" {
 		"resources base; functions mainFs; constants ; structs Base; ios uv,colour";
 }
 
+test "an input no read reaches stays declared" {
+	let m = twoFeatureModule();
+	m.ios.push(io("spare", IoDirection.In, vectorType(ScalarKind.F32, 4)));
+	const r = specialize(m, []);
+	assert r.ok;
+	if (r.ok) { assert r.value.ios.map((v) => v.name).join(",") == "uv,colour,spare"; }
+}
+
 test "feature A brings its texture pair and its input" {
 	const m = specialized(["A"]);
 	assert decided(m);

@@ -44,19 +44,35 @@ function roundUp(n: int32, to: int32): int32 {
 	return (n + to - 1) / to * to;
 }
 
+// The bytes a column of this many rows takes in a matrix, and the alignment of a vector of them.
+export function columnStride(rows: int32): int32 {
+	return rows == 2 ? 8 : 16;
+}
+
+function arrayAlign(m: ShaderModule, t: ShaderType, rule: LayoutRule): int32 {
+	const [elementAlign, _elementSize] = extentOf(m, t.element[0], rule);
+	return rule == LayoutRule.Std140 ? roundUp(elementAlign, 16) : elementAlign;
+}
+
+function arrayStride(m: ShaderModule, t: ShaderType, rule: LayoutRule): int32 {
+	const [_elementAlign, elementSize] = extentOf(m, t.element[0], rule);
+	return roundUp(elementSize, arrayAlign(m, t, rule));
+}
+
+export function uniformArrayStride(m: ShaderModule, t: ShaderType): int32 {
+	return arrayStride(m, t, LayoutRule.Std140);
+}
+
 function extentOf(m: ShaderModule, t: ShaderType, rule: LayoutRule): [int32, int32] {
-	const std140 = rule == LayoutRule.Std140;
 	match (t.kind) {
 		ShaderTypeKind.Scalar | ShaderTypeKind.Atomic => { return [4, 4]; },
-		ShaderTypeKind.Vector => { return [t.rows == 2 ? 8 : 16, 4 * t.rows]; },
+		ShaderTypeKind.Vector => { return [columnStride(t.rows), 4 * t.rows]; },
 		ShaderTypeKind.Matrix => {
-			const column = t.rows == 2 && !std140 ? 8 : 16;
+			const column = columnStride(t.rows);
 			return [column, column * t.columns];
 		},
 		ShaderTypeKind.Array => {
-			const [elementAlign, elementSize] = extentOf(m, t.element[0], rule);
-			const align = std140 ? roundUp(elementAlign, 16) : elementAlign;
-			return [align, roundUp(elementSize, align) * t.length];
+			return [arrayAlign(m, t, rule), arrayStride(m, t, rule) * t.length];
 		},
 		_ => {},
 	}
@@ -95,8 +111,8 @@ function isVec4OrMat4(t: ShaderType): boolean {
 		t.kind == ShaderTypeKind.Matrix && t.columns == 4 && t.rows == 4;
 }
 
-// A uniform block reaches GL as one `vec4 <block>[size / 16]` (sokol-shdc's flattening), so a
-// member that is not float has no place in it.
+// A uniform block reaches GL as one `vec4 <block>[size / 16]`, so a member that is not float has no
+// place in it.
 export function uniformBlockLayout(m: ShaderModule, resourceIndex: int32):
 	Result<StructLayout, string> {
 	const r = m.resources[resourceIndex];
@@ -233,7 +249,8 @@ function slotOf(m: ShaderModule, u: Used, target: ShaderTarget): BindingSlot {
 
 function samplerlessReads(e: ShaderExpr, out: int32[]): void {
 	const fetch = e.kind == ExprKind.Intrinsic && (e.intrinsic == Intrinsic.TextureLoad ||
-		e.intrinsic == Intrinsic.TextureDimensions);
+		e.intrinsic == Intrinsic.TextureDimensions ||
+		e.intrinsic == Intrinsic.TextureNumSamples);
 	if (fetch && e.operands.length > 0 && e.operands[0].kind == ExprKind.Resource &&
 		e.operands[0].type.kind == ShaderTypeKind.Texture &&
 		!e.operands.some((o) => o.type.kind == ShaderTypeKind.Sampler) &&

@@ -101,6 +101,7 @@ import {
 import {
 	Material,
 	UniformBlock,
+	TypedBlock,
 	NO_UNIFORMS,
 	MATERIAL_TEXTURE_ROLES,
 	viewSlotOf,
@@ -121,6 +122,8 @@ import {
 	disownRange,
 	writeRange,
 	uniformWrites,
+	reserveBlock as reserveTypedBlock,
+	writeBlock as writeTypedBlock,
 } from "./uniformPool";
 import { Slots, LAST_GENERATION, claim, vacate } from "./slots";
 
@@ -1651,6 +1654,31 @@ export function writeUniforms(
 ): Result<int32, UniformError> {
 	if (context.closed) { stopOnClosedContext("writeUniforms"); }
 	return writeRange(context.uniforms, block, values);
+}
+
+export function reserveBlock<T>(
+	context: DrawContext,
+	slot: int32,
+): Result<TypedBlock<T>, UniformError> {
+	if (context.closed) { stopOnClosedContext("reserveBlock"); }
+	return reserveTypedBlock<T>(context.uniforms, slot);
+}
+
+export function releaseBlock<T>(
+	context: DrawContext,
+	handle: TypedBlock<T>,
+): Result<int32, UniformError> {
+	if (context.closed) { stopOnClosedContext("releaseBlock"); }
+	return releaseRange(context.uniforms, handle.block);
+}
+
+export function writeBlock<T>(
+	context: DrawContext,
+	handle: TypedBlock<T>,
+	value: T,
+): Result<int32, UniformError> {
+	if (context.closed) { stopOnClosedContext("writeBlock"); }
+	return writeTypedBlock<T>(context.uniforms, handle, value);
 }
 
 function applyBlock(this context: DrawContext, block: UniformBlock): void {

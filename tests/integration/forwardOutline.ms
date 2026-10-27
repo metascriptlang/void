@@ -374,7 +374,7 @@ function widthProfile(view: CameraView, width: int32, height: int32, variant: in
 	}
 	if (stage == 56) {
 		const corrupted: Vec<float32> = [radius+1.0,0.0,0.0,0.0];
-		if (!writeUniforms(context,pass.widthBlock,corrupted).ok) { unreachable; }
+		if (!writeUniforms(context,pass.widthBlock.block,corrupted).ok) { unreachable; }
 		pass.drawWidth(renderer.core);
 		copyCapture(pass.width.asTexture());
 		let negative: int32 = 0;
@@ -384,7 +384,7 @@ function widthProfile(view: CameraView, width: int32, height: int32, variant: in
 			}
 		}
 		if (negative == 0) { fail("production-only radius fault escaped independent reference"); }
-		if (!writeUniforms(context,pass.widthBlock,pass.widthValues).ok) { unreachable; }
+		if (!writeUniforms(context,pass.widthBlock.block,[radius,requested<2.0?1.0:0.0,0.0,0.0]).ok) { unreachable; }
 		pass.drawWidth(renderer.core);
 		copyCapture(pass.width.asTexture());
 		for (let y=0;y<HEIGHT;y++) {

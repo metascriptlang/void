@@ -33,7 +33,9 @@ later replaces the hand-written GLSL source of each base.
   on `uv.x * t`).
 - **The emitter enforces the shdc dialect at the MetaScript source**, so the error points at the
   author's code: textures and samplers are separate; uniform block members are only float, int,
-  vec2–4, ivec2–4, mat3, mat4, and arrays only vec4, ivec4 or mat4; no recursion. The emitter packs an
+  vec2–4, ivec2–4, every matrix shape, and arrays only vec4, ivec4 or mat4; no recursion. A two-row
+  matrix keeps WGSL's 8-byte column stride on every target, printed as vec2 columns where std140
+  would stride 16. The emitter packs an
   author's struct into those types, so a uniform block's layout comes from one MetaScript struct.
 - **Vocabulary is TypeGPU's** ([docs/VOCABULARY.md](../../docs/VOCABULARY.md)): `Vec3f`/`vec3f`,
   `Mat4x4f`, `textureLoad`, `select`, `@builtin(position)`, `@binding(n)`. `std.ms` declares it with

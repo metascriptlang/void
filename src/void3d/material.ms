@@ -108,6 +108,10 @@ export struct UniformBlock {
 	generation: int32;
 }
 
+export struct TypedBlock<T> {
+	block: UniformBlock;
+}
+
 export struct Material {
 	program: ProgramKey;
 	pass: RenderState;

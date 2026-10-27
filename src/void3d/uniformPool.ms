@@ -4,7 +4,8 @@
 // has no room for; one made with `growing` appends room instead, so every offset stays, up to
 // GROWING_POOL_LIMIT floats, past which the reserve is refused the same way.
 
-import { UniformBlock, NO_UNIFORMS } from "./material";
+import { TypedBlock, UniformBlock, NO_UNIFORMS } from "./material";
+import { uniformSize, writeUniform } from "../shader/uniform";
 import { LAST_GENERATION, nextGeneration } from "./slots";
 
 export enum UniformError {
@@ -223,6 +224,26 @@ export function writeRange(
 	}
 	writeCount = writeCount + 1;
 	return Result.ok(block.length);
+}
+
+export function reserveBlock<T>(
+	pool: UniformPool,
+	slot: int32,
+): Result<TypedBlock<T>, UniformError> {
+	const block: UniformBlock = try reserveRange(pool, slot, uniformSize<T>() / 4);
+	return Result.ok({ block: block });
+}
+
+export function writeBlock<T>(
+	pool: UniformPool,
+	handle: TypedBlock<T>,
+	value: T,
+): Result<int32, UniformError> {
+	if (pool.closed) { stopOnClosedPool("writeBlock"); }
+	if (handle.block.length != uniformSize<T>() / 4) { return Result.err(UniformError.WrongLength); }
+	const _held: int32 = try pool.admitted(handle.block);
+	writeUniform<T>(pool.values, handle.block.offset, value);
+	return Result.ok(handle.block.length);
 }
 
 export function liveRanges(this pool: UniformPool): int32 {

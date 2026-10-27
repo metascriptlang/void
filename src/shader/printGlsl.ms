@@ -25,7 +25,14 @@ import {
 	UnaryOp,
 	isShift,
 	isArrayTexture,
+	hasOffset,
+	offsetOf,
+	sampleBase,
+	rootOf,
 	isAtomic,
+	isUniformLoad,
+	sameShaderType,
+	texelScalar,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import {
@@ -35,7 +42,7 @@ import {
 	hasEffect,
 	innermost,
 	ioLocation,
-	rootOf,
+	splitResults,
 	stmtStructs,
 	structOrder,
 } from "./irWalk";
@@ -44,11 +51,16 @@ import {
 	exchangeSlot,
 	floatText,
 	glslAtomicName,
+	glslBitcast,
 	glslBits,
+	glslSplitTypes,
 	isIntMin,
 	mathName,
 	pointed,
 	repeatedBitsOperand,
+	splitHelperName,
+	splitMember,
+	splitStructName,
 } from "./spelling";
 import { claimName } from "./names";
 import { printableEntry } from "./specialize";
@@ -154,6 +166,7 @@ class Printer {
 	module: ShaderModule = new ShaderModule();
 	stage: ShaderStage = ShaderStage.Vertex;
 	es: boolean = false;
+	samplesQueried: boolean = false;
 	error: string = "";
 	globals: string[] = [];
 	structNames: string[] = [];
@@ -166,6 +179,9 @@ class Printer {
 	functionNames: string[] = [];
 	workgroupNames: string[] = [];
 	exchangeNames: string[] = ["", ""];
+	splits: ShaderType[] = [];
+	splitStructs: string[] = [];
+	splitHelpers: string[] = [];
 	effects: int32[] = [];
 	pairs: Pair[] = [];
 	scope: string[] = [];
@@ -221,21 +237,35 @@ function arraySuffix(p: Printer, t: ShaderType): string {
 	return "[" + String(t.length) + "]" + arraySuffix(p, t.element[0]);
 }
 
-function imageFormat(format: TexelFormat): string {
+function imageFormat(p: Printer, format: TexelFormat): string {
 	return match (format) {
 		TexelFormat.Rgba8unorm => "rgba8",
 		TexelFormat.Rgba8snorm => "rgba8_snorm",
 		TexelFormat.Rgba8uint => "rgba8ui",
+		TexelFormat.Rgba8sint => "rgba8i",
+		TexelFormat.Rgba16uint => "rgba16ui",
+		TexelFormat.Rgba16sint => "rgba16i",
 		TexelFormat.Rgba16float => "rgba16f",
+		TexelFormat.Rgba32uint => "rgba32ui",
+		TexelFormat.Rgba32sint => "rgba32i",
 		TexelFormat.Rgba32float => "rgba32f",
 		TexelFormat.R32float => "r32f",
 		TexelFormat.R32uint => "r32ui",
+		TexelFormat.R32sint => "r32i",
 		TexelFormat.Rg32float => "rg32f",
+		TexelFormat.Rg32uint => "rg32ui",
+		TexelFormat.Rg32sint => "rg32i",
+		TexelFormat.Bgra8unorm => fail(p, "bgra8unorm has no GLSL image format"),
 	};
 }
 
-function texelType(format: TexelFormat): string {
-	return format == TexelFormat.Rgba8uint || format == TexelFormat.R32uint ? "uvec4" : "vec4";
+function splitNames(p: Printer, t: ShaderType, names: string[]): string {
+	const at = p.splits.findIndex((s) => sameShaderType(s, t));
+	if (at >= 0) { return names[at]; }
+	if (p.es && t.kind == ShaderTypeKind.FrexpResult) {
+		return fail(p, "Frexp is not in GLSL ES 3.00 (ES 3.10 has it)");
+	}
+	return fail(p, "no struct is declared for a " + t.kind.toString());
 }
 
 function typeName(p: Printer, t: ShaderType): string {
@@ -251,10 +281,11 @@ function typeName(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.Texture | ShaderTypeKind.Sampler =>
 			fail(p, "a " + t.kind.toString() + " outside a texture operation: GL samples through " +
 				"combined samplers"),
-		ShaderTypeKind.StorageTexture => (texelType(t.format) == "uvec4" ? "u" : "") +
+		ShaderTypeKind.StorageTexture => vectorPrefix(texelScalar(t.format)) +
 			imageShapeName(p, t.shape),
 		ShaderTypeKind.Atomic => scalarName(t.scalar),
 		ShaderTypeKind.ExchangeResult => p.exchangeNames[exchangeSlot(t.scalar)],
+		ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult => splitNames(p, t, p.splitStructs),
 	};
 }
 
@@ -373,6 +404,11 @@ function remainder(p: Printer, a: ShaderExpr, b: ShaderExpr): string {
 		"undefined");
 }
 
+function notOfVector(e: ShaderExpr): boolean {
+	const t = e.operands[0].type;
+	return e.unary == UnaryOp.Not && t.kind == ShaderTypeKind.Vector && t.scalar == ScalarKind.Bool;
+}
+
 function unaryText(e: ShaderExpr): string {
 	return match (e.unary) {
 		UnaryOp.Negate => "-",
@@ -454,6 +490,7 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	if (t.kind == ShaderTypeKind.StorageTexture) {
 		const size = "imageSize(" + expr(p, args[0]) + ")";
 		return match (t.shape) {
+			TextureShape.D1 => converted(p, size, "int", e.type),
 			TextureShape.D3 => converted(p, size, "ivec3", e.type),
 			TextureShape.D2Array => converted(p, size + ".xy", "ivec2", e.type),
 			TextureShape.D2 => converted(p, size, "ivec2", e.type),
@@ -470,9 +507,23 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	const level = args.length > 1 ? intText(p, args[1]) : "0";
 	const call = "textureSize(" + pair.name + ", " + level + ")";
 	if (t.shape == TextureShape.D3) { return converted(p, call, "ivec3", e.type); }
+	if (t.shape == TextureShape.D1) {
+		return p.es ? converted(p, call + ".x", "int", e.type) : converted(p, call, "int", e.type);
+	}
 	const layered = t.shape == TextureShape.D2Array || t.shape == TextureShape.Depth2dArray ||
 		t.shape == TextureShape.CubeArray;
 	return converted(p, layered ? call + ".xy" : call, "ivec2", e.type);
+}
+
+function samplesOf(p: Printer, e: ShaderExpr): string {
+	const t = e.operands[0].type;
+	if (t.kind != ShaderTypeKind.Texture || t.shape != TextureShape.Multisampled2d ||
+		e.type.scalar != ScalarKind.I32) {
+		return fail(p, "TextureNumSamples takes a multisampled texture and gives an i32");
+	}
+	const pair = pairOf(p, e.operands[0], null);
+	p.samplesQueried = true;
+	return "textureSamples(" + pair.name + ")";
 }
 
 function loadOf(p: Printer, e: ShaderExpr): string {
@@ -489,12 +540,17 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 	if (isComparison(p, pair)) {
 		return fail(p, "TextureLoad through comparison sampler pair '" + pair.name + "'");
 	}
-	const level = args.length > 2 ? intText(p, args[2]) : "0";
-	const fetch = "texelFetch(" + pair.name + ", " + intText(p, args[1]) + ", " + level + ")";
+	const layered = t.shape == TextureShape.D2Array;
+	const levelAt = layered ? 3 : 2;
+	const level = args.length > levelAt ? intText(p, args[levelAt]) : "0";
+	const at = layered ? "ivec3(" + intText(p, args[1]) + ", " + intText(p, args[2]) + ")" :
+		p.es && t.shape == TextureShape.D1 ? "ivec2(" + intText(p, args[1]) + ", 0)" :
+		intText(p, args[1]);
+	const fetch = "texelFetch(" + pair.name + ", " + at + ", " + level + ")";
 	return match (t.shape) {
-		TextureShape.D2 | TextureShape.Depth2d | TextureShape.D3 | TextureShape.Multisampled2d =>
-			narrowed(fetch, e.type),
-		_ => fail(p, "TextureLoad of a " + t.shape.toString() + " texture: the IR names no layer"),
+		TextureShape.D1 | TextureShape.D2 | TextureShape.D2Array | TextureShape.Depth2d |
+			TextureShape.D3 | TextureShape.Multisampled2d => narrowed(fetch, e.type),
+		_ => fail(p, "TextureLoad of a " + t.shape.toString() + " texture"),
 	};
 }
 
@@ -502,11 +558,16 @@ function isLayered(t: ShaderType): boolean {
 	return t.shape == TextureShape.D2Array || t.shape == TextureShape.Depth2dArray;
 }
 
+function rowCoordinate(p: Printer, t: ShaderType, text: string): string {
+	return p.es && t.shape == TextureShape.D1 ? "vec2(" + text + ", 0.0)" : text;
+}
+
 function sampleOf(p: Printer, e: ShaderExpr): string {
 	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
-	if (e.operands.length != (layered ? 4 : 3)) {
+	const base = layered ? 4 : 3;
+	if (e.operands.length != base && e.operands.length != base + 1) {
 		return fail(p, "TextureSample takes a texture, a sampler, coordinates and, for an array " +
-			"texture, a layer");
+			"texture, a layer, and an optional constant offset");
 	}
 	const [texture, sampler, at] = [e.operands[0], e.operands[1], e.operands[2]];
 	if (texture.type.kind != ShaderTypeKind.Texture ||
@@ -521,8 +582,9 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
 	}
 	const coords = layered ? "vec3(" + expr(p, at) + ", float(" + expr(p, e.operands[3]) + "))" :
-		expr(p, at);
-	return narrowed("texture(" + pair.name + ", " + coords + ")", e.type);
+		rowCoordinate(p, texture.type, expr(p, at));
+	return narrowed(e.operands.length == base ? "texture(" + pair.name + ", " + coords + ")" :
+		"textureOffset(" + pair.name + ", " + coords + ", " + expr(p, e.operands[base]) + ")", e.type);
 }
 
 function explicitSampleOf(p: Printer, e: ShaderExpr): string {
@@ -534,27 +596,35 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 			"depth reference");
 	}
 	const layer = isArrayTexture(t) ? 1 : 0;
-	const at = layer == 0 ? expr(p, o[2]) : (t.shape == TextureShape.CubeArray ? "vec4(" :
+	const at = layer == 0 ? rowCoordinate(p, t, expr(p, o[2])) : (t.shape == TextureShape.CubeArray ? "vec4(" :
 		"vec3(") + expr(p, o[2]) + ", float(" + expr(p, o[3]) + "))";
-	const tail = o.slice(3 + layer).map((a) => expr(p, a)).join(", ");
+	const tail = o.slice(3 + layer, sampleBase(e)).map((a) => a.type.kind == ShaderTypeKind.Scalar &&
+		a.type.scalar != ScalarKind.F32 ? "float(" + expr(p, a) + ")" : expr(p, a)).join(", ");
+	const offset = hasOffset(e) ? expr(p, offsetOf(e)) : "";
+	const suffix = offset == "" ? "" : "Offset";
 	const name = match (e.intrinsic) {
-		Intrinsic.TextureSampleLevel => "textureLod(",
-		Intrinsic.TextureSampleBias => "texture(",
-		Intrinsic.TextureSampleGrad => "textureGrad(",
+		Intrinsic.TextureSampleLevel => "textureLod" + suffix + "(",
+		Intrinsic.TextureSampleBias => "texture" + suffix + "(",
+		Intrinsic.TextureSampleGrad => "textureGrad" + suffix + "(",
 		_ => fail(p, e.intrinsic.toString() + " is no explicit sample"),
 	};
-	return narrowed(name + pair.name + ", " + at + ", " + tail + ")", e.type);
+	const args = e.intrinsic == Intrinsic.TextureSampleBias && offset != "" ?
+		offset + ", " + tail : tail + (offset == "" ? "" : ", " + offset);
+	return narrowed(name + pair.name + ", " + at + ", " + args + ")", e.type);
 }
 
 function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	const name = e.intrinsic.toString();
 	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
-	if (e.operands.length != (layered ? 5 : 4)) {
+	const base = layered ? 5 : 4;
+	if (e.operands.length != base && e.operands.length != base + 1) {
 		return fail(p, name + " takes a texture, a sampler, coordinates, for an array texture a " +
-			"layer, and a depth reference");
+			"layer, a depth reference, and an optional constant offset");
 	}
 	const [texture, sampler, at] = [e.operands[0], e.operands[1], e.operands[2]];
-	const reference = e.operands[e.operands.length - 1];
+	const reference = e.operands[base - 1];
+	const offset = e.operands.length == base ? "" : ", " + expr(p, e.operands[base]);
+	const suffix = offset == "" ? "" : "Offset";
 	if (texture.type.kind != ShaderTypeKind.Texture ||
 		sampler.type.kind != ShaderTypeKind.Sampler) {
 		return fail(p, name + " takes a texture and a sampler first");
@@ -566,13 +636,18 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	}
 	const coords = expr(p, at) + (layered ? ", float(" + expr(p, e.operands[3]) + ")" : "") +
 		", " + expr(p, reference);
+	if (p.es && offset != "" && !level && texture.type.shape == TextureShape.Depth2dArray) {
+		return fail(p, name + " of a texture_depth_2d_array with an offset has no GLSL ES 3.00 " +
+			"form: textureOffset on sampler2DArrayShadow is GLSL 4.30's, never ES's");
+	}
 	return match (texture.type.shape) {
 		TextureShape.Depth2d => level ?
-			"textureLod(" + pair.name + ", vec3(" + coords + "), 0.0)" :
-			"texture(" + pair.name + ", vec3(" + coords + "))",
+			"textureLod" + suffix + "(" + pair.name + ", vec3(" + coords + "), 0.0" + offset + ")" :
+			"texture" + suffix + "(" + pair.name + ", vec3(" + coords + ")" + offset + ")",
 		TextureShape.Depth2dArray => level ?
-			"textureGrad(" + pair.name + ", vec4(" + coords + "), vec2(0.0), vec2(0.0))" :
-			"texture(" + pair.name + ", vec4(" + coords + "))",
+			"textureGrad" + suffix + "(" + pair.name + ", vec4(" + coords + "), vec2(0.0), vec2(0.0)" +
+				offset + ")" :
+			"texture" + suffix + "(" + pair.name + ", vec4(" + coords + ")" + offset + ")",
 		TextureShape.DepthCube => level ?
 			"textureGrad(" + pair.name + ", vec4(" + coords + "), vec3(0.0), vec3(0.0))" :
 			"texture(" + pair.name + ", vec4(" + coords + "))",
@@ -583,6 +658,7 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 
 function imageShapeName(p: Printer, shape: TextureShape): string {
 	return match (shape) {
+		TextureShape.D1 => "image1D",
 		TextureShape.D2 => "image2D",
 		TextureShape.D2Array => "image2DArray",
 		TextureShape.D3 => "image3D",
@@ -602,13 +678,18 @@ function storeOf(p: Printer, e: ShaderExpr): string {
 		return fail(p, "TextureStore takes a storage texture, coordinates, a layer of an " +
 			"array, and a value");
 	}
-	const texel = texelType(o[0].type.format);
+	const channel = texelScalar(o[0].type.format);
+	const texel = vectorPrefix(channel) + "vec4";
 	const value = o[wanted - 1];
 	const rows = value.type.kind == ShaderTypeKind.Vector ? value.type.rows : 1;
-	const zero = texel == "uvec4" ? "0u" : "0.0";
+	const zero = match (channel) {
+		ScalarKind.U32 => "0u",
+		ScalarKind.I32 => "0",
+		ScalarKind.F32 => "0.0",
+		ScalarKind.Bool => fail(p, "a storage texture of bool texels"),
+	};
 	const written = rows == 4 ? converted(p, expr(p, value), typeName(p, value.type),
-		texel == "uvec4" ? vectorTypeOf(ScalarKind.U32) : vectorTypeOf(ScalarKind.F32)) :
-		texel + "(" + expr(p, value) + ", " + repeated(zero, 4 - rows) + ")";
+		vectorTypeOf(channel)) : texel + "(" + expr(p, value) + ", " + repeated(zero, 4 - rows) + ")";
 	return "imageStore(" + expr(p, o[0]) + ", " + imageAt(p, o) + ", " + written + ")";
 }
 
@@ -624,7 +705,15 @@ function intrinsicName(op: Intrinsic): string {
 	return match (op) {
 		Intrinsic.Round => "roundEven",
 		Intrinsic.Atan2 => "atan",
+		Intrinsic.LessThan => "lessThan",
 		Intrinsic.LessThanEqual => "lessThanEqual",
+		Intrinsic.GreaterThan => "greaterThan",
+		Intrinsic.GreaterThanEqual => "greaterThanEqual",
+		Intrinsic.Equal => "equal",
+		Intrinsic.NotEqual => "notEqual",
+		Intrinsic.DpdxCoarse | Intrinsic.DpdxFine => "dFdx",
+		Intrinsic.DpdyCoarse | Intrinsic.DpdyFine => "dFdy",
+		Intrinsic.FwidthCoarse | Intrinsic.FwidthFine => "fwidth",
 		_ => mathName(op),
 	};
 }
@@ -632,12 +721,18 @@ function intrinsicName(op: Intrinsic): string {
 function selectText(p: Printer, e: ShaderExpr): string {
 	const [falseValue, trueValue, condition] = [e.operands[0], e.operands[1], e.operands[2]];
 	if (condition.type.kind == ShaderTypeKind.Vector) {
-		if (!isScalarKind(e.type, ScalarKind.F32)) {
-			return fail(p, "Select of " + e.type.scalar.toString() + " by a bool vector: GLSL " +
-				"mixes float vectors only");
+		if (isScalarKind(e.type, ScalarKind.F32)) {
+			return "mix(" + expr(p, falseValue) + ", " + expr(p, trueValue) + ", " +
+				expr(p, condition) + ")";
 		}
-		return "mix(" + expr(p, falseValue) + ", " + expr(p, trueValue) + ", " +
-			expr(p, condition) + ")";
+		pure(p, "select", [falseValue, trueValue, condition]);
+		let lanes: string[] = [];
+		for (let i = 0; i < e.type.rows; i++) {
+			const lane = "." + SWIZZLE.substring(i, i + 1);
+			lanes.push(postfixBase(p, condition) + lane + " ? " + postfixBase(p, trueValue) + lane +
+				" : " + postfixBase(p, falseValue) + lane);
+		}
+		return typeName(p, e.type) + "(" + lanes.join(", ") + ")";
 	}
 	pure(p, "select", [falseValue, trueValue]);
 	return "(" + operand(p, condition) + " ? " + operand(p, trueValue) + " : " +
@@ -660,9 +755,15 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.Sign => converted(p, "sign(" + args() + ")", typeName(p, e.operands[0].type),
 			e.type),
 		Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
-			Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits | Intrinsic.InsertBits |
-			Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Unpack4x8Unorm |
-			Intrinsic.Unpack4x8Snorm => bitsText(p, e),
+			Intrinsic.FirstTrailingBit | Intrinsic.CountLeadingZeros | Intrinsic.CountTrailingZeros |
+			Intrinsic.ExtractBits | Intrinsic.InsertBits | Intrinsic.Pack4x8Unorm |
+			Intrinsic.Pack4x8Snorm | Intrinsic.Unpack4x8Unorm | Intrinsic.Unpack4x8Snorm =>
+			bitsText(p, e),
+		Intrinsic.Bitcast => glslBitcast(e.operands[0].type.scalar, e.type.scalar,
+			typeName(p, e.type), expr(p, e.operands[0])),
+		Intrinsic.Ldexp => p.es ? fail(p, "Ldexp is not in GLSL ES 3.00 (ES 3.10 has it)") :
+			"ldexp(" + args() + ")",
+		Intrinsic.Modf | Intrinsic.Frexp => splitNames(p, e.type, p.splitHelpers) + "(" + args() + ")",
 		Intrinsic.Saturate => "clamp(" + args() + ", 0.0, 1.0)",
 		Intrinsic.Fma => p.es ? "(" + operand(p, e.operands[0]) + " * " +
 			operand(p, e.operands[1]) + " + " + operand(p, e.operands[2]) + ")" :
@@ -680,12 +781,16 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureLoad => loadOf(p, e),
 		Intrinsic.TextureStore => storeOf(p, e),
 		Intrinsic.TextureDimensions => sizeOf(p, e),
+		Intrinsic.TextureNumSamples => samplesOf(p, e),
 		Intrinsic.TextureSampleCompare => compareOf(p, e, false),
 		Intrinsic.TextureSampleCompareLevel => compareOf(p, e, true),
 		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>
 			explicitSampleOf(p, e),
 		Intrinsic.WorkgroupBarrier => "memoryBarrierShared(); barrier()",
 		Intrinsic.StorageBarrier => "memoryBarrierBuffer(); barrier()",
+		Intrinsic.TextureBarrier => "memoryBarrierImage(); barrier()",
+		Intrinsic.WorkgroupUniformLoad => expr(p, e.operands[0]),
+		Intrinsic.ArrayLength => converted(p, expr(p, e.operands[0]) + ".length()", "int", e.type),
 		Intrinsic.AtomicCompareExchangeWeak => p.es ? atomicText(p, e) : fail(p,
 			"AtomicCompareExchangeWeak outside a " +
 			"local's initializer: atomicCompSwap returns only the old value"),
@@ -726,6 +831,16 @@ function matrixRows(p: Printer, r: int32, t: ShaderType, row: (column: int32) =>
 
 function stride(t: ShaderType): int32 { return t.kind == ShaderTypeKind.Matrix ? t.columns : 1; }
 
+function twoRowColumns(p: Printer, r: int32, t: ShaderType, offset: int32): string {
+	let columns: string[] = [];
+	for (let c = 0; c < t.columns; c++) {
+		const at = offset + 8 * c;
+		const lane = (at % 16) / 4;
+		columns.push(blockRow(p, r, String(at / 16)) + "." + SWIZZLE.substring(lane, lane + 2));
+	}
+	return typeName(p, t) + "(" + columns.join(", ") + ")";
+}
+
 function memberText(p: Printer, e: ShaderExpr): string {
 	const r = e.index;
 	const t = e.type;
@@ -738,7 +853,9 @@ function memberText(p: Printer, e: ShaderExpr): string {
 		}
 		return typeName(p, t) + arraySuffix(p, t) + "(" + elements.join(", ") + ")";
 	}
-	if (t.kind == ShaderTypeKind.Matrix) { return elementText(p, r, t, row, ""); }
+	if (t.kind == ShaderTypeKind.Matrix) {
+		return t.rows == 2 ? twoRowColumns(p, r, t, offset) : elementText(p, r, t, row, "");
+	}
 	const lane = (offset % 16) / 4;
 	const width = t.kind == ShaderTypeKind.Vector ? t.rows : 1;
 	const whole = blockRow(p, r, String(row));
@@ -789,6 +906,7 @@ function builtinRead(p: Printer, io: ShaderIo): [string, string] {
 		Builtin.WorkgroupId => ["gl_WorkGroupID", "uvec3"],
 		Builtin.NumWorkgroups => ["gl_NumWorkGroups", "uvec3"],
 		Builtin.SampleIndex => desktop("gl_SampleID", "int"),
+		Builtin.PrimitiveIndex => desktop("gl_PrimitiveID", "int"),
 		Builtin.SampleMask => desktop(io.direction == IoDirection.In ? "gl_SampleMaskIn[0]" :
 			"gl_SampleMask[0]", "int"),
 		Builtin.None => [fail(p, "io '" + io.name + "' is no builtin"), ""],
@@ -826,7 +944,8 @@ function expr(p: Printer, e: ShaderExpr): string {
 		ExprKind.Io => ioText(p, e.index),
 		ExprKind.Resource => resourceText(p, e.index),
 		ExprKind.BlockMember => memberText(p, e),
-		ExprKind.Unary => unaryText(e) + operand(p, e.operands[0]),
+		ExprKind.Unary => notOfVector(e) ? "not(" + expr(p, e.operands[0]) + ")" :
+			unaryText(e) + operand(p, e.operands[0]),
 		ExprKind.Binary => binaryText(p, e),
 		ExprKind.Conditional => operand(p, e.operands[0]) + " ? " + operand(p, e.operands[1]) +
 			" : " + operand(p, e.operands[2]),
@@ -845,6 +964,9 @@ function expr(p: Printer, e: ShaderExpr): string {
 			const base = e.operands[0];
 			if (base.type.kind == ShaderTypeKind.ExchangeResult) {
 				return postfixBase(p, base) + (e.index == 0 ? ".old_value" : ".exchanged");
+			}
+			if (base.type.kind == ShaderTypeKind.ModfResult || base.type.kind == ShaderTypeKind.FrexpResult) {
+				return postfixBase(p, base) + "." + splitMember(base.type, e.index);
 			}
 			if (base.type.kind != ShaderTypeKind.Struct) {
 				return fail(p, "Field of a " + base.type.kind.toString());
@@ -950,6 +1072,10 @@ function switchText(p: Printer, s: ShaderStmt, depth: int32): string {
 
 function stmt(p: Printer, s: ShaderStmt, depth: int32): string {
 	const at = indent(depth);
+	if (s.kind == StmtKind.Let && isUniformLoad(s.expr)) {
+		const barrier = at + "memoryBarrierShared(); barrier();\n";
+		return barrier + at + simple(p, s) + ";\n" + barrier;
+	}
 	if (s.kind == StmtKind.Let && isExchange(s.expr) && !p.es) { return exchangeLet(p, s, at); }
 	if (s.kind == StmtKind.Call && isExchange(s.expr)) {
 		return at + atomicText(p, s.expr) + ";\n";
@@ -1028,8 +1154,9 @@ function combinedType(p: Printer, pair: Pair): string {
 			" texture") : prefix + "sampler" + shape;
 	const desktop = (shape: string) => p.es ?
 		fail(p, "texture '" + p.module.resources[pair.texture].name + "' is " + t.shape.toString() +
-			", which GLSL ES 3.00 has not") : plain(shape);
+			", which GLSL ES 3.00 has not (" + prefix + "sampler" + shape + ")") : plain(shape);
 	return match (t.shape) {
+		TextureShape.D1 => p.es ? plain("2D") : plain("1D"),
 		TextureShape.D2 => plain("2D"),
 		TextureShape.D2Array => plain("2DArray"),
 		TextureShape.D3 => plain("3D"),
@@ -1066,7 +1193,7 @@ function resourceDeclaration(p: Printer, index: int32, slots: BindingSlot[]): st
 				p.structNames[r.type.element[0].structIndex] + " data[];\n} " + name + ";\n";
 		},
 		ResourceKind.StorageTexture => "layout(binding = " + String(slotOf(p, index, slots)) +
-			", " + imageFormat(r.type.format) + ") uniform " + accessWord(r.type.access) +
+			", " + imageFormat(p, r.type.format) + ") uniform " + accessWord(r.type.access) +
 			typeName(p, r.type) + " " + name + ";\n",
 	};
 }
@@ -1250,8 +1377,23 @@ export function printGlsl(
 				scalarName(v.type.scalar) + " old_value;\n    bool exchanged;\n};\n\n";
 		}
 	}
+	for (const t of splitResults(m, functions)) {
+		if (es && t.kind == ShaderTypeKind.FrexpResult) { continue; }
+		p.splits.push(t);
+		const structName = claim(p, p.globals, splitStructName(t));
+		const helperName = claim(p, p.globals, splitHelperName(t));
+		p.splitStructs.push(structName);
+		p.splitHelpers.push(helperName);
+		const types = glslSplitTypes(t);
+		const call = t.kind == ShaderTypeKind.ModfResult ? "modf" : "frexp";
+		exchanges += "struct " + structName + "\n{\n    " + types[0] + " " + splitMember(t, 0) + ";\n    " +
+			types[1] + " " + splitMember(t, 1) + ";\n};\n\n" +
+			structName + " " + helperName + "(" + types[0] + " arg)\n{\n    " + types[1] + " other;\n    " +
+			types[0] + " part = " + call + "(arg, other);\n    return " + structName + "(part, other);\n}\n\n";
+	}
 
-	let head = es ? "#version 300 es\n" : "#version 430\n";
+	const version = es ? "#version 300 es\n" : "#version 430\n";
+	let head = "";
 	if (es && entry.stage == ShaderStage.Fragment) {
 		head += "precision highp float;\nprecision highp int;\n";
 	}
@@ -1281,5 +1423,6 @@ export function printGlsl(
 	if (reads.workgroups.length > 0) { head += "\n"; }
 	const bodies = functions.map((f) => functionText(p, f)).join("\n");
 	if (p.error != "") { return Result.err(p.error); }
-	return Result.ok(head + bodies);
+	const extensions = p.samplesQueried ? "#extension GL_ARB_shader_texture_image_samples : require\n" : "";
+	return Result.ok(version + extensions + head + bodies);
 }

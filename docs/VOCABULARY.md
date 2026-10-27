@@ -113,7 +113,8 @@ Added 2026-10-18 for void2d's sRGB conversion, which the hand-written stage wrot
 
 - **A comparison per component is TypeGPU's `le(a, b)`**, returning `Vec3b` (WGSL's `vec3<bool>`),
   and `select(f, t, cond)` takes it as WGSL's does; they emit as `lessThanEqual` and
-  `mix(f, t, cond)`. Only the `Vec3f` pair a shader uses exists so far.
+  `mix(f, t, cond)`. Since 2026-10-26 every vector width has `eq`/`ne`/`lt`/`le`/`gt`/`ge`,
+  `any`/`all`/`not` and `select`, over `Vec2b`–`Vec4b`.
 - **`&` on integers** is WGSL's and C's bitwise and, so `(floor(x) as int32) & 3` is the floored
   remainder by 4 for a negative `x` too.
 

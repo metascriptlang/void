@@ -87,15 +87,20 @@ function storageAccessName(a: Access): GPUStorageTextureAccess {
 	};
 }
 
-function viewDimensionOf(shape: TextureShape): GPUTextureViewDimension {
-	return match (shape) {
+function viewDimensionOf(shape: TextureShape, owner: string): Result<GPUTextureViewDimension, string> {
+	const name: GPUTextureViewDimension | null = match (shape) {
 		TextureShape.D2Array | TextureShape.Depth2dArray => "2d-array" as GPUTextureViewDimension,
 		TextureShape.D3 => "3d" as GPUTextureViewDimension,
 		TextureShape.Cube | TextureShape.DepthCube => "cube" as GPUTextureViewDimension,
 		TextureShape.CubeArray => "cube-array" as GPUTextureViewDimension,
 		TextureShape.D2 | TextureShape.Depth2d | TextureShape.Multisampled2d =>
 			"2d" as GPUTextureViewDimension,
+		TextureShape.D1 => null,
 	};
+	if (name === null) {
+		return Result.err(owner + ": " + shape.toString() + " is no GPUTextureViewDimension");
+	}
+	return Result.ok(name);
 }
 
 function storageFormatOf(format: TexelFormat, owner: string): Result<GPUTextureFormat, string> {
@@ -103,11 +108,20 @@ function storageFormatOf(format: TexelFormat, owner: string): Result<GPUTextureF
 		TexelFormat.Rgba8unorm => "rgba8unorm" as GPUTextureFormat,
 		TexelFormat.Rgba8snorm => null,
 		TexelFormat.Rgba8uint => "rgba8uint" as GPUTextureFormat,
+		TexelFormat.Rgba8sint => "rgba8sint" as GPUTextureFormat,
+		TexelFormat.Rgba16uint => "rgba16uint" as GPUTextureFormat,
+		TexelFormat.Rgba16sint => null,
 		TexelFormat.Rgba16float => "rgba16float" as GPUTextureFormat,
+		TexelFormat.Rgba32uint => "rgba32uint" as GPUTextureFormat,
+		TexelFormat.Rgba32sint => null,
 		TexelFormat.Rgba32float => "rgba32float" as GPUTextureFormat,
 		TexelFormat.R32float => "r32float" as GPUTextureFormat,
 		TexelFormat.R32uint => "r32uint" as GPUTextureFormat,
+		TexelFormat.R32sint => null,
 		TexelFormat.Rg32float => "rg32float" as GPUTextureFormat,
+		TexelFormat.Rg32uint => null,
+		TexelFormat.Rg32sint => null,
+		TexelFormat.Bgra8unorm => "bgra8unorm" as GPUTextureFormat,
 	};
 	if (name === null) {
 		return Result.err(owner + ": " + format.toString() + " is no GPUTextureFormat");
@@ -149,7 +163,7 @@ function bindingOf(m: ShaderModule, s: BindingSlot): Result<GPUShaderBinding, st
 		},
 		ResourceKind.Texture => {
 			b.sampleType = sampleTypeName(r.sampleType);
-			const dimension = viewDimensionOf(r.type.shape);
+			const dimension = try viewDimensionOf(r.type.shape, "texture '" + r.name + "'");
 			if (dimension != "2d") { b.viewDimension = dimension; }
 			b.multisampled = r.type.shape == TextureShape.Multisampled2d;
 		},
@@ -162,10 +176,10 @@ function bindingOf(m: ShaderModule, s: BindingSlot): Result<GPUShaderBinding, st
 			b.bufferType = bufferType;
 		},
 		ResourceKind.StorageTexture => {
-			const dimension = viewDimensionOf(r.type.shape);
+			const owner = "storage texture '" + r.name + "'";
+			const dimension = try viewDimensionOf(r.type.shape, owner);
 			if (dimension != "2d") { b.viewDimension = dimension; }
 			b.storageAccess = storageAccessName(r.type.access);
-			const owner = "storage texture '" + r.name + "'";
 			b.storageFormat = try storageFormatOf(r.type.format, owner);
 		},
 	}

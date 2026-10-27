@@ -499,7 +499,7 @@ test "every target spells a storage texture of each shape" {
 	let cube = computeOf(glslComputeIr(volumeCs, [32, 1, 1]));
 	cube.resources[1].type.shape = TextureShape.Cube;
 	assert irErrors(cube).includes("resource 'volume': a storage texture of shape Cube, where " +
-		"WGSL's is 2d, 2d array or 3d");
+		"WGSL's is 1d, 2d, 2d array or 3d");
 	assert glslCompute(volumeCs, [32, 1, 1]) ==
 		"layout(local_size_x=32, local_size_y=1, local_size_z=1) in;\n" +
 		"layout(binding=0, r32f) uniform image2DArray layers;\n" +

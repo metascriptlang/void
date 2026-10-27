@@ -69,9 +69,6 @@ export enum Program {
 	ParticleVisual,
 }
 
-// Heaps adds a pass's output shaders to a material's (h3d.pass.Output); sokol-shdc programs
-// cannot compose, so a preset is the key's: the pixel-art preset's own source (pixelArt3d.ms),
-// and Shadow, the depth h3d.pass.Shadows writes (dirShadowMap.ms).
 export enum Preset {
 	Core,
 	PixelArt,
