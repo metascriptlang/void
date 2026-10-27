@@ -1,0 +1,25 @@
+import { doorBeginScreenPass, doorCommit } from "../gpu/doorGpu";
+import { AppWindow } from "../sokol/appWindow";
+import { appWindow } from "../sokol/appWindowBrowser";
+import { fbHeight, fbWidth, gfxSetup } from "../sokol/gpu";
+
+extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
+extern function publishAppWindow(window: AppWindow): void from "(globalThis.voidAppWindow=#)";
+extern function publishRestart(restart: () => void): void from "(globalThis.voidWindowRestart=#)";
+
+function init(): void {
+	console.log("void js window init");
+	gfxSetup();
+}
+
+function frame(): void {
+	console.log(`void js window frame ${fbWidth()}x${fbHeight()}`);
+	doorBeginScreenPass(0.1, 0.2, 0.3, 1.0);
+	doorCommit();
+}
+
+function start(): void { voidRun(800, 600, init, frame); }
+
+publishAppWindow(appWindow);
+publishRestart(start);
+start();

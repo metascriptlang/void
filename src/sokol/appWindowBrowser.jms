@@ -1,6 +1,6 @@
 // The window's app-facing half on --target=js: appWindow.ms over the browser window, as
-// appWindowPlatform.c drives it over src/platform/web/window.c. A start gives the window a
-// state and the canvas's listeners; the end takes them back, and the AppWindow with its handler
+// appWindowPlatform.c drives it over src/platform/web/window.c. A voidRun gives the window a
+// state and the canvas's listeners; its quit takes them back, and the AppWindow with its handler
 // outlives both, as the C one does.
 
 import { AppEventType } from "../platform/appEvent";
@@ -44,9 +44,9 @@ class BrowserWindow extends AppWindowPlatform {
 
 	beginFrame(time: float64): void { this.running("beginFrame").state.timing.advanceTo(time / 1000); }
 
-	endFrame(): boolean {
+	endFrame(ran: boolean): boolean {
 		const live = this.running("endFrame");
-		live.state.frameCount++;
+		if (ran) { live.state.frameCount++; }
 		if (live.state.quitRequested) { live.askQuit(); }
 		return live.state.quitOrdered;
 	}

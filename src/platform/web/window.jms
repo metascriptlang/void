@@ -1,6 +1,6 @@
 // The browser window on --target=js, as window.c runs it under emscripten: the canvas, its drawing
-// size and devicePixelRatio, the requestAnimationFrame loop. No backend is imported here, so a GL
-// bundle and a WebGPU bundle both load it.
+// size and devicePixelRatio (1 when the run is not highDpi), the requestAnimationFrame loop. No
+// backend is imported here, so a GL bundle and a WebGPU bundle both load it.
 
 export extern class Js {}
 
@@ -19,6 +19,12 @@ extern function setAttribute(element: Js, name: string, value: string): void fro
 extern function removeAttribute(element: Js, name: string): void from "#.removeAttribute(#)";
 extern function requestFrame(callback: (time: float64) => void): float64 from "requestAnimationFrame(#)";
 extern function cancelFrame(handle: float64): void from "cancelAnimationFrame(#)";
+extern function hasElement(selector: string): boolean from "(document.querySelector(#)!==null)";
+extern function elementOf(selector: string): Js from "document.querySelector(#)";
+export extern function publishRun(
+	run: (width: int32, height: int32, init: () => void, frame: () => void) => void,
+	configured: (width: int32, height: int32, sampleCount: int32, highDpi: int32, init: () => void, frame: () => void) => void,
+): void from "((r,c)=>{globalThis.voidRun=r;globalThis.voidRunConfigured=c;})(#,#)";
 extern function publishStart(start: (canvas: Js, onError: (message: string) => void) => () => void): void from "((f)=>{globalThis.voidStart=(c,e)=>f(c,(m)=>e?e(new Error(m)):console.error(m));if(globalThis.onVoidReady)globalThis.onVoidReady();})(#)";
 
 const VIEW_ATTRIBUTE = "data-void-view";
@@ -31,8 +37,8 @@ export struct CanvasSize {
 	cssHeight: int32;
 }
 
-function measure(canvas: Js): CanvasSize {
-	const scale = devicePixelRatio();
+function measure(canvas: Js, highDpi: boolean): CanvasSize {
+	const scale = highDpi ? devicePixelRatio() : 1.0;
 	return {
 		width: Math.max(1, Math.round(cssWidth(canvas) * scale)) as int32,
 		height: Math.max(1, Math.round(cssHeight(canvas) * scale)) as int32,
@@ -45,13 +51,15 @@ function measure(canvas: Js): CanvasSize {
 export class CanvasView {
 	id: int32;
 	canvas: Js;
+	highDpi: boolean;
 	size: CanvasSize;
 	resize: (size: CanvasSize) => void = (size: CanvasSize): void => {};
 	frame: (time: float64) => void = (time: float64): void => {};
-	constructor(id: int32, canvas: Js) {
+	constructor(id: int32, canvas: Js, highDpi: boolean) {
 		this.id = id;
 		this.canvas = canvas;
-		this.size = measure(canvas);
+		this.highDpi = highDpi;
+		this.size = measure(canvas, highDpi);
 	}
 	get selector(): string { return `[${VIEW_ATTRIBUTE}="${this.id}"]`; }
 }
@@ -69,7 +77,7 @@ function tick(time: float64): void {
 	pending = 0;
 	for (const view of live.slice(0)) {
 		if (!live.includes(view)) { continue; }
-		const size = measure(view.canvas);
+		const size = measure(view.canvas, view.highDpi);
 		if (!sameSize(size, view.size)) {
 			view.size = size;
 			setDrawingSize(view.canvas, size.width, size.height);
@@ -80,15 +88,27 @@ function tick(time: float64): void {
 	if (live.length > 0) { pending = requestFrame(tick); }
 }
 
+function attach(canvas: Js, highDpi: boolean): CanvasView {
+	const view = new CanvasView(nextId++, canvas, highDpi);
+	setAttribute(canvas, VIEW_ATTRIBUTE, `${view.id}`);
+	setDrawingSize(canvas, view.size.width, view.size.height);
+	return view;
+}
+
+export function detach(view: CanvasView): void { removeAttribute(view.canvas, VIEW_ATTRIBUTE); }
+
+export function pageCanvas(selector: string, highDpi: boolean): CanvasView | null {
+	if (!hasElement(selector)) { return null; }
+	return attach(elementOf(selector), highDpi);
+}
+
 export function installStart(open: (view: CanvasView, onError: (message: string) => void) => () => void): void {
 	publishStart((canvas: Js, onError: (message: string) => void): () => void => {
-		const view = new CanvasView(nextId++, canvas);
-		setAttribute(canvas, VIEW_ATTRIBUTE, `${view.id}`);
-		setDrawingSize(canvas, view.size.width, view.size.height);
+		const view = attach(canvas, true);
 		const stop = open(view, onError);
 		return (): void => {
 			stop();
-			removeAttribute(canvas, VIEW_ATTRIBUTE);
+			detach(view);
 		};
 	});
 }

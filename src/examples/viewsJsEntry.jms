@@ -1,9 +1,5 @@
 import { doorBeginScreenPass, doorCommit } from "../gpu/doorGpu";
-import { AppWindow } from "../sokol/appWindow";
-import { appWindow } from "../sokol/appWindowBrowser";
 import { embedRegister, fbHeight, fbWidth } from "../sokol/gpu";
-
-extern function publishAppWindow(window: AppWindow): void from "(globalThis.voidAppWindow=#)";
 
 function init(): void {
 	console.log("void js view init");
@@ -15,5 +11,4 @@ function frame(): void {
 	doorCommit();
 }
 
-publishAppWindow(appWindow);
 embedRegister(init, frame);
