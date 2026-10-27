@@ -75,19 +75,22 @@ import {
 	kbUnicodeFlags,
 	kbWordBreakClass,
 } from "./unicode";
-
-export const KB_DIRECTION_DONT_KNOW: uint32 = 0;
-export const KB_DIRECTION_LTR: uint32 = 1;
-export const KB_DIRECTION_RTL: uint32 = 2;
-export const KB_DIRECTION_COUNT: uint32 = 3;
-
-export const KB_BREAK_FLAG_DIRECTION: uint32 = 1;
-export const KB_BREAK_FLAG_SCRIPT: uint32 = 2;
-export const KB_BREAK_FLAG_GRAPHEME: uint32 = 4;
-export const KB_BREAK_FLAG_WORD: uint32 = 8;
-export const KB_BREAK_FLAG_LINE_SOFT: uint32 = 16;
-export const KB_BREAK_FLAG_LINE_HARD: uint32 = 32;
-export const KB_BREAK_FLAG_PARAGRAPH_DIRECTION: uint32 = 128;
+import {
+	KB_BREAK_FLAG_DIRECTION,
+	KB_BREAK_FLAG_GRAPHEME,
+	KB_BREAK_FLAG_LINE_HARD,
+	KB_BREAK_FLAG_LINE_SOFT,
+	KB_BREAK_FLAG_PARAGRAPH_DIRECTION,
+	KB_BREAK_FLAG_SCRIPT,
+	KB_BREAK_FLAG_WORD,
+	KB_DIRECTION_COUNT,
+	KB_DIRECTION_DONT_KNOW,
+	KB_DIRECTION_LTR,
+	KB_DIRECTION_RTL,
+	KB_UNICODE_FLAG_CLOSE_BRACKET,
+	KB_UNICODE_FLAG_MIRRORED,
+	KB_UNICODE_FLAG_OPEN_BRACKET,
+} from "./shapeTables";
 
 export const KB_JAPANESE_LINE_BREAK_STYLE_STRICT: uint8 = 0;
 export const KB_JAPANESE_LINE_BREAK_STYLE_NORMAL: uint8 = 1;
@@ -112,10 +115,6 @@ const BIDI_EN: uint8 = 7;
 const BIDI_ES: uint8 = 8;
 const BIDI_ET: uint8 = 9;
 const BIDI_CS: uint8 = 10;
-
-const UNICODE_FLAG_OPEN_BRACKET: uint8 = 4;
-const UNICODE_FLAG_CLOSE_BRACKET: uint8 = 8;
-const UNICODE_FLAG_MIRRORED: uint8 = 12;
 
 const GRAPHEME_STATE_COUNT: int32 = 13;
 const GRAPHEME_STATE_B0: uint8 = 14;
@@ -580,7 +579,7 @@ function addCodepoint(
 		wordBreakHistory = KB_WORD_BREAK_CLASS_SOT as uint32;
 		lastWordBreakClass = KB_WORD_BREAK_CLASS_SOT;
 	}
-	if ((unicodeFlags & UNICODE_FLAG_MIRRORED) == UNICODE_FLAG_OPEN_BRACKET) {
+	if ((unicodeFlags & KB_UNICODE_FLAG_MIRRORED) == KB_UNICODE_FLAG_OPEN_BRACKET) {
 		if (state.bracketCount < BRACKET_CAPACITY) {
 			const slot = state.bracketCount as int32;
 			state.bracketCount += 1;
@@ -591,7 +590,7 @@ function addCodepoint(
 			if (scriptCount != 0) { state.brackets[slot].script = state.scriptSet[0]; }
 			state.flags |= BREAK_STATE_FLAG_LAST_WAS_BRACKET;
 		}
-	} else if ((unicodeFlags & UNICODE_FLAG_MIRRORED) == UNICODE_FLAG_CLOSE_BRACKET) {
+	} else if ((unicodeFlags & KB_UNICODE_FLAG_MIRRORED) == KB_UNICODE_FLAG_CLOSE_BRACKET) {
 		if (state.bracketCount != 0) {
 			let found = -1;
 			for (let i: int32 = 0; i < (state.bracketCount as int32); i++) {

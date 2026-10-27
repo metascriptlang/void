@@ -59,7 +59,7 @@ function kbSubtableCounts(m: Span<uint8>, gpos: boolean, want: int32): int32[] {
 export function kbLookupConfig(
 	font: KbFont,
 	gpos: boolean,
-	shaper: int32,
+	shaper: uint32,
 	want: int32,
 	seed: uint32,
 	density: int32,
@@ -270,8 +270,8 @@ export function kbLookupDigestOf(
 	for (let mode: int32 = 0; mode < 2; mode++) {
 		for (let seed: int32 = 0; seed < seeds; seed++) {
 			const density = seed == 0 ? 0 : (seed % 3 == 1 ? 30 : 80);
-			const config = kbLookupConfig(font, mode == 1, seed % 9, want, (seed + 1) as uint32 * 7919,
-				density);
+			const config = kbLookupConfig(font, mode == 1, (seed % 9) as uint32, want,
+				(seed + 1) as uint32 * 7919, density);
 			if (config.lookupIndex.length == 0) { continue; }
 			const rng = new KbRng((seed * 2654435761 + 12345) as uint32);
 			if (seed % 2 == 1) { config.variation = kbLookupVariation(rng); }

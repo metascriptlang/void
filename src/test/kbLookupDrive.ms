@@ -17,7 +17,6 @@ import {
 	kbInsertGlyphBefore,
 } from "../void2d/kb/glyph";
 import {
-	KB_SHAPER_DEFAULT,
 	KbScratch,
 	kbBeginLookupApplication,
 	kbBucketGlyph,
@@ -28,6 +27,9 @@ import {
 	kbSortGlyphBucket,
 	kbUnbucketGlyph,
 } from "../void2d/kb/scratch";
+import {
+	KB_SHAPER_DEFAULT,
+} from "../void2d/kb/shapeTables";
 
 export const KB_DRIVE_STRIDE: int32 = 26;
 
@@ -45,7 +47,7 @@ export function kbMatrixBit(flat: int64): uint32 {
 
 export class KbDriveConfig {
 	gpos: boolean = false;
-	shaper: int32 = KB_SHAPER_DEFAULT;
+	shaper: uint32 = KB_SHAPER_DEFAULT;
 	lookupIndex: int32[] = [];
 	skipFlags: uint32[] = [];
 	matrix: uint32[] = [];

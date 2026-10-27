@@ -5,14 +5,15 @@ import { KbUnpackedLookup, kbCoverGlyph, kbGlyphClassFromTable, kbGetChainedClas
 import { kbBoundsFail, kbU16 } from "./blob";
 import {
 	KB_GLYPH_CLASS_MARK,
-	KB_GLYPH_FLAG_GENERATED_BY_GSUB,
 	KB_GLYPH_SENTINEL,
 } from "./glyph";
 import { KbScratch } from "./scratch";
-
-export const KB_SKIP_FLAG_ZWNJ: uint32 = 1 << 0;
-export const KB_SKIP_FLAG_ZWJ: uint32 = 1 << 1;
-export const KB_SKIP_FLAG_DEFAULT_IGNORABLES_NOT_SKIPPED_BY_GSUB: uint32 = 1 << 2;
+import {
+	KB_GLYPH_FLAG_GENERATED_BY_GSUB,
+	KB_SKIP_FLAG_DEFAULT_IGNORABLES_NOT_SKIPPED_BY_GSUB,
+	KB_SKIP_FLAG_ZWJ,
+	KB_SKIP_FLAG_ZWNJ,
+} from "./shapeTables";
 
 export const KB_LOOKUP_FLAG_RIGHT_TO_LEFT: int32 = 1 << 0;
 export const KB_LOOKUP_FLAG_MARK_ATTACHMENT_CLASS_FILTER: int32 = 0xFF00;

@@ -14,21 +14,13 @@ import { KbFont } from "./font";
 import {
 	KB_DELETED_SORT_KEY,
 	KB_FREE_GLYPH_SENTINEL,
-	KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION,
 	KbGlyphList,
 	KbGlyphStorage,
 	kbGlyphClasses,
 } from "./glyph";
-
-export const KB_SHAPER_DEFAULT: int32 = 0;
-export const KB_SHAPER_ARABIC: int32 = 1;
-export const KB_SHAPER_HANGUL: int32 = 2;
-export const KB_SHAPER_HEBREW: int32 = 3;
-export const KB_SHAPER_INDIC: int32 = 4;
-export const KB_SHAPER_KHMER: int32 = 5;
-export const KB_SHAPER_MYANMAR: int32 = 6;
-export const KB_SHAPER_TIBETAN: int32 = 7;
-export const KB_SHAPER_USE: int32 = 8;
+import {
+	KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION,
+} from "./shapeTables";
 
 export const KB_LOOKUP_STACK_SIZE: int32 = 32;
 
@@ -56,7 +48,7 @@ export class KbScratch {
 	font: KbFont;
 	storage: KbGlyphStorage;
 
-	shaper: int32 = 0;
+	shaper: uint32 = 0;
 	configGlyphCount: uint32 = 0;
 	sequentialLookupCount: int32 = 0;
 	idSequentialLookupMatrix: uint32[] = [];
@@ -89,7 +81,7 @@ export class KbScratch {
 export function kbPlaceScratch(
 	font: KbFont,
 	storage: KbGlyphStorage,
-	shaper: int32,
+	shaper: uint32,
 	configGlyphCount: uint32,
 	idSequentialLookupMatrix: uint32[],
 	sequentialLookupCount: int32,

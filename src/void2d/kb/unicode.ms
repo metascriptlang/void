@@ -29,9 +29,6 @@ import {
 
 const KB_UNICODE_LIMIT: uint32 = 1114110;
 
-export const KB_DECOMPOSITION_DO_NOT_RECURSE0: uint64 = (1 as uint64) << 44;
-export const KB_DECOMPOSITION_DO_NOT_RECURSE1: uint64 = (1 as uint64) << 45;
-
 export function kbDecomposition(codepoint: uint32): uint64 {
 	if (codepoint >= KB_UNICODE_LIMIT) { return 0; }
 	const page: uint32 = codepoint < 195104 ?

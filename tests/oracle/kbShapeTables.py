@@ -37,9 +37,13 @@ ENUMS = [
     ("kbts_shape_context_flags_enum", None), ("kbts__context_font_flags_enum", None),
     ("kbts__context_flags_enum", None), ("kbts__mcm_sequence_state_enum", None),
     ("kbts__hangul_syllable_type_enum", None), ("kbts__shape_set_font_variations_flags_enum", None),
-    ("kbts_unicode_joining_type_enum", None),
+    ("kbts_unicode_joining_type_enum", None), ("kbts_break_flags_enum", None),
+    ("kbts_direction_enum", None), ("kbts_glyph_flags_enum", None),
+    ("kbts_unicode_flag_enum", None), ("kbts__skip_flags_enum", None),
+    ("kbts__substitution_result_flags_enum", None),
 ]
-SILENT_ENUMS = [("kbts_script_tag_enum", None), ("kbts_glyph_flags_enum", None), ("kbts__substitution_result_flags_enum", None)]
+ENUM_TYPEDEFS = {"kbts_unicode_flag_enum": "kbts_unicode_flags"}
+SILENT_ENUMS = [("kbts_script_tag_enum", None)]
 DEFINES = [
     "KBTS_MAXIMUM_RECOMPOSITION_PARENTS", "KBTS_MAXIMUM_CODEPOINT_SCRIPTS",
     "KBTS__MAXIMUM_DECOMPOSITION_CODEPOINTS", "KBTS_INDIC_SYLLABIC_STATE_COUNT",
@@ -50,6 +54,8 @@ DEFINES = [
     "KBTS__EXISTING_GLYPH_CONFIGS_PER_BLOCK", "KBTS_CONTEXT_FONTS_PER_BLOCK",
     "KBTS__GLYPH_FEATURE_MASK", "KBTS__USE_GLYPH_FEATURE_MASK", "KBTS__JOINING_FEATURE_MASK",
 ]
+UINT64_DEFINES = ["KBTS_UNICODE_DECOMPOSITION_DO_NOT_RECURSE0",
+                  "KBTS_UNICODE_DECOMPOSITION_DO_NOT_RECURSE1"]
 OP_LISTS = ["Default", "Hangul", "ArabicRclt", "ArabicNoRclt", "Indic", "Khmer", "Myanmar",
             "Tibetan", "Use"]
 TRANSITIONS = [
@@ -152,7 +158,8 @@ def enum_body(text, name, first_member):
 
 
 def enum_type(text, name):
-    m = name and re.search(r"typedef (kbts_u\d+) " + name[:-len("_enum")] + ";", text)
+    typedef = ENUM_TYPEDEFS.get(name) or (name and name[:-len("_enum")])
+    m = typedef and re.search(r"typedef (kbts_u\d+) " + typedef + ";", text)
     return TYPES[m.group(1)] if m else "uint32"
 
 
@@ -442,6 +449,9 @@ def main():
         value = ev.value(expr)
         ev.env[cname] = value
         out.append(f"export const {msname(cname)}: uint32 = {value};")
+    for cname in UINT64_DEFINES:
+        params, expr = defs[cname]
+        out.append(f"export const {msname(cname)}: uint64 = {ev.value(expr)};")
     if (ev.env["KBTS_SCRIPT_COUNT"] != counts["kbts_script_enum"] - 1
             or ev.env["KBTS_SHAPER_COUNT"] != counts["kbts_shaper_enum"] - 1):
         raise SystemExit("an enum COUNT is not its last entry")

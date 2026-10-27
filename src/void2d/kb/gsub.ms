@@ -19,12 +19,7 @@ import {
 } from "./blob";
 import {
 	KB_GLYPH_CLASS_MARK,
-	KB_GLYPH_FLAG_GENERATED_BY_GSUB,
-	KB_GLYPH_FLAG_LIGATURE,
-	KB_GLYPH_FLAG_MULTIPLE_SUBSTITUTION,
-	KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION,
 	KB_GLYPH_SENTINEL,
-	KB_UNICODE_FLAG_DEFAULT_IGNORABLE,
 	kbInsertGlyphAfter,
 } from "./glyph";
 import {
@@ -43,9 +38,15 @@ import {
 	kbSetLookupOnePastLastGlyph,
 	KbScratch,
 } from "./scratch";
-
-export const KB_SUBSTITUTION_RESULT_FLAG_MATCHED_SUBSTITUTION: int32 = 1 << 0;
-export const KB_SUBSTITUTION_RESULT_FLAG_TRIED_TO_INSERT_WHILE_CHECK_ONLY: int32 = 1 << 1;
+import {
+	KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION,
+	KB_GLYPH_FLAG_GENERATED_BY_GSUB,
+	KB_GLYPH_FLAG_LIGATURE,
+	KB_GLYPH_FLAG_MULTIPLE_SUBSTITUTION,
+	KB_SUBSTITUTION_RESULT_FLAG_MATCHED_SUBSTITUTION,
+	KB_SUBSTITUTION_RESULT_FLAG_TRIED_TO_INSERT_WHILE_CHECK_ONLY,
+	KB_UNICODE_FLAG_DEFAULT_IGNORABLE,
+} from "./shapeTables";
 
 const SUBTABLE_DONE: int32 = 0xFFFE;
 
@@ -61,7 +62,7 @@ export function kbDoSubstitution(
 	checkOnly: boolean,
 	requestedSkipFlags: uint32,
 	generatedGlyphFlagsIn: uint32,
-): int32 {
+): uint32 {
 	return substitution(s, s.font.blob, lookupList, sequentialLookupIndex, featureValue, checkOnly,
 		requestedSkipFlags, generatedGlyphFlagsIn);
 }
@@ -75,8 +76,8 @@ function substitution(
 	checkOnly: boolean,
 	requestedSkipFlags: uint32,
 	generatedGlyphFlagsIn: uint32,
-): int32 {
-	let result: int32 = 0;
+): uint32 {
+	let result: uint32 = 0;
 	const skipUnicodeFlags = KB_UNICODE_FLAG_DEFAULT_IGNORABLE as uint32;
 	const regularSkipFlags = kbSkipFlagsGsubRegular(requestedSkipFlags);
 	const sequenceSkipFlags = kbSkipFlagsGsubSequence(requestedSkipFlags);

@@ -21,14 +21,7 @@ import {
 	KB_GLYPH_CLASS_COMPONENT,
 	KB_GLYPH_CLASS_LIGATURE,
 	KB_GLYPH_CLASS_MARK,
-	KB_GLYPH_FLAG_CURSIVE,
-	KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION,
-	KB_GLYPH_FLAG_LIGATURE,
-	KB_GLYPH_FLAG_MULTIPLE_SUBSTITUTION,
-	KB_GLYPH_FLAG_NO_BREAK,
-	KB_GLYPH_FLAG_USED_IN_GPOS,
 	KB_GLYPH_SENTINEL,
-	KB_UNICODE_FLAG_DEFAULT_IGNORABLE,
 } from "./glyph";
 import {
 	KB_LOOKUP_FLAG_RIGHT_TO_LEFT,
@@ -41,13 +34,22 @@ import {
 } from "./match";
 import { KbResolvedValueRecord, kbResolveAnchorXy, kbResolveValueRecord } from "./resolve";
 import {
-	KB_SHAPER_ARABIC,
-	KB_SHAPER_DEFAULT,
-	KB_SHAPER_HEBREW,
 	KbScratch,
 	kbGlyphIncludedInLookupSubtable,
 	kbSetLookupOnePastLastGlyph,
 } from "./scratch";
+import {
+	KB_GLYPH_FLAG_CURSIVE,
+	KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION,
+	KB_GLYPH_FLAG_LIGATURE,
+	KB_GLYPH_FLAG_MULTIPLE_SUBSTITUTION,
+	KB_GLYPH_FLAG_NO_BREAK,
+	KB_GLYPH_FLAG_USED_IN_GPOS,
+	KB_SHAPER_ARABIC,
+	KB_SHAPER_DEFAULT,
+	KB_SHAPER_HEBREW,
+	KB_UNICODE_FLAG_DEFAULT_IGNORABLE,
+} from "./shapeTables";
 
 const CURSIVE_FLAG_START: uint8 = 1 << 0;
 const CURSIVE_FLAG_END: uint8 = 1 << 1;
@@ -71,11 +73,11 @@ function popCount16(value: int32): int32 {
 	return count;
 }
 
-function shaperRtl(shaper: int32): boolean {
+function shaperRtl(shaper: uint32): boolean {
 	return shaper == KB_SHAPER_ARABIC || shaper == KB_SHAPER_HEBREW;
 }
 
-function shaperClearsMarkAdvancesInPostGposFixup(shaper: int32): boolean {
+function shaperClearsMarkAdvancesInPostGposFixup(shaper: uint32): boolean {
 	return shaper == KB_SHAPER_ARABIC || shaper == KB_SHAPER_DEFAULT || shaper == KB_SHAPER_HEBREW;
 }
 

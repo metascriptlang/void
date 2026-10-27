@@ -12,45 +12,15 @@ import {
 	kbUseClass,
 } from "./unicode";
 import { KbFont, kbCodepointToGlyphId } from "./font";
-
-export const KB_GLYPH_FLAG_ISOL: uint32 = 1 << 0;
-export const KB_GLYPH_FLAG_FINA: uint32 = 1 << 1;
-export const KB_GLYPH_FLAG_FIN2: uint32 = 1 << 2;
-export const KB_GLYPH_FLAG_FIN3: uint32 = 1 << 3;
-export const KB_GLYPH_FLAG_MEDI: uint32 = 1 << 4;
-export const KB_GLYPH_FLAG_MED2: uint32 = 1 << 5;
-export const KB_GLYPH_FLAG_INIT: uint32 = 1 << 6;
-export const KB_GLYPH_FLAG_LJMO: uint32 = 1 << 7;
-export const KB_GLYPH_FLAG_VJMO: uint32 = 1 << 8;
-export const KB_GLYPH_FLAG_TJMO: uint32 = 1 << 9;
-export const KB_GLYPH_FLAG_RPHF: uint32 = 1 << 10;
-export const KB_GLYPH_FLAG_BLWF: uint32 = 1 << 11;
-export const KB_GLYPH_FLAG_HALF: uint32 = 1 << 12;
-export const KB_GLYPH_FLAG_PSTF: uint32 = 1 << 13;
-export const KB_GLYPH_FLAG_ABVF: uint32 = 1 << 14;
-export const KB_GLYPH_FLAG_PREF: uint32 = 1 << 15;
-export const KB_GLYPH_FLAG_NUMR: uint32 = 1 << 16;
-export const KB_GLYPH_FLAG_FRAC: uint32 = 1 << 17;
-export const KB_GLYPH_FLAG_DNOM: uint32 = 1 << 18;
-export const KB_GLYPH_FLAG_CFAR: uint32 = 1 << 19;
-export const KB_GLYPH_FLAG_DO_NOT_DECOMPOSE: uint32 = 1 << 20;
-export const KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION: uint32 = 1 << 21;
-export const KB_GLYPH_FLAG_NO_BREAK: uint32 = 1 << 22;
-export const KB_GLYPH_FLAG_CURSIVE: uint32 = 1 << 23;
-export const KB_GLYPH_FLAG_GENERATED_BY_GSUB: uint32 = 1 << 24;
-export const KB_GLYPH_FLAG_USED_IN_GPOS: uint32 = 1 << 25;
-export const KB_GLYPH_FLAG_STCH_ENDPOINT: uint32 = 1 << 26;
-export const KB_GLYPH_FLAG_STCH_EXTENSION: uint32 = 1 << 27;
-export const KB_GLYPH_FLAG_LIGATURE: uint32 = 1 << 28;
-export const KB_GLYPH_FLAG_MULTIPLE_SUBSTITUTION: uint32 = 1 << 29;
+import {
+	KB_UNICODE_FLAG_DEFAULT_IGNORABLE,
+	KB_UNICODE_FLAG_NON_SPACING_MARK,
+} from "./shapeTables";
 
 export const KB_GLYPH_CLASS_BASE: int32 = 1;
 export const KB_GLYPH_CLASS_LIGATURE: int32 = 2;
 export const KB_GLYPH_CLASS_MARK: int32 = 3;
 export const KB_GLYPH_CLASS_COMPONENT: int32 = 4;
-
-export const KB_UNICODE_FLAG_DEFAULT_IGNORABLE: uint8 = 1 << 1;
-export const KB_UNICODE_FLAG_NON_SPACING_MARK: uint8 = 1 << 6;
 
 export const KB_DELETED_SORT_KEY: uint32 = 0xFFFFFFFF;
 
