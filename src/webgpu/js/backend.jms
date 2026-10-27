@@ -354,7 +354,7 @@ function configure(surface: Surface): void {
 	setObject(configuration, "device", device);
 	setText(configuration, "format", preferredFormat());
 	setNumber(configuration, "usage", (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32));
-	setText(configuration, "alphaMode", "opaque");
+	setText(configuration, "alphaMode", "premultiplied");
 	surface.context.configure(configuration);
 }
 
