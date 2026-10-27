@@ -1217,12 +1217,12 @@ export function attachmentFactsOf(view: ViewRecord, texture: TextureRecord): Att
 
 function colorAttachmentRefusal(i: int32, descriptor: GPURenderPassDescriptor, view: AttachmentFacts, resolve: AttachmentFacts): string {
 	if (view.depth || !view.renderable) { return `colorAttachments[${i}].view is not a color RENDER_ATTACHMENT`; }
-	const single = singleSubresourceRefusal(`colorAttachments[${i}].view`, view.single);
+	const single = singleSubresourceRefusal(i, "view", view.single);
 	if (single != "") { return single; }
 	const slice = descriptor.colorAttachments[i].depthSlice;
 	const slices = view.volume ? depthSliceRefusal(i, slice, Math.max(1, view.layers >> view.baseMip), view.baseMip, view.texture) : noDepthSliceRefusal(i, slice);
 	if (slices != "" || descriptor.colorAttachments[i].resolveTarget.id == 0) { return slices; }
-	const resolveSingle = singleSubresourceRefusal(`colorAttachments[${i}].resolveTarget`, resolve.single);
+	const resolveSingle = singleSubresourceRefusal(i, "resolveTarget", resolve.single);
 	if (resolveSingle != "") { return resolveSingle; }
 	const sizes = resolveTargetRefusal(i, view.sampleCount, view.width, view.height, mipWidth(resolve), mipHeight(resolve));
 	if (sizes != "") { return sizes; }
@@ -1262,7 +1262,7 @@ export function renderPassRefusal(descriptor: GPURenderPassDescriptor, facts: Re
 		if (!view.depth || !view.renderable) { return "depthStencilAttachment.view is not a depth RENDER_ATTACHMENT"; }
 		const stencilOps = stencilOpsRefusal(descriptor.depthStencilAttachment.stencilLoadOp, descriptor.depthStencilAttachment.stencilStoreOp, view.stencil);
 		if (stencilOps != "") { return stencilOps; }
-		const single = singleSubresourceRefusal("depthStencilAttachment.view", view.single);
+		const single = singleSubresourceRefusal(-1, "view", view.single);
 		if (single != "") { return single; }
 		const extent = passExtentRefusal(width, height, mipWidth(view), mipHeight(view));
 		if (extent != "") { return extent; }
