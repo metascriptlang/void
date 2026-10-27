@@ -4,7 +4,7 @@
 
 import {
 	CMD_CLIP_X, CMD_CLIP_Y, CMD_CLIP_W, CMD_CLIP_H, CMD_RT_MODE, CMD_SCOPE, SCOPE_FLOATS,
-} from "./displayList";
+} from "./commandFields";
 
 export const INITIAL_BUFFER_BYTES: int32 = 1 << 20;
 export const MAX_BUFFER_BYTES: int32 = 192 << 20;

@@ -30,6 +30,48 @@ import { NO_COLOR_MATRIX, writeColorMatrix, readColorMatrix } from "./effect";
 import { BlendMode } from "../gpu/state";
 import { void2dCommandView, void2dCopyFloats } from "./batcher.h";
 import "./face";
+import {
+	COMMAND_FLOATS,
+	CMD_KIND,
+	CMD_BREAK,
+	CMD_VERTEX_OFFSET,
+	CMD_VERTEX_COUNT,
+	CMD_VIEW,
+	CMD_BLEND,
+	CMD_SAMPLER,
+	SAMPLER_COUNT,
+	CMD_EFFECT,
+	CMD_CLIP_X,
+	CMD_CLIP_Y,
+	CMD_CLIP_W,
+	CMD_CLIP_H,
+	CMD_ARG0,
+	CMD_ARG1,
+	CMD_RT_MODE,
+	CMD_CLEAR_R,
+	CMD_CLEAR_G,
+	CMD_CLEAR_B,
+	CMD_CLEAR_A,
+	CMD_PIPELINE,
+	CMD_INSTANCE_OFFSET,
+	CMD_INSTANCE_COUNT,
+	CMD_CLIP_U_X,
+	CMD_CLIP_U_Y,
+	CMD_CLIP_U_MIN,
+	CMD_CLIP_U_MAX,
+	CMD_CLIP_V_X,
+	CMD_CLIP_V_Y,
+	CMD_CLIP_V_MIN,
+	CMD_CLIP_V_MAX,
+	CMD_VIEW_HIGH,
+	CMD_SCOPE,
+	CMD_CLIP_ROUND_U,
+	CMD_CLIP_ROUND_V,
+	CMD_CLIP_RADII,
+	SCOPE_FLOATS,
+	NO_SCOPE,
+} from "./commandFields";
+export * from "./commandFields";
 import { UI_PARAM_MODE, UiInstance } from "./instance";
 import {
 	UI_STRIDE, SPRITE_STRIDE,
@@ -67,59 +109,10 @@ export enum BreakReason {
 	Pipeline,
 }
 
-export const COMMAND_FLOATS: int32 = 44;
 export const EFFECT_FLOATS: int32 = 44;
 export const VERTEX_FLOATS: int32 = 8;
 export const NO_EFFECT: int32 = -1;
 
-// Field offsets inside one command record. Named, because `commands[base + 7]` in the
-// emitter and `cmd[7]` in the replay is exactly how the two drift apart.
-export const CMD_KIND: int32 = 0;
-export const CMD_BREAK: int32 = 1;
-export const CMD_VERTEX_OFFSET: int32 = 2;
-export const CMD_VERTEX_COUNT: int32 = 3;
-export const CMD_VIEW: int32 = 4;
-export const CMD_BLEND: int32 = 5;
-export const CMD_SAMPLER: int32 = 6;
-export const SAMPLER_COUNT: int32 = 4;
-export const SOURCE_PREMULTIPLIED: int32 = SAMPLER_COUNT;
-export const CMD_EFFECT: int32 = 7;
-export const CMD_CLIP_X: int32 = 8;
-export const CMD_CLIP_Y: int32 = 9;
-export const CMD_CLIP_W: int32 = 10;
-export const CMD_CLIP_H: int32 = 11;
-export const CMD_ARG0: int32 = 12;
-export const CMD_ARG1: int32 = 13;
-export const CMD_RT_MODE: int32 = 14;
-// Zero for the swapchain; otherwise the render target's physical-pixels-per-logical-pixel
-// scale. The replay uses nonzero to choose the offscreen pipeline and the value to scale
-// logical scissors.
-export const CMD_CLEAR_R: int32 = 15;
-export const CMD_CLEAR_G: int32 = 16;
-export const CMD_CLEAR_B: int32 = 17;
-export const CMD_CLEAR_A: int32 = 18;
-// Which of P2's two pipelines the run wants, and the instance range inside the stream that
-// pipeline reads. A Draw carries either a vertex range or an instance range, never both;
-// the field says which, so the replay branches on the record rather than on a guess about
-// whether a count is zero.
-export const CMD_PIPELINE: int32 = 19;
-export const CMD_INSTANCE_OFFSET: int32 = 20;
-export const CMD_INSTANCE_COUNT: int32 = 21;
-export const CMD_CLIP_U_X: int32 = 22;
-export const CMD_CLIP_U_Y: int32 = 23;
-export const CMD_CLIP_U_MIN: int32 = 24;
-export const CMD_CLIP_U_MAX: int32 = 25;
-export const CMD_CLIP_V_X: int32 = 26;
-export const CMD_CLIP_V_Y: int32 = 27;
-export const CMD_CLIP_V_MIN: int32 = 28;
-export const CMD_CLIP_V_MAX: int32 = 29;
-export const CMD_VIEW_HIGH: int32 = 30;
-export const CMD_SCOPE: int32 = 31;
-export const CMD_CLIP_ROUND_U: int32 = 32;
-export const CMD_CLIP_ROUND_V: int32 = 36;
-export const CMD_CLIP_RADII: int32 = 40;
-export const SCOPE_FLOATS: int32 = 8;
-export const NO_SCOPE: int32 = -1;
 export const EFFECT_GRADIENT_META: int32 = 24;
 export const EFFECT_GRADIENT_PARAMS: int32 = 28;
 export const EFFECT_GRADIENT_COLOR0: int32 = 32;
