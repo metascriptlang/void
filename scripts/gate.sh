@@ -1160,7 +1160,7 @@ if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol
 		fi
 	}
 	named_on=$(module_symbols out/tmp/mainSokol2dColour.exe | grep -c 'srcZvoid2dZcolour' || true)
-	named_off=$(module_symbols out/tmp/mainSokol2dOff.exe | grep -c 'srcZvoid2dZcolour\|void2dGlyphSdf\|kbts_\|void2dShape\|srcZvoid2dZbidi\|void2dSprite\(Count\|Index\|Codepoint\|TableFault\|Padding\|Canvas\|Draw\|Ink\)\|void2dGlyphFaceSprite\|void2dGlyphPolygonCoverage' || true)
+	named_off=$(module_symbols out/tmp/mainSokol2dOff.exe | grep -c 'srcZvoid2dZcolour\|void2dGlyphSdf\|kbts_\|void2dShape\|srcZvoid2dZbidi\|srcZvoid2dZsprite\|void2dGlyphFaceSprite' || true)
 	if [ "$named_on" -eq 0 ]; then
 		skip "module off: the colour executable names no symbol from src/void2d/colourEmoji, so the executables get no symbol check"
 	elif [ "$named_off" -gt 0 ]; then

@@ -1,7 +1,7 @@
 #!/bin/sh
 # What the C units that remain under src/void2d cost as objects, and what the default layer pays for
 # the modules (docs/VOID2D.md P6, guardrail 6). Object-level, with clang and llvm-nm; no emcc, no
-# Yoga, no GPU. The modules written in MetaScript (colour emoji, SDF text, text outline, BiDi) have no
+# Yoga, no GPU. The modules written in MetaScript (colour emoji, SDF text, text outline, BiDi, sprites) have no
 # object of their own: their linked cost is tests/bench/wasmBudget.txt, their off-build symbol check
 # is guardrail 6 in scripts/gate.sh on the executables.
 #
@@ -16,8 +16,9 @@
 #   1. Default layer (batcher.c, the one C unit every build holds): it names no symbol of a module
 #      (shaper, sprite, SDF, outline), and no C unit in src/void2d holds a stb_image
 #      implementation.
-#   2. Controls: shaper.c names kbts_ and spriteGlyph.c names void2dSpriteDraw, so claim 1 would see
-#      a module symbol if there were one.
+#   2. Control: shaper.c names kbts_, so claim 1 would see a module symbol if there were one. The
+#      sprite module has no C unit and so no control here; its off-build symbol check is on the
+#      executables, srcZvoid2dZsprite in guardrail 6 of scripts/gate.sh.
 set -e
 cd "$(dirname "$0")/.."
 
@@ -51,21 +52,14 @@ compile() {
 }
 
 compile "batcher.c" "head.batcher"
-compile "spriteGlyph.c" "on.sprite"
 compile "shaper.c" "on.shaper"
 [ "$failed" -eq 0 ] || exit 1
 
 echo "module off: symbols"
-MODULE_SYMBOLS='void2dSprite\(Count\|Index\|Codepoint\|TableFault\|Padding\|Canvas\|Draw\|Ink\)\|void2dGlyphFaceSprite\|void2dGlyphFaceIsSprite\|void2dGlyphSpriteCell\|void2dGlyphPolygonCoverage\|void2dGlyphSdf\|void2dGlyphOutline\|void2dShape\|kbts_'
+MODULE_SYMBOLS='srcZvoid2dZsprite\|void2dGlyphFaceSprite\|void2dGlyphFaceIsSprite\|void2dGlyphSpriteCell\|void2dGlyphSdf\|void2dGlyphOutline\|void2dShape\|kbts_'
 for object in "$OUT/head.batcher.o" "$OUT/head.batcher.wasm.o"; do
 	if llvm-nm "$object" | grep -q "$MODULE_SYMBOLS"; then
 		echo "FAIL wasm delta: the module-off $object names a module symbol"
-		failed=1
-	fi
-done
-for object in "$OUT/on.sprite.o" "$OUT/on.sprite.wasm.o"; do
-	if ! llvm-nm "$object" | grep -q 'void2dSpriteDraw'; then
-		echo "FAIL wasm delta: spriteGlyph.c names no void2dSpriteDraw in $object, so the check above sees nothing"
 		failed=1
 	fi
 done
@@ -83,16 +77,12 @@ batcher_native=$(bytes "$OUT/head.batcher.o")
 batcher_wasm=$(bytes "$OUT/head.batcher.wasm.o")
 shaper_native=$(bytes "$OUT/on.shaper.o")
 shaper_wasm=$(bytes "$OUT/on.shaper.wasm.o")
-sprite_native=$(bytes "$OUT/on.sprite.o")
-sprite_wasm=$(bytes "$OUT/on.sprite.wasm.o")
 echo "default layer: batcher.c $batcher_native B native, $batcher_wasm B wasm32"
 echo "module on: shaper.c $shaper_native B native, $shaper_wasm B wasm32"
-echo "module on: sprites, spriteGlyph.c $sprite_native B native, $sprite_wasm B wasm32"
 
 if [ "$mode" = print ]; then
 	printf '  "batcher": { "native": %s, "wasm32": %s },\n' "$batcher_native" "$batcher_wasm"
-	printf '  "shaper": { "native": %s, "wasm32": %s },\n' "$shaper_native" "$shaper_wasm"
-	printf '  "sprite": { "native": %s, "wasm32": %s }\n' "$sprite_native" "$sprite_wasm"
+	printf '  "shaper": { "native": %s, "wasm32": %s }\n' "$shaper_native" "$shaper_wasm"
 	exit "$failed"
 fi
 
@@ -113,6 +103,4 @@ within "batcher.c, wasm32 objects" "$batcher_wasm" "$(recorded batcher wasm32)"
 within "batcher.c, native objects" "$batcher_native" "$(recorded batcher native)"
 within "shaper, wasm32 objects" "$shaper_wasm" "$(recorded shaper wasm32)"
 within "shaper, native objects" "$shaper_native" "$(recorded shaper native)"
-within "sprites, wasm32 objects" "$sprite_wasm" "$(recorded sprite wasm32)"
-within "sprites, native objects" "$sprite_native" "$(recorded sprite native)"
 exit "$failed"

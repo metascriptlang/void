@@ -3,16 +3,12 @@
 
 #include <stdint.h>
 
-#define VOID2D_POLYGON_TOO_LARGE 1
-#define VOID2D_POLYGON_NO_MEMORY 2
 #define VOID2D_MAX_GLYPH_PAGES 64
 #define VOID2D_PAGE_COVERAGE 0
 #define VOID2D_PAGE_SDF 1
 #define VOID2D_PAGE_RGBA 2
 #define VOID2D_PAGE_MASK 3
 
-int void2dGlyphPolygonCoverage(unsigned char *coverage, int width, int height, const double *xy,
-                               const int *counts, int contours);
 const unsigned char *void2dGlyphFaceData(int face, int *length);
 unsigned int void2dGlyphPageGeneration(int page);
 int void2dGlyphPageBytes(int page);
