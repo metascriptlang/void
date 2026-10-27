@@ -7,6 +7,11 @@ import {
 	decorationMetrics,
 	DecorationMetrics,
 	isSpriteFace,
+	glyphInkBox,
+	hasColourTables,
+	colourTileBox,
+	ColourTileBox,
+	ColourGlyph,
 } from "./face";
 import {
 	CodepointFace,
@@ -1216,7 +1221,65 @@ function forceCells(
 	if (head < (glyphs.length as int32)) {
 		glyphs[head].advance = ((cells - headCells) as float32) * cell;
 	}
+	fitClusters(glyphs, first, cell, cellWidths);
 	return (cells as float32) * cell;
+}
+
+// WezTerm's glyphcache.rs:747-790 (e2a98e1), for a scalable face: a cluster whose ink is wider
+// than its cells plus a quarter cell shrinks about its origin to that width, its offsets with it.
+const OVERFLOW_CELLS: float32 = 0.25;
+
+function inkExtent(g: LaidGlyph): [float32, float32] {
+	if (hasColourTables(g.face)) {
+		const colour: ColourTileBox = colourTileBox(g.face, g.glyph, g.size);
+		if (colour.glyph == ColourGlyph.Present) {
+			return [colour.left as float32, colour.right as float32];
+		}
+	}
+	const box = glyphInkBox(g.face, g.glyph, g.size);
+	return [box[0], box[2]];
+}
+
+function fitCluster(glyphs: Span<LaidGlyph>, head: int32, end: int32, cells: int32, cell: float32): void {
+	if (isSpriteFace(glyphs[head].face)) { return; }
+	const origin: float32 = glyphs[head].x;
+	let inked: boolean = false;
+	let left: float32 = 0.0;
+	let right: float32 = 0.0;
+	for (let k = head; k < end; k++) {
+		if (glyphs[k].glyph == NO_GLYPH) { continue; }
+		const [inkLeft, inkRight] = inkExtent(glyphs[k]);
+		if (!(inkRight > inkLeft)) { continue; }
+		const at: float32 = glyphs[k].x - origin + glyphs[k].offsetX;
+		if (!inked || at + inkLeft < left) { left = at + inkLeft; }
+		if (!inked || at + inkRight > right) { right = at + inkRight; }
+		inked = true;
+	}
+	const room: float32 = ((cells < 1 ? 1 : cells) as float32 + OVERFLOW_CELLS) * cell;
+	if (!inked || right - left <= room) { return; }
+	const fit: float32 = room / (right - left);
+	for (let k = head; k < end; k++) {
+		glyphs[k].size = glyphs[k].size * fit;
+		glyphs[k].offsetX = glyphs[k].offsetX * fit;
+		glyphs[k].offsetY = glyphs[k].offsetY * fit;
+		glyphs[k].x = origin + (glyphs[k].x - origin) * fit;
+	}
+}
+
+function fitClusters(
+	glyphs: Span<LaidGlyph>, first: int32, cell: float32, cellWidths: Readonly<Span<uint8>>,
+): void {
+	let head: int32 = first;
+	let cells: int32 = 0;
+	for (let k = first; k < (glyphs.length as int32); k++) {
+		if (k > first && glyphs[k].clusterStart) {
+			fitCluster(glyphs, head, k, cells, cell);
+			head = k;
+			cells = 0;
+		}
+		cells = cells + cellsOf(glyphs, k, first, cellWidths);
+	}
+	if (head < (glyphs.length as int32)) { fitCluster(glyphs, head, glyphs.length as int32, cells, cell); }
 }
 
 // Ghostty shapes with each codepoint's grid column as its cluster (font/shape.zig Cell.x) and
