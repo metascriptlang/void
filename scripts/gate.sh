@@ -121,11 +121,11 @@ for target in "--os=windows" "--os=windows -d:voidGlCore" "--os=linux" "--os=and
 		fail "backend contract, msc check $target src/examples/mainSokol2d.ms — see $log"
 	fi
 done
-if "${PYTHON:-python}" tests/isolated/colourMemory.py > out/gate-colour-memory.log 2>&1 \
-		&& grep -q '^PASS colour memory:' out/gate-colour-memory.log; then
-	pass "colour allocation failures recover without retrying permanent PNG refusals"
+if "$MSC" test -d:voidColourEmoji tests/isolated/colourMemory/colourRefusal.ms > out/gate-colour-memory.log 2>&1 \
+		&& sed 's/\x1b\[[0-9;]*m//g' out/gate-colour-memory.log | grep -qE '^\s+Tests +[0-9]+ passed \([0-9]+\)$'; then
+	pass "a permanently malformed colour PNG stays refused and is not retried as a memory failure"
 else
-	fail "colour memory recovery — see out/gate-colour-memory.log"
+	fail "colour PNG refusal — see out/gate-colour-memory.log"
 fi
 if MSC="$MSC" "${PYTHON:-python}" tests/isolated/rangeSpan.py > out/gate-range-span.log 2>&1 \
 		&& grep -q '^PASS noteRange spans:' out/gate-range-span.log; then
@@ -1139,10 +1139,10 @@ elif [ -n "$copied" ] || [ -n "$allocated" ]; then
 else
 	pass "allocation: the frame path ($(echo $FRAME_PATH | wc -w) functions) copies no array and builds no fresh one; the rebuild ($(echo $REBUILD_PATH | wc -w)) and measure ($(echo $MEASURE_PATH | wc -w)) paths copy none; $followed functions they call are held to the same rules"
 fi
-# Guardrail 6: a build without the colour module pays none of it. The objects prove it by symbol
-# and record the cost in bytes (tests/bench/wasm.json); the executables show it as a size.
+# Guardrail 6: a build without the modules pays none of them (C objects: tests/bench/wasm.json).
+# srcZvoid2dZcolour and srcZvoid2dZbidi are emitted names of src/void2d/colourEmoji/ and bidi*.ms; moving them turns the check into a skip.
 if sh scripts/wasmModuleDelta.sh > out/gate-wasm-delta.log 2>&1; then
-	pass "module off: no default-layer object names a void2dColour symbol, the cost stays inside tests/bench/wasm.json"
+	pass "module off: batcher.c names no module symbol and no C unit holds stb_image, the C objects stay inside tests/bench/wasm.json"
 	grep -E '^(      default-layer delta|module on)' out/gate-wasm-delta.log | sed 's/^/      /'
 else
 	fail "module off or wasm delta — see out/gate-wasm-delta.log"
@@ -1159,14 +1159,14 @@ if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol
 			llvm-nm "$1" 2> /dev/null
 		fi
 	}
-	named_on=$(module_symbols out/tmp/mainSokol2dColour.exe | grep -c 'void2dColour' || true)
-	named_off=$(module_symbols out/tmp/mainSokol2dOff.exe | grep -c 'void2dColour\|void2dGlyphSdf\|kbts_\|void2dShape\|void2dBidi\|void2dSprite\(Count\|Index\|Codepoint\|TableFault\|Padding\|Canvas\|Draw\|Ink\)\|void2dGlyphFaceSprite\|void2dGlyphPolygonCoverage' || true)
+	named_on=$(module_symbols out/tmp/mainSokol2dColour.exe | grep -c 'srcZvoid2dZcolour' || true)
+	named_off=$(module_symbols out/tmp/mainSokol2dOff.exe | grep -c 'srcZvoid2dZcolour\|void2dGlyphSdf\|kbts_\|void2dShape\|srcZvoid2dZbidi\|void2dSprite\(Count\|Index\|Codepoint\|TableFault\|Padding\|Canvas\|Draw\|Ink\)\|void2dGlyphFaceSprite\|void2dGlyphPolygonCoverage' || true)
 	if [ "$named_on" -eq 0 ]; then
-		skip "module off: the colour executable names no void2dColour symbol, so the executables get no symbol check"
+		skip "module off: the colour executable names no symbol from src/void2d/colourEmoji, so the executables get no symbol check"
 	elif [ "$named_off" -gt 0 ]; then
 		fail "module off: mainSokol2d.exe with every module flag off names $named_off colour, SDF, shaper, BiDi or sprite symbols"
 	else
-		pass "module off: mainSokol2d.exe names no colour, SDF, shaper, BiDi or sprite symbol, the colour build names $named_on void2dColour"
+		pass "module off: mainSokol2d.exe names no colour, SDF, shaper, BiDi or sprite symbol, the colour build names $named_on symbols from src/void2d/colourEmoji"
 	fi
 	if [ "$module_on_bytes" -gt "$module_off_bytes" ]; then
 		pass "module off: mainSokol2d.exe is $module_off_bytes B, with the colour module $module_on_bytes B (+$((module_on_bytes - module_off_bytes)) B)"
