@@ -294,5 +294,6 @@ when (testBuild && voidSdfText && voidShaper) {
 	import "../../tests/integration/fontPanel";
 }
 import "./frameTimingCheck";
+import "./imeInputCheck";
 import "./keyNamesCheck";
 import "./deviceLossCheck";

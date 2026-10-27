@@ -16,6 +16,7 @@
 #include "appWindow.h"
 #include "../gpu/door.h"
 #include "../platform/swapchain.h"
+#include "../platform/web/imeInput.h"
 #include "../platform/web/window.h"
 
 static void setupViewsGfx(void);
@@ -27,11 +28,6 @@ static void restoreDoor(void) {
 
 static msClosure s_init;
 static msClosure s_frame;
-
-static int s_textInput = -1;
-
-static int s_imeX, s_imeY, s_imeW, s_imeH;
-static bool s_imeReady;
 
 EM_JS_DEPS(voidWebIme, "$withStackSave,$stringToUTF8OnStack");
 
@@ -94,44 +90,40 @@ EM_JS(void, voidJsImeRect, (double x, double y, double w, double h), {
 });
 
 static void applyImeRect(void) {
-	const double scale = voidWindowDpiScale();
-	voidJsImeRect(s_imeX / scale, s_imeY / scale, s_imeW / scale, s_imeH / scale);
+	double css[4];
+	voidImeCssRect(voidWindowDpiScale(), css);
+	voidJsImeRect(css[0], css[1], css[2], css[3]);
+}
+
+static void applyImeFocus(void) {
+	const int focus = voidImeFocus();
+	if (focus != -1) voidJsImeFocus(focus);
 }
 
 void voidSetTextInput(int on) {
-	s_textInput = on != 0;
-	if (s_imeReady) voidJsImeFocus(s_textInput);
+	voidImeSetTextInput(on);
+	applyImeFocus();
 }
 
 void voidSetImeRect(int x, int y, int w, int h) {
-	s_imeX = x;
-	s_imeY = y;
-	s_imeW = w;
-	s_imeH = h;
-	if (s_imeReady) applyImeRect();
+	voidImeSetRect(x, y, w, h);
+	if (voidImeReady()) applyImeRect();
 }
 
 static void imeSetup(void) {
 	voidJsImeSetup(VOID_EVENT_PREEDIT, VOID_EVENT_TEXT_INPUT);
-	s_imeReady = true;
+	voidImeMarkReady();
 	applyImeRect();
-	if (s_textInput != -1) voidJsImeFocus(s_textInput);
+	applyImeFocus();
 }
 
 // The window bubbles every key so the browser can compose; until text input is on, the keys
 // a window that keeps them would have kept from the browser are kept here.
 // A key the IME takes while composing reaches the app as neither a key nor a Char.
-static bool imeTookKey(const VoidAppEvent *e) {
-	return s_imeReady && voidJsComposing()
-		&& (e->type == VOID_EVENT_KEY_DOWN || e->type == VOID_EVENT_KEY_UP || e->type == VOID_EVENT_CHAR);
-}
+static bool imeTookKey(const VoidAppEvent *e) { return voidImeTookKey(voidJsComposing(), e->type) != 0; }
 
 static void keepKeysFromBrowser(const VoidAppEvent *e) {
-	if (s_textInput == 1) return;
-	if (e->type == VOID_EVENT_CHAR
-		|| ((e->type == VOID_EVENT_KEY_DOWN || e->type == VOID_EVENT_KEY_UP) && e->keyCode >= VOID_KEY_WORLD_1)) {
-		voidWebConsumeEvent();
-	}
+	if (voidImeKeepsFromBrowser(e->type, e->keyCode)) voidWebConsumeEvent();
 }
 
 static void _init(void) {

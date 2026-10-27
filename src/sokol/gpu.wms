@@ -7,6 +7,7 @@
 import { exportCurrentView, exportRegister, exportSetSampleCount } from "./viewsExports";
 @compile("./appWindowPlatform.c");
 import "./appWindowExports";
+import "../platform/web/imeInputExports";
 import "../platform/web/keyNamesExports";
 @compile("../platform/web/window.c");
 // The native Windows main-thread stack: a particle system's value-struct frames need about 88 KB,
