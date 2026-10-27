@@ -7,6 +7,8 @@
 import { CanvasView, publishRun } from "../platform/web/window";
 import { PixelFormat, doorSetup, doorShutdown } from "../gpu/doorGpu";
 
+extern function thrownText(error: Error): string from "((e)=>''+(e&&e.message||e))(#)";
+
 when (webgl2) {
 	import { acquireContext } from "../webgpu/gl/glCalls";
 
@@ -173,7 +175,7 @@ when (webgl2) {
 			await acquireDevice(onLost);
 		} catch (error) {
 			if (epoch == gpuState.runEpoch) {
-				for (const start of starts.slice(0)) { start.onError(`void: the WebGPU device was lost and a new one could not be made: ${error.message}`); }
+				for (const start of starts.slice(0)) { start.onError(`void: the WebGPU device was lost and a new one could not be made: ${thrownText(error)}`); }
 			}
 			return;
 		}
@@ -189,7 +191,7 @@ export async function acquire(canvas: CanvasView, start: Start): Promise<boolean
 			await acquireDevice(onLost);
 		}
 	} catch (error) {
-		if (!start.stopped) { start.onError(`void: this browser gave no GPU backend: ${error.message}`); }
+		if (!start.stopped) { start.onError(`void: this browser gave no GPU backend: ${thrownText(error)}`); }
 		return false;
 	}
 	return !start.stopped;

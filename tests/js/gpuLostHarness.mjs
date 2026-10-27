@@ -59,7 +59,7 @@ function fire(t, type, event = {}) {
 }
 
 let deviceCount = 0;
-let nextDeviceFails = false;
+let nextDeviceFails = null;
 let deviceGate = Promise.resolve();
 let releaseDevices;
 const devices = [];
@@ -82,7 +82,7 @@ if (backend === "gpu") {
 		requestDevice: async () => {
 			deviceCount++;
 			await deviceGate;
-			if (nextDeviceFails) throw new Error("no adapter left");
+			if (nextDeviceFails !== null) throw nextDeviceFails;
 			return fakeDevice();
 		},
 	};
@@ -238,12 +238,22 @@ check("no error after the restart", errors.length, 0);
 
 if (backend === "gpu") {
 	const seen = appEvents.length;
-	nextDeviceFails = true;
+	nextDeviceFails = new Error("no adapter left");
 	devices[devices.length - 1].loseWith("unknown", "second loss");
 	await settle();
-	check("a device that cannot be replaced reaches onError, naming the case", /^void: the WebGPU device was lost and a new one could not be made: .*no adapter left/.test(errors.join("|")), true);
+	check("a device that cannot be replaced reaches onError, naming the case", /^void: the WebGPU device was lost and a new one could not be made: no adapter left$/.test(errors.join("|")), true);
 	if (windowMode) check("and the app stays suspended", appEvents.slice(seen).join(","), `${SUSPENDED}`);
-	nextDeviceFails = false;
+	nextDeviceFails = null;
+	stop();
+	stop = startRun();
+	await settle();
+	step();
+	const errorsBefore = errors.length;
+	nextDeviceFails = "a bare reason";
+	devices[devices.length - 1].loseWith("unknown", "third loss");
+	await settle();
+	check("a thrown non-Error reaches onError as its value, as the C", errors.slice(errorsBefore).join("|"), "void: the WebGPU device was lost and a new one could not be made: a bare reason");
+	nextDeviceFails = null;
 	stop();
 
 	stop = startRun();
