@@ -6,6 +6,7 @@
 
 import { AppWindow, AppWindowPlatform } from "./appWindow";
 import { AppEventType, NativeAppEvent } from "../platform/appEvent";
+import "../platform/frameTimingExports";
 
 extern function voidFail(format: cstring, message: cstring): never;
 extern function voidAppPlatformValid(): int32;

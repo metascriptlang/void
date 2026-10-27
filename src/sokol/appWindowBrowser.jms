@@ -4,6 +4,7 @@
 // outlives both, as the C one does.
 
 import { AppEventType } from "../platform/appEvent";
+import { advanceTo } from "../platform/frameTiming";
 import { CanvasSize, CanvasView } from "../platform/web/window";
 import { WindowState } from "../platform/web/windowCore";
 import { WindowEvents } from "../platform/web/windowEvents";
@@ -39,7 +40,7 @@ class BrowserWindow extends AppWindowPlatform {
 		live.emit(AppEventType.Resized);
 	}
 
-	beginFrame(time: float64): void { this.running("beginFrame").state.timing.update(time / 1000); }
+	beginFrame(time: float64): void { this.running("beginFrame").state.timing.advanceTo(time / 1000); }
 
 	endFrame(): boolean {
 		const live = this.running("endFrame");
