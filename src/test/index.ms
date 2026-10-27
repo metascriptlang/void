@@ -12,6 +12,7 @@ import "./filterPlanCheck";
 import "./faceCheck";
 import "./glyphAtlasCheck";
 import "./glyphPageReleaseCheck";
+import "./glyphPortCheck";
 import "./outlineKeyCheck";
 import "./textLayoutCheck";
 import "./labelTextCheck";
