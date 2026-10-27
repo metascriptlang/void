@@ -5,6 +5,7 @@
 
 import { AppEventType } from "../platform/appEvent";
 import { advanceTo } from "../platform/frameTiming";
+import { ImeInput } from "../platform/web/imeInput";
 import { CanvasSize, CanvasView } from "../platform/web/window";
 import { WindowState } from "../platform/web/windowCore";
 import { WindowEvents } from "../platform/web/windowEvents";
@@ -15,6 +16,7 @@ extern function writeClipboard(text: string): void from "((text)=>{const ta=docu
 
 class BrowserWindow extends AppWindowPlatform {
 	live: WindowEvents | null = null;
+	ime: ImeInput = new ImeInput();
 
 	fail(message: string): never { throw new Error(`void: ${message}`); }
 
@@ -26,7 +28,7 @@ class BrowserWindow extends AppWindowPlatform {
 
 	begin(canvas: CanvasView): void {
 		if (this.live !== null) { this.fail("the browser window already runs"); }
-		const live = new WindowEvents(new WindowState(canvas.size), canvas.canvas, appWindow);
+		const live = new WindowEvents(new WindowState(canvas.size), canvas.canvas, appWindow, this.ime);
 		if (appWindow.titleSet) { setDocumentTitle(appWindow.title); }
 		live.open();
 		this.live = live;
@@ -83,6 +85,22 @@ class BrowserWindow extends AppWindowPlatform {
 	mouseShown(): boolean { return this.running("mouseShown").state.mouse.shown; }
 	lockMouse(locked: boolean): void { this.running("lockMouse").lockMouse(locked); }
 	mouseLocked(): boolean { return this.running("mouseLocked").state.mouse.locked; }
+	toggleFullscreen(): void { this.running("toggleFullscreen").toggleFullscreen(); }
+	isFullscreen(): boolean { return this.running("isFullscreen").state.fullscreen; }
+	droppedCount(): int32 { return this.running("droppedCount").state.droppedPaths.length as int32; }
+	droppedPath(index: int32): string { return this.running("droppedPath").state.droppedPaths[index]; }
+
+	setTextInput(on: boolean): void {
+		this.ime.setTextInput(on ? 1 : 0);
+		const live = this.live;
+		if (live !== null) { live.ime.applyFocus(); }
+	}
+
+	setImeRect(x: int32, y: int32, w: int32, h: int32): void {
+		this.ime.setRect(x, y, w, h);
+		const live = this.live;
+		if (live !== null) { live.ime.applyRect(); }
+	}
 }
 
 export const browserWindow = new BrowserWindow();

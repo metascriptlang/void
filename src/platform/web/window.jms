@@ -4,6 +4,13 @@
 
 export extern class Js {}
 
+export extern function intField(source: Js, name: string): int32 from "(#[#]|0)";
+export extern function numberField(source: Js, name: string): float64 from "#[#]";
+export extern function stringField(source: Js, name: string): string from "(#[#]||'')";
+export extern function flag(source: Js, name: string): boolean from "(!!#[#])";
+export extern function listenBubble(target: Js, name: string, handler: (event: Js) => boolean): () => void
+	from "((t,n,f)=>{const h=(e)=>{if(f(e))e.preventDefault();};t.addEventListener(n,h,false);return ()=>t.removeEventListener(n,h,false);})(#,#,#)";
+
 extern function cssWidth(canvas: Js): float64 from "#.clientWidth";
 extern function cssHeight(canvas: Js): float64 from "#.clientHeight";
 extern function devicePixelRatio(): float64 from "(window.devicePixelRatio || 1)";

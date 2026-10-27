@@ -1,0 +1,102 @@
+// The browser window's IME and text input on --target=js, as bridgeWeb.c's voidJsIme* run them
+// under emscripten. The browser composes only into a focused editable element, so a hidden
+// textarea beside the canvas takes the composition. Typing outside a composition still arrives as
+// Char (its input event only empties the textarea); a composition arrives once, at compositionend.
+// The decisions (text input on, the rectangle, the keys a composition takes) are imeInput.ms.
+
+import { AppWindow } from "../../sokol/appWindow";
+import { AppEventType } from "../appEvent";
+import { ImeInput } from "./imeInput";
+import { Js, flag, intField, listenBubble, stringField } from "./window";
+import { WindowState } from "./windowCore";
+
+extern function createInput(): Js from "(()=>{const input=document.createElement('textarea');for(const [name,value] of [['autocomplete','off'],['autocorrect','off'],['autocapitalize','off'],['spellcheck','false'],['aria-hidden','true'],['tabindex','-1']]){input.setAttribute(name,value);}input.style.cssText='position:fixed;left:0;top:0;width:1px;height:1px;margin:0;padding:0;border:0;outline:none;resize:none;overflow:hidden;opacity:0;pointer-events:none;';return input;})()";
+extern function insertAfter(canvas: Js, input: Js): void from "#.insertAdjacentElement('afterend',#)";
+extern function removeInput(input: Js): void from "#.remove()";
+extern function clearValue(input: Js): void from "(#.value='')";
+extern function focusInput(input: Js): void from "#.focus({preventScroll:true})";
+extern function focusLater(input: Js): void from "((i)=>setTimeout(()=>i.focus({preventScroll:true}),0))(#)";
+extern function blurIfFocused(input: Js): void from "((i)=>{if(document.activeElement===i)i.blur();})(#)";
+extern function placeInput(input: Js, canvas: Js, x: float64, y: float64, w: float64, h: float64): void
+	from "((input,canvas,x,y,w,h)=>{const r=canvas.getBoundingClientRect();input.style.left=(r.left+x)+'px';input.style.top=(r.top+y)+'px';input.style.width=Math.max(1,w)+'px';input.style.height=Math.max(1,h)+'px';input.style.fontSize=Math.max(1,h)+'px';input.style.lineHeight=Math.max(1,h)+'px';})(#,#,#,#,#,#)";
+
+export class WindowIme {
+	ime: ImeInput;
+	state: WindowState;
+	canvas: Js;
+	window: AppWindow;
+	input: Js;
+	composing: boolean = false;
+	on: boolean = false;
+	removers: (() => void)[] = [];
+
+	constructor(ime: ImeInput, state: WindowState, canvas: Js, window: AppWindow) {
+		this.ime = ime;
+		this.state = state;
+		this.canvas = canvas;
+		this.window = window;
+		this.input = createInput();
+	}
+
+	tookKey(type: AppEventType): boolean { return this.ime.tookKey(this.composing, type); }
+
+	send(type: AppEventType, text: string, cursor: int32): void { this.window.deliverText(type, text, cursor); }
+
+	applyRect(): void {
+		const rect = this.ime.cssRect(this.state.dpiScale as float64);
+		placeInput(this.input, this.canvas, rect[0], rect[1], rect[2], rect[3]);
+	}
+
+	applyFocus(): void {
+		const focus = this.ime.focus();
+		if (focus == -1) { return; }
+		this.on = focus != 0;
+		if (this.on) { focusInput(this.input); } else { blurIfFocused(this.input); }
+	}
+
+	add(target: Js, name: string, handler: (event: Js) => boolean): void {
+		this.removers.push(listenBubble(target, name, handler));
+	}
+
+	open(): void {
+		const input = this.input;
+		insertAfter(this.canvas, input);
+		this.add(input, "compositionstart", (event: Js): boolean => {
+			this.composing = true;
+			return false;
+		});
+		this.add(input, "input", (event: Js): boolean => {
+			if (flag(event, "isComposing")) {
+				this.send(AppEventType.Preedit, stringField(input, "value"), intField(input, "selectionStart"));
+			} else {
+				clearValue(input);
+			}
+			return false;
+		});
+		this.add(input, "compositionend", (event: Js): boolean => {
+			this.composing = false;
+			this.send(AppEventType.Preedit, "", 0);
+			const data = stringField(event, "data");
+			if (data != "") { this.send(AppEventType.TextInput, data, 0); }
+			clearValue(input);
+			return false;
+		});
+		this.add(input, "keydown", (event: Js): boolean => stringField(event, "key") == "Tab");
+		this.add(this.canvas, "pointerdown", (event: Js): boolean => {
+			if (this.on) { focusLater(input); }
+			return false;
+		});
+		this.ime.ready = true;
+		this.applyRect();
+		this.applyFocus();
+	}
+
+	close(): void {
+		for (const remove of this.removers) { remove(); }
+		this.removers = [];
+		removeInput(this.input);
+		this.ime.ready = false;
+		this.composing = false;
+		this.on = false;
+	}
+}

@@ -30,6 +30,8 @@ export class WindowState {
 	mouse: WindowMouse = new WindowMouse();
 	mouseButtons: int32 = 0;
 	clipboard: string = "";
+	fullscreen: boolean = false;
+	droppedPaths: string[] = [];
 	timing: FrameTiming = startFrameTiming();
 
 	constructor(size: CanvasSize) {

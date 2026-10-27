@@ -44,6 +44,8 @@ export class AppWindowPlatform {
 	isFullscreen(): boolean { throw new Error("AppWindowPlatform.isFullscreen is not provided"); }
 	droppedCount(): int32 { throw new Error("AppWindowPlatform.droppedCount is not provided"); }
 	droppedPath(index: int32): string { throw new Error("AppWindowPlatform.droppedPath is not provided"); }
+	setTextInput(on: boolean): void { throw new Error("AppWindowPlatform.setTextInput is not provided"); }
+	setImeRect(x: int32, y: int32, w: int32, h: int32): void { throw new Error("AppWindowPlatform.setImeRect is not provided"); }
 }
 
 export class AppWindow {
@@ -230,6 +232,10 @@ export class AppWindow {
 		this.needWindow("voidMouseLocked");
 		return this.platform.mouseLocked();
 	}
+
+	setTextInput(on: boolean): void { this.platform.setTextInput(on); }
+
+	setImeRect(x: int32, y: int32, w: int32, h: int32): void { this.platform.setImeRect(x, y, w, h); }
 
 	toggleFullscreen(): void {
 		this.needWindow("voidToggleFullscreen");
