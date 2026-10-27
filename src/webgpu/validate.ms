@@ -357,12 +357,11 @@ export function checkedDrawRange(call: string, indexed: boolean, count: int32, i
 	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
 	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
 		if ((pipelineRecords.slots[p].vertexSlots & (1 << slot)) == 0) { continue; }
-		const layout = pipelineRecords.slots[p].vertexBuffers[slot];
-		if (indexed && !layout.instance) { continue; }
+		const instance = pipelineRecords.slots[p].vertexBuffers[slot].instance;
+		if (indexed && !instance) { continue; }
 		const size = boundSize(boundFacts.vertexBuffers[slot], boundFacts.vertexOffsets[slot]);
-		refuse(layout.instance
-			? vertexRangeRefusal(call, slot, layout, size, firstInstance, instanceCount)
-			: vertexRangeRefusal(call, slot, layout, size, first, count));
+		refuse(vertexRangeRefusal(call, slot, pipelineRecords.slots[p].vertexBuffers[slot], size,
+			instance ? firstInstance : first, instance ? instanceCount : count));
 	}
 }
 
@@ -600,10 +599,12 @@ export function shaderModuleRefusal(descriptor: GPUShaderModuleDescriptor, limit
 	}
 	const bindings = shaderBindingsRefusal(descriptor.bindings, compute, limits.maxUniformBufferBindingSize);
 	if (bindings != "") { return bindings; }
-	const size: int32[3] = descriptor.workgroupSize;
-	if (compute && (size[0] > limits.maxComputeWorkgroupSizeX || size[1] > limits.maxComputeWorkgroupSizeY
-		|| size[2] > limits.maxComputeWorkgroupSizeZ || size[0] * size[1] * size[2] > limits.maxComputeInvocationsPerWorkgroup)) {
-		return `workgroupSize ${size[0]}x${size[1]}x${size[2]} is over the limits ${limits.maxComputeWorkgroupSizeX}x${limits.maxComputeWorkgroupSizeY}x${limits.maxComputeWorkgroupSizeZ} and ${limits.maxComputeInvocationsPerWorkgroup} invocations`;
+	const x = descriptor.workgroupSize[0];
+	const y = descriptor.workgroupSize[1];
+	const z = descriptor.workgroupSize[2];
+	if (compute && (x > limits.maxComputeWorkgroupSizeX || y > limits.maxComputeWorkgroupSizeY
+		|| z > limits.maxComputeWorkgroupSizeZ || x * y * z > limits.maxComputeInvocationsPerWorkgroup)) {
+		return `workgroupSize ${x}x${y}x${z} is over the limits ${limits.maxComputeWorkgroupSizeX}x${limits.maxComputeWorkgroupSizeY}x${limits.maxComputeWorkgroupSizeZ} and ${limits.maxComputeInvocationsPerWorkgroup} invocations`;
 	}
 	return "";
 }
@@ -923,9 +924,9 @@ export function dynamicIndexOf(descriptor: GPUBindGroupDescriptor): int32[GPU_MA
 	let ranks: int32[GPU_MAX_BIND_GROUP_ENTRIES] = [0];
 	let stored = 0;
 	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
-		const entry = descriptor.entries[i];
-		if (entry.buffer.id == 0 && entry.textureView.id == 0 && entry.sampler.id == 0) { continue; }
-		if (entry.buffer.id != 0) { ranks[stored] = dynamicRankOf(descriptor, entry.binding); }
+		const buffer = descriptor.entries[i].buffer.id;
+		if (buffer == 0 && descriptor.entries[i].textureView.id == 0 && descriptor.entries[i].sampler.id == 0) { continue; }
+		if (buffer != 0) { ranks[stored] = dynamicRankOf(descriptor, descriptor.entries[i].binding); }
 		stored += 1;
 	}
 	return ranks;
@@ -944,11 +945,12 @@ function dynamicRankOf(descriptor: GPUBindGroupDescriptor, binding: int32): int3
 export function dynamicRoomOf(descriptor: GPUBindGroupDescriptor, shader: ShaderRecord): int64[GPU_MAX_BIND_GROUP_ENTRIES] {
 	let room: int64[GPU_MAX_BIND_GROUP_ENTRIES] = [0];
 	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
-		const entry = descriptor.entries[i];
-		if (entry.buffer.id == 0) { continue; }
-		const u = shaderBindingAt(shader, GPU_UNIFORM_GROUP, entry.binding, BindingKind.Uniform);
+		const buffer = descriptor.entries[i].buffer.id;
+		if (buffer == 0) { continue; }
+		const binding = descriptor.entries[i].binding;
+		const u = shaderBindingAt(shader, GPU_UNIFORM_GROUP, binding, BindingKind.Uniform);
 		if (u < 0) { continue; }
-		room[dynamicRankOf(descriptor, entry.binding)] = bufferRecords.record(entry.buffer.id).size - entry.offset - (shader.bindings[u].size as int64);
+		room[dynamicRankOf(descriptor, binding)] = bufferRecords.record(buffer).size - descriptor.entries[i].offset - (shader.bindings[u].size as int64);
 	}
 	return room;
 }
