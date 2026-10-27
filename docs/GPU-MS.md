@@ -1127,3 +1127,28 @@ sokol:
    above.
 4. The landing into `main` stays yours. The six DXBC blobs are done (`43cf3828`), and
    `webgpuD3d11Check` 47/47 on the RTX 5090 covers the moved checks the WARP request was for.
+
+### 2026-10-27, Mac: the rename builds natively; what the land into main still needs
+
+**The rename, now proven natively on the Mac.** `msc` bc5428a82 (synced 14:51) has its vendor tree
+back. `msc build src/examples/main2d.ms` succeeds and its binary carries 0 sokol symbols.
+`webgpuMetalCheck` passes 455/455 at `e6149759`. 3D entries such as `mainCampfire` still stop on
+the macro VM card (`nullableEquals`), so no 3D build, golden or gate can run yet.
+
+**Readiness for main, measured on the Mac at `e6149759`:**
+- **main moved 273 commits since the merge base `d81e5346` (2026-10-25).** A trial
+  `git merge-tree` shows 44 conflicts:
+  - 21 content conflicts;
+  - 14 add/add: particles, the environment light, the PBR and spot-shadow tests;
+  - 9 modify/delete: main kept editing files this branch deleted (`src/gpu/door.c`,
+    `src/void3d/gpu3d.{c,h}`, `programTable.h`, the generated `.glsl`, `src/sokol/gpu.wms`,
+    two aborts cases).
+  
+  The modify/delete set is a port of main's sokol-era changes onto the new layer, not a text
+  merge.
+- **Neon names `void/src/sokol/` in 24 code files.** The rename breaks Neon the moment it reaches
+  Void `main`. Note for Neon:
+  `~/metascript/.inbox/neon/2026-10-27-void-src-sokol-renamed-to-src-host.md`. The land needs a
+  Neon session to update those paths in the same window. Haro (terminator) names none; Lightcube
+  names it only in a doc.
+- **The gate cannot run** until the macro VM card is fixed in an installed `msc`.
