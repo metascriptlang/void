@@ -88,3 +88,61 @@ test "an HDR preset reserves its bloom off, and setBloom turns it on and off" {
 		assert context.liveMaterials() == 0;
 	}
 }
+
+import { BloomParams } from "../void3d/post3d";
+import { UniformPool, reserveBlock, writeBlock } from "../void3d/uniformPool";
+import { bitcastF32toU32 } from "../shader/std";
+import {
+	BLOOM_SOURCE_TEXEL, BLOOM_TARGET_TEXEL, BLOOM_BLEND, BLOOM_THRESHOLD, BLOOM_UNIFORM_LENGTH,
+} from "../void3d/bloom";
+
+function bloomByHand(
+	settings: BloomSettings,
+	source: int32,
+	target: int32,
+	blend: float32,
+): Vec<float32> {
+	let values: Vec<float32> = new Array(BLOOM_UNIFORM_LENGTH);
+	writeThreshold(settings, values, BLOOM_THRESHOLD);
+	values[BLOOM_SOURCE_TEXEL] = 1.0 / (source as float32);
+	values[BLOOM_SOURCE_TEXEL + 1] = 1.0 / ((source * 2) as float32);
+	values[BLOOM_TARGET_TEXEL] = 1.0 / (target as float32);
+	values[BLOOM_TARGET_TEXEL + 1] = 1.0 / ((target * 2) as float32);
+	values[BLOOM_BLEND] = blend;
+	return values;
+}
+
+function bloomFromBlock(
+	settings: BloomSettings,
+	source: int32,
+	target: int32,
+	blend: float32,
+): Vec<float32> {
+	let pool: UniformPool = UniformPool.withCapacity(BLOOM_UNIFORM_LENGTH);
+	for (let i = 0; i < BLOOM_UNIFORM_LENGTH; i++) { pool.values[i] = -7.0; }
+	const reserved = reserveBlock<BloomParams>(pool, 0);
+	if (!reserved.ok) { unreachable; }
+	let threshold: Vec<float32> = new Array(4);
+	writeThreshold(settings, threshold, 0);
+	if (!writeBlock(pool, reserved.value, {
+		bloomTexel: {
+			x: 1.0 / (source as float32), y: 1.0 / ((source * 2) as float32),
+			z: 1.0 / (target as float32), w: 1.0 / ((target * 2) as float32),
+		},
+		bloomBlend: { x: blend, y: 0.0, z: 0.0, w: 0.0 },
+		bloomThreshold: { x: threshold[0], y: threshold[1], z: threshold[2], w: threshold[3] },
+	}).ok) { unreachable; }
+	return pool.values;
+}
+
+test "bloom's block comes out the way a mip pass writes it by hand, the lanes it leaves zero" {
+	const soft: BloomSettings = { ...BloomSettings.natural(), threshold: 1.0, thresholdSoftness: 0.5 };
+	for (const settings of [BloomSettings.natural(), soft]) {
+		const hand: Vec<float32> = bloomByHand(settings, 64, 32, 0.375);
+		const made: Vec<float32> = bloomFromBlock(settings, 64, 32, 0.375);
+		assert hand.length == 12 && made.length == 12;
+		for (let i = 0; i < 12; i++) {
+			assert bitcastF32toU32(hand[i]) == bitcastF32toU32(made[i]);
+		}
+	}
+}
