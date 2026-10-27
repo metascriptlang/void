@@ -41,6 +41,7 @@ import "./kbUnicodePortCheck";
 import "./kbBreakPortCheck";
 import "./kbFontPortCheck";
 import "./kbLookupPortCheck";
+import "./kbShapeTablesCheck";
 import "./ucdOracleCheck";
 import "./h2dOracleCheck";
 import "./math3dCheck";
