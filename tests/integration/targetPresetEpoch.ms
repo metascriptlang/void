@@ -33,7 +33,7 @@ struct Storage {
 
 const BLACK: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 const VIEW: LowResView = { width: 16, height: 12, scale: 1, offsetX: 0.0, offsetY: 0.0 };
-const items: Vec<DrawItem> = [];
+let items: Vec<DrawItem> = [];
 let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let forward: ForwardRenderer = null as unknown as ForwardRenderer;
