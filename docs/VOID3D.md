@@ -3420,7 +3420,7 @@ NEW MECHANISM, its own commit). The scene programs stay one set: the frame block
 skipping M45's per-fragment exposure, so no key bit was added; `Renderer.linearOutput` writes it,
 set by the preset. The tone map is the core's `(Post, Core)` key (`programKeys.txt` row `toneMap`,
 `toneMapFs` in `shader3d.glsl`), drawn by `drawScreen` like the pixel-art Post stage, with its own
-4-float block (`TONE_MAP_UNIFORM_SLOT`, the exposure multiplier at `TONE_MAP_EXPOSURE`) and the hdr
+4-float block (`TONE_MAP_UNIFORM_SLOT`, the exposure multiplier in `ToneMapParams.toneMap.x`) and the hdr
 target bound as its texture. The HDR target clears to the background decoded
 (`linearBackground`). The encode is ColorSpaces' exact sRGB pair, as everywhere in void3d, not
 Heaps' `pow(1/gamma)`, so at exposure 0 an opaque scene reads as the LDR preset does, within the
@@ -3471,7 +3471,7 @@ a..e = 2.51, 0.03, 2.43, 0.59, 0.14 (its constructor), 3 Khronos PBR Neutral (st
 **As built.** One `toneCurve` block (`shader3dBlocks.glsl`) holds the switch, shared by the
 per-fragment `toneMap` block and `toneMapFs`. The core's `toneMode` reaches the scene programs at
 `FRAME_TONE_MODE` (`frame.w`, the frame block's free lane, no length change) and the tone map pass at
-`TONE_MAP_MODE` in its own block. `ToneMode`'s members are ToneMapping's mode numbers, pinned by
+`ToneMapParams.toneMap.y` in its own block. `ToneMode`'s members are ToneMapping's mode numbers, pinned by
 `programKeyCheck.ms`. The per-fragment fast path returns the colour untouched only at exposure 0 and
 the linear curve, so every capture is expected byte-identical.
 
