@@ -22,9 +22,7 @@ import {
 	void2dSetPipeline,
 } from "./batcher";
 import { scissorMin, scissorMax, growthTarget as growthTargetOf } from "./coverage";
-when (c) {
-	import { registerCommitHook } from "./batcherExports";
-}
+import { setCommitHook } from "../gpu/frameCommit";
 import { void2dGlyphPageCount } from "./glyph";
 import { beginGlyphFrame, setSdfRegime } from "./labelText";
 import { GlyphPageHandle } from "./glyphAtlas";
@@ -470,7 +468,7 @@ function useRun(pipeline: Pipeline, view: uint32, premultiplied: boolean, blend:
 }
 
 export function setup2d(): void {
-	when (c) { registerCommitHook(); }
+	setCommitHook(void2dFrameEnd);
 	void2dSetup();
 	when (voidProfiler) { profilerSetup(); }
 	when (voidSdfText) { setSdfRegime(true); }

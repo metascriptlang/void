@@ -1622,13 +1622,12 @@ export function doorEndPass(): void {
 	current = -1;
 }
 
-import { commitFrame } from "./frameCommit";
+import { frameEnd } from "./frameCommit";
 
-// The frame's end as the door's contract has it: the bridge's voidCommit submits through
-// doorSubmitFrame, then runs the commit hook and presents.
+// The frame's end as the door's contract has it: submit, then the registered hooks and the present.
 export function doorCommit(): void {
-	stopOnOpenPass("commit");
-	commitFrame();
+	doorSubmitFrame();
+	frameEnd();
 }
 
 export function doorSubmitFrame(): void {

@@ -1,6 +1,0 @@
-// The frame's end through the platform bridge (bridge.c voidCommit); frameCommit.jms is the browser's.
-
-@include("./bridgeCommit.h");
-extern function voidCommit(): void;
-
-export function commitFrame(): void { voidCommit(); }

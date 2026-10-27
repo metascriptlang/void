@@ -1,7 +1,7 @@
 @passC("-DVOID_PROFILER");
 
 import {
-	frameClock, profileNow, MARK_BEGIN, MARK_COMMIT, MARK_PRESENT_START, MARK_PRESENT_END,
+	frameClock, profileNow, profilePresent, MARK_BEGIN, MARK_COMMIT, MARK_PRESENT_START, MARK_PRESENT_END,
 	COUNTER_DRAWS, COUNTER_UI_INSTANCES, COUNTER_SPRITE_INSTANCES, COUNTER_UPLOAD_BYTES,
 	COUNTER_UPLOADS, COUNTER_COVERED_PIXELS, COUNTER_TARGET_PIXELS, COUNTER_OPAQUE_PIXELS,
 	COUNTER_FRAME_PIXELS, COUNTER_SOKOL_DRAWS, COUNTER_SOKOL_PIPELINES, COUNTER_SOKOL_PASSES,
@@ -9,8 +9,9 @@ import {
 	FRAME_OPEN, FRAME_COMMITTED, FRAME_PRESENTED,
 } from "./frameClock";
 when (c) {
-	import { registerPresentHook } from "./frameClockExports";
+	import "./frameClockExports";
 }
+import { setPresentHook } from "../gpu/frameCommit";
 import {
 	NO_STAMP, FrameProfiler, FrameRecord, FrameCounters, FramePhase, frameProfiler, noCounters,
 	invalidated, inputBegin, drawBegin, commit, present,
@@ -46,7 +47,7 @@ let lastSerial: int32 = 0;
 let commitsWithoutFrame: int32 = 0;
 
 export function profilerSetup(): void {
-	when (c) { registerPresentHook(); }
+	setPresentHook(profilePresent);
 }
 
 export function profilerNow(): int64 { return profileNow(); }

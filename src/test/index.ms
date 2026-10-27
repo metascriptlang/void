@@ -305,3 +305,4 @@ import "./frameTimingCheck";
 import "./imeInputCheck";
 import "./keyNamesCheck";
 import "./deviceLossCheck";
+import "./frameEndCheck";

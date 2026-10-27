@@ -145,8 +145,4 @@ int voidKeyDown(int keycode);
 uint32_t voidMakeImage(const void *rgba, int w, int h);
 uint32_t voidMakeView(uint32_t image);
 
-// Frame sequence.
-void voidSetCommitHook(void (*fn)(void));
-void voidSetPresentHook(void (*fn)(int begin));
-
 #endif

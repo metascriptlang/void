@@ -13,7 +13,6 @@ import {
 	doorBeginColorPass,
 	doorEndPass,
 	doorCommit,
-	doorSubmitFrame,
 	doorPassState,
 } from "./doorGpu";
 
@@ -74,9 +73,6 @@ export function exportEndPass(): void { doorEndPass(); }
 
 @exportName("doorCommit")
 export function exportCommit(): void { doorCommit(); }
-
-@exportName("doorSubmitFrame")
-export function exportSubmitFrame(): void { doorSubmitFrame(); }
 
 @exportName("doorPassState")
 export function exportPassState(): int32 { return doorPassState(); }

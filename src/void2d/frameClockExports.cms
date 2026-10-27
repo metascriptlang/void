@@ -1,17 +1,7 @@
 // The frame profiler on the C targets: frameClock.ms under the voidProfile* names that
-// frameClock.h declares, and the registration of its present edge with the bridge.
+// frameClock.h declares.
 
-@include("frameClockHook.h");
-extern function voidProfileSetup(): void;
-
-import { profileInput, profilePresent } from "./frameClock";
+import { profileInput } from "./frameClock";
 
 @exportName("voidProfileInput")
 export function exportInput(): void { profileInput(); }
-
-@exportName("voidProfilePresent")
-export function exportPresent(begin: int32): void { profilePresent(begin); }
-
-export function registerPresentHook(): void {
-	voidProfileSetup();
-}
