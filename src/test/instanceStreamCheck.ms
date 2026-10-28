@@ -4,16 +4,16 @@
 // streams — the bug T1 already caught once for the clip rect, where a stale value survived a
 // frame boundary and only showed up as a test depending on what ran before it.
 
-import { Color, rgba, identity2d } from "../void2d/types";
+import { Color, Transform2D, rgba, identity2d } from "../void2d/types";
 import { InstanceMode, uiInstance } from "../void2d/instance";
 import {
 	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0,
 	REC_UI_PARAMS1, REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_COLOR_EXTRA,
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
-	UI_STRIDE, SPRITE_STRIDE,
+	REC_UI_FLOATS, UI_STRIDE, SPRITE_STRIDE,
 } from "../void2d/instanceLayout";
 import {
-	resetContext, pushUiInstance, pushSpriteInstance,
+	resetContext, pushUiInstance, pushGlyphInstance, pushSpriteInstance,
 	uiInstanceCount, spriteInstanceCount, uiInstanceField, spriteInstanceField,
 	uiModeCount, instanceUploadBytes,
 } from "../void2d/displayList";
@@ -55,6 +55,29 @@ test "a recorded UI instance reads back in every lane it was given" {
 	assert uiInstanceField(0, REC_UI_COLOR_FILL + 2) == (0.75 as float32);
 	assert uiInstanceField(0, REC_UI_COLOR_BORDER + 3) == (1.0 as float32);
 	assert uiInstanceField(0, REC_UI_COLOR_EXTRA + 3) == (0.0 as float32);
+}
+
+test "a glyph instance records every lane as the general UI instance would" {
+	const affine: Transform2D = { a: 2.0, b: 0.5, c: -0.5, d: 2.0, tx: 0.0, ty: 0.0 };
+	const fill: Color = rgba(0.25, 0.5, 0.75, 0.875);
+	for (const mode of [InstanceMode.Glyph, InstanceMode.Image]) {
+		const flag: float32 = mode == InstanceMode.Glyph ? 1.0 : 0.0;
+		const image: float32 = mode == InstanceMode.Image ? 1.0 : 0.0;
+		resetContext();
+		pushUiInstance({
+			...uiInstance(mode, affine, 9.0, 11.0, 3.0, 4.0, fill),
+			uvRadii: [0.125, 0.25, 0.375, 0.5],
+			params: [flag, 0.0, 0.0],
+			params1: [0.0, image, 0.0, 0.0],
+		}, 5.0, 7.0);
+		pushGlyphInstance(
+			mode, flag, image, affine, 9.0, 11.0, 3.0, 4.0, 0.125, 0.25, 0.375, 0.5, fill, 5.0, 7.0,
+		);
+		assert uiInstanceCount() == 2;
+		for (let f: int32 = 0; f < REC_UI_FLOATS; f++) {
+			assert uiInstanceField(1, f) == uiInstanceField(0, f);
+		}
+	}
 }
 
 test "a recorded sprite instance reads back in every lane it was given" {

@@ -27,7 +27,7 @@ import { void2dGlyphPageCount } from "./glyph";
 import { beginGlyphFrame, setSdfRegime } from "./labelText";
 import { GlyphPageHandle } from "./glyphAtlas";
 import { gammaRatios, DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST } from "./textGamma";
-import { UiInstance } from "./instance";
+import { InstanceMode, UiInstance } from "./instance";
 import {
 	CommandKind, BreakReason,
 	COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS, NO_EFFECT,
@@ -40,7 +40,7 @@ import {
 	DrawContext2D, currentContext, useContext, useDefaultContext, isDefaultContext, uploaded,
 	spriteInstanceCount,
 	effectField, effectMatrix,
-	uiInstanceCount, pushUiInstance, recordUiDraw,
+	uiInstanceCount, pushUiInstance, pushGlyphInstance, recordUiDraw,
 	resetContext, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
 	targetDepth, renderTargetScaleNow, beginTargetList, endTargetList,
 	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
@@ -1485,6 +1485,29 @@ export function appendSprite(
 export function drawUiInstance(view: uint32, blend: BlendMode, inst: UiInstance): void {
 	useRun(Pipeline.Ui, view == 0 ? void2dWhiteView() : view, false, blend);
 	pushUiInstance(inst, originXOffset(), originYOffset());
+}
+
+export function drawGlyphInstance(
+	view: uint32,
+	blend: BlendMode,
+	mode: InstanceMode,
+	flag: float32,
+	image: float32,
+	affine: Transform2D,
+	x: float32,
+	y: float32,
+	w: float32,
+	h: float32,
+	u0: float32,
+	v0: float32,
+	u1: float32,
+	v1: float32,
+	fill: Color,
+): void {
+	useRun(Pipeline.Ui, view == 0 ? void2dWhiteView() : view, false, blend);
+	pushGlyphInstance(
+		mode, flag, image, affine, x, y, w, h, u0, v0, u1, v1, fill, originXOffset(), originYOffset(),
+	);
 }
 
 export function uiInstancingAvailable(): boolean {
