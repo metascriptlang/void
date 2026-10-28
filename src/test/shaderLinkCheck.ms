@@ -3,12 +3,15 @@ import { programModule, programSource, stageSource } from "../shader/descriptor"
 import { glslIr, glslLinkedIr, glslSegmentIr } from "../shader/emit";
 import {
 	ExprKind,
+	Intrinsic,
 	IoDirection,
 	ShaderExpr,
 	ShaderModule,
 	ShaderStage,
 	StmtKind,
+	exprOf,
 	irErrors,
+	rootOf,
 } from "../shader/ir";
 import { irFromText, irText } from "../shader/irText";
 import { ShaderTarget } from "../shader/layout";
@@ -821,4 +824,142 @@ test "an effect past the last view binding is refused" {
 	}
 	assert refusal(baseOf(), effects) ==
 		"link: effect 'detailA' finds no binding for Texture 'detail32': bindings 0..31 are taken";
+}
+
+struct VPhase {
+	offset: Vec2f;
+}
+
+function hookedVs(input: Corner): Placed {
+	const start: VPhase = { offset: input.position };
+	const moved = hook(start);
+	return { clip: vec4f(moved.offset.x, moved.offset.y, 0.0, 1.0), uv: input.position };
+}
+
+function nudge(phase: VPhase): VPhase {
+	return { offset: phase.offset + vec2f(0.5, 0.0) };
+}
+
+const NUDGE = glslSegmentIr(nudge);
+
+function hookedLinked(effects: string[]): ShaderModule {
+	const base = programModule(glslIr(hookedVs), glslLinkedIr(baseFs, hookedVs), []);
+	if (!base.ok) { return new ShaderModule(); }
+	const m = link(base.value, effects.map((t) => moduleOf(t)));
+	return m.ok ? m.value : new ShaderModule();
+}
+
+test "a vertex effect chains at the vertex entry's hook site" {
+	const m = hookedLinked([NUDGE]);
+	assert siteChain(m, "VPhase") == "nudge(phase)";
+	assert irErrors(m).length == 0;
+	const vs = printed(m, ShaderTarget.Wgsl, "hookedVs.wgsl", 0);
+	assert vs.includes("fn nudge(") && vs.includes("return nudge(phase);");
+	assert !printed(m, ShaderTarget.Wgsl, "hookedFs.wgsl", 1).includes("nudge");
+}
+
+test "a vertex effect and a fragment effect each land in their own stage" {
+	const m = hookedLinked([NUDGE, COLOUR_ADD]);
+	assert siteChain(m, "VPhase") == "nudge(phase)" && siteChain(m, "Shaded") == "colourAdd(phase)";
+	assert irErrors(m).length == 0;
+	const vs = printed(m, ShaderTarget.Wgsl, "hookedTintVs.wgsl", 0);
+	const fs = printed(m, ShaderTarget.Wgsl, "hookedTintFs.wgsl", 1);
+	assert vs.includes("return nudge(phase);") && !vs.includes("colourAdd");
+	assert fs.includes("return colourAdd(phase);") && !fs.includes("nudge");
+}
+
+struct DetailStage {
+	base: Vec2f;
+	detail: Vec2f;
+}
+
+struct ExtraStage {
+	base: Vec2f;
+	extra: Vec2f;
+}
+
+struct LayerPlaced {
+	@builtin(position) clip: Vec4f;
+	a: Vec2f;
+	b: Vec2f;
+	c: Vec2f;
+}
+
+struct LayerPixel {
+	@builtin(position) position: Vec4f;
+	a: Vec2f;
+	b: Vec2f;
+	c: Vec2f;
+}
+
+function layerVs(input: Corner): LayerPlaced {
+	return {
+		clip: vec4f(input.position.x, input.position.y, 0.0, 1.0),
+		a: input.position,
+		b: vec2f(input.position.y, input.position.x),
+		c: input.position * 2.0,
+	};
+}
+
+function layerFs(input: LayerPixel): Vec4f {
+	const first: DetailStage = { base: input.a, detail: input.b };
+	const detailed = hook(first);
+	const second: ExtraStage = { base: detailed.base, extra: input.c };
+	const layered = hook(second);
+	return vec4f(layered.base.x, layered.base.y, 0.0, 1.0);
+}
+
+function layerDetail(stage: DetailStage): DetailStage {
+	return { base: stage.base + stage.detail, detail: stage.detail };
+}
+
+function layerExtra(stage: ExtraStage): ExtraStage {
+	return { base: stage.base + stage.extra, extra: stage.extra };
+}
+
+const LAYER_DETAIL = glslSegmentIr(layerDetail);
+const LAYER_EXTRA = glslSegmentIr(layerExtra);
+
+function layerBase(): ShaderModule {
+	const m = programModule(glslIr(layerVs), glslLinkedIr(layerFs, layerVs), []);
+	return m.ok ? m.value : new ShaderModule();
+}
+
+function layerLinked(effect: string): ShaderModule {
+	const m = link(layerBase(), [moduleOf(effect)]);
+	return m.ok ? m.value : new ShaderModule();
+}
+
+test "two programs on one base each keep the varyings their own fragment reads" {
+	const detail = layerLinked(LAYER_DETAIL);
+	const extra = layerLinked(LAYER_EXTRA);
+	assert iosOf(detail) ==
+		"vs in position,vs out clip,vs out a,vs out b,fs in position,fs in a,fs in b,fs out fragColor";
+	assert iosOf(extra) ==
+		"vs in position,vs out clip,vs out a,vs out c,fs in position,fs in a,fs in c,fs out fragColor";
+	const outputs = "struct main_out {\n  @builtin(position) clip : vec4f,\n  @location(0) a : vec2f,\n";
+	assert printed(detail, ShaderTarget.Wgsl, "layerDetailVs.wgsl", 0)
+		.includes(outputs + "  @location(1) b : vec2f,\n}");
+	assert printed(extra, ShaderTarget.Wgsl, "layerExtraVs.wgsl", 0)
+		.includes(outputs + "  @location(1) c : vec2f,\n}");
+}
+
+test "a dropped varying whose stored value has an effect is refused" {
+	let base = layerBase();
+	const c = base.ios.findIndex((io) => io.stage == ShaderStage.Vertex && io.name == "c");
+	const vs = base.functions.find((f) => f.name == "layerVs");
+	assert c >= 0 && vs != null;
+	if (vs == null) { return; }
+	let stores = 0;
+	for (const s of vs.body) {
+		const root = rootOf(s.target);
+		if (s.kind != StmtKind.Assign || root.kind != ExprKind.Io || root.index != c) { continue; }
+		let add = exprOf(ExprKind.Intrinsic, s.expr.type, -1, [s.expr]);
+		add.intrinsic = Intrinsic.AtomicAdd;
+		s.expr = add;
+		stores++;
+	}
+	assert stores == 1;
+	assert refusal(base, [moduleOf(LAYER_DETAIL)]) ==
+		"link: varying 'c' is read by no fragment, and the value its vertex stores has an effect";
 }
