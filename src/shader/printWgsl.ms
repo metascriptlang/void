@@ -32,6 +32,7 @@ import {
 	isEffect,
 	isPredeclaredResult,
 	isDepthShape,
+	isComparisonSampler,
 } from "./ir";
 import { BindingSlot } from "./layout";
 import { builtinType, ioLocation } from "./irWalk";
@@ -445,8 +446,7 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 			"a layer, a depth reference, and an optional constant offset");
 	}
 	if (!level) { p.derivatives = true; }
-	const sampler = o[1].kind == ExprKind.Resource ? p.module.resources[o[1].index] : null;
-	if (sampler === null || sampler.samplerType != SamplerType.Comparison) {
+	if (!isComparisonSampler(p.module, o[1])) {
 		return refusal(p, name + " through a sampler that is no comparison sampler binding");
 	}
 	if (!isDepthShape(o[0].type.shape)) {

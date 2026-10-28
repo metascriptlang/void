@@ -9,7 +9,6 @@ import {
 	IoDirection,
 	ResourceKind,
 	Sampling,
-	SamplerType,
 	ScalarKind,
 	ShaderEntry,
 	ShaderExpr,
@@ -37,6 +36,7 @@ import {
 	vectorType,
 	predeclaredMemberType,
 	isDepthShape,
+	isComparisonSampler,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
 import { builtinType, ioLocation } from "./irWalk";
@@ -1425,11 +1425,6 @@ function handle(p: Spirv, e: ShaderExpr): int32 {
 	return typed(p, OP_LOAD, typeId(p, e.type), [p.resourceVars[e.index]]);
 }
 
-function samplerKind(p: Spirv, e: ShaderExpr): SamplerType {
-	if (e.kind != ExprKind.Resource) { return SamplerType.Filtering; }
-	return p.module.resources[e.index].samplerType;
-}
-
 function sampledImage(p: Spirv, texture: ShaderExpr, sampler: ShaderExpr): int32 {
 	const image = handle(p, texture);
 	const s = handle(p, sampler);
@@ -1486,7 +1481,7 @@ function sample(p: Spirv, e: ShaderExpr): int32 {
 	if (t.shape == TextureShape.Multisampled2d) {
 		return refusal(p, name + " of a multisampled texture");
 	}
-	if (samplerKind(p, o[1]) == SamplerType.Comparison) {
+	if (isComparisonSampler(p.module, o[1])) {
 		return refusal(p, name + " through a comparison sampler");
 	}
 	const layered = isArrayTexture(t);
@@ -1527,7 +1522,7 @@ function compare(p: Spirv, e: ShaderExpr): int32 {
 		return refusal(p, name + " takes a texture, a sampler, coordinates, for an array texture " +
 			"a layer, a depth reference, and an optional constant offset");
 	}
-	if (o[1].kind != ExprKind.Resource || samplerKind(p, o[1]) != SamplerType.Comparison) {
+	if (!isComparisonSampler(p.module, o[1])) {
 		return refusal(p, name + " through a sampler that is no comparison sampler binding");
 	}
 	if (!isDepthShape(o[0].type.shape)) {

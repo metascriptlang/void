@@ -9,7 +9,6 @@ import {
 	IoDirection,
 	ResourceKind,
 	Sampling,
-	SamplerType,
 	ScalarKind,
 	ShaderExpr,
 	ShaderFunction,
@@ -33,6 +32,7 @@ import {
 	isEffect,
 	texelScalar,
 	isDepthShape,
+	isComparisonSampler,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
 import { builtinType, functionOrder, ioLocation, structOrder } from "./irWalk";
@@ -410,11 +410,6 @@ function texelCoordinate(p: Printer, at: ShaderExpr): string {
 	return "uint" + rows + "(" + exprText(p, at) + ")";
 }
 
-function isComparisonSampler(p: Printer, sampler: ShaderExpr): boolean {
-	return sampler.kind == ExprKind.Resource &&
-		p.module.resources[sampler.index].samplerType == SamplerType.Comparison;
-}
-
 function sampleText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	if (o.length < 3 || o[0].type.kind != ShaderTypeKind.Texture ||
@@ -425,7 +420,7 @@ function sampleText(p: Printer, e: ShaderExpr): string {
 	if (t.shape == TextureShape.Multisampled2d) {
 		return fail(p, "TextureSample of a multisampled texture");
 	}
-	if (isComparisonSampler(p, o[1])) {
+	if (isComparisonSampler(p.module, o[1])) {
 		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
 	}
 	let args = [exprText(p, o[1]), exprText(p, o[2])];
@@ -452,7 +447,7 @@ function gradientName(p: Printer, shape: TextureShape): string {
 function explicitSampleText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
-	if (isComparisonSampler(p, o[1])) {
+	if (isComparisonSampler(p.module, o[1])) {
 		return fail(p, e.intrinsic.toString() + " through a comparison sampler, which needs a " +
 			"depth reference");
 	}
@@ -483,7 +478,7 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 		return fail(p, name + " takes a texture, a sampler, coordinates, for an array texture a " +
 			"layer, a depth reference, and an optional constant offset");
 	}
-	if (!isComparisonSampler(p, o[1])) {
+	if (!isComparisonSampler(p.module, o[1])) {
 		return fail(p, name + " through a sampler that is no comparison sampler binding");
 	}
 	const shape = o[0].type.shape;

@@ -31,6 +31,7 @@ import {
 	isAtomic,
 	isUniformLoad,
 	isDepthShape,
+	isComparisonSampler,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import {
@@ -666,8 +667,7 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 	if (texture.type.shape == TextureShape.Multisampled2d) {
 		return fail(p, "TextureSample of a multisampled texture");
 	}
-	if (sampler.kind == ExprKind.Resource &&
-		p.module.resources[sampler.index].samplerType == SamplerType.Comparison) {
+	if (isComparisonSampler(p.module, sampler)) {
 		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
 	}
 	if (p.stage != ShaderStage.Fragment) {
@@ -681,8 +681,7 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
-	if (o[1].kind == ExprKind.Resource &&
-		p.module.resources[o[1].index].samplerType == SamplerType.Comparison) {
+	if (isComparisonSampler(p.module, o[1])) {
 		return fail(p, e.intrinsic.toString() + " through a comparison sampler, which needs a " +
 			"depth reference");
 	}
@@ -714,8 +713,7 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 		sampler.type.kind != ShaderTypeKind.Sampler) {
 		return fail(p, name + " takes a texture and a sampler first");
 	}
-	if (sampler.kind != ExprKind.Resource ||
-		p.module.resources[sampler.index].samplerType != SamplerType.Comparison) {
+	if (!isComparisonSampler(p.module, sampler)) {
 		return fail(p, name + " through a sampler that is no comparison sampler binding");
 	}
 	if (!isDepthShape(texture.type.shape)) {
