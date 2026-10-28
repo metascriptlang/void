@@ -6902,6 +6902,22 @@ Pinned in `litShaderCheck.ms` (both sides, empty pairs) and `programKeyCheck.ms`
 and no refusal for an empty pair). `movingMaterial.ms` reads back a quad inside a near fade at
 about half alpha in both presets, GPU-green on D3D11; the featureless control draws it opaque.
 
+### Colour key: Heaps' ColorKey, as built (2026-10-29)
+
+Heaps' `ColorKey` (`h3d/shader/ColorKey.hx`) discards a pixel whose texture colour lies within
+1e-5 (squared rgba distance) of the key. void3d carries the key as one more vec4 in the moving
+block of a UV-transform key (`gpu3d.ms` `MOVING_COLOR_KEY`), read by `shader3d.ms` `colorKeyed`
+in the lit, unlit and pixel-art programs:
+
+- The test reads the texel the surface shows: after the flipbook and the back texture, before
+  the premultiplied texel is straightened, as Heaps reads `textureColor`.
+- A key whose alpha is 0 keys nothing, so the zeroed block stays off. Heaps keys transparent
+  black by default, but its one consumer, `h2d.Drawable.colorKey`, keys only opaque colours.
+
+Pinned in `litShaderCheck.ms` (the threshold, alpha, the zero key). `movingMaterial.ms` keys the
+red half of a red and green texture away in both presets, GPU-green on D3D11; the featureless
+control draws the red half.
+
 ### Trail: CPU history and ribbon checkpoint
 
 Apps sample a world pose/time into standalone `Trail` state and obtain `MeshData` through
