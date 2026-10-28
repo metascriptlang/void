@@ -190,10 +190,13 @@ function reflected(m: ShaderModule, target: ShaderTarget): string {
 
 // Copied from src/void2d/shader2dModules.ms blurShaderModule, one branch per target.
 function committed(bindings: GPUShaderBinding[], attributes: GPUShaderAttribute[]): string {
-	let r = new Reflection();
-	r.bindings = bindings;
-	r.attributes = attributes;
-	return describe(r);
+	return describe({
+		bindings,
+		attributes,
+		workgroupSize: [0, 0, 0],
+		readsVertexIndex: false,
+		readsInstanceIndex: false,
+	});
 }
 
 function committedWgsl(): string {
@@ -291,13 +294,20 @@ when (webgpu) {
 
 function hostDescriptor(): string {
 	const d = blurShaderModule();
-	let r = new Reflection();
+	let bindings: GPUShaderBinding[] = [];
 	for (const b of d.bindings) {
 		const kind: string = b.kind;
-		if (kind != "") { r.bindings.push(b); }
+		if (kind != "") { bindings.push(b); }
 	}
-	for (let i = 0; i < 2; i++) { r.attributes.push(d.attributes[i]); }
-	return describe(r);
+	let attributes: GPUShaderAttribute[] = [];
+	for (let i = 0; i < 2; i++) { attributes.push(d.attributes[i]); }
+	return describe({
+		bindings,
+		attributes,
+		workgroupSize: [0, 0, 0],
+		readsVertexIndex: false,
+		readsInstanceIndex: false,
+	});
 }
 
 test "the blur module holds every invariant" {

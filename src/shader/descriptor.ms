@@ -27,13 +27,13 @@ import { printWgsl } from "./printWgsl";
 import { Reflection, reflectCompute, reflectProgram } from "./reflect";
 import { specialize } from "./specialize";
 
-class Offsets {
-	structs: int32 = 0;
-	constants: int32 = 0;
-	resources: int32[] = [];
-	ios: int32[] = [];
-	functions: int32 = 0;
-	workgroups: int32 = 0;
+struct Offsets {
+	structs: int32;
+	constants: int32;
+	resources: int32[];
+	ios: int32[];
+	functions: int32;
+	workgroups: int32;
 }
 
 function shiftType(o: Offsets, t: ShaderType): void {
@@ -84,16 +84,20 @@ function sameResourceType(m: ShaderModule, a: ShaderType, b: ShaderType): boolea
 
 function append(into: ShaderModule, from: ShaderModule): void {
 	const stage = from.entries[0].stage;
-	let o = new Offsets();
-	o.structs = into.structs.length as int32;
-	o.constants = into.constants.length as int32;
 	let next = into.ios.length as int32;
+	let ios: int32[] = [];
 	for (const io of from.ios) {
-		o.ios.push(io.stage == stage ? next : -1);
+		ios.push(io.stage == stage ? next : -1);
 		if (io.stage == stage) { next++; }
 	}
-	o.functions = into.functions.length as int32;
-	o.workgroups = into.workgroups.length as int32;
+	let o: Offsets = {
+		structs: into.structs.length as int32,
+		constants: into.constants.length as int32,
+		resources: [],
+		ios,
+		functions: into.functions.length as int32,
+		workgroups: into.workgroups.length as int32,
+	};
 	for (const s of from.structs) {
 		for (const f of s.members) { shiftType(o, f.type); }
 		into.structs.push(s);
@@ -228,29 +232,25 @@ export function targetName(target: ShaderTarget): string {
 	};
 }
 
-class TargetArm {
-	language: string = "";
-	target: ShaderTarget = ShaderTarget.Wgsl;
-	anyOfAll: string[][] = [];
-}
-
-function arm(language: string, target: ShaderTarget, anyOfAll: string[][]): TargetArm {
-	let out = new TargetArm();
-	out.language = language;
-	out.target = target;
-	out.anyOfAll = anyOfAll;
-	return out;
+struct TargetArm {
+	language: string;
+	target: ShaderTarget;
+	anyOfAll: string[][];
 }
 
 export function targetArms(): TargetArm[] {
 	return [
-		arm("spirv", ShaderTarget.Spirv, [["voidVulkan"]]),
-		arm("wgsl", ShaderTarget.Wgsl, [["webgpu"]]),
-		arm("glsl300es", ShaderTarget.Glsl300es, [["webgl2"], ["android"], ["linux", "voidGles3"]]),
-		arm("metal_ios", ShaderTarget.Msl, [["ios"]]),
-		arm("metal_macos", ShaderTarget.Msl, [["macos"]]),
-		arm("glsl430", ShaderTarget.Glsl430, [["voidGlCore"], ["linux"]]),
-		arm("hlsl5", ShaderTarget.Hlsl5, [["windows"]]),
+		{ language: "spirv", target: ShaderTarget.Spirv, anyOfAll: [["voidVulkan"]] },
+		{ language: "wgsl", target: ShaderTarget.Wgsl, anyOfAll: [["webgpu"]] },
+		{
+			language: "glsl300es",
+			target: ShaderTarget.Glsl300es,
+			anyOfAll: [["webgl2"], ["android"], ["linux", "voidGles3"]],
+		},
+		{ language: "metal_ios", target: ShaderTarget.Msl, anyOfAll: [["ios"]] },
+		{ language: "metal_macos", target: ShaderTarget.Msl, anyOfAll: [["macos"]] },
+		{ language: "glsl430", target: ShaderTarget.Glsl430, anyOfAll: [["voidGlCore"], ["linux"]] },
+		{ language: "hlsl5", target: ShaderTarget.Hlsl5, anyOfAll: [["windows"]] },
 	];
 }
 
@@ -312,7 +312,13 @@ export function wordsBase64(words: uint32[]): string {
 }
 
 export class ProgramSource {
-	reflection: Reflection = new Reflection();
+	reflection: Reflection = {
+		bindings: [],
+		attributes: [],
+		workgroupSize: [0, 0, 0],
+		readsVertexIndex: false,
+		readsInstanceIndex: false,
+	};
 	vertexCode: string = "";
 	fragmentCode: string = "";
 	computeCode: string = "";

@@ -35,12 +35,12 @@ import { DUMMY_SAMPLER_BINDING } from "../webgpu/types.ms";
 const MAX_REFLECTED_BINDINGS = 24;
 const MAX_REFLECTED_ATTRIBUTES = 16;
 
-export class Reflection {
-	bindings: GPUShaderBinding[] = [];
-	attributes: GPUShaderAttribute[] = [];
-	workgroupSize: int32[] = [0, 0, 0];
-	readsVertexIndex: boolean = false;
-	readsInstanceIndex: boolean = false;
+export struct Reflection {
+	bindings: GPUShaderBinding[];
+	attributes: GPUShaderAttribute[];
+	workgroupSize: int32[];
+	readsVertexIndex: boolean;
+	readsInstanceIndex: boolean;
 }
 
 function kindName(kind: ResourceKind): GPUShaderBindingKind {
@@ -197,43 +197,40 @@ function entryOf(m: ShaderModule, index: int32, stage: ShaderStage): Result<int3
 	return Result.ok(index);
 }
 
-function bindingsOf(m: ShaderModule, entries: int32[], target: ShaderTarget,
-	out: Reflection): Result<int32, string> {
+function bindingsOf(m: ShaderModule, entries: int32[], target: ShaderTarget):
+	Result<GPUShaderBinding[], string> {
 	const slots = try bindingSlots(m, entries, target);
+	let bindings: GPUShaderBinding[] = [];
 	for (const s of slots) {
 		const b = try bindingOf(m, s);
-		const held = out.bindings.findIndex((h) => h.group == b.group &&
+		const held = bindings.findIndex((h) => h.group == b.group &&
 			h.binding == b.binding && h.kind == b.kind &&
 			h.textureBinding == b.textureBinding && h.nativeName == b.nativeName);
 		if (held < 0) {
-			out.bindings.push(b);
-		} else if (out.bindings[held].nativeSlot != b.nativeSlot) {
+			bindings.push(b);
+		} else if (bindings[held].nativeSlot != b.nativeSlot) {
 			return Result.err("internal: binding " + String(b.binding) + " sits at native slot " +
-				String(out.bindings[held].nativeSlot) + " in one stage and " +
+				String(bindings[held].nativeSlot) + " in one stage and " +
 				String(b.nativeSlot) + " in another");
 		} else {
-			out.bindings[held].visibility = out.bindings[held].visibility | b.visibility;
+			bindings[held].visibility = bindings[held].visibility | b.visibility;
 		}
 	}
-	if (out.bindings.length > MAX_REFLECTED_BINDINGS) {
-		return Result.err("the program reads " + String(out.bindings.length) + " bindings, more " +
+	if (bindings.length > MAX_REFLECTED_BINDINGS) {
+		return Result.err("the program reads " + String(bindings.length) + " bindings, more " +
 			"than " + String(MAX_REFLECTED_BINDINGS));
 	}
-	return Result.ok(out.bindings.length as int32);
+	return Result.ok(bindings);
 }
 
 // HLSL reads attribute n at TEXCOORD<n> (sokol-shdc src/shdc/reflection.cc sem_index = slot).
 export function reflectProgram(m: ShaderModule, vertex: int32, fragment: int32,
 	target: ShaderTarget): Result<Reflection, string> {
-	let out = new Reflection();
 	const v = try entryOf(m, vertex, ShaderStage.Vertex);
 	const f = try entryOf(m, fragment, ShaderStage.Fragment);
-	const _count = try bindingsOf(m, [v, f], target, out);
+	const bindings = try bindingsOf(m, [v, f], target);
 	const gl = target == ShaderTarget.Glsl430 || target == ShaderTarget.Glsl300es;
-	out.readsVertexIndex = m.ios.some((io) => io.stage == ShaderStage.Vertex &&
-		io.builtin == Builtin.VertexIndex);
-	out.readsInstanceIndex = m.ios.some((io) => io.stage == ShaderStage.Vertex &&
-		io.builtin == Builtin.InstanceIndex);
+	let attributes: GPUShaderAttribute[] = [];
 	let ordinal = 0;
 	for (const io of m.ios) {
 		if (io.stage != ShaderStage.Vertex || io.direction != IoDirection.In ||
@@ -247,20 +244,32 @@ export function reflectProgram(m: ShaderModule, vertex: int32, fragment: int32,
 			semanticIndex: target == ShaderTarget.Hlsl5 ? location : 0,
 		};
 		if (gl) { a.nativeName = io.name; } else { a.nativeName = null; }
-		out.attributes.push(a);
+		attributes.push(a);
 	}
-	if (out.attributes.length > MAX_REFLECTED_ATTRIBUTES) {
-		return Result.err("the vertex entry has " + String(out.attributes.length) +
+	if (attributes.length > MAX_REFLECTED_ATTRIBUTES) {
+		return Result.err("the vertex entry has " + String(attributes.length) +
 			" attributes, more than " + String(MAX_REFLECTED_ATTRIBUTES));
 	}
-	return Result.ok(out);
+	return Result.ok({
+		bindings,
+		attributes,
+		workgroupSize: [0, 0, 0],
+		readsVertexIndex: m.ios.some((io) => io.stage == ShaderStage.Vertex &&
+			io.builtin == Builtin.VertexIndex),
+		readsInstanceIndex: m.ios.some((io) => io.stage == ShaderStage.Vertex &&
+			io.builtin == Builtin.InstanceIndex),
+	});
 }
 
 export function reflectCompute(m: ShaderModule, compute: int32, target: ShaderTarget):
 	Result<Reflection, string> {
-	let out = new Reflection();
 	const c = try entryOf(m, compute, ShaderStage.Compute);
-	const _count = try bindingsOf(m, [c], target, out);
-	out.workgroupSize = m.entries[c].workgroupSize.map((n) => n);
-	return Result.ok(out);
+	const bindings = try bindingsOf(m, [c], target);
+	return Result.ok({
+		bindings,
+		attributes: [],
+		workgroupSize: m.entries[c].workgroupSize.map((n) => n),
+		readsVertexIndex: false,
+		readsInstanceIndex: false,
+	});
 }
