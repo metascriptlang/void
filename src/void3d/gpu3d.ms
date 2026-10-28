@@ -583,8 +583,8 @@ export const MATERIAL_COLOR: int32 = 4;
 export const UNLIT_MATERIAL_UNIFORM_LENGTH: int32 = 8;
 export const UNLIT_MATERIAL_COLOR: int32 = 4;
 // A moving key's block (movingMaterialParams / movingUnlitMaterialParams in shader3d.ms):
-// its program's block, then six vec4 at movingBase(key) plus these offsets, whichever of the
-// three features the key reads. UV transform: Bevy's Affine2, the 2x2 matrix by columns, then
+// its program's block, then eight vec4 at movingBase(key) plus these offsets, whichever of the
+// features the key reads. UV transform: Bevy's Affine2, the 2x2 matrix by columns, then
 // the translation and Heaps' UVScroll speed in UV units per second of the frame's time.
 export const MOVING_UV_MATRIX: int32 = 0;
 export const MOVING_UV_OFFSET: int32 = 4;
@@ -597,7 +597,26 @@ export const MOVING_BACK_UV_OFFSET: int32 = 12;
 export const MOVING_DISSOLVE_THRESHOLD: int32 = 16;
 export const MOVING_DISSOLVE_EDGE_WIDTH: int32 = 17;
 export const MOVING_DISSOLVE_EDGE_COLOR: int32 = 20;
-export const MOVING_LENGTH: int32 = 24;
+// A UV-transform key's flipbook, Heaps' AnimatedTexture over the moved UV: the grid's columns and
+// rows, the frame count (0 leaves the base texture unanimated) and frames per second, then the
+// start time in the frame's seconds, the start frame, 1 to loop (else hold the last frame) and 1
+// to mix the next frame in by the fraction elapsed.
+export const MOVING_FLIPBOOK_COLUMNS: int32 = 24;
+export const MOVING_FLIPBOOK_ROWS: int32 = 25;
+export const MOVING_FLIPBOOK_FRAMES: int32 = 26;
+export const MOVING_FLIPBOOK_SPEED: int32 = 27;
+export const MOVING_FLIPBOOK_START_TIME: int32 = 28;
+export const MOVING_FLIPBOOK_START_FRAME: int32 = 29;
+export const MOVING_FLIPBOOK_LOOP: int32 = 30;
+export const MOVING_FLIPBOOK_BLEND: int32 = 31;
+// A UV-transform key's distance fade, Heaps' DistanceFade on the distance to the camera: alpha
+// rises from 0 to 1 between the near start and end and falls back to 0 between the far start and
+// end. A side whose end is not past its start is unfaded.
+export const MOVING_FADE_NEAR_START: int32 = 32;
+export const MOVING_FADE_NEAR_END: int32 = 33;
+export const MOVING_FADE_FAR_START: int32 = 34;
+export const MOVING_FADE_FAR_END: int32 = 35;
+export const MOVING_LENGTH: int32 = 36;
 export const MOVING_MATERIAL_UNIFORM_LENGTH: int32 = MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH;
 export const MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH: int32 =
 	UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH;
@@ -615,10 +634,11 @@ export const EMISSIVE_COLOR: int32 = 0;
 export const EMISSIVE_STRENGTH: int32 = 3;
 export const EMISSIVE_LENGTH: int32 = 4;
 // The scene's frame block (binding=6, shader3d.ms FrameParams): Heaps' `global.time`
-// in seconds at FRAME_TIME, read by a key with a UV transform, and at FRAME_EXPOSURE the linear
-// multiplier every scene program's colour is exposed by (toneMap); at FRAME_LINEAR 1 when the pass
-// draws into an HDR target, where every scene program writes its colour linear and unexposed; at
-// FRAME_TONE_MODE the curve (renderer.ms ToneMode) the exposed colour goes through.
+// in seconds at FRAME_TIME, read by a key with a UV transform or a flipbook, and at
+// FRAME_EXPOSURE the linear multiplier every scene program's colour is exposed by (toneMap); at
+// FRAME_LINEAR 1 when the pass draws into an HDR target, where every scene program writes its
+// colour linear and unexposed; at FRAME_TONE_MODE the curve (renderer.ms ToneMode) the exposed
+// colour goes through.
 export const FRAME_UNIFORM_SLOT: int32 = 6;
 export const FRAME_UNIFORM_LENGTH: int32 = 12;
 export const FRAME_TIME: int32 = 0;

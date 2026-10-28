@@ -6863,6 +6863,56 @@ Dropping the miter's `1 / (n · n1)` turns the open-polyline and closed-loop tes
 
 Next: a GPU readback of a strip's width and colour, queued with the line golden's kind.
 
+### Flipbooks: Heaps' AnimatedTexture, as built (2026-10-28)
+
+Heaps' `AnimatedTexture` (`h3d/shader/AnimatedTexture.hx`) reads a mesh's texture as a grid
+of frames, played `speed` frames a second from `startTime`. It loops over `totalFrames` or
+holds the last frame, and by default mixes the next frame in by the fraction elapsed. void3d
+carries it in the moving block of a UV-transform key (`gpu3d.ms` `MOVING_FLIPBOOK_*`), so it
+needs no new program key:
+
+- `shader3d.ms` `flipbookUvs` and `flipbookBlend` hold the vertex function's frame math. The
+  base texture is read at that frame, and a second time at the next frame when the blend is
+  above 0, in the lit, unlit and pixel-art programs.
+- The frame count 0 is the off state, so a zero-filled moving block (glTF, world labels) reads
+  its texture as before.
+- `renderer.ms` `readsFrameTime` wakes the core while a flipbook has frames and a speed.
+- Heaps' `loop` and `blendBetweenFrames` are compile-time constants; here they are floats in the
+  block, which gives the same result.
+- `useSourceUVs` has no slot. The flipbook reads the moved UV, which is the source UV while the
+  transform is the identity.
+- Normal and emissive maps keep the moved UV, as Heaps' other shaders keep `calculatedUV`.
+
+A pbr key has no flipbook: its block carries its own UV transform, and a pbr material with a UV
+transform is refused.
+
+Pinned on the CPU in `litShaderCheck.ms` (frame walk, wrap, hold, start frame and time, blend)
+and `rendererCheck.ms` (wake). Making a non-looping flipbook loop turns the hold test red.
+
+`tests/integration/movingMaterial.ms` reads back a two-frame flipbook with and without the
+blend in both presets, GPU-green on D3D11; the featureless control fails on each.
+
+### Distance fade: Heaps' DistanceFade, as built (2026-10-28)
+
+Heaps' `DistanceFade` (`h3d/shader/DistanceFade.hx`) scales a pixel's alpha by its distance
+to the camera. The alpha rises from 0 to 1 between `nearMinFade` and `nearMaxFade`, falls back
+to 0 between `farMinFade` and `farMaxFade`, and the smaller of the two sides wins. void3d
+carries it beside the flipbook, in the moving block of a UV-transform key (`gpu3d.ms`
+`MOVING_FADE_*`):
+
+- `shader3d.ms` `distanceFade` runs after the cutout test in the lit, unlit and pixel-art
+  programs, so a cut material discards on its unfaded alpha. Unlit textured UV-transform
+  programs carry a world-position varying for it.
+- Heaps' `nearFadeEnabled` and `farFadeEnabled` are a side whose end lies past its start.
+  Heaps divides by zero on an enabled side with equal ends; void3d reads that side as off.
+- The distance is measured from `setCameraPosition`, and `beginFrame` refuses a fading
+  material with `RendererError.CameraPosition` until it is set, as it refuses a pbr key.
+- The fade shows only through blending, as in Heaps: draw the material in the alpha phase.
+
+Pinned in `litShaderCheck.ms` (both sides, empty pairs) and `programKeyCheck.ms` (the refusal,
+and no refusal for an empty pair). `movingMaterial.ms` reads back a quad inside a near fade at
+about half alpha in both presets, GPU-green on D3D11; the featureless control draws it opaque.
+
 ### Trail: CPU history and ribbon checkpoint
 
 Apps sample a world pose/time into standalone `Trail` state and obtain `MeshData` through

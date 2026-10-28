@@ -28,6 +28,8 @@ import {
 	dpdy,
 	exp2,
 	feature,
+	floor,
+	fract,
 	inverse,
 	length,
 	location,
@@ -46,6 +48,7 @@ import {
 	textureSample,
 	textureSampleLevel,
 	transpose,
+	trunc,
 	upperLeft3x3,
 	vec2f,
 	vec2i,
@@ -191,6 +194,7 @@ export struct LitTexturedFragmentInput {
 
 export struct UnlitTexturedVaryings {
 	@feature(NORMAL_MRT) worldNormal: Vec3f;
+	@feature(UV_TRANSFORM) worldPosition: Vec3f;
 	surfaceUv: Vec2f;
 	baseColor: Vec4f;
 	@builtin(position) clip: Vec4f;
@@ -198,6 +202,7 @@ export struct UnlitTexturedVaryings {
 
 export struct UnlitTexturedFragmentInput {
 	@feature(NORMAL_MRT) worldNormal: Vec3f;
+	@feature(UV_TRANSFORM) worldPosition: Vec3f;
 	surfaceUv: Vec2f;
 	baseColor: Vec4f;
 	@builtin(frontFacing) frontFacing: boolean;
@@ -215,8 +220,8 @@ export struct MaterialParams {
 	materialColor: Vec4f;
 }
 
-// gpu3d.ms MOVING_*: materialParams, then what a key with a UV transform, a back texture or a
-// dissolve reads; the emissive blocks add the emissive vec4 (gpu3d.ms emissiveBase).
+// gpu3d.ms MOVING_*: materialParams, then what a key with a UV transform, a back texture, a
+// dissolve or a flipbook reads; the emissive blocks add the emissive vec4 (gpu3d.ms emissiveBase).
 export struct MovingMaterialParams {
 	material: Vec4f;
 	materialColor: Vec4f;
@@ -226,6 +231,9 @@ export struct MovingMaterialParams {
 	backUvOffset: Vec4f;
 	dissolve: Vec4f;
 	dissolveEdge: Vec4f;
+	flipbookGrid: Vec4f;
+	flipbookPlay: Vec4f;
+	distanceFade: Vec4f;
 }
 
 // gpu3d.ms PBR_*: materialParams, then metalness, roughness and occlusion in x, y and z, then the
@@ -265,6 +273,9 @@ export struct MovingEmissiveMaterialParams {
 	backUvOffset: Vec4f;
 	dissolve: Vec4f;
 	dissolveEdge: Vec4f;
+	flipbookGrid: Vec4f;
+	flipbookPlay: Vec4f;
+	distanceFade: Vec4f;
 	emissive: Vec4f;
 }
 
@@ -282,6 +293,9 @@ export struct MovingUnlitMaterialParams {
 	backUvOffset: Vec4f;
 	dissolve: Vec4f;
 	dissolveEdge: Vec4f;
+	flipbookGrid: Vec4f;
+	flipbookPlay: Vec4f;
+	distanceFade: Vec4f;
 }
 
 export struct LightParams {
@@ -795,17 +809,21 @@ export function unlitTexturedVs(
 ): UnlitTexturedVaryings {
 	if (key.skinned) {
 		const matrix = skinWorld(b, input.skinJoints, input.skinWeights);
+		const world = matrix * vec4f(input.position, 1.0);
 		return {
-			clip: b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0),
+			clip: b.vertexParams.viewProj * world,
 			worldNormal: skinNormal(matrix, input.normal),
+			worldPosition: world.xyz,
 			surfaceUv: input.uv,
 			baseColor: input.color,
 		};
 	} else {
 		const matrix = instanceWorld(input.instanceRow0, input.instanceRow1, input.instanceRow2);
+		const world = matrix * vec4f(input.position, 1.0);
 		return {
-			clip: b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0),
+			clip: b.vertexParams.viewProj * world,
 			worldNormal: skinNormal(matrix, input.normal),
+			worldPosition: world.xyz,
 			surfaceUv: input.uv,
 			baseColor: input.color * input.instanceColor,
 		};
@@ -1193,6 +1211,41 @@ export function movedUv(uv: Vec2f, matrix: Vec4f, motion: Vec4f, time: float32):
 	return mat2x2f(matrix.xy, matrix.zw) * uv + motion.xy + motion.zw * time;
 }
 
+// h3d.shader.AnimatedTexture over `uv`: the frame `grid.w` frames a second after `play.x`, from
+// frame `play.y`, looped over `grid.z` frames when `play.z` is 1, else held on the last, read
+// from a `grid.x` by `grid.y` grid; xy is that frame's UV and zw the next frame's.
+export function flipbookUvs(uv: Vec2f, grid: Vec4f, play: Vec4f, time: float32): Vec4f {
+	const frame = floor((time - play.x) * grid.w + trunc(play.y));
+	const looped = frame - grid.z * floor(frame / grid.z);
+	const nextLooped = (looped + 1.0) - grid.z * floor((looped + 1.0) / grid.z);
+	const at = play.z == 1.0 ? looped : min(frame, grid.z - 1.0);
+	const next = play.z == 1.0 ? nextLooped : min(frame + 1.0, grid.z - 1.0);
+	const cell = uv / grid.xy;
+	const atCell = vec2f(at - grid.x * floor(at / grid.x), trunc(at / grid.x)) / grid.xy;
+	const nextCell = vec2f(next - grid.x * floor(next / grid.x), trunc(next / grid.x)) / grid.xy;
+	return vec4f(cell + atCell, cell + nextCell);
+}
+
+// How far AnimatedTexture's blendBetweenFrames mixes the next frame in: the elapsed fraction of
+// the current frame when `play.w` is 1, else 0.
+export function flipbookBlend(grid: Vec4f, play: Vec4f, time: float32): float32 {
+	return play.w == 1.0 ? fract((time - play.x) * grid.w + trunc(play.y)) : 0.0;
+}
+
+// h3d.shader.DistanceFade: Heaps' nearFadeEnabled and farFadeEnabled are each side's end lying
+// past its start (gpu3d.ms MOVING_FADE_*).
+export function distanceFade(distance: float32, range: Vec4f): float32 {
+	let near: float32 = 1.0;
+	let far: float32 = 1.0;
+	if (range.y > range.x) {
+		near = clamp((distance - range.x) / (range.y - range.x), 0.0, 1.0);
+	}
+	if (range.w > range.z) {
+		far = 1.0 - clamp((distance - range.z) / (range.w - range.z), 0.0, 1.0);
+	}
+	return min(near, far);
+}
+
 // The back texture is read on back faces through its own transform.
 export function backUv(uv: Vec2f, matrix: Vec4f, offset: Vec4f): Vec2f {
 	return mat2x2f(matrix.xy, matrix.zw) * uv + offset.xy;
@@ -1371,6 +1424,30 @@ export function dissolveOf(b: LitBindings, key: LitKey): Vec4f {
 		return b.movingEmissiveMaterialParams.dissolve;
 	} else {
 		return b.movingMaterialParams.dissolve;
+	}
+}
+
+export function flipbookGridOf(b: LitBindings, key: LitKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.flipbookGrid;
+	} else {
+		return b.movingMaterialParams.flipbookGrid;
+	}
+}
+
+export function flipbookPlayOf(b: LitBindings, key: LitKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.flipbookPlay;
+	} else {
+		return b.movingMaterialParams.flipbookPlay;
+	}
+}
+
+export function distanceFadeOf(b: LitBindings, key: LitKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.distanceFade;
+	} else {
+		return b.movingMaterialParams.distanceFade;
 	}
 }
 
@@ -1903,7 +1980,24 @@ export function litTexturedFs(
 		uv = parallaxUv(b, uv, view, normalize(input.worldNormal), input.worldTangent,
 			materialOf(b, key).x, parallaxStepsOf(b, key));
 	}
-	let texel = textureSample(b.baseTexture, b.baseSampler, uv);
+	let baseUv = uv;
+	let nextUv = uv;
+	let blend: float32 = 0.0;
+	if (key.uvTransform) {
+		const grid = flipbookGridOf(b, key);
+		const play = flipbookPlayOf(b, key);
+		if (grid.z > 0.0) {
+			const time = b.frameParams.frame.x;
+			const frames = flipbookUvs(uv, grid, play, time);
+			baseUv = frames.xy;
+			nextUv = frames.zw;
+			blend = flipbookBlend(grid, play, time);
+		}
+	}
+	let texel = textureSample(b.baseTexture, b.baseSampler, baseUv);
+	if (blend > 0.0) {
+		texel = mix(texel, textureSample(b.baseTexture, b.baseSampler, nextUv), blend);
+	}
 	if (key.backTexture) {
 		const backAt = backUv(input.surfaceUv, backUvMatrixOf(b, key), backUvOffsetOf(b, key));
 		const backTexel = textureSample(b.backTexture, b.baseSampler, backAt);
@@ -1957,6 +2051,11 @@ export function litTexturedFs(
 		if (shaded.a < params.w) {
 			discard();
 		}
+	}
+	if (key.uvTransform) {
+		const eye = b.frameParams.cameraPosition.xyz;
+		const fade = distanceFade(length(input.worldPosition - eye), distanceFadeOf(b, key));
+		shaded = vec4f(shaded.rgb, shaded.a * fade);
 	}
 	let color = vec4f(toneMapped(shaded.rgb, b.frameParams.frame), shaded.a);
 	if (key.premultiplied) {
@@ -2025,7 +2124,24 @@ export function unlitTexturedFs(
 		const motion = b.movingUnlitMaterialParams.uvMotion;
 		uv = movedUv(input.surfaceUv, matrix, motion, b.frameParams.frame.x);
 	}
-	let texel = textureSample(b.baseTexture, b.baseSampler, uv);
+	let baseUv = uv;
+	let nextUv = uv;
+	let blend: float32 = 0.0;
+	if (key.uvTransform) {
+		const grid = b.movingUnlitMaterialParams.flipbookGrid;
+		const play = b.movingUnlitMaterialParams.flipbookPlay;
+		if (grid.z > 0.0) {
+			const time = b.frameParams.frame.x;
+			const frames = flipbookUvs(uv, grid, play, time);
+			baseUv = frames.xy;
+			nextUv = frames.zw;
+			blend = flipbookBlend(grid, play, time);
+		}
+	}
+	let texel = textureSample(b.baseTexture, b.baseSampler, baseUv);
+	if (blend > 0.0) {
+		texel = mix(texel, textureSample(b.baseTexture, b.baseSampler, nextUv), blend);
+	}
 	if (key.backTexture) {
 		const backMatrix = b.movingUnlitMaterialParams.backUvMatrix;
 		const backOffset = b.movingUnlitMaterialParams.backUvOffset;
@@ -2052,6 +2168,12 @@ export function unlitTexturedFs(
 		if (shaded.a < params.w) {
 			discard();
 		}
+	}
+	if (key.uvTransform) {
+		const eye = b.frameParams.cameraPosition.xyz;
+		const range = b.movingUnlitMaterialParams.distanceFade;
+		const fade = distanceFade(length(input.worldPosition - eye), range);
+		shaded = vec4f(shaded.rgb, shaded.a * fade);
 	}
 	let color = vec4f(toneMapped(shaded.rgb, b.frameParams.frame), shaded.a);
 	if (key.premultiplied) {
