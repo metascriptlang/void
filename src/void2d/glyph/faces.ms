@@ -510,9 +510,13 @@ export function void2dGlyphKern(face: int32, left: int32, right: int32, sizePx: 
 	if (!validFace(face)) { return 0.0; }
 	const f = faceAt(face);
 	if (f.sprite || f.browser) { return 0.0; }
+	const key: uint64 = (((left as uint32) as uint64) << 32) | ((right as uint32) as uint64);
+	const hit = f.kernUnits.get(key);
+	if (hit.present) { return (hit.value as float32) * void2dGlyphScale(face, sizePx); }
 	const units = f.kernLookups.length > 0
 		? gposKern(f.info, f.kernLookups, left, right)
 		: getGlyphKernInfoAdvance(f.info, left, right);
+	f.kernUnits.set(key, units);
 	return (units as float32) * void2dGlyphScale(face, sizePx);
 }
 
