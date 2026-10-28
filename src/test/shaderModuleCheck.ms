@@ -1,4 +1,6 @@
+import { glslIr, glslLinkedIr } from "../shader/emit";
 import { shaderModule } from "../shader/program";
+import { fragmentText } from "./shaderProbePrint";
 import { GPUShaderStage } from "../webgpu/types.ms";
 import {
 	Sampler,
@@ -88,13 +90,13 @@ test "shaderModule numbers bindings on the WGSL slots: blocks group 0, views gro
 }
 
 test "shaderModule spells a componentwise comparison while the macro prints it" {
-	const code = belowModule.fragmentCode;
+	const code = fragmentText(belowModule, glslIr(pictureVs), glslLinkedIr(belowFs, pictureVs));
 	assert code.includes("<") || code.includes("lessThan(");
 	assert !code.includes("null");
 }
 
 test "shaderModule folds a function's const of constants into the offset while the macro prints it" {
-	const code = nudgedModule.fragmentCode;
+	const code = fragmentText(nudgedModule, glslIr(pictureVs), glslLinkedIr(nudgedFs, pictureVs));
 	assert code.includes("vec2i(1i, (-1i))") || code.includes("int2(1, -1))") || code.includes("int2(1, (-1)))") ||
 		code.includes("ivec2(1, -1))"), code;
 }

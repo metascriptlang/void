@@ -2,10 +2,19 @@
 // out/<target>Probe/ for scripts/validateWgsl.sh, scripts/validateHlsl.sh, naga and spirv-val.
 
 import { Buffer } from "std/core/buffer";
-import { mkdir, writeFile } from "std/fs";
-import { stageSource, stageWords, wordsBase64 } from "../shader/descriptor";
+import { byteAt, byteLength } from "std/core/string/bytes";
+import { mkdir, readFile, writeFile } from "std/fs";
+import {
+	programModule,
+	programSource,
+	stageSource,
+	stageWords,
+	wordsBase64,
+} from "../shader/descriptor";
 import { ShaderModule } from "../shader/ir";
 import { ShaderTarget } from "../shader/layout";
+import { stageBlob } from "../shader/program";
+import { GPUShaderModuleDescriptor } from "../webgpu/types.ms";
 
 function probePath(target: ShaderTarget, name: string, stage: string): string {
 	const hlsl = stage == "comp" ? "cs" : stage == "frag" ? "ps" : "vs";
@@ -46,4 +55,21 @@ export function printedSpirv(m: ShaderModule, entry: int32, name: string): strin
 	const _written = writeFile("out/spirvProbe/" + name + ".spv",
 		Buffer.fromString(wordsBase64(words.value), "base64"));
 	return "";
+}
+
+// On a host with fxc the descriptor carries DXBC and no text: the text is then the one this binary
+// prints, and "" unless the descriptor's blob is the cache file that text keys.
+export function fragmentText(module: GPUShaderModuleDescriptor, vs: string, fs: string): string {
+	if (module.fragmentCode != "") { return module.fragmentCode; }
+	const m = programModule(vs, fs, []);
+	if (!m.ok) { return ""; }
+	const source = programSource(m.value, ShaderTarget.Hlsl5);
+	if (!source.ok) { return ""; }
+	const s = source.value;
+	const file = readFile(stageBlob("hlsl5", "fragment", s.fragmentCode, s.entryPoint, "").path);
+	if (!file.ok || file.value.byteLength() != module.fragmentBytecode.length) { return ""; }
+	for (let i = 0; i < module.fragmentBytecode.length; i++) {
+		if (module.fragmentBytecode[i] as int32 != file.value.byteAt(i) as int32) { return ""; }
+	}
+	return s.fragmentCode;
 }
