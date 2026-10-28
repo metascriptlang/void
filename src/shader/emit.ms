@@ -82,6 +82,7 @@ import {
 	Vec4f,
 	Vec4i,
 	Vec4u,
+	hook,
 } from "./std";
 
 import {
@@ -783,6 +784,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	const stdModule = typeNodes.stdModule;
 	const textureNode = getTypeImpl(Texture2d);
 	const samplerNode = getTypeImpl(Sampler);
+	const hookDecl = getImpl(bindSym("hook"))!;
 	const storageTextureNodes = [getTypeImpl(StorageTexture2d),
 		getTypeImpl(StorageTexture2dArray), getTypeImpl(StorageTexture3d),
 		getTypeImpl(StorageTexture2dU32), getTypeImpl(StorageTexture2dArrayU32),
@@ -1005,6 +1007,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	let storageResources: int32[] = [];
 	let storageElements: Node[] = [];
 	let storageSites: Node[] = [];
+	let hookedStructs: int32[] = [];
 	const resourceRead = 0;
 	const ioRead = 1;
 	const callRead = 2;
@@ -1937,9 +1940,35 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return binaryOf(binaryOps[binaryTexts.indexOf(op)], type, left, right);
 	}
 
+	function hookSite(n: Node, args: ShaderExpr[]): ShaderExpr {
+		if (segment) { fail(n, "hook: a segment is no base; an entry calls hook"); }
+		const type = valueType(getType(n), n);
+		if (type.kind != ShaderTypeKind.Struct) {
+			fail(n, "hook takes a phase struct, an author struct passed by value");
+		}
+		const phase = m.structs[type.structIndex].name;
+		if (hookedStructs.includes(type.structIndex)) {
+			fail(n, "hook: the base already hooks phase struct '" + phase +
+				"'; one hook site per phase struct");
+		}
+		hookedStructs.push(type.structIndex);
+		let f = new ShaderFunction();
+		f.name = phase;
+		f.params = [shaderField("phase", type)];
+		f.result = type;
+		f.body = [stmtOf(StmtKind.Return, exprOf(ExprKind.Param, type, 0, []), [])];
+		const index = addFunction(f);
+		use(callRead, index, n);
+		return exprOf(ExprKind.Call, type, index, args);
+	}
+
 	function builtinCall(n: Node, name: string): ShaderExpr {
 		let args: ShaderExpr[] = [];
 		for (const a of n.arguments) { args.push(lower(a)); }
+		const impl = getImpl(n.callee)!;
+		if (impl.line == hookDecl.line && impl.column == hookDecl.column) {
+			return hookSite(n, args);
+		}
 		const type = looseType(getType(n));
 		const made = constructors.indexOf(name);
 		if (name != "" && made >= 0) {
