@@ -1,6 +1,7 @@
 // Void native entry for the 2D batcher demo. Window/loop only.
 
 import { init2d, frame2d } from "./renderer2d";
+import "../host/gpuWindow";
 
 @include("../host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
