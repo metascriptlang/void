@@ -810,6 +810,7 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 	const key: LineEmitKey = {
 		world: world, col: col, scale: scale, shiftX: space.shiftX, shiftY: space.shiftY,
 		context: currentContext().id,
+		serial: currentContext().resetSerial,
 	};
 	const skips: boolean = lineEmits && writesLimited() && text.emitKey == key &&
 		sameRunColours(text);
