@@ -432,28 +432,20 @@ const CHAIN_HLSL =
 	"}\n";
 
 const CHAIN_REFLECTED =
-	"0/0 uniform -1,0/1 uniform -1
-" +
-	"0/0 uniform 0,0/1 uniform 1
-" +
-	"0/0 uniform -1 frame,0/1 uniform -1 tintParams
-" +
-	"0/0 uniform -1 frame,0/1 uniform -1 tintParams
-" +
+	"0/0 uniform -1,0/1 uniform -1\n" +
+	"0/0 uniform 0,0/1 uniform 1\n" +
+	"0/0 uniform -1 frame,0/1 uniform -1 tintParams\n" +
+	"0/0 uniform -1 frame,0/1 uniform -1 tintParams\n" +
 	"0/0 uniform 0,0/1 uniform 1";
 
 const DETAIL_REFLECTED =
 	"0/0 uniform -1,0/1 uniform -1,1/0 texture -1,1/1 texture -1,1/32 sampler -1," +
-	"1/33 sampler -1
-" +
-	"0/0 uniform 0,0/1 uniform 1,1/0 texture 0,1/1 texture 1,1/32 sampler 0,1/33 sampler 1
-" +
+	"1/33 sampler -1\n" +
+	"0/0 uniform 0,0/1 uniform 1,1/0 texture 0,1/1 texture 1,1/32 sampler 0,1/33 sampler 1\n" +
 	"0/0 uniform -1 frame,0/1 uniform -1 tintParams,1/0 texture -1,1/1 texture -1," +
-	"1/32 sampler -1 detailA_detailASampler,1/33 sampler -1 detailB_detailBSampler
-" +
+	"1/32 sampler -1 detailA_detailASampler,1/33 sampler -1 detailB_detailBSampler\n" +
 	"0/0 uniform -1 frame,0/1 uniform -1 tintParams,1/0 texture -1,1/1 texture -1," +
-	"1/32 sampler -1 detailA_detailASampler,1/33 sampler -1 detailB_detailBSampler
-" +
+	"1/32 sampler -1 detailA_detailASampler,1/33 sampler -1 detailB_detailBSampler\n" +
 	"0/0 uniform 0,0/1 uniform 1,1/0 texture 0,1/1 texture 1,1/32 sampler 0,1/33 sampler 1";
 
 const SPLIT_VS_WGSL =
@@ -712,8 +704,7 @@ function reflected(m: ShaderModule): string {
 			String(b.binding) + " " + b.kind + " " + String(b.nativeSlot) +
 			(b.nativeName == null ? "" : " " + b.nativeName)).join(","));
 	}
-	return out.join("
-");
+	return out.join("\n");
 }
 
 test "the linked program prints and reflects for every target" {
