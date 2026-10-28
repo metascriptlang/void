@@ -16,8 +16,8 @@ test "the draw surface binds two vertex buffers, the index buffer, nine views, f
 	assert BINDING_VERTEX_BUFFER == 0;
 	assert BINDING_INDEX_BUFFER == 2;
 	assert BINDING_VIEW == 3;
-	assert BINDING_SAMPLER == BINDING_VIEW + 13;
-	assert BINDING_VERTEX_OFFSET == BINDING_SAMPLER + 6;
+	assert BINDING_SAMPLER == BINDING_VIEW + 15;
+	assert BINDING_VERTEX_OFFSET == BINDING_SAMPLER + 8;
 	assert BINDING_LENGTH == BINDING_VERTEX_OFFSET + 1;
 }
 

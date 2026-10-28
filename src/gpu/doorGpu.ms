@@ -102,10 +102,10 @@ import {
 
 export const DOOR_UNIFORM_SLOTS: int32 = 8;
 export const DOOR_MAX_COLOR_ATTACHMENTS: int32 = 4;
-const VIEW_SLOTS: int32 = 13;
+const VIEW_SLOTS: int32 = 15;
 export const DOOR_VIEW_SLOTS: int32 = VIEW_SLOTS;
 const PASS_VIEW_SLOTS: int32 = 5;
-const SAMPLER_SLOTS: int32 = 6;
+const SAMPLER_SLOTS: int32 = 8;
 const SAMPLER_BINDING_BASE: int32 = 32;
 const UNIFORM_RING_BYTES: int64 = 4 * 1024 * 1024;
 const UNIFORM_ALIGNMENT: int64 = 256;
