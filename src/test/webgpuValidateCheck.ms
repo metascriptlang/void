@@ -541,6 +541,21 @@ test "a compute workgroup is refused past any one axis or the invocation total o
 	assert shaderModuleRefusal(render, limits) == "";
 }
 
+test "a GL module's combined pairs count each sampler binding once and its dummy sampler not at all" {
+	const limits = computeLimits();
+	let pairs: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };
+	for (let i = 0; i < 15; i++) {
+		pairs.bindings[2 * i] = { binding: i, kind: "texture", group: 1, visibility: RENDER_STAGES };
+		pairs.bindings[2 * i + 1] = {
+			binding: i % 2 == 0 ? 32 : -1, kind: "sampler", group: 1, visibility: RENDER_STAGES,
+			textureBinding: i,
+		};
+	}
+	assert shaderModuleRefusal(pairs, limits) == "";
+	pairs.bindings[30] = { binding: 15, kind: "texture", group: 1, visibility: RENDER_STAGES };
+	assert shaderModuleRefusal(pairs, limits) == "a shader module has over 16 resources";
+}
+
 test "a shader module holds at most 8 uniform blocks and 16 resources, and a block has a size inside the limit" {
 	const limits = computeLimits();
 	let blocks: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };

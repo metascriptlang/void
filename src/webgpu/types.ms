@@ -330,6 +330,13 @@ function integerTexturePairRefusal(bindings: Readonly<Span<GPUShaderBinding>>): 
 	return "";
 }
 
+function boundBefore(bindings: Readonly<Span<GPUShaderBinding>>, i: int32): boolean {
+	for (let j = 0; j < i; j++) {
+		if (bindings[j].kind == bindings[i].kind && bindings[j].binding == bindings[i].binding) { return true; }
+	}
+	return false;
+}
+
 export function shaderBindingsRefusal(bindings: Readonly<Span<GPUShaderBinding>>, compute: boolean, maxUniformBytes: int64): string {
 	let uniforms = 0;
 	let resources = 0;
@@ -350,7 +357,7 @@ export function shaderBindingsRefusal(bindings: Readonly<Span<GPUShaderBinding>>
 			}
 			uniforms += 1;
 			if (uniforms > GPU_MAX_UNIFORM_BLOCKS) { return `a shader module has over ${GPU_MAX_UNIFORM_BLOCKS} uniform blocks`; }
-		} else {
+		} else if (binding != DUMMY_SAMPLER_BINDING && !boundBefore(bindings, i)) {
 			resources += 1;
 			if (resources > GPU_MAX_BIND_GROUP_ENTRIES) { return `a shader module has over ${GPU_MAX_BIND_GROUP_ENTRIES} resources`; }
 		}
