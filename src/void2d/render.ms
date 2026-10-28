@@ -47,6 +47,8 @@ import {
 	uiInstanceCount,
 	writesLimited,
 	skipUiInstances,
+	beginSegments,
+	endSegments,
 } from "./displayList";
 import {
 	fillQuad,
@@ -1919,6 +1921,12 @@ function descend(s: Scene2D, d: int32, overlapping: boolean): void {
 	}
 }
 
+function emitsLines(s: Scene2D, i: int32): boolean {
+	if (s.kinds[i] !== DrawKind.Label) { return false; }
+	const payload: int32 = s.payloads[i];
+	return payload != NO_LABEL_TEXT && labelTexts[payload].emitKey.context >= 0;
+}
+
 export function patchOrder(this s: Scene2D, vw: float32, vh: float32): boolean {
 	s.patchSerial = s.patchSerial + 1;
 	while ((s.repaint.length as int32) > 0) { s.repaint.pop(); }
@@ -1966,14 +1974,16 @@ export function patchOrder(this s: Scene2D, vw: float32, vh: float32): boolean {
 		const i: int32 = s.repaint[k];
 		const start: PaintIndex = paintStartOf(i);
 		const end: PaintIndex = paintEndOf(i);
-		saveRange(start, end);
+		const segmented: boolean = emitsLines(s, i);
+		if (segmented) { beginSegments(start); } else { saveRange(start, end); }
 		limitWrites(end);
 		resumePaint(start);
 		drawOwn(s, i, s.alphas[i], vw, vh);
 		const kept: boolean = paintIndex() == end;
 		unlimitWrites();
+		if (segmented) { endSegments(start, end); }
 		if (!kept) { return false; }
-		noteRange(start, end);
+		if (!segmented) { noteRange(start, end); }
 	}
 	for (let k: int32 = 0; k < (s.retile.length as int32); k++) {
 		const i: int32 = s.retile[k];

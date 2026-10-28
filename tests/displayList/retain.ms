@@ -603,6 +603,15 @@ test "an edit inside one line of a label writes that line and skips the lines it
 	editor.setColor(rgba(0.5, 1.0, 1.0, 1.0));
 	assert check(s, "a colour", "patch");
 	assert s.context.uiSkipped - skipped == 19;
+	uploaded();
+	editor.setText("alpha\nbexy\ngammo");
+	const edited: Recording = frame(s);
+	const start: int32 = paintStartOf(editor.id.index).uiInstances;
+	assert s.context.dirtyUiTotal == 2;
+	assert s.context.dirtyUi[0] == start + 5 && s.context.dirtyUi[1] == start + 9;
+	assert s.context.dirtyUi[2] == start + 14 && s.context.dirtyUi[3] == start + 15;
+	assert !s.context.dirtySprites && !s.context.dirtyVertices;
+	assert same(edited, fullFrame(s));
 }
 
 test "a styled label's run colour change writes every line again" {
