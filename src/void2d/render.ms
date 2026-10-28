@@ -52,6 +52,7 @@ import {
 	rewriteSprite,
 	spriteInstancingAvailable,
 	drawUiInstance,
+	drawGlyphInstance,
 	uiInstancingAvailable,
 	imageQuad,
 	imageQuadUV,
@@ -700,17 +701,15 @@ function emitGlyph(
 	const affine: Transform2D = space.affine;
 	const colour: boolean = kind == PageKind.Rgba;
 	if (space.instanced && colour) {
-		drawUiInstance(view, blend, {
-			...uiInstance(InstanceMode.Image, affine, x, y, w, h, fill),
-			uvRadii: [p.u0, p.v0, p.u1, p.v1],
-			params1: [0.0, 1.0, 0.0, 0.0],
-		});
+		drawGlyphInstance(
+			view, blend, InstanceMode.Image, 0.0, 1.0, affine, x, y, w, h, p.u0, p.v0, p.u1, p.v1,
+			fill,
+		);
 	} else if (space.instanced) {
-		drawUiInstance(view, blend, {
-			...uiInstance(InstanceMode.Glyph, affine, x, y, w, h, fill),
-			uvRadii: [p.u0, p.v0, p.u1, p.v1],
-			params: [kind == PageKind.Sdf ? SDF_GLYPH_FLAG : 0.0, 0.0, 0.0],
-		});
+		drawGlyphInstance(
+			view, blend, InstanceMode.Glyph, kind == PageKind.Sdf ? SDF_GLYPH_FLAG : 0.0, 0.0,
+			affine, x, y, w, h, p.u0, p.v0, p.u1, p.v1, fill,
+		);
 	} else {
 		const rx: float32 = affine.a * w;
 		const ry: float32 = affine.b * w;

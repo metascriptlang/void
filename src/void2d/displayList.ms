@@ -24,7 +24,7 @@
 // intervals, a rounded Mask its own frame and four corner radii; axis-aligned clips stay in
 // the hardware scissor.
 
-import { Color, rgba } from "./types";
+import { Color, Transform2D, rgba } from "./types";
 import { Mat4 } from "../math/math3d";
 import { NO_COLOR_MATRIX, writeColorMatrix, readColorMatrix } from "./effect";
 import { BlendMode } from "../gpu/state";
@@ -73,7 +73,7 @@ import {
 	NO_SCOPE,
 } from "./commandFields";
 export * from "./commandFields";
-import { UI_PARAM_MODE, UiInstance } from "./instance";
+import { InstanceMode, UI_PARAM_MODE, UiInstance } from "./instance";
 import {
 	UI_STRIDE, SPRITE_STRIDE,
 	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0,
@@ -947,6 +947,64 @@ export function pushUiInstance(inst: UiInstance, originX: float32, originY: floa
 	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA + 1] = inst.extra.g;
 	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA + 2] = inst.extra.b;
 	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA + 3] = inst.extra.a;
+	activeContext.uiInstanceTotal = activeContext.uiInstanceTotal + 1;
+}
+
+export function pushGlyphInstance(
+	mode: InstanceMode,
+	flag: float32,
+	image: float32,
+	affine: Transform2D,
+	x: float32,
+	y: float32,
+	w: float32,
+	h: float32,
+	u0: float32,
+	v0: float32,
+	u1: float32,
+	v1: float32,
+	fill: Color,
+	originX: float32,
+	originY: float32,
+): void {
+	const base: int32 = uiSlot() * REC_UI_FLOATS;
+	growTo(activeContext.uiInstances, base + REC_UI_FLOATS);
+	activeContext.uiInstances[base + REC_UI_AFFINE] = affine.a;
+	activeContext.uiInstances[base + REC_UI_AFFINE + 1] = affine.b;
+	activeContext.uiInstances[base + REC_UI_AFFINE + 2] = affine.c;
+	activeContext.uiInstances[base + REC_UI_AFFINE + 3] = affine.d;
+	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE] = x - originX;
+	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE + 1] = y - originY;
+	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE + 2] = w;
+	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE + 3] = h;
+	activeContext.uiInstances[base + REC_UI_UV_RADII] = u0;
+	activeContext.uiInstances[base + REC_UI_UV_RADII + 1] = v0;
+	activeContext.uiInstances[base + REC_UI_UV_RADII + 2] = u1;
+	activeContext.uiInstances[base + REC_UI_UV_RADII + 3] = v1;
+	activeContext.uiInstances[base + REC_UI_BORDERS] = 0.0;
+	activeContext.uiInstances[base + REC_UI_BORDERS + 1] = 0.0;
+	activeContext.uiInstances[base + REC_UI_BORDERS + 2] = 0.0;
+	activeContext.uiInstances[base + REC_UI_BORDERS + 3] = 0.0;
+	activeContext.uiInstances[base + REC_UI_PARAMS0] = (mode as int32) as float32;
+	activeContext.uiInstances[base + REC_UI_PARAMS0 + 1] = flag;
+	activeContext.uiInstances[base + REC_UI_PARAMS0 + 2] = 0.0;
+	activeContext.uiInstances[base + REC_UI_PARAMS0 + 3] = 0.0;
+	activeContext.uiInstances[base + REC_UI_PARAMS1] = 0.0;
+	activeContext.uiInstances[base + REC_UI_PARAMS1 + 1] = image;
+	activeContext.uiInstances[base + REC_UI_PARAMS1 + 2] = 0.0;
+	activeContext.uiInstances[base + REC_UI_PARAMS1 + 3] = 0.0;
+	activeContext.uiInstances[base + REC_UI_COLOR_FILL] = fill.r;
+	activeContext.uiInstances[base + REC_UI_COLOR_FILL + 1] = fill.g;
+	activeContext.uiInstances[base + REC_UI_COLOR_FILL + 2] = fill.b;
+	activeContext.uiInstances[base + REC_UI_COLOR_FILL + 3] = fill.a;
+	activeContext.uiInstances[base + REC_UI_COLOR_BORDER] = 0.0;
+	activeContext.uiInstances[base + REC_UI_COLOR_BORDER + 1] = 0.0;
+	activeContext.uiInstances[base + REC_UI_COLOR_BORDER + 2] = 0.0;
+	activeContext.uiInstances[base + REC_UI_COLOR_BORDER + 3] = 0.0;
+	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA] = 0.0;
+	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA + 1] = 0.0;
+	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA + 2] = 0.0;
+	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA + 3] = 0.0;
 	activeContext.uiInstanceTotal = activeContext.uiInstanceTotal + 1;
 }
 
