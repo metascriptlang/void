@@ -15,18 +15,22 @@ import {
 } from "../shader/ir";
 import { irFromText, irText } from "../shader/irText";
 import { ShaderTarget } from "../shader/layout";
-import { link } from "../shader/link";
+import { link, linkedProgram } from "../shader/link";
 import {
 	Sampler,
 	Texture2d,
 	Vec2f,
+	Vec3f,
 	Vec4f,
 	binding,
 	builtin,
 	discard,
+	feature,
 	hook,
+	length,
 	textureSample,
 	vec2f,
+	vec3f,
 	vec4f,
 } from "../shader/std";
 
@@ -962,4 +966,81 @@ test "a dropped varying whose stored value has an effect is refused" {
 	assert stores == 1;
 	assert refusal(base, [moduleOf(LAYER_DETAIL)]) ==
 		"link: varying 'c' is read by no fragment, and the value its vertex stores has an effect";
+}
+
+struct FadePlaced {
+	@builtin(position) clip: Vec4f;
+	uv: Vec2f;
+	@feature(F) world: Vec3f;
+}
+
+struct FadePixel {
+	@builtin(position) position: Vec4f;
+	uv: Vec2f;
+	@feature(F) world: Vec3f;
+}
+
+struct FadeKey {
+	@feature(F) f: boolean;
+}
+
+struct FadeShaded {
+	color: Vec4f;
+	world: Vec3f;
+}
+
+struct Fade {
+	range: Vec4f;
+}
+
+struct FadeBindings {
+	fadeParams: Fade;
+}
+
+function fadeVs(input: Corner, key: FadeKey): FadePlaced {
+	return {
+		clip: vec4f(input.position.x, input.position.y, 0.0, 1.0),
+		uv: input.position,
+		world: vec3f(input.position.x, input.position.y, 1.0),
+	};
+}
+
+function fadeFs(input: FadePixel, b: BaseBindings, key: FadeKey): Vec4f {
+	let world = vec3f(0.0);
+	if (key.f) {
+		world = input.world;
+	}
+	const lit: FadeShaded = { color: vec4f(input.uv.x, input.uv.y, b.frame.time, 1.0), world: world };
+	return hook(lit).color;
+}
+
+function distanceFade(shaded: FadeShaded, b: FadeBindings): FadeShaded {
+	return {
+		color: vec4f(shaded.color.x, shaded.color.y, shaded.color.z,
+			shaded.color.w * length(shaded.world) * b.fadeParams.range.x),
+		world: shaded.world,
+	};
+}
+
+const FADE_VS = glslIr(fadeVs);
+const FADE_FS = glslLinkedIr(fadeFs, fadeVs);
+const DISTANCE_FADE = glslSegmentIr(distanceFade);
+
+function fadeProgram(on: string[]): ShaderModule {
+	const segments = on.includes("F") ? [DISTANCE_FADE] : [];
+	const m = linkedProgram(FADE_VS, FADE_FS, on, segments);
+	return m.ok ? m.value : new ShaderModule();
+}
+
+test "a key links only the effects listed for its features, after it is specialized" {
+	const keyed = fadeProgram(["F"]);
+	assert siteChain(keyed, "FadeShaded") == "distanceFade(phase)";
+	assert iosOf(keyed) == "vs in position,vs out clip,vs out uv,vs out world," +
+		"fs in position,fs in uv,fs in world,fs out fragColor";
+	const plain = fadeProgram([]);
+	const unlinked = programModule(FADE_VS, FADE_FS, []);
+	assert unlinked.ok && irText(plain) == irText(unlinked.value);
+	assert !plain.functions.some((f) => f.name == "distanceFade");
+	assert iosOf(plain) ==
+		"vs in position,vs out clip,vs out uv,fs in position,fs in uv,fs out fragColor";
 }
