@@ -1110,12 +1110,14 @@ export interface LineShapes {
 	direction: TextDirection;
 	lines: Vec<ShapedLine>;
 	runMaps: Vec<Vec<int32>>;
+	glyphStarts: Vec<int32>;
+	rowStarts: Vec<int32>;
 }
 
 export function emptyLineShapes(style: TextStyle): LineShapes {
 	return {
 		style: style, shaping: false, direction: TextDirection.Auto, lines: new Array(0),
-		runMaps: new Array(0),
+		runMaps: new Array(0), glyphStarts: new Array(0), rowStarts: new Array(0),
 	};
 }
 
@@ -1951,6 +1953,8 @@ export function wrapLines(
 	out.bidi.logicalX.length = 0;
 	out.bidi.lineLevels.length = 0;
 	out.width = 0.0;
+	shapes.glyphStarts.length = 0;
+	shapes.rowStarts.length = 0;
 	let top: float32 = 0.0;
 	let chars: int32 = 0;
 	let units: int32 = 0;
@@ -1971,6 +1975,8 @@ export function wrapLines(
 		const wrap: LineWrap = shapes.lines[li].wrap;
 		const glyphBase: int32 = out.glyphs.length as int32;
 		const rowBase: int32 = out.lines.length as int32;
+		shapes.glyphStarts.push(glyphBase);
+		shapes.rowStarts.push(rowBase);
 		for (const g of wrap.glyphs) {
 			out.glyphs.push({
 				...g,
