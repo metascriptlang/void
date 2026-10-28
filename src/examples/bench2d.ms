@@ -213,7 +213,7 @@ export function benchInit(kind: BenchKind): void {
 	} else {
 		benchName = "sprites";
 		const sheet = loadImageFile("assets/test.png");
-		const image: uint32 = makeImage(sheet.pixels as Span<uint32> as Ptr<void>, sheet.width, sheet.height);
+		const image: uint32 = makeImage(sheet.pixels as Span<uint32>, sheet.width, sheet.height);
 		const view: Texture = Texture.adopt(image, makeView(image), sheet.width, sheet.height);
 		for (let row: int32 = 0; row < ROWS; row++) {
 			for (let column: int32 = 0; column < COLUMNS; column++) {
