@@ -76,11 +76,14 @@ function weightedFs(input: Pixel, b: Weighted): Vec4f {
 	return vec4f(b.weights[n - 1].value, n as float32, 0.0, 1.0);
 }
 
-shaderModule(weighted, plainVs, weightedFs);
+// The build's MSL arm refuses arrayLength, so a Metal build has no module to print.
+when (voidVulkan || webgpu || webgl2 || android || !(ios || macos)) {
+	shaderModule(weighted, plainVs, weightedFs);
 
-test "shaderModule prints arrayLength while the macro prints the program" {
-	const code = fragmentText(weightedModule, glslIr(plainVs), glslLinkedIr(weightedFs, plainVs));
-	assert code.length > 0 && !code.includes("null");
+	test "shaderModule prints arrayLength while the macro prints the program" {
+		const code = fragmentText(weightedModule, glslIr(plainVs), glslLinkedIr(weightedFs, plainVs));
+		assert code.length > 0 && !code.includes("null");
+	}
 }
 
 function computeOf(): ShaderModule {
