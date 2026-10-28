@@ -3765,9 +3765,14 @@ Elapsed gate time is not a benchmark; other workspace CPU activity overlapped pa
 ### Scene3D picks the LOD level itself (2026-10-26)
 
 `addLodMeshNode` takes a `MeshLod`, its `MeshLodRanges` and the material slot, and the node's
-item carries a `MeshLodPick` (`DrawItem.lod`). `beginFrame` picks every such item before it
-writes anything, from the camera block it is given: the eye and, in the block's otherwise unused
-w slots, projection `_11`, `_22` and the near plane (`CAMERA_PROJECTION_X/Y`, `CAMERA_NEAR`).
+item carries a `MeshLodPick` (`DrawItem.lod`). Each preset's `prepareFrame` picks every such
+item (`pickMeshLods`) before `beginFrame`, from the camera block it is given: the eye and, in the
+block's otherwise unused w slots, projection `_11`, `_22` and the near plane
+(`CAMERA_PROJECTION_X/Y`, `CAMERA_NEAR`). The pick writes the level's range into the item's
+`range` and a culled pick sets `lodCulled`, so `prepareFrame` and `renderFrame` take the items as a
+writable `Span<DrawItem>` (a list held in a `const` is refused), while the pick itself stays
+the scene's and is only read: `Readonly` is deep, so a frame that wrote the result into the shared
+`MeshLodPick` through its read-only items did not compile (2026-10-28).
 A culled pick leaves the pass lists through `filterFrustum`, and the shadow casters run the same
 filter on the same items, so a shadow follows the main camera's level as Heaps' `emit` does
 (`Mesh.hx` 86-166 calls `getLodIndex` once, with the main camera). `setForcedLod` is Heaps'
