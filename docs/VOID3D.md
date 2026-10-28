@@ -6832,7 +6832,7 @@ every joint. It is closed when the last point equals the first, and its v altern
 - the flushes on `moveTo`, `lineStyle` and `clear`.
 
 Draw the strip with `Material.ofKind(Program.UnlitTextured, …)` and a white texture,
-`withCulling(Face.None)`, no shadows.
+its pass `withCulling(Face.None)`, no shadows.
 
 Kept from the reference and pinned in `graphics3dCheck.ms`:
 
