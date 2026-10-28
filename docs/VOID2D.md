@@ -3372,9 +3372,10 @@ abort stage) unless named otherwise.
   them", and `tests/aborts/targetOtherContext2d`.
 - **D, view ids with a generation.** `src/host/views.ms` hands out `(generation << 5) | (slot + 1)`: opaque,
   positive, 0 invalid, sixteen slots. An id kept past its view's destroy stops by name ("was
-  destroyed"). A slot whose generation reaches `VOID_VIEW_LAST_GENERATION` is retired, as
+  destroyed"). A slot whose generation reaches `VIEW_LAST_GENERATION` is retired, as
   `void3d/slots.ms` retires a row, and `voidViewCreate` stops once all sixteen are in use or
-  retired. The last generation is a compile-time override, so the fixture retires all sixteen in
+  retired. The last generation is a compile-time override (`-d:voidViewLastGeneration`, the
+  fixture's `// flags:` line), so the fixture retires all sixteen in
   sixteen pairs; a build with the override does not reach the object cache of a plain build
   (`out/tmp/viewCache/receipt.txt`: a plain build right after it reuses slot 0 at generation 2). Red
   before: the stale id 1

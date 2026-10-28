@@ -3,7 +3,8 @@
 
 @include("viewsPlatform.h");
 
-import { Views, ViewsPlatform } from "./views";
+import { define } from "std/meta";
+import { Views, ViewsPlatform, VIEW_LAST_GENERATION } from "./views";
 
 extern function voidFail(format: cstring, message: cstring): never;
 extern function voidViewsPoolPush(): Ptr<void> | null;
@@ -48,7 +49,11 @@ class CPlatform extends ViewsPlatform {
 }
 
 const platform = new CPlatform();
-const views = new Views(platform);
+const lastGeneration: string = @comptime { return define("voidViewLastGeneration"); };
+const views = new Views(
+	platform,
+	lastGeneration == "" ? VIEW_LAST_GENERATION : parseInt(lastGeneration) as int32,
+);
 
 @exportName("voidEmbedRegister")
 export function exportRegister(init: () => void, frame: () => void): void { views.register(init, frame); }
