@@ -55,6 +55,7 @@ import {
 	io,
 	ioRead,
 	layeredBlurModule,
+	layeredLoadModule,
 	local,
 	prepend,
 	resource,
@@ -467,5 +468,15 @@ test "an array texture samples with its layer packed into the coordinates" {
 	assert irErrors(m).length == 0;
 	for (const target of TARGETS) {
 		assert printed(m, 1, [0, 1], target).includes("texture(srcTex_srcSmp, vec3(uv, float(2)))");
+	}
+}
+
+test "an array texture fetches with its layer packed into the coordinates" {
+	const m = layeredLoadModule();
+	assert irErrors(m).length == 0;
+	for (const target of TARGETS) {
+		const text = printed(m, 1, [0, 1], target);
+		assert text.includes("sampler2DArray srcTex_SPIRV_Cross_DummySampler;\n");
+		assert text.includes("texelFetch(srcTex_SPIRV_Cross_DummySampler, ivec3(ivec2(1), 2), 0)");
 	}
 }

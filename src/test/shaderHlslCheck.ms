@@ -47,6 +47,7 @@ import {
 	i32,
 	io,
 	layeredBlurModule,
+	layeredLoadModule,
 	local,
 	prepend,
 	shaderFunction,
@@ -315,6 +316,12 @@ test "an array texture samples with its layer packed into the coordinates" {
 	const m = layeredBlurModule();
 	assert irErrors(m).length == 0;
 	assert printed(m, 1, [0, 1]).includes("srcTex.Sample(srcSmp, float3(uv, float(2)))");
+}
+
+test "an array texture fetches with its layer packed into the coordinates" {
+	const m = layeredLoadModule();
+	assert irErrors(m).length == 0;
+	assert printed(m, 1, [0, 1]).includes("srcTex.Load(int4(((int2)1), 2, 0))");
 }
 
 test "a plain sample outside a fragment entry reads level 0, as WGSL and MSL do" {
