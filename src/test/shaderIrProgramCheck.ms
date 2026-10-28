@@ -169,3 +169,9 @@ test "void2d programs reflect as shdc's" {
 	assert matched(glslIr(uiVs), glslLinkedIr(uiFs, uiVs), [], uiShaderModule()) == "";
 	assert matched(glslIr(blurVs), glslLinkedIr(blurFs, blurVs), [], blurShaderModule()) == "";
 }
+
+test "a field of the wrong JSON kind is an error, not a zero" {
+	const m = irFromText("[[],[],[],[],[],[],[[\"main\",\"vertex\",0,[]]],[],[]]");
+	assert !m.ok;
+	if (!m.ok) { assert m.error == "irText: a field is not an integer (JSON kind 3)"; }
+}
