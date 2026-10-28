@@ -214,8 +214,10 @@ later replaces the hand-written GLSL source of each base.
   lowers each element with `glslSegmentIr` and `link`s them onto the joined stages in the
   macro VM, in the author's order, before the same print and register path; `materialModule`
   declares the descriptor as `shaderModule` does. `[]` skips `link`, so it registers what
-  `shaderProgram` registers. A non-segment element is refused by its segment message at the
-  function, a link refusal after "materialProgram '<name>': " at the name
+  `shaderProgram` registers. `linkedProgram` (`link.ms`) is that path for `shaderBuild` and
+  `tools/irPrograms.ms` alike: specialize per key, then link; a row of the tool links the
+  `EFFECTS` entries whose feature it has, in table order (none yet). A non-segment element is
+  refused by its segment message at the function, a link refusal after "materialProgram '<name>': " at the name
   (`tests/refusals/material*.ms`); pinned in `src/test/shaderMaterialProgramCheck.ms`. Cost
   (2026-10-29, BUILD `df4c2416a`, Windows, `msc check`, three runs each): the file without
   programs 1.5 s, with its two effect-free programs 3.0 to 3.3 s, and adding three two-effect
