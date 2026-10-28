@@ -162,9 +162,31 @@ test "the blur's taps sum to one and a sprite premultiplies a straight source" {
 test "an underline is the straight bar, or a wave centred on the quad's left edge" {
 	const half = vec2f(20.0, 3.0);
 	const p = vec2f(4.0, 1.0);
-	assert underlineDistance(p, half, vec4f(1.5, 0.0, 0.0, 0.0)) ==
+	assert underlineDistance(p, half, vec4f(1.5, 0.0, 0.0, 0.0), 1.0) ==
 		roundedRectDistance(p, half, 0.0);
-	assert near(underlineDistance(vec2f(-20.0, 0.0), half, vec4f(1.5, 1.0, 0.0, 0.0)), -0.75);
+	assert near(underlineDistance(vec2f(-20.0, 0.0), half, vec4f(1.5, 1.0, 0.0, 0.0), 1.0), -0.75);
+}
+
+test "a dotted underline puts Ghostty's dots in each cell, phased by the line so runs join" {
+	const half = vec2f(12.0, 0.5);
+	const dotted = vec4f(1.0, 2.0, 0.0, 12.0);
+	assert underlineDistance(vec2f(-10.5, 0.0), half, dotted, 1.0) < 0.0;
+	assert underlineDistance(vec2f(-7.5, 0.0), half, dotted, 1.0) > 0.0;
+	assert underlineDistance(vec2f(-4.5, 0.0), half, dotted, 1.0) < 0.0;
+	assert underlineDistance(vec2f(1.5, 0.0), half, dotted, 1.0) < 0.0;
+	const shifted = vec4f(1.0, 2.0, 12.0, 12.0);
+	assert underlineDistance(vec2f(-10.5, 0.0), half, shifted, 1.0) ==
+		underlineDistance(vec2f(-10.5, 0.0), half, dotted, 1.0);
+	assert underlineDistance(vec2f(-10.5, 0.0), half, vec4f(1.0, 2.0, 3.0, 12.0), 1.0) > 0.0;
+}
+
+test "a dashed underline is Ghostty's third-plus-a-pixel dash, gap, then dash to the cell's end" {
+	const half = vec2f(12.0, 0.5);
+	const dashed = vec4f(1.0, 3.0, 0.0, 12.0);
+	assert underlineDistance(vec2f(-10.0, 0.0), half, dashed, 1.0) < 0.0;
+	assert underlineDistance(vec2f(-5.5, 0.0), half, dashed, 1.0) > 0.0;
+	assert underlineDistance(vec2f(-1.0, 0.0), half, dashed, 1.0) < 0.0;
+	assert underlineDistance(vec2f(11.0, 0.0), half, dashed, 1.0) < 0.0;
 }
 
 test "a clip with no radii covers every point, so a square clip's fragments keep their colour" {

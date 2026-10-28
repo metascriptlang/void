@@ -6,10 +6,20 @@ import {
 } from "../platformFace.h";
 import { FontInfo, GlyphBox, asInt32, findTable, u16At, u32At, u8At } from "../trueType/fontInfo";
 
-@compile("../platformFaceApple.m", "-fobjc-arc");
-@passL("-framework CoreText");
-@passL("-framework CoreGraphics");
-@passL("-framework CoreFoundation");
+when (macos || ios) {
+	@compile("../platformFaceApple.m", "-fobjc-arc");
+	@passL("-framework CoreText");
+	@passL("-framework CoreGraphics");
+	@passL("-framework CoreFoundation");
+} else when (emcc) {
+	@compile("../platformFaceWeb.c");
+	import {
+		void2dPlatformFaceAdvance,
+		void2dPlatformFaceGlyph,
+		void2dPlatformFaceOpenBrowser,
+		void2dPlatformFaceVMetrics,
+	} from "../platformFace.h";
+}
 
 const PLATFORM_ID_UNICODE: int32 = 0;
 const PLATFORM_ID_MICROSOFT: int32 = 3;
@@ -127,4 +137,37 @@ export function platformFill(
 	return void2dPlatformFaceFill(
 		platform, glyph, sizePx, shiftX, skew, emboldenPx, (at as Span<uint8>) as Ptr<uint8>, w, h, stride,
 	) != 0;
+}
+
+when (emcc) {
+	export const BROWSER_UNITS_PER_EM: float32 = 2048.0;
+
+	export struct BrowserVMetrics {
+		ascent: int32;
+		descent: int32;
+		lineGap: int32;
+	}
+
+	export function browserOpen(style: string, family: string): Ptr<void> | null {
+		return void2dPlatformFaceOpenBrowser(style, family);
+	}
+
+	export function browserGlyph(platform: Ptr<void>, codepoint: int32): int32 {
+		return void2dPlatformFaceGlyph(platform, codepoint);
+	}
+
+	export function browserVMetrics(platform: Ptr<void>): BrowserVMetrics {
+		let ascent: int32[] = [0];
+		let descent: int32[] = [0];
+		let lineGap: int32[] = [0];
+		void2dPlatformFaceVMetrics(
+			platform, (ascent as Span<int32>) as Ptr<int32>, (descent as Span<int32>) as Ptr<int32>,
+			(lineGap as Span<int32>) as Ptr<int32>,
+		);
+		return { ascent: ascent[0], descent: descent[0], lineGap: lineGap[0] };
+	}
+
+	export function browserAdvance(platform: Ptr<void>, glyph: int32): int32 {
+		return void2dPlatformFaceAdvance(platform, glyph);
+	}
 }

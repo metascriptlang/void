@@ -84,11 +84,11 @@ function multiMode(
 		ShapeMultiModeValue.Loop => fract(timer),
 		ShapeMultiModeValue.PingPong => {
 			const x: float32 = fract(timer * 0.5) * 2.0;
-			return x > 1.0 ? 2.0 - x : x;
+			x > 1.0 ? 2.0 - x : x
 		},
 		ShapeMultiModeValue.BurstSpread => {
 			const steps: int32 = closed ? slot.count : slot.count - 1;
-			return steps > 0 ? (slot.index as float32) / (steps as float32) : 0.0;
+			steps > 0 ? (slot.index as float32) / (steps as float32) : 0.0
 		},
 	};
 	if (spread > 0.0) { u = (Math.floor((u / spread) as float64) as float32) * spread; }

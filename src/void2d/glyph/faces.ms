@@ -45,13 +45,23 @@ when (voidSprites) {
 	import { spriteCanvasInk, spriteIndex } from "../spriteGlyph";
 }
 
-when (macos || ios) {
+when (macos || ios || emcc) {
 	import {
 		platformBox,
 		platformInfo,
 		platformOpen,
 		platformUnitsBox,
 		postScriptName,
+	} from "./platform";
+}
+
+when (emcc) {
+	import {
+		BROWSER_UNITS_PER_EM,
+		browserAdvance,
+		browserGlyph,
+		browserOpen,
+		browserVMetrics,
 	} from "./platform";
 }
 
@@ -82,6 +92,9 @@ struct TableSlice {
 }
 
 function findTableSlice(face: GlyphFace, tag: string): TableSlice {
+	when (emcc) {
+		if (face.browser) { return { offset: -1, length: 0 }; }
+	}
 	const data = face.info.data;
 	const font: int64 = face.info.fontstart as int64;
 	const tables = data.u16At(font + 4);
@@ -98,7 +111,37 @@ export function findGlyph(face: GlyphFace, codepoint: int32): int32 {
 	when (voidColourEmoji) {
 		if (face.colourOnly) { return colourFaceGlyphIndex(face.colourHandle, face.bytes.data, codepoint); }
 	}
+	when (emcc) {
+		const platform = face.platform;
+		if (face.browser && platform != null) { return browserGlyph(platform, codepoint); }
+	}
 	return findGlyphIndex(face.info, codepoint);
+}
+
+struct VMetrics {
+	ascent: int32;
+	descent: int32;
+	lineGap: int32;
+}
+
+function faceVMetrics(face: GlyphFace): VMetrics {
+	when (emcc) {
+		const platform = face.platform;
+		if (face.browser && platform != null) {
+			const browser = browserVMetrics(platform);
+			return { ascent: browser.ascent, descent: browser.descent, lineGap: browser.lineGap };
+		}
+	}
+	const vertical = getFontVMetrics(face.info);
+	return { ascent: vertical.ascent, descent: vertical.descent, lineGap: vertical.lineGap };
+}
+
+function advanceUnits(face: GlyphFace, glyph: int32): int32 {
+	when (emcc) {
+		const platform = face.platform;
+		if (face.browser && platform != null) { return browserAdvance(platform, glyph); }
+	}
+	return getGlyphHMetrics(face.info, glyph).advance;
 }
 
 export function void2dGlyphLookups(): uint32 {
@@ -114,7 +157,7 @@ struct Ink {
 }
 
 function glyphInk(face: GlyphFace, glyph: int32): Ink {
-	when (macos || ios) {
+	when (macos || ios || emcc) {
 		const platform = face.platform;
 		if (platform != null) {
 			const box = platformUnitsBox(platform, glyph);
@@ -152,8 +195,8 @@ function asciiExtent(face: GlyphFace): AsciiExtent {
 	for (let c: int32 = 32; c < 127; c++) {
 		const glyph = findGlyph(face, c);
 		if (glyph == 0) { continue; }
-		const metrics = getGlyphHMetrics(face.info, glyph);
-		if (metrics.advance > widest) { widest = metrics.advance; }
+		const advance = advanceUnits(face, glyph);
+		if (advance > widest) { widest = advance; }
 		const ink = glyphInk(face, glyph);
 		if (ink.present) {
 			if (ink.y1 > top) { top = ink.y1; }
@@ -166,14 +209,14 @@ function asciiExtent(face: GlyphFace): AsciiExtent {
 function ideographWidth(face: GlyphFace): float32 {
 	const glyph = findGlyph(face, 0x6C34);
 	if (glyph == 0) { return 0.0; }
-	const metrics = getGlyphHMetrics(face.info, glyph);
+	const advance = advanceUnits(face, glyph);
 	const ink = glyphInk(face, glyph);
-	if (ink.present && ink.x1 - ink.x0 > metrics.advance) { return 0.0; }
-	return metrics.advance as float32;
+	if (ink.present && ink.x1 - ink.x0 > advance) { return 0.0; }
+	return advance as float32;
 }
 
 function measureHeights(face: GlyphFace): FaceHeights {
-	const vertical = getFontVMetrics(face.info);
+	const vertical = faceVMetrics(face);
 	const ascent = vertical.ascent;
 	const os2 = findTableSlice(face, "OS/2");
 	const data = face.info.data;
@@ -229,6 +272,9 @@ function measureFace(face: GlyphFace): void {
 
 export function void2dGlyphScale(face: int32, sizePx: float32): float32 {
 	if (!validFace(face)) { return 0.0; }
+	when (emcc) {
+		if (state.faces[face].browser) { return sizePx / BROWSER_UNITS_PER_EM; }
+	}
 	return scaleForMappingEmToPixels(state.faces[face].info, sizePx);
 }
 
@@ -311,7 +357,7 @@ export function void2dGlyphFaceLoad(path: string, index: int32): int32 {
 		}
 	}
 	let platform: Ptr<void> | null = null;
-	when (macos || ios) {
+	when (macos || ios || emcc) {
 		if (!outlines && offset >= 0) {
 			const table = platformInfo(holder.data, offset);
 			if (table != null) {
@@ -354,6 +400,7 @@ function copyFace(base: GlyphFace): GlyphFace {
 	face.colourOnly = base.colourOnly;
 	face.sprite = base.sprite;
 	face.platform = base.platform;
+	face.browser = base.browser;
 	face.asciiUnits = base.asciiUnits;
 	face.glyphCount = base.glyphCount;
 	face.heights = base.heights;
@@ -368,7 +415,7 @@ export function void2dGlyphFaceSynthetic(face: int32, bold: int32, italic: int32
 	if (!validFace(face)) { return FACE_NO_BASE; }
 	const synthetic = copyFace(faceAt(face));
 	if (bold != 0) {
-		const vertical = getFontVMetrics(synthetic.info);
+		const vertical = faceVMetrics(synthetic);
 		synthetic.emboldenUnits = ((vertical.ascent - vertical.descent + vertical.lineGap) as float32) / 32.0;
 	}
 	if (italic != 0) { synthetic.skew = ITALIC_SKEW; }
@@ -388,7 +435,7 @@ export function void2dGlyphColourOnly(face: int32): int32 {
 	return validFace(face) && state.faces[face].colourOnly ? 1 : 0;
 }
 
-when (macos || ios) {
+when (macos || ios || emcc) {
 	export function void2dGlyphFacePlatform(base: int32): int32 {
 		if (!validFace(base)) { return FACE_NO_BASE; }
 		const f = faceAt(base);
@@ -404,6 +451,23 @@ when (macos || ios) {
 		face.platform = platform;
 		face.glyphCount = table.glyphCount;
 		face.measured = false;
+		state.faces.push(face);
+		return (state.faces.length as int32) - 1;
+	}
+}
+
+when (emcc) {
+	export function void2dGlyphFaceBrowser(style: string, family: string): int32 {
+		const platform = browserOpen(style, family);
+		if (platform == null) {
+			console.error(`void2d: the browser gives no 2D canvas for ${style} ${family}`);
+			return FACE_NOT_A_FONT;
+		}
+		const holder = new FaceBytes([]);
+		const face = new GlyphFace(holder, blankInfo(holder.data));
+		face.platform = platform;
+		face.browser = true;
+		face.glyphCount = 0x110000;
 		state.faces.push(face);
 		return (state.faces.length as int32) - 1;
 	}
@@ -434,8 +498,7 @@ export function void2dGlyphAdvance(face: int32, glyph: int32, sizePx: float32): 
 	if ((f.colourOnly || f.platform != null) && (glyph < 0 || glyph >= f.glyphCount)) {
 		return 0.0;
 	}
-	const metrics = getGlyphHMetrics(f.info, glyph);
-	return ((metrics.advance as float32) + f.emboldenUnits) * void2dGlyphScale(face, sizePx);
+	return ((advanceUnits(f, glyph) as float32) + f.emboldenUnits) * void2dGlyphScale(face, sizePx);
 }
 
 export function void2dGlyphEmbolden(face: int32, sizePx: float32): float32 {
@@ -446,7 +509,7 @@ export function void2dGlyphEmbolden(face: int32, sizePx: float32): float32 {
 export function void2dGlyphKern(face: int32, left: int32, right: int32, sizePx: float32): float32 {
 	if (!validFace(face)) { return 0.0; }
 	const f = faceAt(face);
-	if (f.sprite) { return 0.0; }
+	if (f.sprite || f.browser) { return 0.0; }
 	const units = f.kernLookups.length > 0
 		? gposKern(f.info, f.kernLookups, left, right)
 		: getGlyphKernInfoAdvance(f.info, left, right);
@@ -459,7 +522,7 @@ export function void2dGlyphFaceMetrics(face: int32, sizePx: float32, out: Span<f
 	out[1] = 0.0;
 	out[2] = 0.0;
 	if (!validFace(face)) { return; }
-	const vertical = getFontVMetrics(state.faces[face].info);
+	const vertical = faceVMetrics(state.faces[face]);
 	const scale = void2dGlyphScale(face, sizePx);
 	out[0] = (vertical.ascent as float32) * scale;
 	out[1] = ((-vertical.descent) as float32) * scale;
@@ -528,7 +591,8 @@ when (voidSprites) {
 
 	export function void2dGlyphFaceSprite(base: int32): int32 {
 		if (!validFace(base)) { return FACE_NO_BASE; }
-		if (state.faces[base].sprite || state.faces[base].colourOnly) { return FACE_NO_BASE; }
+		const f = faceAt(base);
+		if (f.sprite || f.colourOnly || f.browser) { return FACE_NO_BASE; }
 		const sprite = copyFace(faceAt(base));
 		sprite.emboldenUnits = 0.0;
 		sprite.skew = 0.0;
@@ -612,7 +676,7 @@ export function void2dGlyphBox(
 			return;
 		}
 	}
-	when (macos || ios) {
+	when (macos || ios || emcc) {
 		const platform = f.platform;
 		if (platform != null) {
 			putBox(out, platformBox(platform, glyph, sizePx, shiftX, f.skew, f.emboldenUnits * scale));

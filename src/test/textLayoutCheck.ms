@@ -3,6 +3,7 @@ import {
 	glyphAdvance,
 	glyphKern,
 	faceMetrics,
+	glyphInkBox,
 } from "../void2d/face";
 import {
 	TextLayout,
@@ -490,6 +491,18 @@ test "under force_width a row one cell too long breaks at the space its cells re
 	assert (l.lines.length as int32) == 2;
 	assert l.lines[0].charEnd == 114 && l.lines[1].charStart == 115;
 	assert l.lines[0].width == 912.0;
+}
+
+test "under force_width a glyph wider than its cell and a quarter shrinks to that width" {
+	const l = laidInCells("Wi");
+	const room: float32 = 8.0 * 1.25;
+	const wide = l.glyphs[0];
+	const box = glyphInkBox(wide.face, wide.glyph, wide.size);
+	assert wide.size < 20.0;
+	assert box[2] - box[0] <= room + 1.0;
+	assert box[2] - box[0] > room - 2.0;
+	assert l.glyphs[1].size == 20.0 && l.glyphs[1].x == 8.0;
+	assert l.lines[0].width == 16.0;
 }
 
 test "splitAt cuts one line without shaping it again" {

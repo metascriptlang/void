@@ -24,7 +24,7 @@ when (voidSprites) {
 	import { spriteInk } from "./faces";
 }
 
-when (macos || ios) {
+when (macos || ios || emcc) {
 	import { platformFill } from "./platform";
 }
 
@@ -204,7 +204,7 @@ export function void2dGlyphRasterize(
 			}
 		}
 	}
-	when (macos || ios) {
+	when (macos || ios || emcc) {
 		const platform = f.platform;
 		if (!handled && platform != null) {
 			handled = true;

@@ -68,6 +68,7 @@ export class GlyphFace {
 	colourOnly: boolean = false;
 	sprite: boolean = false;
 	platform: Ptr<void> | null = null;
+	browser: boolean = false;
 	asciiUnits: float32 = 0.0;
 	glyphCount: int32 = 0;
 	heights: FaceHeights = { cap: 0, ex: 0, ic: 0, capEstimate: 0, exEstimate: 0, icEstimate: 0, lineHeight: 0 };
