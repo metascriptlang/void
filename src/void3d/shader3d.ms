@@ -30,6 +30,7 @@ import {
 	feature,
 	floor,
 	fract,
+	hook,
 	inverse,
 	length,
 	location,
@@ -410,6 +411,33 @@ export struct LitKey {
 export struct LitOutput {
 	@location(0) color: Vec4f;
 	@location(1) @feature(NORMAL_MRT) normal: Vec4f;
+}
+
+export struct SurfaceUv {
+	uv: Vec2f;
+}
+
+export struct SampleUv {
+	baseUv: Vec2f;
+	nextUv: Vec2f;
+	blend: float32;
+}
+
+export struct SurfaceTexel {
+	texel: Vec4f;
+	surfaceUv: Vec2f;
+	noise: float32;
+}
+
+export struct LitShaded {
+	color: Vec4f;
+	uv: Vec2f;
+	noise: float32;
+}
+
+export struct LitFaded {
+	color: Vec4f;
+	worldPosition: Vec3f;
 }
 
 function skinRow(b: VertexBindings, joints: Vec4f, weights: Vec4f, column: int32): Vec4f {
@@ -2005,11 +2033,13 @@ export function litTexturedFs(
 	key: LitKey,
 ): LitOutput {
 	const params = materialOf(b, key);
-	let uv = input.surfaceUv;
+	let moved = input.surfaceUv;
 	if (key.uvTransform || key.pbr) {
 		const time = b.frameParams.frame.x;
-		uv = movedUv(input.surfaceUv, uvMatrixOf(b, key), uvMotionOf(b, key), time);
+		moved = movedUv(input.surfaceUv, uvMatrixOf(b, key), uvMotionOf(b, key), time);
 	}
+	const surfaceUv: SurfaceUv = { uv: moved };
+	let uv = hook(surfaceUv).uv;
 	if (key.uvTransform) {
 		uv = sinusUv(uv, sinusDeformOf(b, key), b.frameParams.frame.x);
 	}
@@ -2018,15 +2048,17 @@ export function litTexturedFs(
 		uv = parallaxUv(b, uv, view, normalize(input.worldNormal), input.worldTangent,
 			materialOf(b, key).x, parallaxStepsOf(b, key));
 	}
-	let baseUv = uv;
-	let nextUv = uv;
-	let blend: float32 = 0.0;
+	const sampleUv: SampleUv = { baseUv: uv, nextUv: uv, blend: 0.0 };
+	const sampled = hook(sampleUv);
+	let baseUv = sampled.baseUv;
+	let nextUv = sampled.nextUv;
+	let blend = sampled.blend;
 	if (key.uvTransform) {
 		const grid = flipbookGridOf(b, key);
 		const play = flipbookPlayOf(b, key);
 		if (grid.z > 0.0) {
 			const time = b.frameParams.frame.x;
-			const frames = flipbookUvs(uv, grid, play, time);
+			const frames = flipbookUvs(baseUv, grid, play, time);
 			baseUv = frames.xy;
 			nextUv = frames.zw;
 			blend = flipbookBlend(grid, play, time);
@@ -2041,14 +2073,17 @@ export function litTexturedFs(
 		const backTexel = textureSample(b.backTexture, b.baseSampler, backAt);
 		texel = input.frontFacing ? texel : backTexel;
 	}
+	const surfaceTexel: SurfaceTexel = { texel: texel, surfaceUv: input.surfaceUv, noise: 0.0 };
+	const surface = hook(surfaceTexel);
+	texel = surface.texel;
 	if (key.uvTransform) {
 		if (colorKeyed(texel, colorKeyOf(b, key))) {
 			discard();
 		}
 	}
-	let noise: float32 = 0.0;
+	let noise = surface.noise;
 	if (key.dissolve) {
-		noise = textureSample(b.dissolveTexture, b.dissolveSampler, input.surfaceUv).x;
+		noise = textureSample(b.dissolveTexture, b.dissolveSampler, surface.surfaceUv).x;
 		if (noise < dissolveOf(b, key).x) {
 			discard();
 		}
@@ -2083,21 +2118,27 @@ export function litTexturedFs(
 		shaded = litShade(n, surfaceNormal, input.worldPosition, input.fragCoord.xy,
 			surfaceColor, b, key);
 	}
+	const litShaded: LitShaded = { color: shaded, uv: uv, noise: noise };
+	const lit = hook(litShaded);
+	shaded = lit.color;
 	if (key.emissive) {
-		const glow = textureSample(b.emissiveTexture, b.baseSampler, uv).rgb;
+		const glow = textureSample(b.emissiveTexture, b.baseSampler, lit.uv).rgb;
 		shaded = emittedOver(shaded, glow, emissiveOf(b, key));
 	}
 	if (key.dissolve) {
-		shaded = dissolveEdgeOver(shaded, noise, dissolveOf(b, key), dissolveEdgeOf(b, key));
+		shaded = dissolveEdgeOver(shaded, lit.noise, dissolveOf(b, key), dissolveEdgeOf(b, key));
 	}
 	if (key.cutout) {
 		if (shaded.a < params.w) {
 			discard();
 		}
 	}
+	const litFaded: LitFaded = { color: shaded, worldPosition: input.worldPosition };
+	const faded = hook(litFaded);
+	shaded = faded.color;
 	if (key.uvTransform) {
 		const eye = b.frameParams.cameraPosition.xyz;
-		const fade = distanceFade(length(input.worldPosition - eye), distanceFadeOf(b, key));
+		const fade = distanceFade(length(faded.worldPosition - eye), distanceFadeOf(b, key));
 		shaded = vec4f(shaded.rgb, shaded.a * fade);
 	}
 	let color = vec4f(toneMapped(shaded.rgb, b.frameParams.frame), shaded.a);
@@ -2112,16 +2153,21 @@ export function shadowLitTexturedFs(
 	b: LitBindings,
 	key: LitKey,
 ): void {
+	let texel = vec4f(1.0);
+	if (key.cutout) {
+		texel = textureSample(b.baseTexture, b.baseSampler, input.surfaceUv);
+	}
+	const surfaceTexel: SurfaceTexel = { texel: texel, surfaceUv: input.surfaceUv, noise: 0.0 };
+	const surface = hook(surfaceTexel);
 	if (key.dissolve) {
-		const noise = textureSample(b.dissolveTexture, b.dissolveSampler, input.surfaceUv).x;
+		const noise = textureSample(b.dissolveTexture, b.dissolveSampler, surface.surfaceUv).x;
 		if (noise < dissolveOf(b, key).x) {
 			discard();
 		}
 	}
 	if (key.cutout) {
-		const texel = textureSample(b.baseTexture, b.baseSampler, input.surfaceUv);
 		const tint = materialColorOf(b, key);
-		if (input.baseColor.a * tint.a * texel.a < materialOf(b, key).w) {
+		if (input.baseColor.a * tint.a * surface.texel.a < materialOf(b, key).w) {
 			discard();
 		}
 	}
