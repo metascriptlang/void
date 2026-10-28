@@ -1,5 +1,11 @@
 import { glslSegmentIr } from "../shader/emit";
-import { ResourceKind, ShaderModule, ShaderTypeKind, sameShaderType } from "../shader/ir";
+import {
+	ResourceKind,
+	ShaderModule,
+	ShaderTypeKind,
+	StmtKind,
+	sameShaderType,
+} from "../shader/ir";
 import { irFromText } from "../shader/irText";
 import {
 	Sampler,
@@ -7,6 +13,7 @@ import {
 	Vec2f,
 	Vec4f,
 	discard,
+	feature,
 	textureSample,
 	vec2f,
 	vec4f,
@@ -185,4 +192,24 @@ test "a nested phase struct and a texture, sampler and storage buffer, all unnum
 	assert holdsSegment(m, "detailMap", "LitStage");
 	assert m.resources.map((r) => r.name).join(",") == "detail,detailSampler,lights";
 	assert m.resources[0].group == m.resources[2].group;
+}
+
+struct GlowKey {
+	@feature(GLOW) glow: boolean;
+}
+
+function glowOnly(shaded: Shaded, key: GlowKey): Shaded {
+	let color = shaded.color;
+	if (key.glow) {
+		color = color * 2.0;
+	}
+	return { color: color };
+}
+
+test "a segment's key struct lowers to a feature branch its module names" {
+	const m = lowered(glslSegmentIr(glowOnly));
+	assert holdsSegment(m, "glowOnly", "Shaded");
+	assert m.features.join(",") == "GLOW";
+	assert m.functions[m.functions.length - 1].body.some((s) => s.kind == StmtKind.FeatureIf);
+	assert glowOnly({ color: vec4f(0.25) }, { glow: true }).color.x == 0.5;
 }

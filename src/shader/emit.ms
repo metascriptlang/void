@@ -952,6 +952,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 						"returns its phase struct " + typeName(t));
 				}
 				phaseType = t;
+			} else if (keyType == null && fields != null &&
+				fields.typExprFieldNames.length > 0 && everyDecorated(fields, "feature")) {
+				keyType = t;
 			} else if (i == 1) {
 				if (fields == null) {
 					fail(fn, what + ": its second parameter '" + name + "' is its bindings " +
