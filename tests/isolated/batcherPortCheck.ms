@@ -1,3 +1,6 @@
+// Run in a process of its own (scripts/gate.sh): runPin sets the door's device up twice, which
+// would pull the device from under every test that ran after it in src/test/index.ms.
+
 import { runPin, PinRun } from "./batcherPortScript";
 
 // Digests recorded from batcher.c on a D3D11 WARP device before that file was deleted, over the
@@ -40,8 +43,7 @@ test "the batcher port reproduces the door stats and counters recorded from the 
 	assert bad == 0;
 }
 
-when (voidDummy) {
-} else {
+when (windows && !voidDummy && !voidVulkan && !voidGlCore) {
 	test "the batcher port reproduces the pixels recorded from the C" {
 		const run = pinRun();
 		assert (run.pixels.length as int32) == (PIXEL_PINS.length as int32);

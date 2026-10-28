@@ -1,4 +1,4 @@
-// expect: 9:2 output field 'size': only a vertex @builtin(position) yet
+// expect: 9:2 output field 'size': a vertex entry writes @builtin(position), a fragment entry @builtin(fragDepth)
 import { glsl } from "../../src/shader/emit";
 import { Vec4f, builtin } from "../../src/shader/std";
 struct A {

@@ -479,7 +479,7 @@ function runCharstring(info: FontInfo, glyphIndex: int32, ref c: CsCtx): boolean
 // stbtt__GetGlyphShapeT2: the outline of a CFF glyph, empty when stb returns 0.
 export function getGlyphShapeT2(info: FontInfo, glyphIndex: int32): Vec<Vertex> {
 	let c = newCtx(false);
-	if (runCharstring(info, glyphIndex, c)) { return c.vertices; }
+	if (runCharstring(info, glyphIndex, c)) { return move c.vertices; }
 	return [];
 }
 

@@ -374,6 +374,12 @@ export interface DrawContext2D {
 let serials: Vec<int32> = [];
 let freeContextIds: Vec<int32> = [];
 
+function noContextIssued(id: int32): void {}
+let contextIssuedHook: (id: int32) => void = noContextIssued;
+
+export function setContextIssuedHook(hook: (id: int32) => void): void { contextIssuedHook = hook; }
+export function contextCount(): int32 { return serials.length as int32; }
+
 // Each starts with one record's worth of zeros so that `arr[0]` is always in bounds: a
 // frame that records no effect at all would otherwise index an empty array to take its
 // address. Counts come from the `*Total` variables, never from `.length`, so the seed is
@@ -381,7 +387,9 @@ let freeContextIds: Vec<int32> = [];
 export function create(this typeof DrawContext2D): DrawContext2D {
 	if ((freeContextIds.length as int32) > 0) { return DrawContext2D.twin(freeContextIds.pop()); }
 	serials.push(0);
-	return DrawContext2D.twin((serials.length as int32) - 1);
+	const id: int32 = (serials.length as int32) - 1;
+	contextIssuedHook(id);
+	return DrawContext2D.twin(id);
 }
 
 export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
@@ -851,7 +859,7 @@ function commandSlot(): int32 {
 }
 
 function copyFloats(
-	ref to: Vec<float32>, at: int32, from: Vec<float32>, start: int32, count: int32,
+	ref to: Vec<float32>, at: int32, from: Readonly<Span<float32>>, start: int32, count: int32,
 ): void {
 	for (let i: int32 = 0; i < count; i++) { to[at + i] = from[start + i]; }
 }

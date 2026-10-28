@@ -18,6 +18,7 @@ import {
 } from "./commandFields";
 import {
 	CommandKind, Pipeline, Program2D, PROGRAMS_2D, BLEND_MODES, EFFECT_FLOATS, VERTEX_FLOATS,
+	contextCount, setContextIssuedHook,
 } from "./displayList";
 import {
 	INITIAL_BUFFER_BYTES, MAX_BUFFER_BYTES, ScissorRect, truncated, deviceScaleOf,
@@ -381,7 +382,11 @@ function makeContextResources(): void {
 	generation = doorContextGeneration();
 }
 
-export function void2dSetup(): void { makeContextResources(); }
+export function void2dSetup(): void {
+	setContextIssuedHook(reserveContext);
+	reserveContext(contextCount() - 1);
+	makeContextResources();
+}
 
 function dropReleasedPageImage(page: int32): void {
 	if (pageImg[page] == 0 || pageGen[page] == void2dGlyphPageGeneration(page)) { return; }
@@ -603,8 +608,13 @@ export function void2dFrameEnd(): void {
 	}
 }
 
-function contextAt(id: int32): PreparedContext {
+function reserveContext(id: int32): void {
 	while ((contexts.length as int32) <= id) { contexts.push(new PreparedContext()); }
+	while ((lists.length as int32) <= id) { lists.push(new DisplayList()); }
+}
+
+function contextAt(id: int32): PreparedContext {
+	if (id >= (contexts.length as int32)) { fail(`void2d: context ${id} was never issued`); }
 	return contexts[id];
 }
 
@@ -791,7 +801,7 @@ export function void2dReplayTargets(
 }
 
 function listAt(id: int32): DisplayList {
-	while ((lists.length as int32) <= id) { lists.push(new DisplayList()); }
+	if (id >= (lists.length as int32)) { fail(`void2d: list ${id} was never issued`); }
 	return lists[id];
 }
 
