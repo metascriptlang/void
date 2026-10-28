@@ -1104,6 +1104,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 flipbookPlay;
     vec4 distanceFade;
     vec4 colorKey;
+    vec4 sinusDeform;
 };
 #endif
 #if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -1127,6 +1128,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 flipbookPlay;
     vec4 distanceFade;
     vec4 colorKey;
+    vec4 sinusDeform;
     vec4 emissive;
 };
 #endif
@@ -1998,6 +2000,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 flipbookPlay;
     vec4 distanceFade;
     vec4 colorKey;
+    vec4 sinusDeform;
 };
 #endif
 #if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -2021,6 +2024,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 flipbookPlay;
     vec4 distanceFade;
     vec4 colorKey;
+    vec4 sinusDeform;
     vec4 emissive;
 };
 #endif
@@ -2233,6 +2237,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 flipbookPlay;
     vec4 distanceFade;
     vec4 colorKey;
+    vec4 sinusDeform;
 };
 #endif
 #if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -2256,6 +2261,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 flipbookPlay;
     vec4 distanceFade;
     vec4 colorKey;
+    vec4 sinusDeform;
     vec4 emissive;
 };
 #endif
@@ -2447,6 +2453,20 @@ vec4 uvMotionOf() {
 #else
     return uvMotion;
 #endif
+#endif
+}
+#endif
+#ifdef UV_TRANSFORM
+vec2 sinusUv(vec2 uv, vec4 deform, float time) {
+    return vec2((uv.x + (sin(((uv.y * deform.y) + (time * deform.x))) * deform.z)), uv.y);
+}
+#endif
+#ifdef UV_TRANSFORM
+vec4 sinusDeformOf() {
+#ifdef EMISSIVE
+    return sinusDeform;
+#else
+    return sinusDeform;
 #endif
 }
 #endif
@@ -3361,6 +3381,9 @@ void main() {
     float time = frame.x;
     uv = movedUv(surfaceUv, uvMatrixOf(), uvMotionOf(), time);
 #endif
+#ifdef UV_TRANSFORM
+    uv = sinusUv(uv, sinusDeformOf(), frame.x);
+#endif
 #if defined(NORMAL_MAP) && defined(PARALLAX)
     vec3 view = normalize((cameraPosition.xyz - worldPosition));
     uv = parallaxUv(uv, view, normalize(worldNormal), worldTangent, materialOf().x, parallaxStepsOf());
@@ -3475,6 +3498,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 flipbookPlay;
     vec4 distanceFade;
     vec4 colorKey;
+    vec4 sinusDeform;
 };
 #endif
 #if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -3498,6 +3522,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 flipbookPlay;
     vec4 distanceFade;
     vec4 colorKey;
+    vec4 sinusDeform;
     vec4 emissive;
 };
 #endif
@@ -3737,6 +3762,7 @@ layout(binding=3) uniform movingUnlitMaterialParams {
     vec4 flipbookPlay;
     vec4 distanceFade;
     vec4 colorKey;
+    vec4 sinusDeform;
 };
 #endif
 layout(binding=6) uniform frameParams {
@@ -3777,6 +3803,11 @@ vec4 materialOf() {
 #ifdef UV_TRANSFORM
 vec2 movedUv(vec2 uv, vec4 matrix, vec4 motion, float time) {
     return ((mat2(matrix.xy, matrix.zw) * uv) + motion.xy) + (motion.zw * time);
+}
+#endif
+#ifdef UV_TRANSFORM
+vec2 sinusUv(vec2 uv, vec4 deform, float time) {
+    return vec2((uv.x + (sin(((uv.y * deform.y) + (time * deform.x))) * deform.z)), uv.y);
 }
 #endif
 #ifdef UV_TRANSFORM
@@ -3907,6 +3938,7 @@ void main() {
     vec4 matrix = uvMatrix;
     vec4 motion = uvMotion;
     uv = movedUv(surfaceUv, matrix, motion, frame.x);
+    uv = sinusUv(uv, sinusDeform, frame.x);
 #endif
     vec2 baseUv = uv;
     vec2 nextUv = uv;
@@ -3997,6 +4029,7 @@ layout(binding=3) uniform movingUnlitMaterialParams {
     vec4 flipbookPlay;
     vec4 distanceFade;
     vec4 colorKey;
+    vec4 sinusDeform;
 };
 #endif
 #ifdef CUTOUT
