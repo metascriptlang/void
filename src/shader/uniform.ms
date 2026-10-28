@@ -1,7 +1,7 @@
 // A uniform block written from a value of the struct the shader declares it with. The offsets come
-// from layout.ms over the same members the shader lowering builds (emit.ms uniformBlockOf), so a host
-// write and the block a shader reads cannot disagree; every lane the fields leave open is stored as
-// zero, because a pooled buffer is reused without a clear.
+// from layout.ms over the same members the shader lowering builds (emit.ms uniformBlockOf), so a
+// host write and the block a shader reads cannot disagree; every lane the fields leave open is
+// stored as zero, because a pooled buffer is reused without a clear.
 
 import {
 	ArrayAccessData,
@@ -32,18 +32,27 @@ function integer(value: int32, at: Node): Node {
 }
 
 function member(value: Node, name: string): Node {
-	return createNodeAt(NodeKind.MemberExpr, { object: value, property: name, isOptional: false }, value.location);
+	return createNodeAt(
+		NodeKind.MemberExpr,
+		{ object: value, property: name, isOptional: false },
+		value.location,
+	);
 }
 
 function index(value: Node, i: int32): Node {
-	return createNodeAt(NodeKind.ArrayAccess, { array: value, index: integer(i, value) }, value.location);
+	return createNodeAt(
+		NodeKind.ArrayAccess,
+		{ array: value, index: integer(i, value) },
+		value.location,
+	);
 }
 
 function isPath(n: Node): boolean {
 	if (n.kind == NodeKind.Identifier) { return true; }
 	if (n.kind == NodeKind.ArrayAccess) {
 		const access = n as ArrayAccessData;
-		return isPath(access.array) && (access.index.kind == NodeKind.NumberLiteral || isPath(access.index));
+		return isPath(access.array) &&
+			(access.index.kind == NodeKind.NumberLiteral || isPath(access.index));
 	}
 	return n.kind == NodeKind.MemberExpr && isPath((n as MemberExprData).object);
 }
@@ -54,15 +63,30 @@ class Stores {
 }
 
 function store(s: Stores, values: Node, at: Node, floatIndex: int32, value: Node): void {
-	const slot: Node = createNodeAt(NodeKind.BinaryExpr, { operator: "+", left: at, right: integer(floatIndex, at) }, at.location);
-	const target: Node = createNodeAt(NodeKind.ArrayAccess, { array: values, index: slot }, values.location);
-	const assign: Node = createNodeAt(NodeKind.BinaryExpr, { operator: "=", left: target, right: value }, values.location);
+	const slot: Node = createNodeAt(
+		NodeKind.BinaryExpr,
+		{ operator: "+", left: at, right: integer(floatIndex, at) },
+		at.location,
+	);
+	const target: Node = createNodeAt(
+		NodeKind.ArrayAccess,
+		{ array: values, index: slot },
+		values.location,
+	);
+	const assign: Node = createNodeAt(
+		NodeKind.BinaryExpr,
+		{ operator: "=", left: target, right: value },
+		values.location,
+	);
 	s.out.push(createNodeAt(NodeKind.ExprStmt, { expr: assign }, values.location));
 	s.covered[floatIndex] = true;
 }
 
-function storeVector(s: Stores, values: Node, at: Node, floatIndex: int32, rows: int32, value: Node): void {
-	for (let k = 0; k < rows; k += 1) { store(s, values, at, floatIndex + k, member(value, component(k))); }
+function storeVector(s: Stores, values: Node, at: Node, floatIndex: int32, rows: int32,
+	value: Node): void {
+	for (let k = 0; k < rows; k += 1) {
+		store(s, values, at, floatIndex + k, member(value, component(k)));
+	}
 }
 
 function storeMember(s: Stores, m: ShaderModule, values: Node, at: Node, floatIndex: int32,
@@ -73,11 +97,13 @@ function storeMember(s: Stores, m: ShaderModule, values: Node, at: Node, floatIn
 		storeVector(s, values, at, floatIndex, t.rows, value);
 	} else if (t.kind == ShaderTypeKind.Matrix) {
 		for (let c = 0; c < t.columns; c += 1) {
-			storeVector(s, values, at, floatIndex + c * columnStride(t.rows) / 4, t.rows, index(member(value, "columns"), c));
+			storeVector(s, values, at, floatIndex + c * columnStride(t.rows) / 4, t.rows,
+				index(member(value, "columns"), c));
 		}
 	} else if (t.kind == ShaderTypeKind.Array) {
 		for (let i = 0; i < t.length; i += 1) {
-			storeMember(s, m, values, at, floatIndex + i * uniformArrayStride(m, t) / 4, t.element[0], index(value, i));
+			storeMember(s, m, values, at, floatIndex + i * uniformArrayStride(m, t) / 4,
+				t.element[0], index(value, i));
 		}
 	} else {
 		throw new Error("writeUniform: unreachable member kind " + t.kind.toString());
@@ -110,7 +136,8 @@ export macro writeUniform(values: Node, at: Node, value: Node): Node {
 	for (let i = 0; i < layout.value.size / 4; i += 1) { s.covered.push(false); }
 	const members = m.structs[0].members;
 	for (let i = 0; i < members.length; i += 1) {
-		storeMember(s, m, values, at, layout.value.offsets[i] / 4, members[i].type, member(value, members[i].name));
+		storeMember(s, m, values, at, layout.value.offsets[i] / 4, members[i].type,
+			member(value, members[i].name));
 	}
 	const zero = integer(0, value);
 	for (let i = 0; i < s.covered.length; i += 1) {

@@ -728,7 +728,8 @@ export function uniformBlockOf(registry: Node, block: Node): Result<ShaderModule
 	for (let k = 0; k < fields.typExprFieldNames.length; k++) {
 		const member = blockMemberOf(nodes, fields, k as int32);
 		if (!member.ok) {
-			return Result.err("uniform member '" + fields.typExprFieldNames[k] + "': " + member.error);
+			return Result.err("uniform member '" + fields.typExprFieldNames[k] + "': " +
+				member.error);
 		}
 		layout.members.push(member.value);
 	}
@@ -780,8 +781,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32,
 		ScalarKind.U32, ScalarKind.I32, ScalarKind.U32, ScalarKind.I32, ScalarKind.F32];
 	const viewSamples = [SampleType.Uint, SampleType.Float, SampleType.Float, SampleType.Sint,
-		SampleType.Float, SampleType.Depth, SampleType.Depth, SampleType.Depth, SampleType.UnfilterableFloat,
-		SampleType.Uint, SampleType.Sint, SampleType.Uint, SampleType.Sint, SampleType.Float];
+		SampleType.Float, SampleType.Depth, SampleType.Depth, SampleType.Depth,
+		SampleType.UnfilterableFloat, SampleType.Uint, SampleType.Sint, SampleType.Uint,
+		SampleType.Sint, SampleType.Float];
 	const comparisonNode = getTypeImpl(SamplerComparison);
 	const vectorTypes = typeNodes.vectors;
 	const constructors = [
@@ -1005,7 +1007,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		if (d == null) { return integral ? Interpolation.Flat : Interpolation.Perspective; }
 		const kind = interpolateWord(d, 0);
 		if (kind == "flat") {
-			if (d.macroArgs.length > 1) { fail(d, "@interpolate(flat) takes no sampling, as WGSL's"); }
+			if (d.macroArgs.length > 1) {
+				fail(d, "@interpolate(flat) takes no sampling, as WGSL's");
+			}
 			return Interpolation.Flat;
 		}
 		if (integral) { fail(d, "an integer varying is @interpolate(flat), as WGSL's"); }
@@ -1091,7 +1095,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			if (shape != null && shape.kind == NodeKind.TypeArray && shape.typExprSize < 0) {
 				if (access != null && argumentName(access) == "write") {
 					fail(access, "storage buffer '" + name + "' cannot be @access(write): WGSL's " +
-						"storage buffers are read or read_write, and write is a storage texture's mode");
+						"storage buffers are read or read_write, and write is a storage " +
+						"texture's mode");
 				}
 				if (writes && !compute) {
 					fail(access, "storage buffer '" + name +
@@ -1132,8 +1137,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				}
 				if (texelScalar(texels[at]) != storageChannels[storageShape]) {
 					fail(format, "storage texture '" + name + "' holds " +
-						channelName(storageChannels[storageShape]) + " texels, and @format(" + texel +
-						") gives " + channelName(texelScalar(texels[at])) +
+						channelName(storageChannels[storageShape]) + " texels, and @format(" +
+						texel + ") gives " + channelName(texelScalar(texels[at])) +
 						": its type is the StorageTexture of that channel type");
 				}
 				const writeOnly = access == null || argumentName(access) == "write";
@@ -1261,8 +1266,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		Intrinsic.Inverse, Intrinsic.Round, Intrinsic.InverseSqrt, Intrinsic.Atan2,
 		Intrinsic.FaceForward, Intrinsic.Saturate, Intrinsic.UpperLeft3x3, Intrinsic.Select,
 		Intrinsic.LessThanEqual, Intrinsic.LessThan, Intrinsic.GreaterThan,
-		Intrinsic.GreaterThanEqual, Intrinsic.Equal, Intrinsic.NotEqual, Intrinsic.Any, Intrinsic.All,
-		Intrinsic.TextureDimensions, Intrinsic.TextureStore,
+		Intrinsic.GreaterThanEqual, Intrinsic.Equal, Intrinsic.NotEqual, Intrinsic.Any,
+		Intrinsic.All, Intrinsic.TextureDimensions, Intrinsic.TextureStore,
 		Intrinsic.TextureLoad, Intrinsic.AtomicLoad, Intrinsic.AtomicStore, Intrinsic.AtomicAdd,
 		Intrinsic.AtomicSub, Intrinsic.AtomicMax, Intrinsic.AtomicMin, Intrinsic.AtomicAnd,
 		Intrinsic.AtomicOr, Intrinsic.AtomicXor, Intrinsic.AtomicExchange,
@@ -1850,9 +1855,11 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		const left = lower(n.left);
 		const right = op == "<<" || op == ">>" ? shiftAmount(n.right) : lower(n.right);
 		const type = looseType(getType(n));
-		if ((op == "/" || op == "%") && (type.scalar == ScalarKind.I32 || type.scalar == ScalarKind.U32) &&
+		if ((op == "/" || op == "%") &&
+			(type.scalar == ScalarKind.I32 || type.scalar == ScalarKind.U32) &&
 			constantExpr(left) && constantExpr(right) && zeroComponent(right)) {
-			fail(n, "'" + op + "' by a constant zero: an integer " + (op == "/" ? "division" : "remainder") +
+			fail(n, "'" + op + "' by a constant zero: an integer " +
+				(op == "/" ? "division" : "remainder") +
 				" of const-expressions by zero is a shader-creation error in WGSL");
 		}
 		return binaryOf(binaryOps[binaryTexts.indexOf(op)], type, left, right);
@@ -1945,7 +1952,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	function zeroComponent(e: ShaderExpr): boolean {
 		e = folded(e);
 		if (e.kind == ExprKind.Literal) { return e.value == 0.0; }
-		if (e.kind == ExprKind.Unary && e.unary == UnaryOp.Negate) { return zeroComponent(e.operands[0]); }
+		if (e.kind == ExprKind.Unary && e.unary == UnaryOp.Negate) {
+			return zeroComponent(e.operands[0]);
+		}
 		if (e.kind == ExprKind.Convert && e.operands[0].type.scalar != ScalarKind.F32) {
 			return zeroComponent(e.operands[0]);
 		}
@@ -1988,8 +1997,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			for (let i = 0; i < rows; i++) { parts.push(literal(only.type, only.value)); }
 		}
 		if (parts.length != rows) {
-			fail(n, name + " takes a constant offset: a vec" + String(rows) + "i of integer literals, " +
-				"or a const of one (a let, or a const of runtime values, is not a const-expression), as WGSL's");
+			fail(n, name + " takes a constant offset: a vec" + String(rows) +
+				"i of integer literals, or a const of one (a let, or a const of runtime values, " +
+				"is not a const-expression), as WGSL's");
 		}
 		for (const part of parts) {
 			if (part.value < OFFSET_MIN || part.value > OFFSET_MAX) {
@@ -2081,7 +2091,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				if (object.kind == NodeKind.MemberExpr && isType(object.object, bindingsType)) {
 					const r = resourceNamed(object.property);
 					use(resourceRead, r, n);
-					if (m.resources[r].kind == ResourceKind.StorageBuffer && n.property == "length") {
+					if (m.resources[r].kind == ResourceKind.StorageBuffer &&
+						n.property == "length") {
 						return intrinsicOf(Intrinsic.ArrayLength, looseType(getType(n)),
 							[exprOf(ExprKind.Resource, m.resources[r].type, r, [])]);
 					}
@@ -2149,7 +2160,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	}
 
 	function writableStorage(target: Node): ShaderExpr | null {
-		if (target.kind != NodeKind.MemberExpr || !isType(target.object, bindingsType)) { return null; }
+		if (target.kind != NodeKind.MemberExpr || !isType(target.object, bindingsType)) {
+			return null;
+		}
 		const r = resourceNamed(target.property);
 		if (r < 0 || m.resources[r].kind != ResourceKind.StorageBuffer) { return null; }
 		if (m.resources[r].access != Access.ReadWrite) {
@@ -2450,7 +2463,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				const spelled = vertex ? name : varyingName(name);
 				const type = member(t, spelled, site);
 				const gate = featureCondition(inputs.typExprFieldDecorators[f]);
-				if (vertex) { noInterpolate(inputs.typExprFieldDecorators[f], "a vertex attribute"); }
+				if (vertex) {
+					noInterpolate(inputs.typExprFieldDecorators[f], "a vertex attribute");
+				}
 				const interpolation = vertex ? Interpolation.Perspective :
 					interpolationOf(t, site, inputs.typExprFieldDecorators[f]);
 				claim(spelled, site);
