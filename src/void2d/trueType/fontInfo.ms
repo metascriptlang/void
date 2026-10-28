@@ -52,7 +52,7 @@ export struct FontInfo {
 	fdselect: Buf;
 }
 
-export function asInt32(value: int64): int32 {
+@inline export function asInt32(value: int64): int32 {
 	return (((value & LOW_32) ^ SIGN_32) - SIGN_32) as int32;
 }
 
@@ -66,25 +66,25 @@ export function truncInt(value: float64): int32 {
 	return value as int32;
 }
 
-export function u8At(this data: Readonly<Span<uint8>>, at: int64): int32 {
+@inline export function u8At(this data: Readonly<Span<uint8>>, at: int64): int32 {
 	return at >= 0 && at < (data.length as int64) ? (data[at] as int32) : 0;
 }
 
-export function u16At(this data: Readonly<Span<uint8>>, at: int64): int32 {
+@inline export function u16At(this data: Readonly<Span<uint8>>, at: int64): int32 {
 	return data.u8At(at) * 256 + data.u8At(at + 1);
 }
 
-export function i16At(this data: Readonly<Span<uint8>>, at: int64): int32 {
+@inline export function i16At(this data: Readonly<Span<uint8>>, at: int64): int32 {
 	const value = data.u16At(at);
 	return value >= 0x8000 ? value - 0x10000 : value;
 }
 
-export function u32At(this data: Readonly<Span<uint8>>, at: int64): int64 {
+@inline export function u32At(this data: Readonly<Span<uint8>>, at: int64): int64 {
 	return ((data.u8At(at) as int64) << 24) + ((data.u8At(at + 1) as int64) << 16) +
 		((data.u8At(at + 2) as int64) << 8) + (data.u8At(at + 3) as int64);
 }
 
-export function i32At(this data: Readonly<Span<uint8>>, at: int64): int32 {
+@inline export function i32At(this data: Readonly<Span<uint8>>, at: int64): int32 {
 	return asInt32(data.u32At(at));
 }
 
@@ -92,7 +92,7 @@ export function newBuf(data: Readonly<Span<uint8>>): Buf {
 	return { data: data, base: 0, size: 0, cursor: 0 };
 }
 
-export function hasTag(this data: Readonly<Span<uint8>>, at: int64, tag: string): boolean {
+@inline export function hasTag(this data: Readonly<Span<uint8>>, at: int64, tag: string): boolean {
 	return data.u8At(at) == tag.charCodeAt(0) && data.u8At(at + 1) == tag.charCodeAt(1) &&
 		data.u8At(at + 2) == tag.charCodeAt(2) && data.u8At(at + 3) == tag.charCodeAt(3);
 }
