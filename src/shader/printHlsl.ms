@@ -632,34 +632,30 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 	};
 }
 
-function isLayered(t: ShaderType): boolean {
-	return t.shape == TextureShape.D2Array || t.shape == TextureShape.Depth2dArray;
-}
-
-function layeredAt(p: Printer, e: ShaderExpr, layered: boolean): string {
-	return layered ? "float3(" + expr(p, e.operands[2]) + ", float(" + expr(p, e.operands[3]) +
-		"))" : expr(p, e.operands[2]);
+function layeredAt(p: Printer, e: ShaderExpr): string {
+	const t = e.operands[0].type;
+	if (!isArrayTexture(t)) { return expr(p, e.operands[2]); }
+	return (t.shape == TextureShape.CubeArray ? "float4(" : "float3(") + expr(p, e.operands[2]) +
+		", float(" + expr(p, e.operands[3]) + "))";
 }
 
 function sampleOf(p: Printer, e: ShaderExpr): string {
-	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
+	const layered = e.operands.length > 0 && isArrayTexture(e.operands[0].type);
 	const base = layered ? 4 : 3;
 	const offset = e.operands.length == base ? "" : ", " + expr(p, e.operands[base]);
 	const [texture, sampler] = [e.operands[0], e.operands[1]];
 	if (p.stage != ShaderStage.Fragment) {
 		return operand(p, texture) + ".SampleLevel(" + expr(p, sampler) + ", " +
-			layeredAt(p, e, layered) + ", 0.0" + offset + ")";
+			layeredAt(p, e) + ", 0.0" + offset + ")";
 	}
-	return operand(p, texture) + ".Sample(" + expr(p, sampler) + ", " + layeredAt(p, e, layered) +
-		offset + ")";
+	return operand(p, texture) + ".Sample(" + expr(p, sampler) + ", " + layeredAt(p, e) + offset + ")";
 }
 
 function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
 	const layer = isArrayTexture(t) ? 1 : 0;
-	const at = layer == 0 ? expr(p, o[2]) : (t.shape == TextureShape.CubeArray ? "float4(" :
-		"float3(") + expr(p, o[2]) + ", float(" + expr(p, o[3]) + "))";
+	const at = layeredAt(p, e);
 	const tail = o.slice(3 + layer, sampleBase(e) + (hasOffset(e) ? 1 : 0)).map((a) => expr(p, a)).join(", ");
 	const method = match (e.intrinsic) {
 		Intrinsic.TextureSampleLevel => ".SampleLevel(",
@@ -671,13 +667,13 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 }
 
 function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
-	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
+	const layered = e.operands.length > 0 && isArrayTexture(e.operands[0].type);
 	const base = layered ? 5 : 4;
 	const [texture, sampler] = [e.operands[0], e.operands[1]];
 	const reference = e.operands[base - 1];
 	const offset = e.operands.length == base ? "" : ", " + expr(p, e.operands[base]);
 	return operand(p, texture) + (level ? ".SampleCmpLevelZero(" : ".SampleCmp(") +
-		expr(p, sampler) + ", " + layeredAt(p, e, layered) + ", " + expr(p, reference) + offset + ")";
+		expr(p, sampler) + ", " + layeredAt(p, e) + ", " + expr(p, reference) + offset + ")";
 }
 
 function storageAt(p: Printer, args: ShaderExpr[]): string {

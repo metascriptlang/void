@@ -17,6 +17,7 @@ import {
 	ShaderModule,
 	ShaderStage,
 	StmtKind,
+	TextureShape,
 	arrayType,
 	assignOf,
 	exprOf,
@@ -27,6 +28,7 @@ import {
 	samplerType,
 	stmtOf,
 	structType,
+	textureType,
 	vectorType,
 } from "../shader/ir";
 import { ShaderTarget, bindingSlots } from "../shader/layout";
@@ -431,4 +433,12 @@ test "an array texture samples with its layer packed into the coordinates" {
 	for (const target of TARGETS) {
 		assert printed(m, 1, [0, 1], target).includes("texture(srcTex_srcSmp, vec3(uv, float(2)))");
 	}
+}
+
+test "a cube array texture samples with its layer as the fourth coordinate" {
+	let m = layeredBlurModule();
+	m.resources[0].type = textureType(TextureShape.CubeArray, ScalarKind.F32);
+	m.functions[1].body[0].expr.operands[0].operands[0].type = m.resources[0].type;
+	assert printed(m, 1, [0, 1], GlslTarget.Glsl430).includes(
+		"texture(srcTex_srcSmp, vec4(uv, float(2)))");
 }

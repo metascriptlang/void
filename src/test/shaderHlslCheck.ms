@@ -11,6 +11,7 @@ import {
 	Intrinsic,
 	IoDirection,
 	SamplerType,
+	ScalarKind,
 	ShaderExpr,
 	ShaderModule,
 	ShaderStage,
@@ -24,6 +25,7 @@ import {
 	literal,
 	stmtOf,
 	structType,
+	textureType,
 } from "../shader/ir";
 import { ShaderTarget, bindingSlots } from "../shader/layout";
 import { printHlsl } from "../shader/printHlsl";
@@ -334,6 +336,13 @@ test "an array texture samples with its layer packed into the coordinates" {
 	const m = layeredBlurModule();
 	assert irErrors(m).length == 0;
 	assert printed(m, 1, [0, 1]).includes("srcTex.Sample(srcSmp, float3(uv, float(2)))");
+}
+
+test "a cube array texture samples with its layer as the fourth coordinate" {
+	let m = layeredBlurModule();
+	m.resources[0].type = textureType(TextureShape.CubeArray, ScalarKind.F32);
+	m.functions[1].body[0].expr.operands[0].operands[0].type = m.resources[0].type;
+	assert printed(m, 1, [0, 1]).includes("srcTex.Sample(srcSmp, float4(uv, float(2)))");
 }
 
 test "a plain sample outside a fragment entry reads level 0, as WGSL and MSL do" {

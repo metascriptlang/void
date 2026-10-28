@@ -538,21 +538,22 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 	};
 }
 
-function isLayered(t: ShaderType): boolean {
-	return t.shape == TextureShape.D2Array || t.shape == TextureShape.Depth2dArray;
-}
-
 function rowCoordinate(p: Printer, t: ShaderType, text: string): string {
 	return p.es && t.shape == TextureShape.D1 ? "vec2(" + text + ", 0.0)" : text;
 }
 
+function layeredAt(p: Printer, e: ShaderExpr): string {
+	const t = e.operands[0].type;
+	if (!isArrayTexture(t)) { return rowCoordinate(p, t, expr(p, e.operands[2])); }
+	return (t.shape == TextureShape.CubeArray ? "vec4(" : "vec3(") + expr(p, e.operands[2]) +
+		", float(" + expr(p, e.operands[3]) + "))";
+}
+
 function sampleOf(p: Printer, e: ShaderExpr): string {
-	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
+	const layered = e.operands.length > 0 && isArrayTexture(e.operands[0].type);
 	const base = layered ? 4 : 3;
-	const [texture, sampler, at] = [e.operands[0], e.operands[1], e.operands[2]];
-	const pair = pairOf(p, texture, sampler);
-	const coords = layered ? "vec3(" + expr(p, at) + ", float(" + expr(p, e.operands[3]) + "))" :
-		rowCoordinate(p, texture.type, expr(p, at));
+	const pair = pairOf(p, e.operands[0], e.operands[1]);
+	const coords = layeredAt(p, e);
 	return narrowed(e.operands.length == base ? "texture(" + pair.name + ", " + coords + ")" :
 		"textureOffset(" + pair.name + ", " + coords + ", " + expr(p, e.operands[base]) + ")", e.type);
 }
@@ -562,8 +563,7 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const t = o[0].type;
 	const pair = pairOf(p, o[0], o[1]);
 	const layer = isArrayTexture(t) ? 1 : 0;
-	const at = layer == 0 ? rowCoordinate(p, t, expr(p, o[2])) : (t.shape == TextureShape.CubeArray ? "vec4(" :
-		"vec3(") + expr(p, o[2]) + ", float(" + expr(p, o[3]) + "))";
+	const at = layeredAt(p, e);
 	const tail = o.slice(3 + layer, sampleBase(e)).map((a) => a.type.kind == ShaderTypeKind.Scalar &&
 		a.type.scalar != ScalarKind.F32 ? "float(" + expr(p, a) + ")" : expr(p, a)).join(", ");
 	const offset = hasOffset(e) ? expr(p, offsetOf(e)) : "";
@@ -581,7 +581,7 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 
 function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	const name = e.intrinsic.toString();
-	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
+	const layered = e.operands.length > 0 && isArrayTexture(e.operands[0].type);
 	const base = layered ? 5 : 4;
 	const [texture, sampler, at] = [e.operands[0], e.operands[1], e.operands[2]];
 	const reference = e.operands[base - 1];
