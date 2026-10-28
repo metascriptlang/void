@@ -1923,9 +1923,8 @@ export function patchOrder(this s: Scene2D, vw: float32, vh: float32): boolean {
 //     build, a frame of nothing but the clear colour in release, because the nested `begin2d`
 //     also reset the list the frame was being recorded into.
 function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32): void {
-	const steps: Vec<Filter> = s.filters[i].steps;
-	const last: int32 = (steps.length as int32) - 1;
-	const f: Filter = steps[last];
+	const last: int32 = (s.filters[i].steps.length as int32) - 1;
+	const f: Filter = s.filters[i].steps[last];
 	const blend: BlendMode = s.paints[i].blend;
 	let b = emptyBounds();
 	boundsRow(s, i, b);
@@ -1956,9 +1955,10 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	// the open pass, which is the whole path when there is one step.
 	let sharp: RenderTarget = rt;
 	for (let k: int32 = 0; k < last; k++) {
-		const mask: RenderTarget = steps[k].kind === FilterKind.Mask
-			? maskTarget(s, i, steps[k], plan, xMin, yMin, vw, vh) : rt;
-		sharp = filterStage(steps[k], sharp, mask, rtW, rtH, plan.scale);
+		const step: Filter = s.filters[i].steps[k];
+		const mask: RenderTarget = step.kind === FilterKind.Mask
+			? maskTarget(s, i, step, plan, xMin, yMin, vw, vh) : rt;
+		sharp = filterStage(step, sharp, mask, rtW, rtH, plan.scale);
 	}
 	if (f.kind === FilterKind.Outline || f.kind === FilterKind.Mask) {
 		const mask: RenderTarget = f.kind === FilterKind.Mask
