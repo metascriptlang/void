@@ -104,7 +104,7 @@ fi
 for jsStage in off on; do
 	jsDefines=""
 	[ "$jsStage" = off ] || jsDefines="$moduleDefines"
-	if "$MSC" test --target=js $jsDefines tests/js/targetCheck.ms > "out/gate-js-$jsStage.log" 2>&1 \
+	if "$MSC" test --target=js -d:webgpu $jsDefines tests/js/targetCheck.ms > "out/gate-js-$jsStage.log" 2>&1 \
 			&& sed 's/\x1b\[[0-9;]*m//g' "out/gate-js-$jsStage.log" | grep -qE '^\s+Tests +[0-9]+ passed \([0-9]+\)$'; then
 		pass "JS target, module stage all-$jsStage: Void compiles and refuses C-only work by name"
 	else
@@ -114,7 +114,7 @@ done
 for jsDriver in views window; do
 	for jsBackend in gl gpu; do
 		jsBundle="out/tmp/js-$jsDriver-$jsBackend.js"
-		jsBackendFlag=""
+		jsBackendFlag="-d:webgpu"
 		[ "$jsBackend" = gl ] && jsBackendFlag="-d:webgl2"
 		if "$MSC" build --target=js $jsBackendFlag "src/examples/${jsDriver}JsEntry.jms" --output="$jsBundle" > "out/gate-js-$jsDriver-$jsBackend.log" 2>&1 \
 				&& node tests/js/gpuLostHarness.mjs "$jsBundle" "$jsBackend" "$jsDriver" >> "out/gate-js-$jsDriver-$jsBackend.log" 2>&1; then

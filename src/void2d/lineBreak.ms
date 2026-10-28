@@ -1,5 +1,5 @@
-import { LINE_BREAK_RANGES } from "./lineBreakTable";
-import { rangeValue } from "./unicodeRanges";
+import { LINE_BREAK_PACKED } from "./lineBreakTable";
+import { rangeValue, unpackRanges } from "./unicodeRanges";
 
 export enum LineClass {
 	AL,
@@ -68,6 +68,13 @@ const HANGUL_LAST: int32 = 0xD7A3;
 const HANGUL_T_COUNT: int32 = 28;
 const EAST_ASIAN: int32 = 1 << 6;
 
+let lineBreakRangesCache: uint32[] = new Array(0);
+
+function lineBreakRanges(): uint32[] {
+	if (lineBreakRangesCache.length == 0) { lineBreakRangesCache = unpackRanges(LINE_BREAK_PACKED, 11); }
+	return lineBreakRangesCache;
+}
+
 export function lineBreakPacked(codepoint: int32): int32 {
 	if (codepoint < 0 || codepoint > 0x10FFFF) { return 0; }
 	if (codepoint >= HANGUL_FIRST && codepoint <= HANGUL_LAST) {
@@ -75,7 +82,7 @@ export function lineBreakPacked(codepoint: int32): int32 {
 			LineClass.H2 : LineClass.H3;
 		return (syllable as int32) | EAST_ASIAN;
 	}
-	return rangeValue(LINE_BREAK_RANGES, 11, 0x7FF, codepoint);
+	return rangeValue(lineBreakRanges(), 11, 0x7FF, codepoint);
 }
 
 export function lineProperty(codepoint: int32): LineProperty {

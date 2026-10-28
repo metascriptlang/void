@@ -8,8 +8,7 @@
 #   sh scripts/jsBudget.sh            build, measure, compare with tests/bench/jsBudget.txt
 #   sh scripts/jsBudget.sh --record   build, measure, rewrite tests/bench/jsBudget.txt
 #
-# main2d.ms does not build for JS yet (inbox card js-element-address-as-pointer-argument), so the entries
-# are the two harness entries; neither reaches src/void2d, and an on column equal to off says its flag reaches no JS.
+# The entries are the two harness entries; neither reaches src/void2d, and an on column equal to off says its flag reaches no JS.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -41,7 +40,7 @@ status=0
 
 build() {
 	entry="$1"; label="$2"; flag="$3"
-	"$MSC" build --target=js $flag "src/examples/$entry.jms" --output="$OUT/$entry-$label.js" > "$OUT/$entry-$label.log" 2>&1 \
+	"$MSC" build --target=js -d:webgpu $flag "src/examples/$entry.jms" --output="$OUT/$entry-$label.js" > "$OUT/$entry-$label.log" 2>&1 \
 		|| { echo "FAIL js budget: $entry $label did not build — see $OUT/$entry-$label.log"; exit 1; }
 	sh scripts/jsMinify.sh "$OUT/$entry-$label.js" "$OUT/$entry-$label.min.js" > "$OUT/$entry-$label.min.log" 2>&1 		|| { echo "FAIL js budget: jsMinify of $entry $label — see $OUT/$entry-$label.min.log"; exit 1; }
 }

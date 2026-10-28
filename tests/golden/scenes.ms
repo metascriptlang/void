@@ -128,7 +128,7 @@ function sheet(): Tile {
 		const loaded = loadImageFile("assets/test.png");
 		const w: int32 = loaded.width;
 		const h: int32 = loaded.height;
-		const image: uint32 = makeImage(loaded.pixels as Span<uint32> as Ptr<void>, w, h);
+		const image: uint32 = makeImage(loaded.pixels as Span<uint32>, w, h);
 		sheetTile = tile(Texture.adopt(image, makeView(image), w, h), w as float32, h as float32);
 		sheetLoaded = true;
 	}

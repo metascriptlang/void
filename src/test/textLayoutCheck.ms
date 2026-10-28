@@ -33,13 +33,19 @@ import { rgba } from "../void2d/types";
 import { approx } from "./helpers";
 import { laid, laidRuns, shapedOf, widthOf } from "./layoutHelpers";
 import { glyphLookups } from "../void2d/face";
+import { holdFontFile } from "./fontFile";
+
+function held(path: string): string {
+	holdFontFile(path);
+	return path;
+}
 
 let loadedFont: FontId = DEFAULT_FONT;
 let fontLoaded: boolean = false;
 
 function style(): TextStyle {
 	if (!fontLoaded) {
-		loadedFont = try addFont("assets/font.ttf") catch DEFAULT_FONT;
+		loadedFont = try addFont(held("assets/font.ttf")) catch DEFAULT_FONT;
 		fontLoaded = true;
 	}
 	return {
@@ -281,14 +287,14 @@ const SYMBOL_COLOUR: string = "tests/fonts/sbixSynthetic.ttf";
 const BARE_PRIMARY: string = "tests/fonts/zeroLineHeight.ttf";
 
 function symbolStyle(): TextStyle {
-	const primary: FontId = try addFont(BARE_PRIMARY) catch DEFAULT_FONT;
-	addFallbackFont(primary, SYMBOL_COLOUR);
-	addFallbackFont(primary, SYMBOL_TEXT);
+	const primary: FontId = try addFont(held(BARE_PRIMARY)) catch DEFAULT_FONT;
+	addFallbackFont(primary, held(SYMBOL_COLOUR));
+	addFallbackFont(primary, held(SYMBOL_TEXT));
 	return { ...style(), font: primary };
 }
 
 function faceAt(path: string): int32 {
-	return fontFace(try addFont(path) catch DEFAULT_FONT);
+	return fontFace(try addFont(held(path)) catch DEFAULT_FONT);
 }
 
 test "a selector steers its base to the face of that presentation, whatever the fallback order" {
@@ -335,7 +341,7 @@ test "a tab already on a stop moves a whole stop, and a trailing one adds no wid
 }
 
 test "control characters never probe the fallback faces" {
-	const id: FontId = try addFont("assets/font.ttf") catch DEFAULT_FONT;
+	const id: FontId = try addFont(held("assets/font.ttf")) catch DEFAULT_FONT;
 	assert id != DEFAULT_FONT;
 	const fresh: TextStyle = { ...style(), font: id };
 	laid("x", fresh);
