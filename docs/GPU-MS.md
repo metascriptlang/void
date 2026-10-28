@@ -1187,3 +1187,30 @@ and its pixel pins run on D3D11 WARP only, where they were recorded; the kb chec
 The allocation check reaches the frame path again (its `draw:pushClip` key had stopped it) and found
 six copies and two allocations, all fixed. For Windows: the D3D11 row of `docs/TESTING.md` counts
 121 scenes while `tests/golden/table.ms` has 123; the goldens run in step 2 rewrites it.
+
+### 2026-10-28, Mac hands the land to Windows (the person's call)
+
+The Mac's part is done; Windows owns everything from here, the land into `main` included.
+
+**The Mac's evidence, at `3c289539`:** `scripts/gate.sh` on the Mac has 4 FAIL, none from the
+branch's code. Index 3016/3016; golden metal 15 pass, 108 pending, 0 fail of 123. The 4:
+- `msc check --os=emcc -d:webgpu|webgl2 src/examples/main2d.ms`: yoga's child index
+  (`~/metascript/.inbox/yoga/2026-10-28-child-index-as-size-t-for-wasm32.md`). `main` is red the
+  same way, so it does not hold the land.
+- wasm delta, `shaper.c` for wasm32: in the Mac's known reds.
+- `docs/TESTING.md`'s D3D11 row counts 121 scenes, the table 123: step 2 below.
+
+A commit that only adds DXBC blobs and that row reaches nothing the Mac gate runs, so the Mac
+verdict holds for the land. A change to shared `.ms` after `3c289539` needs a Mac rerun of
+`msc test src/test/index.ms` and `sh scripts/golden.sh --backend metal`.
+
+**Windows, in order:**
+1. `scripts/regen-shaders.sh` with fxc; commit the DXBC.
+2. The full `scripts/gate.sh` on Windows (D3D11 goldens, GL, the index), with the D3D11 row of
+   `docs/TESTING.md` set to what the run counts. Vulkan goldens too.
+3. Land: `~/nerdtools/claude/tools/wt.sh land gpu-ms`, in the same window as a Neon session that
+   renames `void/src/sokol` to `void/src/host` in Neon's 24 files
+   (`~/metascript/.inbox/neon/2026-10-27-void-src-sokol-renamed-to-src-host.md`); Neon breaks
+   the moment Void `main` has the rename.
+4. After the land: retire the lanes `void-wt-gpu-ms-core` and `void-wt-gpu-ms-2d`, close the card
+   `~/metascript/.wt/gpu-ms.md`, then start D3D12 as its own arc from `main`.
