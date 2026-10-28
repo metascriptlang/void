@@ -54,6 +54,8 @@ import {
 	billboardPoint,
 	colorKeyOf,
 	colorKeyed,
+	sinusDeformOf,
+	sinusUv,
 	dirShadowAt,
 	dissolveEdgeOf,
 	distanceFade,
@@ -344,6 +346,7 @@ export function pixelArtLitTexturedFs(
 	if (key.uvTransform) {
 		const time = b.frameParams.frame.x;
 		uv = movedUv(input.surfaceUv, uvMatrixOf(b, key), uvMotionOf(b, key), time);
+		uv = sinusUv(uv, sinusDeformOf(b, key), time);
 	}
 	let baseUv = uv;
 	let nextUv = uv;
@@ -462,6 +465,7 @@ export function pixelArtUnlitTexturedFs(
 		const matrix = b.movingUnlitMaterialParams.uvMatrix;
 		const motion = b.movingUnlitMaterialParams.uvMotion;
 		uv = movedUv(input.surfaceUv, matrix, motion, b.frameParams.frame.x);
+		uv = sinusUv(uv, b.movingUnlitMaterialParams.sinusDeform, b.frameParams.frame.x);
 	}
 	let baseUv = uv;
 	let nextUv = uv;
