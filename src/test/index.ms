@@ -248,6 +248,7 @@ import "./shaderUniformWriterCheck";
 import "./shaderHlslCheck";
 import "./shaderBytecodeCheck";
 import "./shaderBytecodeDeviceCheck";
+import "./shaderMacroPrintCheck";
 import "./shaderWgslCheck";
 import "./shaderIrProgramCheck";
 import "./shaderGlslCheck";

@@ -132,11 +132,11 @@ test "a lowered stage reads back as the module it was" {
 	}
 }
 
-test "the plain lit program reflects as shdc's" {
+test "the plain lit program reflects as its committed descriptor" {
 	assert matched(LIT_VS, glslLinkedIr(litFs, litVs), [], litShaderModule()) == "";
 }
 
-test "a textured key with every texture reflects as shdc's" {
+test "a textured key with every texture reflects as its committed descriptor" {
 	assert matched(LIT_TEXTURED_VS, LIT_TEXTURED_FS,
 		["EMISSIVE", "NORMAL_MAP", "SHADOWED", "NORMAL_MRT", "SKINNED"],
 		skinLitTexturedEmissiveNormalMapShadowedNormalMrtShaderModule()) == "";
@@ -144,28 +144,28 @@ test "a textured key with every texture reflects as shdc's" {
 		litTexturedDissolveEmissiveShaderModule()) == "";
 }
 
-test "a shadow caster reflects as shdc's" {
+test "a shadow caster reflects as its committed descriptor" {
 	assert matched(LIT_TEXTURED_VS, glslLinkedIr(shadowLitTexturedFs, litTexturedVs),
 		["DISSOLVE"], shadowLitTexturedDissolveShaderModule()) == "";
 }
 
-test "a pixel-art key reflects as shdc's" {
+test "a pixel-art key reflects as its committed descriptor" {
 	assert matched(glslIr(pixelArtLitTexturedVs),
 		glslLinkedIr(pixelArtLitTexturedFs, pixelArtLitTexturedVs), ["CUTOUT", "SHADOWED"],
 		pixelArtLitTexturedCutoutShadowedShaderModule()) == "";
 }
 
-test "a fragment over another vertex entry reflects as shdc's" {
+test "a fragment over another vertex entry reflects as its committed descriptor" {
 	assert matched(glslIr(particleVisualVs), glslLinkedIr(billboardFs, billboardVs), ["CUTOUT"],
 		particleVisualCutoutShaderModule()) == "";
 }
 
-test "fullscreen passes reflect as shdc's" {
+test "fullscreen passes reflect as their committed descriptors" {
 	assert matched(FULLSCREEN_VS, glslIr(copyFs), [], copyShaderModule()) == "";
 	assert matched(FULLSCREEN_VS, glslIr(outlineMixFs), [], outlineMixShaderModule()) == "";
 }
 
-test "void2d programs reflect as shdc's" {
+test "void2d programs reflect as their committed descriptors" {
 	assert matched(glslIr(uiVs), glslLinkedIr(uiFs, uiVs), [], uiShaderModule()) == "";
 	assert matched(glslIr(blurVs), glslLinkedIr(blurFs, blurVs), [], blurShaderModule()) == "";
 }
