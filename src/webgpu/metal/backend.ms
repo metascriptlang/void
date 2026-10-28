@@ -1604,16 +1604,14 @@ function applyPipeline(): void {
 }
 
 function clearBinds(): void {
-	boundBuffers = [];
-	boundOffsets = [];
-	boundTextures = [];
-	boundSamplers = [];
-	for (let i = 0; i < STAGE_COUNT * MAX_STAGE_BUFFERS; i++) {
-		boundBuffers.push(NO_BUFFER);
-		boundOffsets.push(0);
-	}
-	for (let i = 0; i < STAGE_COUNT * MAX_STAGE_TEXTURES; i++) { boundTextures.push(NO_TEXTURE); }
-	for (let i = 0; i < STAGE_COUNT * MAX_STAGE_SAMPLERS; i++) { boundSamplers.push(NO_SAMPLER); }
+	boundBuffers.setLength(STAGE_COUNT * MAX_STAGE_BUFFERS);
+	boundOffsets.setLength(STAGE_COUNT * MAX_STAGE_BUFFERS);
+	boundTextures.setLength(STAGE_COUNT * MAX_STAGE_TEXTURES);
+	boundSamplers.setLength(STAGE_COUNT * MAX_STAGE_SAMPLERS);
+	boundBuffers.fill(NO_BUFFER);
+	boundOffsets.fill(0);
+	boundTextures.fill(NO_TEXTURE);
+	boundSamplers.fill(NO_SAMPLER);
 }
 
 function bindBuffer(stage: int32, native: Ptr<MtlBufferImpl>, offset: int64, slot: int32): void {
