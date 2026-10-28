@@ -12,6 +12,8 @@ import {
 	MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
 	MOVING_FLIPBOOK_FRAMES,
 	MOVING_FLIPBOOK_SPEED,
+	MOVING_SINUS_SPEED,
+	MOVING_SINUS_AMPLITUDE,
 	ProgramKey,
 	movingBase,
 } from "../void3d/gpu3d";
@@ -556,8 +558,9 @@ function presetOver(context: DrawContext, program: Program, levels: float32): Pi
 	return created.value;
 }
 
-// Whether the core wakes for a moving unlit material whose flipbook has `frames` at `speed`.
-function flipbookReadsTime(frames: float32, speed: float32): boolean {
+// Whether the core wakes for a moving unlit material holding `count` at `countAt` and `speed`
+// at `speedAt` of its moving floats.
+function movingReadsTime(countAt: int32, count: float32, speedAt: int32, speed: float32): boolean {
 	let context: DrawContext =
 		DrawContext.withUniformCapacity(MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
 	const key: ProgramKey = ProgramKey.of(Program.UnlitTextured).withUvTransform();
@@ -565,8 +568,8 @@ function flipbookReadsTime(frames: float32, speed: float32): boolean {
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
 	if (!block.ok) { unreachable; }
 	let values: Vec<float32> = new Array(MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
-	values[movingBase(key) + MOVING_FLIPBOOK_FRAMES] = frames;
-	values[movingBase(key) + MOVING_FLIPBOOK_SPEED] = speed;
+	values[movingBase(key) + countAt] = count;
+	values[movingBase(key) + speedAt] = speed;
 	if (!writeUniforms(context, block.value, values).ok) { unreachable; }
 	const material: Material = {
 		...Material.plain(Program.UnlitTextured, RenderState.defaults(), Phase.Opaque),
@@ -578,9 +581,15 @@ function flipbookReadsTime(frames: float32, speed: float32): boolean {
 }
 
 test "a flipbook wakes the core only while it has frames and a speed to play them at" {
-	assert flipbookReadsTime(4.0, 2.0);
-	assert !flipbookReadsTime(4.0, 0.0);
-	assert !flipbookReadsTime(0.0, 2.0);
+	assert movingReadsTime(MOVING_FLIPBOOK_FRAMES, 4.0, MOVING_FLIPBOOK_SPEED, 2.0);
+	assert !movingReadsTime(MOVING_FLIPBOOK_FRAMES, 4.0, MOVING_FLIPBOOK_SPEED, 0.0);
+	assert !movingReadsTime(MOVING_FLIPBOOK_FRAMES, 0.0, MOVING_FLIPBOOK_SPEED, 2.0);
+}
+
+test "a sine wave wakes the core only while it has an amplitude and a speed" {
+	assert movingReadsTime(MOVING_SINUS_AMPLITUDE, 0.1, MOVING_SINUS_SPEED, 2.0);
+	assert !movingReadsTime(MOVING_SINUS_AMPLITUDE, 0.1, MOVING_SINUS_SPEED, 0.0);
+	assert !movingReadsTime(MOVING_SINUS_AMPLITUDE, 0.0, MOVING_SINUS_SPEED, 2.0);
 }
 
 test "a material kind derives Heaps' blend, depth write, list and alpha kill" {
