@@ -16,7 +16,7 @@ import {
 	MOVING_MATERIAL_UNIFORM_LENGTH, MOVING_FLIPBOOK_COLUMNS, MOVING_FLIPBOOK_ROWS,
 	MOVING_FLIPBOOK_FRAMES, MOVING_FLIPBOOK_SPEED, MOVING_FLIPBOOK_START_TIME, MOVING_FLIPBOOK_LOOP,
 	MOVING_FLIPBOOK_BLEND, MOVING_FADE_NEAR_START, MOVING_FADE_NEAR_END, MOVING_COLOR_KEY,
-	movingBase,
+	MOVING_SINUS_SPEED, MOVING_SINUS_AMPLITUDE, movingBase,
 } from "../../src/void3d/gpu3d";
 import {
 	DrawContext, DrawItem, MeshId, MaterialId, MeshUploadError, MaterialError,
@@ -59,11 +59,12 @@ enum Quad {
 	BlendedFlipbook,
 	Fade,
 	ColorKey,
+	Sinus,
 }
 
 const WIDTH: int32 = 320;
 const HEIGHT: int32 = 240;
-const HALF: float32 = 0.27;
+const HALF: float32 = 0.25;
 const WORLD_PER_TEXEL: float32 = 0.02;
 const BACKGROUND: Vec4 = { x: 0.1, y: 0.15, z: 0.2, w: 1.0 };
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
@@ -84,7 +85,7 @@ let pixelArt: boolean = voidCaptureEnvInt("VOID_MOVING_PIXEL_ART", 0) != 0;
 let control: boolean = voidCaptureEnvInt("VOID_MOVING_CONTROL", 0) != 0;
 let context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH +
-	9 * MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_MATERIAL_UNIFORM_LENGTH,
+	10 * MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_MATERIAL_UNIFORM_LENGTH,
 );
 let scene: Scene3D = Scene3D.create(context);
 let forward: ForwardRenderer = makeForward();
@@ -92,7 +93,9 @@ let preset: PixelArtRenderer = makePreset();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-let positions: Vec<float32> = [-2.79, -2.17, -1.55, -0.93, -0.31, 0.31, 0.93, 1.55, 2.17, 2.79];
+let positions: Vec<float32> = [
+	-2.8, -2.24, -1.68, -1.12, -0.56, 0.0, 0.56, 1.12, 1.68, 2.24, 2.8,
+];
 let frameIndex: int32 = 0;
 let failures: int32 = 0;
 
@@ -293,6 +296,12 @@ function init(): void {
 	keyValues[movingBase(flipbook) + MOVING_COLOR_KEY + 3] = 1.0;
 	place(Quad.ColorKey, { ...materialFor(flipbook, keyValues, true), texture: halves }, false);
 
+	// Half a texture's width at the wave's crest at 1 s, back to rest at 2 s.
+	let sinusValues: Vec<float32> = valuesOf(flipbook);
+	sinusValues[movingBase(flipbook) + MOVING_SINUS_SPEED] = 1.5707964;
+	sinusValues[movingBase(flipbook) + MOVING_SINUS_AMPLITUDE] = 0.5;
+	place(Quad.Sinus, { ...materialFor(flipbook, sinusValues, true), texture: halves }, false);
+
 	setAmbient(scene, vec3(1.0, 1.0, 1.0));
 	setCameraPosition(core(), vec3(0.0, 0.0, 4.0));
 	setElapsedTime(core(), ELAPSED);
@@ -374,6 +383,10 @@ function check(camera: CameraView, swapped: boolean): void {
 	if (!isBackground(rgbAt(camera, Quad.ColorKey, -1.0))) { fail("the keyed texel drew"); }
 	const unkeyed: int64 = rgbAt(camera, Quad.ColorKey, 1.0);
 	if (!isColor(unkeyed, GREEN)) { fail(`the unkeyed texel drew ${unkeyed}, not green`); }
+	const waved: int64 = rgbAt(camera, Quad.Sinus, -1.0);
+	if (!isColor(waved, swapped ? GREEN : RED)) {
+		fail(`the sine wave did not move u with the time: ${waved}`);
+	}
 }
 
 // The plain flipbook holds one frame over the whole quad; the blended one leans a quarter of the
@@ -397,7 +410,7 @@ function checkFlipbooks(camera: CameraView, first: boolean): void {
 function frame(): void {
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("the framebuffer size changed"); }
 	frameIndex = frameIndex + 1;
-	if (refresh(scene, items) != 10) { fail("the scene does not draw its ten quads"); }
+	if (refresh(scene, items) != 11) { fail("the scene does not draw its eleven quads"); }
 	const collected: Result<int32, LightError> = collectLights(scene, lights);
 	if (!collected.ok) { unreachable; }
 	const camera: CameraView = viewOf();
@@ -421,7 +434,7 @@ function frame(): void {
 	if (frameIndex < LAST_FRAME) { return; }
 	if (failures > 0) { voidCaptureExit(1); }
 	console.log("PASS moving material: affine, scroll, back texture, dissolve, flipbook, fade, " +
-		"colour key");
+		"colour key, sine wave");
 	voidCaptureExit(0);
 }
 
