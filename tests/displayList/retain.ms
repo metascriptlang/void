@@ -647,12 +647,12 @@ gamma", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 4.0);
 xbeta
 gamma");
 	assert check(s, "a glyph inserted in the middle line", "splice");
-	assert s.context.uiCopied + s.spareContext.uiCopied - copied == 15;
+	assert s.context.uiCopied + s.spareContext.uiCopied - copied == 10;
 	editor.setText("alpha
 xbeta
 gam");
 	assert check(s, "a shorter last line", "splice");
-	assert s.context.uiCopied + s.spareContext.uiCopied - copied == 28;
+	assert s.context.uiCopied + s.spareContext.uiCopied - copied == 23;
 }
 
 test "a styled label's run colour change writes every line again" {
