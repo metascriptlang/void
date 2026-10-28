@@ -81,8 +81,12 @@ later replaces the hand-written GLSL source of each base.
   that phase, in the order given, and merges as Heaps' `hxsl/Linker.hx` `allocVar` does: structs
   and resources by name, refused when a struct's members or a resource's kind or type differ;
   functions and constants renamed on a clash. An effect on a phase with no hook site is
-  refused. Effect resources keep binding -1 until numbering, so a linked module prints only
-  after its bindings are numbered (`numberedForTest` in `src/test/shaderLinkCheck.ms`).
+  refused. After each merge `link` numbers every resource still at binding -1 within its group
+  (blocks, views, samplers) at the next binding past the highest one there, in link order, as
+  Heaps' `hxsl/Flatten.hx` `packTextures` and `packBuffers` give each var the next position of its
+  kind; a block stays its own block. A group past `slotLimit` (`layout.ms`: 8 blocks, 32 views,
+  12 samplers) is refused, naming the effect and the resource. Pinned in
+  `src/test/shaderLinkCheck.ms` with each target's reflection.
 - **A linked program carries only the varyings its fragment reads**, so attaching an effect
   decides what crosses the stages. After chaining, `link` writes zero into each struct field of a
   local that nothing reads (a hook site whose chain is empty passes its argument through), then
