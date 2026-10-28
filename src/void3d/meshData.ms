@@ -114,16 +114,6 @@ export function withUvs(this typeof MeshData): MeshData {
 	return { ...MeshData.empty(), hasUvs: true };
 }
 
-export function copy(this data: Readonly<MeshData>): MeshData {
-	const wide = data.wideIndices;
-	return {
-		...data,
-		vertices: [...data.vertices],
-		indices: [...data.indices],
-		wideIndices: wide === null ? null : [...wide],
-	};
-}
-
 export function stride(this data: Readonly<MeshData>): int32 {
 	const base: int32 = data.hasTangents ? LIT_TEXTURED_TANGENT_VERTEX_STRIDE :
 		(data.hasUvs ? LIT_TEXTURED_VERTEX_STRIDE : LIT_VERTEX_STRIDE);
