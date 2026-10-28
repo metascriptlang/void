@@ -1592,8 +1592,6 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			[literal(scalarType(t.scalar), 0.0)]));
 	}
 
-	// One invocation zeroes every workgroup variable before any reads it, as naga's
-	// zero_initialize_workgroup_memory does, so every target starts where WGSL starts.
 	function zeroedWorkgroups(f: ShaderFunction): ShaderStmt[] {
 		const u32 = scalarType(ScalarKind.U32);
 		let index = m.ios.findIndex((io) => io.stage == stage &&
@@ -2555,7 +2553,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		const element = storageElements[s];
 		if (!isAuthorStruct(element)) {
 			fail(storageSites[s], "storage buffer '" + m.resources[storageResources[s]].name +
-				"' holds no author struct: shdc takes one flexible array of structs per buffer");
+				"' holds no author struct: a storage buffer is one flexible array of structs");
 		}
 		m.resources[storageResources[s]].type.element[0].structIndex =
 			structIndex(element, storageSites[s]);

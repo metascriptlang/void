@@ -173,8 +173,6 @@ export function storageElementLayout(m: ShaderModule, resourceIndex: int32):
 	return Result.ok(structLayoutOf(m, element.structIndex, LayoutRule.Std430));
 }
 
-// SPIRV-Cross build_dummy_sampler_for_combined_images names the sampler a texel fetch or size
-// query pairs with on GL; sokol-shdc names each combined sampler <texture>_<sampler>.
 export const DUMMY_SAMPLER = "SPIRV_Cross_DummySampler";
 
 export class BindingSlot {
@@ -279,9 +277,6 @@ function pairSamplerBinding(m: ShaderModule, pair: TexturePair): int32 {
 	return pair.sampler < 0 ? -1 : m.resources[pair.sampler].binding;
 }
 
-// Uniform block slot n is b<n> and buffer(n); views (textures, storage buffers and storage
-// textures, one slot space) and samplers follow sokol-shdc's
-// src/shdc/types/bind_slot_map.h allocate_backend_slots, per stage.
 export function bindingSlots(m: ShaderModule, entries: int32[], target: ShaderTarget):
 	Result<BindingSlot[], string> {
 	let used: Used[] = [];
