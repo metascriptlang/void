@@ -108,11 +108,13 @@ test "on a wide target the corners stay width apart but lean off the perpendicul
 	const leaning: float32 = ((c.z - c.x) + (c.w - c.y)) / (Math.sqrt(2.0) as float32 * apart(c));
 	assert Math.abs(leaning) > 0.1;
 	const level: Vec4f = corners(view, ahead(view, 4.0), view.basis.right, 2.0, 400, 200);
-	assert Math.abs(level.z - level.x) < 0.001 && Math.abs(Math.abs(level.w - level.y) - 2.0) < 0.001;
+	assert Math.abs(level.z - level.x) < 0.001;
+	assert Math.abs(Math.abs(level.w - level.y) - 2.0) < 0.001;
 }
 
 test "an orthographic depth goes through the same linearize, from near to far" {
-	assert approx(lineViewDepth(0.0, NEAR, FAR), NEAR) && approx(lineViewDepth(1.0, NEAR, FAR), FAR);
+	assert approx(lineViewDepth(0.0, NEAR, FAR), NEAR);
+	assert approx(lineViewDepth(1.0, NEAR, FAR), FAR);
 	const middle: float32 = 0.5;
 	const depth: float32 = NEAR + (FAR - NEAR) * middle;
 	assert approx(lineViewDepth(middle, NEAR, FAR), NEAR * FAR / (FAR + NEAR - depth));
