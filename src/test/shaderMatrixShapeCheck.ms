@@ -1,7 +1,8 @@
-// WGSL's non-square matrices authored in MetaScript: Mat2x3f, Mat2x4f, Mat3x2f, Mat3x4f, Mat4x2f and
+// WGSL's non-square matrices authored in MetaScript: Mat2x3f, Mat2x4f, Mat3x2f, Mat3x4f, Mat4x2f
+// and
 // Mat4x3f with their constructors, products, transposes and column reads. The CPU oracle runs every
 // overload against a fixed value, one entry uses the shapes through a uniform block, and the text
-// per target and the probe files that naga, fxc and spirv-val read are pinned. A matrix of two rows
+// per target and the probe files that fxc and spirv-val read are pinned. A matrix of two rows
 // keeps WGSL's host layout in a uniform block on every target: columns eight bytes apart.
 
 import { mkdir, writeFile } from "std/fs";
@@ -144,8 +145,10 @@ function shapeBindings(): ShapeBindings {
 	return {
 		shapes: {
 			wide: mat2x3f(vec3f(1.0, 2.0, 3.0), vec3f(4.0, 5.0, 6.0)),
-			tall: mat4x3f(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), vec3f(1.0, 1.0, 1.0)),
-			basis: mat3x4f(vec4f(1.0, 0.0, 0.0, 0.0), vec4f(0.0, 1.0, 0.0, 0.0), vec4f(0.0, 0.0, 1.0, 1.0)),
+			tall: mat4x3f(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0),
+			vec3f(1.0, 1.0, 1.0)),
+			basis: mat3x4f(vec4f(1.0, 0.0, 0.0, 0.0), vec4f(0.0, 1.0, 0.0, 0.0),
+			vec4f(0.0, 0.0, 1.0, 1.0)),
 			extra: mat2x4f(vec4f(1.0, 2.0, 3.0, 4.0), vec4f(5.0, 6.0, 7.0, 8.0)),
 		},
 	};
@@ -162,7 +165,8 @@ function twoBindings(): TwoBindings {
 	};
 }
 
-function close2(a: Vec2f, b: Vec2f): boolean { return Math.abs(a.x - b.x) < 0.0001 && Math.abs(a.y - b.y) < 0.0001; }
+function close2(a: Vec2f, b: Vec2f): boolean { return Math.abs(a.x - b.x) < 0.0001 &&
+	Math.abs(a.y - b.y) < 0.0001; }
 
 function close3(a: Vec3f, b: Vec3f): boolean {
 	return close2(vec2f(a.x, a.y), vec2f(b.x, b.y)) && Math.abs(a.z - b.z) < 0.0001;
@@ -173,11 +177,13 @@ function close4(a: Vec4f, b: Vec4f): boolean {
 }
 
 // Column j holds j * rows + 1, j * rows + 2 and so on, so no two shapes share a value pattern.
-function entry(rows: int32, column: int32, lane: int32): float32 { return (column * rows + lane + 1) as float32; }
+function entry(rows: int32, column: int32,
+	lane: int32): float32 { return (column * rows + lane + 1) as float32; }
 
 function column2(c: int32): Vec2f { return vec2f(entry(2, c, 0), entry(2, c, 1)); }
 function column3(c: int32): Vec3f { return vec3f(entry(3, c, 0), entry(3, c, 1), entry(3, c, 2)); }
-function column4(c: int32): Vec4f { return vec4f(entry(4, c, 0), entry(4, c, 1), entry(4, c, 2), entry(4, c, 3)); }
+function column4(c: int32): Vec4f { return vec4f(entry(4, c, 0), entry(4, c, 1), entry(4, c, 2),
+	entry(4, c, 3)); }
 
 function m2x2(): Mat2x2f { return mat2x2f(column2(0), column2(1)); }
 function m2x3(): Mat2x3f { return mat2x3f(column3(0), column3(1)); }
@@ -189,7 +195,8 @@ function m4x2(): Mat4x2f { return mat4x2f(column2(0), column2(1), column2(2), co
 function m4x3(): Mat4x3f { return mat4x3f(column3(0), column3(1), column3(2), column3(3)); }
 function m4x4(): Mat4x4f { return mat4x4f(column4(0), column4(1), column4(2), column4(3)); }
 
-function probe(lane: int32): float32 { return lane == 0 ? 1.5 : lane == 1 ? -2.0 : lane == 2 ? 0.5 : 3.0; }
+function probe(lane: int32): float32 { return lane == 0 ? 1.5 : lane == 1 ? -2.0 : lane == 2 ?
+	0.5 : 3.0; }
 function p2(): Vec2f { return vec2f(probe(0), probe(1)); }
 function p3(): Vec3f { return vec3f(probe(0), probe(1), probe(2)); }
 function p4(): Vec4f { return vec4f(probe(0), probe(1), probe(2), probe(3)); }
@@ -349,9 +356,12 @@ test "every non-square product agrees with the products of its columns" {
 function probePath(name: string, target: ShaderTarget, stage: string): string {
 	return match (target) {
 		ShaderTarget.Wgsl => "out/wgslProbe/" + name + stage + ".wgsl",
-		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") + ".hlsl",
-		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." + (stage == "Vs" ? "vert" : "frag"),
-		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." + (stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") +
+		".hlsl",
+		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." +
+		(stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." +
+		(stage == "Vs" ? "vert" : "frag"),
 		ShaderTarget.Msl => "out/mslProbe/" + name + stage + ".metal",
 		ShaderTarget.Spirv => "out/spirvProbe/" + name + stage + ".spv",
 	};
@@ -397,27 +407,38 @@ function opcodes(words: uint32[][], opcode: int32): int32 {
 
 test "the block of non-square matrices reads as its own columns on every GLSL" {
 	const glsl450 = glslLinked(shapeFs, shapeVs);
-	assert glsl450.includes("uniform shapes {\n    mat2x3 wide;\n    mat4x3 tall;\n    mat3x4 basis;\n    mat2x4 extra;\n};\n");
-	assert glsl450.includes("    vec3 across = wide * vec2(amount.x, amount.y);\n    vec2 back = amount * wide;\n");
-	assert glsl450.includes("    mat2x4 lifted = basis * wide;\n    mat3x2 flipped = transpose(wide);\n");
-	assert glsl450.includes("    mat3x2 own = mat3x2(vec2(1.0, 2.0), vec2(3.0, 4.0), vec2(5.0, 6.0));\n");
+	assert glsl450.includes(
+		"uniform shapes {\n    mat2x3 wide;\n    mat4x3 tall;\n    mat3x4 basis;\n    mat2x4 " +
+		"extra;\n};\n");
+	assert glsl450.includes(
+		"    vec3 across = wide * vec2(amount.x, amount.y);\n    vec2 back = amount * wide;\n");
+	assert glsl450.includes(
+		"    mat2x4 lifted = basis * wide;\n    mat3x2 flipped = transpose(wide);\n");
+	assert glsl450.includes(
+		"    mat3x2 own = mat3x2(vec2(1.0, 2.0), vec2(3.0, 4.0), vec2(5.0, 6.0));\n");
 	const columns = "mat2x3(shapes[0].xyz, shapes[1].xyz)";
 	for (const target of [ShaderTarget.Glsl430, ShaderTarget.Glsl300es]) {
 		const text = printedFor(shapeProgram(), 1, target, "shapeMat");
 		assert text.includes("uniform ") && text.includes("vec4 shapes[11];\n");
 		assert text.includes("across = " + columns + " * vec2(amount.x, amount.y);\n");
 		assert text.includes("back = amount * " + columns + ";\n");
-		assert text.includes("tall = mat4x3(shapes[2].xyz, shapes[3].xyz, shapes[4].xyz, shapes[5].xyz) * vec4(amount, 1.0);\n");
-		assert text.includes("lifted = mat3x4(shapes[6], shapes[7], shapes[8]) * " + columns + ";\n");
+		assert text.includes(
+			"tall = mat4x3(shapes[2].xyz, shapes[3].xyz, shapes[4].xyz, shapes[5].xyz) * " +
+			"vec4(amount, 1.0);\n");
+		assert text.includes("lifted = mat3x4(shapes[6], shapes[7], shapes[8]) * " + columns +
+			";\n");
 		assert text.includes("flipped = transpose(" + columns + ");\n");
 		assert text.includes("column = mat2x4(shapes[9], shapes[10])[1];\n");
 	}
 }
 
-test "HLSL lays a non-square matrix out as rows of the IR's columns and multiplies in the other order" {
+test "HLSL lays a non-square matrix out as rows of the IR's columns and multiplies the other way" {
 	const text = printedFor(shapeProgram(), 1, ShaderTarget.Hlsl5, "shapeMat");
-	assert text.includes("    row_major float2x3 _0_wide : packoffset(c0);\n    row_major float4x3 _0_tall : packoffset(c2);\n" +
-		"    row_major float3x4 _0_basis : packoffset(c6);\n    row_major float2x4 _0_extra : packoffset(c9);\n");
+	assert text.includes(
+		"    row_major float2x3 _0_wide : packoffset(c0);\n    row_major float4x3 _0_tall : " +
+		"packoffset(c2);\n" +
+		"    row_major float3x4 _0_basis : packoffset(c6);\n    row_major float2x4 _0_extra : " +
+		"packoffset(c9);\n");
 	assert text.includes("float3 across = mul(float2(amount.x, amount.y), _0_wide);\n");
 	assert text.includes("float2 back = mul(_0_wide, amount);\n");
 	assert text.includes("float3 tall = mul(float4(amount, 1.0), _0_tall);\n");
@@ -429,19 +450,25 @@ test "HLSL lays a non-square matrix out as rows of the IR's columns and multipli
 
 test "MSL and WGSL name the shape and multiply with the operator" {
 	const msl = printedFor(shapeProgram(), 1, ShaderTarget.Msl, "shapeMat");
-	assert msl.includes("struct Shapes {\n  float2x3 wide;\n  float4x3 tall;\n  float3x4 basis;\n  float2x4 extra;\n};\n");
+	assert msl.includes(
+		"struct Shapes {\n  float2x3 wide;\n  float4x3 tall;\n  float3x4 basis;\n  float2x4 " +
+		"extra;\n};\n");
 	assert msl.includes("float3 across = (shapes.wide * float2(in.amount.x, in.amount.y));\n");
 	assert msl.includes("float2 back = (in.amount * shapes.wide);\n");
 	assert msl.includes("float2x4 lifted = (shapes.basis * shapes.wide);\n");
 	assert msl.includes("float3x2 flipped = transpose(shapes.wide);\n");
-	assert msl.includes("float3x2 own = float3x2(float2(1.0, 2.0), float2(3.0, 4.0), float2(5.0, 6.0));\n");
+	assert msl.includes(
+		"float3x2 own = float3x2(float2(1.0, 2.0), float2(3.0, 4.0), float2(5.0, 6.0));\n");
 	const wgsl = printedFor(shapeProgram(), 1, ShaderTarget.Wgsl, "shapeMat");
-	assert wgsl.includes("struct Shapes {\n  wide : mat2x3f,\n  tall : mat4x3f,\n  basis : mat3x4f,\n  extra : mat2x4f,\n}\n");
+	assert wgsl.includes(
+		"struct Shapes {\n  wide : mat2x3f,\n  tall : mat4x3f,\n  basis : mat3x4f,\n  extra : " +
+		"mat2x4f,\n}\n");
 	assert wgsl.includes("var across : vec3f = (shapes.wide * vec2f(amount.x, amount.y));\n");
 	assert wgsl.includes("var back : vec2f = (amount * shapes.wide);\n");
 	assert wgsl.includes("var lifted : mat2x4f = (shapes.basis * shapes.wide);\n");
 	assert wgsl.includes("var flipped : mat3x2f = transpose(shapes.wide);\n");
-	assert wgsl.includes("var own : mat3x2f = mat3x2f(vec2f(1f, 2f), vec2f(3f, 4f), vec2f(5f, 6f));\n");
+	assert wgsl.includes(
+		"var own : mat3x2f = mat3x2f(vec2f(1f, 2f), vec2f(3f, 4f), vec2f(5f, 6f));\n");
 }
 
 function decorations(words: uint32[][], decoration: uint32): uint32[][] {
@@ -452,7 +479,8 @@ test "SPIR-V multiplies each shape with its own opcode and strides every column 
 	const m = shapeProgram();
 	const _vertex = spirvProbe(m, 0, "shapeMat");
 	const words = spirvProbe(m, 1, "shapeMat");
-	assert opcodes(words, 145) == 3 && opcodes(words, 144) == 1 && opcodes(words, 146) == 1 && opcodes(words, 84) == 1;
+	assert opcodes(words, 145) == 3 && opcodes(words, 144) == 1 && opcodes(words, 146) == 1 &&
+		opcodes(words, 84) == 1;
 	const strides = decorations(words, 7);
 	assert strides.length == 4 && strides.filter((i) => i[4] == 16).length == 4;
 	assert decorations(words, 5).length == 4;
@@ -467,7 +495,7 @@ function offsetsOf(words: uint32[][]): int32[] {
 	return decorations(words, 35).map((i) => i[4] as int32);
 }
 
-test "a uniform block of two-row matrices takes WGSL's host layout, mat2x2f 16 at 0, vec2f 8 at 16, mat3x2f 24 at 24, mat4x2f 32 at 48" {
+test "a uniform block of two-row matrices takes WGSL's host layout" {
 	const m = twosProgram();
 	const layout = uniformBlockLayout(m, resourceNamed(m, "twos"));
 	assert layout.ok, layout.ok ? "" : layout.error;
@@ -496,7 +524,8 @@ test "GLSL reads each two-row column as the xy or zw half of its vec4" {
 	for (const target of [ShaderTarget.Glsl430, ShaderTarget.Glsl300es]) {
 		const text = twosText(target);
 		assert text.includes("vec4 twos[5];\n"), text;
-		assert text.includes("turned = (" + a + " * vec2(amount.x, amount.y)) + twos[1].xy;\n"), text;
+		assert text.includes("turned = (" + a + " * vec2(amount.x, amount.y)) + twos[1].xy;\n"),
+			text;
 		assert text.includes("mixed = " + c + " * amount;\n"), text;
 		assert text.includes("last = " + d + " * vec4(amount, 1.0);\n"), text;
 		assert text.includes("flipped = transpose(" + c + ");\n"), text;
@@ -512,7 +541,7 @@ function writeProbe(path: string, text: string): string {
 	return text;
 }
 
-test "GLSL 450 declares each two-row column of a uniform block as a vec2 member and rebuilds the matrix at every read" {
+test "GLSL 450 declares each two-row column of a uniform block as a vec2, rebuilt per read" {
 	const text = writeProbe("out/glslProbe/twosMat.450.frag", "#version 450
 " + glslLinked(twosFs, shapeVs));
 	assert text.includes("uniform twos {
@@ -545,7 +574,7 @@ test "GLSL 450 declares each two-row column of a uniform block as a vec2 member 
 	assert text.includes(a + "[1].x") && text.includes(c + "[1].y"), text;
 }
 
-test "GLSL 450 keeps the natural matCx2 declaration in a storage element, where std430 strides vec2 columns at 8" {
+test "GLSL 450 keeps matCx2 natural in a storage element, std430 strides vec2 at 8" {
 	const text = writeProbe("out/glslProbe/cells.450.comp", "#version 450
 " + glslCompute(cellsCs, [4, 1, 1]));
 	assert text.includes("struct Cell {
@@ -578,9 +607,11 @@ test "HLSL holds each two-row column as a float2 of the cbuffer and builds the m
 
 test "MSL and WGSL declare the two-row matrices as they are, which lays them out as WGSL does" {
 	const msl = twosText(ShaderTarget.Msl);
-	assert msl.includes("struct Twos {\n  float2x2 a;\n  float2 b;\n  float3x2 c;\n  float4x2 d;\n};\n"), msl;
+	assert msl.includes(
+		"struct Twos {\n  float2x2 a;\n  float2 b;\n  float3x2 c;\n  float4x2 d;\n};\n"), msl;
 	const wgsl = twosText(ShaderTarget.Wgsl);
-	assert wgsl.includes("struct Twos {\n  a : mat2x2f,\n  b : vec2f,\n  c : mat3x2f,\n  d : mat4x2f,\n}\n"), wgsl;
+	assert wgsl.includes(
+		"struct Twos {\n  a : mat2x2f,\n  b : vec2f,\n  c : mat3x2f,\n  d : mat4x2f,\n}\n"), wgsl;
 }
 
 test "SPIR-V hoists each two-row column into the block as a vec2 eight bytes after the one before" {
@@ -629,7 +660,8 @@ test "a storage buffer holds two-row matrices at std430's offsets on every targe
 	assert wgsl.includes("  a : mat2x2f,\n  b : vec2f,\n  c : mat3x2f,\n  d : mat4x2f,\n"), wgsl;
 	const words = spirvProbe(cellsProgram(), 0, "cells");
 	const offsets = offsetsOf(words);
-	assert offsets.length == 5 && offsets[0] == 0 && offsets[1] == 16 && offsets[2] == 24 && offsets[3] == 48;
+	assert offsets.length == 5 && offsets[0] == 0 && offsets[1] == 16 && offsets[2] == 24 &&
+		offsets[3] == 48;
 	const strides = decorations(words, 7);
 	assert strides.length == 3 && strides.filter((i) => i[4] == 8).length == 3;
 }

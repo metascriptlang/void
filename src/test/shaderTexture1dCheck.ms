@@ -1,11 +1,17 @@
 // WGSL's texture_1d<f32> (textureSample, textureSampleLevel, textureLoad, textureDimensions) and
 // texture_storage_1d (textureLoad, textureStore, textureDimensions): each entry runs on the CPU, is
 // pinned as GLSL and printed for every target into out/<target>Probe/ for scripts/validateWgsl.sh,
-// scripts/validateHlsl.sh, naga and spirv-val.
+// scripts/validateHlsl.sh and spirv-val.
 
 import { mkdir, writeFile } from "std/fs";
 import { Wrap } from "../gpu/state";
-import { computeModule, programModule, stageSource, stageWords, wordsBase64 } from "../shader/descriptor";
+import {
+	computeModule,
+	programModule,
+	stageSource,
+	stageWords,
+	wordsBase64,
+} from "../shader/descriptor";
 import { Buffer } from "std/core/buffer";
 import { glsl, glslCompute, glslComputeIr, glslIr } from "../shader/emit";
 import { Intrinsic, ShaderModule, irErrors } from "../shader/ir";
@@ -114,9 +120,12 @@ test "a 1D storage texture loads and stores a texel and reports its width" {
 function probePath(name: string, target: ShaderTarget, stage: string): string {
 	return match (target) {
 		ShaderTarget.Wgsl => "out/wgslProbe/" + name + stage + ".wgsl",
-		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Cs" ? "cs" : "ps") + ".hlsl",
-		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." + (stage == "Cs" ? "comp" : "frag"),
-		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." + (stage == "Cs" ? "comp" : "frag"),
+		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Cs" ? "cs" : "ps") +
+		".hlsl",
+		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." +
+		(stage == "Cs" ? "comp" : "frag"),
+		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." +
+		(stage == "Cs" ? "comp" : "frag"),
 		ShaderTarget.Msl => "out/mslProbe/" + name + stage + ".metal",
 		ShaderTarget.Spirv => "out/spirvProbe/" + name + stage + ".spv",
 	};
@@ -251,9 +260,11 @@ test "SPIR-V declares a Dim1D image under the 1D capabilities" {
 
 test "reflection refuses a 1D view by name until the door can name one" {
 	const r = reflectProgram(programOf(), 0, 1, ShaderTarget.Wgsl);
-	assert !r.ok && r.error.includes("D1 is no GPUTextureViewDimension"), r.ok ? "reflected" : r.error;
+	assert !r.ok && r.error.includes("D1 is no GPUTextureViewDimension"), r.ok ?
+		"reflected" : r.error;
 	const c = reflectCompute(computeOf(), 0, ShaderTarget.Wgsl);
-	assert !c.ok && c.error.includes("D1 is no GPUTextureViewDimension"), c.ok ? "reflected" : c.error;
+	assert !c.ok && c.error.includes("D1 is no GPUTextureViewDimension"), c.ok ?
+		"reflected" : c.error;
 }
 
 test "a 1D texture takes no offset, bias or derivative sample, as WGSL's" {

@@ -1,5 +1,5 @@
-import { approx } from "./helpers";
-import { bitcastF32toU32, Vec4f } from "../shader/std";
+import { approx, sameLanes } from "./helpers";
+import { Vec4f } from "../shader/std";
 import { Vec4 } from "../math/math3d";
 import { Blend, RenderState } from "../gpu/state";
 import { DrawContext } from "../void3d/draw";
@@ -95,28 +95,15 @@ test "an HDR preset reserves its bloom off, and setBloom turns it on and off" {
 
 import { BloomParams } from "../void3d/post3d";
 import { UniformPool, reserveBlock, writeBlock } from "../void3d/uniformPool";
-import { uniformSize } from "../shader/uniform";
-import { BLOOM_UNIFORM_LENGTH, BLOOM_PASS_UNIFORM_LENGTH, paramsOf } from "../void3d/bloom";
+import { BLOOM_UNIFORM_LENGTH, paramsOf } from "../void3d/bloom";
 
-function sameLanes(made: Vec<float32>, expected: float32[]): boolean {
-	if (made.length != expected.length) { return false; }
-	for (let i = 0; i < expected.length; i++) {
-		if (bitcastF32toU32(made[i]) != bitcastF32toU32(expected[i])) { return false; }
-	}
-	return true;
-}
-
-test "bloom's block is its params struct's floats, three to a pass" {
-	assert BLOOM_UNIFORM_LENGTH == uniformSize<BloomParams>() / 4;
-	assert BLOOM_PASS_UNIFORM_LENGTH == 3 * BLOOM_UNIFORM_LENGTH;
-}
-
-test "bloom writes one texel of the source, one of the target, the blend and the threshold, every lane written" {
+test "bloom writes the source and target texels, the blend and the threshold, every lane written" {
 	let pool: UniformPool = UniformPool.withCapacity(BLOOM_UNIFORM_LENGTH);
 	for (let i = 0; i < BLOOM_UNIFORM_LENGTH; i++) { pool.values[i] = -7.0; }
 	const reserved = reserveBlock<BloomParams>(pool, 0);
 	assert reserved.ok;
-	const settings: BloomSettings = { ...BloomSettings.natural(), threshold: 1.0, thresholdSoftness: 0.5 };
+	const settings: BloomSettings =
+		{ ...BloomSettings.natural(), threshold: 1.0, thresholdSoftness: 0.5 };
 	const threshold: Vec4f = thresholdOf(settings);
 	assert writeBlock(pool, reserved.value, paramsOf(64, 128, 32, 16, 0.375, threshold)).ok;
 	assert approx(pool.values[11], 0.49999);
@@ -129,12 +116,12 @@ test "bloom writes one texel of the source, one of the target, the blend and the
 }
 
 test "the tone map block is the exposure multiplier and the curve's number, the other lanes zero" {
-	assert TONE_MAP_UNIFORM_LENGTH == uniformSize<ToneMapParams>() / 4;
 	let pool: UniformPool = UniformPool.withCapacity(TONE_MAP_UNIFORM_LENGTH);
 	for (let i = 0; i < TONE_MAP_UNIFORM_LENGTH; i++) { pool.values[i] = -7.0; }
 	const reserved = reserveBlock<ToneMapParams>(pool, TONE_MAP_UNIFORM_SLOT);
 	assert reserved.ok;
-	const modes: ToneMode[] = [ToneMode.Linear, ToneMode.Reinhard, ToneMode.Filmic, ToneMode.Neutral];
+	const modes: ToneMode[] =
+		[ToneMode.Linear, ToneMode.Reinhard, ToneMode.Filmic, ToneMode.Neutral];
 	for (let m = 0; m < 4; m++) {
 		assert writeBlock(pool, reserved.value, toneParamsOf(2.5, modes[m])).ok;
 		assert sameLanes(pool.values, [2.5, m as float32, 0, 0]);

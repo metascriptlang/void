@@ -60,7 +60,8 @@ function field(name: string, type: ShaderType): ShaderField {
 	return f;
 }
 
-function resource(kind: ResourceKind, name: string, binding: int32, type: ShaderType): ShaderResource {
+function resource(kind: ResourceKind, name: string, binding: int32,
+	type: ShaderType): ShaderResource {
 	let r = new ShaderResource();
 	r.kind = kind;
 	r.name = name;
@@ -160,7 +161,7 @@ function texturedModule(): ShaderModule {
 	return m;
 }
 
-// shady's compute1: each invocation walks its row, writing a storage buffer's value to a texel.
+// compute1: each invocation walks its row, writing a storage buffer's value to a texel.
 function computeModule(): ShaderModule {
 	const f32 = scalarType(ScalarKind.F32);
 	const i32 = scalarType(ScalarKind.I32);
@@ -291,7 +292,8 @@ test "builtins belong to their stage" {
 	c.ios.push(io("out", ShaderStage.Compute, IoDirection.Out, scalarType(ScalarKind.F32),
 		Builtin.None));
 	const errors = irErrors(c);
-	assert errors.length == 2 && errors[0] == "entry 'commandsToImage': a compute entry has no outputs";
+	assert errors.length == 2 &&
+		errors[0] == "entry 'commandsToImage': a compute entry has no outputs";
 }
 
 test "every reference names a declaration that exists" {
@@ -303,7 +305,8 @@ test "every reference names a declaration that exists" {
 	assert errors[1] == "entry 'commandsToImage': function 3 is out of range";
 }
 
-const STAGE_TARGETS = [ShaderTarget.Hlsl5, ShaderTarget.Wgsl, ShaderTarget.Glsl430, ShaderTarget.Msl];
+const STAGE_TARGETS = [ShaderTarget.Hlsl5, ShaderTarget.Wgsl, ShaderTarget.Glsl430,
+	ShaderTarget.Msl];
 
 function refusedOn(m: ShaderModule, rule: string): boolean {
 	return refusedAs(m, "entry 'tinyEntry': " + rule);

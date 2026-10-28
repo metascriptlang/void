@@ -31,9 +31,10 @@ import {
 	isDerivative,
 	isEffect,
 	isPredeclaredResult,
+	isDepthShape,
 } from "./ir";
 import { BindingSlot } from "./layout";
-import { builtinType, ioLocation } from "./irWalk";
+import { builtinType, hasCallOrEffect, ioLocation, withoutSamplers } from "./irWalk";
 import { claimName } from "./names";
 import { printableEntry } from "./specialize";
 import {
@@ -296,8 +297,8 @@ function typeText(p: Printer, t: ShaderType): string {
 			formatText(t.format) + ", " + accessText(t.access) + ">",
 		ShaderTypeKind.Atomic => "atomic<" + scalarText(t.scalar) + ">",
 		ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult =>
-			refusal(p, "a " + t.kind.toString() + ", which WGSL cannot name, outside the local it " +
-				"initializes"),
+			refusal(p, "a " + t.kind.toString() +
+				", which WGSL cannot name, outside the local it initializes"),
 		ShaderTypeKind.Void => refusal(p, "a value of type void"),
 	};
 }
@@ -368,14 +369,11 @@ function runsEffect(e: ShaderExpr): boolean {
 	return e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic);
 }
 
-function hasEffect(e: ShaderExpr): boolean {
-	return runsEffect(e) || e.operands.some((o) => hasEffect(o));
-}
-
 // select evaluates both arms, so a conditional with a call in an arm becomes a var assigned in
-// an if/else ahead of its statement, as Tint's PromoteSideEffectsToDecl does.
+// an if/else ahead of its statement.
 function isHoisted(e: ShaderExpr): boolean {
-	return e.kind == ExprKind.Conditional && (hasEffect(e.operands[1]) || hasEffect(e.operands[2]));
+	return e.kind == ExprKind.Conditional &&
+		(hasCallOrEffect(e.operands[1]) || hasCallOrEffect(e.operands[2]));
 }
 
 function hoists(e: ShaderExpr): boolean {
@@ -425,15 +423,6 @@ function conditionalText(p: Printer, e: ShaderExpr): string {
 	return name;
 }
 
-function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {
-	return args.filter((a) => a.type.kind != ShaderTypeKind.Sampler);
-}
-
-function isDepth(t: ShaderType): boolean {
-	return t.shape == TextureShape.Depth2d || t.shape == TextureShape.Depth2dArray ||
-		t.shape == TextureShape.DepthCube;
-}
-
 function biasText(p: Printer, o: ShaderExpr[]): string {
 	p.derivatives = true;
 	return "textureSampleBias(" + argsText(p, o) + ")";
@@ -441,23 +430,7 @@ function biasText(p: Printer, o: ShaderExpr[]): string {
 
 function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 	const o = e.operands;
-	const name = e.intrinsic.toString();
-	const layered = o.length > 0 && o[0].type.shape == TextureShape.Depth2dArray;
-	const base = layered ? 5 : 4;
-	if (o.length != base && o.length != base + 1 || o[0].type.kind != ShaderTypeKind.Texture ||
-		o[1].type.kind != ShaderTypeKind.Sampler) {
-		return refusal(p, name + " takes a texture, a sampler, coordinates, for an array texture " +
-			"a layer, a depth reference, and an optional constant offset");
-	}
 	if (!level) { p.derivatives = true; }
-	const sampler = o[1].kind == ExprKind.Resource ? p.module.resources[o[1].index] : null;
-	if (sampler === null || sampler.samplerType != SamplerType.Comparison) {
-		return refusal(p, name + " through a sampler that is no comparison sampler binding");
-	}
-	if (!isDepth(o[0].type)) {
-		return refusal(p, name + " of a " + o[0].type.shape.toString() + " texture, which holds " +
-			"no depth");
-	}
 	return (level ? "textureSampleCompareLevel(" : "textureSampleCompare(") + argsText(p, o) + ")";
 }
 
@@ -488,8 +461,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.UpperLeft3x3 => UPPER_LEFT + "(" + exprText(p, o[0]) + ")",
 		Intrinsic.TextureSample => "textureSampleLevel(" +
 			argsText(p, hasOffset(e) ? o.slice(0, sampleBase(e)) : o) + ", " +
-			(isDepth(o[0].type) ? "0i" : "0.0f") + (hasOffset(e) ? ", " + exprText(p, offsetOf(e)) : "") +
-			")",
+			(isDepthShape(o[0].type.shape) ? "0i" : "0.0f") +
+			(hasOffset(e) ? ", " + exprText(p, offsetOf(e)) : "") + ")",
 		Intrinsic.TextureLoad => "textureLoad(" + argsText(p, withoutSamplers(o)) + ")",
 		Intrinsic.TextureStore => "textureStore(" + argsText(p, o) + ")",
 		Intrinsic.TextureDimensions => dimensionsText(p, e),

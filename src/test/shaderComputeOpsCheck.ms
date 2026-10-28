@@ -1,6 +1,6 @@
 // The integer and compute vocabulary past the basic forms, authored in MetaScript: each entry runs
 // on the CPU, is pinned as GLSL, and is printed for every target into out/<target>Probe/ for
-// scripts/validateWgsl.sh, scripts/validateHlsl.sh and naga's GLSL front end.
+// scripts/validateWgsl.sh, scripts/validateHlsl.sh and the GLSL validator.
 
 import { mkdir, writeFile } from "std/fs";
 import { computeModule, stageSource } from "../shader/descriptor";
@@ -147,7 +147,8 @@ test "every target spells the bit operators, a shift amount as a masked uint" {
 	assert gl.includes("(u << (uvec2(1u, 3u) & 31u)) | ((u >> (u & 31u)) ^ (u & uvec2(6u, 6u)))");
 	const msl = printedFor(m, ShaderTarget.Msl, "bits");
 	assert msl.includes("((((x | 4) ^ (x << 2u)) ^ ((~x) >> 1u)) ^ (x >> (uint((x & 7)) & 31u)))");
-	assert msl.includes("((u << (uint2(1u, 3u) & 31u)) | ((u >> (u & 31u)) ^ (u & uint2(6u, 6u))))");
+	assert msl.includes(
+		"((u << (uint2(1u, 3u) & 31u)) | ((u >> (u & 31u)) ^ (u & uint2(6u, 6u))))");
 }
 
 export function barrierCs(input: OpsInput, b: OpsBindings): void {
@@ -267,7 +268,8 @@ test "every target declares workgroup memory, zeroed by one invocation behind a 
 	assert msl.includes("  threadgroup float tile[64];\n  threadgroup float scale;\n" +
 		"  tileCs(id, local, image, tile, scale);\n");
 	let fragment = tiny(ShaderStage.Fragment, exprOf(ExprKind.Construct,
-		vectorType(ScalarKind.F32, 4), -1, [exprOf(ExprKind.Workgroup, m.workgroups[1].type, 0, [])]));
+		vectorType(ScalarKind.F32, 4), -1,
+		[exprOf(ExprKind.Workgroup, m.workgroups[1].type, 0, [])]));
 	fragment.workgroups = [m.workgroups[1]];
 	for (const target of TARGETS) {
 		const refused = stageSource(fragment, 0, target);
@@ -376,7 +378,8 @@ test "every target spells each atomic on a storage buffer" {
 		"    int swapped = atomicExchange(cells[i].low, 3);\n" +
 		"    atomicExchange(cells[i].low, (swapped + 1));\n" +
 		"    AtomicExchangeU32 exchange = AtomicExchangeU32(seen, false);\n" +
-		"    exchange = atomicExchangeResultU32(exchange.old_value, atomicCompSwap(cells[i].hits, exchange.old_value, 9));\n" +
+		"    exchange = atomicExchangeResultU32(exchange.old_value, " +
+		"atomicCompSwap(cells[i].hits, exchange.old_value, 9));\n" +
 		"    if (!exchange.exchanged) {\n" +
 		"        atomicExchange(cells[i].hits, (exchange.old_value + 1));\n" +
 		"    }\n" +
@@ -425,7 +428,8 @@ test "an atomic stays in a read_write buffer, and HLSL refuses one nested in an 
 	const place = atomicPlace(nested);
 	const u32 = scalarType(ScalarKind.U32);
 	prepend(nested.functions[nested.entries[0].functionIndex], stmtOf(StmtKind.Call,
-		intrinsicOf(Intrinsic.AtomicStore, new ShaderType(), [place, intrinsicOf(Intrinsic.AtomicAdd,
+		intrinsicOf(Intrinsic.AtomicStore, new ShaderType(),
+		[place, intrinsicOf(Intrinsic.AtomicAdd,
 			u32, [place, literal(u32, 1.0)])]), []));
 	assert irErrors(nested).length == 0;
 	const refused = stageSource(nested, 0, ShaderTarget.Hlsl5);
@@ -487,7 +491,8 @@ test "every target spells a storage texture of each shape" {
 	const gl = printedFor(m, ShaderTarget.Glsl430, "volume");
 	assert gl.includes("layout(binding = 0, r32f) uniform image2DArray layers;\n" +
 		"layout(binding = 1, r32f) uniform image3D volume;\n");
-	assert gl.includes("    ivec2 size = imageSize(layers).xy;\n    ivec3 deep = imageSize(volume);\n" +
+	assert gl.includes(
+		"    ivec2 size = imageSize(layers).xy;\n    ivec3 deep = imageSize(volume);\n" +
 		"    vec4 below = imageLoad(layers, ivec3(at, 0));\n" +
 		"    imageStore(layers, ivec3(at, 1), vec4(below.x + float(size.x)));\n");
 	const msl = printedFor(m, ShaderTarget.Msl, "volume");

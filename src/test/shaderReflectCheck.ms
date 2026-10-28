@@ -1,5 +1,5 @@
-// The reflection of a hand-built void2d blur program equals the descriptor sokol-shdc's output
-// gave it, per target, and a compute program reflects its storage resources.
+// The reflection of a hand-built void2d blur program equals the committed descriptor
+// per target, and a compute program reflects its storage resources.
 
 import {
 	Access,
@@ -163,7 +163,8 @@ function describeBinding(b: GPUShaderBinding): string {
 	const storageAccess: string = b.storageAccess;
 	const storageFormat: string = b.storageFormat;
 	const name = b.nativeName;
-	return kind + " " + visibilityName(b.visibility) + " " + String(b.group) + "/" + String(b.binding) + " size " +
+	return kind + " " + visibilityName(b.visibility) + " " + String(b.group) + "/" +
+		String(b.binding) + " size " +
 		String(b.size) + " slot " + String(b.nativeSlot) + " name " +
 		(name === null ? "-" : name) + " tb " + String(b.textureBinding) +
 		" [" + sampleType + "|" + samplerType + "|" + bufferType + "|" + viewDimension + "|" +
@@ -190,24 +191,30 @@ function reflected(m: ShaderModule, target: ShaderTarget): string {
 
 // Copied from src/void2d/shader2dModules.ms blurShaderModule, one branch per target.
 function committed(bindings: GPUShaderBinding[], attributes: GPUShaderAttribute[]): string {
-	let r = new Reflection();
-	r.bindings = bindings;
-	r.attributes = attributes;
-	return describe(r);
+	return describe({
+		bindings,
+		attributes,
+		workgroupSize: [0, 0, 0],
+		readsVertexIndex: false,
+		readsInstanceIndex: false,
+	});
 }
 
 function committedWgsl(): string {
 	return committed([
 		{
-			group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: -1,
+			group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32,
+				size: 16, nativeSlot: -1,
 			textureBinding: -1,
 		},
 		{
-			group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, sampleType: "float",
+			group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32,
+				size: 0, sampleType: "float",
 			nativeSlot: -1, textureBinding: -1,
 		},
 		{
-			group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32, size: 0,
+			group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32,
+				size: 0,
 			samplerType: "filtering", nativeSlot: -1, textureBinding: -1,
 		},
 	], [
@@ -219,15 +226,18 @@ function committedWgsl(): string {
 function committedGl(): string {
 	return committed([
 		{
-			group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: -1,
+			group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32,
+				size: 16, nativeSlot: -1,
 			nativeName: "blur_params", textureBinding: -1,
 		},
 		{
-			group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, sampleType: "float",
+			group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32,
+				size: 0, sampleType: "float",
 			nativeSlot: -1, textureBinding: -1,
 		},
 		{
-			group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32, size: 0,
+			group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32,
+				size: 0,
 			samplerType: "filtering", nativeSlot: -1, nativeName: "srcTex_srcSmp",
 			textureBinding: 0,
 		},
@@ -240,15 +250,18 @@ function committedGl(): string {
 function committedMsl(): string {
 	return committed([
 		{
-			group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: 0,
+			group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32,
+				size: 16, nativeSlot: 0,
 			textureBinding: -1,
 		},
 		{
-			group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, sampleType: "float",
+			group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32,
+				size: 0, sampleType: "float",
 			nativeSlot: 0, textureBinding: -1,
 		},
 		{
-			group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32, size: 0,
+			group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32,
+				size: 0,
 			samplerType: "filtering", nativeSlot: 0, textureBinding: -1,
 		},
 	], [
@@ -260,15 +273,18 @@ function committedMsl(): string {
 function committedHlsl(): string {
 	return committed([
 		{
-			group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: 0,
+			group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32,
+				size: 16, nativeSlot: 0,
 			textureBinding: -1,
 		},
 		{
-			group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, sampleType: "float",
+			group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32,
+				size: 0, sampleType: "float",
 			nativeSlot: 0, textureBinding: -1,
 		},
 		{
-			group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32, size: 0,
+			group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32,
+				size: 0,
 			samplerType: "filtering", nativeSlot: 0, textureBinding: -1,
 		},
 	], [
@@ -291,13 +307,20 @@ when (webgpu) {
 
 function hostDescriptor(): string {
 	const d = blurShaderModule();
-	let r = new Reflection();
+	let bindings: GPUShaderBinding[] = [];
 	for (const b of d.bindings) {
 		const kind: string = b.kind;
-		if (kind != "") { r.bindings.push(b); }
+		if (kind != "") { bindings.push(b); }
 	}
-	for (let i = 0; i < 2; i++) { r.attributes.push(d.attributes[i]); }
-	return describe(r);
+	let attributes: GPUShaderAttribute[] = [];
+	for (let i = 0; i < 2; i++) { attributes.push(d.attributes[i]); }
+	return describe({
+		bindings,
+		attributes,
+		workgroupSize: [0, 0, 0],
+		readsVertexIndex: false,
+		readsInstanceIndex: false,
+	});
 }
 
 test "the blur module holds every invariant" {
@@ -392,7 +415,8 @@ test "GL binds a storage buffer at its slot and a storage texture at its own cou
 		"storage-buffer compute 1/1 size 16 slot 1 name - tb -1 [||storage||||]",
 		"storage-texture compute 1/2 size 0 slot 0 name - tb -1 [|||||write-only|rgba8unorm]",
 		"texture compute 1/3 size 0 slot -1 name - tb -1 [float||||||]",
-		"sampler compute 1/-1 size 0 slot -1 name lut_SPIRV_Cross_DummySampler tb 3 [|non-filtering|||||]",
+		"sampler compute 1/-1 size 0 slot -1 name lut_SPIRV_Cross_DummySampler tb 3 " +
+		"[|non-filtering|||||]",
 	].join("\n") + COMPUTE_ATTRIBUTES;
 }
 

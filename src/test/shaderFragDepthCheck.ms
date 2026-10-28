@@ -1,6 +1,6 @@
 // @builtin(fragDepth) authored in MetaScript: the entry runs on the CPU, is pinned as GLSL and
 // printed for every target into out/<target>Probe/ for scripts/validateWgsl.sh,
-// scripts/validateHlsl.sh and naga's GLSL front end.
+// scripts/validateHlsl.sh and the GLSL validator.
 
 import { mkdir, writeFile } from "std/fs";
 import { programModule, stageSource } from "../shader/descriptor";
@@ -62,7 +62,8 @@ test "every target writes the fragment depth" {
 	const hlsl = printedFor(m, 1, ShaderTarget.Hlsl5, "deep");
 	assert hlsl.includes("float depth : SV_Depth;\n");
 	for (const target of [ShaderTarget.Glsl430, ShaderTarget.Glsl300es]) {
-		assert printedFor(m, 1, target, "deep").includes("    gl_FragDepth = gl_FragCoord.z * 0.5;\n");
+		assert printedFor(m, 1, target,
+			"deep").includes("    gl_FragDepth = gl_FragCoord.z * 0.5;\n");
 	}
 	assert printedFor(m, 1, ShaderTarget.Msl, "deep").includes("float depth [[depth(any)]];\n");
 }
@@ -70,9 +71,12 @@ test "every target writes the fragment depth" {
 function probePath(name: string, target: ShaderTarget, stage: string): string {
 	return match (target) {
 		ShaderTarget.Wgsl => "out/wgslProbe/" + name + stage + ".wgsl",
-		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") + ".hlsl",
-		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." + (stage == "Vs" ? "vert" : "frag"),
-		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." + (stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") +
+		".hlsl",
+		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." +
+		(stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." +
+		(stage == "Vs" ? "vert" : "frag"),
 		ShaderTarget.Msl => "out/mslProbe/" + name + stage + ".metal",
 		ShaderTarget.Spirv => "out/spirvProbe/" + name + stage + ".spv",
 	};

@@ -1,4 +1,5 @@
-// A uniform block's host layout has one source: the type the shader lowering reads from the author's
+// A uniform block's host layout has one source: the type the shader lowering reads from the
+// author's
 // struct. The helper the host writer uses turns the same struct into the same members, so its
 // offsets and size equal the ones the shader's own block reports on every target.
 
@@ -93,7 +94,8 @@ export function scalarFs(input: Parts, b: ScalarBindings): Vec4f {
 }
 
 export function packedFs(input: Parts, b: PackedBindings): Vec4f {
-	return vec4f(b.packed.a.x + b.packed.b.z, b.packed.c, b.packed.d.w + b.packed.e.x, b.packed.f.y + b.packed.g);
+	return vec4f(b.packed.a.x + b.packed.b.z, b.packed.c, b.packed.d.w + b.packed.e.x,
+		b.packed.f.y + b.packed.g);
 }
 
 export function matrixFs(input: Parts, b: MatrixBindings): Vec4f {
@@ -114,7 +116,8 @@ export function viewFs(input: Parts, b: ViewBindings): Vec4f {
 	return b.view.items[1].columns[3] * b.view.time;
 }
 
-const TARGETS = [ShaderTarget.Wgsl, ShaderTarget.Glsl300es, ShaderTarget.Glsl430, ShaderTarget.Hlsl5,
+const TARGETS = [ShaderTarget.Wgsl, ShaderTarget.Glsl300es, ShaderTarget.Glsl430,
+	ShaderTarget.Hlsl5,
 	ShaderTarget.Msl, ShaderTarget.Spirv];
 
 function reflectedSize(m: ShaderModule, target: ShaderTarget): int32 {
@@ -125,13 +128,16 @@ function reflectedSize(m: ShaderModule, target: ShaderTarget): int32 {
 }
 
 function mismatch(m: ShaderModule, helper: string): string {
-	if (m.resources.length != 1) { return "the probe shader has " + String(m.resources.length) + " resources"; }
+	if (m.resources.length != 1) { return "the probe shader has " + String(m.resources.length) +
+		" resources"; }
 	const own = layoutText(m, 0);
 	if (own != helper) { return "shader " + own + " | helper " + helper; }
 	const size = reflectedSize(m, ShaderTarget.Wgsl);
-	if (!own.endsWith("size " + String(size))) { return "reflected size " + String(size) + " | " + own; }
+	if (!own.endsWith("size " + String(size))) { return "reflected size " + String(size) + " | " +
+		own; }
 	for (const target of TARGETS) {
-		if (reflectedSize(m, target) != size) { return "target " + target.toString() + " reflects another size"; }
+		if (reflectedSize(m, target) != size) { return "target " + target.toString() +
+			" reflects another size"; }
 	}
 	return "";
 }

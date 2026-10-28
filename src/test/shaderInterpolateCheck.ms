@@ -1,4 +1,5 @@
-// @interpolate(kind[, sampling]) on stage io, as WGSL's: printed in every target's spelling, and the
+// @interpolate(kind[, sampling]) on stage io, as WGSL's: printed in every target's spelling, and
+// the
 // IR refuses a vertex output and a fragment input that disagree.
 
 import { mkdir, writeFile } from "std/fs";
@@ -65,7 +66,8 @@ function programOf(): ShaderModule {
 	return m.value;
 }
 
-function printedFor(m: ShaderModule, entry: int32, target: ShaderTarget, name: string, path: string): string {
+function printedFor(m: ShaderModule, entry: int32, target: ShaderTarget, name: string,
+	path: string): string {
 	const text = stageSource(m, entry, target);
 	if (!text.ok) { return text.error; }
 	const _out = mkdir("out");
@@ -85,7 +87,8 @@ test "the decorator sets the IR's interpolation and sampling on both sides" {
 			assert io.interpolation == Interpolation.Linear && io.sampling == Sampling.Center;
 		}
 		if (io.name == "tint") {
-			assert io.interpolation == Interpolation.Perspective && io.sampling == Sampling.Centroid;
+			assert io.interpolation == Interpolation.Perspective &&
+				io.sampling == Sampling.Centroid;
 		}
 		if (io.name == "detail") {
 			assert io.interpolation == Interpolation.Linear && io.sampling == Sampling.Sample;
@@ -110,34 +113,48 @@ test "GLSL 450 writes noperspective, centroid and sample before in and out" {
 
 test "WGSL spells @interpolate on the vertex output and the fragment input" {
 	const m = programOf();
-	const vs = printedFor(m, 0, ShaderTarget.Wgsl, "interpolate", "out/wgslProbe/interpolateVs.wgsl");
-	const fs = printedFor(m, 1, ShaderTarget.Wgsl, "interpolate", "out/wgslProbe/interpolateFs.wgsl");
+	const vs = printedFor(m, 0, ShaderTarget.Wgsl, "interpolate",
+		"out/wgslProbe/interpolateVs.wgsl");
+	const fs = printedFor(m, 1, ShaderTarget.Wgsl, "interpolate",
+		"out/wgslProbe/interpolateFs.wgsl");
 	for (const text of [vs, fs]) {
-		assert text.includes("@interpolate(linear) screen") && text.includes("@interpolate(perspective, centroid) tint");
-		assert text.includes("@interpolate(linear, sample) detail") && text.includes("@interpolate(flat) id");
+		assert text.includes("@interpolate(linear) screen") &&
+			text.includes("@interpolate(perspective, centroid) tint");
+		assert text.includes("@interpolate(linear, sample) detail") &&
+			text.includes("@interpolate(flat) id");
 	}
 	assert !fs.includes("@interpolate(perspective, center)");
 }
 
 test "GLSL 430 and HLSL spell it, MSL as attributes" {
 	const m = programOf();
-	const glsl = printedFor(m, 1, ShaderTarget.Glsl430, "interpolate", "out/glslProbe/interpolate.430.frag");
-	assert glsl.includes("noperspective in vec2 screen;") && glsl.includes("centroid in vec4 tint;");
-	assert glsl.includes("noperspective sample in vec2 detail;") && glsl.includes("flat in uint id;");
-	const vs = printedFor(m, 0, ShaderTarget.Hlsl5, "interpolate", "out/hlslProbe/interpolate.vs.hlsl");
-	const fs = printedFor(m, 1, ShaderTarget.Hlsl5, "interpolate", "out/hlslProbe/interpolate.ps.hlsl");
+	const glsl = printedFor(m, 1, ShaderTarget.Glsl430, "interpolate",
+		"out/glslProbe/interpolate.430.frag");
+	assert glsl.includes("noperspective in vec2 screen;") &&
+		glsl.includes("centroid in vec4 tint;");
+	assert glsl.includes("noperspective sample in vec2 detail;") &&
+		glsl.includes("flat in uint id;");
+	const vs = printedFor(m, 0, ShaderTarget.Hlsl5, "interpolate",
+		"out/hlslProbe/interpolate.vs.hlsl");
+	const fs = printedFor(m, 1, ShaderTarget.Hlsl5, "interpolate",
+		"out/hlslProbe/interpolate.ps.hlsl");
 	for (const text of [vs, fs]) {
-		assert text.includes("noperspective float2 screen") && text.includes("centroid float4 tint");
-		assert text.includes("noperspective sample float2 detail") && text.includes("nointerpolation uint id");
+		assert text.includes("noperspective float2 screen") &&
+			text.includes("centroid float4 tint");
+		assert text.includes("noperspective sample float2 detail") &&
+			text.includes("nointerpolation uint id");
 	}
-	const msl = printedFor(m, 1, ShaderTarget.Msl, "interpolate", "out/mslProbe/interpolateFs.metal");
+	const msl = printedFor(m, 1, ShaderTarget.Msl, "interpolate",
+		"out/mslProbe/interpolateFs.metal");
 	assert msl.includes("[[user(locn0), center_no_perspective]]") &&
 		msl.includes("[[user(locn1), centroid_perspective]]");
-	assert msl.includes("[[user(locn2), sample_no_perspective]]") && msl.includes("[[user(locn3), flat]]");
+	assert msl.includes("[[user(locn2), sample_no_perspective]]") &&
+		msl.includes("[[user(locn3), flat]]");
 }
 
 test "GLSL ES 3.00 refuses linear and per-sample, naming the varying" {
-	const es = printedFor(programOf(), 1, ShaderTarget.Glsl300es, "interpolate", "out/glslProbe/interpolate.es.frag");
+	const es = printedFor(programOf(), 1, ShaderTarget.Glsl300es, "interpolate",
+		"out/glslProbe/interpolate.es.frag");
 	assert es.includes("io 'screen' is linear, which GLSL ES 3.00 has not");
 }
 

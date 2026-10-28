@@ -35,6 +35,8 @@
 // expect disownRange: void3d: disownRange on a uniform pool that was closed
 // expect releaseRange: void3d: releaseRange on a uniform pool that was closed
 // expect writeRange: void3d: writeRange on a uniform pool that was closed
+// expect poolReserveBlock: void3d: reserveBlock on a uniform pool that was closed
+// expect poolWriteBlock: void3d: writeBlock on a uniform pool that was closed
 // expect closeUniformPool: void3d: closeUniformPool on a uniform pool that was closed
 // expect closed.fill: void3d: fill on a palette table that was closed
 // expect closed.releaseGpu: void3d: releaseGpu on a palette table that was closed
@@ -101,6 +103,8 @@ import {
 	disownRange,
 	releaseRange,
 	writeRange,
+	reserveBlock as reserveBlockOn,
+	writeBlock as writeBlockOn,
 	closeUniformPool,
 } from "../../../src/void3d/uniformPool";
 import {
@@ -317,6 +321,13 @@ function poolCase(name: string): boolean {
 		const _r: Result<int32, UniformError> = releaseRange(pool, NO_UNIFORMS);
 	} else if (name == "writeRange") {
 		const _r: Result<int32, UniformError> = writeRange(pool, NO_UNIFORMS, values);
+	} else if (name == "poolReserveBlock") {
+		const _r: Result<TypedBlock<OutlineWidthParams>, UniformError> =
+			reserveBlockOn<OutlineWidthParams>(pool, 2);
+	} else if (name == "poolWriteBlock") {
+		const width: OutlineWidthParams = { outlineWidth: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 } };
+		const _r: Result<int32, UniformError> =
+			writeBlockOn<OutlineWidthParams>(pool, { block: NO_UNIFORMS }, width);
 	} else if (name == "closeUniformPool") {
 		closeUniformPool(pool);
 	} else {

@@ -9,7 +9,6 @@ import {
 	IoDirection,
 	ResourceKind,
 	Sampling,
-	SamplerType,
 	ScalarKind,
 	ShaderEntry,
 	ShaderExpr,
@@ -30,15 +29,15 @@ import {
 	isAtomic,
 	isUniformLoad,
 	isDerivative,
-	isEffect,
 	rootOf,
 	sameShaderType,
 	scalarType,
 	vectorType,
 	predeclaredMemberType,
+	isDepthShape,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
-import { builtinType, ioLocation } from "./irWalk";
+import { builtinType, hasCallOrEffect, ioLocation, withoutSamplers } from "./irWalk";
 import { demotedDiscards } from "./demote";
 import { Reads, printableEntry } from "./specialize";
 import { componentCompare, isComponentCompare, isMath } from "./spelling";
@@ -377,7 +376,8 @@ function f32Bits(v: float64): float64 {
 		a = a * 2.0;
 		e--;
 	}
-	const field = e >= -126 ? ((e + 127) as float64) * 8388608.0 + roundEven((a - 1.0) * 8388608.0) :
+	const field = e >= -126 ?
+		((e + 127) as float64) * 8388608.0 + roundEven((a - 1.0) * 8388608.0) :
 		roundEven(a * powerOfTwo(e + 149));
 	return field >= 2139095040.0 ? -1.0 : sign + field;
 }
@@ -444,12 +444,13 @@ function strideOf(p: Spirv, t: ShaderType): int32 {
 		ShaderTypeKind.Struct => p.structSizes[t.structIndex],
 		ShaderTypeKind.Void | ShaderTypeKind.Array | ShaderTypeKind.RuntimeArray |
 			ShaderTypeKind.Texture | ShaderTypeKind.Sampler | ShaderTypeKind.StorageTexture |
-			ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult => 0,
+			ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult |
+			ShaderTypeKind.FrexpResult => 0,
 	};
 }
 
 function arrayTypeId(p: Spirv, element: int32, length: int32, stride: int32): int32 {
-	const count = wordConstant(p, scalarTypeId(p, ScalarKind.U32), length);
+	const count = intConstant(p, ScalarKind.U32, length);
 	const key = "a" + String(element) + ":" + String(count) + ":" + String(stride);
 	const held = cached(p, key);
 	if (held != 0) { return held; }
@@ -500,7 +501,8 @@ function structTypeId(p: Spirv, index: int32): int32 {
 			for (let c: int32 = 0; c < t.columns; c++) {
 				const columnName = s.members[k].name + "_col" + String(c);
 				inst(p.names, OP_MEMBER_NAME, [id, at + c].concat(stringWords(columnName)));
-				memberDecorate(p, id, at + c, DECORATION_OFFSET, [p.structOffsets[index][k] + 8 * c]);
+				memberDecorate(p, id, at + c, DECORATION_OFFSET,
+					[p.structOffsets[index][k] + 8 * c]);
 			}
 			continue;
 		}
@@ -532,11 +534,6 @@ function loadHoisted(p: Spirv, e: ShaderExpr): int32 {
 		columns.push(typed(p, OP_LOAD, typeId(p, column), [place]));
 	}
 	return typed(p, OP_COMPOSITE_CONSTRUCT, typeId(p, e.type), columns);
-}
-
-function isDepthShape(shape: TextureShape): boolean {
-	return shape == TextureShape.Depth2d || shape == TextureShape.Depth2dArray ||
-		shape == TextureShape.DepthCube;
 }
 
 function imageTypeId(p: Spirv, operands: int32[]): int32 {
@@ -615,8 +612,10 @@ function exchangeTypeId(p: Spirv, s: ScalarKind): int32 {
 }
 
 function splitTypeId(p: Spirv, t: ShaderType): int32 {
-	const members = [typeId(p, predeclaredMemberType(t, 0)), typeId(p, predeclaredMemberType(t, 1))];
-	return declared(p, "r" + String(members[0]) + ":" + String(members[1]), OP_TYPE_STRUCT, members);
+	const members = [typeId(p, predeclaredMemberType(t, 0)),
+		typeId(p, predeclaredMemberType(t, 1))];
+	return declared(p, "r" + String(members[0]) + ":" + String(members[1]), OP_TYPE_STRUCT,
+		members);
 }
 
 function typeId(p: Spirv, t: ShaderType): int32 {
@@ -777,17 +776,13 @@ function localVariable(p: Spirv, t: ShaderType): int32 {
 	return id;
 }
 
-function effectful(e: ShaderExpr): boolean {
-	return e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic) ||
-		e.operands.some((o) => effectful(o));
-}
-
 function isPlace(p: Spirv, e: ShaderExpr): boolean {
 	return match (e.kind) {
 		ExprKind.Local | ExprKind.Param | ExprKind.Io | ExprKind.Workgroup | ExprKind.Private |
 			ExprKind.BlockMember => true,
 		ExprKind.Resource => p.module.resources[e.index].kind == ResourceKind.StorageBuffer,
-		ExprKind.Field | ExprKind.Index => isPlace(p, e.operands[0]) && !hoistedMember(p, e.operands[0]),
+		ExprKind.Field | ExprKind.Index => isPlace(p, e.operands[0]) &&
+			!hoistedMember(p, e.operands[0]),
 		ExprKind.Swizzle => e.components.length == 1 && isPlace(p, e.operands[0]) &&
 			!hoistedMember(p, e.operands[0]),
 		ExprKind.Literal | ExprKind.Constant | ExprKind.Unary | ExprKind.Binary |
@@ -901,8 +896,8 @@ function literalId(p: Spirv, t: ShaderType, v: float64): int32 {
 		ShaderTypeKind.Void | ShaderTypeKind.Matrix | ShaderTypeKind.Array |
 			ShaderTypeKind.RuntimeArray | ShaderTypeKind.Struct | ShaderTypeKind.Texture |
 			ShaderTypeKind.Sampler | ShaderTypeKind.StorageTexture | ShaderTypeKind.Atomic |
-			ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult =>
-				refusal(p, "a literal of a " + t.kind.toString()),
+			ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult |
+			ShaderTypeKind.FrexpResult => refusal(p, "a literal of a " + t.kind.toString()),
 	};
 }
 
@@ -1000,11 +995,21 @@ function arithmetic(p: Spirv, op: BinaryOp, t: ShaderType, lt: ShaderType, l: in
 	const VEC = ShaderTypeKind.Vector;
 	const SCA = ShaderTypeKind.Scalar;
 	if (op == BinaryOp.Mul && (lt.kind == MAT || rt.kind == MAT)) {
-		if (lt.kind == MAT && rt.kind == MAT) { return typed(p, OP_MATRIX_TIMES_MATRIX, type, [l, r]); }
-		if (lt.kind == MAT && rt.kind == VEC) { return typed(p, OP_MATRIX_TIMES_VECTOR, type, [l, r]); }
-		if (lt.kind == VEC && rt.kind == MAT) { return typed(p, OP_VECTOR_TIMES_MATRIX, type, [l, r]); }
-		if (lt.kind == MAT && rt.kind == SCA) { return typed(p, OP_MATRIX_TIMES_SCALAR, type, [l, r]); }
-		if (lt.kind == SCA && rt.kind == MAT) { return typed(p, OP_MATRIX_TIMES_SCALAR, type, [r, l]); }
+		if (lt.kind == MAT && rt.kind == MAT) {
+			return typed(p, OP_MATRIX_TIMES_MATRIX, type, [l, r]);
+		}
+		if (lt.kind == MAT && rt.kind == VEC) {
+			return typed(p, OP_MATRIX_TIMES_VECTOR, type, [l, r]);
+		}
+		if (lt.kind == VEC && rt.kind == MAT) {
+			return typed(p, OP_VECTOR_TIMES_MATRIX, type, [l, r]);
+		}
+		if (lt.kind == MAT && rt.kind == SCA) {
+			return typed(p, OP_MATRIX_TIMES_SCALAR, type, [l, r]);
+		}
+		if (lt.kind == SCA && rt.kind == MAT) {
+			return typed(p, OP_MATRIX_TIMES_SCALAR, type, [r, l]);
+		}
 	}
 	if ((op == BinaryOp.Add || op == BinaryOp.Sub) && lt.kind == MAT && rt.kind == MAT) {
 		return columnwise(p, op, t, l, r);
@@ -1055,7 +1060,7 @@ function shortCircuit(p: Spirv, e: ShaderExpr): int32 {
 	const and = e.binary == BinaryOp.LogicalAnd;
 	const type = typeId(p, e.type);
 	const l = value(p, e.operands[0]);
-	if (!effectful(e.operands[1])) {
+	if (!hasCallOrEffect(e.operands[1])) {
 		const r = value(p, e.operands[1]);
 		return typed(p, and ? OP_LOGICAL_AND : OP_LOGICAL_OR, type, [l, r]);
 	}
@@ -1085,7 +1090,7 @@ function conditional(p: Spirv, e: ShaderExpr): int32 {
 	const type = typeId(p, t);
 	const c = value(p, o[0]);
 	const plain = t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector;
-	if (plain && !effectful(o[1]) && !effectful(o[2])) {
+	if (plain && !hasCallOrEffect(o[1]) && !hasCallOrEffect(o[2])) {
 		const yes = value(p, o[1]);
 		const no = value(p, o[2]);
 		return typed(p, OP_SELECT, type, [conditionFor(p, t, o[0].type, c), yes, no]);
@@ -1120,15 +1125,17 @@ function construct(p: Spirv, e: ShaderExpr): int32 {
 	const parts = o.map((a) => value(p, a));
 	if (o.length == 1 && sameShaderType(o[0].type, t)) { return parts[0]; }
 	if (t.kind == ShaderTypeKind.Vector) {
-		if (o.length == 1 && o[0].type.kind == ShaderTypeKind.Scalar) { return splat(p, t, parts[0]); }
+		if (o.length == 1 && o[0].type.kind == ShaderTypeKind.Scalar) {
+			return splat(p, t, parts[0]);
+		}
 		if (o.length == 1 && o[0].type.kind == ShaderTypeKind.Vector && o[0].type.rows == t.rows) {
 			return converted(p, o[0].type, t, parts[0]);
 		}
 		let components: int32 = 0;
 		for (const a of o) { components += rowsOf(a.type); }
 		if (components != t.rows) {
-			return refusal(p, "a vector of " + String(t.rows) + " built from " + String(components) +
-				" components");
+			return refusal(p, "a vector of " + String(t.rows) + " built from " +
+				String(components) + " components");
 		}
 		return composite(p, t, parts);
 	}
@@ -1136,7 +1143,8 @@ function construct(p: Spirv, e: ShaderExpr): int32 {
 		if (o.length == t.columns && !o.some((a) => a.type.kind != ShaderTypeKind.Vector)) {
 			return composite(p, t, parts);
 		}
-		if (o.length == t.columns * t.rows && !o.some((a) => a.type.kind != ShaderTypeKind.Scalar)) {
+		if (o.length == t.columns * t.rows &&
+			!o.some((a) => a.type.kind != ShaderTypeKind.Scalar)) {
 			const column = vectorType(ScalarKind.F32, t.rows);
 			let columns: int32[] = [];
 			for (let c: int32 = 0; c < t.columns; c++) {
@@ -1169,7 +1177,8 @@ function converted(p: Spirv, from: ShaderType, t: ShaderType, x: int32): int32 {
 	if (s == d) { return x; }
 	if (d == ScalarKind.Bool) {
 		const zero = splat(p, from, scalarConstant(p, s, 0.0));
-		return typed(p, s == ScalarKind.F32 ? OP_F_UNORD_NOT_EQUAL : OP_I_NOT_EQUAL, type, [x, zero]);
+		return typed(p, s == ScalarKind.F32 ? OP_F_UNORD_NOT_EQUAL : OP_I_NOT_EQUAL, type,
+			[x, zero]);
 	}
 	if (s == ScalarKind.Bool) {
 		const one = splat(p, t, scalarConstant(p, d, 1.0));
@@ -1191,60 +1200,62 @@ function converted(p: Spirv, from: ShaderType, t: ShaderType, x: int32): int32 {
 }
 
 function glslNumber(op: Intrinsic): int32 {
-	if (op == Intrinsic.Round) { return 2; }
-	if (op == Intrinsic.Trunc) { return 3; }
-	if (op == Intrinsic.Floor) { return 8; }
-	if (op == Intrinsic.Ceil) { return 9; }
-	if (op == Intrinsic.Fract) { return 10; }
-	if (op == Intrinsic.Radians) { return 11; }
-	if (op == Intrinsic.Degrees) { return 12; }
-	if (op == Intrinsic.Sin) { return 13; }
-	if (op == Intrinsic.Cos) { return 14; }
-	if (op == Intrinsic.Tan) { return 15; }
-	if (op == Intrinsic.Asin) { return 16; }
-	if (op == Intrinsic.Acos) { return 17; }
-	if (op == Intrinsic.Atan) { return 18; }
-	if (op == Intrinsic.Sinh) { return 19; }
-	if (op == Intrinsic.Cosh) { return 20; }
-	if (op == Intrinsic.Tanh) { return 21; }
-	if (op == Intrinsic.Asinh) { return 22; }
-	if (op == Intrinsic.Acosh) { return 23; }
-	if (op == Intrinsic.Atanh) { return 24; }
-	if (op == Intrinsic.Atan2) { return 25; }
-	if (op == Intrinsic.Pow) { return 26; }
-	if (op == Intrinsic.Exp) { return 27; }
-	if (op == Intrinsic.Log) { return 28; }
-	if (op == Intrinsic.Exp2) { return 29; }
-	if (op == Intrinsic.Log2) { return 30; }
-	if (op == Intrinsic.Sqrt) { return 31; }
-	if (op == Intrinsic.InverseSqrt) { return 32; }
-	if (op == Intrinsic.Determinant) { return 33; }
-	if (op == Intrinsic.Mix) { return 46; }
-	if (op == Intrinsic.Step) { return 48; }
-	if (op == Intrinsic.Smoothstep) { return 49; }
-	if (op == Intrinsic.Fma) { return 50; }
-	if (op == Intrinsic.Ldexp) { return 53; }
-	if (op == Intrinsic.Modf) { return 36; }
-	if (op == Intrinsic.Frexp) { return 52; }
-	if (op == Intrinsic.Pack4x8Snorm) { return 54; }
-	if (op == Intrinsic.Pack4x8Unorm) { return 55; }
-	if (op == Intrinsic.Pack2x16Snorm) { return 56; }
-	if (op == Intrinsic.Pack2x16Unorm) { return 57; }
-	if (op == Intrinsic.Pack2x16Float) { return 58; }
-	if (op == Intrinsic.Unpack2x16Snorm) { return 60; }
-	if (op == Intrinsic.Unpack2x16Unorm) { return 61; }
-	if (op == Intrinsic.Unpack2x16Float) { return 62; }
-	if (op == Intrinsic.Unpack4x8Snorm) { return 63; }
-	if (op == Intrinsic.Unpack4x8Unorm) { return 64; }
-	if (op == Intrinsic.Length) { return 66; }
-	if (op == Intrinsic.Distance) { return 67; }
-	if (op == Intrinsic.Cross) { return 68; }
-	if (op == Intrinsic.Normalize) { return 69; }
-	if (op == Intrinsic.FaceForward) { return 70; }
-	if (op == Intrinsic.Reflect) { return 71; }
-	if (op == Intrinsic.Refract) { return 72; }
-	if (op == Intrinsic.FirstTrailingBit) { return GLSL_FIND_I_LSB; }
-	return 0;
+	return match (op) {
+		Intrinsic.Round => 2,
+		Intrinsic.Trunc => 3,
+		Intrinsic.Floor => 8,
+		Intrinsic.Ceil => 9,
+		Intrinsic.Fract => 10,
+		Intrinsic.Radians => 11,
+		Intrinsic.Degrees => 12,
+		Intrinsic.Sin => 13,
+		Intrinsic.Cos => 14,
+		Intrinsic.Tan => 15,
+		Intrinsic.Asin => 16,
+		Intrinsic.Acos => 17,
+		Intrinsic.Atan => 18,
+		Intrinsic.Sinh => 19,
+		Intrinsic.Cosh => 20,
+		Intrinsic.Tanh => 21,
+		Intrinsic.Asinh => 22,
+		Intrinsic.Acosh => 23,
+		Intrinsic.Atanh => 24,
+		Intrinsic.Atan2 => 25,
+		Intrinsic.Pow => 26,
+		Intrinsic.Exp => 27,
+		Intrinsic.Log => 28,
+		Intrinsic.Exp2 => 29,
+		Intrinsic.Log2 => 30,
+		Intrinsic.Sqrt => 31,
+		Intrinsic.InverseSqrt => 32,
+		Intrinsic.Determinant => 33,
+		Intrinsic.Mix => 46,
+		Intrinsic.Step => 48,
+		Intrinsic.Smoothstep => 49,
+		Intrinsic.Fma => 50,
+		Intrinsic.Ldexp => 53,
+		Intrinsic.Modf => 36,
+		Intrinsic.Frexp => 52,
+		Intrinsic.Pack4x8Snorm => 54,
+		Intrinsic.Pack4x8Unorm => 55,
+		Intrinsic.Pack2x16Snorm => 56,
+		Intrinsic.Pack2x16Unorm => 57,
+		Intrinsic.Pack2x16Float => 58,
+		Intrinsic.Unpack2x16Snorm => 60,
+		Intrinsic.Unpack2x16Unorm => 61,
+		Intrinsic.Unpack2x16Float => 62,
+		Intrinsic.Unpack4x8Snorm => 63,
+		Intrinsic.Unpack4x8Unorm => 64,
+		Intrinsic.Length => 66,
+		Intrinsic.Distance => 67,
+		Intrinsic.Cross => 68,
+		Intrinsic.Normalize => 69,
+		Intrinsic.FaceForward => 70,
+		Intrinsic.Reflect => 71,
+		Intrinsic.Refract => 72,
+		Intrinsic.FirstTrailingBit => GLSL_FIND_I_LSB,
+		_ => 0,
+	};
 }
 
 function controlledDerivative(p: Spirv, op: Intrinsic): int32 {
@@ -1301,8 +1312,12 @@ function math(p: Spirv, e: ShaderExpr): int32 {
 		return f ? ext(p, t, GLSL_F_SIGN, args) : i ? ext(p, t, GLSL_S_SIGN, args) :
 			refusal(p, "Sign of a u32");
 	}
-	if (op == Intrinsic.Min) { return ext(p, t, f ? GLSL_F_MIN : i ? GLSL_S_MIN : GLSL_U_MIN, args); }
-	if (op == Intrinsic.Max) { return ext(p, t, f ? GLSL_F_MAX : i ? GLSL_S_MAX : GLSL_U_MAX, args); }
+	if (op == Intrinsic.Min) {
+		return ext(p, t, f ? GLSL_F_MIN : i ? GLSL_S_MIN : GLSL_U_MIN, args);
+	}
+	if (op == Intrinsic.Max) {
+		return ext(p, t, f ? GLSL_F_MAX : i ? GLSL_S_MAX : GLSL_U_MAX, args);
+	}
 	if (op == Intrinsic.Clamp) {
 		if (f) { return ext(p, t, GLSL_F_CLAMP, args); }
 		const raised = ext(p, t, i ? GLSL_S_MAX : GLSL_U_MAX, [args[0], args[1]]);
@@ -1370,41 +1385,44 @@ function upperLeft(p: Spirv, e: ShaderExpr): int32 {
 	return typed(p, OP_COMPOSITE_CONSTRUCT, typeId(p, e.type), columns);
 }
 
-function barrier(p: Spirv, storage: boolean): int32 {
+function controlBarrier(p: Spirv, execution: int32, memory: int32, semantics: int32): int32 {
 	emit(p, OP_CONTROL_BARRIER, [
-		intConstant(p, ScalarKind.U32, 2),
-		intConstant(p, ScalarKind.U32, storage ? 1 : 2),
-		intConstant(p, ScalarKind.U32, storage ? 72 : 264),
+		intConstant(p, ScalarKind.U32, execution),
+		intConstant(p, ScalarKind.U32, memory),
+		intConstant(p, ScalarKind.U32, semantics),
 	]);
 	return 0;
 }
 
+function barrier(p: Spirv, storage: boolean): int32 {
+	return controlBarrier(p, 2, storage ? 1 : 2, storage ? 72 : 264);
+}
+
 function imageBarrier(p: Spirv): int32 {
-	emit(p, OP_CONTROL_BARRIER, [
-		intConstant(p, ScalarKind.U32, 2),
-		intConstant(p, ScalarKind.U32, 2),
-		intConstant(p, ScalarKind.U32, 2056),
-	]);
-	return 0;
+	return controlBarrier(p, 2, 2, 2056);
 }
 
 function atomicOpcode(op: Intrinsic, s: ScalarKind): int32 {
 	const signed = s == ScalarKind.I32;
-	if (op == Intrinsic.AtomicAdd) { return OP_ATOMIC_I_ADD; }
-	if (op == Intrinsic.AtomicSub) { return OP_ATOMIC_I_SUB; }
-	if (op == Intrinsic.AtomicMax) { return signed ? OP_ATOMIC_S_MAX : OP_ATOMIC_U_MAX; }
-	if (op == Intrinsic.AtomicMin) { return signed ? OP_ATOMIC_S_MIN : OP_ATOMIC_U_MIN; }
-	if (op == Intrinsic.AtomicAnd) { return OP_ATOMIC_AND; }
-	if (op == Intrinsic.AtomicOr) { return OP_ATOMIC_OR; }
-	if (op == Intrinsic.AtomicXor) { return OP_ATOMIC_XOR; }
-	if (op == Intrinsic.AtomicExchange) { return OP_ATOMIC_EXCHANGE; }
-	return 0;
+	return match (op) {
+		Intrinsic.AtomicAdd => OP_ATOMIC_I_ADD,
+		Intrinsic.AtomicSub => OP_ATOMIC_I_SUB,
+		Intrinsic.AtomicMax => signed ? OP_ATOMIC_S_MAX : OP_ATOMIC_U_MAX,
+		Intrinsic.AtomicMin => signed ? OP_ATOMIC_S_MIN : OP_ATOMIC_U_MIN,
+		Intrinsic.AtomicAnd => OP_ATOMIC_AND,
+		Intrinsic.AtomicOr => OP_ATOMIC_OR,
+		Intrinsic.AtomicXor => OP_ATOMIC_XOR,
+		Intrinsic.AtomicExchange => OP_ATOMIC_EXCHANGE,
+		_ => 0,
+	};
 }
 
 function atomic(p: Spirv, e: ShaderExpr): int32 {
 	const op = e.intrinsic;
 	const target = e.operands[0];
-	if (!isPlace(p, target)) { return refusal(p, op.toString() + " of a value that is no variable"); }
+	if (!isPlace(p, target)) {
+		return refusal(p, op.toString() + " of a value that is no variable");
+	}
 	const place = pointer(p, target);
 	const scope = intConstant(p, ScalarKind.U32, place.storage == WORKGROUP ? 2 : 1);
 	const relaxed = intConstant(p, ScalarKind.U32, 0);
@@ -1434,11 +1452,6 @@ function handle(p: Spirv, e: ShaderExpr): int32 {
 		return refusal(p, "a texture or sampler that is no resource binding");
 	}
 	return typed(p, OP_LOAD, typeId(p, e.type), [p.resourceVars[e.index]]);
-}
-
-function samplerKind(p: Spirv, e: ShaderExpr): SamplerType {
-	if (e.kind != ExprKind.Resource) { return SamplerType.Filtering; }
-	return p.module.resources[e.index].samplerType;
 }
 
 function sampledImage(p: Spirv, texture: ShaderExpr, sampler: ShaderExpr): int32 {
@@ -1479,7 +1492,8 @@ function floatLevel(p: Spirv, level: ShaderExpr): int32 {
 }
 
 // The image operands of a sample: their mask, then one id per bit in the order of the bits, the
-// constant offset's last. The offset of a sample is a constant composite, as the image operand needs.
+// constant offset's last. The offset of a sample is a constant composite, as the image operand
+// needs.
 function imageOperands(p: Spirv, e: ShaderExpr, mask: int32, ids: int32[]): int32[] {
 	if (!hasOffset(e)) { return mask == 0 ? [] : [mask].concat(ids); }
 	return [mask | IMAGE_CONST_OFFSET].concat(ids).concat([value(p, offsetOf(e))]);
@@ -1488,18 +1502,7 @@ function imageOperands(p: Spirv, e: ShaderExpr, mask: int32, ids: int32[]): int3
 function sample(p: Spirv, e: ShaderExpr): int32 {
 	const op = e.intrinsic;
 	const o = e.operands;
-	const name = op.toString();
-	if (o.length < 3 || o[0].type.kind != ShaderTypeKind.Texture ||
-		o[1].type.kind != ShaderTypeKind.Sampler) {
-		return refusal(p, name + " takes a texture, a sampler and coordinates first");
-	}
 	const t = o[0].type;
-	if (t.shape == TextureShape.Multisampled2d) {
-		return refusal(p, name + " of a multisampled texture");
-	}
-	if (samplerKind(p, o[1]) == SamplerType.Comparison) {
-		return refusal(p, name + " through a comparison sampler");
-	}
 	const layered = isArrayTexture(t);
 	const next = layered ? 4 : 3;
 	const image = sampledImage(p, o[0], o[1]);
@@ -1529,22 +1532,8 @@ function sample(p: Spirv, e: ShaderExpr): int32 {
 
 function compare(p: Spirv, e: ShaderExpr): int32 {
 	const o = e.operands;
-	const name = e.intrinsic.toString();
 	const level = e.intrinsic == Intrinsic.TextureSampleCompareLevel;
-	const layered = o.length > 0 && o[0].type.shape == TextureShape.Depth2dArray;
-	const base = layered ? 5 : 4;
-	if (o.length != base && o.length != base + 1 || o[0].type.kind != ShaderTypeKind.Texture ||
-		o[1].type.kind != ShaderTypeKind.Sampler) {
-		return refusal(p, name + " takes a texture, a sampler, coordinates, for an array texture " +
-			"a layer, a depth reference, and an optional constant offset");
-	}
-	if (o[1].kind != ExprKind.Resource || samplerKind(p, o[1]) != SamplerType.Comparison) {
-		return refusal(p, name + " through a sampler that is no comparison sampler binding");
-	}
-	if (!isDepthShape(o[0].type.shape)) {
-		return refusal(p, name + " of a " + o[0].type.shape.toString() + " texture, which holds " +
-			"no depth");
-	}
+	const layered = o[0].type.shape == TextureShape.Depth2dArray;
 	const image = sampledImage(p, o[0], o[1]);
 	const at = coordinates(p, o[2], layered, o[3]);
 	const reference = value(p, o[layered ? 4 : 3]);
@@ -1557,10 +1546,6 @@ function compare(p: Spirv, e: ShaderExpr): int32 {
 		imageOperands(p, e, IMAGE_LOD, [scalarConstant(p, ScalarKind.F32, 0.0)])));
 }
 
-function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {
-	return args.filter((a) => a.type.kind != ShaderTypeKind.Sampler);
-}
-
 function texelLoad(p: Spirv, e: ShaderExpr): int32 {
 	const o = withoutSamplers(e.operands);
 	const t = o[0].type;
@@ -1571,7 +1556,9 @@ function texelLoad(p: Spirv, e: ShaderExpr): int32 {
 		const at = coordinates(p, o[1], layered, o[layered ? 2 : 1]);
 		return typed(p, OP_IMAGE_READ, typeId(p, e.type), [image, at]);
 	}
-	if (t.kind != ShaderTypeKind.Texture) { return refusal(p, "TextureLoad of a " + t.kind.toString()); }
+	if (t.kind != ShaderTypeKind.Texture) {
+		return refusal(p, "TextureLoad of a " + t.kind.toString());
+	}
 	if (o.length < (layered ? 4 : 3)) {
 		return refusal(p, "TextureLoad of a sampled texture takes a level");
 	}
@@ -1598,6 +1585,10 @@ function texelStore(p: Spirv, e: ShaderExpr): int32 {
 	return 0;
 }
 
+function unsignedAs(p: Spirv, wanted: ShaderType, x: int32): int32 {
+	return wanted.scalar == ScalarKind.U32 ? x : typed(p, OP_BITCAST, typeId(p, wanted), [x]);
+}
+
 function dimensions(p: Spirv, e: ShaderExpr): int32 {
 	const o = withoutSamplers(e.operands);
 	const t = o[0].type;
@@ -1619,24 +1610,20 @@ function dimensions(p: Spirv, e: ShaderExpr): int32 {
 	const unsigned = vectorType(ScalarKind.U32, dims);
 	const kept = !layered ? size : typed(p, OP_VECTOR_SHUFFLE, typeId(p, unsigned),
 		dims == 3 ? [size, size, 0, 1, 2] : [size, size, 0, 1]);
-	return e.type.scalar == ScalarKind.U32 ? kept : typed(p, OP_BITCAST, typeId(p, e.type), [kept]);
+	return unsignedAs(p, e.type, kept);
 }
 
 function sampleCount(p: Spirv, e: ShaderExpr): int32 {
-	const t = e.operands[0].type;
-	if (t.kind != ShaderTypeKind.Texture || t.shape != TextureShape.Multisampled2d) {
-		return refusal(p, "TextureNumSamples takes a multisampled texture");
-	}
 	need(p, CAP_IMAGE_QUERY);
 	const count = typed(p, OP_IMAGE_QUERY_SAMPLES, typeId(p, scalarType(ScalarKind.U32)),
 		[handle(p, e.operands[0])]);
-	return e.type.scalar == ScalarKind.U32 ? count : typed(p, OP_BITCAST, typeId(p, e.type), [count]);
+	return unsignedAs(p, e.type, count);
 }
 
 function arrayLength(p: Spirv, e: ShaderExpr): int32 {
 	const count = typed(p, OP_ARRAY_LENGTH, typeId(p, scalarType(ScalarKind.U32)),
 		[p.resourceVars[e.operands[0].index], 0]);
-	return e.type.scalar == ScalarKind.U32 ? count : typed(p, OP_BITCAST, typeId(p, e.type), [count]);
+	return unsignedAs(p, e.type, count);
 }
 
 function intrinsic(p: Spirv, e: ShaderExpr): int32 {
@@ -1656,7 +1643,8 @@ function intrinsic(p: Spirv, e: ShaderExpr): int32 {
 	if (op == Intrinsic.UpperLeft3x3) { return upperLeft(p, e); }
 	if (op == Intrinsic.Inverse) {
 		if (e.type.kind != ShaderTypeKind.Matrix || e.type.columns != e.type.rows) {
-			return refusal(p, "inverse of a " + e.type.kind.toString() + " that is no square matrix");
+			return refusal(p, "inverse of a " + e.type.kind.toString() +
+				" that is no square matrix");
 		}
 		return ext(p, e.type, GLSL_MATRIX_INVERSE, [value(p, o[0])]);
 	}
@@ -2012,8 +2000,8 @@ function layouts(p: Spirv, reads: Reads): void {
 			for (const f of m.structs[element].members) {
 				if (f.type.kind == ShaderTypeKind.Struct || f.type.kind == ShaderTypeKind.Array) {
 					refusal(p, "storage buffer '" + r.name + "': member '" + f.name + "' is a " +
-						f.type.kind.toString() + "; a struct or array in a storage element is not " +
-						"printed yet");
+						f.type.kind.toString() + "; a struct or array in a storage element is " +
+						"not printed yet");
 					return;
 				}
 			}
@@ -2218,7 +2206,8 @@ export function printSpirv(source: ShaderModule, entry: int32, bindings: Binding
 	for (const w of reads.workgroups) {
 		const v = m.workgroups[w];
 		const id = fresh(p);
-		inst(p.globals, OP_VARIABLE, [pointerTypeId(p, WORKGROUP, typeId(p, v.type)), id, WORKGROUP]);
+		inst(p.globals, OP_VARIABLE,
+			[pointerTypeId(p, WORKGROUP, typeId(p, v.type)), id, WORKGROUP]);
 		name(p, id, v.name);
 		p.workgroupVars[w] = id;
 	}

@@ -9,7 +9,6 @@ import {
 	IoDirection,
 	ResourceKind,
 	Sampling,
-	SamplerType,
 	ScalarKind,
 	ShaderExpr,
 	ShaderFunction,
@@ -29,12 +28,20 @@ import {
 	isAtomic,
 	isUniformLoad,
 	frexpResultType,
+	isArrayTexture,
 	modfResultType,
-	isEffect,
+	structType,
 	texelScalar,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
-import { builtinType, functionOrder, ioLocation, structOrder } from "./irWalk";
+import {
+	builtinType,
+	functionOrder,
+	hasCallOrEffect,
+	ioLocation,
+	structOrder,
+	withoutSamplers,
+} from "./irWalk";
 import { claimName } from "./names";
 import { printableEntry, readsFrom } from "./specialize";
 import {
@@ -71,8 +78,8 @@ function mslReservedWords(): string[] {
 		"texture2d", "texture3d", "texturecube", "texture2d_array", "texturecube_array",
 		"texture2d_ms", "depth2d", "depth2d_array", "depthcube", "depth2d_ms", "level", "bias",
 		"discard_fragment", "select", "fmod", "rint", "rsqrt", "faceforward", "dfdx", "dfdy",
-		"all", "any", "as_type", "ctz", "clz", "extract_bits", "insert_bits", "popcount", "reverse_bits",
-		"half", "modf", "frexp",
+		"all", "any", "as_type", "ctz", "clz", "extract_bits", "insert_bits", "popcount",
+		"reverse_bits", "half", "modf", "frexp",
 	];
 	for (const scalar of ["float", "int", "uint", "bool", "half"]) {
 		for (let n = 2; n <= 4; n++) {
@@ -114,7 +121,8 @@ function builtinName(op: Intrinsic): string {
 		Intrinsic.Unpack2x16Snorm => "unpack_snorm2x16_to_float",
 		Intrinsic.FirstLeadingBit | Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits |
 			Intrinsic.InsertBits | Intrinsic.Pack2x16Float | Intrinsic.Unpack2x16Float => "",
-		Intrinsic.Sign | Intrinsic.Degrees | Intrinsic.Radians | Intrinsic.Modf | Intrinsic.Frexp => "",
+		Intrinsic.Sign | Intrinsic.Degrees | Intrinsic.Radians | Intrinsic.Modf |
+			Intrinsic.Frexp => "",
 		_ => mathName(op),
 	};
 }
@@ -291,9 +299,9 @@ function splitText(t: ShaderType): string {
 	const types = splitTypes(t);
 	const result = splitStructName(t);
 	const call = t.kind == ShaderTypeKind.ModfResult ? "modf" : "frexp";
-	return "struct " + result + " {\n  " + types[0] + " " + splitMember(t, 0) + ";\n  " + types[1] + " " +
-		splitMember(t, 1) + ";\n};\n\nstatic inline " + result + " " + splitHelperName(t) + "(" +
-		types[0] + " arg) {\n  " + types[1] + " other;\n  " + types[0] + " part = " + call +
+	return "struct " + result + " {\n  " + types[0] + " " + splitMember(t, 0) + ";\n  " + types[1] +
+		" " + splitMember(t, 1) + ";\n};\n\nstatic inline " + result + " " + splitHelperName(t) +
+		"(" + types[0] + " arg) {\n  " + types[1] + " other;\n  " + types[0] + " part = " + call +
 		"(arg, other);\n  return " + result + "{part, other};\n}";
 }
 
@@ -388,48 +396,16 @@ function binaryText(p: Printer, e: ShaderExpr): string {
 	return (e.binary == BinaryOp.Equal ? "all" : "any") + text;
 }
 
-function hasEffect(e: ShaderExpr): boolean {
-	if (e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic)) {
-		return true;
-	}
-	return e.operands.some((o) => hasEffect(o));
-}
-
-function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {
-	return args.filter((a) => a.type.kind != ShaderTypeKind.Sampler);
-}
-
-function isArrayed(t: ShaderType): boolean {
-	return t.shape == TextureShape.D2Array || t.shape == TextureShape.CubeArray ||
-		t.shape == TextureShape.Depth2dArray;
-}
-
 function texelCoordinate(p: Printer, at: ShaderExpr): string {
 	const rows = at.type.kind == ShaderTypeKind.Vector ? String(at.type.rows) : "";
 	return "uint" + rows + "(" + exprText(p, at) + ")";
 }
 
-function isComparisonSampler(p: Printer, sampler: ShaderExpr): boolean {
-	return sampler.kind == ExprKind.Resource &&
-		p.module.resources[sampler.index].samplerType == SamplerType.Comparison;
-}
-
 function sampleText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
-	if (o.length < 3 || o[0].type.kind != ShaderTypeKind.Texture ||
-		o[1].type.kind != ShaderTypeKind.Sampler) {
-		return fail(p, "TextureSample takes a texture, a sampler and coordinates");
-	}
 	const t = o[0].type;
-	if (t.shape == TextureShape.Multisampled2d) {
-		return fail(p, "TextureSample of a multisampled texture");
-	}
-	if (isComparisonSampler(p, o[1])) {
-		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
-	}
 	let args = [exprText(p, o[1]), exprText(p, o[2])];
-	if (isArrayed(t)) {
-		if (o.length < 4) { return fail(p, "TextureSample of an array texture without a layer"); }
+	if (isArrayTexture(t)) {
 		args.push("uint(" + exprText(p, o[3]) + ")");
 	}
 	if (p.stage != ShaderStage.Fragment && t.shape != TextureShape.D1) { args.push("level(0.0)"); }
@@ -451,11 +427,7 @@ function gradientName(p: Printer, shape: TextureShape): string {
 function explicitSampleText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
-	if (isComparisonSampler(p, o[1])) {
-		return fail(p, e.intrinsic.toString() + " through a comparison sampler, which needs a " +
-			"depth reference");
-	}
-	const layer = isArrayed(t) ? 1 : 0;
+	const layer = isArrayTexture(t) ? 1 : 0;
 	let args = [exprText(p, o[1]), exprText(p, o[2])];
 	if (layer == 1) { args.push("uint(" + exprText(p, o[3]) + ")"); }
 	const at = 3 + layer;
@@ -474,22 +446,8 @@ function explicitSampleText(p: Printer, e: ShaderExpr): string {
 
 function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 	const o = e.operands;
-	const name = e.intrinsic.toString();
-	const layered = o.length > 0 && o[0].type.shape == TextureShape.Depth2dArray;
+	const layered = o[0].type.shape == TextureShape.Depth2dArray;
 	const base = layered ? 5 : 4;
-	if (o.length != base && o.length != base + 1 || o[0].type.kind != ShaderTypeKind.Texture ||
-		o[1].type.kind != ShaderTypeKind.Sampler) {
-		return fail(p, name + " takes a texture, a sampler, coordinates, for an array texture a " +
-			"layer, a depth reference, and an optional constant offset");
-	}
-	if (!isComparisonSampler(p, o[1])) {
-		return fail(p, name + " through a sampler that is no comparison sampler binding");
-	}
-	const shape = o[0].type.shape;
-	if (shape != TextureShape.Depth2d && shape != TextureShape.Depth2dArray &&
-		shape != TextureShape.DepthCube) {
-		return fail(p, name + " of a " + shape.toString() + " texture, which holds no depth");
-	}
 	let args = [exprText(p, o[1]), exprText(p, o[2])];
 	if (layered) { args.push("uint(" + exprText(p, o[3]) + ")"); }
 	args.push(exprText(p, o[base - 1]));
@@ -517,7 +475,7 @@ function loadText(p: Printer, e: ShaderExpr): string {
 		t.shape == TextureShape.DepthCube) {
 		return fail(p, "TextureLoad of a cube texture, which names no face");
 	}
-	const wanted = isArrayed(t) ? 4 : 3;
+	const wanted = isArrayTexture(t) ? 4 : 3;
 	if (o.length < wanted) {
 		return fail(p, t.shape == TextureShape.Multisampled2d ?
 			"TextureLoad of a multisampled texture takes a sample index" :
@@ -566,7 +524,7 @@ function dimensionsText(p: Printer, e: ShaderExpr): string {
 	}
 	const levelled = t.kind == ShaderTypeKind.Texture && t.shape != TextureShape.Multisampled2d &&
 		t.shape != TextureShape.D1 && o.length > 1;
-	if (levelled && hasEffect(o[1])) {
+	if (levelled && hasCallOrEffect(o[1])) {
 		return fail(p, "TextureDimensions whose level calls a function");
 	}
 	const level = levelled ? "uint(" + exprText(p, o[1]) + ")" : "";
@@ -587,22 +545,19 @@ function dimensionsText(p: Printer, e: ShaderExpr): string {
 }
 
 function samplesText(p: Printer, e: ShaderExpr): string {
-	const t = e.operands[0].type;
-	if (t.kind != ShaderTypeKind.Texture || t.shape != TextureShape.Multisampled2d) {
-		return fail(p, "TextureNumSamples takes a multisampled texture");
-	}
 	return typeText(p, e.type) + "(" + exprText(p, e.operands[0]) + ".get_num_samples())";
 }
 
 function lengthText(p: Printer, e: ShaderExpr): string {
-	return fail(p, "ArrayLength of storage buffer '" + p.module.resources[e.operands[0].index].name +
-		"': MSL reads no buffer length, so it needs a sizes buffer the host fills at a reflected slot");
+	const name = p.module.resources[e.operands[0].index].name;
+	return fail(p, "ArrayLength of storage buffer '" + name + "': MSL reads no buffer length, " +
+		"so it needs a sizes buffer the host fills at a reflected slot");
 }
 
 function signText(p: Printer, e: ShaderExpr): string {
 	const x = e.operands[0];
 	if (isFloat(x.type)) { return "sign(" + exprText(p, x) + ")"; }
-	if (hasEffect(x)) { return fail(p, "Sign of an integer whose operand calls a function"); }
+	if (hasCallOrEffect(x)) { return fail(p, "Sign of an integer whose operand calls a function"); }
 	const zero = literalText(p, x.type, 0.0);
 	const resultText = typeText(p, e.type);
 	const operand = exprText(p, x);
@@ -627,7 +582,7 @@ function inverseCall(p: Printer, e: ShaderExpr): string {
 	return inverseName(t.rows) + "(" + exprText(p, e.operands[0]) + ")";
 }
 
-// The compound spellings, as naga's back-end writes them: ctz and clz count the full width, where
+// The compound spellings: ctz and clz count the full width, where
 // WGSL answers -1 for no bit, and extract_bits and insert_bits are undefined past the 32 bits
 // WGSL clamps to. An operand printed more than once must not call a function.
 function bitsText(p: Printer, e: ShaderExpr): string {
@@ -635,8 +590,9 @@ function bitsText(p: Printer, e: ShaderExpr): string {
 	const op = e.intrinsic;
 	const x = exprText(p, o[0]);
 	const repeated = op == Intrinsic.FirstLeadingBit ? 0 : repeatedBitsOperand(op);
-	if (repeated >= 0 && hasEffect(o[repeated])) {
-		return fail(p, op.toString() + " prints an operand more than once, and it calls a function");
+	if (repeated >= 0 && hasCallOrEffect(o[repeated])) {
+		return fail(p, op.toString() +
+			" prints an operand more than once, and it calls a function");
 	}
 	if (op == Intrinsic.FirstTrailingBit) {
 		return "(((ctz(" + x + ") + 1) % 33) - 1)";
@@ -676,7 +632,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 			Intrinsic.InsertBits | Intrinsic.Pack2x16Float | Intrinsic.Unpack2x16Float =>
 			bitsText(p, e),
 		Intrinsic.Sign => signText(p, e),
-		Intrinsic.Modf | Intrinsic.Frexp => splitCallName(p, e.type) + "(" + exprText(p, o[0]) + ")",
+		Intrinsic.Modf | Intrinsic.Frexp =>
+			splitCallName(p, e.type) + "(" + exprText(p, o[0]) + ")",
 		Intrinsic.Degrees => "(" + exprText(p, o[0]) + " * 57.295779513082323)",
 		Intrinsic.Radians => "(" + exprText(p, o[0]) + " * 0.017453292519943295)",
 		Intrinsic.Inverse => inverseCall(p, e),
@@ -818,7 +775,7 @@ function assignText(p: Printer, s: ShaderStmt): string {
 		return fail(p, "an assignment of a whole array");
 	}
 	if (s.assign == AssignOp.Mod && isFloat(s.target.type)) {
-		if (hasEffect(s.target)) { return fail(p, "'%=' on a target that calls a function"); }
+		if (hasCallOrEffect(s.target)) { return fail(p, "'%=' on a target that calls a function"); }
 		return target + " = fmod(" + target + ", " + exprText(p, s.expr) + ")";
 	}
 	return match (s.assign) {
@@ -1042,19 +999,12 @@ function layoutError(m: ShaderModule, structIndex: int32, layout: StructLayout, 
 		}
 		end = offset + size;
 	}
-	const [_align, natural] = naturalExtent(m, structTypeOf(structIndex));
+	const [_align, natural] = naturalExtent(m, structType(structIndex));
 	if (sized && natural != layout.size) {
 		return owner + ": an element is " + String(layout.size) + " bytes in the host layout and " +
 			String(natural) + " in MSL";
 	}
 	return "";
-}
-
-function structTypeOf(index: int32): ShaderType {
-	let t = new ShaderType();
-	t.kind = ShaderTypeKind.Struct;
-	t.structIndex = index;
-	return t;
 }
 
 function bufferLayoutError(m: ShaderModule, index: int32): string {
@@ -1196,7 +1146,7 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 	let structs: int32[] = [];
 	let reached = reads.structs.map((n) => n);
 	reached.sort((a, b) => a - b);
-	for (const i of reached) { structOrder(m, structTypeOf(i), structs); }
+	for (const i of reached) { structOrder(m, structType(i), structs); }
 	let inputs: string[] = [];
 	let outputs: string[] = [];
 	let params: string[] = [];

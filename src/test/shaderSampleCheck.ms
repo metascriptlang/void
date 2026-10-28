@@ -1,12 +1,20 @@
 // textureSampleLevel, textureSampleBias and textureSampleGrad authored in MetaScript: each entry
 // runs on the CPU, is pinned as GLSL, and is printed for every target into out/<target>Probe/ for
-// scripts/validateWgsl.sh, scripts/validateHlsl.sh and naga's GLSL front end.
+// scripts/validateWgsl.sh, scripts/validateHlsl.sh and the GLSL validator.
 
 import { mkdir, writeFile } from "std/fs";
 import { Wrap } from "../gpu/state";
 import { programModule, stageSource } from "../shader/descriptor";
 import { glsl, glslIr, glslLinkedIr } from "../shader/emit";
-import { Intrinsic, ShaderModule, StmtKind, TextureShape, irErrors } from "../shader/ir";
+import {
+	Intrinsic,
+	SamplerType,
+	ShaderExpr,
+	ShaderModule,
+	StmtKind,
+	TextureShape,
+	irErrors,
+} from "../shader/ir";
 import { ShaderTarget } from "../shader/layout";
 import { reflectProgram } from "../shader/reflect";
 import { GPUShaderStage } from "../webgpu/types.ms";
@@ -114,11 +122,16 @@ test "GLSL 450 spells the explicit samples through a combined sampler" {
 		"    vec2 uv = vec2(0.25, 0.75);\n" +
 		"    vec4 level = textureLod(sampler2D(atlas, atlasSampler), uv, 2.0);\n" +
 		"    vec4 biased = texture(sampler2D(atlas, atlasSampler), uv, -1.0);\n" +
-		"    vec4 graded = textureGrad(sampler2D(atlas, atlasSampler), uv, vec2(0.01, 0.0), vec2(0.0, 0.01));\n" +
-		"    vec4 layer = textureLod(sampler2DArray(layers, atlasSampler), vec3(uv, float(1)), 0.0);\n" +
-		"    vec4 layerBiased = texture(sampler2DArray(layers, atlasSampler), vec3(uv, float(0)), 0.5);\n" +
-		"    vec4 layerGraded = textureGrad(sampler2DArray(layers, atlasSampler), vec3(uv, float(1)), vec2(0.0, 0.0), vec2(0.0, 0.0));\n" +
-		"    fragColor = vec4((level.x + biased.y), graded.z, (layer.x + layerBiased.y), layerGraded.w);\n" +
+		"    vec4 graded = textureGrad(sampler2D(atlas, atlasSampler), uv, vec2(0.01, 0.0), " +
+		"vec2(0.0, 0.01));\n" +
+		"    vec4 layer = textureLod(sampler2DArray(layers, atlasSampler), vec3(uv, float(1)), " +
+		"0.0);\n" +
+		"    vec4 layerBiased = texture(sampler2DArray(layers, atlasSampler), vec3(uv, " +
+		"float(0)), 0.5);\n" +
+		"    vec4 layerGraded = textureGrad(sampler2DArray(layers, atlasSampler), vec3(uv, " +
+		"float(1)), vec2(0.0, 0.0), vec2(0.0, 0.0));\n" +
+		"    fragColor = vec4((level.x + biased.y), graded.z, (layer.x + layerBiased.y), " +
+		"layerGraded.w);\n" +
 		"    return;\n" +
 		"}\n";
 }
@@ -126,9 +139,12 @@ test "GLSL 450 spells the explicit samples through a combined sampler" {
 function probePath(name: string, target: ShaderTarget, stage: string): string {
 	return match (target) {
 		ShaderTarget.Wgsl => "out/wgslProbe/" + name + stage + ".wgsl",
-		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") + ".hlsl",
-		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." + (stage == "Vs" ? "vert" : "frag"),
-		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." + (stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") +
+		".hlsl",
+		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." +
+		(stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." +
+		(stage == "Vs" ? "vert" : "frag"),
 		ShaderTarget.Msl => "out/mslProbe/" + name + stage + ".metal",
 		ShaderTarget.Spirv => "out/spirvProbe/" + name + stage + ".spv",
 	};
@@ -157,7 +173,8 @@ test "every target spells textureSampleLevel, textureSampleBias and textureSampl
 		"  var height_1 : vec4f = textureSampleLevel(height, heightSampler, position, 0f);\n");
 	const wgsl = printedFor(m, 1, ShaderTarget.Wgsl, "mipped");
 	assert wgsl.startsWith("diagnostic(off, derivative_uniformity);\n");
-	assert wgsl.includes("  var biased : vec4f = textureSampleBias(atlas, atlasSampler, uv, (-1f));\n" +
+	assert wgsl.includes(
+		"  var biased : vec4f = textureSampleBias(atlas, atlasSampler, uv, (-1f));\n" +
 		"  var graded : vec4f = textureSampleGrad(atlas, atlasSampler, uv, vec2f(0.01f, 0f), " +
 		"vec2f(0f, 0.01f));\n" +
 		"  var layer : vec4f = textureSampleLevel(layers, atlasSampler, uv, 1i, 0f);\n");
@@ -187,7 +204,7 @@ test "every target spells textureSampleLevel, textureSampleBias and textureSampl
 		"  float4 layer = layers.sample(atlasSampler, uv, uint(1), level(0.0));\n");
 }
 
-test "an explicit sample of a depth texture with a float level, or without its level, is refused by name" {
+test "an explicit sample of a depth texture with a float level, or without a level, is refused" {
 	let depth = programOf();
 	const lifted = depth.functions[depth.entries[0].functionIndex].body[0].expr;
 	lifted.operands[0].type.shape = TextureShape.Depth2d;
@@ -200,6 +217,42 @@ test "an explicit sample of a depth texture with a float level, or without its l
 	graded.operands.pop();
 	assert irErrors(short).includes("function 'mippedFs': TextureSampleGrad takes a texture, a " +
 		"sampler, coordinates, a layer of an array, and two derivatives, as WGSL's");
+}
+
+function gradedOf(m: ShaderModule): ShaderExpr {
+	const body = m.functions[m.entries[1].functionIndex].body;
+	return body.filter((s) => s.kind == StmtKind.Let &&
+		s.expr.intrinsic == Intrinsic.TextureSampleGrad)[0].expr;
+}
+
+test "a sample through a comparison sampler, of a multisampled texture, or wrong operands" {
+	let comparison = programOf();
+	comparison.resources[gradedOf(
+		comparison).operands[1].index].samplerType = SamplerType.Comparison;
+	assert irErrors(comparison).join("
+").includes("TextureSampleGrad through a comparison " +
+		"sampler, which needs a depth reference");
+
+	let plain = programOf();
+	const sample = gradedOf(plain);
+	sample.intrinsic = Intrinsic.TextureSample;
+	sample.operands = sample.operands.slice(0, 3);
+	assert irErrors(plain).length == 0;
+	plain.resources[sample.operands[1].index].samplerType = SamplerType.Comparison;
+	assert irErrors(plain).join("
+").includes("TextureSample through a comparison sampler, " +
+		"which needs a depth reference");
+	plain.resources[sample.operands[1].index].samplerType = SamplerType.Filtering;
+
+	sample.operands[0].type.shape = TextureShape.Multisampled2d;
+	assert irErrors(plain).join("
+").includes("TextureSample of a multisampled texture");
+	sample.operands[0].type.shape = TextureShape.D2;
+
+	sample.operands = sample.operands.slice(0, 2);
+	assert irErrors(plain).join("
+").includes("TextureSample takes a texture, a sampler, " +
+		"coordinates and, for an array texture, a layer, and an optional constant offset");
 }
 
 export struct Sky {
@@ -325,7 +378,8 @@ test "a shared view takes the first native slot free in every stage that reads i
 	assert m.resources.length == 3;
 	const reflected = reflectProgram(m, 0, 1, ShaderTarget.Hlsl5);
 	assert reflected.ok;
-	const visible = reflected.value.bindings.map((b) => String(b.binding) + ":" + String(b.visibility));
+	const visible = reflected.value.bindings.map((b) => String(b.binding) + ":" +
+		String(b.visibility));
 	assert visible.join(" ") == "1:1 2:3 33:3";
 	for (const entry of [0, 1]) {
 		const hlsl = printedFor(m, entry, ShaderTarget.Hlsl5, "rim");

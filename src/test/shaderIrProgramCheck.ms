@@ -3,7 +3,7 @@
 // for.
 
 import { glslIr, glslLinkedIr } from "../shader/emit";
-import { programModule, programSource } from "../shader/descriptor";
+import { descriptorSource, programModule, programSource } from "../shader/descriptor";
 import { irErrors } from "../shader/ir";
 import { irFromText, irText } from "../shader/irText";
 import { ShaderTarget } from "../shader/layout";
@@ -168,4 +168,23 @@ test "fullscreen passes reflect as shdc's" {
 test "void2d programs reflect as shdc's" {
 	assert matched(glslIr(uiVs), glslLinkedIr(uiFs, uiVs), [], uiShaderModule()) == "";
 	assert matched(glslIr(blurVs), glslLinkedIr(blurFs, blurVs), [], blurShaderModule()) == "";
+}
+
+test "a field of the wrong JSON kind is an error, not a zero" {
+	const m = irFromText("[[],[],[],[],[],[],[[\"main\",\"vertex\",0,[]]],[],[]]");
+	assert !m.ok;
+	if (!m.ok) { assert m.error == "irText: a field is not an integer (JSON kind 3)"; }
+}
+
+test "descriptorSource prints a binding's keys in the descriptor's order" {
+	const m = programModule(LIT_TEXTURED_VS, LIT_TEXTURED_FS, ["EMISSIVE", "NORMAL_MAP", "SHADOWED", "NORMAL_MRT", "SKINNED"]);
+	assert m.ok;
+	const s = programSource(m.value, builtTarget());
+	assert s.ok;
+	const text = descriptorSource("lit", s.value, ["c", "c"], ["[]", "[]"]);
+	assert text.includes("{ group: 1, binding: 4, kind: \"texture\", visibility: 2, size: 0, " +
+		"sampleType: \"unfilterable-float\", nativeSlot: 2, textureBinding: -1, " +
+		"viewDimension: \"2d-array\" }");
+	assert text.includes("{ group: 1, binding: 32, kind: \"sampler\", visibility: 2, size: 0, " +
+		"samplerType: \"filtering\", nativeSlot: 0, textureBinding: -1 }");
 }

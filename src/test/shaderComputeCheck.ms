@@ -1,4 +1,4 @@
-// Compute entries: shady's compute1 example (examples/compute1.nim) as a WGSL-style compute stage,
+// Compute entries as a WGSL-style compute stage,
 // a storage buffer read and a storage texture written, run on the CPU and pinned as GLSL.
 
 import { glslCompute } from "../shader/emit";
@@ -19,7 +19,6 @@ export struct CommandInput {
 	@builtin(globalInvocationId) id: Vec3u;
 }
 
-// shdc's storage buffer is one flexible array of structs.
 export struct Command {
 	value: float32;
 }

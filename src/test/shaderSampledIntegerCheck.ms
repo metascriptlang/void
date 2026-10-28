@@ -1,7 +1,7 @@
 // WGSL's texture_2d_array and texture_3d of u32 and i32 texels beside texture_2d: textureLoad
 // returns vec4u or vec4i, and no sampling builtin takes them. Each entry runs on the CPU, is pinned
 // as GLSL and printed for every target into out/<target>Probe/ for scripts/validateWgsl.sh,
-// scripts/validateHlsl.sh, naga and spirv-val.
+// scripts/validateHlsl.sh and spirv-val.
 
 import { mkdir, writeFile } from "std/fs";
 import { programModule, stageSource } from "../shader/descriptor";
@@ -99,9 +99,12 @@ test "an array and a 3D texture of integer texels load a texel as vec4u or vec4i
 function probePath(name: string, target: ShaderTarget, stage: string): string {
 	return match (target) {
 		ShaderTarget.Wgsl => "out/wgslProbe/" + name + stage + ".wgsl",
-		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") + ".hlsl",
-		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." + (stage == "Vs" ? "vert" : "frag"),
-		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." + (stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") +
+		".hlsl",
+		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." +
+		(stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." +
+		(stage == "Vs" ? "vert" : "frag"),
 		ShaderTarget.Msl => "out/mslProbe/" + name + stage + ".metal",
 		ShaderTarget.Spirv => "out/spirvProbe/" + name + stage + ".spv",
 	};
@@ -143,7 +146,8 @@ test "GLSL 450 spells each integer texture with its channel type and fetches by 
 		"    ivec4 signedLayer = texelFetch(layersI, ivec3(ivec2(0, 1), 0), 0);\n" +
 		"    uvec4 unsignedCell = texelFetch(gridU, ivec3(1, 1, 0), 0);\n" +
 		"    ivec4 signedCell = texelFetch(gridI, ivec3(0, 1, 1), 0);\n" +
-		"    fragColor = vec4((vec4(unsignedLayer).x + vec4(signedLayer).y), vec4(unsignedCell).z, " +
+		"    fragColor = vec4((vec4(unsignedLayer).x + vec4(signedLayer).y), " +
+		"vec4(unsignedCell).z, " +
 		"vec4(signedCell).w, vec4(plainTexel).x);\n" +
 		"    return;\n" +
 		"}\n";
@@ -158,7 +162,8 @@ test "every target spells the integer array and 3D textures" {
 	assert wgsl.includes("var layersI : texture_2d_array<i32>;\n");
 	assert wgsl.includes("var gridU : texture_3d<u32>;\n");
 	assert wgsl.includes("var gridI : texture_3d<i32>;\n");
-	assert wgsl.includes("var unsignedLayer : vec4u = textureLoad(layersU, vec2i(1i, 0i), 1i, 0i);\n");
+	assert wgsl.includes(
+		"var unsignedLayer : vec4u = textureLoad(layersU, vec2i(1i, 0i), 1i, 0i);\n");
 	assert wgsl.includes("var signedCell : vec4i = textureLoad(gridI, vec3i(0i, 1i, 1i), 0i);\n");
 	const hlsl = printedFor(m, 1, ShaderTarget.Hlsl5, "sampledInteger");
 	assert hlsl.includes("Texture2D<uint4> plain : register(t0);\n");
@@ -171,7 +176,8 @@ test "every target spells the integer array and 3D textures" {
 	const msl = printedFor(m, 1, ShaderTarget.Msl, "sampledInteger");
 	assert msl.includes("texture2d_array<uint> layersU [[texture(1)]]");
 	assert msl.includes("texture3d<int> gridI [[texture(4)]]");
-	assert msl.includes("uint4 unsignedLayer = layersU.read(uint2(int2(1, 0)), uint(1), uint(0));\n");
+	assert msl.includes(
+		"uint4 unsignedLayer = layersU.read(uint2(int2(1, 0)), uint(1), uint(0));\n");
 	for (const target of [ShaderTarget.Glsl430, ShaderTarget.Glsl300es]) {
 		const gl = printedFor(m, 1, target, "sampledInteger");
 		assert gl.includes(" usampler2DArray layersU_SPIRV_Cross_DummySampler;\n");

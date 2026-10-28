@@ -2588,14 +2588,12 @@ export function textureDimensions(texture: StorageTexture2d): Vec2i {
 }
 
 export function textureStore(texture: StorageTexture2d, at: Vec2i, value: Vec4f): void {
-	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
-	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	const first = texelFirst("textureStore", texture.width, texture.height, 1, at.x, at.y, 0);
 	storeTexel(texture.texels, first, value);
 }
 
 export function textureLoad(texture: StorageTexture2d, at: Vec2i): Vec4f {
-	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
-	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	const first = texelFirst("textureLoad", texture.width, texture.height, 1, at.x, at.y, 0);
 	return loadTexel(texture.texels, first);
 }
 
@@ -2618,14 +2616,12 @@ export function textureStore(
 	layer: int32,
 	value: Vec4f,
 ): void {
-	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
-	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	const first = texelFirst("textureStore", texture.width, texture.height, texture.layers, at.x, at.y, layer);
 	storeTexel(texture.texels, first, value);
 }
 
 export function textureLoad(texture: StorageTexture2dArray, at: Vec2i, layer: int32): Vec4f {
-	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
-	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	const first = texelFirst("textureLoad", texture.width, texture.height, texture.layers, at.x, at.y, layer);
 	return loadTexel(texture.texels, first);
 }
 
@@ -2642,14 +2638,12 @@ export function textureDimensions(texture: StorageTexture3d): Vec3i {
 }
 
 export function textureStore(texture: StorageTexture3d, at: Vec3i, value: Vec4f): void {
-	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
-	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	const first = texelFirst("textureStore", texture.width, texture.height, texture.depth, at.x, at.y, at.z);
 	storeTexel(texture.texels, first, value);
 }
 
 export function textureLoad(texture: StorageTexture3d, at: Vec3i): Vec4f {
-	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
-	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	const first = texelFirst("textureLoad", texture.width, texture.height, texture.depth, at.x, at.y, at.z);
 	return loadTexel(texture.texels, first);
 }
 
@@ -2664,14 +2658,12 @@ export function textureDimensions(texture: StorageTexture1d): int32 {
 }
 
 export function textureStore(texture: StorageTexture1d, at: int32, value: Vec4f): void {
-	const first = storageTexel(texture.width, 1, 1, at, 0, 0);
-	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	const first = texelFirst("textureStore", texture.width, 1, 1, at, 0, 0);
 	storeTexel(texture.texels, first, value);
 }
 
 export function textureLoad(texture: StorageTexture1d, at: int32): Vec4f {
-	const first = storageTexel(texture.width, 1, 1, at, 0, 0);
-	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	const first = texelFirst("textureLoad", texture.width, 1, 1, at, 0, 0);
 	return loadTexel(texture.texels, first);
 }
 
@@ -2688,14 +2680,12 @@ export function textureDimensions(texture: StorageTexture2dU32): Vec2i {
 }
 
 export function textureStore(texture: StorageTexture2dU32, at: Vec2i, value: Vec4u): void {
-	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
-	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	const first = texelFirst("textureStore", texture.width, texture.height, 1, at.x, at.y, 0);
 	storeTexel(texture.texels, first, value);
 }
 
 export function textureLoad(texture: StorageTexture2dU32, at: Vec2i): Vec4u {
-	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
-	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	const first = texelFirst("textureLoad", texture.width, texture.height, 1, at.x, at.y, 0);
 	return loadTexel(texture.texels, first);
 }
 
@@ -2716,14 +2706,12 @@ export function textureStore(
 	layer: int32,
 	value: Vec4u,
 ): void {
-	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
-	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	const first = texelFirst("textureStore", texture.width, texture.height, texture.layers, at.x, at.y, layer);
 	storeTexel(texture.texels, first, value);
 }
 
 export function textureLoad(texture: StorageTexture2dArrayU32, at: Vec2i, layer: int32): Vec4u {
-	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
-	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	const first = texelFirst("textureLoad", texture.width, texture.height, texture.layers, at.x, at.y, layer);
 	return loadTexel(texture.texels, first);
 }
 
@@ -2739,14 +2727,12 @@ export function textureDimensions(texture: StorageTexture3dU32): Vec3i {
 }
 
 export function textureStore(texture: StorageTexture3dU32, at: Vec3i, value: Vec4u): void {
-	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
-	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	const first = texelFirst("textureStore", texture.width, texture.height, texture.depth, at.x, at.y, at.z);
 	storeTexel(texture.texels, first, value);
 }
 
 export function textureLoad(texture: StorageTexture3dU32, at: Vec3i): Vec4u {
-	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
-	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	const first = texelFirst("textureLoad", texture.width, texture.height, texture.depth, at.x, at.y, at.z);
 	return loadTexel(texture.texels, first);
 }
 
@@ -2763,14 +2749,12 @@ export function textureDimensions(texture: StorageTexture2dI32): Vec2i {
 }
 
 export function textureStore(texture: StorageTexture2dI32, at: Vec2i, value: Vec4i): void {
-	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
-	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	const first = texelFirst("textureStore", texture.width, texture.height, 1, at.x, at.y, 0);
 	storeTexel(texture.texels, first, value);
 }
 
 export function textureLoad(texture: StorageTexture2dI32, at: Vec2i): Vec4i {
-	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
-	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	const first = texelFirst("textureLoad", texture.width, texture.height, 1, at.x, at.y, 0);
 	return loadTexel(texture.texels, first);
 }
 
@@ -2791,14 +2775,12 @@ export function textureStore(
 	layer: int32,
 	value: Vec4i,
 ): void {
-	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
-	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	const first = texelFirst("textureStore", texture.width, texture.height, texture.layers, at.x, at.y, layer);
 	storeTexel(texture.texels, first, value);
 }
 
 export function textureLoad(texture: StorageTexture2dArrayI32, at: Vec2i, layer: int32): Vec4i {
-	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
-	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	const first = texelFirst("textureLoad", texture.width, texture.height, texture.layers, at.x, at.y, layer);
 	return loadTexel(texture.texels, first);
 }
 
@@ -2814,14 +2796,12 @@ export function textureDimensions(texture: StorageTexture3dI32): Vec3i {
 }
 
 export function textureStore(texture: StorageTexture3dI32, at: Vec3i, value: Vec4i): void {
-	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
-	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	const first = texelFirst("textureStore", texture.width, texture.height, texture.depth, at.x, at.y, at.z);
 	storeTexel(texture.texels, first, value);
 }
 
 export function textureLoad(texture: StorageTexture3dI32, at: Vec3i): Vec4i {
-	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
-	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	const first = texelFirst("textureLoad", texture.width, texture.height, texture.depth, at.x, at.y, at.z);
 	return loadTexel(texture.texels, first);
 }
 
@@ -2829,7 +2809,15 @@ function insideTexture(width: int32, height: int32, at: Vec2i): boolean {
 	return at.x >= 0 && at.y >= 0 && at.x < width && at.y < height;
 }
 
-function storageTexel(
+function checkedLayer(op: string, layer: int32, layers: int32): void {
+	if (layer < 0 || layer >= layers) {
+		throw new Error(op + ": the layer is outside the texture");
+	}
+}
+
+// The index of a texel's first component in texels that run slice by slice, four to a texel.
+function texelFirst(
+	op: string,
 	width: int32,
 	height: int32,
 	depth: int32,
@@ -2837,7 +2825,9 @@ function storageTexel(
 	y: int32,
 	z: int32,
 ): int32 {
-	if (x < 0 || y < 0 || z < 0 || x >= width || y >= height || z >= depth) { return -1; }
+	if (x < 0 || y < 0 || z < 0 || x >= width || y >= height || z >= depth) {
+		throw new Error(op + ": the texel is outside the texture");
+	}
 	return ((z * height + y) * width + x) * 4;
 }
 
@@ -2898,12 +2888,8 @@ export struct Texture2dU32 {
 
 export function textureLoad(texture: Texture2dU32, at: Vec2i, level: int32): Vec4u {
 	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
-	if (!insideTexture(texture.width, texture.height, at)) {
-		unreachable("textureLoad: the texel is outside the texture");
-	}
-	const first = (at.y * texture.width + at.x) * 4;
-	const texels = texture.texels;
-	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
+	const first = texelFirst("textureLoad", texture.width, texture.height, 1, at.x, at.y, 0);
+	return loadTexel(texture.texels, first);
 }
 
 // WGSL's texture_2d_array<u32>: layers of one size, four uint32s a texel, fetched, never filtered.
@@ -2921,12 +2907,10 @@ export function textureLoad(
 	level: int32,
 ): Vec4u {
 	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
-	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
-	if (!insideTexture(texture.width, texture.height, at)) {
-		unreachable("textureLoad: the texel is outside the texture");
-	}
-	return loadTexel(texture.texels,
-		((layer * texture.height + at.y) * texture.width + at.x) * 4);
+	checkedLayer("textureLoad", layer, texture.layers);
+	const first = texelFirst(
+		"textureLoad", texture.width, texture.height, texture.layers, at.x, at.y, layer);
+	return loadTexel(texture.texels, first);
 }
 
 // WGSL's texture_3d<u32>: slices of one size, four uint32s a texel, fetched, never filtered.
@@ -2939,12 +2923,9 @@ export struct Texture3dU32 {
 
 export function textureLoad(texture: Texture3dU32, at: Vec3i, level: int32): Vec4u {
 	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
-	if (at.z < 0 || at.z >= texture.depth ||
-		!insideTexture(texture.width, texture.height, { x: at.x, y: at.y })) {
-		unreachable("textureLoad: the texel is outside the texture");
-	}
-	return loadTexel(texture.texels,
-		((at.z * texture.height + at.y) * texture.width + at.x) * 4);
+	const first = texelFirst(
+		"textureLoad", texture.width, texture.height, texture.depth, at.x, at.y, at.z);
+	return loadTexel(texture.texels, first);
 }
 
 // WGSL's texture_2d_array<f32>: layers of one size, one picked by its index.
@@ -2961,8 +2942,8 @@ function sliceTexels(texels: float32[], first: int32, count: int32): float32[] {
 	return slice;
 }
 
-function layerOf(texture: Texture2dArray, layer: int32): Texture2d {
-	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+function layerOf(op: string, texture: Texture2dArray, layer: int32): Texture2d {
+	checkedLayer(op, layer, texture.layers);
 	const size = texture.width * texture.height * 4;
 	return {
 		width: texture.width,
@@ -2977,7 +2958,7 @@ export function textureLoad(
 	layer: int32,
 	level: int32,
 ): Vec4f {
-	return textureLoad(layerOf(texture, layer), at, level);
+	return textureLoad(layerOf("textureLoad", texture, layer), at, level);
 }
 
 export function textureSample(
@@ -2986,7 +2967,7 @@ export function textureSample(
 	uv: Vec2f,
 	layer: int32,
 ): Vec4f {
-	return textureSample(layerOf(texture, layer), sampler, uv);
+	return textureSample(layerOf("textureSample", texture, layer), sampler, uv);
 }
 
 // WGSL's textureSampleLevel, textureSampleBias and textureSampleGrad choose the mip level: given,
@@ -3027,7 +3008,7 @@ export function textureSampleLevel(
 	layer: int32,
 	level: float32,
 ): Vec4f {
-	return textureSample(layerOf(texture, layer), sampler, uv);
+	return textureSample(layerOf("textureSampleLevel", texture, layer), sampler, uv);
 }
 
 export function textureSampleBias(
@@ -3037,7 +3018,7 @@ export function textureSampleBias(
 	layer: int32,
 	bias: float32,
 ): Vec4f {
-	return textureSample(layerOf(texture, layer), sampler, uv);
+	return textureSample(layerOf("textureSampleBias", texture, layer), sampler, uv);
 }
 
 export function textureSampleGrad(
@@ -3048,7 +3029,7 @@ export function textureSampleGrad(
 	ddx: Vec2f,
 	ddy: Vec2f,
 ): Vec4f {
-	return textureSample(layerOf(texture, layer), sampler, uv);
+	return textureSample(layerOf("textureSampleGrad", texture, layer), sampler, uv);
 }
 
 // WGSL's texture_cube<f32>: six square faces in the order +X, -X, +Y, -Y, +Z, -Z.
@@ -3205,12 +3186,8 @@ export struct Texture2dI32 {
 
 export function textureLoad(texture: Texture2dI32, at: Vec2i, level: int32): Vec4i {
 	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
-	if (!insideTexture(texture.width, texture.height, at)) {
-		unreachable("textureLoad: the texel is outside the texture");
-	}
-	const first = (at.y * texture.width + at.x) * 4;
-	const texels = texture.texels;
-	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
+	const first = texelFirst("textureLoad", texture.width, texture.height, 1, at.x, at.y, 0);
+	return loadTexel(texture.texels, first);
 }
 
 // WGSL's texture_2d_array<i32>: layers of one size, four int32s a texel, fetched, never filtered.
@@ -3228,12 +3205,10 @@ export function textureLoad(
 	level: int32,
 ): Vec4i {
 	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
-	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
-	if (!insideTexture(texture.width, texture.height, at)) {
-		unreachable("textureLoad: the texel is outside the texture");
-	}
-	return loadTexel(texture.texels,
-		((layer * texture.height + at.y) * texture.width + at.x) * 4);
+	checkedLayer("textureLoad", layer, texture.layers);
+	const first = texelFirst(
+		"textureLoad", texture.width, texture.height, texture.layers, at.x, at.y, layer);
+	return loadTexel(texture.texels, first);
 }
 
 // WGSL's texture_3d<i32>: slices of one size, four int32s a texel, fetched, never filtered.
@@ -3246,12 +3221,9 @@ export struct Texture3dI32 {
 
 export function textureLoad(texture: Texture3dI32, at: Vec3i, level: int32): Vec4i {
 	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
-	if (at.z < 0 || at.z >= texture.depth ||
-		!insideTexture(texture.width, texture.height, { x: at.x, y: at.y })) {
-		unreachable("textureLoad: the texel is outside the texture");
-	}
-	return loadTexel(texture.texels,
-		((at.z * texture.height + at.y) * texture.width + at.x) * 4);
+	const first = texelFirst(
+		"textureLoad", texture.width, texture.height, texture.depth, at.x, at.y, at.z);
+	return loadTexel(texture.texels, first);
 }
 
 // WGSL's texture_multisampled_2d<f32>: `samples` images of one size, four floats a texel, the
@@ -3279,11 +3251,9 @@ export function textureLoad(
 	if (sampleIndex < 0 || sampleIndex >= texture.samples) {
 		unreachable("textureLoad: the sample is outside the texture");
 	}
-	if (!insideTexture(texture.width, texture.height, at)) {
-		unreachable("textureLoad: the texel is outside the texture");
-	}
-	return loadTexel(texture.texels,
-		((sampleIndex * texture.height + at.y) * texture.width + at.x) * 4);
+	const first = texelFirst(
+		"textureLoad", texture.width, texture.height, texture.samples, at.x, at.y, sampleIndex);
+	return loadTexel(texture.texels, first);
 }
 
 // WGSL's texture_1d<f32>: one row of texels addressed by a scalar, four floats a texel. WGSL gives
@@ -3474,7 +3444,7 @@ export function textureSampleCompare(
 	layer: int32,
 	reference: float32,
 ): float32 {
-	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	checkedLayer("textureSampleCompare", layer, texture.layers);
 	const size: Vec2i = { x: texture.width, y: texture.height };
 	const compared = comparedTexels(sampler, reference, texture.texels,
 		layer * texture.width * texture.height, size);
@@ -3555,7 +3525,7 @@ export function textureSampleLevel(
 	layer: int32,
 	level: int32,
 ): float32 {
-	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	checkedLayer("textureSampleLevel", layer, texture.layers);
 	const size: Vec2i = { x: texture.width, y: texture.height };
 	const colors = depthColor(texture.texels, layer * texture.width * texture.height, size);
 	return textureSample(colors, sampler, uv).x;
@@ -3583,7 +3553,7 @@ export function textureSample(
 	layer: int32,
 	offset: Vec2i,
 ): Vec4f {
-	return sampleAt(layerOf(texture, layer), sampler, uv, checkedOffset(offset));
+	return sampleAt(layerOf("textureSample", texture, layer), sampler, uv, checkedOffset(offset));
 }
 
 export function textureSampleLevel(
@@ -3604,7 +3574,7 @@ export function textureSampleLevel(
 	level: float32,
 	offset: Vec2i,
 ): Vec4f {
-	return sampleAt(layerOf(texture, layer), sampler, uv, checkedOffset(offset));
+	return sampleAt(layerOf("textureSampleLevel", texture, layer), sampler, uv, checkedOffset(offset));
 }
 
 export function textureSampleLevel(
@@ -3635,7 +3605,7 @@ export function textureSampleBias(
 	bias: float32,
 	offset: Vec2i,
 ): Vec4f {
-	return sampleAt(layerOf(texture, layer), sampler, uv, checkedOffset(offset));
+	return sampleAt(layerOf("textureSampleBias", texture, layer), sampler, uv, checkedOffset(offset));
 }
 
 export function textureSampleGrad(
@@ -3658,7 +3628,7 @@ export function textureSampleGrad(
 	ddy: Vec2f,
 	offset: Vec2i,
 ): Vec4f {
-	return sampleAt(layerOf(texture, layer), sampler, uv, checkedOffset(offset));
+	return sampleAt(layerOf("textureSampleGrad", texture, layer), sampler, uv, checkedOffset(offset));
 }
 
 export function textureSampleLevel(
@@ -3680,7 +3650,7 @@ export function textureSampleLevel(
 	level: int32,
 	offset: Vec2i,
 ): float32 {
-	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	checkedLayer("textureSampleLevel", layer, texture.layers);
 	const size: Vec2i = { x: texture.width, y: texture.height };
 	const colors = depthColor(texture.texels, layer * texture.width * texture.height, size);
 	return sampleAt(colors, sampler, uv, checkedOffset(offset)).x;
@@ -3706,7 +3676,7 @@ export function textureSampleCompare(
 	reference: float32,
 	offset: Vec2i,
 ): float32 {
-	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	checkedLayer("textureSampleCompare", layer, texture.layers);
 	const size: Vec2i = { x: texture.width, y: texture.height };
 	const compared = comparedTexels(sampler, reference, texture.texels,
 		layer * texture.width * texture.height, size);

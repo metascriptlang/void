@@ -1,4 +1,14 @@
-import { BinaryOp, Intrinsic, ScalarKind, ShaderType, ShaderTypeKind } from "./ir";
+import {
+	Access,
+	BinaryOp,
+	Interpolation,
+	Intrinsic,
+	Sampling,
+	ScalarKind,
+	ShaderType,
+	ShaderTypeKind,
+	TexelFormat,
+} from "./ir";
 
 export function binaryOperator(op: BinaryOp): string {
 	return match (op) {
@@ -23,9 +33,28 @@ export function binaryOperator(op: BinaryOp): string {
 	};
 }
 
+export function scalarName(s: ScalarKind): string {
+	return match (s) {
+		ScalarKind.F32 => "float",
+		ScalarKind.I32 => "int",
+		ScalarKind.U32 => "uint",
+		ScalarKind.Bool => "bool",
+	};
+}
+
+export function vectorPrefix(s: ScalarKind): string {
+	return match (s) {
+		ScalarKind.F32 => "",
+		ScalarKind.I32 => "i",
+		ScalarKind.U32 => "u",
+		ScalarKind.Bool => "b",
+	};
+}
+
 export function isComponentCompare(op: Intrinsic): boolean {
-	return op == Intrinsic.LessThan || op == Intrinsic.LessThanEqual || op == Intrinsic.GreaterThan ||
-		op == Intrinsic.GreaterThanEqual || op == Intrinsic.Equal || op == Intrinsic.NotEqual;
+	return op == Intrinsic.LessThan || op == Intrinsic.LessThanEqual ||
+		op == Intrinsic.GreaterThan || op == Intrinsic.GreaterThanEqual ||
+		op == Intrinsic.Equal || op == Intrinsic.NotEqual;
 }
 
 // The operator that spells a componentwise test where the target compares vectors by operator.
@@ -64,21 +93,21 @@ export function isMath(op: Intrinsic): boolean {
 			Intrinsic.Sin | Intrinsic.Cos | Intrinsic.Tan | Intrinsic.Asin | Intrinsic.Acos |
 			Intrinsic.Atan | Intrinsic.Atan2 | Intrinsic.Sinh | Intrinsic.Cosh | Intrinsic.Tanh |
 			Intrinsic.Asinh | Intrinsic.Acosh | Intrinsic.Atanh | Intrinsic.Ldexp | Intrinsic.Modf |
-			Intrinsic.Frexp | Intrinsic.Degrees | Intrinsic.Radians | Intrinsic.Min | Intrinsic.Max |
-			Intrinsic.Clamp | Intrinsic.Saturate | Intrinsic.Mix | Intrinsic.Step |
+			Intrinsic.Frexp | Intrinsic.Degrees | Intrinsic.Radians | Intrinsic.Min |
+			Intrinsic.Max | Intrinsic.Clamp | Intrinsic.Saturate | Intrinsic.Mix | Intrinsic.Step |
 			Intrinsic.Smoothstep | Intrinsic.Fma | Intrinsic.Dot | Intrinsic.Cross |
 			Intrinsic.Length | Intrinsic.Distance | Intrinsic.Normalize | Intrinsic.Reflect |
 			Intrinsic.Refract | Intrinsic.FaceForward | Intrinsic.Transpose |
-			Intrinsic.Determinant | Intrinsic.Any | Intrinsic.All | Intrinsic.Dpdx | Intrinsic.Dpdy |
-			Intrinsic.Fwidth | Intrinsic.DpdxCoarse | Intrinsic.DpdxFine | Intrinsic.DpdyCoarse |
-			Intrinsic.DpdyFine | Intrinsic.FwidthCoarse | Intrinsic.FwidthFine | Intrinsic.Bitcast |
-			Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
-			Intrinsic.FirstTrailingBit | Intrinsic.CountLeadingZeros | Intrinsic.CountTrailingZeros |
-			Intrinsic.ExtractBits | Intrinsic.InsertBits |
-			Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Pack2x16Unorm |
-			Intrinsic.Pack2x16Snorm | Intrinsic.Pack2x16Float | Intrinsic.Unpack4x8Unorm |
-			Intrinsic.Unpack4x8Snorm | Intrinsic.Unpack2x16Unorm | Intrinsic.Unpack2x16Snorm |
-			Intrinsic.Unpack2x16Float => true,
+			Intrinsic.Determinant | Intrinsic.Any | Intrinsic.All | Intrinsic.Dpdx |
+			Intrinsic.Dpdy | Intrinsic.Fwidth | Intrinsic.DpdxCoarse | Intrinsic.DpdxFine |
+			Intrinsic.DpdyCoarse | Intrinsic.DpdyFine | Intrinsic.FwidthCoarse |
+			Intrinsic.FwidthFine | Intrinsic.Bitcast | Intrinsic.CountOneBits |
+			Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit | Intrinsic.FirstTrailingBit |
+			Intrinsic.CountLeadingZeros | Intrinsic.CountTrailingZeros | Intrinsic.ExtractBits |
+			Intrinsic.InsertBits | Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm |
+			Intrinsic.Pack2x16Unorm | Intrinsic.Pack2x16Snorm | Intrinsic.Pack2x16Float |
+			Intrinsic.Unpack4x8Unorm | Intrinsic.Unpack4x8Snorm | Intrinsic.Unpack2x16Unorm |
+			Intrinsic.Unpack2x16Snorm | Intrinsic.Unpack2x16Float => true,
 	};
 }
 
@@ -205,9 +234,10 @@ function unsignedOf(signedType: string): string {
 	return signedType == "int" ? "uint" : "u" + signedType.substring(1);
 }
 
-// The GLSL spelling of the bit and pack builtins, as naga's back-end writes them. bitCount, findMSB
+// The GLSL spelling of the bit and pack builtins. bitCount, findMSB
 // and findLSB return int, so an unsigned operand's result is converted back; bitfieldExtract and
-// bitfieldInsert are undefined past the 32 bits WGSL clamps to, so the offset and count clamp first.
+// bitfieldInsert are undefined past the 32 bits WGSL clamps to, so the offset and count clamp
+// first.
 // The offset of an extract and of an insert is printed twice.
 export function glslBits(
 	op: Intrinsic,
@@ -261,7 +291,7 @@ export function glslBitcast(
 }
 
 // The structs of modf and frexp are predeclared in WGSL; the other targets declare one per width
-// the module uses, with a helper that makes it, as naga's back-ends do.
+// the module uses, with a helper that makes it.
 export function splitStructName(t: ShaderType): string {
 	const head = t.kind == ShaderTypeKind.ModfResult ? "ModfResult" : "FrexpResult";
 	return head + (t.rows == 1 ? "F32" : "Vec" + String(t.rows) + "f");
@@ -277,9 +307,125 @@ export function splitMember(t: ShaderType, member: int32): string {
 	return t.kind == ShaderTypeKind.ModfResult ? "whole" : "exp";
 }
 
-// GLSL's float or vec and the type of the second field: the same for modf, an int or ivec for frexp.
+// GLSL's float or vec and the type of the second field: the same for modf, an int or ivec for
+// frexp.
 export function glslSplitTypes(t: ShaderType): string[] {
 	const arg = t.rows == 1 ? "float" : "vec" + String(t.rows);
 	if (t.kind == ShaderTypeKind.ModfResult) { return [arg, arg]; }
 	return [arg, t.rows == 1 ? "int" : "ivec" + String(t.rows)];
+}
+
+// The layout qualifier of a storage texture's format; bgra8unorm has none, so a printer refuses it
+// first.
+export function glslImageFormat(f: TexelFormat): string {
+	return match (f) {
+		TexelFormat.Rgba8unorm => "rgba8",
+		TexelFormat.Rgba8snorm => "rgba8_snorm",
+		TexelFormat.Rgba8uint => "rgba8ui",
+		TexelFormat.Rgba8sint => "rgba8i",
+		TexelFormat.Rgba16uint => "rgba16ui",
+		TexelFormat.Rgba16sint => "rgba16i",
+		TexelFormat.Rgba16float => "rgba16f",
+		TexelFormat.Rgba32uint => "rgba32ui",
+		TexelFormat.Rgba32sint => "rgba32i",
+		TexelFormat.Rgba32float => "rgba32f",
+		TexelFormat.R32float => "r32f",
+		TexelFormat.R32uint => "r32ui",
+		TexelFormat.R32sint => "r32i",
+		TexelFormat.Rg32float => "rg32f",
+		TexelFormat.Rg32uint => "rg32ui",
+		TexelFormat.Rg32sint => "rg32i",
+		TexelFormat.Bgra8unorm => {
+			throw new Error("internal: bgra8unorm has no GLSL image format");
+		},
+	};
+}
+
+export function glslInterpolation(i: Interpolation): string {
+	return match (i) {
+		Interpolation.Perspective => "",
+		Interpolation.Linear => "noperspective ",
+		Interpolation.Flat => "flat ",
+	};
+}
+
+export function glslSampling(s: Sampling): string {
+	return match (s) {
+		Sampling.Center => "",
+		Sampling.Centroid => "centroid ",
+		Sampling.Sample => "sample ",
+	};
+}
+
+// The GLSL function of an intrinsic whose name WGSL spells differently, shared by 430, ES 300 and
+// 450.
+export function glslMathName(op: Intrinsic): string {
+	return match (op) {
+		Intrinsic.Round => "roundEven",
+		Intrinsic.Atan2 => "atan",
+		Intrinsic.LessThan => "lessThan",
+		Intrinsic.LessThanEqual => "lessThanEqual",
+		Intrinsic.GreaterThan => "greaterThan",
+		Intrinsic.GreaterThanEqual => "greaterThanEqual",
+		Intrinsic.Equal => "equal",
+		Intrinsic.NotEqual => "notEqual",
+		_ => mathName(op),
+	};
+}
+
+export function glslAccessWord(a: Access): string {
+	return match (a) {
+		Access.Read => "readonly ",
+		Access.Write => "writeonly ",
+		Access.ReadWrite => "",
+	};
+}
+
+// The keywords and reserved words of GLSL 4.60 and ES 3.00 that a printed name keeps clear of.
+export function glslKeywords(): string[] {
+	return [
+		"attribute", "const", "uniform", "varying", "buffer", "shared", "coherent", "volatile",
+		"restrict", "readonly", "writeonly", "atomic_uint", "layout", "centroid", "flat", "smooth",
+		"noperspective", "patch", "sample", "break", "continue", "do", "for", "while", "switch",
+		"case", "default", "if", "else", "subroutine", "in", "out", "inout", "float", "double",
+		"int", "uint", "void", "bool", "true", "false", "invariant", "precise", "discard", "return",
+		"lowp", "mediump", "highp", "precision", "struct", "common", "partition", "active", "asm",
+		"class", "union", "enum", "typedef", "template", "this", "resource", "goto", "inline",
+		"noinline", "public", "static", "extern", "external", "interface", "long", "short", "half",
+		"fixed", "unsigned", "superp", "input", "output", "filter", "sizeof", "cast", "namespace",
+		"using",
+	];
+}
+
+// The built-in functions of GLSL 4.60 and ES 3.00 that a printed name keeps clear of.
+export function glslFunctions(): string[] {
+	return [
+		"radians", "degrees", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh",
+		"asinh", "acosh", "atanh", "pow", "exp", "log", "exp2", "log2", "sqrt", "inversesqrt",
+		"abs", "sign", "floor", "trunc", "round", "roundEven", "ceil", "fract", "mod", "modf",
+		"min", "max", "clamp", "mix", "step", "smoothstep", "isnan", "isinf", "floatBitsToInt",
+		"floatBitsToUint", "intBitsToFloat", "uintBitsToFloat", "fma", "frexp", "ldexp",
+		"packUnorm2x16", "packSnorm2x16", "packUnorm4x8", "packSnorm4x8", "unpackUnorm2x16",
+		"unpackSnorm2x16", "unpackUnorm4x8", "unpackSnorm4x8", "packHalf2x16", "unpackHalf2x16",
+		"packDouble2x32", "unpackDouble2x32", "length", "distance", "dot", "cross", "normalize",
+		"ftransform", "faceforward", "reflect", "refract", "matrixCompMult", "outerProduct",
+		"transpose", "determinant", "inverse", "lessThan", "lessThanEqual", "greaterThan",
+		"greaterThanEqual", "equal", "notEqual", "any", "all", "not", "uaddCarry", "usubBorrow",
+		"umulExtended", "imulExtended", "bitfieldExtract", "bitfieldInsert", "bitfieldReverse",
+		"bitCount", "findLSB", "findMSB", "textureSize", "textureQueryLod", "textureQueryLevels",
+		"textureSamples", "texture", "textureProj", "textureLod", "textureOffset", "texelFetch",
+		"texelFetchOffset", "textureProjOffset", "textureLodOffset", "textureProjLod",
+		"textureProjLodOffset", "textureGrad", "textureGradOffset", "textureProjGrad",
+		"textureProjGradOffset", "textureGather", "textureGatherOffset", "textureGatherOffsets",
+		"atomicCounterIncrement", "atomicCounterDecrement", "atomicCounter",
+		"atomicAdd", "atomicMin", "atomicMax", "atomicAnd", "atomicOr", "atomicXor",
+		"atomicExchange", "atomicCompSwap", "imageSize", "imageSamples", "imageLoad", "imageStore",
+		"imageAtomicAdd", "imageAtomicMin", "imageAtomicMax", "imageAtomicAnd", "imageAtomicOr",
+		"imageAtomicXor", "imageAtomicExchange", "imageAtomicCompSwap", "dFdx", "dFdy", "fwidth",
+		"dFdxFine", "dFdyFine", "fwidthFine", "dFdxCoarse", "dFdyCoarse", "fwidthCoarse",
+		"interpolateAtCentroid", "interpolateAtSample", "interpolateAtOffset", "noise1", "noise2",
+		"noise3", "noise4", "EmitStreamVertex", "EndStreamPrimitive", "EmitVertex", "EndPrimitive",
+		"barrier", "memoryBarrier", "memoryBarrierAtomicCounter", "memoryBarrierBuffer",
+		"memoryBarrierShared", "memoryBarrierImage", "groupMemoryBarrier",
+	];
 }

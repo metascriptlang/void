@@ -1,6 +1,6 @@
 // WGSL's boolean vectors authored in MetaScript: the CPU oracle of the componentwise tests,
 // any, all, not and select, an entry that uses each, its text per target, the probe files that
-// naga, fxc and spirv-val read, and the places a bool cannot go.
+// fxc and spirv-val read, and the places a bool cannot go.
 
 import { mkdir, writeFile } from "std/fs";
 import { programModule, stageSource } from "../shader/descriptor";
@@ -99,7 +99,8 @@ export function boolFs(input: Tested): Vec4f {
 	const pickedWords = select(input.wordLow, input.wordHigh, same);
 	const pickedFlags = select(below, noLess, vec3b(true, false, true));
 	const whole = select(input.signedLow.x, input.signedHigh.x, all(differ));
-	const flags = weigh(any(above), 1.0) + weigh(all(pickedFlags), 2.0) + weigh(any(not(same)), 4.0);
+	const flags = weigh(any(above), 1.0) + weigh(all(pickedFlags), 2.0) +
+		weigh(any(not(same)), 4.0);
 	return vec4f(
 		picked.x + picked.z + (pickedSigned.y as float32),
 		(pickedWords.w as float32) + (whole as float32),
@@ -157,9 +158,11 @@ test "select takes the second value where the condition holds, for every type an
 	assert select(false, true, true) && !select(false, true, false);
 	const f = select(vec2f(1.0, 2.0), vec2f(3.0, 4.0), vec2b(true, false));
 	assert f.x == 3.0 && f.y == 2.0;
-	const g = select(vec4f(1.0, 2.0, 3.0, 4.0), vec4f(5.0, 6.0, 7.0, 8.0), vec4b(false, true, false, true));
+	const g = select(vec4f(1.0, 2.0, 3.0, 4.0), vec4f(5.0, 6.0, 7.0, 8.0),
+		vec4b(false, true, false, true));
 	assert g.x == 1.0 && g.y == 6.0 && g.z == 3.0 && g.w == 8.0;
-	assert select(vec3f(1.0), vec3f(2.0), true).z == 2.0 && select(vec3f(1.0), vec3f(2.0), false).z == 1.0;
+	assert select(vec3f(1.0), vec3f(2.0), true).z == 2.0 &&
+		select(vec3f(1.0), vec3f(2.0), false).z == 1.0;
 	const i = select(vec3i(1, 2, 3), vec3i(4, 5, 6), vec3b(true, false, true));
 	assert i.x == 4 && i.y == 2 && i.z == 6;
 	assert select(vec2i(1, 2), vec2i(3, 4), true).y == 4;
@@ -188,9 +191,12 @@ test "the entry runs on the CPU" {
 function probePath(name: string, target: ShaderTarget, stage: string): string {
 	return match (target) {
 		ShaderTarget.Wgsl => "out/wgslProbe/" + name + stage + ".wgsl",
-		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") + ".hlsl",
-		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." + (stage == "Vs" ? "vert" : "frag"),
-		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." + (stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") +
+		".hlsl",
+		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." +
+		(stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." +
+		(stage == "Vs" ? "vert" : "frag"),
 		ShaderTarget.Msl => "out/mslProbe/" + name + stage + ".metal",
 		ShaderTarget.Spirv => "out/spirvProbe/" + name + stage + ".spv",
 	};
@@ -317,14 +323,16 @@ test "GLSL 430 and ES 300 select an integer or bool vector lane by lane" {
 ");
 		assert text.includes("vec3 picked = mix(low, high, below);
 ");
-		assert text.includes("ivec2 pickedSigned = ivec2((not(noMore)).x ? signedHigh.x : signedLow.x, " +
+		assert text.includes(
+			"ivec2 pickedSigned = ivec2((not(noMore)).x ? signedHigh.x : signedLow.x, " +
 			"(not(noMore)).y ? signedHigh.y : signedLow.y);
 ");
 		assert text.includes("uvec4 pickedWords = uvec4(same.x ? wordHigh.x : wordLow.x, " +
 			"same.y ? wordHigh.y : wordLow.y, same.z ? wordHigh.z : wordLow.z, " +
 			"same.w ? wordHigh.w : wordLow.w);
 ");
-		assert text.includes("bvec3 pickedFlags = bvec3(bvec3(true, false, true).x ? noLess.x : below.x, " +
+		assert text.includes(
+			"bvec3 pickedFlags = bvec3(bvec3(true, false, true).x ? noLess.x : below.x, " +
 			"bvec3(true, false, true).y ? noLess.y : below.y, " +
 			"bvec3(true, false, true).z ? noLess.z : below.z);
 ");
@@ -361,7 +369,7 @@ test "HLSL spells them as operators and a ternary on a bool vector" {
 	assert hlsl.includes("weigh(any(above), 1.0)") && hlsl.includes("any(!same)");
 }
 
-test "MSL spells them as naga does, a select by a bool vector as metal's select" {
+test "MSL spells a select by a bool vector as metal's select" {
 	const msl = printedFor(programOf(), 1, ShaderTarget.Msl, "boolVector");
 	assert msl.includes("  bool3 below = (in.low < in.high);
 " +
@@ -416,7 +424,8 @@ test "a bool is no attribute, varying, output, uniform or storage member" {
 	m.ios.push(io("front", ShaderStage.Fragment, IoDirection.In, BOOL, Builtin.FrontFacing));
 	m.structs[0].members.push(field("mask", BVEC3));
 	m.structs.push(block("Cell", [field("live", BOOL)]));
-	m.resources.push(resource(ResourceKind.StorageBuffer, "cells", 1, arrayType(structType(1), -1)));
+	m.resources.push(resource(ResourceKind.StorageBuffer, "cells", 1,
+		arrayType(structType(1), -1)));
 	const errors = irErrors(m);
 	assert errors.length == 4;
 	assert errors[0] == "resource 'params': a bool is no uniform or storage member, as WGSL's";

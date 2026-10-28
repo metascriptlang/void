@@ -23,27 +23,36 @@ import {
 } from "./ir";
 import { unspecialized } from "./irWalk";
 
-export class TexturePair {
-	texture: int32 = -1;
-	sampler: int32 = -1;
+export struct TexturePair {
+	texture: int32;
+	sampler: int32;
 }
 
-export class Reads {
-	functions: int32[] = [];
-	resources: int32[] = [];
-	constants: int32[] = [];
-	ios: int32[] = [];
-	structs: int32[] = [];
-	pairs: TexturePair[] = [];
-	workgroups: int32[] = [];
-	privates: int32[] = [];
+export struct Reads {
+	functions: int32[];
+	resources: int32[];
+	constants: int32[];
+	ios: int32[];
+	structs: int32[];
+	pairs: TexturePair[];
+	workgroups: int32[];
+	privates: int32[];
 }
 
 class Walk {
 	module: ShaderModule = new ShaderModule();
 	on: string[] = [];
 	folding: boolean = false;
-	reads: Reads = new Reads();
+	reads: Reads = {
+		functions: [],
+		resources: [],
+		constants: [],
+		ios: [],
+		structs: [],
+		pairs: [],
+		workgroups: [],
+		privates: [],
+	};
 	errors: string[] = [];
 }
 
@@ -83,10 +92,7 @@ function notePair(w: Walk, e: ShaderExpr): void {
 		return;
 	}
 	if (!w.reads.pairs.some((p) => p.texture == texture.index && p.sampler == sampler.index)) {
-		let p = new TexturePair();
-		p.texture = texture.index;
-		p.sampler = sampler.index;
-		w.reads.pairs.push(p);
+		w.reads.pairs.push({ texture: texture.index, sampler: sampler.index });
 	}
 }
 
@@ -203,14 +209,14 @@ export function printableEntry(m: ShaderModule, entryIndex: int32): Result<Reads
 	return Result.ok(reads);
 }
 
-class Remap {
-	on: string[] = [];
-	structs: int32[] = [];
-	constants: int32[] = [];
-	resources: int32[] = [];
-	ios: int32[] = [];
-	functions: int32[] = [];
-	workgroups: int32[] = [];
+struct Remap {
+	on: string[];
+	structs: int32[];
+	constants: int32[];
+	resources: int32[];
+	ios: int32[];
+	functions: int32[];
+	workgroups: int32[];
 }
 
 function keptIndices(count: int32, kept: int32[]): int32[] {
@@ -324,14 +330,15 @@ export function specialize(m: ShaderModule, on: string[]): Result<ShaderModule, 
 	}
 	if (w.errors.length > 0) { return Result.err(w.errors.join("\n")); }
 
-	let r = new Remap();
-	r.on = on;
-	r.structs = keptIndices(m.structs.length as int32, w.reads.structs);
-	r.constants = keptIndices(m.constants.length as int32, w.reads.constants);
-	r.resources = keptIndices(m.resources.length as int32, w.reads.resources);
-	r.ios = keptIndices(m.ios.length as int32, ios);
-	r.functions = keptIndices(m.functions.length as int32, w.reads.functions);
-	r.workgroups = keptIndices(m.workgroups.length as int32, w.reads.workgroups);
+	const r: Remap = {
+		on,
+		structs: keptIndices(m.structs.length as int32, w.reads.structs),
+		constants: keptIndices(m.constants.length as int32, w.reads.constants),
+		resources: keptIndices(m.resources.length as int32, w.reads.resources),
+		ios: keptIndices(m.ios.length as int32, ios),
+		functions: keptIndices(m.functions.length as int32, w.reads.functions),
+		workgroups: keptIndices(m.workgroups.length as int32, w.reads.workgroups),
+	};
 
 	let out = new ShaderModule();
 	for (let i = 0; i < m.structs.length; i++) {
