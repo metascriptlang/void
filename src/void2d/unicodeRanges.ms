@@ -1,6 +1,30 @@
 // The lookups over the generated Unicode tables (tests/oracle/ucd.py): a table of packed
 // ranges, (start << shift) | value, or a table of key and value pairs.
 
+import { Buffer } from "std/core/buffer";
+
+export function unpackRanges(packed: string, shift: uint32): uint32[] {
+	const bytes = Buffer.fromString(packed, "base64");
+	const mask: uint32 = (1 << shift) - 1;
+	let out: uint32[] = new Array(0);
+	let start: uint32 = 0;
+	let word: uint32 = 0;
+	let position: uint32 = 0;
+	for (let i = 0; i < bytes.byteLength(); i++) {
+		const byte = bytes.byteAt(i) as uint32;
+		word |= (byte & 0x7F) << position;
+		if ((byte & 0x80) != 0) {
+			position += 7;
+			continue;
+		}
+		start += word >> shift;
+		out.push((start << shift) | (word & mask));
+		word = 0;
+		position = 0;
+	}
+	return out;
+}
+
 export function rangeValue(
 	table: Readonly<Span<uint32>>,
 	shift: uint32,
