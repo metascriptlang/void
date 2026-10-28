@@ -2562,6 +2562,8 @@ export function discard(): never {
 	unreachable("discard: a fragment is discarded only on the GPU");
 }
 
+export function hook<P>(phase: P): P { return phase; }
+
 export struct Texture2d {
 	width: int32;
 	height: int32;
