@@ -9,27 +9,26 @@ export class Names {
 	locals: string[] = [];
 }
 
-export function suffixed(name: string, taken: string[]): string {
+function firstFree(name: string, isTaken: (candidate: string) => boolean): string {
 	let unique = name;
 	let suffix = 0;
-	while (taken.includes(unique)) {
+	while (isTaken(unique)) {
 		suffix += 1;
 		unique = name + "_" + String(suffix);
 	}
 	return unique;
 }
 
+export function suffixed(name: string, taken: string[]): string {
+	return firstFree(name, (candidate: string): boolean => taken.includes(candidate));
+}
+
 export function fieldNames(reserved: string[], names: string[]): string[] {
 	let spelled: string[] = [];
 	for (const name of names) {
-		let unique = name;
-		let suffix = 0;
-		while (reserved.includes(unique) || spelled.includes(unique) ||
-			unique != name && names.includes(unique)) {
-			suffix += 1;
-			unique = name + "_" + String(suffix);
-		}
-		spelled.push(unique);
+		spelled.push(firstFree(name, (candidate: string): boolean =>
+			reserved.includes(candidate) || spelled.includes(candidate) ||
+			candidate != name && names.includes(candidate)));
 	}
 	return spelled;
 }
@@ -45,13 +44,8 @@ function taken(names: Names, name: string, parameterTypes: string, local: boolea
 }
 
 function free(names: Names, name: string, parameterTypes: string, local: boolean): string {
-	let unique = name;
-	let suffix = 0;
-	while (taken(names, unique, parameterTypes, local)) {
-		suffix += 1;
-		unique = name + "_" + String(suffix);
-	}
-	return unique;
+	return firstFree(name, (candidate: string): boolean =>
+		taken(names, candidate, parameterTypes, local));
 }
 
 export function nameStruct(names: Names, name: string): string {
@@ -92,12 +86,7 @@ export function claimName(
 	reserved: (name: string) => boolean,
 	name: string,
 ): string {
-	let candidate = name;
-	let n = 1;
-	while (reserved(candidate) || taken.includes(candidate)) {
-		candidate = name + "_" + String(n);
-		n++;
-	}
+	const candidate = firstFree(name, (c: string): boolean => reserved(c) || taken.includes(c));
 	taken.push(candidate);
 	return candidate;
 }
