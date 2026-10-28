@@ -216,7 +216,7 @@ function isView(kind: ResourceKind): boolean {
 		kind == ResourceKind.StorageTexture;
 }
 
-function slotLimit(kind: ResourceKind): int32 {
+export function slotLimit(kind: ResourceKind): int32 {
 	return match (kind) {
 		ResourceKind.UniformBlock => MAX_UNIFORM_SLOTS,
 		ResourceKind.Sampler => MAX_SAMPLER_SLOTS,

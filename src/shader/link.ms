@@ -23,6 +23,7 @@ import {
 } from "./ir";
 import { functionOrder, hasEffect, stmtExprs } from "./irWalk";
 import { irFromText, irText } from "./irText";
+import { slotLimit } from "./layout";
 import { suffixed } from "./names";
 
 function phaseOf(m: ShaderModule, f: ShaderFunction): string {
@@ -122,6 +123,23 @@ function merge(into: ShaderModule, from: ShaderModule, effect: string): Result<i
 	return Result.ok((into.functions.length - 1) as int32);
 }
 
+function numberBindings(m: ShaderModule, effect: string): Result<void, string> {
+	for (const r of m.resources) {
+		if (r.binding >= 0) { continue; }
+		let next = 0;
+		for (const o of m.resources) {
+			if (o.group == r.group && o.binding >= next) { next = o.binding + 1; }
+		}
+		if (next >= slotLimit(r.kind)) {
+			return Result.err("link: effect '" + effect + "' finds no binding for " +
+				r.kind.toString() + " '" + r.name + "': bindings 0.." +
+				String(slotLimit(r.kind) - 1) + " are taken");
+		}
+		r.binding = next;
+	}
+	return Result.ok(null);
+}
+
 export function link(base: ShaderModule, effects: ShaderModule[]): Result<ShaderModule, string> {
 	let m = try irFromText(irText(base));
 	let sites: int32[] = [];
@@ -146,7 +164,9 @@ export function link(base: ShaderModule, effects: ShaderModule[]): Result<Shader
 			return Result.err("link: effect '" + segment.name + "' works on phase '" + phase +
 				"', which the base has no hook site for");
 		}
-		const index = try merge(m, e, segment.name);
+		const effect = segment.name;
+		const index = try merge(m, e, effect);
+		try numberBindings(m, effect);
 		chains[at] = exprOf(ExprKind.Call, chains[at].type, index, [chains[at]]);
 	}
 	for (let k = 0; k < sites.length; k++) {
