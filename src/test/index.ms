@@ -150,6 +150,7 @@ import "./renderOrderCheck";
 import "./particleFadeCheck";
 import "./trailCheck";
 import "./graphics3dCheck";
+import "./graphicsLineCheck";
 import "./worldGraphicsMiterCheck";
 import "./particleShaderCheck";
 import "./particleCurveCheck";

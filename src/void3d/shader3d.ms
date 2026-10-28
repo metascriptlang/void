@@ -818,6 +818,29 @@ export function unlitTexturedVs(
 	}
 }
 
+// h3d.shader.LineShader, the screen-space line of h3d.scene.Graphics: the unit direction a world
+// direction runs on screen. LineShader projects the view-space direction as if it were a point;
+// void3d's projections add nothing to x or y from depth or translation, so that is the direction
+// along the camera's right and up times projectionX and projectionY (their w).
+export function lineScreenDirection(direction: Vec3f, right: Vec4f, up: Vec4f): Vec2f {
+	const projected = vec2f(dot(direction, right.xyz) * right.w, dot(direction, up.xyz) * up.w);
+	return projected * (1.0 / length(projected));
+}
+
+// LineShader.linearize with reverseDepth off: the view depth of a projected depth in [0, 1].
+export function lineViewDepth(depth: float32, near: float32, far: float32): float32 {
+	return (2.0 * near * far) / (far + near - (2.0 * depth - 1.0) * (far - near));
+}
+
+// LineShader.vertex: what a corner on `side` (its uv.y, 0 or 1) adds to its clip xy, across the
+// screen direction by half `width` pixels, scaled by the view depth the clip divide takes off.
+export function lineClipOffset(
+	screenDirection: Vec2f, side: float32, viewDepth: float32, pixelSize: Vec2f, width: float32,
+): Vec2f {
+	return vec2f(screenDirection.y, -screenDirection.x) * pixelSize *
+		((side - 0.5) * viewDepth * width);
+}
+
 // h3d.shader.ColorSpaces' exact pair (ColorSpaces.hx:56-76); bevy_color's gamma_function carries
 // the same constants. Colour inputs and stored targets stay gamma-encoded. The pow operands clamp
 // at 0 only to keep fxc's X3571 out of consumer stdout: output-neutral, the selects route every
