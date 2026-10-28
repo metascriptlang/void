@@ -1130,6 +1130,15 @@ function unitsOf(bytes: Readonly<Span<uint8>>, from: int32, to: int32): int32 {
 	return units;
 }
 
+function sameText(bytes: Readonly<Span<uint8>>, from: int32, to: int32, text: string): boolean {
+	const other: Readonly<Span<uint8>> = text.asBytes();
+	if ((other.length as int32) != to - from) { return false; }
+	for (let k: int32 = from; k < to; k++) {
+		if (bytes[k] != other[k - from]) { return false; }
+	}
+	return true;
+}
+
 function sameInts(a: Readonly<Span<int32>>, b: Readonly<Span<int32>>): boolean {
 	if (a.length != b.length) { return false; }
 	for (let k: int32 = 0; k < (a.length as int32); k++) {
@@ -1168,14 +1177,13 @@ export function shapeLines(
 	ref cache: LineShapes,
 ): Result<void, TextError> {
 	const shaping: boolean = textShapingOn();
-	let byText: Map<string, int32> = new Map<string, int32>();
-	if (cache.shaping == shaping && cache.direction == direction &&
+	const reusable: boolean = cache.shaping == shaping && cache.direction == direction &&
 		cache.style.font == style.font && cache.style.size == style.size &&
-		cache.style.letterSpacing == style.letterSpacing) {
-		for (let k: int32 = 0; k < (cache.lines.length as int32); k++) {
-			byText.set(cache.lines[k].text, k);
-		}
-	}
+		cache.style.letterSpacing == style.letterSpacing;
+	const cached: int32 = reusable ? cache.lines.length as int32 : 0;
+	let byText: Map<string, int32> = new Map<string, int32>();
+	let indexed: boolean = false;
+	let shift: int32 = 0;
 	const bytes: Readonly<Span<uint8>> = text.asBytes();
 	const total: int32 = bytes.length as int32;
 	let lines: Vec<ShapedLine> = new Array(0);
@@ -1188,7 +1196,6 @@ export function shapeLines(
 		const newline: int32 = text.byteIndexOf("\n", start);
 		const stop: int32 = newline < 0 ? total : newline + 1;
 		const unitEnd: int32 = unitStart + unitsOf(bytes, start, stop);
-		let lineRuns: Vec<TextRun> = new Array(0);
 		let runLens: Vec<int32> = new Array(0);
 		let runFonts: Vec<FontId> = new Array(0);
 		let runMap: Vec<int32> = new Array(0);
@@ -1196,7 +1203,6 @@ export function shapeLines(
 			const end: int32 = runStart + runs[run].len;
 			const len: int32 = Math.min(end, unitEnd) - Math.max(runStart, unitStart);
 			if (len > 0) {
-				lineRuns.push({ ...runs[run], len: len });
 				runLens.push(len);
 				runFonts.push(runs[run].font);
 				runMap.push(run);
@@ -1209,11 +1215,22 @@ export function shapeLines(
 		for (const at of shapingBreaks) {
 			if (at >= unitStart && at < unitEnd) { breaks.push(at - unitStart); }
 		}
-		const lineText: string = text.byteSlice(start, stop);
-		const hit = byText.get(lineText);
+		let hit: int32 = (lines.length as int32) - shift;
+		if (hit < 0 || hit >= cached || !sameText(bytes, start, stop, cache.lines[hit].text)) {
+			hit = -1;
+			if (cached > 0 && !indexed) {
+				for (let k: int32 = 0; k < cached; k++) { byText.set(cache.lines[k].text, k); }
+				indexed = true;
+			}
+			const found = byText.get(text.byteSlice(start, stop));
+			if (found.present) {
+				hit = found.value;
+				shift = (lines.length as int32) - hit;
+			}
+		}
 		let reused: boolean = false;
-		if (hit.present) {
-			const old: ShapedLine = cache.lines[hit.value];
+		if (hit >= 0) {
+			const old: ShapedLine = cache.lines[hit];
 			if (sameInts(old.runLens, runLens) && sameFonts(old.runFonts, runFonts) &&
 				sameInts(old.breaks, breaks)) {
 				lines.push(old);
@@ -1221,6 +1238,11 @@ export function shapeLines(
 			}
 		}
 		if (!reused) {
+			const lineText: string = text.byteSlice(start, stop);
+			let lineRuns: Vec<TextRun> = new Array(0);
+			for (let k: int32 = 0; k < (runMap.length as int32); k++) {
+				lineRuns.push({ ...runs[runMap[k]], len: runLens[k] });
+			}
 			const shaped = shapeText(lineText, style, lineRuns, breaks, direction);
 			if (!shaped.ok) {
 				return Result.err({ kind: shaped.error.kind, index: shaped.error.index + unitStart });
