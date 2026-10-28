@@ -53,6 +53,8 @@ import {
 	ENV_SCENE_VIEWS,
 	ENV_SCENE_SAMPLERS,
 	MOVING_UV_SCROLL,
+	MOVING_FLIPBOOK_FRAMES,
+	MOVING_FLIPBOOK_SPEED,
 	PBR_UV_SCROLL,
 	movingBase,
 	SHADOW_SAMPLER_SLOT,
@@ -675,7 +677,7 @@ export function beginFrame(
 			checkedMesh = mesh;
 			checkedMaterial = material;
 			renderer.pairs[material.index] = checked;
-			readsTime = readsTime || scrolls(context, material.index, checked);
+			readsTime = readsTime || readsFrameTime(context, material.index, checked);
 			const phase: Phase = context.materials[material.index].phase;
 			opaque = opaque || phase == Phase.Opaque;
 			alpha = alpha || phase == Phase.Alpha;
@@ -1106,12 +1108,18 @@ function collectSeen(
 	if (seen) { collect(list, items, materials); } else { list.count = 0; }
 }
 
-function scrolls(context: DrawContext, index: int32, key: ProgramKey): boolean {
+export function readsFrameTime(context: DrawContext, index: int32, key: ProgramKey): boolean {
 	if (!key.uvTransform && !key.pbr) { return false; }
 	const block: UniformBlock = context.materials[index].uniforms;
 	const scroll: int32 = key.pbr ? PBR_UV_SCROLL : movingBase(key) + MOVING_UV_SCROLL;
 	const at: int32 = block.offset + scroll;
-	return context.uniforms.values[at] != 0.0 || context.uniforms.values[at + 1] != 0.0;
+	if (context.uniforms.values[at] != 0.0 || context.uniforms.values[at + 1] != 0.0) {
+		return true;
+	}
+	if (key.pbr) { return false; }
+	const flipbook: int32 = block.offset + movingBase(key);
+	return context.uniforms.values[flipbook + MOVING_FLIPBOOK_FRAMES] > 0.0 &&
+		context.uniforms.values[flipbook + MOVING_FLIPBOOK_SPEED] != 0.0;
 }
 
 // The one block a material brings for `program`: the slot it declares that is neither pass-wide

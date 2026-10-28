@@ -1100,6 +1100,8 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 backUvOffset;
     vec4 dissolve;
     vec4 dissolveEdge;
+    vec4 flipbookGrid;
+    vec4 flipbookPlay;
 };
 #endif
 #if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -1119,6 +1121,8 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 backUvOffset;
     vec4 dissolve;
     vec4 dissolveEdge;
+    vec4 flipbookGrid;
+    vec4 flipbookPlay;
     vec4 emissive;
 };
 #endif
@@ -1986,6 +1990,8 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 backUvOffset;
     vec4 dissolve;
     vec4 dissolveEdge;
+    vec4 flipbookGrid;
+    vec4 flipbookPlay;
 };
 #endif
 #if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -2005,6 +2011,8 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 backUvOffset;
     vec4 dissolve;
     vec4 dissolveEdge;
+    vec4 flipbookGrid;
+    vec4 flipbookPlay;
     vec4 emissive;
 };
 #endif
@@ -2203,7 +2211,7 @@ layout(binding=3) uniform materialParams {
     vec4 materialColor;
 };
 #endif
-#if (!defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)) || (defined(BACK_TEXTURE) && !defined(EMISSIVE)) || (defined(DISSOLVE) && !defined(EMISSIVE))
+#if (defined(UV_TRANSFORM) && !defined(EMISSIVE)) || (defined(BACK_TEXTURE) && !defined(EMISSIVE)) || (defined(DISSOLVE) && !defined(EMISSIVE))
 layout(binding=3) uniform movingMaterialParams {
     vec4 material;
     vec4 materialColor;
@@ -2213,6 +2221,8 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 backUvOffset;
     vec4 dissolve;
     vec4 dissolveEdge;
+    vec4 flipbookGrid;
+    vec4 flipbookPlay;
 };
 #endif
 #if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -2222,7 +2232,7 @@ layout(binding=3) uniform emissiveMaterialParams {
     vec4 emissive;
 };
 #endif
-#if (!defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)) || (defined(BACK_TEXTURE) && defined(EMISSIVE)) || (defined(DISSOLVE) && defined(EMISSIVE))
+#if (defined(UV_TRANSFORM) && defined(EMISSIVE)) || (defined(BACK_TEXTURE) && defined(EMISSIVE)) || (defined(DISSOLVE) && defined(EMISSIVE))
 layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 material;
     vec4 materialColor;
@@ -2232,6 +2242,8 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 backUvOffset;
     vec4 dissolve;
     vec4 dissolveEdge;
+    vec4 flipbookGrid;
+    vec4 flipbookPlay;
     vec4 emissive;
 };
 #endif
@@ -2462,6 +2474,42 @@ float parallaxStepsOf() {
 #else
     return parallax.x;
 #endif
+}
+#endif
+#ifdef UV_TRANSFORM
+vec4 flipbookGridOf() {
+#ifdef EMISSIVE
+    return flipbookGrid;
+#else
+    return flipbookGrid;
+#endif
+}
+#endif
+#ifdef UV_TRANSFORM
+vec4 flipbookPlayOf() {
+#ifdef EMISSIVE
+    return flipbookPlay;
+#else
+    return flipbookPlay;
+#endif
+}
+#endif
+#ifdef UV_TRANSFORM
+vec4 flipbookUvs(vec2 uv, vec4 grid, vec4 play, float time) {
+    float frame_1 = floor((((time - play.x) * grid.w) + trunc(play.y)));
+    float looped = frame_1 - (grid.z * floor((frame_1 / grid.z)));
+    float nextLooped = (looped + 1.0) - (grid.z * floor(((looped + 1.0) / grid.z)));
+    float at = (play.z == 1.0) ? looped : min(frame_1, (grid.z - 1.0));
+    float next = (play.z == 1.0) ? nextLooped : min((frame_1 + 1.0), (grid.z - 1.0));
+    vec2 cell = uv / grid.xy;
+    vec2 atCell = vec2((at - (grid.x * floor((at / grid.x)))), trunc((at / grid.x))) / grid.xy;
+    vec2 nextCell = vec2((next - (grid.x * floor((next / grid.x)))), trunc((next / grid.x))) / grid.xy;
+    return vec4((cell + atCell), (cell + nextCell));
+}
+#endif
+#ifdef UV_TRANSFORM
+float flipbookBlend(vec4 grid, vec4 play, float time) {
+    return (play.w == 1.0) ? fract((((time - play.x) * grid.w) + trunc(play.y))) : 0.0;
 }
 #endif
 #ifdef BACK_TEXTURE
@@ -3268,7 +3316,24 @@ void main() {
     vec3 view = normalize((cameraPosition.xyz - worldPosition));
     uv = parallaxUv(uv, view, normalize(worldNormal), worldTangent, materialOf().x, parallaxStepsOf());
 #endif
-    vec4 texel = texture(sampler2D(baseTexture, baseSampler), uv);
+    vec2 baseUv = uv;
+    vec2 nextUv = uv;
+    float blend = 0.0;
+#ifdef UV_TRANSFORM
+    vec4 grid = flipbookGridOf();
+    vec4 play = flipbookPlayOf();
+    if (grid.z > 0.0) {
+        float time_1 = frame.x;
+        vec4 frames = flipbookUvs(uv, grid, play, time_1);
+        baseUv = frames.xy;
+        nextUv = frames.zw;
+        blend = flipbookBlend(grid, play, time_1);
+    }
+#endif
+    vec4 texel = texture(sampler2D(baseTexture, baseSampler), baseUv);
+    if (blend > 0.0) {
+        texel = mix(texel, texture(sampler2D(baseTexture, baseSampler), nextUv), blend);
+    }
 #ifdef BACK_TEXTURE
     vec2 backAt = backUv(surfaceUv, backUvMatrixOf(), backUvOffsetOf());
     vec4 backTexel = texture(sampler2D(backTexture, baseSampler), backAt);
@@ -3347,6 +3412,8 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 backUvOffset;
     vec4 dissolve;
     vec4 dissolveEdge;
+    vec4 flipbookGrid;
+    vec4 flipbookPlay;
 };
 #endif
 #if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -3366,6 +3433,8 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 backUvOffset;
     vec4 dissolve;
     vec4 dissolveEdge;
+    vec4 flipbookGrid;
+    vec4 flipbookPlay;
     vec4 emissive;
 };
 #endif
@@ -3590,6 +3659,8 @@ layout(binding=3) uniform movingUnlitMaterialParams {
     vec4 backUvOffset;
     vec4 dissolve;
     vec4 dissolveEdge;
+    vec4 flipbookGrid;
+    vec4 flipbookPlay;
 };
 #endif
 layout(binding=6) uniform frameParams {
@@ -3627,6 +3698,24 @@ vec4 materialOf() {
 #ifdef UV_TRANSFORM
 vec2 movedUv(vec2 uv, vec4 matrix, vec4 motion, float time) {
     return ((mat2(matrix.xy, matrix.zw) * uv) + motion.xy) + (motion.zw * time);
+}
+#endif
+#ifdef UV_TRANSFORM
+vec4 flipbookUvs(vec2 uv, vec4 grid, vec4 play, float time) {
+    float frame_1 = floor((((time - play.x) * grid.w) + trunc(play.y)));
+    float looped = frame_1 - (grid.z * floor((frame_1 / grid.z)));
+    float nextLooped = (looped + 1.0) - (grid.z * floor(((looped + 1.0) / grid.z)));
+    float at = (play.z == 1.0) ? looped : min(frame_1, (grid.z - 1.0));
+    float next = (play.z == 1.0) ? nextLooped : min((frame_1 + 1.0), (grid.z - 1.0));
+    vec2 cell = uv / grid.xy;
+    vec2 atCell = vec2((at - (grid.x * floor((at / grid.x)))), trunc((at / grid.x))) / grid.xy;
+    vec2 nextCell = vec2((next - (grid.x * floor((next / grid.x)))), trunc((next / grid.x))) / grid.xy;
+    return vec4((cell + atCell), (cell + nextCell));
+}
+#endif
+#ifdef UV_TRANSFORM
+float flipbookBlend(vec4 grid, vec4 play, float time) {
+    return (play.w == 1.0) ? fract((((time - play.x) * grid.w) + trunc(play.y))) : 0.0;
 }
 #endif
 #ifdef BACK_TEXTURE
@@ -3721,7 +3810,24 @@ void main() {
     vec4 motion = uvMotion;
     uv = movedUv(surfaceUv, matrix, motion, frame.x);
 #endif
-    vec4 texel = texture(sampler2D(baseTexture, baseSampler), uv);
+    vec2 baseUv = uv;
+    vec2 nextUv = uv;
+    float blend = 0.0;
+#ifdef UV_TRANSFORM
+    vec4 grid = flipbookGrid;
+    vec4 play = flipbookPlay;
+    if (grid.z > 0.0) {
+        float time = frame.x;
+        vec4 frames = flipbookUvs(uv, grid, play, time);
+        baseUv = frames.xy;
+        nextUv = frames.zw;
+        blend = flipbookBlend(grid, play, time);
+    }
+#endif
+    vec4 texel = texture(sampler2D(baseTexture, baseSampler), baseUv);
+    if (blend > 0.0) {
+        texel = mix(texel, texture(sampler2D(baseTexture, baseSampler), nextUv), blend);
+    }
 #ifdef BACK_TEXTURE
     vec4 backMatrix = backUvMatrix;
     vec4 backOffset = backUvOffset;
@@ -3778,6 +3884,8 @@ layout(binding=3) uniform movingUnlitMaterialParams {
     vec4 backUvOffset;
     vec4 dissolve;
     vec4 dissolveEdge;
+    vec4 flipbookGrid;
+    vec4 flipbookPlay;
 };
 #endif
 #ifdef CUTOUT

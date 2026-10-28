@@ -56,6 +56,10 @@ import {
 	billboardPoint,
 	dirShadowAt,
 	dissolveEdgeOf,
+	flipbookBlend,
+	flipbookGridOf,
+	flipbookPlayOf,
+	flipbookUvs,
 	dissolveEdgeOver,
 	dissolveOf,
 	emissiveOf,
@@ -340,7 +344,24 @@ export function pixelArtLitTexturedFs(
 		const time = b.frameParams.frame.x;
 		uv = movedUv(input.surfaceUv, uvMatrixOf(b, key), uvMotionOf(b, key), time);
 	}
-	let texel = textureSample(b.baseTexture, b.baseSampler, uv);
+	let baseUv = uv;
+	let nextUv = uv;
+	let blend: float32 = 0.0;
+	if (key.uvTransform) {
+		const grid = flipbookGridOf(b, key);
+		const play = flipbookPlayOf(b, key);
+		if (grid.z > 0.0) {
+			const time = b.frameParams.frame.x;
+			const frames = flipbookUvs(uv, grid, play, time);
+			baseUv = frames.xy;
+			nextUv = frames.zw;
+			blend = flipbookBlend(grid, play, time);
+		}
+	}
+	let texel = textureSample(b.baseTexture, b.baseSampler, baseUv);
+	if (blend > 0.0) {
+		texel = mix(texel, textureSample(b.baseTexture, b.baseSampler, nextUv), blend);
+	}
 	if (key.backTexture) {
 		const backAt = backUv(input.surfaceUv, backUvMatrixOf(b, key), backUvOffsetOf(b, key));
 		const backTexel = textureSample(b.backTexture, b.baseSampler, backAt);
@@ -427,7 +448,24 @@ export function pixelArtUnlitTexturedFs(
 		const motion = b.movingUnlitMaterialParams.uvMotion;
 		uv = movedUv(input.surfaceUv, matrix, motion, b.frameParams.frame.x);
 	}
-	let texel = textureSample(b.baseTexture, b.baseSampler, uv);
+	let baseUv = uv;
+	let nextUv = uv;
+	let blend: float32 = 0.0;
+	if (key.uvTransform) {
+		const grid = b.movingUnlitMaterialParams.flipbookGrid;
+		const play = b.movingUnlitMaterialParams.flipbookPlay;
+		if (grid.z > 0.0) {
+			const time = b.frameParams.frame.x;
+			const frames = flipbookUvs(uv, grid, play, time);
+			baseUv = frames.xy;
+			nextUv = frames.zw;
+			blend = flipbookBlend(grid, play, time);
+		}
+	}
+	let texel = textureSample(b.baseTexture, b.baseSampler, baseUv);
+	if (blend > 0.0) {
+		texel = mix(texel, textureSample(b.baseTexture, b.baseSampler, nextUv), blend);
+	}
 	if (key.backTexture) {
 		const backMatrix = b.movingUnlitMaterialParams.backUvMatrix;
 		const backOffset = b.movingUnlitMaterialParams.backUvOffset;
