@@ -1116,7 +1116,7 @@ FRAME_PATH="scene:tick scene:present scene:presentAt scene:prepare scene:drawScr
 	displayList:pushEffect displayList:recordClip draw:openBracket draw:startContext draw:end2d
 	draw:flushTargets draw:prepare draw:drawScreen
 	draw:drawUiInstance draw:drawSpriteAffine draw:useRun draw:openRun draw:closeRun
-	draw:finishRecording draw:applyClip draw:pushClip draw:popClip draw:setEffect
+	draw:finishRecording draw:applyClip draw:pushRoundedClip draw:popClip draw:setEffect
 	draw:drawMeshRange snap:snapBoxEdges render:showsEditing render:faded render:segmentBox
 	render:emitRunBox render:emitRunLine render:emitDecorations render:neighbourSpan
 	render:emitSelection render:emitCaret labelText:cursorShown
