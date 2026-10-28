@@ -23,6 +23,8 @@ import {
 	litFs,
 	litTexturedFs,
 	litTexturedVs,
+	flipbookBlend,
+	flipbookUvs,
 	litVs,
 	movedUv,
 	saturated,
@@ -237,6 +239,27 @@ test "a moved uv is the matrix times the uv, then the offset and the motion over
 	const scroll = vec4f(0.0, 0.0, 0.25, 0.0);
 	const identityUv = vec4f(1.0, 0.0, 0.0, 1.0);
 	assert nearUv(movedUv(vec2f(0.0, 0.0), identityUv, scroll, 2.0), vec2f(0.5, 0.0));
+}
+
+test "a flipbook reads the frame its speed reached, row by row, and mixes in the next one" {
+	const grid = vec4f(2.0, 2.0, 4.0, 2.0);
+	const uv = vec2f(0.5, 0.5);
+	const looping = vec4f(0.0, 0.0, 1.0, 1.0);
+	const second = flipbookUvs(uv, grid, looping, 0.75);
+	assert nearUv(second.xy, vec2f(0.75, 0.25)) && nearUv(second.zw, vec2f(0.25, 0.75));
+	assert within(flipbookBlend(grid, looping, 0.75), 0.5);
+	const wrapped = flipbookUvs(uv, grid, looping, 2.25);
+	assert nearUv(wrapped.xy, vec2f(0.25, 0.25)) && nearUv(wrapped.zw, vec2f(0.75, 0.25));
+}
+
+test "a flipbook that does not loop holds its last frame, and starts at its start frame and time" {
+	const grid = vec4f(2.0, 2.0, 4.0, 2.0);
+	const uv = vec2f(0.5, 0.5);
+	const held = flipbookUvs(uv, grid, vec4f(0.0, 0.0, 0.0, 1.0), 2.25);
+	assert nearUv(held.xy, vec2f(0.75, 0.75)) && nearUv(held.zw, vec2f(0.75, 0.75));
+	const late = vec4f(1.0, 2.7, 1.0, 0.0);
+	assert nearUv(flipbookUvs(uv, grid, late, 1.25).xy, vec2f(0.25, 0.75));
+	assert flipbookBlend(grid, late, 1.25) == 0.0;
 }
 
 test "a straight texel divides the colour by its alpha, and a clear texel stays clear" {
