@@ -351,6 +351,21 @@ export function glslSampling(s: Sampling): string {
 	};
 }
 
+// The GLSL function of an intrinsic whose name WGSL spells differently, shared by 430, ES 300 and 450.
+export function glslMathName(op: Intrinsic): string {
+	return match (op) {
+		Intrinsic.Round => "roundEven",
+		Intrinsic.Atan2 => "atan",
+		Intrinsic.LessThan => "lessThan",
+		Intrinsic.LessThanEqual => "lessThanEqual",
+		Intrinsic.GreaterThan => "greaterThan",
+		Intrinsic.GreaterThanEqual => "greaterThanEqual",
+		Intrinsic.Equal => "equal",
+		Intrinsic.NotEqual => "notEqual",
+		_ => mathName(op),
+	};
+}
+
 export function glslAccessWord(a: Access): string {
 	return match (a) {
 		Access.Read => "readonly ",

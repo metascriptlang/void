@@ -56,9 +56,9 @@ import {
 	glslBits,
 	glslImageFormat,
 	glslInterpolation,
+	glslMathName,
 	glslSampling,
 	glslSplitTypes,
-	mathName,
 	repeatedBitsOperand,
 	splitHelperName,
 	splitMember,
@@ -403,18 +403,10 @@ function expr(p: Glsl, e: ShaderExpr): string {
 
 function intrinsicName(op: Intrinsic): string {
 	return match (op) {
-		Intrinsic.Round => "roundEven",
-		Intrinsic.Atan2 => "atan",
 		Intrinsic.Saturate => "clamp",
 		Intrinsic.Inverse => "inverse",
 		Intrinsic.UpperLeft3x3 => "mat3",
 		Intrinsic.Select => "mix",
-		Intrinsic.LessThan => "lessThan",
-		Intrinsic.LessThanEqual => "lessThanEqual",
-		Intrinsic.GreaterThan => "greaterThan",
-		Intrinsic.GreaterThanEqual => "greaterThanEqual",
-		Intrinsic.Equal => "equal",
-		Intrinsic.NotEqual => "notEqual",
 		Intrinsic.TextureSample => "texture",
 		Intrinsic.TextureLoad => "texelFetch",
 		Intrinsic.TextureStore => "imageStore",
@@ -429,7 +421,7 @@ function intrinsicName(op: Intrinsic): string {
 			Intrinsic.AtomicMax | Intrinsic.AtomicMin | Intrinsic.AtomicAnd | Intrinsic.AtomicOr |
 			Intrinsic.AtomicXor | Intrinsic.AtomicExchange |
 			Intrinsic.AtomicCompareExchangeWeak => glslAtomicName(op),
-		_ => mathName(op),
+		_ => glslMathName(op),
 	};
 }
 

@@ -55,10 +55,10 @@ import {
 	glslBits,
 	glslImageFormat,
 	glslInterpolation,
+	glslMathName,
 	glslSampling,
 	glslSplitTypes,
 	isIntMin,
-	mathName,
 	pointed,
 	repeatedBitsOperand,
 	splitHelperName,
@@ -643,18 +643,10 @@ function vectorTypeOf(s: ScalarKind): ShaderType {
 
 function intrinsicName(op: Intrinsic): string {
 	return match (op) {
-		Intrinsic.Round => "roundEven",
-		Intrinsic.Atan2 => "atan",
-		Intrinsic.LessThan => "lessThan",
-		Intrinsic.LessThanEqual => "lessThanEqual",
-		Intrinsic.GreaterThan => "greaterThan",
-		Intrinsic.GreaterThanEqual => "greaterThanEqual",
-		Intrinsic.Equal => "equal",
-		Intrinsic.NotEqual => "notEqual",
 		Intrinsic.DpdxCoarse | Intrinsic.DpdxFine => "dFdx",
 		Intrinsic.DpdyCoarse | Intrinsic.DpdyFine => "dFdy",
 		Intrinsic.FwidthCoarse | Intrinsic.FwidthFine => "fwidth",
-		_ => mathName(op),
+		_ => glslMathName(op),
 	};
 }
 
