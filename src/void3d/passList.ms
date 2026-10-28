@@ -268,7 +268,7 @@ export function sortByLayer(ref list: PassList): void {
 // material's), then the items of one pipeline (its program and render state), then those of
 // one texture. Pipelines and textures are numbered by first appearance in the list, as
 // SortByMaterial numbers its shaders and textures, so a group sits where its first item was.
-// `drawn` is indexed like `items`.
+// `drawn` is indexed like `materials`.
 export function sortByMaterial(
 	ref list: PassList,
 	items: Readonly<Span<DrawItem>>,
@@ -283,7 +283,7 @@ export function sortByMaterial(
 		const state: RenderState = { ...materials[items[index].material.index].pass };
 		const image: TextureId = materials[items[index].material.index].texture;
 		const pipeline: uint64 =
-			(((drawn[index].bits() as uint32) as uint64) << 32) | (state.bits() as uint64);
+			(((drawn[items[index].material.index].bits() as uint32) as uint64) << 32) | (state.bits() as uint64);
 		const texture: uint64 = image.isTexture() ? ((image.index as uint32) as uint64) + 1 : 0;
 		list.highs[i] = layerOrderKey(list.layers[i], list.orders[i]);
 		list.lows[i] = (((rankOf(list.pipelines, pipeline) as uint32) as uint64) << 32) |
