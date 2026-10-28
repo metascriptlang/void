@@ -6,8 +6,8 @@
 import { Vec3, vec3 } from "../math/math3d";
 import { Texture2d, Vec2f, Vec3f, Vec4f, mat4x4f, vec2f, vec3f, vec4f } from "../shader/std";
 import {
-	LitBindings, LitKey, LitTexturedFragmentInput, linearToSrgb, litTexturedFs, parallaxUv,
-	parallaxLayers, parallaxStepsOf, srgbToLinear,
+	LitBindings, LitKey, LitShaded, LitTexturedFragmentInput, emissive, linearToSrgb,
+	litTexturedFs, parallaxUv, parallaxLayers, parallaxStepsOf, srgbToLinear,
 } from "../void3d/shader3d";
 import { PbrDirectInput, PbrSurface } from "../void3d/pbrResponse";
 import { oneCascade, oneLayer } from "./shadowHelpers";
@@ -192,13 +192,21 @@ test "a pbr-maps key that emits reads its factors from the emissive layout" {
 		pbr: vec4f(0.5, 0.8, 1.0, 1.0),
 		emissive: vec4f(0.0, 0.0, 0.0, 1.0),
 	};
-	const color: Vec3f = litTexturedFs({
+	const base = litTexturedFs({
 		worldPosition: toVec3f(POSITION),
 		worldNormal: toVec3f(UP),
 		surfaceUv: vec2f(0.5, 0.5),
 		baseColor: BASE,
 		frontFacing: true,
-	}, b, { pbr: true, pbrMaps: true, emissive: true }).color.rgb;
+	}, b, { pbr: true, pbrMaps: true, emissive: true });
+	const lit: LitShaded = { color: base.color, uv: vec2f(0.5, 0.5), noise: 0.0 };
+	const color: Vec3f = emissive(lit, {
+		emissiveMaterialParams: b.emissiveMaterialParams,
+		movingEmissiveMaterialParams: b.movingEmissiveMaterialParams,
+		pbrEmissiveMaterialParams: b.pbrEmissiveMaterialParams,
+		emissiveTexture: b.emissiveTexture,
+		baseSampler: b.baseSampler,
+	}, { pbr: true }).color.rgb;
 	assert nearColor(color, expectedColor(0.25, 0.4, 1.0));
 	assert !nearColor(color, expectedColor(0.5, 0.5, 1.0));
 }
