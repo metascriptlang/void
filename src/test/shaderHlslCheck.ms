@@ -35,20 +35,24 @@ import {
 	U32,
 	UVEC3,
 	VEC3,
+	VEC4,
 	binary,
 	blurModule,
 	caseOf,
 	computeModule,
 	construct,
 	depthModule,
+	entry,
 	everyModule,
 	f32,
 	fragmentModule,
 	i32,
 	io,
+	ioRead,
 	layeredBlurModule,
 	local,
 	prepend,
+	ret,
 	shaderFunction,
 	single,
 	update,
@@ -123,7 +127,7 @@ test "the vertex probe reads matrices through mul and blocks through packoffset"
 		"    float4 _0_lights[2] : packoffset(c10);\n};\n");
 	assert text.includes("clip_1 = mul(float4(position, 1.0), _0_viewProj);\n");
 	assert text.includes("mul(_0_tint, _0_normalMatrix)");
-	assert text.includes("    uint vertexIndex : SV_VertexID;\n    uint instanceIndex : SV_InstanceID;\n");
+	assert text.includes("    uint instanceIndex : SV_InstanceID;\n    uint vertexIndex : SV_VertexID;\n");
 	assert text.includes("struct StageOutput\n{\n    float4 shade : TEXCOORD0;\n" +
 		"    nointerpolation uint id : TEXCOORD1;\n    noperspective centroid float2 uvL : TEXCOORD2;\n" +
 		"    float4 clip_1 : SV_Position;\n};\n");
@@ -310,6 +314,33 @@ test "printed modules are written for fxc" {
 	assert probe("compute.cs", printed(computeModule(), 0, [0]));
 	assert probe("depth.vs", printed(depthModule(), 0, [0, 1]));
 	assert probe("depth.ps", printed(depthModule(), 1, [0, 1]));
+}
+
+function facingFirstModule(): ShaderModule {
+	let m = new ShaderModule();
+	let colour = io("colour", ShaderStage.Fragment, IoDirection.Out, VEC4, Builtin.None);
+	colour.location = 0;
+	m.ios = [
+		io("facing", ShaderStage.Fragment, IoDirection.In, BOOL, Builtin.FrontFacing),
+		io("coord", ShaderStage.Fragment, IoDirection.In, VEC4, Builtin.Position),
+		colour,
+	];
+	m.functions = [shaderFunction("facingFirstFs", [], [
+		update(ioRead(2, VEC4), AssignOp.Set, ioRead(1, VEC4)),
+		ret(),
+	])];
+	m.entries = [entry("facingFirstFs", ShaderStage.Fragment, 0)];
+	return m;
+}
+
+test "fragment system values print SV_Position before the rasterizer's own values" {
+	const m = facingFirstModule();
+	assert irErrors(m).length == 0;
+	const text = printed(m, 0, []);
+	assert text.includes("    float4 coord : SV_Position;
+    bool facing : SV_IsFrontFace;
+");
+	assert probe("facingFirst.ps", text);
 }
 
 test "an array texture samples with its layer packed into the coordinates" {
