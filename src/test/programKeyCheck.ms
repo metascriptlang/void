@@ -92,7 +92,7 @@ import {
 	SAO_NOISE_SAMPLER_SLOT,
 } from "../void3d/gpu3d";
 import { BLUR_UNIFORM_SLOT, BLUR_UNIFORM_LENGTH } from "../void3d/blur";
-import { UNIFORM_SLOTS } from "../gpu/door";
+import { UNIFORM_SLOTS, contextGeneration } from "../gpu/door";
 import { BINDING_VIEW, BINDING_SAMPLER, BINDING_VERTEX_OFFSET } from "../gpu/draw";
 import { RenderState, Blend, BlendMode, Face } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
@@ -1100,7 +1100,7 @@ test "the core owns a frame block and asks for frames while time passes under a 
 	assert !released.ok && released.error == UniformError.Owned;
 	assert core.time == 0.0 && core.elapsedTime == 0.0;
 	core.changed = false;
-	core.generation = 1;
+	core.generation = contextGeneration();
 	assert !core.needsFrame();
 	setElapsedTime(core, 0.25);
 	assert core.elapsedTime == 0.25 && !core.needsFrame();

@@ -62,6 +62,7 @@ import {
 	renderFrame,
 } from "../void3d/pixelArtRenderer";
 import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, markChanged } from "../void3d/renderer";
+import { contextGeneration } from "../gpu/door";
 
 function look(): PixelArtLook {
 	return {
@@ -466,7 +467,7 @@ test "a renderer needs a frame until one is drawn, then only when something chan
 		// What prepareFrame records once it has taken `drawn`.
 		renderer.view = drawn;
 		renderer.core.changed = false;
-		renderer.core.generation = 1;
+		renderer.core.generation = contextGeneration();
 		assert !renderer.needsFrame(drawn);
 		assert renderer.needsFrame(drawn.withRemainder(0.5, 0.0, true));
 		markChanged(renderer.core);
@@ -522,7 +523,7 @@ test "the core reserves the camera, light and frame blocks and one screen mesh, 
 		assert core.sceneGlobals.length == 3;
 		assert core.needsFrame();
 		core.changed = false;
-		core.generation = 1;
+		core.generation = contextGeneration();
 		assert !core.needsFrame();
 		markChanged(core);
 		assert core.needsFrame();
