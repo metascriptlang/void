@@ -16,6 +16,7 @@ import "./glyphPortCheck";
 import "./outlineKeyCheck";
 import "./textLayoutCheck";
 import "./nerdFontCheck";
+import "./lineShapesCheck";
 import "./labelTextCheck";
 import "./glyphRetryCheck";
 import "./textMetricsCheck";
