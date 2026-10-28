@@ -184,16 +184,14 @@ function splicedBuild(
 	if (program) {
 		if (formats == null) { return null; }
 		if (one == null) { return null; }
-		productArg = createNodeAt(NodeKind.CallExpr, {
-			callee: one,
-			arguments: [
-				createNodeAt(NodeKind.CallExpr, {
-					callee: one,
-					arguments: [productArg, vertex],
-				}, at.location),
-				fragment,
-			],
-		}, at.location);
+		for (const entry of [vertex, fragment]) {
+			productArg = createNodeAt(NodeKind.CallExpr, { callee: one, arguments: [productArg, entry] },
+				at.location);
+		}
+		for (const e of effects) {
+			productArg = createNodeAt(NodeKind.CallExpr, { callee: one, arguments: [productArg, e] },
+				e.location);
+		}
 		formatsArg = createNodeAt(NodeKind.CallExpr, { callee: formats, arguments: [vertex, fragment] },
 			at.location);
 	}
