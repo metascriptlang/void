@@ -689,6 +689,14 @@ export function interfaceMemberType(nodes: ShaderTypeNodes, t: Node, name: strin
 	return Result.ok(sized ? arrayType(own, array.typExprSize as int32) : own);
 }
 
+function blockMemberOf(nodes: ShaderTypeNodes, fields: TypeObjectData, k: int32):
+	Result<ShaderField, string> {
+	const name = fields.typExprFieldNames[k];
+	const own = interfaceMemberType(nodes, fields.typExprFieldTypes[k], name);
+	if (!own.ok) { return Result.err(own.error); }
+	return Result.ok(shaderField(name, own.value));
+}
+
 // The struct a shader declares as a uniform block, built as the lowering of a binding field builds
 // it: one struct and one UniformBlock resource at index 0, ready for uniformBlockLayout.
 export function uniformBlockOf(registry: Node, block: Node): Result<ShaderModule, string> {
@@ -698,10 +706,11 @@ export function uniformBlockOf(registry: Node, block: Node): Result<ShaderModule
 	let layout = new ShaderStruct();
 	layout.name = fields.typExprTypeName;
 	for (let k = 0; k < fields.typExprFieldNames.length; k++) {
-		const name = fields.typExprFieldNames[k];
-		const own = interfaceMemberType(nodes, fields.typExprFieldTypes[k], name);
-		if (!own.ok) { return Result.err("uniform member '" + name + "': " + own.error); }
-		layout.members.push(shaderField(name, own.value));
+		const member = blockMemberOf(nodes, fields, k as int32);
+		if (!member.ok) {
+			return Result.err("uniform member '" + fields.typExprFieldNames[k] + "': " + member.error);
+		}
+		layout.members.push(member.value);
 	}
 	let m = new ShaderModule();
 	m.structs.push(layout);
@@ -1144,8 +1153,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				for (let k = 0; k < block.typExprFieldNames.length; k++) {
 					const memberName = block.typExprFieldNames[k];
 					claimMember(memberName, slot, binding);
-					layout.members.push(shaderField(memberName,
-						member(block.typExprFieldTypes[k], memberName, binding)));
+					const own = blockMemberOf(typeNodes, block as TypeObjectData, k as int32);
+					if (!own.ok) { fail(binding, own.error); }
+					layout.members.push(own.value);
 				}
 				m.structs.push(layout);
 				addResource(ResourceKind.UniformBlock, name, slot,
