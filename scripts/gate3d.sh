@@ -1443,6 +1443,30 @@ run_decal() {
 	pass "decal: Heaps' DecalOverlay tints the scene depth inside its box from outside and inside, faded along the box"
 }
 
+run_sao() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "sao: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	exe="$WORK/sao.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/sao.ms --output="$exe" > "$WORK/sao.build.log" 2>&1; then
+		fail "sao: tests/integration/sao.ms does not build — see $WORK/sao.build.log"
+		return
+	fi
+	status=0
+	"$exe" > "$WORK/sao.log" 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "sao: no native readback backend"
+		return
+	fi
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS sao: ' "$WORK/sao.log"; then
+		fail "sao: the check failed (exit $status) — see $WORK/sao.log"
+		return
+	fi
+	pass "sao: Heaps' ScalableAO over the scene depth and normals, blurred and multiplied, darkens the foot of a box only"
+}
+
 # ---- gl core -------------------------------------------------------------------------------
 
 # The readback checks, each judged by its own thresholds rather than D3D11's bytes, built for
@@ -1452,7 +1476,7 @@ GL_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_B
 	cardTable:- dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1 mapMaterial:VOID_MAP_PIXEL_ART=1
 	movingMaterial:VOID_MOVING_PIXEL_ART=1 mrtBlend:- renderOrder:VOID_RENDER_ORDER_PIXEL_ART=1
 	sortLayer:VOID_SORT_LAYER_PIXEL_ART=1 targetTexture:VOID_TARGET_TEXTURE_PRESET=pixelArt
-	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1 hdr:VOID_HDR_PIXEL_ART=1 bloom:VOID_BLOOM_PIXEL_ART=1 decal:-"
+	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1 hdr:VOID_HDR_PIXEL_ART=1 bloom:VOID_BLOOM_PIXEL_ART=1 decal:- sao:-"
 
 run_gl_core() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
@@ -3189,6 +3213,7 @@ run_environment_light
 run_hdr
 run_bloom
 run_decal
+run_sao
 run_particle_fade
 run_particle_mesh
 run_mesh_lod
