@@ -2070,8 +2070,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
   decoder shared. These are object sizes: linked experiment/demo rows are separate in
   `tests/bench/wasmBudget.txt`, measured under TESTING.md "Linked wasm text modules". The native
   gate validates their declarations; re-linking is the experiment script's check.
-  `tests/bench/wasm.json` records these object numbers, and
-  the script fails on growth past ten percent. The gate also builds `main2d.ms` both ways
+  These object numbers were recorded in `tests/bench/wasm.json` (retired).
+  The gate also builds `main2d.ms` both ways
   and requires the colour build to be the larger executable (owed, native).
   Sequences: with `-d:voidShaper` a ZWJ sequence the face ligates draws as one colour glyph
   (`tests/fonts/colrLigature.ttf`, a COLR v0 face whose `ccmp` turns heart, ZWJ and grin into one
@@ -2671,7 +2671,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
 
 - The editor scene shows `calt` ligatures; the shaper's pass rate against the HarfBuzz oracle is printed and its PENDING list is explicit.
 - Text at 4× zoom and under rotation is crisp through the SDF regime, and the atlas does not grow with the zoom level.
-- Every module's wasm delta is recorded per backend and gated against a committed budget; a build with all modules off is measured too, and is the number guardrail 6 is about. **Status 2026-10-19:** six text modules have 24 linked experiment/demo rows, including each entry's all-off baseline, in `tests/bench/wasmBudget.txt` (TESTING.md "Linked wasm text modules", BUILD `4fe2a5eec`, emsdk 5.0.5, shipped `--os=emcc` profile without `--release`). The experiment script enforces those linked budgets when it builds; the native gate checks the declarations, not a fresh link. The object budgets in `tests/bench/wasm.json` remain gated at 10% growth by `scripts/wasmModuleDelta.sh`. This is the six-text-module scope, not an unmeasured cost claim for every optional feature.
+- Every module's wasm delta is recorded per backend and gated against a committed budget; a build with all modules off is measured too, and is the number guardrail 6 is about. **Status 2026-10-19:** six text modules have 24 linked experiment/demo rows, including each entry's all-off baseline, in `tests/bench/wasmBudget.txt` (TESTING.md "Linked wasm text modules", BUILD `4fe2a5eec`, emsdk 5.0.5, shipped `--os=emcc` profile without `--release`). The experiment script enforces those linked budgets when it builds; the native gate checks the declarations, not a fresh link. This is the six-text-module scope, not an unmeasured cost claim for every optional feature.
 - The fault-injection switch loses the device mid-frame and the next frame is correct.
 - `sample_count > 1` works on the iOS and Android bridges without breaking void3d's pipelines.
 - Guardrail 9 prints a pass rate for GL core 4.3 desktop (glsl430) and WebGPU instead of a SKIP. **Status 2026-10-08:** the GL surface is built (`-d:voidGlCore`, `sh scripts/golden.sh --backend gl`, gate section 7) and measured 115 / 115 (91 byte-identical, 24 within the cross-backend bound, 0 structural, 2 void3d scenes excluded by name); it reads GL core 4.3 and not GLES3 because sokol_app's Win32 list has no GLES3. WebGPU is still a SKIP, owned by `web:runs`; this exit is met for GL core 4.3 only.
