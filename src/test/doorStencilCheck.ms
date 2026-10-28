@@ -7,6 +7,7 @@ import { Vec2f, Vec4f, builtin, vec4f } from "../shader/std";
 import { Compare, Face, RenderState, Stencil, StencilOp } from "../gpu/state";
 import { PixelFormat, stencilTargetRefusal } from "../gpu/doorGpu.ms";
 import { TargetLayout } from "../gpu/target";
+import { DOOR_BINDING_LENGTH } from "../gpu/doorWords";
 import { endPass, programLayout } from "../gpu/door";
 import { PipelineKey, keyText, pipelineKey, prewarmRefusal } from "../gpu/pipeline";
 
@@ -123,7 +124,6 @@ when (windows && !voidDummy && !voidVulkan) {
 const RGBA8 = 2;
 const NO_DEPTH = 0;
 const SIZE = 8;
-const BINDING_WORDS = 17;
 const LEFT = 0;
 const RIGHT = 6;
 const FULL = 12;
@@ -192,7 +192,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 	function drawQuad(scene: Scene, program: int32, state: RenderState, first: int32): void {
 		doorApplyPipeline(pipelineOf(scene, program, state));
 		let words: Vec<uint32> = [];
-		for (let i = 0; i < BINDING_WORDS; i++) { words.push(0); }
+		for (let i = 0; i < DOOR_BINDING_LENGTH; i++) { words.push(0); }
 		words[0] = scene.vertices;
 		doorApplyBindings(words, [0]);
 		const stencil: Stencil | null = state.stencil;
