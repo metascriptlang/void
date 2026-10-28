@@ -1,7 +1,7 @@
 // A lowered module leaves the glsl macro as text (glslIr) and is read back where it is printed
 // for a target. Each record is a JSON array of its fields in declaration order, an enum is its
 // ordinal: inside a macro, jsonStringify of the IR stops msc
-// (~/metascript/.inbox/compiler/2026-10-23-json-stringify-recursive-class-in-macro-exits-127.md)
+// (~/metascript/.inbox/compiler/2026-10-28-macro-json-stringify-undefined-json-value-of.md)
 // and an enum's toString() is its ordinal.
 
 import { JsonKind, JsonValue, parseJson } from "std/serialize/json";
