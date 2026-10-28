@@ -70,9 +70,14 @@ later replaces the hand-written GLSL source of each base.
   defined before it), taking `P` as a value and returning `P`, and its bindings are resources at
   `binding` -1, which the linker numbers; `irErrors` never counts it as a collision and
   refuses it in a module with an entry. So the
-  `irText` record stays the entry's. Refused at the declaration: a return other than `P`, a first
-  parameter that is no author struct, a `@binding` on a bindings field
-  (`tests/refusals/segment*.ms`). Pinned in `src/test/shaderSegmentCheck.ms`.
+  `irText` record stays the entry's. A program key struct after `P` lowers to feature branches
+  as an entry's does, and `linkedProgram` specializes each segment by the row's features before
+  `link`, also a feature the base never declares; `specialize` walks a module without entries
+  from its last function. `tools/irPrograms.ms` counts a row's feature as read when one of its
+  effects reads it. Refused at the declaration: a return other than `P`, a first
+  parameter that is no author struct, a `@binding` on a bindings field, a third parameter that
+  is no key (`tests/refusals/segment*.ms`). Pinned in `src/test/shaderSegmentCheck.ms` and,
+  for the per-row fold, `src/test/shaderLinkCheck.ms`.
 - **A base hooks each phase struct once, and `link` chains segments there.** `hook(phase)`
   (`std.ms`) is the identity on the CPU, so a base without effects runs unchanged. The emitter
   lowers it to a call of a placeholder function named after the phase struct, whose body
