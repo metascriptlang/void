@@ -627,10 +627,11 @@ function vectorAt(i: number): ShaderType {
 }
 
 function predeclaredTypeOf(nodes: ShaderTypeNodes, t: Node): ShaderType | null {
-	const atomicScalars = [ScalarKind.I32, ScalarKind.U32];
 	for (let i = 0; i < nodes.atomics.length; i++) {
-		if (sameType(t, nodes.atomics[i])) { return atomicType(atomicScalars[i]); }
-		if (sameType(t, nodes.exchanges[i])) { return exchangeResultType(atomicScalars[i]); }
+		// card: 2026-10-28-macro-vm-enum-array-element-value
+		const scalar: ScalarKind = i == 0 ? ScalarKind.I32 : ScalarKind.U32;
+		if (sameType(t, nodes.atomics[i])) { return atomicType(scalar); }
+		if (sameType(t, nodes.exchanges[i])) { return exchangeResultType(scalar); }
 	}
 	for (let i = 0; i < nodes.modfs.length; i++) {
 		if (sameType(t, nodes.modfs[i])) { return modfResultType((i + 1) as int32); }
