@@ -54,6 +54,8 @@ import {
 	backUvMatrixOf,
 	backUvOffsetOf,
 	billboardPoint,
+	colorKeyOf,
+	colorKeyed,
 	dirShadowAt,
 	dissolveEdgeOf,
 	distanceFade,
@@ -371,6 +373,11 @@ export function pixelArtLitTexturedFs(
 		const backTexel = textureSample(b.backTexture, b.baseSampler, backAt);
 		texel = input.frontFacing ? texel : backTexel;
 	}
+	if (key.uvTransform) {
+		if (colorKeyed(texel, colorKeyOf(b, key))) {
+			discard();
+		}
+	}
 	let noise: float32 = 0.0;
 	if (key.dissolve) {
 		noise = textureSample(b.dissolveTexture, b.dissolveSampler, input.surfaceUv).x;
@@ -485,6 +492,11 @@ export function pixelArtUnlitTexturedFs(
 		const backAt = backUv(input.surfaceUv, backMatrix, backOffset);
 		const backTexel = textureSample(b.backTexture, b.baseSampler, backAt);
 		texel = input.frontFacing ? texel : backTexel;
+	}
+	if (key.uvTransform) {
+		if (colorKeyed(texel, b.movingUnlitMaterialParams.colorKey)) {
+			discard();
+		}
 	}
 	let noise: float32 = 0.0;
 	if (key.dissolve) {

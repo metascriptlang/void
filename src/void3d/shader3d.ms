@@ -236,6 +236,7 @@ export struct MovingMaterialParams {
 	flipbookGrid: Vec4f;
 	flipbookPlay: Vec4f;
 	distanceFade: Vec4f;
+	colorKey: Vec4f;
 }
 
 // gpu3d.ms PBR_*: materialParams, then metalness, roughness and occlusion in x, y and z, then the
@@ -278,6 +279,7 @@ export struct MovingEmissiveMaterialParams {
 	flipbookGrid: Vec4f;
 	flipbookPlay: Vec4f;
 	distanceFade: Vec4f;
+	colorKey: Vec4f;
 	emissive: Vec4f;
 }
 
@@ -298,6 +300,7 @@ export struct MovingUnlitMaterialParams {
 	flipbookGrid: Vec4f;
 	flipbookPlay: Vec4f;
 	distanceFade: Vec4f;
+	colorKey: Vec4f;
 }
 
 export struct LightParams {
@@ -1252,6 +1255,13 @@ export function distanceFade(distance: float32, range: Vec4f): float32 {
 	return min(near, far);
 }
 
+// h3d.shader.ColorKey on the texture's texel; its consumer, h2d.Drawable.colorKey, keys only
+// opaque colours, so a key whose alpha is 0 keys nothing (gpu3d.ms MOVING_COLOR_KEY).
+export function colorKeyed(texel: Vec4f, colorKey: Vec4f): boolean {
+	const difference = texel - colorKey;
+	return colorKey.w > 0.0 && dot(difference, difference) < 0.00001;
+}
+
 // The back texture is read on back faces through its own transform.
 export function backUv(uv: Vec2f, matrix: Vec4f, offset: Vec4f): Vec2f {
 	return mat2x2f(matrix.xy, matrix.zw) * uv + offset.xy;
@@ -1454,6 +1464,14 @@ export function distanceFadeOf(b: LitBindings, key: LitKey): Vec4f {
 		return b.movingEmissiveMaterialParams.distanceFade;
 	} else {
 		return b.movingMaterialParams.distanceFade;
+	}
+}
+
+export function colorKeyOf(b: LitBindings, key: LitKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.colorKey;
+	} else {
+		return b.movingMaterialParams.colorKey;
 	}
 }
 
@@ -2011,6 +2029,11 @@ export function litTexturedFs(
 		const backTexel = textureSample(b.backTexture, b.baseSampler, backAt);
 		texel = input.frontFacing ? texel : backTexel;
 	}
+	if (key.uvTransform) {
+		if (colorKeyed(texel, colorKeyOf(b, key))) {
+			discard();
+		}
+	}
 	let noise: float32 = 0.0;
 	if (key.dissolve) {
 		noise = textureSample(b.dissolveTexture, b.dissolveSampler, input.surfaceUv).x;
@@ -2156,6 +2179,11 @@ export function unlitTexturedFs(
 		const backAt = backUv(input.surfaceUv, backMatrix, backOffset);
 		const backTexel = textureSample(b.backTexture, b.baseSampler, backAt);
 		texel = input.frontFacing ? texel : backTexel;
+	}
+	if (key.uvTransform) {
+		if (colorKeyed(texel, b.movingUnlitMaterialParams.colorKey)) {
+			discard();
+		}
 	}
 	let noise: float32 = 0.0;
 	if (key.dissolve) {
