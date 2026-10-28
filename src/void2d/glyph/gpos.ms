@@ -78,7 +78,8 @@ function pairAdvance(
 	data: Readonly<Span<uint8>>, table: int64, left: int32, right: int32, ref applied: boolean,
 ): int32 {
 	applied = false;
-	if (getCoverageIndex(data, table + data.u16At(table + 2), left) < 0) { return 0; }
+	const coverage = getCoverageIndex(data, table + data.u16At(table + 2), left);
+	if (coverage < 0) { return 0; }
 	const format = data.u16At(table);
 	const valueFormat1 = data.u16At(table + 4);
 	const valueFormat2 = data.u16At(table + 6);
@@ -87,7 +88,6 @@ function pairAdvance(
 	const xAdvanceAt = bitCount(valueFormat1 & 0x3) * 2;
 	const hasXAdvance = (valueFormat1 & 0x4) != 0;
 	if (format == 1) {
-		const coverage = getCoverageIndex(data, table + data.u16At(table + 2), left);
 		if (coverage >= data.u16At(table + 8)) { return 0; }
 		const pairSet: int64 = table + data.u16At(table + 10 + 2 * (coverage as int64));
 		const count = data.u16At(pairSet);
