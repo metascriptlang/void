@@ -6808,8 +6808,15 @@ The port, in steps:
    the four tests red.
 2. The program: `Program.Line` (index 18), an unlit vertex-colour program over the
    lit-textured layout. Its block holds `width`, `lengthScale`, `pixelSize`, `near` and `far`,
-   written from the camera and its view as `writeSaoBlock` does. Needs a shader regen.
-3. A GPU readback: a line's pixel width at two depths, and its colour.
+   written from the camera and its view (`graphics3d.ms` `writeLineBlock`), then the colour
+   the vertex colours multiply. **Built (2026-10-28).** `programKeyCheck.ms` pins its row and
+   block; `graphicsLineCheck.ms` the block's packing. Draw it with
+   `Material.ofKind(Program.Line, …)`, which turns culling off as Heaps' Graphics does:
+   `Material.plain` keeps back-face culling and drops one triangle of each line's quad.
+3. A GPU readback (`tests/integration/graphicsLine.ms`, in gate3d, gl-core and web3d).
+   **Built (2026-10-28).** A line 2.5 and one 10 units ahead each cover 6 rows at width 6 and
+   2 at width 2, in lineStyle's red, and stop at their ends. D3D11 passes. With the depth
+   factor dropped it fails: 3 rows near and 1 far. gl-core and WebGL2 have not run yet.
 
 ### Trail: CPU history and ribbon checkpoint
 
