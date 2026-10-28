@@ -1093,6 +1093,211 @@ export function shapeText(
 	});
 }
 
+export struct ShapedLine {
+	text: string;
+	runLens: Vec<int32>;
+	runFonts: Vec<FontId>;
+	breaks: Vec<int32>;
+	shaped: ShapedText;
+}
+
+export interface LineShapes {
+	style: TextStyle;
+	shaping: boolean;
+	direction: TextDirection;
+	lines: Vec<ShapedLine>;
+}
+
+export function emptyLineShapes(style: TextStyle): LineShapes {
+	return { style: style, shaping: false, direction: TextDirection.Auto, lines: new Array(0) };
+}
+
+function unitsOf(bytes: Readonly<Span<uint8>>, from: int32, to: int32): int32 {
+	let units: int32 = 0;
+	for (let i = from; i < to; i++) {
+		const b: int32 = bytes[i] as int32;
+		if ((b & 0xC0) != 0x80) { units = units + (b >= 0xF0 ? 2 : 1); }
+	}
+	return units;
+}
+
+function sameInts(a: Readonly<Span<int32>>, b: Readonly<Span<int32>>): boolean {
+	if (a.length != b.length) { return false; }
+	for (let k: int32 = 0; k < (a.length as int32); k++) {
+		if (a[k] != b[k]) { return false; }
+	}
+	return true;
+}
+
+function sameFonts(a: Readonly<Span<FontId>>, b: Readonly<Span<FontId>>): boolean {
+	if (a.length != b.length) { return false; }
+	for (let k: int32 = 0; k < (a.length as int32); k++) {
+		if ((a[k] as int32) != (b[k] as int32)) { return false; }
+	}
+	return true;
+}
+
+function lineValues(shaped: Readonly<ShapedText>): Vec<int32> {
+	let out: Vec<int32> = new Array(0);
+	let last: int32 = -1;
+	for (const g of shaped.glyphs) {
+		if (g.charIndex != last) { out.push(g.codepoint); }
+		last = g.charIndex;
+	}
+	return out;
+}
+
+// GPUI's LineLayoutCache (line_layout.rs:457-719, shape_text text_system.rs:750): the text is
+// shaped one hard line at a time and a line whose text, run slice, shaping breaks and style are
+// unchanged keeps its shape, so an edit shapes only the lines it touched. Joined, the lines equal
+// shapeText of the whole text: shaping, kerning, graphemes and BiDi paragraphs all stop at '\n'.
+export function shapeLines(
+	text: string,
+	style: TextStyle,
+	runs: Readonly<Span<TextRun>>,
+	shapingBreaks: Readonly<Span<int32>>,
+	direction: TextDirection,
+	ref cache: LineShapes,
+): Result<ShapedText, TextError> {
+	const shaping: boolean = textShapingOn();
+	let byText: Map<string, int32> = new Map<string, int32>();
+	if (cache.shaping == shaping && cache.direction == direction &&
+		cache.style.font == style.font && cache.style.size == style.size &&
+		cache.style.letterSpacing == style.letterSpacing) {
+		for (let k: int32 = 0; k < (cache.lines.length as int32); k++) {
+			byText.set(cache.lines[k].text, k);
+		}
+	}
+	const bytes: Readonly<Span<uint8>> = text.asBytes();
+	const total: int32 = bytes.length as int32;
+	let lines: Vec<ShapedLine> = new Array(0);
+	let runMaps: Vec<Vec<int32>> = new Array(0);
+	let start: int32 = 0;
+	let unitStart: int32 = 0;
+	let run: int32 = 0;
+	let runStart: int32 = 0;
+	while (true) {
+		const newline: int32 = text.byteIndexOf("\n", start);
+		const stop: int32 = newline < 0 ? total : newline + 1;
+		const unitEnd: int32 = unitStart + unitsOf(bytes, start, stop);
+		let lineRuns: Vec<TextRun> = new Array(0);
+		let runLens: Vec<int32> = new Array(0);
+		let runFonts: Vec<FontId> = new Array(0);
+		let runMap: Vec<int32> = new Array(0);
+		while (run < (runs.length as int32) && runStart < unitEnd) {
+			const end: int32 = runStart + runs[run].len;
+			const len: int32 = Math.min(end, unitEnd) - Math.max(runStart, unitStart);
+			if (len > 0) {
+				lineRuns.push({ ...runs[run], len: len });
+				runLens.push(len);
+				runFonts.push(runs[run].font);
+				runMap.push(run);
+			}
+			if (end > unitEnd) { break; }
+			run = run + 1;
+			runStart = end;
+		}
+		let breaks: Vec<int32> = new Array(0);
+		for (const at of shapingBreaks) {
+			if (at >= unitStart && at < unitEnd) { breaks.push(at - unitStart); }
+		}
+		const lineText: string = text.byteSlice(start, stop);
+		const hit = byText.get(lineText);
+		let reused: boolean = false;
+		if (hit.present) {
+			const old: ShapedLine = cache.lines[hit.value];
+			if (sameInts(old.runLens, runLens) && sameFonts(old.runFonts, runFonts) &&
+				sameInts(old.breaks, breaks)) {
+				lines.push(old);
+				reused = true;
+			}
+		}
+		if (!reused) {
+			const shaped = shapeText(lineText, style, lineRuns, breaks, direction);
+			if (!shaped.ok) {
+				return Result.err({ kind: shaped.error.kind, index: shaped.error.index + unitStart });
+			}
+			lines.push({
+				text: lineText, runLens: runLens, runFonts: runFonts, breaks: breaks,
+				shaped: shaped.value,
+			});
+		}
+		runMaps.push(runMap);
+		if (newline < 0) { break; }
+		start = stop;
+		unitStart = unitEnd;
+	}
+	cache.style = style;
+	cache.shaping = shaping;
+	cache.direction = direction;
+	cache.lines = lines;
+	return Result.ok(joinLines(lines, runMaps, style, direction));
+}
+
+function joinLines(
+	lines: Readonly<Span<ShapedLine>>,
+	runMaps: Readonly<Span<Vec<int32>>>,
+	style: TextStyle,
+	direction: TextDirection,
+): ShapedText {
+	let glyphs: Vec<LaidGlyph> = new Array(0);
+	let values: Vec<int32> = new Array(0);
+	let bidi: BidiRuns = { levels: new Array(0), resets: new Array(0), paragraphs: new Array(0) };
+	let anyBidi: boolean = false;
+	for (const line of lines) {
+		if ((line.shaped.bidi.levels.length as int32) > 0) { anyBidi = true; }
+	}
+	let chars: int32 = 0;
+	let units: int32 = 0;
+	let bytes: int32 = 0;
+	let stop: float32 = 0.0;
+	const count: int32 = lines.length as int32;
+	for (let li: int32 = 0; li < count; li++) {
+		const shaped: Readonly<ShapedText> = lines[li].shaped;
+		for (const g of shaped.glyphs) {
+			glyphs.push({
+				...g,
+				line: li,
+				charIndex: g.charIndex + chars,
+				index: g.index + units,
+				byteStart: g.byteStart + bytes,
+				byteEnd: g.byteEnd + bytes,
+				run: g.run == NO_RUN ? NO_RUN : runMaps[li][g.run],
+			});
+		}
+		for (const v of shaped.values) { values.push(v); }
+		if (anyBidi) {
+			let paragraphs: Vec<int32> = new Array(0);
+			if ((shaped.bidi.levels.length as int32) == 0) {
+				resolveText(lineValues(shaped), direction, bidi.levels, bidi.resets, paragraphs);
+			} else {
+				for (const level of shaped.bidi.levels) { bidi.levels.push(level); }
+				for (const reset of shaped.bidi.resets) { bidi.resets.push(reset); }
+				for (const paragraph of shaped.bidi.paragraphs) { paragraphs.push(paragraph); }
+			}
+			const kept: int32 = li + 1 < count ? 1 : paragraphs.length as int32;
+			for (let p: int32 = 0; p < kept; p++) { bidi.paragraphs.push(paragraphs[p]); }
+		}
+		const last: int32 = (shaped.glyphs.length as int32) - 1;
+		chars = chars + (last >= 0 ? shaped.glyphs[last].charIndex + 1 : 0);
+		units = units + shaped.units;
+		bytes = bytes + shaped.bytes;
+		if (shaped.tabStop > stop) { stop = shaped.tabStop; }
+	}
+	return {
+		glyphs: glyphs,
+		values: values,
+		breaks: new Array(0),
+		ellipsis: new Array(0),
+		units: units,
+		bytes: bytes,
+		style: style,
+		tabStop: stop,
+		bidi: bidi,
+	};
+}
+
+
 function lineParagraph(shaped: ShapedText, lineStart: int32): int32 {
 	if (lineStart < (shaped.glyphs.length as int32)) { return shaped.glyphs[lineStart].line; }
 	return (shaped.bidi.paragraphs.length as int32) - 1;
