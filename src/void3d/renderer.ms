@@ -54,6 +54,8 @@ import {
 	ENV_SCENE_SAMPLERS,
 	MOVING_UV_SCROLL,
 	MOVING_FLIPBOOK_FRAMES,
+	MOVING_SINUS_SPEED,
+	MOVING_SINUS_AMPLITUDE,
 	MOVING_FADE_NEAR_START,
 	MOVING_FADE_NEAR_END,
 	MOVING_FADE_FAR_START,
@@ -1159,9 +1161,13 @@ export function readsFrameTime(context: DrawContext, index: int32, key: ProgramK
 		return true;
 	}
 	if (key.pbr) { return false; }
-	const flipbook: int32 = block.offset + movingBase(key);
-	return context.uniforms.values[flipbook + MOVING_FLIPBOOK_FRAMES] > 0.0 &&
-		context.uniforms.values[flipbook + MOVING_FLIPBOOK_SPEED] != 0.0;
+	const moving: int32 = block.offset + movingBase(key);
+	if (context.uniforms.values[moving + MOVING_FLIPBOOK_FRAMES] > 0.0 &&
+		context.uniforms.values[moving + MOVING_FLIPBOOK_SPEED] != 0.0) {
+		return true;
+	}
+	return context.uniforms.values[moving + MOVING_SINUS_AMPLITUDE] != 0.0 &&
+		context.uniforms.values[moving + MOVING_SINUS_SPEED] != 0.0;
 }
 
 // The one block a material brings for `program`: the slot it declares that is neither pass-wide
