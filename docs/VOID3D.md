@@ -6766,6 +6766,51 @@ errors are retained, corrected to existing `Result.ok(null)` idiom. Retry2 adds 
 unit coverage; production/oracle inputs and prior 13-case evidence are unchanged.
 No shader/program/ABI, whole-index, gate3d, GPU, web or land acceptance for this CPU stage.
 
+### Graphics3D screen lines: what ports, traced (2026-10-28)
+
+Heaps draws default `h3d.scene.Graphics` (`is3D=false`) with `h3d.shader.LineShader` beside
+`VertexColorAlpha`, lights and shadows off and culling `None` (`h3d/scene/Graphics.hx:42-56`,
+Heaps at `b9aa6dcb`). The vertex stage takes the four roots `graphics3d.ms` writes:
+
+- it moves the end corners (uv.x 1) along the world delta, times `lengthScale` (1 by default);
+- it projects the delta's view-space direction as if it were a point and keeps its unit xy;
+- it adds the perpendicular of that to clip xy, times `uv.y - 0.5`, `width`, the target's
+  `pixelSize` (2 / width, 2 / height) and `linearize(z / w)`, the view depth from `zNear` and
+  `zFar`. The clip divide takes the depth off again, so the line is `width` pixels wide at any
+  distance.
+
+Bevy was not read for this: the local checkout (`84e2d2c`) holds no `bevy_gizmos`. The port
+follows Heaps.
+
+What carries over as it is:
+
+- void3d's projections put nothing into clip x or y from depth or translation, so the
+  projected direction is `projectionX` and `projectionY` (the camera block's right and up w)
+  times the direction along right and up;
+- `linearize` takes a depth in [0, 1], which every void3d projection writes on every backend.
+
+Three of Heaps' results follow from the reference and are kept; `graphicsLineCheck.ms` pins them:
+
+1. The corners are `width` pixels apart on any target. They sit square to the line only when
+   the target is square; on a 400 by 200 target a diagonal leans by about 0.3 in cosine.
+2. The direction is projected at the screen's centre, so a line far off-centre that runs in
+   depth is offset slightly off its own perpendicular.
+3. An orthographic camera's depth is linear, so `linearize` maps it to `near * far /
+   (far + near - depth)`. The width then runs from `near` times at the near plane to `far` times
+   at the far one, rather than staying constant.
+
+The port, in steps:
+
+1. The math on the CPU, as shared shader functions (`shader3d.ms` `lineScreenDirection`,
+   `lineViewDepth`, `lineClipOffset`). **Built (2026-10-28).** `graphicsLineCheck.ms`: the view
+   depth comes back from near to far; 3 pixels apart at depths 1.5, 4 and 10, square to the
+   line; the wide-target lean; the orthographic factor. Dropping the depth factor turns two of
+   the four tests red.
+2. The program: `Program.Line` (index 18), an unlit vertex-colour program over the
+   lit-textured layout. Its block holds `width`, `lengthScale`, `pixelSize`, `near` and `far`,
+   written from the camera and its view as `writeSaoBlock` does. Needs a shader regen.
+3. A GPU readback: a line's pixel width at two depths, and its colour.
+
 ### Trail: CPU history and ribbon checkpoint
 
 Apps sample a world pose/time into standalone `Trail` state and obtain `MeshData` through
