@@ -21,6 +21,7 @@ import {
 	RunSegment,
 	LineOptions,
 	LineShapes,
+	LineWrap,
 	TextError,
 	TextErrorKind,
 	describe,
@@ -90,6 +91,15 @@ export struct PlacedGlyph {
 	u1: float32;
 	v1: float32;
 	run: int32;
+}
+
+struct PlacedLine {
+	wrap: LineWrap;
+	top: float32;
+	x: float32;
+	first: int32;
+	count: int32;
+	colour: int32;
 }
 
 struct PlacementKey {
@@ -168,6 +178,7 @@ export interface LabelText {
 	outlineWidth: float32;
 	outlineColor: Color;
 	placedOutline: Vec<PlacedGlyph>;
+	placedLines: Vec<PlacedLine>;
 }
 
 export const NO_CURSOR: int32 = -1;
@@ -179,6 +190,9 @@ export let labelTexts: Vec<LabelText> = [];
 let freeLabelTexts: Vec<int32> = [];
 let refusedGlyphs: int32 = 0;
 let refusalReports: int32 = 0;
+let previousPlaced: Vec<PlacedGlyph> = [];
+let previousLines: Vec<PlacedLine> = [];
+const NOT_KEPT: int32 = -1;
 
 export function firstGlyphPageHandle(): GlyphPageHandle {
 	return glyphAtlas.ensurePage();
@@ -283,6 +297,7 @@ export function allocateLabelText(): int32 {
 		outlineWidth: 0.0,
 		outlineColor: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
 		placedOutline: new Array(0),
+		placedLines: new Array(0),
 	};
 	if ((freeLabelTexts.length as int32) > 0) {
 		const index: int32 = freeLabelTexts.pop();
@@ -298,6 +313,7 @@ function releasePlacement(entry: LabelText): void {
 	for (const p of entry.placedOutline) { glyphAtlas.release(p.tile); }
 	entry.placed.length = 0;
 	entry.placedOutline.length = 0;
+	entry.placedLines.length = 0;
 	entry.placedValid = false;
 	entry.placementRetryable = false;
 }
@@ -325,7 +341,7 @@ function shapeStale(entry: LabelText, text: string, style: TextStyle): boolean {
 // is shaped looks glyphs up (T1 "a width change lays out no glyph again").
 export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 	const entry: LabelText = labelTexts[index];
-	releasePlacement(entry);
+	entry.placedValid = false;
 	if (shapeStale(entry, text, style)) {
 		const shaped = shapeLines(
 			text, style, entry.runs, entry.shapingBreaks, entry.direction, entry.lineShapes,
@@ -724,6 +740,11 @@ function placementKey(
 	};
 }
 
+function sameKey(a: PlacementKey, b: PlacementKey): boolean {
+	return a.a == b.a && a.b == b.b && a.c == b.c && a.d == b.d && a.scale == b.scale &&
+		a.fracX == b.fracX && a.fracY == b.fracY && a.outline == b.outline;
+}
+
 // Early exits, not one struct compare: this runs for every label on every frame.
 function placementCurrent(entry: LabelText, world: Transform2D, scale: float32): boolean {
 	if (!entry.placedValid) { return false; }
@@ -976,7 +997,6 @@ when (voidColourEmoji) {
 export function placeLabel(index: int32, world: Transform2D, scale: float32): LabelText {
 	const entry: LabelText = labelTexts[index];
 	if (placementCurrent(entry, world, scale)) { return entry; }
-	releasePlacement(entry);
 	const regime: TextRegime = regimeOf(world);
 	const pixelExact: boolean = regime == TextRegime.PixelExact;
 	const linear: float32 = pixelExact
@@ -994,131 +1014,196 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	let coverageInSdf: boolean = false;
 	let colourGlyphs: int32 = 0;
 	const bucketed: boolean = !translationOnly(world);
+	const key: PlacementKey = placementKey(world, scale, regime, outlineWidth);
+	const keeps: boolean = entry.refused == 0 && regime != TextRegime.Sdf && outlineWidth == 0.0 &&
+		entry.regime == regime && sameKey(entry.key, key) && (entry.placedLines.length as int32) > 0;
+	if (keeps) {
+		previousPlaced.length = 0;
+		for (const p of entry.placed) { previousPlaced.push(p); }
+		previousLines.length = 0;
+		for (const l of entry.placedLines) { previousLines.push(l); }
+		entry.placed.length = 0;
+		entry.placedLines.length = 0;
+		entry.placedValid = false;
+	} else {
+		releasePlacement(entry);
+	}
 	if (devicePerLocal > 0.0 || regime == TextRegime.Sdf) {
-		for (const g of entry.layout.glyphs) {
-			if (g.glyph == NO_GLYPH) { continue; }
-			const baseline: float32 = entry.layout.lines[g.line].baseline;
-			if (devicePerLocal > 0.0) {
-				const sizePx: float32 = g.size * devicePerLocal;
-				let tileSize: float32 = colourTileSize(sizePx, bucketed);
-				let colourBox: ColourTileBox = colourBoxOf(g, tileSize);
-				if (colourBox.glyph == ColourGlyph.Refused && tileSize != sizePx) {
-					tileSize = sizePx;
-					colourBox = colourBoxOf(g, tileSize);
+		const shapes: LineShapes = entry.lineShapes;
+		const lineCount: int32 = shapes.glyphStarts.length as int32;
+		for (let li: int32 = 0; li < lineCount; li++) {
+			const glyphStart: int32 = shapes.glyphStarts[li];
+			const glyphEnd: int32 = li + 1 < lineCount
+				? shapes.glyphStarts[li + 1]
+				: entry.layout.glyphs.length as int32;
+			const rowStart: int32 = shapes.rowStarts[li];
+			const hasRow: boolean = rowStart < (entry.layout.lines.length as int32);
+			const top: float32 = hasRow ? entry.layout.lines[rowStart].top : 0.0;
+			const x: float32 = hasRow ? entry.layout.lines[rowStart].x : 0.0;
+			const wrap: LineWrap = shapes.lines[li].wrap;
+			const first: int32 = entry.placed.length as int32;
+			const colourBefore: int32 = colourGlyphs;
+			const old: PlacedLine = keeps && li < (previousLines.length as int32)
+				? previousLines[li]
+				: { wrap: wrap, top: top, x: x, first: NOT_KEPT, count: 0, colour: 0 };
+			if (old.first != NOT_KEPT && old.wrap === wrap && old.top == top && old.x == x) {
+				let k: int32 = old.first;
+				for (let gi: int32 = glyphStart; gi < glyphEnd; gi++) {
+					if (entry.layout.glyphs[gi].glyph == NO_GLYPH) { continue; }
+					entry.placed.push({ ...previousPlaced[k], run: entry.layout.glyphs[gi].run });
+					k = k + 1;
 				}
-				if (colourBox.glyph == ColourGlyph.Refused) {
-					refused = refused + 1;
-					refusal = AtlasError.ColourRefused.toString();
-					continue;
-				}
-				if (colourBox.glyph == ColourGlyph.Present) {
-					let coloured = colourPlacedGlyph(
-						g, colourBox, tileSize, sizePx, baseline, devicePerLocal, pixelExact, fracX, fracY,
+				if (k != old.first + old.count) {
+					console.log(
+						`void2d: a kept line placed ${old.count} glyphs and now draws ${k - old.first}`,
 					);
-					if (!coloured.ok && coloured.error == AtlasError.TooLarge && tileSize != sizePx) {
-						tileSize = sizePx;
-						colourBox = colourBoxOf(g, tileSize);
-						coloured = colourPlacedGlyph(
-							g, colourBox, tileSize, sizePx, baseline, devicePerLocal, pixelExact, fracX,
-							fracY,
-						);
-					}
-					if (!coloured.ok) {
-						refused = refused + 1;
-						refusal = coloured.error.toString();
-						retryable = retryable || transientRefusal(coloured.error);
-						continue;
-					}
-					entry.placed.push(coloured.value);
-					colourGlyphs = colourGlyphs + 1;
-					coverageInSdf = coverageInSdf || regime == TextRegime.Sdf;
-					continue;
+					unreachable;
 				}
-			}
-			if (regime == TextRegime.Sdf) {
-				const sdf = sdfPlacedGlyph(g, baseline);
-				if (sdf.ok) {
-					entry.placed.push(sdf.value);
-					if (outlineWidth > 0.0) {
-						const outlined = sdfOutlinePlacedGlyph(g, baseline, outlineWidth);
-						if (!outlined.ok) {
-							refused = refused + 1;
-							refusal = outlined.error.toString();
-							retryable = retryable || transientRefusal(outlined.error);
-						} else if (outlined.value.w > 0.0) {
-							entry.placedOutline.push(outlined.value);
-						} else {
-							glyphAtlas.release(outlined.value.tile);
-						}
-					}
-					continue;
-				}
-				if (sdf.error != AtlasError.SdfCubicOutline || devicePerLocal <= 0.0) {
-					refused = refused + 1;
-					refusal = sdf.error.toString();
-					retryable = retryable || transientRefusal(sdf.error);
-					continue;
-				}
-				coverageInSdf = true;
-			}
-			let variant: int32 = 0;
-			let whole: int32 = 0;
-			let baselineDevice: int32 = 0;
-			if (pixelExact) {
-				const penDevice: float32 = fracX + (g.x + g.offsetX) * devicePerLocal;
-				if (isSpriteFace(g.face)) {
-					whole = snapBaseline(penDevice);
-				} else {
-					const q = quantizeX(penDevice);
-					variant = q.variant;
-					whole = q.whole;
-				}
-				baselineDevice = snapBaseline(fracY + (baseline + g.offsetY) * devicePerLocal);
-			}
-			const acquired = glyphAtlas.acquire({
-				kind: PageKind.Coverage,
-				face: g.face, glyph: g.glyph, sizePx: g.size * devicePerLocal, variant: variant,
-				outline: 0,
-			});
-			if (!acquired.ok) {
-				refused = refused + 1;
-				refusal = acquired.error.toString();
-				retryable = retryable || transientRefusal(acquired.error);
+				colourGlyphs = colourGlyphs + old.colour;
+				previousLines[li].first = NOT_KEPT;
+				entry.placedLines.push({
+					wrap: wrap, top: top, x: x, first: first,
+					count: (entry.placed.length as int32) - first, colour: colourGlyphs - colourBefore,
+				});
 				continue;
 			}
-			const tileIndex: int32 = acquired.value;
-			const t: GlyphTile = glyphAtlas.tile(tileIndex);
-			entry.placed.push(placedGlyph(
-				g, tileIndex, t, baseline, devicePerLocal, pixelExact, whole, baselineDevice,
-			));
-			if (outlineWidth > 0.0 && !outlineLaneChecked) {
-				outlineLaneChecked = true;
-				const lane = outlineLaneFor(outlineWidth, devicePerLocal, pixelExact);
-				if (lane.ok) {
-					outlineLaneValue = lane.value;
-				} else {
+			for (let gi: int32 = glyphStart; gi < glyphEnd; gi++) {
+				const g: LaidGlyph = entry.layout.glyphs[gi];
+				if (g.glyph == NO_GLYPH) { continue; }
+				const baseline: float32 = entry.layout.lines[g.line].baseline;
+				if (devicePerLocal > 0.0) {
+					const sizePx: float32 = g.size * devicePerLocal;
+					let tileSize: float32 = colourTileSize(sizePx, bucketed);
+					let colourBox: ColourTileBox = colourBoxOf(g, tileSize);
+					if (colourBox.glyph == ColourGlyph.Refused && tileSize != sizePx) {
+						tileSize = sizePx;
+						colourBox = colourBoxOf(g, tileSize);
+					}
+					if (colourBox.glyph == ColourGlyph.Refused) {
+						refused = refused + 1;
+						refusal = AtlasError.ColourRefused.toString();
+						continue;
+					}
+					if (colourBox.glyph == ColourGlyph.Present) {
+						let coloured = colourPlacedGlyph(
+							g, colourBox, tileSize, sizePx, baseline, devicePerLocal, pixelExact, fracX, fracY,
+						);
+						if (!coloured.ok && coloured.error == AtlasError.TooLarge && tileSize != sizePx) {
+							tileSize = sizePx;
+							colourBox = colourBoxOf(g, tileSize);
+							coloured = colourPlacedGlyph(
+								g, colourBox, tileSize, sizePx, baseline, devicePerLocal, pixelExact, fracX,
+								fracY,
+							);
+						}
+						if (!coloured.ok) {
+							refused = refused + 1;
+							refusal = coloured.error.toString();
+							retryable = retryable || transientRefusal(coloured.error);
+							continue;
+						}
+						entry.placed.push(coloured.value);
+						colourGlyphs = colourGlyphs + 1;
+						coverageInSdf = coverageInSdf || regime == TextRegime.Sdf;
+						continue;
+					}
+				}
+				if (regime == TextRegime.Sdf) {
+					const sdf = sdfPlacedGlyph(g, baseline);
+					if (sdf.ok) {
+						entry.placed.push(sdf.value);
+						if (outlineWidth > 0.0) {
+							const outlined = sdfOutlinePlacedGlyph(g, baseline, outlineWidth);
+							if (!outlined.ok) {
+								refused = refused + 1;
+								refusal = outlined.error.toString();
+								retryable = retryable || transientRefusal(outlined.error);
+							} else if (outlined.value.w > 0.0) {
+								entry.placedOutline.push(outlined.value);
+							} else {
+								glyphAtlas.release(outlined.value.tile);
+							}
+						}
+						continue;
+					}
+					if (sdf.error != AtlasError.SdfCubicOutline || devicePerLocal <= 0.0) {
+						refused = refused + 1;
+						refusal = sdf.error.toString();
+						retryable = retryable || transientRefusal(sdf.error);
+						continue;
+					}
+					coverageInSdf = true;
+				}
+				let variant: int32 = 0;
+				let whole: int32 = 0;
+				let baselineDevice: int32 = 0;
+				if (pixelExact) {
+					const penDevice: float32 = fracX + (g.x + g.offsetX) * devicePerLocal;
+					if (isSpriteFace(g.face)) {
+						whole = snapBaseline(penDevice);
+					} else {
+						const q = quantizeX(penDevice);
+						variant = q.variant;
+						whole = q.whole;
+					}
+					baselineDevice = snapBaseline(fracY + (baseline + g.offsetY) * devicePerLocal);
+				}
+				const acquired = glyphAtlas.acquire({
+					kind: PageKind.Coverage,
+					face: g.face, glyph: g.glyph, sizePx: g.size * devicePerLocal, variant: variant,
+					outline: 0,
+				});
+				if (!acquired.ok) {
 					refused = refused + 1;
-					refusal = lane.error.toString();
-					retryable = retryable || transientRefusal(lane.error);
+					refusal = acquired.error.toString();
+					retryable = retryable || transientRefusal(acquired.error);
+					continue;
+				}
+				const tileIndex: int32 = acquired.value;
+				const t: GlyphTile = glyphAtlas.tile(tileIndex);
+				entry.placed.push(placedGlyph(
+					g, tileIndex, t, baseline, devicePerLocal, pixelExact, whole, baselineDevice,
+				));
+				if (outlineWidth > 0.0 && !outlineLaneChecked) {
+					outlineLaneChecked = true;
+					const lane = outlineLaneFor(outlineWidth, devicePerLocal, pixelExact);
+					if (lane.ok) {
+						outlineLaneValue = lane.value;
+					} else {
+						refused = refused + 1;
+						refusal = lane.error.toString();
+						retryable = retryable || transientRefusal(lane.error);
+					}
+				}
+				if (outlineLaneValue > 0 && !isSpriteFace(g.face)) {
+					const outlined = outlinePlacedGlyph(
+						g, baseline, devicePerLocal, pixelExact, outlineLaneValue, variant, whole,
+						baselineDevice,
+					);
+					if (!outlined.ok) {
+						refused = refused + 1;
+						refusal = outlined.error.toString();
+						retryable = retryable || transientRefusal(outlined.error);
+					} else if (outlined.value.w > 0.0) {
+						entry.placedOutline.push(outlined.value);
+					} else {
+						glyphAtlas.release(outlined.value.tile);
+					}
 				}
 			}
-			if (outlineLaneValue > 0 && !isSpriteFace(g.face)) {
-				const outlined = outlinePlacedGlyph(
-					g, baseline, devicePerLocal, pixelExact, outlineLaneValue, variant, whole,
-					baselineDevice,
-				);
-				if (!outlined.ok) {
-					refused = refused + 1;
-					refusal = outlined.error.toString();
-					retryable = retryable || transientRefusal(outlined.error);
-				} else if (outlined.value.w > 0.0) {
-					entry.placedOutline.push(outlined.value);
-				} else {
-					glyphAtlas.release(outlined.value.tile);
-				}
-			}
+			entry.placedLines.push({
+				wrap: wrap, top: top, x: x, first: first,
+				count: (entry.placed.length as int32) - first, colour: colourGlyphs - colourBefore,
+			});
 		}
 	}
+	for (const old of previousLines) {
+		if (old.first == NOT_KEPT) { continue; }
+		for (let k: int32 = old.first; k < old.first + old.count; k++) {
+			glyphAtlas.release(previousPlaced[k].tile);
+		}
+	}
+	previousLines.length = 0;
 	refusedGlyphs = refusedGlyphs + refused;
 	if (refused > 0 && refused != entry.refused) {
 		refusalReports = refusalReports + 1;
@@ -1133,6 +1218,6 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	entry.coverageInSdf = coverageInSdf;
 	entry.colourGlyphs = colourGlyphs;
 	entry.regime = regime;
-	entry.key = placementKey(world, scale, regime, outlineWidth);
+	entry.key = key;
 	return entry;
 }
