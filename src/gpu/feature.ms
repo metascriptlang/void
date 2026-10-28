@@ -42,7 +42,8 @@ export function hasFeature(feature: Feature): boolean {
 }
 
 export function featureRefusal(feature: Feature, call: string): string {
-	return call + " needs the " + featureName(feature) + " feature, which this device does not have";
+	return call + " needs the " + featureName(feature) +
+		" feature, which this device does not have";
 }
 
 export function requireFeature(feature: Feature, call: string): void {

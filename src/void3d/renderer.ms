@@ -637,7 +637,9 @@ export function pickMeshLods(
 		if (pick === null) { continue; }
 		const source = items[i].lodSource;
 		if (source !== null) {
-			if (source >= i || items[source].lod === null) { return Result.err(RendererError.MeshLod); }
+			if (source >= i || items[source].lod === null) {
+				return Result.err(RendererError.MeshLod);
+			}
 			items[i].lodRatio = items[source].lodRatio;
 		} else {
 			const own = pick.screenRatioFor(items[i].world, eye, camera[CAMERA_PROJECTION_X],

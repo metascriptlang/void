@@ -275,7 +275,8 @@ export function pipelineFor(
 //
 // The keys a run built are its record: `keysOf` reads them, `keysText` keeps them, `prewarm` makes
 // the missing ones through `pipelineFor`. The recorded set is replayed per shader at compile time
-// by the same makePipeline a miss uses (h3d/impl/DX12Driver.hx PSOConfigCache :22-145, :76-91, :3427).
+// by the same makePipeline a miss uses
+// (h3d/impl/DX12Driver.hx PSOConfigCache :22-145, :76-91, :3427).
 
 const KEYS_MAGIC: string = "pipelines-1";
 const KEY_FIELDS: Vec<string> = [

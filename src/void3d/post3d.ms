@@ -1,6 +1,6 @@
 // void3d's fullscreen passes written as MetaScript shader functions: tone map, bloom, outline and
-// ambient occlusion. tools/irPrograms.ms prints them into programModules.ms; src/test/post3dCheck.ms
-// runs them on the CPU.
+// ambient occlusion. tools/irPrograms.ms prints them into programModules.ms;
+// src/test/post3dCheck.ms runs them on the CPU.
 
 import {
 	Mat4x4f,

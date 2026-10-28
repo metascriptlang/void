@@ -283,7 +283,8 @@ export function sortByMaterial(
 		const state: RenderState = { ...materials[items[index].material.index].pass };
 		const image: TextureId = materials[items[index].material.index].texture;
 		const pipeline: uint64 =
-			(((drawn[items[index].material.index].bits() as uint32) as uint64) << 32) | (state.bits() as uint64);
+			(((drawn[items[index].material.index].bits() as uint32) as uint64) << 32) |
+			(state.bits() as uint64);
 		const texture: uint64 = image.isTexture() ? ((image.index as uint32) as uint64) + 1 : 0;
 		list.highs[i] = layerOrderKey(list.layers[i], list.orders[i]);
 		list.lows[i] = (((rankOf(list.pipelines, pipeline) as uint32) as uint64) << 32) |

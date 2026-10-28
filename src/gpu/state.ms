@@ -415,12 +415,16 @@ export function stencilMasks(this state: RenderState): uint32 {
 	stop(`stencil key words ops=${ops} masks=${masks} set bits no stencil field owns`);
 }
 
-// The stencil the two key words of `stencilOps` and `stencilMasks` were made from, with reference 0:
-// the key does not hold it.
-export function fromStencilWords(this typeof RenderState, ops: uint32, masks: uint32): Stencil | null {
+// The stencil the two key words of `stencilOps` and `stencilMasks` were made from, with
+// reference 0: the key does not hold it.
+export function fromStencilWords(
+	this typeof RenderState,
+	ops: uint32,
+	masks: uint32,
+): Stencil | null {
 	const present: boolean = extract(ops, STENCIL_PRESENT) != 0;
-	const owned: uint32 = fieldMask(STENCIL_PRESENT) | (fieldMask(FACE_BITS) << (BACK_SHIFT as uint32)) |
-		fieldMask(FACE_BITS);
+	const owned: uint32 = fieldMask(STENCIL_PRESENT) |
+		(fieldMask(FACE_BITS) << (BACK_SHIFT as uint32)) | fieldMask(FACE_BITS);
 	const ownedMasks: uint32 = fieldMask(STENCIL_READ_MASK) | fieldMask(STENCIL_WRITE_MASK);
 	if ((ops & ~owned) != 0 || (masks & ~ownedMasks) != 0) { stopOnStrayStencilBits(ops, masks); }
 	if (!present) {

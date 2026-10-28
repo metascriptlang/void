@@ -176,7 +176,8 @@ export struct DepthAttachment {
 	load: LoadAction;
 	store: StoreAction;
 	clear: float32;
-	// The value a DepthStencil view's stencil is cleared to; null loads it. The store follows `store`.
+	// The value a DepthStencil view's stencil is cleared to; null loads it. The store follows
+	// `store`.
 	stencilClear: uint8 | null;
 	generation: int32;
 }
@@ -1572,7 +1573,9 @@ export function doorDraw(base: int32, count: int32, instances: int32): void {
 // instance count, first index, base vertex, first instance) from byte `offset` of `buffer`.
 export function doorDrawIndirect(buffer: uint32, offset: int64, drawCount: int32): void {
 	frameStats[DOOR_STAT_DRAWS]++;
-	if (current < 0 || !pipelines[current].indexed) { stop("doorDrawIndirect needs an applied pipeline with an index buffer"); }
+	if (current < 0 || !pipelines[current].indexed) {
+		stop("doorDrawIndirect needs an applied pipeline with an index buffer");
+	}
 	requireAppliedBlocks();
 	pass.multiDrawIndexedIndirect({ id: buffer }, offset, drawCount);
 }

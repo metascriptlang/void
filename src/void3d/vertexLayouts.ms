@@ -66,7 +66,8 @@ export function gpu3dVertexLayout(layout: int32): GPUVertexBufferLayout[2] {
 		10 => mesh(["float32x3", "float32x3", "float32x2", "float32x4", "float32x2"]),
 		11 => mesh(["float32x3", "float32x3", "float32x2", "float32x4", "float32x4", "float32x2"]),
 		12 => mesh([
-			"float32x3", "float32x3", "float32x2", "float32x4", "float32x2", "float32x4", "float32x4",
+			"float32x3", "float32x3", "float32x2", "float32x4", "float32x2", "float32x4",
+			"float32x4",
 		]),
 		_ => mesh([
 			"float32x3", "float32x3", "float32x2", "float32x4",

@@ -149,7 +149,8 @@ export function applyComputeBindings(buffers: Readonly<Span<uint32>>): void {
 	for (let slot = 0; slot < DOOR_VIEW_SLOTS; slot++) {
 		if ((slots & ((1 as uint32) << (slot as uint32))) == 0) { continue; }
 		if (slot >= (buffers.length as int32) || buffers[slot] == 0) {
-			stop(`applyComputeBindings holds no buffer for the storage slot ${slot} the program binds`);
+			stop(`applyComputeBindings holds no buffer for the storage slot ${slot} ` +
+				"the program binds");
 		}
 	}
 	if (slots != 0) {
@@ -166,7 +167,8 @@ export function computeDispatch(x: int32, y: int32, z: int32): void {
 	doorRequireComputePass("computeDispatch");
 	if (applied < 0) { stop("computeDispatch before applyComputePipeline"); }
 	if (!bound) {
-		stop("computeDispatch with a pipeline whose storage slots were not bound since it was applied");
+		stop("computeDispatch with a pipeline whose storage slots were not bound since it " +
+			"was applied");
 	}
 	computePass.dispatchWorkgroups(x, y, z);
 }
