@@ -245,6 +245,16 @@ test "resources of one kind may share a binding, two kinds may not" {
 	assert irErrors(m).includes("resource 'particles': binding 1 is also 'albedo'");
 }
 
+test "only a module without entries leaves a binding unnumbered" {
+	let m = texturedModule();
+	m.resources.push(resource(ResourceKind.Texture, "detail", -1,
+		textureType(TextureShape.D2, ScalarKind.F32)));
+	assert irErrors(m).includes(
+		"resource 'detail': an entry's binding is numbered; only a segment's waits for the linker");
+	m.entries = [];
+	assert !irErrors(m).some((e) => e.startsWith("resource 'detail'"));
+}
+
 test "a uniform block holds no struct and a sampler is typed a sampler" {
 	let m = texturedModule();
 	m.structs[0].members.push(field("inner", structType(0)));

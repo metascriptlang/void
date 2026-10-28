@@ -66,7 +66,8 @@ later replaces the hand-written GLSL source of each base.
   structs as hook points). `glslSegmentIr(f)` lowers `f(phase: P, b: OwnBindings): P` as an entry
   is lowered, but its module has no entry and no io: the segment is its last function (helpers are
   defined before it), taking `P` as a value and returning `P`, and its bindings are resources at
-  `binding` -1, which the linker numbers and `irErrors` never counts as a collision. So the
+  `binding` -1, which the linker numbers; `irErrors` never counts it as a collision and
+  refuses it in a module with an entry. So the
   `irText` record stays the entry's. Refused at the declaration: a return other than `P`, a first
   parameter that is no author struct, a `@binding` on a bindings field
   (`tests/refusals/segment*.ms`). Pinned in `src/test/shaderSegmentCheck.ms`.
