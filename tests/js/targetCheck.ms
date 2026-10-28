@@ -38,11 +38,11 @@ test "a glTF document parses on JS up to its first refusal" {
 	if (!glb.ok) { assert glb.error == GltfError.NotGlb; }
 }
 
-test "loading a font on JS is refused by name" {
+test "a font path with no held bytes is unreadable on JS" {
 	const face = loadFace("assets/font.ttf");
 	assert !face.ok;
-	if (!face.ok) { assert face.error == FaceError.NoRasterizerOnJs; }
+	if (!face.ok) { assert face.error == FaceError.Unreadable; }
 	const font = addFont("assets/font.ttf");
 	assert !font.ok;
-	if (!font.ok) { assert font.error == FontError.NoRasterizerOnJs; }
+	if (!font.ok) { assert font.error == FontError.NotLoaded; }
 }
