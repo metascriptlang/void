@@ -1,26 +1,26 @@
-import { doorSetup, doorSubmitFrame, doorFrameStat, doorReadTexture, DOOR_STAT_COUNT } from "../gpu/doorGpu";
-import { RenderTarget } from "../gpu/target";
-import { PixelFormat } from "../gpu/door";
-import { Scene2D, NodeRef } from "../void2d/node";
-import { isDirty } from "../void2d/scene";
+import { doorSetup, doorSubmitFrame, doorFrameStat, doorReadTexture, DOOR_STAT_COUNT } from "../../src/gpu/doorGpu";
+import { RenderTarget } from "../../src/gpu/target";
+import { PixelFormat } from "../../src/gpu/door";
+import { Scene2D, NodeRef } from "../../src/void2d/node";
+import { isDirty } from "../../src/void2d/scene";
 import {
 	setup2d, begin2d, beginTarget, endTarget, drawRect, drawImage, frameEnd,
 	drawCallCount, uploadCount, uploadBytes, vertexBufferBytes, droppedFrames, buffersAlive,
 	atlasImagesAlive, glyphUploadCount, glyphUploadBytes, glyphPageCount, setTextGamma,
-} from "../void2d/draw";
-import { currentContext } from "../void2d/displayList";
-import { rgba, targetTile, blurFilter, vec2 } from "../void2d/types";
-import { fillRect, fillGradientRect, fillCircle } from "../void2d/graphics";
-import { BoxStyle, uniformRadii, uniformBorders } from "../void2d/boxStyle";
-import { BlendMode } from "../gpu/state";
+} from "../../src/void2d/draw";
+import { currentContext } from "../../src/void2d/displayList";
+import { rgba, targetTile, blurFilter, vec2 } from "../../src/void2d/types";
+import { fillRect, fillGradientRect, fillCircle } from "../../src/void2d/graphics";
+import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
+import { BlendMode } from "../../src/gpu/state";
 
 when (voidDummy) {
 } else when (windows) {
-	import { warpDevice, warpContext } from "./d3d11Warp.h";
+	import { warpDevice, warpContext } from "../../src/test/d3d11Warp.h";
 	@passL("-ld3d11");
 } else when (macos) {
-	import { metalSystemDevice } from "./metalDevice.h";
-	@compile("./metalDevice.m");
+	import { metalSystemDevice } from "../../src/test/metalDevice.h";
+	@compile("../../src/test/metalDevice.m");
 }
 
 const RGBA8: int32 = 2;
