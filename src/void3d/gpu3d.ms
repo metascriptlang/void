@@ -580,7 +580,7 @@ export const MATERIAL_COLOR: int32 = 4;
 export const UNLIT_MATERIAL_UNIFORM_LENGTH: int32 = 8;
 export const UNLIT_MATERIAL_COLOR: int32 = 4;
 // A moving key's block (movingMaterialParams / movingUnlitMaterialParams in shader3d.ms):
-// its program's block, then ten vec4 at movingBase(key) plus these offsets, whichever of the
+// its program's block, then eleven vec4 at movingBase(key) plus these offsets, whichever of the
 // features the key reads. UV transform: Bevy's Affine2, the 2x2 matrix by columns, then
 // the translation and Heaps' UVScroll speed in UV units per second of the frame's time.
 export const MOVING_UV_MATRIX: int32 = 0;
@@ -616,7 +616,12 @@ export const MOVING_FADE_FAR_END: int32 = 35;
 // A UV-transform key's colour key, Heaps' ColorKey: a texel within 1e-5 of this rgba (squared)
 // is discarded. An alpha of 0 leaves the texture unkeyed.
 export const MOVING_COLOR_KEY: int32 = 36;
-export const MOVING_LENGTH: int32 = 40;
+// A UV-transform key's sine wave, Heaps' SinusDeform: u moves by the amplitude times the sine of
+// v times the frequency plus the frame's time times the speed. An amplitude of 0 leaves u alone.
+export const MOVING_SINUS_SPEED: int32 = 40;
+export const MOVING_SINUS_FREQUENCY: int32 = 41;
+export const MOVING_SINUS_AMPLITUDE: int32 = 42;
+export const MOVING_LENGTH: int32 = 44;
 export const MOVING_MATERIAL_UNIFORM_LENGTH: int32 = MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH;
 export const MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH: int32 =
 	UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH;

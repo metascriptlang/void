@@ -237,6 +237,7 @@ export struct MovingMaterialParams {
 	flipbookPlay: Vec4f;
 	distanceFade: Vec4f;
 	colorKey: Vec4f;
+	sinusDeform: Vec4f;
 }
 
 // gpu3d.ms PBR_*: materialParams, then metalness, roughness and occlusion in x, y and z, then the
@@ -280,6 +281,7 @@ export struct MovingEmissiveMaterialParams {
 	flipbookPlay: Vec4f;
 	distanceFade: Vec4f;
 	colorKey: Vec4f;
+	sinusDeform: Vec4f;
 	emissive: Vec4f;
 }
 
@@ -301,6 +303,7 @@ export struct MovingUnlitMaterialParams {
 	flipbookPlay: Vec4f;
 	distanceFade: Vec4f;
 	colorKey: Vec4f;
+	sinusDeform: Vec4f;
 }
 
 export struct LightParams {
@@ -1220,6 +1223,12 @@ export function movedUv(uv: Vec2f, matrix: Vec4f, motion: Vec4f, time: float32):
 	return mat2x2f(matrix.xy, matrix.zw) * uv + motion.xy + motion.zw * time;
 }
 
+// h3d.shader.SinusDeform on the moved UV, `deform` holding its speed, frequency and amplitude in
+// x, y and z (gpu3d.ms MOVING_SINUS_*).
+export function sinusUv(uv: Vec2f, deform: Vec4f, time: float32): Vec2f {
+	return vec2f(uv.x + sin(uv.y * deform.y + time * deform.x) * deform.z, uv.y);
+}
+
 // h3d.shader.AnimatedTexture over `uv`: the frame `grid.w` frames a second after `play.x`, from
 // frame `play.y`, looped over `grid.z` frames when `play.z` is 1, else held on the last, read
 // from a `grid.x` by `grid.y` grid; xy is that frame's UV and zw the next frame's.
@@ -1464,6 +1473,14 @@ export function distanceFadeOf(b: LitBindings, key: LitKey): Vec4f {
 		return b.movingEmissiveMaterialParams.distanceFade;
 	} else {
 		return b.movingMaterialParams.distanceFade;
+	}
+}
+
+export function sinusDeformOf(b: LitBindings, key: LitKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.sinusDeform;
+	} else {
+		return b.movingMaterialParams.sinusDeform;
 	}
 }
 
@@ -2001,6 +2018,9 @@ export function litTexturedFs(
 		const time = b.frameParams.frame.x;
 		uv = movedUv(input.surfaceUv, uvMatrixOf(b, key), uvMotionOf(b, key), time);
 	}
+	if (key.uvTransform) {
+		uv = sinusUv(uv, sinusDeformOf(b, key), b.frameParams.frame.x);
+	}
 	if (key.normalMap && key.parallax) {
 		const view = normalize(b.frameParams.cameraPosition.xyz - input.worldPosition);
 		uv = parallaxUv(b, uv, view, normalize(input.worldNormal), input.worldTangent,
@@ -2154,6 +2174,7 @@ export function unlitTexturedFs(
 		const matrix = b.movingUnlitMaterialParams.uvMatrix;
 		const motion = b.movingUnlitMaterialParams.uvMotion;
 		uv = movedUv(input.surfaceUv, matrix, motion, b.frameParams.frame.x);
+		uv = sinusUv(uv, b.movingUnlitMaterialParams.sinusDeform, b.frameParams.frame.x);
 	}
 	let baseUv = uv;
 	let nextUv = uv;
