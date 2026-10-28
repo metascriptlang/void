@@ -265,6 +265,7 @@ import "./shaderHlslCheck";
 import "./shaderBytecodeCheck";
 import "./shaderBytecodeDeviceCheck";
 import "./shaderMacroPrintCheck";
+import "./shaderSegmentCheck";
 import "./shaderWgslCheck";
 import "./shaderIrProgramCheck";
 import "./shaderGlslCheck";
