@@ -112,9 +112,10 @@ import {
 	TextStyle,
 	LineBox,
 	LineOptions,
+	LineShapes,
+	LineWrap,
 	TextRun,
 	PLAIN_LINES,
-	NO_GLYPH,
 	NO_RUN,
 	TextError,
 	shapeText,
@@ -123,7 +124,6 @@ import {
 import { TextDirection } from "./textDirection";
 import { GlyphPage, NO_GLYPH_PAGE, PageKind } from "./glyphAtlas";
 import { PlacedIcon, placeIcon } from "./icon";
-import { glyphInkBox } from "./face";
 import {
 	Vec2,
 	Color,
@@ -409,16 +409,21 @@ function shapeIfChanged(s: Scene2D, i: int32): void {
 	}
 	let yMin: float32 = 0.0;
 	let yMax: float32 = shaped.layout.height;
-	for (const g of shaped.layout.glyphs) {
-		if (g.glyph == NO_GLYPH) { continue; }
-		const [left, top, right, bottom] = glyphInkBox(g.face, g.glyph, g.size);
-		if (right <= left || bottom <= top) { continue; }
-		const baseline: float32 = shaped.layout.lines[g.line].baseline + g.offsetY;
-		const penX: float32 = g.x + g.offsetX;
-		if (penX + left < xMin) { xMin = penX + left; }
-		if (penX + right > xMax) { xMax = penX + right; }
-		if (baseline + top < yMin) { yMin = baseline + top; }
-		if (baseline + bottom > yMax) { yMax = baseline + bottom; }
+	const shapes: LineShapes = shaped.lineShapes;
+	for (let li: int32 = 0; li < (shapes.rowStarts.length as int32); li++) {
+		const wrap: LineWrap = shapes.lines[li].wrap;
+		const rowBase: int32 = shapes.rowStarts[li];
+		for (let r: int32 = 0; r < (wrap.rows.length as int32); r++) {
+			const k: int32 = 4 * r;
+			if (wrap.ink[k] > wrap.ink[k + 2]) { continue; }
+			const row: LineBox = shaped.layout.lines[rowBase + r];
+			const dx: float32 = row.x - wrap.rows[r].x;
+			const dy: float32 = row.top - wrap.rows[r].top;
+			if (wrap.ink[k] + dx < xMin) { xMin = wrap.ink[k] + dx; }
+			if (wrap.ink[k + 1] + dy < yMin) { yMin = wrap.ink[k + 1] + dy; }
+			if (wrap.ink[k + 2] + dx > xMax) { xMax = wrap.ink[k + 2] + dx; }
+			if (wrap.ink[k + 3] + dy > yMax) { yMax = wrap.ink[k + 3] + dy; }
+		}
 	}
 	let rowsXMax: float32 = xMax;
 	for (let li = 0; li < (shaped.layout.lines.length as int32); li++) {
