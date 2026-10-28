@@ -226,10 +226,11 @@ later replaces the hand-written GLSL source of each base.
   declares the descriptor as `shaderModule` does. `[]` skips `link`, so it registers what
   `shaderProgram` registers. `linkedProgram` (`link.ms`) is that path for `shaderBuild` and
   `tools/irPrograms.ms` alike: specialize per key, link, then drop the unread declarations; a
-  row of the tool links each `src/void3d/programEffects.ms` entry `[source, feature, segment]` whose source is the
-  row's and whose feature it has, in table order (CORE's EMISSIVE today: PIXEL_ART's stages
-  have no hook sites). A non-segment element is
-  refused by its segment message at the function, a link refusal after "materialProgram '<name>': " at the name
+  row of the tool links each `src/void3d/programEffects.ms` entry `[source, fragment, feature,
+  segment]` whose source and fragment entry are the row's and whose feature it has, in table
+  order, so each pass names its own effects (CORE's `litTexturedFs` and `shadowLitTexturedFs`
+  today; `shadowLitTexturedFs` has no `LitShaded` site, and PIXEL_ART's stages have none).
+  A non-segment element is refused by its segment message at the function, a link refusal after "materialProgram '<name>': " at the name
   (`tests/refusals/material*.ms`); pinned in `src/test/shaderMaterialProgramCheck.ms`. Cost
   (2026-10-29, BUILD `df4c2416a`, Windows, `msc check`, three runs each): the file without
   programs 1.5 s, with its two effect-free programs 3.0 to 3.3 s, and adding three two-effect
