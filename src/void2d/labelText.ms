@@ -296,8 +296,8 @@ export function allocateLabelText(): int32 {
 function releasePlacement(entry: LabelText): void {
 	for (const p of entry.placed) { glyphAtlas.release(p.tile); }
 	for (const p of entry.placedOutline) { glyphAtlas.release(p.tile); }
-	entry.placed = new Array(0);
-	entry.placedOutline = new Array(0);
+	entry.placed.length = 0;
+	entry.placedOutline.length = 0;
 	entry.placedValid = false;
 	entry.placementRetryable = false;
 }
@@ -985,8 +985,6 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	const devicePerLocal: float32 = linear * scale;
 	const fracX: float32 = fraction(world.tx * scale);
 	const fracY: float32 = fraction(world.ty * scale);
-	let placed: Vec<PlacedGlyph> = new Array(0);
-	let placedOutline: Vec<PlacedGlyph> = new Array(0);
 	let refused: int32 = 0;
 	let retryable: boolean = false;
 	let refusal: string = "";
@@ -1031,7 +1029,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 						retryable = retryable || transientRefusal(coloured.error);
 						continue;
 					}
-					placed.push(coloured.value);
+					entry.placed.push(coloured.value);
 					colourGlyphs = colourGlyphs + 1;
 					coverageInSdf = coverageInSdf || regime == TextRegime.Sdf;
 					continue;
@@ -1040,7 +1038,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 			if (regime == TextRegime.Sdf) {
 				const sdf = sdfPlacedGlyph(g, baseline);
 				if (sdf.ok) {
-					placed.push(sdf.value);
+					entry.placed.push(sdf.value);
 					if (outlineWidth > 0.0) {
 						const outlined = sdfOutlinePlacedGlyph(g, baseline, outlineWidth);
 						if (!outlined.ok) {
@@ -1048,7 +1046,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 							refusal = outlined.error.toString();
 							retryable = retryable || transientRefusal(outlined.error);
 						} else if (outlined.value.w > 0.0) {
-							placedOutline.push(outlined.value);
+							entry.placedOutline.push(outlined.value);
 						} else {
 							glyphAtlas.release(outlined.value.tile);
 						}
@@ -1090,7 +1088,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 			}
 			const tileIndex: int32 = acquired.value;
 			const t: GlyphTile = glyphAtlas.tile(tileIndex);
-			placed.push(placedGlyph(
+			entry.placed.push(placedGlyph(
 				g, tileIndex, t, baseline, devicePerLocal, pixelExact, whole, baselineDevice,
 			));
 			if (outlineWidth > 0.0 && !outlineLaneChecked) {
@@ -1114,7 +1112,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 					refusal = outlined.error.toString();
 					retryable = retryable || transientRefusal(outlined.error);
 				} else if (outlined.value.w > 0.0) {
-					placedOutline.push(outlined.value);
+					entry.placedOutline.push(outlined.value);
 				} else {
 					glyphAtlas.release(outlined.value.tile);
 				}
@@ -1130,8 +1128,6 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 		);
 	}
 	entry.refused = refused;
-	entry.placed = placed;
-	entry.placedOutline = placedOutline;
 	entry.placedValid = refused == 0;
 	entry.placementRetryable = retryable;
 	entry.coverageInSdf = coverageInSdf;
