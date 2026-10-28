@@ -1044,3 +1044,47 @@ test "a key links only the effects listed for its features, after it is speciali
 	assert iosOf(plain) ==
 		"vs in position,vs out clip,vs out uv,fs in position,fs in uv,fs out fragColor";
 }
+
+struct Gain {
+	amount: Vec4f;
+}
+
+struct SlotBindings {
+	@binding(0) frame: Frame;
+	@binding(3) params: Gain;
+}
+
+struct GainBindings {
+	params: Gain;
+}
+
+function slotFs(input: Pixel, b: SlotBindings, key: FadeKey): Vec4f {
+	let color = vec4f(input.uv.x, input.uv.y, b.frame.time, 1.0);
+	if (key.f) {
+		color = color * b.params.amount;
+	}
+	const lit: Shaded = { color: color };
+	return hook(lit).color;
+}
+
+function gain(shaded: Shaded, b: GainBindings): Shaded {
+	return { color: shaded.color + b.params.amount };
+}
+
+const SLOT_VS = glslIr(baseVs);
+const SLOT_FS = glslLinkedIr(slotFs, baseVs);
+const GAIN = glslSegmentIr(gain);
+
+function slotsOf(on: string[], segments: string[]): string {
+	const m = linkedProgram(SLOT_VS, SLOT_FS, on, segments);
+	if (!m.ok) { return m.error; }
+	return m.value.resources.map((r) => r.name + "@" + String(r.binding)).join(",");
+}
+
+test "an effect's block keeps the base's binding where the key leaves the base's read out" {
+	assert slotsOf(["F"], [GAIN]) == "frame@0,params@3";
+	assert slotsOf([], [GAIN]) == "frame@0,params@3";
+	assert slotsOf([], []) == "frame@0";
+	assert slotsOf([], [COLOUR_ADD]) == "frame@0,tintParams@1";
+	assert slotsOf([], [GAIN, COLOUR_ADD]) == "frame@0,params@3,tintParams@4";
+}

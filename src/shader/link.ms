@@ -1,4 +1,12 @@
-import { Offsets, programModule, shiftExpr, shiftStmts, shiftType } from "./descriptor";
+import {
+	Offsets,
+	checked,
+	joinedProgram,
+	programModule,
+	shiftExpr,
+	shiftStmts,
+	shiftType,
+} from "./descriptor";
 import {
 	AssignOp,
 	Builtin,
@@ -25,6 +33,7 @@ import { functionOrder, hasEffect, stmtExprs } from "./irWalk";
 import { irFromText, irText } from "./irText";
 import { slotLimit } from "./layout";
 import { suffixed } from "./names";
+import { withoutUnread } from "./specialize";
 
 function phaseOf(m: ShaderModule, f: ShaderFunction): string {
 	if (f.params.length != 1 || f.result.kind != ShaderTypeKind.Struct ||
@@ -123,9 +132,11 @@ function merge(into: ShaderModule, from: ShaderModule, effect: string): Result<i
 	return Result.ok((into.functions.length - 1) as int32);
 }
 
-function numberBindings(m: ShaderModule, effect: string): Result<void, string> {
+function numberBindings(m: ShaderModule, owners: string[], effects: string[]):
+	Result<void, string> {
 	for (const r of m.resources) {
 		if (r.binding >= 0) { continue; }
+		const effect = effects[owners.indexOf(r.name)];
 		let next = 0;
 		for (const o of m.resources) {
 			if (o.group == r.group && o.binding >= next) { next = o.binding + 1; }
@@ -150,6 +161,8 @@ export function link(base: ShaderModule, effects: ShaderModule[]): Result<Shader
 		sites.push(i as int32);
 		chains.push(exprOf(ExprKind.Param, f.result, 0, []));
 	}
+	let owners: string[] = [];
+	let owning: string[] = [];
 	for (const given of effects) {
 		const e = try irFromText(irText(given));
 		const segment = e.functions.length > 0 ? e.functions[e.functions.length - 1] :
@@ -166,23 +179,30 @@ export function link(base: ShaderModule, effects: ShaderModule[]): Result<Shader
 		}
 		const effect = segment.name;
 		const index = try merge(m, e, effect);
-		try numberBindings(m, effect);
+		for (const r of m.resources) {
+			if (r.binding < 0 && !owners.includes(r.name)) {
+				owners.push(r.name);
+				owning.push(effect);
+			}
+		}
 		chains[at] = exprOf(ExprKind.Call, chains[at].type, index, [chains[at]]);
 	}
 	for (let k = 0; k < sites.length; k++) {
 		m.functions[sites[k]].body = [stmtOf(StmtKind.Return, chains[k], [])];
 	}
 	for (const f of m.functions) { pruneDeadFields(m, f); }
-	return withoutUnreadVaryings(m);
+	const kept = try withoutUnread(try withoutUnreadVaryings(m));
+	try numberBindings(kept, owners, owning);
+	return Result.ok(kept);
 }
 
 export function linkedProgram(vertexText: string, fragmentText: string, on: string[],
 	segmentTexts: string[]): Result<ShaderModule, string> {
-	const m = try programModule(vertexText, fragmentText, on);
-	if (segmentTexts.length == 0) { return Result.ok(m); }
+	if (segmentTexts.length == 0) { return programModule(vertexText, fragmentText, on); }
+	const m = try joinedProgram(vertexText, fragmentText, on);
 	let segments: ShaderModule[] = [];
 	for (const text of segmentTexts) { segments.push(try irFromText(text)); }
-	return link(m, segments);
+	return checked(try link(m, segments), "the program");
 }
 
 class Liveness {
