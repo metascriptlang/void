@@ -1351,7 +1351,7 @@ export function createTexture(texture: TextureRecord, descriptor: GPUTextureDesc
 		target = GL_TEXTURE_3D;
 	} else if (cubeMap) {
 		target = GL_TEXTURE_CUBE_MAP;
-	} else if (layers > 1) {
+	} else if (layers > 1 || texture.arrayBinding) {
 		target = GL_TEXTURE_2D_ARRAY;
 	} else if (sampleCount > 1) {
 		target = multisampleTarget();

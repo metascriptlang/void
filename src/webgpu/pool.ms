@@ -133,6 +133,7 @@ export struct TextureRecord {
 	layers: int32;
 	volume: boolean;
 	cube: boolean;
+	arrayBinding: boolean;
 	swapchainView: uint32;
 }
 

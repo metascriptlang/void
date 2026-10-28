@@ -220,6 +220,7 @@ export struct GPUTextureDescriptor {
 	sampleCount: int32;
 	dimension: GPUTextureDimension;
 	mipLevelCount: int32;
+	textureBindingViewDimension: GPUTextureViewDimension;
 }
 
 export struct GPUTextureViewDescriptor {

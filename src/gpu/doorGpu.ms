@@ -1025,6 +1025,7 @@ export function doorMakeArrayTargetImage(size: int32, layers: int32, format: int
 		format: depthTextureFormat(pixelFormat),
 		usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
 		sampleCount: 1,
+		textureBindingViewDimension: "2d-array",
 	}, true);
 	if (texture.id == 0) { return 0; }
 	arrayImages.push(texture.id);

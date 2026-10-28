@@ -559,6 +559,7 @@ export function textureRecordOf(id: uint32, descriptor: GPUTextureDescriptor): T
 		layers: layers,
 		volume: volume,
 		cube: cubeCapable(volume, layers, width, height, descriptor.usage, sampleCount),
+		arrayBinding: descriptor.textureBindingViewDimension == "2d-array",
 		swapchainView: 0,
 	};
 }
