@@ -210,7 +210,7 @@ const EVERY_PROGRAM: Vec<Program> = [
 	Program.LitTextured, Program.UnlitTextured, Program.BloomDownsampleFirst,
 	Program.BloomDownsample, Program.BloomUpsample, Program.OutlineMask, Program.OutlineMix,
 	Program.OutlineWidth, Program.ParticleVisual, Program.Decal, Program.Sao, Program.Blur,
-	Program.Line,
+	Program.Line, Program.Fxaa,
 ];
 
 const SCENE_PROGRAMS: Vec<Program> = [
@@ -244,6 +244,7 @@ function layoutFor(key: ProgramKey): VertexLayout {
 		Program.LitTextured => VertexLayout.LitTextured,
 		Program.UnlitTextured => VertexLayout.LitTextured,
 		Program.Line => VertexLayout.LitTextured,
+		Program.Fxaa => VertexLayout.Fullscreen,
 	};
 }
 
@@ -285,7 +286,16 @@ test "every key packs to bits of its own, and each declared one reads its progra
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 174 + 6 + 1 + 1 + 1 + 1;
+	assert declared == 174 + 6 + 1 + 1 + 1 + 1 + 1;
+}
+
+test "the FXAA program is a screen program of the core, with a view and a sampler and no block" {
+	const key: ProgramKey = ProgramKey.of(Program.Fxaa);
+	assert (Program.Fxaa as int32) == 19 && declares(key) && isScreenProgram(Program.Fxaa);
+	assert !declares(key.withPreset(Preset.PixelArt)) && !declares(key.withPreset(Preset.Shadow));
+	assert vertexLayoutOf(key) == VertexLayout.Fullscreen;
+	assert declaredSlots(key) == 0;
+	assert textureSlotMask(key) == 1 && samplerSlotMask(key) == 1;
 }
 
 test "the blur program is a screen program of the core, with its block, a view and a sampler" {

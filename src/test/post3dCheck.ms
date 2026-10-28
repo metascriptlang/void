@@ -11,6 +11,7 @@ import {
 	bloomDownsampleFs,
 	bloomUpsampleFs,
 	fullscreenVs,
+	fxaaFs,
 	outlineMaskFs,
 	outlineMixFs,
 	outlineWidthFs,
@@ -204,4 +205,37 @@ test "the SAO radius, occlusion and fades follow ScalableAO's" {
 	assert saoFaded(0.25, 5.0, 1.0, 2.0, 10.0, 20.0) == 0.25;
 	assert approx(saoFaded(0.25, 15.0, 1.0, 2.0, 10.0, 20.0), 0.625);
 	assert saoFaded(0.25, 25.0, 1.0, 2.0, 10.0, 20.0) == 1.0;
+}
+
+// White above the diagonal x > y and black under it, the white at alpha 0.75, the black at 0.25.
+function staircase(size: int32): Texture2d {
+	let texels: float32[] = [];
+	for (let y = 0; y < size; y++) {
+		for (let x = 0; x < size; x++) {
+			const white: float32 = x > y ? 1.0 : 0.0;
+			texels.push(white);
+			texels.push(white);
+			texels.push(white);
+			texels.push(x > y ? 0.75 : 0.25);
+		}
+	}
+	return { width: size, height: size, texels };
+}
+
+function fxaaOf(source: Texture2d, x: float32, y: float32): Vec4f {
+	return fxaaFs(at(x, y), {
+		fxaaSource: source,
+		fxaaSampler: { nearest: false, wrap: Wrap.Clamp },
+	});
+}
+
+test "FXAA leaves a flat colour as it is and blends a stair of the diagonal" {
+	const stairs = staircase(8);
+	assert fxaaOf(stairs, 6.5, 1.5) == vec4f(1.0, 1.0, 1.0, 0.75);
+	assert fxaaOf(stairs, 1.5, 6.5) == vec4f(0.0, 0.0, 0.0, 0.25);
+	const step = fxaaOf(stairs, 4.5, 3.5);
+	assert approx(step.x, 0.813443) && step.x == step.y && step.y == step.z && step.w == 0.75;
+	const under = fxaaOf(stairs, 3.5, 3.5);
+	assert approx(under.x, 0.186557) && under.w == 0.25;
+	assert fxaaOf(filled(4, 4, vec4f(0.2, 0.4, 0.6, 1.0)), 1.5, 1.5) == vec4f(0.2, 0.4, 0.6, 1.0);
 }
