@@ -574,11 +574,7 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 }
 
 function samplesOf(p: Printer, e: ShaderExpr): string {
-	const t = e.operands[0].type;
-	if (t.kind != ShaderTypeKind.Texture || t.shape != TextureShape.Multisampled2d) {
-		return fail(p, "TextureNumSamples takes a multisampled texture");
-	}
-	const typeText = typeName(p, t);
+	const typeText = typeName(p, e.operands[0].type);
 	const name = helper(p, "textureSamples " + typeText, "textureSamples", (n) =>
 		"uint " + n + "(" + typeText + " t)\n{\n    uint width;\n    uint height;\n" +
 		"    uint samples;\n    t.GetDimensions(width, height, samples);\n" +

@@ -544,10 +544,6 @@ function dimensionsText(p: Printer, e: ShaderExpr): string {
 }
 
 function samplesText(p: Printer, e: ShaderExpr): string {
-	const t = e.operands[0].type;
-	if (t.kind != ShaderTypeKind.Texture || t.shape != TextureShape.Multisampled2d) {
-		return fail(p, "TextureNumSamples takes a multisampled texture");
-	}
 	return typeText(p, e.type) + "(" + exprText(p, e.operands[0]) + ".get_num_samples())";
 }
 

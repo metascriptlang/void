@@ -443,11 +443,7 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 }
 
 function samplesOf(p: Printer, e: ShaderExpr): string {
-	const t = e.operands[0].type;
-	if (t.kind != ShaderTypeKind.Texture || t.shape != TextureShape.Multisampled2d ||
-		e.type.scalar != ScalarKind.I32) {
-		return fail(p, "TextureNumSamples takes a multisampled texture and gives an i32");
-	}
+	if (e.type.scalar != ScalarKind.I32) { return fail(p, "TextureNumSamples gives an i32"); }
 	const pair = pairOf(p, e.operands[0], null);
 	p.samplesQueried = true;
 	return "textureSamples(" + pair.name + ")";
