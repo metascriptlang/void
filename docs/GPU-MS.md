@@ -785,7 +785,10 @@ sh scripts/abBench.sh clean                                                     
   turning and particles on. Every draw item applies its pipeline and uniform blocks again, so its
   `present.ms` prices the door's per-draw uniform path: it is the d3d11 uniform-ring bench. Main
   has no such entry, so `build` copies B's into the A worktree (it imports only the campfire API,
-  the same on both sides) and says `ENTRY Campfire: A runs B's ...`.
+  the same on both sides; `src/host/` is read as `src/sokol/` while main has no `src/host`) and says
+  `ENTRY Campfire: A runs B's ...`. Side A builds void3d only with its generated shader headers
+  (`scripts/ensureShaders.sh` in `../void-ab-main`, a regen; or the main checkout's headers when its
+  `out/shaderHeaders.cksum` matches A's inputs).
 - **Flows**: each row of the table carries its flow (`scripts/benchFlow.awk`): `submit` is
   `present.ms`, the CPU time of recording and submitting a frame; `frame` is `frame.ms`, the wall
   time between frames, vsync-bound on both sides (Present interval 1, sokol_app's default
