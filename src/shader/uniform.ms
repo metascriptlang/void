@@ -89,17 +89,23 @@ function storeMember(s: Stores, m: ShaderModule, values: Node, at: Node, floatIn
 export macro writeUniform(values: Node, at: Node, value: Node): Node {
 	const type = getTypeArg();
 	const name = (getTypeImpl(type) as TypeObjectData).typExprTypeName;
+	function fail(n: Node, msg: string): never {
+		error("writeUniform<" + name + ">: " + msg, n);
+	}
+	function requireBound(n: Node, what: string): void {
+		if (!isPath(n)) {
+			fail(n, "the " + what + " is a name or a field path, bound before the call");
+		}
+	}
 	const block = uniformBlockOf(getTypeImpl(ShaderTypeRegistry)!, type);
-	if (!block.ok) { error("writeUniform<" + name + ">: " + block.error, type); }
+	if (!block.ok) { fail(type, block.error); }
 	const m = block.value;
 	const layout = uniformBlockLayout(m, 0);
-	if (!layout.ok) { error("writeUniform<" + name + ">: " + layout.error, type); }
-	if (!isPath(values)) { error("writeUniform<" + name + ">: the buffer is a name or a field path, bound before the call", values); }
-	if (at.kind != NodeKind.NumberLiteral && !isPath(at)) {
-		error("writeUniform<" + name + ">: the offset is a name or a field path, bound before the call", at);
-	}
-	if (!isPath(value)) { error("writeUniform<" + name + ">: the value is a name or a field path, bound before the call", value); }
-	if (!sameType(getType(value), type)) { error("writeUniform<" + name + ">: the value is not a " + name, value); }
+	if (!layout.ok) { fail(type, layout.error); }
+	requireBound(values, "buffer");
+	if (at.kind != NodeKind.NumberLiteral) { requireBound(at, "offset"); }
+	requireBound(value, "value");
+	if (!sameType(getType(value), type)) { fail(value, "the value is not a " + name); }
 	let s = new Stores();
 	for (let i = 0; i < layout.value.size / 4; i += 1) { s.covered.push(false); }
 	const members = m.structs[0].members;
