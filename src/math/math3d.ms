@@ -39,42 +39,42 @@ function absolute(a: float32): float32 { return a < 0.0 ? -a : a; }
 
 // ---- Vec3 (h3d.Vector) ----
 
-export function vec3(x: float32, y: float32, z: float32): Vec3 {
+@inline export function vec3(x: float32, y: float32, z: float32): Vec3 {
 	return { x: x, y: y, z: z };
 }
 
-export function `+`(this a: Vec3, b: Vec3): Vec3 {
+@inline export function `+`(this a: Vec3, b: Vec3): Vec3 {
 	return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
 }
 
-export function `-`(this a: Vec3, b: Vec3): Vec3 {
+@inline export function `-`(this a: Vec3, b: Vec3): Vec3 {
 	return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
 }
 
 // Not an `*` overload: a second `*` on the same receiver is invisible to importing modules
 // on msc 0.2.53, and `p * m` is the one that matters.
-export function scaled(this a: Vec3, s: float32): Vec3 {
+@inline export function scaled(this a: Vec3, s: float32): Vec3 {
 	return { x: a.x * s, y: a.y * s, z: a.z * s };
 }
 
-export function dot(this a: Vec3, b: Vec3): float32 {
+@inline export function dot(this a: Vec3, b: Vec3): float32 {
 	return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
-export function cross(this a: Vec3, b: Vec3): Vec3 {
+@inline export function cross(this a: Vec3, b: Vec3): Vec3 {
 	return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x };
 }
 
-export function lengthSquared(this a: Vec3): float32 {
+@inline export function lengthSquared(this a: Vec3): float32 {
 	return a.x * a.x + a.y * a.y + a.z * a.z;
 }
 
-export function length(this a: Vec3): float32 {
+@inline export function length(this a: Vec3): float32 {
 	return squareRoot(a.lengthSquared());
 }
 
 // h3d.Vector.normalized: a zero vector stays zero.
-export function normalized(this a: Vec3): Vec3 {
+@inline export function normalized(this a: Vec3): Vec3 {
 	const lengthSquared: float32 = a.lengthSquared();
 	if (lengthSquared < EPSILON) {
 		return { x: 0.0, y: 0.0, z: 0.0 };
@@ -82,12 +82,12 @@ export function normalized(this a: Vec3): Vec3 {
 	return a.scaled(1.0 / squareRoot(lengthSquared));
 }
 
-export function lerp(this a: Vec3, b: Vec3, k: float32): Vec3 {
+@inline export function lerp(this a: Vec3, b: Vec3, k: float32): Vec3 {
 	return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, z: a.z + (b.z - a.z) * k };
 }
 
 // h3d.Vector.transform: a point, w = 1, the 4th column ignored (affine matrices).
-export function `*`(this p: Vec3, m: Mat4): Vec3 {
+@inline export function `*`(this p: Vec3, m: Mat4): Vec3 {
 	return {
 		x: p.x * m.m11 + p.y * m.m21 + p.z * m.m31 + m.m41,
 		y: p.x * m.m12 + p.y * m.m22 + p.z * m.m32 + m.m42,
@@ -96,7 +96,7 @@ export function `*`(this p: Vec3, m: Mat4): Vec3 {
 }
 
 // h3d.Vector.transform3x3: a direction, translation ignored.
-export function transformDirection(this d: Vec3, m: Mat4): Vec3 {
+@inline export function transformDirection(this d: Vec3, m: Mat4): Vec3 {
 	return {
 		x: d.x * m.m11 + d.y * m.m21 + d.z * m.m31,
 		y: d.x * m.m12 + d.y * m.m22 + d.z * m.m32,
@@ -106,12 +106,12 @@ export function transformDirection(this d: Vec3, m: Mat4): Vec3 {
 
 // ---- Vec4 (h3d.Vector4) ----
 
-export function vec4(x: float32, y: float32, z: float32, w: float32): Vec4 {
+@inline export function vec4(x: float32, y: float32, z: float32, w: float32): Vec4 {
 	return { x: x, y: y, z: z, w: w };
 }
 
 // Full 4x4 transform of (x, y, z, w).
-export function `*`(this p: Vec4, m: Mat4): Vec4 {
+@inline export function `*`(this p: Vec4, m: Mat4): Vec4 {
 	return {
 		x: p.x * m.m11 + p.y * m.m21 + p.z * m.m31 + p.w * m.m41,
 		y: p.x * m.m12 + p.y * m.m22 + p.z * m.m32 + p.w * m.m42,
@@ -121,7 +121,7 @@ export function `*`(this p: Vec4, m: Mat4): Vec4 {
 }
 
 // h3d.Vector.project: transform the point through a projection and divide by w.
-export function project(this p: Vec3, m: Mat4): Vec3 {
+@inline export function project(this p: Vec3, m: Mat4): Vec3 {
 	const clip: Vec4 = vec4(p.x, p.y, p.z, 1.0) * m;
 	const inverseW: float32 = 1.0 / clip.w;
 	return { x: clip.x * inverseW, y: clip.y * inverseW, z: clip.z * inverseW };
