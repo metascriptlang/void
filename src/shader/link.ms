@@ -1,4 +1,4 @@
-import { Offsets, shiftExpr, shiftStmts, shiftType } from "./descriptor";
+import { Offsets, programModule, shiftExpr, shiftStmts, shiftType } from "./descriptor";
 import {
 	AssignOp,
 	Builtin,
@@ -174,6 +174,15 @@ export function link(base: ShaderModule, effects: ShaderModule[]): Result<Shader
 	}
 	for (const f of m.functions) { pruneDeadFields(m, f); }
 	return withoutUnreadVaryings(m);
+}
+
+export function linkedProgram(vertexText: string, fragmentText: string, on: string[],
+	segmentTexts: string[]): Result<ShaderModule, string> {
+	const m = try programModule(vertexText, fragmentText, on);
+	if (segmentTexts.length == 0) { return Result.ok(m); }
+	let segments: ShaderModule[] = [];
+	for (const text of segmentTexts) { segments.push(try irFromText(text)); }
+	return link(m, segments);
 }
 
 class Liveness {

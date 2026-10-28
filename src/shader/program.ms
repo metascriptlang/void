@@ -19,7 +19,6 @@ import {
 	bytesBase64,
 	computeModule,
 	isComputeSource,
-	programModule,
 	programSource,
 	targetArms,
 	wordsBase64,
@@ -27,11 +26,9 @@ import {
 import { readFileBytes } from "std/fs";
 import { dxbcStage, findFxc } from "./dxbcCache";
 import { shaderBytecodeFromBase64 } from "./dxbc";
-import { ShaderModule } from "./ir";
-import { irFromText } from "./irText";
 import { metalFlags, metallibStage } from "./metallibCache";
 import { ShaderTarget } from "./layout";
-import { link } from "./link";
+import { linkedProgram } from "./link";
 import { reflectProgram } from "./reflect";
 import { Vec2f, Vec2i, Vec2u, Vec3f, Vec3i, Vec3u, Vec4f, Vec4i, Vec4u } from "./std";
 import { GPUShaderModuleDescriptor, UNLIMITED_UNIFORM_BYTES, shaderBindingsRefusal } from "../webgpu/types.ms";
@@ -348,17 +345,10 @@ export macro shaderBuild(
 		};
 	}
 
-	const stages = compute ? computeModule(stringValue(vertex), []) :
-		programModule(stringValue(vertex), stringValue(fragment), []);
-	if (!stages.ok) { refused(stages.error); }
-	const segments: ShaderModule[] = [];
-	for (const e of effects.elements) {
-		const segment = irFromText(stringValue(e));
-		if (!segment.ok) { refused(segment.error); }
-		segments.push(segment.value);
-	}
-	let module: Result<ShaderModule, string> = Result.ok(stages.value);
-	if (segments.length > 0) { module = link(stages.value, segments); }
+	const segmentTexts: string[] = [];
+	for (const e of effects.elements) { segmentTexts.push(stringValue(e)); }
+	const module = compute ? computeModule(stringValue(vertex), []) :
+		linkedProgram(stringValue(vertex), stringValue(fragment), [], segmentTexts);
 	if (!module.ok) { refused(module.error); }
 	const arm = targetArms()[armIndex()];
 	const target = arm.target;
