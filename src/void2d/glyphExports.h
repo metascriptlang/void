@@ -9,7 +9,6 @@
 #define VOID2D_PAGE_RGBA 2
 #define VOID2D_PAGE_MASK 3
 
-const unsigned char *void2dGlyphFaceData(int face, int *length);
 unsigned int void2dGlyphPageGeneration(int page);
 int void2dGlyphPageBytes(int page);
 int void2dGlyphPageKind(int page);

@@ -43,6 +43,8 @@ import "./kbBreakPortCheck";
 import "./kbFontPortCheck";
 import "./kbLookupPortCheck";
 import "./kbConfigPortCheck";
+import "./kbEnginePortCheck";
+import "./kbShapePortCheck";
 import "./kbShapeTablesCheck";
 import "./ucdOracleCheck";
 import "./h2dOracleCheck";
@@ -237,6 +239,7 @@ import "./post3dCheck";
 when (voidShaper) {
 	import "./shaperBridgeCheck";
 	import "./shapeOracleCheck";
+	import "./shaperPortCheck";
 	import "./shapedLayoutCheck";
 }
 when (voidBidi) {
