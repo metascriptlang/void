@@ -235,17 +235,17 @@ function twoStores(): void {
 	for (let i = 0; i < VERTEX_UNIFORM_LENGTH; i++) { camera[i] = 0.0; }
 	let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	for (let i = 0; i < LIGHT_UNIFORM_LENGTH; i++) { lights[i] = 0.0; }
-	const own: Vec<DrawItem> = [{ mesh: meshB, material: materialB, world: identity() }];
+	let own: Vec<DrawItem> = [{ mesh: meshB, material: materialB, world: identity() }];
 	const ownFrame: Result<boolean, RendererError> =
 		beginFrame(rendererB, own, camera, lights);
 	if (!ownFrame.ok) { console.log(`store identity: own frame ${ownFrame.error.toString()}`); }
 	check("B draws its own item", ownFrame.ok);
-	const foreign: Vec<DrawItem> = [{ mesh: meshA, material: materialA, world: identity() }];
+	let foreign: Vec<DrawItem> = [{ mesh: meshA, material: materialA, world: identity() }];
 	const foreignFrame: Result<boolean, RendererError> =
 		beginFrame(rendererB, foreign, camera, lights);
 	check("B refuses to draw A's item by name",
 		!foreignFrame.ok && foreignFrame.error == RendererError.ForeignMesh);
-	const crossed: Vec<DrawItem> = [{ mesh: meshB, material: materialA, world: identity() }];
+	let crossed: Vec<DrawItem> = [{ mesh: meshB, material: materialA, world: identity() }];
 	const crossedFrame: Result<boolean, RendererError> =
 		beginFrame(rendererB, crossed, camera, lights);
 	check("B refuses A's material on its own mesh by name",
@@ -296,7 +296,7 @@ const SIDE: int32 = 32;
 const BLACK: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 const GREEN: Vec4 = { x: 0.0, y: 1.0, z: 0.0, w: 1.0 };
 const VIEW: LowResView = { width: SIDE, height: SIDE, scale: 1, offsetX: 0.0, offsetY: 0.0 };
-const NO_ITEMS: Vec<DrawItem> = [];
+let NO_ITEMS: Vec<DrawItem> = [];
 
 let presetCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let presetLights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);

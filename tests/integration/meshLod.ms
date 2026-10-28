@@ -265,8 +265,8 @@ function checkOutlinedFrame(view: CameraView): void {
 		fail("outline changed selected item count");
 	}
 	for (let i = 0; i < (plain.length as int32); i++) {
-		const before = plain[i].drawnRange();
-		const after = selected[i].drawnRange();
+		const before = plain[i].range;
+		const after = selected[i].range;
 		if (before == null || after == null) { fail("outline lost selected range"); unreachable; }
 		if (before.base != after.base || before.count != after.count) {
 			fail("outline changed selected range");

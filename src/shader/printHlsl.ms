@@ -600,7 +600,8 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 	const texture = operand(p, args[0]);
 	if (args.length < 2) { return fail(p, "TextureLoad without coordinates"); }
 	const at = expr(p, args[1]);
-	const levelAt = t.shape == TextureShape.D2Array ? 3 : 2;
+	const layered = t.shape == TextureShape.D2Array || t.shape == TextureShape.Depth2dArray;
+	const levelAt = layered ? 3 : 2;
 	const level = args.length > levelAt ? expr(p, args[levelAt]) : "0";
 	if (t.kind == ShaderTypeKind.StorageTexture) {
 		if (texelWidth(t.format) != 1) {
@@ -621,7 +622,7 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 		TextureShape.D2 | TextureShape.Depth2d =>
 			texture + ".Load(int3(" + at + ", " + level + "))",
 		TextureShape.D3 => texture + ".Load(int4(" + at + ", " + level + "))",
-		TextureShape.D2Array =>
+		TextureShape.D2Array | TextureShape.Depth2dArray =>
 			texture + ".Load(int4(" + at + ", " + expr(p, args[2]) + ", " + level + "))",
 		TextureShape.Multisampled2d => texture + ".Load(int2(" + at + "), " + level + ")",
 		_ => fail(p, "TextureLoad of a " + t.shape.toString() + " texture"),

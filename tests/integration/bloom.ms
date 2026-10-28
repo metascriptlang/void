@@ -228,7 +228,7 @@ function draw(scene: Scene, slot: int32): void {
 	const view: CameraView = viewOf();
 	view.writeCameraBlock(cameraValues);
 	const onEdge: boolean = scene == Scene.Edge;
-	const items: Vec<DrawItem> = match (scene) {
+	let items: Vec<DrawItem> = match (scene) {
 		Scene.Bright => bright,
 		Scene.Patch => patch,
 		Scene.Edge => edge,

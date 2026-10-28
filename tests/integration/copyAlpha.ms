@@ -31,7 +31,7 @@ console.log("copy alpha diagnostic: completed global context/core construction")
 let copy: MaterialId = { store: 0, index: 0, generation: 0 };
 let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-const empty: Vec<DrawItem> = [];
+let empty: Vec<DrawItem> = [];
 
 function makeCore(): Renderer {
 	const made: Result<Renderer, RendererError> = Renderer.create(context);

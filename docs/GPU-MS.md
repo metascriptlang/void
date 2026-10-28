@@ -1151,3 +1151,28 @@ the macro VM card (`nullableEquals`), so no 3D build, golden or gate can run yet
   Neon session to update those paths in the same window. Haro (terminator) names none; Lightcube
   names it only in a doc.
 - **The gate cannot run** until the macro VM card is fixed in an installed `msc`.
+
+### 2026-10-28, Mac: main merged again; what Windows does before D3D12
+
+**The branch holds main at `5eb76565`.** Two merges: `4b6d6885` (273 commits) with its fixes
+`6fb4b3af`, `0ae0bd54`, `b0cc0b79`, `3d7b2709`, `c35cfd1a`, `173e8dda`, then `1f9987a3` (9
+commits). The macro VM card no longer stops `msc check src/test/index.ms` (647 modules, clean on
+`msc` 931d766a4), so the gate can run.
+
+**The LOD pick moved out of `beginFrame`.** `pickMeshLods(renderer, items, camera)` writes each
+LOD item's range and `lodCulled` into the frame's `Span<DrawItem>` before `beginFrame`, which takes
+the items read-only again; `docs/VOID3D.md` says why. main's own fix (`114a60cf`, `beginFrame`
+takes the items writable) is reverted to that in `1f9987a3`.
+
+**Before D3D12, for the land into main:**
+1. Pull, then run `scripts/regen-shaders.sh` with fxc. The Mac reports the DXBC of the programs
+   added since `43cf3828` as `dxbc miss … no fxc`; without them the default D3D11 build cannot
+   draw them. Commit the blobs.
+2. Run the D3D11, GL and Vulkan goldens on that tip and write the verdict here: GO, or the reds.
+3. D3D12 then starts as its own arc from `main`, after the land: a backend under
+   `src/webgpu/d3d12/`, ported from Mach's `d3d12.zig`, behind a flag; D3D11 stays the default
+   until D3D12 passes the goldens and an A/B.
+
+**The web build is blocked outside Void.** `scripts/build-web.sh` stops on yoga's `uint64` child
+index into `size_t` on wasm32 (`~/metascript/.inbox/yoga/2026-10-28-child-index-as-size-t-for-wasm32.md`);
+main is blocked the same way.

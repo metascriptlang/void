@@ -465,7 +465,7 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 	if (isComparison(p, pair)) {
 		return fail(p, "TextureLoad through comparison sampler pair '" + pair.name + "'");
 	}
-	const layered = t.shape == TextureShape.D2Array;
+	const layered = t.shape == TextureShape.D2Array || t.shape == TextureShape.Depth2dArray;
 	const levelAt = layered ? 3 : 2;
 	const level = args.length > levelAt ? intText(p, args[levelAt]) : "0";
 	const at = layered ? "ivec3(" + intText(p, args[1]) + ", " + intText(p, args[2]) + ")" :
@@ -474,7 +474,8 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 	const fetch = "texelFetch(" + pair.name + ", " + at + ", " + level + ")";
 	return match (t.shape) {
 		TextureShape.D1 | TextureShape.D2 | TextureShape.D2Array | TextureShape.Depth2d |
-			TextureShape.D3 | TextureShape.Multisampled2d => narrowed(fetch, e.type),
+			TextureShape.Depth2dArray | TextureShape.D3 | TextureShape.Multisampled2d =>
+			narrowed(fetch, e.type),
 		_ => fail(p, "TextureLoad of a " + t.shape.toString() + " texture"),
 	};
 }

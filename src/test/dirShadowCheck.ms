@@ -346,7 +346,7 @@ test "a frame with a shadow map refuses a caster with no shadow output before it
 	assert material.ok;
 	if (!material.ok) { return; }
 	const quads: MeshId = added(context, GpuMesh.billboards(9, 1));
-	const items: Vec<DrawItem> = [{ ...itemOf(context, material.value), mesh: quads }];
+	let items: Vec<DrawItem> = [{ ...itemOf(context, material.value), mesh: quads }];
 	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	camera[0] = 7.0;
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);

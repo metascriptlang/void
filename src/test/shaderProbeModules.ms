@@ -965,6 +965,14 @@ export function layeredBlurModule(): ShaderModule {
 	return m;
 }
 
+export function layeredLoadModule(): ShaderModule {
+	let m = layeredBlurModule();
+	let fetched = m.functions[1].body[0].expr.operands[0];
+	fetched.intrinsic = Intrinsic.TextureLoad;
+	fetched.operands = [fetched.operands[0], construct(IVEC2, [i32(1.0)]), i32(2.0), i32(0.0)];
+	return m;
+}
+
 export function opcodeOf(instruction: uint32[]): int32 {
 	return (instruction[0] & 65535) as int32;
 }

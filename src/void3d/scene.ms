@@ -616,8 +616,6 @@ export function addLodMeshNode(
 		material: slot,
 		localOriginRadius: context.meshData[mesh.index].bounds.boundingRadius(),
 		forcedLod: -1,
-		range: first.value,
-		culled: false,
 	};
 	return Result.ok(node);
 }
@@ -1579,6 +1577,7 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 					items[at].skinPalette = instance.skinPalette;
 					items[at].range = instance.range;
 					items[at].lod = instance.lod;
+					items[at].lodCulled = false;
 				} else {
 					items.push({
 						mesh: instance.mesh,

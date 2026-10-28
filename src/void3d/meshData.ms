@@ -100,10 +100,6 @@ export function empty(this typeof MeshData): MeshData {
 	};
 }
 
-export function withUvs(this typeof MeshData): MeshData {
-	return { ...MeshData.empty(), hasUvs: true };
-}
-
 export function copy(this data: Readonly<MeshData>): MeshData {
 	const wide = data.wideIndices;
 	return {
@@ -112,6 +108,10 @@ export function copy(this data: Readonly<MeshData>): MeshData {
 		indices: [...data.indices],
 		wideIndices: wide === null ? null : [...wide],
 	};
+}
+
+export function withUvs(this typeof MeshData): MeshData {
+	return { ...MeshData.empty(), hasUvs: true };
 }
 
 export function stride(this data: Readonly<MeshData>): int32 {

@@ -57,6 +57,7 @@ import {
 	io,
 	ioRead,
 	layeredBlurModule,
+	layeredLoadModule,
 	local,
 	prepend,
 	resource,
@@ -484,4 +485,14 @@ test "a cube array texture samples with its layer as the fourth coordinate" {
 	m.functions[1].body[0].expr.operands[0].operands[0].type = m.resources[0].type;
 	assert printed(m, 1, [0, 1], GlslTarget.Glsl430).includes(
 		"texture(srcTex_srcSmp, vec4(uv, float(2)))");
+}
+
+test "an array texture fetches with its layer packed into the coordinates" {
+	const m = layeredLoadModule();
+	assert irErrors(m).length == 0;
+	for (const target of TARGETS) {
+		const text = printed(m, 1, [0, 1], target);
+		assert text.includes("sampler2DArray srcTex_SPIRV_Cross_DummySampler;\n");
+		assert text.includes("texelFetch(srcTex_SPIRV_Cross_DummySampler, ivec3(ivec2(1), 2), 0)");
+	}
 }

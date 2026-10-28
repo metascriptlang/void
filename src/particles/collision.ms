@@ -122,11 +122,11 @@ export function fieldPush(field: ForceField, p: Vec3, speed: float32, size: floa
 		ForceFieldShape.Hemisphere => lp.y < 0.0 ? field.endRange + 1.0 : lp.length(),
 		ForceFieldShape.Cylinder => {
 			const half: float32 = field.length * 0.5;
-			return (lp.y > half || lp.y < -half) ? field.endRange + 1.0 : vec3(lp.x, 0.0, lp.z).length();
+			(lp.y > half || lp.y < -half) ? field.endRange + 1.0 : vec3(lp.x, 0.0, lp.z).length()
 		},
 		ForceFieldShape.Box => {
 			const a: Vec3 = absVec(lp);
-			return maxf(a.x, maxf(a.y, a.z));
+			maxf(a.x, maxf(a.y, a.z))
 		},
 	};
 	if (d > field.endRange) { return none; }
