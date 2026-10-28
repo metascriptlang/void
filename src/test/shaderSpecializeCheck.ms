@@ -1,4 +1,5 @@
-// One program key of a hand-built module keeps exactly the declarations its reached code reads.
+// One program key of a hand-built module keeps every resource it declares, and dropping the unread
+// declarations afterwards keeps exactly what its reached code reads.
 
 import {
 	BinaryOp,
@@ -38,7 +39,7 @@ import {
 	textureType,
 	vectorType,
 } from "../shader/ir";
-import { readsFrom, specialize } from "../shader/specialize";
+import { readsFrom, specialize, withoutUnread } from "../shader/specialize";
 
 function field(name: string, type: ShaderType): ShaderField {
 	let f = new ShaderField();
@@ -202,11 +203,14 @@ function shape(m: ShaderModule): string {
 		"; ios " + m.ios.map((v) => v.name).join(",");
 }
 
-function specialized(on: string[]): ShaderModule {
-	const r = specialize(twoFeatureModule(), on);
+function pruned(r: Result<ShaderModule, string>): ShaderModule {
 	if (!r.ok) { return new ShaderModule(); }
-	return r.value;
+	const kept = withoutUnread(r.value);
+	if (!kept.ok) { return new ShaderModule(); }
+	return kept.value;
 }
+
+function specialized(on: string[]): ShaderModule { return pruned(specialize(twoFeatureModule(), on)); }
 
 function decided(m: ShaderModule): boolean {
 	return m.entries.length == 1 && irErrors(m).length == 0 && m.features.length == 0 &&
@@ -223,6 +227,16 @@ test "no feature keeps only what every program reads" {
 	assert decided(m);
 	assert shape(m) ==
 		"resources base; functions mainFs; constants ; structs Base; ios uv,colour";
+}
+
+test "specializing keeps every declared resource and the structs they hold" {
+	const r = specialize(twoFeatureModule(), []);
+	assert r.ok;
+	if (r.ok) {
+		assert irErrors(r.value).length == 0;
+		assert shape(r.value) == "resources base,unusedBlock,fog,maskTex,maskSmp; " +
+			"functions mainFs; constants ; structs Base,Unused,Fog; ios uv,colour";
+	}
 }
 
 test "an input no read reaches stays declared" {
@@ -278,9 +292,7 @@ function earlyReturnModule(insideA: boolean): ShaderModule {
 }
 
 function earlyReturn(insideA: boolean, on: string[]): ShaderModule {
-	const r = specialize(earlyReturnModule(insideA), on);
-	if (!r.ok) { return new ShaderModule(); }
-	return r.value;
+	return pruned(specialize(earlyReturnModule(insideA), on));
 }
 
 test "a feature branch that returns drops what follows it" {
