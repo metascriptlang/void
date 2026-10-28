@@ -4,8 +4,10 @@ import { bitcastF32toU32 } from "../shader/std";
 let fakeTextures: Vec<Texture> = [];
 
 export function fakeTexture(view: uint32): Texture {
-	for (const texture of fakeTextures) {
-		if (texture.view == view) { return texture; }
+	for (let i = 0; i < fakeTextures.length; i++) {
+		if (fakeTextures[i].view != view) { continue; }
+		if (fakeTextures[i].isLost()) { fakeTextures[i] = Texture.adopt(0, view, 1, 1); }
+		return fakeTextures[i];
 	}
 	const texture: Texture = Texture.adopt(0, view, 1, 1);
 	fakeTextures.push(texture);
