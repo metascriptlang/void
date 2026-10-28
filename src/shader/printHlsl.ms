@@ -1305,6 +1305,25 @@ function semanticOf(p: Printer, io: ShaderIo): [string, string] {
 	};
 }
 
+function builtinRank(builtin: Builtin): int32 {
+	return match (builtin) {
+		Builtin.PrimitiveIndex => 0,
+		Builtin.Position => 1,
+		Builtin.InstanceIndex => 2,
+		Builtin.VertexIndex => 3,
+		Builtin.FragDepth => 4,
+		Builtin.FrontFacing => 5,
+		Builtin.SampleIndex => 6,
+		Builtin.SampleMask => 7,
+		Builtin.GlobalInvocationId => 8,
+		Builtin.LocalInvocationId => 9,
+		Builtin.LocalInvocationIndex => 10,
+		Builtin.WorkgroupId => 11,
+		Builtin.NumWorkgroups => 12,
+		Builtin.None => 13,
+	};
+}
+
 function qualifiers(io: ShaderIo): string {
 	const interpolation = match (io.interpolation) {
 		Interpolation.Perspective => "",
@@ -1343,7 +1362,7 @@ function ports(p: Printer, direction: IoDirection): Port[] {
 			const [type, semantic] = semanticOf(p, io);
 			port.type = type;
 			port.semantic = semantic;
-			port.order = 1000 + i;
+			port.order = 1000 + builtinRank(io.builtin);
 		}
 		out.push(port);
 	}
