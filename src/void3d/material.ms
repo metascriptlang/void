@@ -170,6 +170,7 @@ function cutoutOf(program: Program): ProgramKey {
 		Program.Decal => stopOnNoCutout(program),
 		Program.Sao => stopOnNoCutout(program),
 		Program.Blur => stopOnNoCutout(program),
+		Program.Line => stopOnNoCutout(program),
 	};
 }
 
@@ -189,7 +190,7 @@ function castsByDefault(program: Program): boolean {
 // (h3d/mat/Material.hx:240-246): the quads of a particle or a billboard are seen from either side.
 function culledByDefault(program: Program): boolean {
 	return program != Program.Billboard && program != Program.Particle &&
-		program != Program.ParticleVisual;
+		program != Program.ParticleVisual && program != Program.Line;
 }
 
 // The caller writes alphaKillFor(kind) into the material block, as every other uniform value.

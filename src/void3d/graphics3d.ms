@@ -4,6 +4,11 @@ import {
 	hasRoomFor, validIndexStorage, vertexCount, indexCount,
 } from "./meshData";
 import { addPoint } from "./bounds";
+import { Camera3D, CameraView } from "./camera";
+import {
+	LINE_COLOR, LINE_FAR, LINE_LENGTH_SCALE, LINE_NEAR, LINE_PIXEL_SIZE, LINE_UNIFORM_LENGTH,
+	LINE_WIDTH,
+} from "./gpu3d";
 
 export struct Graphics3D {
 	data: MeshData;
@@ -59,6 +64,26 @@ export function moveTo(
 	if (!finitePoint(point)) { return Result.err(GraphicsError.NonFinite); }
 	graphics.current = point;
 	return Result.ok(null);
+}
+
+// The line program's block (gpu3d.ms LINE_*) for `graphics` drawn through `camera`'s `view`:
+// lineStyle's width as LineShader's, Graphics' lengthScale of 1, the view's target as pixelSize
+// (RenderContext's 2 / width, 2 / height) and the camera's near and far, then `color`, the
+// material colour the vertex colours multiply.
+export function writeLineBlock(
+	graphics: Graphics3D, camera: Camera3D, view: CameraView, color: Rgba, out: Span<float32>,
+): void {
+	for (let i = 0; i < LINE_UNIFORM_LENGTH; i++) { out[i] = 0.0; }
+	out[LINE_WIDTH] = graphics.width;
+	out[LINE_LENGTH_SCALE] = 1.0;
+	out[LINE_PIXEL_SIZE] = 2.0 / (view.texelWidth as float32);
+	out[LINE_PIXEL_SIZE + 1] = 2.0 / (view.texelHeight as float32);
+	out[LINE_NEAR] = camera.nearPlane;
+	out[LINE_FAR] = camera.farPlane;
+	out[LINE_COLOR] = color.red;
+	out[LINE_COLOR + 1] = color.green;
+	out[LINE_COLOR + 2] = color.blue;
+	out[LINE_COLOR + 3] = color.alpha;
 }
 
 export function clearGraphics(ref graphics: Graphics3D): void {

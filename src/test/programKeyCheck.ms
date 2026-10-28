@@ -46,6 +46,7 @@ import {
 	LIGHT_UNIFORM_LENGTH,
 	MATERIAL_UNIFORM_SLOT,
 	DECAL_UNIFORM_LENGTH,
+	LINE_UNIFORM_LENGTH,
 	SCENE_DEPTH_VIEW_SLOT,
 	SCENE_DEPTH_SAMPLER_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
@@ -207,6 +208,7 @@ const EVERY_PROGRAM: Vec<Program> = [
 	Program.LitTextured, Program.UnlitTextured, Program.BloomDownsampleFirst,
 	Program.BloomDownsample, Program.BloomUpsample, Program.OutlineMask, Program.OutlineMix,
 	Program.OutlineWidth, Program.ParticleVisual, Program.Decal, Program.Sao, Program.Blur,
+	Program.Line,
 ];
 
 const SCENE_PROGRAMS: Vec<Program> = [
@@ -239,6 +241,7 @@ function layoutFor(key: ProgramKey): VertexLayout {
 		Program.Blur => VertexLayout.Fullscreen,
 		Program.LitTextured => VertexLayout.LitTextured,
 		Program.UnlitTextured => VertexLayout.LitTextured,
+		Program.Line => VertexLayout.LitTextured,
 	};
 }
 
@@ -280,7 +283,7 @@ test "every key packs to bits of its own, and each declared one reads its progra
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 174 + 6 + 1 + 1 + 1;
+	assert declared == 174 + 6 + 1 + 1 + 1 + 1;
 }
 
 test "the blur program is a screen program of the core, with its block, a view and a sampler" {
@@ -313,6 +316,17 @@ test "the decal program is the core's alone, on the Lit layout, and reads the sc
 	assert uniformBlockLength(key, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
 	assert textureSlotMask(key) == 1 + (1 << (SCENE_DEPTH_VIEW_SLOT as uint32));
 	assert samplerSlotMask(key) == 1 + (1 << (SCENE_DEPTH_SAMPLER_SLOT as uint32));
+}
+
+test "the line program is the core's alone, on the lit-textured layout, with its own block" {
+	const key: ProgramKey = ProgramKey.of(Program.Line);
+	assert (Program.Line as int32) == 18 && declares(key) && !isScreenProgram(Program.Line);
+	assert !declares(key.withPreset(Preset.PixelArt)) && !declares(key.withPreset(Preset.Shadow));
+	assert vertexLayoutOf(key) == VertexLayout.LitTextured;
+	assert uniformBlockLength(key, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
+	assert uniformBlockLength(key, MATERIAL_UNIFORM_SLOT) == LINE_UNIFORM_LENGTH;
+	assert uniformBlockLength(key, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
+	assert textureSlotMask(key) == 0 && samplerSlotMask(key) == 0;
 }
 
 test "skin programs own slot7 and keep matching colour/shadow layouts" {

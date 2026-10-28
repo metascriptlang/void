@@ -67,6 +67,8 @@ export enum Program {
 	Sao,
 	// Heaps' Blur, one direction per draw (blur.ms BLUR_*).
 	Blur,
+	// h3d.scene.Graphics' screen-space lines over graphics3d.ms' roots (LINE_*).
+	Line,
 }
 
 // Heaps adds a pass's output shaders to a material's (h3d.pass.Output); sokol-shdc programs
@@ -326,6 +328,7 @@ export function isScreenProgram(program: Program): boolean {
 		Program.Decal => false,
 		Program.Sao => true,
 		Program.Blur => true,
+		Program.Line => false,
 	};
 }
 
@@ -533,6 +536,16 @@ export const DECAL_TONE_MAPPED: int32 = 11;
 export const DECAL_NORMAL_FADE_START: int32 = 12;
 export const DECAL_NORMAL_FADE_END: int32 = 13;
 export const DECAL_NORMAL_FADE: int32 = 14;
+// The line program's block (shader3d.ms LineParams), read by its vertex stage: LineShader's
+// width and lengthScale and the target's pixelSize, then the camera's zNear and zFar, then the
+// material colour.
+export const LINE_UNIFORM_LENGTH: int32 = 12;
+export const LINE_WIDTH: int32 = 0;
+export const LINE_LENGTH_SCALE: int32 = 1;
+export const LINE_PIXEL_SIZE: int32 = 2;
+export const LINE_NEAR: int32 = 4;
+export const LINE_FAR: int32 = 5;
+export const LINE_COLOR: int32 = 8;
 // The SAO program's block (post3d.ms SaoParams) at the screen slot, then its views: the depth and
 // the normal target read through the point sampler, the noise through its own.
 export const SAO_UNIFORM_SLOT: int32 = 0;

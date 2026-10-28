@@ -6,6 +6,11 @@ import { Vec2f, Vec4f, vec2f, vec3f, vec4f } from "../shader/std";
 import { vec3, vec4, Vec3, Vec4 } from "../math/math3d";
 import { Camera3D, CameraView, CameraError, ProjectionKind } from "../void3d/camera";
 import { lineClipOffset, lineScreenDirection, lineViewDepth } from "../void3d/shader3d";
+import { Graphics3D, lineStyle, writeLineBlock } from "../void3d/graphics3d";
+import {
+	LINE_COLOR, LINE_FAR, LINE_LENGTH_SCALE, LINE_NEAR, LINE_PIXEL_SIZE, LINE_UNIFORM_LENGTH,
+	LINE_WIDTH,
+} from "../void3d/gpu3d";
 
 const NEAR: float32 = 1.0;
 const FAR: float32 = 11.0;
@@ -118,4 +123,20 @@ test "an orthographic depth goes through the same linearize, from near to far" {
 	const middle: float32 = 0.5;
 	const depth: float32 = NEAR + (FAR - NEAR) * middle;
 	assert approx(lineViewDepth(middle, NEAR, FAR), NEAR * FAR / (FAR + NEAR - depth));
+}
+
+test "the line block carries lineStyle's width, the target's pixel size and the depth range" {
+	let graphics: Graphics3D = Graphics3D.create();
+	assert lineStyle(graphics, 4.0, 0xffffff, 1.0).ok;
+	const view: CameraView = resolved(perspective(), 320, 180);
+	let out: Vec<float32> = new Array(LINE_UNIFORM_LENGTH);
+	writeLineBlock(graphics, perspective(), view, { red: 0.5, green: 0.25, blue: 1.0, alpha: 0.75 },
+		out);
+	assert out[LINE_WIDTH] == 4.0 && out[LINE_LENGTH_SCALE] == 1.0;
+	assert approx(out[LINE_PIXEL_SIZE], 2.0 / 320.0);
+	assert approx(out[LINE_PIXEL_SIZE + 1], 2.0 / 180.0);
+	assert out[LINE_NEAR] == NEAR && out[LINE_FAR] == FAR;
+	assert out[LINE_COLOR] == 0.5 && out[LINE_COLOR + 1] == 0.25;
+	assert out[LINE_COLOR + 2] == 1.0 && out[LINE_COLOR + 3] == 0.75;
+	assert out[LINE_FAR + 1] == 0.0 && out[LINE_FAR + 2] == 0.0;
 }

@@ -375,3 +375,4 @@ litTexturedPbrEmissiveMapsNormalMapCutoutShadowedUvBParallax LIT_TEXTURED CORE P
 decal DECAL CORE - decalVs decalFs LIT
 sao SAO CORE - saoVs saoFs FULLSCREEN
 blur BLUR CORE - fullscreenVs blurFs FULLSCREEN
+line LINE CORE - lineVs lineFs LIT_TEXTURED

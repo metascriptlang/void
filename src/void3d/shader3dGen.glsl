@@ -4027,3 +4027,142 @@ void main() {
 }
 @end
 
+@vs lineVs
+layout(binding=0) uniform vertexParams {
+    mat4 viewProj;
+    vec4 cameraRight;
+    vec4 cameraUp;
+    vec4 cameraPosition;
+};
+layout(binding=3) uniform lineParams {
+    vec4 lineShape;
+    vec4 lineDepth;
+    vec4 lineColor;
+};
+in vec3 position;
+in vec3 normal;
+in vec2 uv;
+in vec4 color;
+#ifdef NORMAL_MAP
+in vec4 tangent;
+#endif
+#ifdef OCCLUSION_UV_B
+in vec2 uvB;
+#endif
+#ifdef SKINNED
+in vec4 skinJoints;
+#endif
+#ifdef SKINNED
+in vec4 skinWeights;
+#endif
+in vec4 instanceRow0;
+in vec4 instanceRow1;
+in vec4 instanceRow2;
+in vec4 instanceColor;
+out vec4 baseColor;
+mat4 instanceWorld(vec4 row0, vec4 row1, vec4 row2) {
+    return transpose(mat4(row0, row1, row2, vec4(0.0, 0.0, 0.0, 1.0)));
+}
+vec2 lineScreenDirection(vec3 direction, vec4 right, vec4 up) {
+    vec2 projected = vec2((dot(direction, right.xyz) * right.w), (dot(direction, up.xyz) * up.w));
+    return projected * (1.0 / length(projected));
+}
+float lineViewDepth(float depth, float zNear, float zFar) {
+    return ((2.0 * zNear) * zFar) / ((zFar + zNear) - (((2.0 * depth) - 1.0) * (zFar - zNear)));
+}
+vec2 lineClipOffset(vec2 screenDirection, float side, float viewDepth, vec2 pixelSize, float width) {
+    return (vec2(screenDirection.y, (-screenDirection.x)) * pixelSize) * (((side - 0.5) * viewDepth) * width);
+}
+vec3 srgbToLinear(vec3 srgb) {
+    vec3 low = srgb * 0.0773993808;
+    vec3 high = pow(max(((srgb * 0.9478672986) + vec3(0.0521327014)), vec3(0.0)), vec3(2.4));
+    return vec3(((srgb.x <= 0.04045) ? low.x : high.x), ((srgb.y <= 0.04045) ? low.y : high.y), ((srgb.z <= 0.04045) ? low.z : high.z));
+}
+vec3 linearToSrgb(vec3 rgb) {
+    vec3 low = rgb * 12.92;
+    vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
+    return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
+}
+vec4 unlitShade(vec4 texel, vec4 baseColor_1, vec4 materialColor) {
+    vec3 surface = srgbToLinear(baseColor_1.rgb) * srgbToLinear(materialColor.rgb);
+    surface = surface * srgbToLinear(texel.rgb);
+    return vec4(linearToSrgb(surface), ((baseColor_1.a * materialColor.a) * texel.a));
+}
+void main() {
+    mat4 matrix = instanceWorld(instanceRow0, instanceRow1, instanceRow2);
+    vec4 shape = lineShape;
+    vec4 depthRange = lineDepth;
+    vec3 direction = mat3(matrix) * normal;
+    vec4 root = matrix * vec4(position, 1.0);
+    vec3 world = root.xyz + (direction * (uv.x * shape.y));
+    vec4 clip = viewProj * vec4(world, 1.0);
+    vec2 across = lineScreenDirection(direction, cameraRight, cameraUp);
+    float depth = lineViewDepth((clip.z / clip.w), depthRange.x, depthRange.y);
+    vec2 offset = lineClipOffset(across, uv.y, depth, shape.zw, shape.x);
+    vec4 color_1 = color * instanceColor;
+    baseColor = unlitShade(vec4(1.0, 1.0, 1.0, 1.0), color_1, lineColor);
+    gl_Position = vec4((clip.xy + offset), clip.z, clip.w);
+    return;
+}
+@end
+
+@fs lineFs
+layout(binding=6) uniform frameParams {
+    vec4 frame;
+    vec4 cameraPosition;
+    vec4 envParams;
+};
+in vec4 baseColor;
+layout(location=0) out vec4 fragColor;
+vec3 srgbToLinear(vec3 srgb) {
+    vec3 low = srgb * 0.0773993808;
+    vec3 high = pow(max(((srgb * 0.9478672986) + vec3(0.0521327014)), vec3(0.0)), vec3(2.4));
+    return vec3(((srgb.x <= 0.04045) ? low.x : high.x), ((srgb.y <= 0.04045) ? low.y : high.y), ((srgb.z <= 0.04045) ? low.z : high.z));
+}
+vec3 linearToSrgb(vec3 rgb) {
+    vec3 low = rgb * 12.92;
+    vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
+    return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
+}
+vec3 toneCurved(vec3 exposed, float mode) {
+    if (mode == 1.0) {
+        return exposed / (exposed + vec3(1.0));
+    }
+    if (mode == 2.0) {
+        vec3 a = exposed * ((2.51 * exposed) + 0.03);
+        vec3 b = (exposed * ((2.43 * exposed) + 0.59)) + 0.14;
+        return clamp((a / b), vec3(0.0), vec3(1.0));
+    }
+    if (mode == 3.0) {
+        float startCompression = 0.76;
+        float desaturation = 0.15;
+        float x = min(exposed.x, min(exposed.y, exposed.z));
+        float offset = (x < 0.08) ? (x - ((6.25 * x) * x)) : 0.04;
+        vec3 color = exposed - offset;
+        float peak = max(color.x, max(color.y, color.z));
+        if (peak >= startCompression) {
+            float d = 1.0 - startCompression;
+            float newPeak = 1.0 - ((d * d) / ((peak + d) - startCompression));
+            color = color * (newPeak / peak);
+            float g = 1.0 - (1.0 / ((desaturation * (peak - newPeak)) + 1.0));
+            color = mix(color, vec3(newPeak), g);
+        }
+        return color;
+    }
+    return clamp(exposed, vec3(0.0), vec3(1.0));
+}
+vec3 toneMapped(vec3 rgb, vec4 tone) {
+    if (tone.z == 1.0) {
+        return srgbToLinear(rgb);
+    }
+    if ((tone.y == 1.0) && (tone.w == 0.0)) {
+        return rgb;
+    }
+    return linearToSrgb(toneCurved((srgbToLinear(rgb) * tone.y), tone.w));
+}
+void main() {
+    fragColor = vec4(toneMapped(baseColor.rgb, frame), baseColor.a);
+    return;
+}
+@end
+

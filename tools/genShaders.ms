@@ -8,6 +8,8 @@ import {
 	copyFs,
 	decalFs,
 	decalVs,
+	lineFs,
+	lineVs,
 	litFs,
 	litTexturedFs,
 	litTexturedVs,
@@ -68,3 +70,5 @@ const shadowUnlit = glslLinked(shadowUnlitTexturedFs, unlitTexturedVs);
 console.log(stage("fs", "shadowUnlitTexturedFs", shadowUnlit));
 console.log(stage("vs", "decalVs", glsl(decalVs)));
 console.log(stage("fs", "decalFs", glslLinked(decalFs, decalVs)));
+console.log(stage("vs", "lineVs", glsl(lineVs)));
+console.log(stage("fs", "lineFs", glslLinked(lineFs, lineVs)));

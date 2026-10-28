@@ -828,8 +828,8 @@ export function lineScreenDirection(direction: Vec3f, right: Vec4f, up: Vec4f): 
 }
 
 // LineShader.linearize with reverseDepth off: the view depth of a projected depth in [0, 1].
-export function lineViewDepth(depth: float32, near: float32, far: float32): float32 {
-	return (2.0 * near * far) / (far + near - (2.0 * depth - 1.0) * (far - near));
+export function lineViewDepth(depth: float32, zNear: float32, zFar: float32): float32 {
+	return (2.0 * zNear * zFar) / (zFar + zNear - (2.0 * depth - 1.0) * (zFar - zNear));
 }
 
 // LineShader.vertex: what a corner on `side` (its uv.y, 0 or 1) adds to its clip xy, across the
@@ -839,6 +839,57 @@ export function lineClipOffset(
 ): Vec2f {
 	return vec2f(screenDirection.y, -screenDirection.x) * pixelSize *
 		((side - 0.5) * viewDepth * width);
+}
+
+// gpu3d.ms LINE_*: width, lengthScale and pixelSize, then the camera's near and far, then the
+// material colour. The vertex stage reads the whole block.
+export struct LineParams {
+	lineShape: Vec4f;
+	lineDepth: Vec4f;
+	lineColor: Vec4f;
+}
+
+export struct LineVertexBindings {
+	@binding(0) vertexParams: VertexParams;
+	@binding(3) lineParams: LineParams;
+}
+
+export struct LineBindings {
+	@binding(6) frameParams: FrameParams;
+}
+
+export struct LineVaryings {
+	baseColor: Vec4f;
+	@builtin(position) clip: Vec4f;
+}
+
+export struct LineFragmentInput {
+	baseColor: Vec4f;
+}
+
+// LineShader over the roots graphics3d.ms writes: the delta in the normal, uv.x 1 at the end and
+// uv.y the side. VertexColorAlpha's colour is shaded as unlitShade shades an untextured one.
+export function lineVs(input: TexturedAttributes, b: LineVertexBindings): LineVaryings {
+	const matrix = instanceWorld(input.instanceRow0, input.instanceRow1, input.instanceRow2);
+	const shape = b.lineParams.lineShape;
+	const depthRange = b.lineParams.lineDepth;
+	const direction = upperLeft3x3(matrix) * input.normal;
+	const root = matrix * vec4f(input.position, 1.0);
+	const world = root.xyz + direction * (input.uv.x * shape.y);
+	const clip = b.vertexParams.viewProj * vec4f(world, 1.0);
+	const across = lineScreenDirection(direction, b.vertexParams.cameraRight,
+		b.vertexParams.cameraUp);
+	const depth = lineViewDepth(clip.z / clip.w, depthRange.x, depthRange.y);
+	const offset = lineClipOffset(across, input.uv.y, depth, shape.zw, shape.x);
+	const color = input.color * input.instanceColor;
+	return {
+		baseColor: unlitShade(vec4f(1.0, 1.0, 1.0, 1.0), color, b.lineParams.lineColor),
+		clip: vec4f(clip.xy + offset, clip.z, clip.w),
+	};
+}
+
+export function lineFs(input: LineFragmentInput, b: LineBindings): Vec4f {
+	return vec4f(toneMapped(input.baseColor.rgb, b.frameParams.frame), input.baseColor.a);
 }
 
 // h3d.shader.ColorSpaces' exact pair (ColorSpaces.hx:56-76); bevy_color's gamma_function carries
