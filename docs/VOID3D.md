@@ -6880,6 +6880,26 @@ and `rendererCheck.ms` (wake). Making a non-looping flipbook loop turns the hold
 
 Next: a GPU readback of a two-frame flipbook, which waits on its own GO.
 
+### Distance fade: Heaps' DistanceFade, as built (2026-10-28)
+
+Heaps' `DistanceFade` (`h3d/shader/DistanceFade.hx`) scales a pixel's alpha by its distance
+to the camera. The alpha rises from 0 to 1 between `nearMinFade` and `nearMaxFade`, falls back
+to 0 between `farMinFade` and `farMaxFade`, and the smaller of the two sides wins. void3d
+carries it beside the flipbook, in the moving block of a UV-transform key (`gpu3d.ms`
+`MOVING_FADE_*`):
+
+- `shader3d.ms` `distanceFade` runs after the cutout test in the lit, unlit and pixel-art
+  programs, so a cut material discards on its unfaded alpha. Unlit textured UV-transform
+  programs carry a world-position varying for it.
+- Heaps' `nearFadeEnabled` and `farFadeEnabled` are a side whose end lies past its start.
+  Heaps divides by zero on an enabled side with equal ends; void3d reads that side as off.
+- The distance is measured from `setCameraPosition`, and `beginFrame` refuses a fading
+  material with `RendererError.CameraPosition` until it is set, as it refuses a pbr key.
+- The fade shows only through blending, as in Heaps: draw the material in the alpha phase.
+
+Pinned in `litShaderCheck.ms` (both sides, empty pairs) and `programKeyCheck.ms` (the refusal,
+and no refusal for an empty pair).
+
 ### Trail: CPU history and ribbon checkpoint
 
 Apps sample a world pose/time into standalone `Trail` state and obtain `MeshData` through
