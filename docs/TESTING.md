@@ -381,8 +381,8 @@ in the same change as the fix.
 
 | Backend | Conformance | Runs |
 |---|---|---|
-| D3D11 | **120 / 120 scenes byte-identical** | every full gate, this box |
-| GL core 4.3 desktop (glsl430) | **120 / 120**: 94 byte-identical, 26 within the cross-backend bound, 0 structural failures, 0 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
+| D3D11 | **121 / 121 scenes byte-identical** | every full gate, this box |
+| GL core 4.3 desktop (glsl430) | **121 / 121**: 95 byte-identical, 26 within the cross-backend bound, 0 structural failures, 0 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
 | Metal macOS | **102 / 120** on an Apple GPU, 2026-10-22: 15 byte-identical, 87 within the cross-backend bound, 18 over it by delta 2 to 4 spread over many pixels with no shape moved (`conformance:metal-gpu-rounding`). The readback blits the window's drawable into a shared `MTLBuffer` on sokol's own command queue, so it is ordered after the committed frame | `sh scripts/golden.sh --backend metal`, and every full gate on a Mac |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |
 | GLES3 Android | shares the `glReadPixels` path; needs the human's device | SKIP |
