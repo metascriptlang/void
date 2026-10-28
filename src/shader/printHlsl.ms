@@ -40,6 +40,7 @@ import {
 	innermost,
 	ioLocation,
 	ofKinds,
+	withoutSamplers,
 } from "./irWalk";
 import {
 	binaryOperator,
@@ -500,10 +501,6 @@ function inverseOf(p: Printer, e: ShaderExpr): string {
 	return name + "(" + expr(p, e.operands[0]) + ")";
 }
 
-function withoutSampler(e: ShaderExpr): ShaderExpr[] {
-	return e.operands.filter((o) => o.type.kind != ShaderTypeKind.Sampler);
-}
-
 function converted(p: Printer, text: string, from: string, to: ShaderType): string {
 	const target = typeName(p, to);
 	return from == target ? text : target + "(" + text + ")";
@@ -531,7 +528,7 @@ function sizeResult(shape: TextureShape, result: string, kept: string): string {
 }
 
 function sizeOf(p: Printer, e: ShaderExpr): string {
-	const args = withoutSampler(e);
+	const args = withoutSamplers(e.operands);
 	const t = args[0].type;
 	const texture = expr(p, args[0]);
 	if (t.kind == ShaderTypeKind.StorageTexture) {
@@ -598,7 +595,7 @@ function lengthOf(p: Printer, e: ShaderExpr): string {
 }
 
 function loadOf(p: Printer, e: ShaderExpr): string {
-	const args = withoutSampler(e);
+	const args = withoutSamplers(e.operands);
 	const t = args[0].type;
 	const texture = operand(p, args[0]);
 	if (args.length < 2) { return fail(p, "TextureLoad without coordinates"); }

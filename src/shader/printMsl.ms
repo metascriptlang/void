@@ -28,7 +28,9 @@ import {
 	isAtomic,
 	isUniformLoad,
 	frexpResultType,
+	isArrayTexture,
 	modfResultType,
+	structType,
 	texelScalar,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
@@ -393,11 +395,6 @@ function binaryText(p: Printer, e: ShaderExpr): string {
 	return (e.binary == BinaryOp.Equal ? "all" : "any") + text;
 }
 
-function isArrayed(t: ShaderType): boolean {
-	return t.shape == TextureShape.D2Array || t.shape == TextureShape.CubeArray ||
-		t.shape == TextureShape.Depth2dArray;
-}
-
 function texelCoordinate(p: Printer, at: ShaderExpr): string {
 	const rows = at.type.kind == ShaderTypeKind.Vector ? String(at.type.rows) : "";
 	return "uint" + rows + "(" + exprText(p, at) + ")";
@@ -407,7 +404,7 @@ function sampleText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
 	let args = [exprText(p, o[1]), exprText(p, o[2])];
-	if (isArrayed(t)) {
+	if (isArrayTexture(t)) {
 		args.push("uint(" + exprText(p, o[3]) + ")");
 	}
 	if (p.stage != ShaderStage.Fragment && t.shape != TextureShape.D1) { args.push("level(0.0)"); }
@@ -429,7 +426,7 @@ function gradientName(p: Printer, shape: TextureShape): string {
 function explicitSampleText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
-	const layer = isArrayed(t) ? 1 : 0;
+	const layer = isArrayTexture(t) ? 1 : 0;
 	let args = [exprText(p, o[1]), exprText(p, o[2])];
 	if (layer == 1) { args.push("uint(" + exprText(p, o[3]) + ")"); }
 	const at = 3 + layer;
@@ -477,7 +474,7 @@ function loadText(p: Printer, e: ShaderExpr): string {
 		t.shape == TextureShape.DepthCube) {
 		return fail(p, "TextureLoad of a cube texture, which names no face");
 	}
-	const wanted = isArrayed(t) ? 4 : 3;
+	const wanted = isArrayTexture(t) ? 4 : 3;
 	if (o.length < wanted) {
 		return fail(p, t.shape == TextureShape.Multisampled2d ?
 			"TextureLoad of a multisampled texture takes a sample index" :
@@ -1000,19 +997,12 @@ function layoutError(m: ShaderModule, structIndex: int32, layout: StructLayout, 
 		}
 		end = offset + size;
 	}
-	const [_align, natural] = naturalExtent(m, structTypeOf(structIndex));
+	const [_align, natural] = naturalExtent(m, structType(structIndex));
 	if (sized && natural != layout.size) {
 		return owner + ": an element is " + String(layout.size) + " bytes in the host layout and " +
 			String(natural) + " in MSL";
 	}
 	return "";
-}
-
-function structTypeOf(index: int32): ShaderType {
-	let t = new ShaderType();
-	t.kind = ShaderTypeKind.Struct;
-	t.structIndex = index;
-	return t;
 }
 
 function bufferLayoutError(m: ShaderModule, index: int32): string {
@@ -1154,7 +1144,7 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 	let structs: int32[] = [];
 	let reached = reads.structs.map((n) => n);
 	reached.sort((a, b) => a - b);
-	for (const i of reached) { structOrder(m, structTypeOf(i), structs); }
+	for (const i of reached) { structOrder(m, structType(i), structs); }
 	let inputs: string[] = [];
 	let outputs: string[] = [];
 	let params: string[] = [];

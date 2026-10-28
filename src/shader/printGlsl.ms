@@ -32,6 +32,7 @@ import {
 	isUniformLoad,
 	sameShaderType,
 	texelScalar,
+	vectorType,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import {
@@ -43,6 +44,7 @@ import {
 	ioLocation,
 	ofKinds,
 	splitResults,
+	withoutSamplers,
 } from "./irWalk";
 import {
 	binaryOperator,
@@ -410,12 +412,8 @@ function samplerOperand(e: ShaderExpr): ShaderExpr | null {
 	return null;
 }
 
-function withoutSampler(e: ShaderExpr): ShaderExpr[] {
-	return e.operands.filter((o) => o.type.kind != ShaderTypeKind.Sampler);
-}
-
 function sizeOf(p: Printer, e: ShaderExpr): string {
-	const args = withoutSampler(e);
+	const args = withoutSamplers(e.operands);
 	const t = args[0].type;
 	if (t.kind == ShaderTypeKind.StorageTexture) {
 		const size = "imageSize(" + expr(p, args[0]) + ")";
@@ -440,8 +438,7 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	if (t.shape == TextureShape.D1) {
 		return p.es ? converted(p, call + ".x", "int", e.type) : converted(p, call, "int", e.type);
 	}
-	const layered = t.shape == TextureShape.D2Array || t.shape == TextureShape.Depth2dArray ||
-		t.shape == TextureShape.CubeArray;
+	const layered = isArrayTexture(t);
 	return converted(p, layered ? call + ".xy" : call, "ivec2", e.type);
 }
 
@@ -457,7 +454,7 @@ function samplesOf(p: Printer, e: ShaderExpr): string {
 }
 
 function loadOf(p: Printer, e: ShaderExpr): string {
-	const args = withoutSampler(e);
+	const args = withoutSamplers(e.operands);
 	const t = args[0].type;
 	if (args.length < 2) { return fail(p, "TextureLoad without coordinates"); }
 	if (t.kind == ShaderTypeKind.StorageTexture) {
@@ -589,16 +586,8 @@ function storeOf(p: Printer, e: ShaderExpr): string {
 		ScalarKind.Bool => fail(p, "a storage texture of bool texels"),
 	};
 	const written = rows == 4 ? converted(p, expr(p, value), typeName(p, value.type),
-		vectorTypeOf(channel)) : texel + "(" + expr(p, value) + ", " + repeated(zero, 4 - rows) + ")";
+		vectorType(channel, 4)) : texel + "(" + expr(p, value) + ", " + repeated(zero, 4 - rows) + ")";
 	return "imageStore(" + expr(p, o[0]) + ", " + imageAt(p, o) + ", " + written + ")";
-}
-
-function vectorTypeOf(s: ScalarKind): ShaderType {
-	let t = new ShaderType();
-	t.kind = ShaderTypeKind.Vector;
-	t.scalar = s;
-	t.rows = 4;
-	return t;
 }
 
 function intrinsicName(op: Intrinsic): string {

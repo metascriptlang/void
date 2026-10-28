@@ -35,6 +35,7 @@ import {
 	sameShaderType,
 	texelScalar,
 	isDepthShape,
+	isArrayTexture,
 } from "./ir";
 import { splitResults } from "./irWalk";
 import {
@@ -407,8 +408,7 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 	const args = e.operands.map((a) => expr(p, a));
 	const all = "(" + args.join(", ") + ")";
 	const texture = e.operands.length > 0 ? e.operands[0].type : new ShaderType();
-	const layered = texture.kind == ShaderTypeKind.Texture &&
-		(texture.shape == TextureShape.D2Array || texture.shape == TextureShape.Depth2dArray);
+	const layered = texture.kind == ShaderTypeKind.Texture && isArrayTexture(texture);
 	const cube = texture.kind == ShaderTypeKind.Texture &&
 		(texture.shape == TextureShape.Cube || texture.shape == TextureShape.DepthCube);
 	const isTexture = texture.kind == ShaderTypeKind.Texture;
