@@ -5,6 +5,7 @@ import {
 	GlyphPage,
 	GlyphPageHandle,
 	PageKind,
+	NO_GLYPH_PAGE,
 	GLYPH_PAGE_SIZE,
 	quantizeX,
 	snapBaseline,
@@ -93,14 +94,37 @@ export struct PlacedGlyph {
 	run: int32;
 }
 
-struct PlacedLine {
+export struct PlacedLine {
 	wrap: LineWrap;
 	top: float32;
 	x: float32;
 	first: int32;
 	count: int32;
 	colour: int32;
+	emitAt: int32;
+	emitCount: int32;
+	emitPage: GlyphPage;
 }
+
+export const NOT_EMITTED: int32 = -1;
+
+export struct LineEmitKey {
+	world: Transform2D;
+	col: Color;
+	scale: float32;
+	shiftX: float32;
+	shiftY: float32;
+	context: int32;
+}
+
+export const NO_LINE_EMIT_KEY: LineEmitKey = {
+	world: { a: 0.0, b: 0.0, c: 0.0, d: 0.0, tx: 0.0, ty: 0.0 },
+	col: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
+	scale: 0.0,
+	shiftX: 0.0,
+	shiftY: 0.0,
+	context: -1,
+};
 
 struct PlacementKey {
 	a: float32;
@@ -180,6 +204,8 @@ export interface LabelText {
 	outlineColor: Color;
 	placedOutline: Vec<PlacedGlyph>;
 	placedLines: Vec<PlacedLine>;
+	emitKey: LineEmitKey;
+	emitRunColours: Vec<Color>;
 }
 
 export const NO_CURSOR: int32 = -1;
@@ -300,6 +326,8 @@ export function allocateLabelText(): int32 {
 		outlineColor: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
 		placedOutline: new Array(0),
 		placedLines: new Array(0),
+		emitKey: NO_LINE_EMIT_KEY,
+		emitRunColours: new Array(0),
 	};
 	if ((freeLabelTexts.length as int32) > 0) {
 		const index: int32 = freeLabelTexts.pop();
@@ -1055,7 +1083,10 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 			const colourBefore: int32 = colourGlyphs;
 			const old: PlacedLine = keeps && li < (previousLines.length as int32)
 				? previousLines[li]
-				: { wrap: wrap, top: top, x: x, first: NOT_KEPT, count: 0, colour: 0 };
+				: {
+					wrap: wrap, top: top, x: x, first: NOT_KEPT, count: 0, colour: 0,
+					emitAt: NOT_EMITTED, emitCount: 0, emitPage: NO_GLYPH_PAGE,
+				};
 			if (old.first != NOT_KEPT && old.wrap === wrap && old.top == top && old.x == x) {
 				let k: int32 = old.first;
 				for (let gi: int32 = glyphStart; gi < glyphEnd; gi++) {
@@ -1074,6 +1105,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 				entry.placedLines.push({
 					wrap: wrap, top: top, x: x, first: first,
 					count: (entry.placed.length as int32) - first, colour: colourGlyphs - colourBefore,
+					emitAt: old.emitAt, emitCount: old.emitCount, emitPage: old.emitPage,
 				});
 				continue;
 			}
@@ -1204,6 +1236,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 			entry.placedLines.push({
 				wrap: wrap, top: top, x: x, first: first,
 				count: (entry.placed.length as int32) - first, colour: colourGlyphs - colourBefore,
+				emitAt: NOT_EMITTED, emitCount: 0, emitPage: NO_GLYPH_PAGE,
 			});
 		}
 	}

@@ -42,7 +42,9 @@ import {
 import {
 	REC_UI_FLOATS, REC_SPRITE_FLOATS, REC_UI_ORIGIN_SIZE, REC_SPRITE_ORIGIN_SIZE,
 } from "../../src/void2d/instanceLayout";
-import { rgba, tile, identity2d, vec2, Tile, whiteTile } from "../../src/void2d/types";
+import { Color, rgba, tile, identity2d, vec2, Tile, whiteTile } from "../../src/void2d/types";
+import { TextRun, UnderlineStyle } from "../../src/void2d/textLayout";
+import { DEFAULT_FONT } from "../../src/void2d/font";
 
 const W: float32 = 200.0;
 const H: float32 = 120.0;
@@ -546,6 +548,14 @@ test "a card's colour marks one UI range one record long, and an undone write ma
 	assert !s.context.dirtySprites && !s.context.dirtyVertices;
 }
 
+function plainRun(len: int32, color: Color): TextRun {
+	const clear: Color = rgba(0.0, 0.0, 0.0, 0.0);
+	return {
+		len: len, font: DEFAULT_FONT, color: color, background: clear, underline: clear,
+		wavy: false, underlineStyle: UnderlineStyle.Solid, strikethrough: clear, overline: clear,
+	};
+}
+
 function caretScene(): Scene2D {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const editor = s.label("caret", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 4.0);
@@ -573,6 +583,41 @@ test "a caret blink writes the caret's instance and nothing else" {
 	assert s.context.dirtyUi[1] == end.uiInstances;
 	assert !s.context.dirtySprites && !s.context.dirtyVertices;
 	assert same(hidden, fullFrame(s));
+}
+
+test "an edit inside one line of a label writes that line and skips the lines it kept" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const editor = s.label("alpha\nbeta\ngamma", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 4.0);
+	editor.setCursorIndex(2, rgba(1.0, 0.8, 0.3, 1.0));
+	editor.setCursorBlinkTime(0.0);
+	s.add(editor);
+	frame(s);
+	frame(s);
+	const skipped: int32 = s.context.uiSkipped;
+	editor.setText("alpha\nbexa\ngamma");
+	assert check(s, "one line edited", "patch");
+	assert s.context.uiSkipped - skipped == 10;
+	editor.setText("alpha\nbexa\ngammo");
+	assert check(s, "the last line edited", "patch");
+	assert s.context.uiSkipped - skipped == 19;
+	editor.setColor(rgba(0.5, 1.0, 1.0, 1.0));
+	assert check(s, "a colour", "patch");
+	assert s.context.uiSkipped - skipped == 19;
+}
+
+test "a styled label's run colour change writes every line again" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const editor = s.label("alpha\nbeta", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 4.0);
+	editor.setTextRuns([plainRun(6, rgba(1.0, 0.0, 0.0, 1.0)), plainRun(4, rgba(0.0, 1.0, 0.0, 1.0))]);
+	s.add(editor);
+	frame(s);
+	frame(s);
+	editor.setText("alpha\nbexa");
+	assert check(s, "one line edited", "patch");
+	const skipped: int32 = s.context.uiSkipped;
+	editor.setTextRuns([plainRun(6, rgba(0.0, 0.0, 1.0, 1.0)), plainRun(4, rgba(0.0, 1.0, 0.0, 1.0))]);
+	assert check(s, "a run's colour", "patch");
+	assert s.context.uiSkipped == skipped;
 }
 
 test "a scene is dirty until a frame draws what changed, and a still frame leaves it clean" {
