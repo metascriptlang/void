@@ -16,7 +16,7 @@ import {
 	beginPass,
 	beginScreenPass,
 } from "../../src/gpu/target";
-import { MeshData, MeshError, Rgba, addQuad, addTexturedQuad } from "../../src/void3d/meshData";
+import { MeshData, MeshError, Rgba, addTexturedQuad } from "../../src/void3d/meshData";
 import { Material, Phase, UniformBlock } from "../../src/void3d/material";
 import { TextureData, TextureId, TextureUploadError } from "../../src/void3d/texture";
 import {
@@ -125,7 +125,8 @@ function upload(data: MeshData): MeshId {
 }
 
 function face(ref data: MeshData, a: Vec3, b: Vec3, c: Vec3, d: Vec3, toward: Vec3): void {
-	if (!addQuad(data, a, b, c, d, toward, WHITE).ok) { unreachable; }
+	const built: Result<int32, MeshError> = addTexturedQuad(data, a, b, c, d, toward, WHITE);
+	if (!built.ok) { fail(`a box face was refused: ${built.error.toString()}`); }
 }
 
 function floor(): MeshId {
