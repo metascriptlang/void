@@ -23,6 +23,10 @@ ROWS=$(mktemp)
 trap 'rm -f "$ROWS"' EXIT
 
 load() {
+	if [ "$(uname -s)" = Darwin ]; then
+		top -l 2 -n 0 -s 1 | awk '/CPU usage/ { idle = $7 } END { sub(/%/, "", idle); printf "%.1f\n", 100 - idle }'
+		return
+	fi
 	powershell.exe -NoProfile -Command \
 		"(1..3 | ForEach-Object { (Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 1 -MaxSamples 1).CounterSamples[0].CookedValue } | Measure-Object -Average).Average.ToString('F1')" \
 		| tr -d '\r'
