@@ -29,6 +29,7 @@ import {
 	flipbookUvs,
 	litVs,
 	movedUv,
+	sinusUv,
 	saturated,
 	srgbToLinear,
 	straightTexel,
@@ -271,6 +272,14 @@ test "a distance fade rises over its near pair, falls over its far pair, and an 
 	assert within(distanceFade(25.0, range), 0.0);
 	assert distanceFade(0.0, vec4f(0.0)) == 1.0 && distanceFade(100.0, vec4f(0.0)) == 1.0;
 	assert distanceFade(100.0, vec4f(2.0, 4.0, 0.0, 0.0)) == 1.0;
+}
+
+test "a sine wave moves u by its amplitude along v and the time, and no amplitude is still" {
+	const deform = vec4f(2.0, 3.0, 0.1, 0.0);
+	assert nearUv(sinusUv(vec2f(0.25, 0.0), deform, 0.0), vec2f(0.25, 0.0));
+	assert nearUv(sinusUv(vec2f(0.25, 0.5), deform, 0.0), vec2f(0.25 + 0.1 * 0.997495, 0.5));
+	assert nearUv(sinusUv(vec2f(0.25, 0.0), deform, 0.25), vec2f(0.25 + 0.1 * 0.479426, 0.0));
+	assert nearUv(sinusUv(vec2f(0.4, 0.7), vec4f(2.0, 3.0, 0.0, 0.0), 5.0), vec2f(0.4, 0.7));
 }
 
 test "a colour key discards only its own texel, and a key with no alpha keys nothing" {
