@@ -1,4 +1,4 @@
-export function floatBits(value: float32): uint32 {
+@inline export function floatBits(value: float32): uint32 {
 	let cell: float32[1] = [value];
 	return (((cell as Span<float32>) as Ptr<float32>) as Ptr<uint32>)[0];
 }
