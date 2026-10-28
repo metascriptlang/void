@@ -440,6 +440,21 @@ export struct LitFaded {
 	worldPosition: Vec3f;
 }
 
+export struct EmissiveBindings {
+	emissiveMaterialParams: EmissiveMaterialParams;
+	movingEmissiveMaterialParams: MovingEmissiveMaterialParams;
+	pbrEmissiveMaterialParams: PbrEmissiveMaterialParams;
+	emissiveTexture: Texture2d;
+	baseSampler: Sampler;
+}
+
+export struct EmissiveKey {
+	@feature(PBR) pbr: boolean;
+	@feature(UV_TRANSFORM) uvTransform: boolean;
+	@feature(BACK_TEXTURE) backTexture: boolean;
+	@feature(DISSOLVE) dissolve: boolean;
+}
+
 function skinRow(b: VertexBindings, joints: Vec4f, weights: Vec4f, column: int32): Vec4f {
 	return b.skinParams.skinRows[(joints.x as int32) * 3 + column] * weights.x +
 		b.skinParams.skinRows[(joints.y as int32) * 3 + column] * weights.y +
@@ -1402,6 +1417,24 @@ export function emissiveOf(b: LitBindings, key: LitKey): Vec4f {
 	}
 }
 
+function emissionOf(b: EmissiveBindings, key: EmissiveKey): Vec4f {
+	if (key.pbr) {
+		return b.pbrEmissiveMaterialParams.emissive;
+	} else {
+		if (key.uvTransform || key.backTexture || key.dissolve) {
+			return b.movingEmissiveMaterialParams.emissive;
+		} else {
+			return b.emissiveMaterialParams.emissive;
+		}
+	}
+}
+
+export function emissive(lit: LitShaded, b: EmissiveBindings, key: EmissiveKey): LitShaded {
+	const glow = textureSample(b.emissiveTexture, b.baseSampler, lit.uv).rgb;
+	const color = emittedOver(lit.color, glow, emissionOf(b, key));
+	return { color: color, uv: lit.uv, noise: lit.noise };
+}
+
 export function pbrOf(b: LitBindings, key: LitKey): Vec4f {
 	if (key.emissive) {
 		return b.pbrEmissiveMaterialParams.pbr;
@@ -2121,10 +2154,6 @@ export function litTexturedFs(
 	const litShaded: LitShaded = { color: shaded, uv: uv, noise: noise };
 	const lit = hook(litShaded);
 	shaded = lit.color;
-	if (key.emissive) {
-		const glow = textureSample(b.emissiveTexture, b.baseSampler, lit.uv).rgb;
-		shaded = emittedOver(shaded, glow, emissiveOf(b, key));
-	}
 	if (key.dissolve) {
 		shaded = dissolveEdgeOver(shaded, lit.noise, dissolveOf(b, key), dissolveEdgeOf(b, key));
 	}

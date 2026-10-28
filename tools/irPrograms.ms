@@ -5,7 +5,7 @@ import { Buffer } from "std/core/buffer";
 import { sha256 } from "std/crypto/sha256";
 import { mkdir, readFile, readFileBytes, writeFile, writeFileBytes } from "std/fs";
 import { argv, exit } from "std/process";
-import { glslIr, glslLinkedIr } from "../src/shader/emit";
+import { glslIr, glslLinkedIr, glslSegmentIr } from "../src/shader/emit";
 import {
 	ProgramSource,
 	armCondition,
@@ -29,6 +29,7 @@ import {
 	copyFs,
 	decalFs,
 	decalVs,
+	emissive,
 	lineFs,
 	lineVs,
 	litFs,
@@ -142,7 +143,7 @@ const STAGES: string[][] = [
 	["GPU_COPY", "gpuCopyFs", glslIr(gpuCopyFs)],
 ];
 
-const EFFECTS: string[][] = [];
+const EFFECTS: string[][] = [["CORE", "EMISSIVE", glslSegmentIr(emissive)]];
 
 const ARMS = targetArms();
 
@@ -245,8 +246,8 @@ function shdcText(source: string, programs: Program[]): string {
 }
 
 function effectsOf(program: Program): string[] {
-	return EFFECTS.filter((effect) => program.features.includes(effect[0]))
-		.map((effect) => effect[1]);
+	return EFFECTS.filter((effect) => effect[0] == program.source &&
+		program.features.includes(effect[1])).map((effect) => effect[2]);
 }
 
 function linkedModule(program: Program): ShaderModule {

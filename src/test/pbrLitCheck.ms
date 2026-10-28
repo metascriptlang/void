@@ -29,7 +29,9 @@ import {
 	LitBindings,
 	LitFragmentInput,
 	LitKey,
+	LitShaded,
 	VertexBindings,
+	emissive,
 	linearToSrgb,
 	litFs,
 	litTexturedFs,
@@ -342,13 +344,21 @@ function emittingBindings(
 }
 
 function emittingColor(b: LitBindings): Vec3f {
-	return litTexturedFs({
+	const base = litTexturedFs({
 		worldPosition: toVec3f(POSITION),
 		worldNormal: toVec3f(UP),
 		surfaceUv: vec2f(0.5, 0.5),
 		baseColor: BASE,
 		frontFacing: true,
-	}, b, { pbr: true, emissive: true }).color.rgb;
+	}, b, { pbr: true, emissive: true });
+	const lit: LitShaded = { color: base.color, uv: vec2f(0.5, 0.5), noise: 0.0 };
+	return emissive(lit, {
+		emissiveMaterialParams: b.emissiveMaterialParams,
+		movingEmissiveMaterialParams: b.movingEmissiveMaterialParams,
+		pbrEmissiveMaterialParams: b.pbrEmissiveMaterialParams,
+		emissiveTexture: b.emissiveTexture,
+		baseSampler: b.baseSampler,
+	}, { pbr: true }).color.rgb;
 }
 
 test "an emitting pbr key adds colour times texel times strength after the lighting, in linear light" {
