@@ -326,6 +326,7 @@ export interface DrawContext2D {
 	limited: boolean;
 	limit: PaintIndex;
 	spill: PaintIndex;
+	writesRefused: boolean;
 	scopes: Vec<ScopeRecord>;
 	scopeTotal: int32;
 	scopeNow: int32;
@@ -446,6 +447,7 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		limited: false,
 		limit: NO_PAINT,
 		spill: NO_PAINT,
+		writesRefused: false,
 		scopes: [],
 		scopeTotal: 0,
 		scopeNow: NO_SCOPE,
@@ -857,6 +859,7 @@ export function copyPainted(old: DrawContext2D, a: PaintIndex, b: PaintIndex): v
 
 export function limitWrites(end: PaintIndex): void {
 	activeContext.limited = true;
+	activeContext.writesRefused = false;
 	activeContext.limit = end;
 	activeContext.spill = activeContext.paintEnd;
 }
@@ -864,6 +867,10 @@ export function limitWrites(end: PaintIndex): void {
 export function unlimitWrites(): void { activeContext.limited = false; }
 
 export function writesLimited(): boolean { return activeContext.limited; }
+
+export function refuseWrites(): void { activeContext.writesRefused = true; }
+
+export function writesRefused(): boolean { return activeContext.writesRefused; }
 
 export function uiWritesSpilled(): boolean {
 	return activeContext.limited && activeContext.uiInstanceTotal > activeContext.limit.uiInstances;

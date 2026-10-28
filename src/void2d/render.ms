@@ -50,6 +50,8 @@ import {
 	uiInstanceCount,
 	writesLimited,
 	skipUiInstances,
+	refuseWrites,
+	writesRefused,
 	uiWritesSpilled,
 	beginSegments,
 	endSegments,
@@ -766,6 +768,15 @@ when (voidTextOutline) {
 	}
 }
 
+function forgetOverwrittenLines(text: LabelText, from: int32): void {
+	const written: int32 = uiInstanceCount();
+	for (let li: int32 = from; li < (text.placedLines.length as int32); li++) {
+		if (text.placedLines[li].emitAt != NOT_EMITTED && text.placedLines[li].emitAt < written) {
+			text.placedLines[li].emitAt = NOT_EMITTED;
+		}
+	}
+}
+
 function sameRunColours(text: LabelText): boolean {
 	if (text.runs.length != text.emitRunColours.length) { return false; }
 	for (let k: int32 = 0; k < (text.runs.length as int32); k++) {
@@ -844,6 +855,11 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 			const kept: boolean = line.emitAt != NOT_EMITTED &&
 				(line.emitCount == 0 || line.emitPage != NO_GLYPH_PAGE);
 			const skipped: boolean = kept && skips && line.emitAt == uiInstanceCount();
+			if (kept && skips && !skipped) {
+				forgetOverwrittenLines(text, li);
+				refuseWrites();
+				return;
+			}
 			if (skipped || (kept && copies)) {
 				if (line.emitCount > 0 && line.emitPage != viewPage) {
 					kind = glyphPageKind(line.emitPage);
@@ -1995,7 +2011,7 @@ export function patchOrder(this s: Scene2D, vw: float32, vh: float32): boolean {
 		limitWrites(end);
 		resumePaint(start);
 		drawOwn(s, i, s.alphas[i], vw, vh);
-		const kept: boolean = paintIndex() == end;
+		const kept: boolean = paintIndex() == end && !writesRefused();
 		unlimitWrites();
 		if (segmented) { endSegments(start, end); }
 		if (!kept) { return false; }
