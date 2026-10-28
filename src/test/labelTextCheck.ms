@@ -1,4 +1,4 @@
-import { Align, TextRun, Truncate, UnderlineStyle } from "../void2d/textLayout";
+import { Align, TextRun, TextStyle, Truncate, UnderlineStyle } from "../void2d/textLayout";
 import { DEFAULT_FONT, FontId, addFont, fontFace } from "../void2d/font";
 import { decorationMetrics, faceMetrics, glyphAdvance, glyphIndex, glyphLookups } from "../void2d/face";
 
@@ -235,6 +235,97 @@ test "an alike run update after reshaping stays paint only" {
 	assert entry.decorations[0].color == blue;
 	assert approx(entry.decorations[0].w,
 		entry.layout.glyphs[2].x + entry.layout.glyphs[2].advance - entry.layout.glyphs[0].x);
+	releaseLabelText(index);
+}
+
+function samePlaced(a: int32, b: int32): boolean {
+	const x = labelTexts[a].placed;
+	const y = labelTexts[b].placed;
+	if (x.length != y.length) { return false; }
+	for (let i = 0; i < (x.length as int32); i++) {
+		if (x[i].tile != y[i].tile || x[i].x != y[i].x || x[i].y != y[i].y) { return false; }
+		if (x[i].w != y[i].w || x[i].h != y[i].h || x[i].run != y[i].run) { return false; }
+		if (x[i].u0 != y[i].u0 || x[i].v1 != y[i].v1) { return false; }
+	}
+	return true;
+}
+
+function placedFresh(text: string, runs: TextRun[], world: Transform2D, scale: float32): int32 {
+	const index = shaped(text);
+	setLabelRuns(index, runs);
+	shapeLabel(index, text, labelTexts[index].style);
+	placeLabel(index, world, scale);
+	return index;
+}
+
+function markPlaced(index: int32): void {
+	for (let i = 0; i < (labelTexts[index].placed.length as int32); i++) {
+		labelTexts[index].placed[i].u0 = -1.0;
+	}
+}
+
+function markedOf(index: int32): int32 {
+	let marked: int32 = 0;
+	for (const p of labelTexts[index].placed) {
+		if (p.u0 == -1.0) { marked = marked + 1; }
+	}
+	return marked;
+}
+
+test "an edit places only its line again and the placement equals a fresh one" {
+	const world: Transform2D = trs2d(4.25, 3.5, 0.0, 1.0, 1.0);
+	const index = placedFresh("alpha\nbeta\ngamma", [plainRun(16)], world, 1.25);
+	const gammaTile = labelTexts[index].placed[9].tile;
+	const held = glyphAtlas.tile(gammaTile).refs;
+	const betaTile = labelTexts[index].placed[5].tile;
+	const heldBeta = glyphAtlas.tile(betaTile).refs;
+	markPlaced(index);
+	const runs: TextRun[] = [plainRun(3), plainRun(14)];
+	setLabelRuns(index, runs);
+	shapeLabel(index, "alpha\nbetas\ngamma", labelTexts[index].style);
+	placeLabel(index, world, 1.25);
+	assert markedOf(index) == 5;
+	assert labelTexts[index].placed[10].u0 == -1.0 && labelTexts[index].placed[10].run == 1;
+	assert glyphAtlas.tile(gammaTile).refs == held;
+	const fresh = placedFresh("alpha\nbetas\ngamma", runs, world, 1.25);
+	for (let i = 10; i < 15; i++) { labelTexts[index].placed[i].u0 = labelTexts[fresh].placed[i].u0; }
+	assert samePlaced(index, fresh);
+	releaseLabelText(fresh);
+	releaseLabelText(index);
+	assert glyphAtlas.tile(gammaTile).refs == held - 1;
+	assert glyphAtlas.tile(betaTile).refs == heldBeta - 1;
+}
+
+test "a new line moves the lines below it and they are placed again where they now sit" {
+	const world: Transform2D = trs2d(0.0, 0.0, 0.0, 1.0, 1.0);
+	const index = placedFresh("alpha\nbeta\ngamma", [plainRun(16)], world, 1.0);
+	markPlaced(index);
+	setLabelRuns(index, [plainRun(20)]);
+	shapeLabel(index, "alpha\nbeta\nnew\ngamma", labelTexts[index].style);
+	placeLabel(index, world, 1.0);
+	assert markedOf(index) == 9;
+	const fresh = placedFresh("alpha\nbeta\nnew\ngamma", [plainRun(20)], world, 1.0);
+	for (let i = 0; i < 9; i++) { labelTexts[index].placed[i].u0 = labelTexts[fresh].placed[i].u0; }
+	assert samePlaced(index, fresh);
+	releaseLabelText(fresh);
+	releaseLabelText(index);
+}
+
+test "a line that wraps into more rows moves the next line down, which is placed again" {
+	const world: Transform2D = trs2d(0.0, 0.0, 0.0, 1.0, 1.0);
+	const index = shaped("alpha\nbeta");
+	const style: TextStyle = { ...labelTexts[index].style, maxWidth: 60.0 };
+	shapeLabel(index, "alpha\nbeta", style);
+	placeLabel(index, world, 1.0);
+	markPlaced(index);
+	shapeLabel(index, "alpha alpha alpha\nbeta", style);
+	placeLabel(index, world, 1.0);
+	assert markedOf(index) == 0;
+	const fresh = shaped("alpha alpha alpha\nbeta");
+	shapeLabel(fresh, "alpha alpha alpha\nbeta", style);
+	placeLabel(fresh, world, 1.0);
+	assert samePlaced(index, fresh);
+	releaseLabelText(fresh);
 	releaseLabelText(index);
 }
 
