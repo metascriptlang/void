@@ -547,8 +547,6 @@ function declarationCondition(contexts: FeatureCondition[][]): FeatureCondition 
 	return conditionOf(ConditionKind.Any, products.map((p) => productCondition(p)));
 }
 
-const FIRST_MATRIX = 12;
-
 function notAShaderValue(): string {
 	return "a shader value is float32, int32, uint32, boolean, a ./std vector or matrix, " +
 		"or a struct of those";
@@ -561,6 +559,8 @@ export class ShaderTypeNodes {
 	modfs: Node[] = [];
 	frexps: Node[] = [];
 	vectors: Node[] = [];
+	vectorNames: string[] = [];
+	firstMatrix: int32 = 0;
 }
 
 // One field per std type the lowering recognises, in the order shaderTypeNodes reads them. A macro
@@ -607,26 +607,45 @@ function typesFrom(types: Node[], first: int32, count: int32): Node[] {
 	return out;
 }
 
+function groupStart(names: string[], first: string): int32 {
+	const at = names.indexOf(first);
+	if (at < 0) { throw new Error("ShaderTypeRegistry has no field " + first); }
+	return at as int32;
+}
+
 export function shaderTypeNodes(registry: Node): ShaderTypeNodes {
-	const types = objectFields(registry)!.typExprFieldTypes;
+	const fields = objectFields(registry)!;
+	const types = fields.typExprFieldTypes;
+	const names = fields.typExprFieldNames;
+	const atomics = groupStart(names, "atomicI32");
+	const exchanges = groupStart(names, "exchangeI32");
+	const modfs = groupStart(names, "modfF32");
+	const frexps = groupStart(names, "frexpF32");
+	const vectors = groupStart(names, "vec2f");
 	let nodes = new ShaderTypeNodes();
 	nodes.stdModule = types[0].resolvedSym!.modulePath;
-	nodes.atomics = typesFrom(types, 0, 2);
-	nodes.exchanges = typesFrom(types, 2, 2);
-	nodes.modfs = typesFrom(types, 4, 4);
-	nodes.frexps = typesFrom(types, 8, 4);
-	nodes.vectors = typesFrom(types, 12, 21);
+	nodes.atomics = typesFrom(types, atomics, exchanges - atomics);
+	nodes.exchanges = typesFrom(types, exchanges, modfs - exchanges);
+	nodes.modfs = typesFrom(types, modfs, frexps - modfs);
+	nodes.frexps = typesFrom(types, frexps, vectors - frexps);
+	nodes.vectors = typesFrom(types, vectors, (types.length - vectors) as int32);
+	nodes.vectorNames = names.slice(vectors);
+	nodes.firstMatrix = groupStart(names, "mat2x2f") - vectors;
 	return nodes;
 }
 
-function vectorAt(i: number): ShaderType {
-	if (i < 3) { return vectorType(ScalarKind.F32, (i + 2) as int32); }
-	if (i < 6) { return vectorType(ScalarKind.I32, (i - 1) as int32); }
-	if (i < 9) { return vectorType(ScalarKind.U32, (i - 4) as int32); }
-	if (i < 12) { return vectorType(ScalarKind.Bool, (i - 7) as int32); }
-	const shapes = [2, 2, 3, 3, 4, 4, 2, 3, 2, 4, 3, 2, 3, 4, 4, 2, 4, 3];
-	const at = (i - FIRST_MATRIX) * 2;
-	return matrixType(shapes[at] as int32, shapes[at + 1] as int32);
+function scalarOfLetter(letter: string): ScalarKind {
+	return letter == "f" ? ScalarKind.F32 : letter == "i" ? ScalarKind.I32 :
+		letter == "u" ? ScalarKind.U32 : ScalarKind.Bool;
+}
+
+function vectorAt(nodes: ShaderTypeNodes, i: number): ShaderType {
+	const name = nodes.vectorNames[i];
+	const leading = ("234".indexOf(name.slice(3, 4)) + 2) as int32;
+	if (i >= nodes.firstMatrix) {
+		return matrixType(leading, ("234".indexOf(name.slice(5, 6)) + 2) as int32);
+	}
+	return vectorType(scalarOfLetter(name.slice(4, 5)), leading);
 }
 
 function predeclaredTypeOf(nodes: ShaderTypeNodes, t: Node): ShaderType | null {
@@ -660,7 +679,7 @@ export function shaderTypeOf(nodes: ShaderTypeNodes, t: Node): ShaderType | null
 		_ => {},
 	}
 	for (let i = 0; i < nodes.vectors.length; i++) {
-		if (sameType(t, nodes.vectors[i])) { return vectorAt(i); }
+		if (sameType(t, nodes.vectors[i])) { return vectorAt(nodes, i); }
 	}
 	return null;
 }
@@ -774,7 +793,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	function matrixColumns(n: Node): boolean {
 		if (n.kind != NodeKind.MemberExpr || n.property != "columns") { return false; }
 		const t = getType(n.object);
-		for (let i = FIRST_MATRIX; i < vectorTypes.length; i++) {
+		for (let i = typeNodes.firstMatrix; i < vectorTypes.length; i++) {
 			if (t != null && sameType(t, vectorTypes[i])) { return true; }
 		}
 		return false;
@@ -1277,7 +1296,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			_ => {},
 		}
 		for (let i = 0; i < vectorTypes.length; i++) {
-			if (sameType(t, vectorTypes[i])) { return vectorAt(i); }
+			if (sameType(t, vectorTypes[i])) { return vectorAt(typeNodes, i); }
 		}
 		if (sameType(t, textureNode)) { return textureType(TextureShape.D2, ScalarKind.F32); }
 		const view = viewNodes.findIndex((n) => sameType(t, n));
@@ -1847,7 +1866,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		const type = looseType(getType(n));
 		const made = constructors.indexOf(name);
 		if (name != "" && made >= 0) {
-			return exprOf(ExprKind.Construct, vectorAt(made), -1, args);
+			return exprOf(ExprKind.Construct, vectorAt(typeNodes, made), -1, args);
 		}
 		const direct = intrinsicNames.indexOf(name);
 		if (direct >= 0) { return intrinsicOf(intrinsics[direct], type, args); }
