@@ -1094,7 +1094,7 @@ export function shapeText(
 	});
 }
 
-export struct ShapedLine {
+export interface ShapedLine {
 	text: string;
 	runLens: Vec<int32>;
 	runFonts: Vec<FontId>;
@@ -1108,7 +1108,8 @@ export interface LineShapes {
 	shaping: boolean;
 	direction: TextDirection;
 	lines: Vec<ShapedLine>;
-	runMaps: Vec<Vec<int32>>;
+	runMap: Vec<int32>;
+	runMapStarts: Vec<int32>;
 	glyphStarts: Vec<int32>;
 	rowStarts: Vec<int32>;
 }
@@ -1116,7 +1117,7 @@ export interface LineShapes {
 export function emptyLineShapes(style: TextStyle): LineShapes {
 	return {
 		style: style, shaping: false, direction: TextDirection.Auto, lines: new Array(0),
-		runMaps: new Array(0), glyphStarts: new Array(0), rowStarts: new Array(0),
+		runMap: new Array(0), runMapStarts: new Array(0), glyphStarts: new Array(0), rowStarts: new Array(0),
 	};
 }
 
@@ -1134,22 +1135,6 @@ function sameText(bytes: Readonly<Span<uint8>>, from: int32, to: int32, text: st
 	if ((other.length as int32) != to - from) { return false; }
 	for (let k: int32 = from; k < to; k++) {
 		if (bytes[k] != other[k - from]) { return false; }
-	}
-	return true;
-}
-
-function sameInts(a: Readonly<Span<int32>>, b: Readonly<Span<int32>>): boolean {
-	if (a.length != b.length) { return false; }
-	for (let k: int32 = 0; k < (a.length as int32); k++) {
-		if (a[k] != b[k]) { return false; }
-	}
-	return true;
-}
-
-function sameFonts(a: Readonly<Span<FontId>>, b: Readonly<Span<FontId>>): boolean {
-	if (a.length != b.length) { return false; }
-	for (let k: int32 = 0; k < (a.length as int32); k++) {
-		if ((a[k] as int32) != (b[k] as int32)) { return false; }
 	}
 	return true;
 }
@@ -1186,7 +1171,8 @@ export function shapeLines(
 	const bytes: Readonly<Span<uint8>> = text.asBytes();
 	const total: int32 = bytes.length as int32;
 	let lines: Vec<ShapedLine> = new Array(0);
-	let runMaps: Vec<Vec<int32>> = new Array(0);
+	cache.runMap.length = 0;
+	cache.runMapStarts.length = 0;
 	let start: int32 = 0;
 	let unitStart: int32 = 0;
 	let run: int32 = 0;
@@ -1195,25 +1181,6 @@ export function shapeLines(
 		const newline: int32 = text.byteIndexOf("\n", start);
 		const stop: int32 = newline < 0 ? total : newline + 1;
 		const unitEnd: int32 = unitStart + unitsOf(bytes, start, stop);
-		let runLens: Vec<int32> = new Array(0);
-		let runFonts: Vec<FontId> = new Array(0);
-		let runMap: Vec<int32> = new Array(0);
-		while (run < (runs.length as int32) && runStart < unitEnd) {
-			const end: int32 = runStart + runs[run].len;
-			const len: int32 = Math.min(end, unitEnd) - Math.max(runStart, unitStart);
-			if (len > 0) {
-				runLens.push(len);
-				runFonts.push(runs[run].font);
-				runMap.push(run);
-			}
-			if (end > unitEnd) { break; }
-			run = run + 1;
-			runStart = end;
-		}
-		let breaks: Vec<int32> = new Array(0);
-		for (const at of shapingBreaks) {
-			if (at >= unitStart && at < unitEnd) { breaks.push(at - unitStart); }
-		}
 		let hit: int32 = (lines.length as int32) - shift;
 		if (hit < 0 || hit >= cached || !sameText(bytes, start, stop, cache.lines[hit].text)) {
 			hit = -1;
@@ -1227,21 +1194,67 @@ export function shapeLines(
 				shift = (lines.length as int32) - hit;
 			}
 		}
-		let reused: boolean = false;
-		if (hit >= 0) {
-			const old: ShapedLine = cache.lines[hit];
-			if (sameInts(old.runLens, runLens) && sameFonts(old.runFonts, runFonts) &&
-				sameInts(old.breaks, breaks)) {
-				lines.push(old);
-				reused = true;
+		const mapStart: int32 = cache.runMap.length as int32;
+		cache.runMapStarts.push(mapStart);
+		const lineRun: int32 = run;
+		const lineRunStart: int32 = runStart;
+		let alike: boolean = hit >= 0;
+		let pieces: int32 = 0;
+		while (run < (runs.length as int32) && runStart < unitEnd) {
+			const end: int32 = runStart + runs[run].len;
+			const len: int32 = Math.min(end, unitEnd) - Math.max(runStart, unitStart);
+			if (len > 0) {
+				if (alike) {
+					const old: ShapedLine = cache.lines[hit];
+					alike = pieces < (old.runLens.length as int32) && old.runLens[pieces] == len &&
+						(old.runFonts[pieces] as int32) == (runs[run].font as int32);
+				}
+				cache.runMap.push(run);
+				pieces = pieces + 1;
+			}
+			if (end > unitEnd) { break; }
+			run = run + 1;
+			runStart = end;
+		}
+		let breakCount: int32 = 0;
+		for (const at of shapingBreaks) {
+			if (at >= unitStart && at < unitEnd) {
+				if (alike) {
+					const old: ShapedLine = cache.lines[hit];
+					alike = breakCount < (old.breaks.length as int32) &&
+						old.breaks[breakCount] == at - unitStart;
+				}
+				breakCount = breakCount + 1;
 			}
 		}
-		if (!reused) {
-			const lineText: string = text.byteSlice(start, stop);
+		if (alike) {
+			const old: ShapedLine = cache.lines[hit];
+			alike = pieces == (old.runLens.length as int32) && breakCount == (old.breaks.length as int32);
+		}
+		if (alike) {
+			lines.push(cache.lines[hit]);
+		} else {
+			let runLens: Vec<int32> = new Array(0);
+			let runFonts: Vec<FontId> = new Array(0);
 			let lineRuns: Vec<TextRun> = new Array(0);
-			for (let k: int32 = 0; k < (runMap.length as int32); k++) {
-				lineRuns.push({ ...runs[runMap[k]], len: runLens[k] });
+			let at: int32 = lineRunStart;
+			let walked: int32 = lineRun;
+			for (let k: int32 = mapStart; k < (cache.runMap.length as int32); k++) {
+				const r: int32 = cache.runMap[k];
+				while (walked < r) {
+					at = at + runs[walked].len;
+					walked = walked + 1;
+				}
+				const len: int32 = Math.min(at + runs[r].len, unitEnd) - Math.max(at, unitStart);
+				runLens.push(len);
+				runFonts.push(runs[r].font);
+				lineRuns.push({ ...runs[r], len: len });
 			}
+			let breaks: Vec<int32> = new Array(0);
+			for (const b of shapingBreaks) {
+				if (b >= unitStart && b < unitEnd) { breaks.push(b - unitStart); }
+			}
+			const lineText: string = text.byteSlice(start, stop);
 			const shaped = shapeText(lineText, style, lineRuns, breaks, direction);
 			if (!shaped.ok) {
 				return Result.err({ kind: shaped.error.kind, index: shaped.error.index + unitStart });
@@ -1251,7 +1264,6 @@ export function shapeLines(
 				shaped: shaped.value, wrap: emptyWrap(),
 			});
 		}
-		runMaps.push(runMap);
 		if (newline < 0) { break; }
 		start = stop;
 		unitStart = unitEnd;
@@ -1260,7 +1272,6 @@ export function shapeLines(
 	cache.shaping = shaping;
 	cache.direction = direction;
 	cache.lines = lines;
-	cache.runMaps = runMaps;
 	return Result.ok(null);
 }
 
@@ -2032,7 +2043,7 @@ export function wrapLines(
 				index: g.index + units,
 				byteStart: g.byteStart + bytes,
 				byteEnd: g.byteEnd + bytes,
-				run: g.run == NO_RUN ? NO_RUN : shapes.runMaps[li][g.run],
+				run: g.run == NO_RUN ? NO_RUN : shapes.runMap[shapes.runMapStarts[li] + g.run],
 			});
 		}
 		for (const r of wrap.rows) {
