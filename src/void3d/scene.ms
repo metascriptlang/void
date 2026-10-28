@@ -279,6 +279,8 @@ export interface Scene3D {
 	// h3d.scene.Scene lighting.ambient, fwd.LightSystem's default grey.
 	ambientLight: Vec3;
 	stack: Vec<int32>;
+	// The node behind each item of the list `refresh` and `collectDrawList` keep.
+	drawNodes: Vec<int32>;
 	root: int32;
 	structureChanged: boolean;
 	posChanged: boolean;
@@ -403,6 +405,7 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 		lightOrder: [],
 		ambientLight: vec3(0.5, 0.5, 0.5),
 		stack: [],
+		drawNodes: [],
 		root: NO_NODE_3D,
 		structureChanged: true,
 		posChanged: true,
@@ -1489,7 +1492,7 @@ export function collectDrawList(scene: Scene3D, ref items: Vec<DrawItem>): int32
 	if (scene.closed) { stopOnClosed("collectDrawList"); }
 	const synced = syncSceneGeometry(scene);
 	if (!synced.ok) { stopOnSyncError("collectDrawList", synced.error); }
-	const count: int32 = fillDrawList(scene, activeLayers(scene), items);
+	const count: int32 = fillDrawList(scene, activeLayers(scene), items, true);
 	scene.structureChanged = false;
 	return count;
 }
@@ -1500,14 +1503,19 @@ export function collectDrawListFor(
 	if (scene.closed) { stopOnClosed("collectDrawListFor"); }
 	const synced = syncSceneGeometry(scene);
 	if (!synced.ok) { stopOnSyncError("collectDrawListFor", synced.error); }
-	return fillDrawList(scene, cameraLayersOf(scene, camera), items);
+	return fillDrawList(scene, cameraLayersOf(scene, camera), items, false);
 }
 
-function fillDrawList(scene: Scene3D, layers: uint32, ref items: Vec<DrawItem>): int32 {
+function fillDrawList(
+	scene: Scene3D, layers: uint32, ref items: Vec<DrawItem>, keep: boolean,
+): int32 {
 	// Emptied by popping rather than by `items = []`, which would hand back a fresh array and
 	// drop the capacity this list already has. Collect runs only on a structural change, but
 	// keeping it allocation-free means the claim does not depend on how often that is.
 	while ((items.length as int32) > 0) { items.pop(); }
+	if (keep) {
+		while ((scene.drawNodes.length as int32) > 0) { scene.drawNodes.pop(); }
+	}
 	if (scene.root == NO_NODE_3D) { return 0; }
 	let top: int32 = 0;
 	scene.stack[top] = scene.root;
@@ -1530,10 +1538,16 @@ function fillDrawList(scene: Scene3D, layers: uint32, ref items: Vec<DrawItem>):
 				skinPalette: scene.meshes[payload].skinPalette, range: scene.meshes[payload].range,
 				lod: scene.meshes[payload].lod,
 			});
+			if (keep) { scene.drawNodes.push(index); }
 		}
 		// Children are pushed in reverse so the stack pops them in declaration order: sibling
 		// order is draw order, and the draw list is what decides overdraw.
-		// Indexed, not copied and not sliced — see the note in `refresh`.
+		// Indexed through the field rather than bound to a local. `const children:
+		// Vec<int32> = ...` is CODE-STYLE section 5's copy trap: it emits msArrayCopy plus
+		// msArrayDestroy on every visit, measured at 16.42 ms against 2.92 ms over 680 000
+		// visits (`out/tmp/copyTrap`) and visible in the emitted C. A `Span` view fixes that
+		// but slicing an empty `Vec` yields a null view that faults, and a leaf has no
+		// children, so the index is both the cheap form and the safe one.
 		const count: int32 = scene.nodes[index].children.length as int32;
 		for (let i = count - 1; i >= 0; i--) {
 			scene.stack[top] = scene.nodes[index].children[i];
@@ -1646,84 +1660,41 @@ export function refreshChecked(
 
 function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 	if (scene.structureChanged) {
-		const count: int32 = fillDrawList(scene, activeLayers(scene), items);
+		const count: int32 = fillDrawList(scene, activeLayers(scene), items, true);
 		scene.structureChanged = false;
 		return count;
 	}
-	// The tree and the list are in the same order, so one pass rewrites every item in place.
-	// This runs on every steady frame rather than only when something moved, which is what
-	// "the draw list is rebuilt only on structural change; each frame only rewrites world
-	// matrices" describes (docs/VOID3D.md, Data types). It allocates nothing.
-	{
-		const layers: uint32 = activeLayers(scene);
-		let at: int32 = 0;
-		let top: int32 = 0;
-		scene.stack[top] = scene.root;
-		top = top + 1;
-		while (top > 0) {
-			top = top - 1;
-			const index: int32 = scene.stack[top];
-			if (!scene.nodes[index].isVisible()) { continue; }
-			const shown: boolean = layersTest(scene.nodes[index].layers, layers);
-			if (shown && scene.nodes[index].kind == NodeKind.Mesh) {
-				const payload: int32 = scene.nodes[index].payload;
-				if (scene.meshes[payload].lod !== null) {
-					const source = ratioSourceOf(scene, index, layers);
-					const pick = scene.meshes[payload].lod;
-					if (pick !== null) { pick.ratioSource = source; }
-				}
-				// The walk can produce more items than the list holds as well as fewer: a node
-				// culled since the last collect drops out, and un-culling it puts it back.
-				// Writing `items[at]` unconditionally would store past the end in that second
-				// case, which is a fault, not a wrong pixel.
-				if (at < (items.length as int32)) {
-					items[at].world = scene.nodes[index].world;
-					items[at].mesh = scene.meshes[payload].mesh;
-					items[at].material = scene.meshes[payload].material;
-					items[at].order = scene.nodes[index].renderOrder;
-					if (items[at].skin !== null) { items[at].skin = null; }
-					if (items[at].skinGeometry !== scene.meshes[payload].skinGeometry) {
-						items[at].skinGeometry = scene.meshes[payload].skinGeometry;
-					}
-					items[at].skinPalette = scene.meshes[payload].skinPalette;
-					items[at].range = scene.meshes[payload].range;
-					if (items[at].lod !== scene.meshes[payload].lod) {
-						items[at].lod = scene.meshes[payload].lod;
-					}
-				} else {
-					items.push({
-						mesh: scene.meshes[payload].mesh,
-						material: scene.meshes[payload].material,
-						world: scene.nodes[index].world,
-						order: scene.nodes[index].renderOrder,
-						skin: null, skinGeometry: scene.meshes[payload].skinGeometry,
-						skinPalette: scene.meshes[payload].skinPalette,
-						range: scene.meshes[payload].range, lod: scene.meshes[payload].lod,
-					});
-				}
-				at = at + 1;
-			}
-			// Indexed through the field rather than bound to a local. `const children:
-			// Vec<int32> = ...` is CODE-STYLE section 5's copy trap — it emits msArrayCopy plus
-			// msArrayDestroy on every visit, measured at 16.42 ms against 2.92 ms over 680 000
-			// visits (`out/tmp/copyTrap`) and visible in the emitted C. A `Span` view fixes that
-			// but slicing an empty `Vec` yields a null view that faults, and a leaf has no
-			// children, so the index is both the cheap form and the safe one. `sync` was already
-			// written this way.
-			const count: int32 = scene.nodes[index].children.length as int32;
-			for (let i = count - 1; i >= 0; i--) {
-				scene.stack[top] = scene.nodes[index].children[i];
-				top = top + 1;
-			}
-		}
-		// `at` is what this pass actually wrote, and it can be fewer than the list holds: a node
-		// culled since the last collect emits no item, and `structureChanged` is deliberately not
-		// set for culling or the fast path would never be taken. Returning `items.length` instead
-		// would leave the tail of the previous frame in the list and draw it again, and writing
-		// past the end when a node becomes visible again would be an out-of-bounds store.
-		while ((items.length as int32) > at) { items.pop(); }
-		return at;
+	// Every change to which nodes the list holds goes through a setter that sets
+	// `structureChanged`, so a steady frame visits only the list's own nodes, in place, and
+	// allocates nothing. A list the scene did not collect is collected.
+	const count: int32 = scene.drawNodes.length as int32;
+	if ((items.length as int32) != count) {
+		return fillDrawList(scene, activeLayers(scene), items, true);
 	}
+	const layers: uint32 = activeLayers(scene);
+	for (let at = 0; at < count; at++) {
+		const index: int32 = scene.drawNodes[at];
+		const payload: int32 = scene.nodes[index].payload;
+		if (scene.meshes[payload].lod !== null) {
+			const source = ratioSourceOf(scene, index, layers);
+			const pick = scene.meshes[payload].lod;
+			if (pick !== null) { pick.ratioSource = source; }
+		}
+		items[at].world = scene.nodes[index].world;
+		items[at].mesh = scene.meshes[payload].mesh;
+		items[at].material = scene.meshes[payload].material;
+		items[at].order = scene.nodes[index].renderOrder;
+		if (items[at].skin !== null) { items[at].skin = null; }
+		if (items[at].skinGeometry !== scene.meshes[payload].skinGeometry) {
+			items[at].skinGeometry = scene.meshes[payload].skinGeometry;
+		}
+		items[at].skinPalette = scene.meshes[payload].skinPalette;
+		items[at].range = scene.meshes[payload].range;
+		if (items[at].lod !== scene.meshes[payload].lod) {
+			items[at].lod = scene.meshes[payload].lod;
+		}
+	}
+	return count;
 }
 
 export function refreshFor(scene: Scene3D, camera: NodeId3D, ref items: Vec<DrawItem>): int32 {

@@ -272,6 +272,18 @@ test "refresh rewrites world matrices without rebuilding the list" {
 	assert !scene.structureChanged;
 }
 
+test "a steady refresh fills a list the scene did not collect" {
+	let context: DrawContext = contextOf(64, 1);
+	let scene: Scene3D = Scene3D.create(context);
+	const _first: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
+	const _second: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 22);
+	let collected: Vec<DrawItem> = [];
+	assert refresh(scene, collected) == 2;
+	let fresh: Vec<DrawItem> = [];
+	assert refresh(scene, fresh) == 2;
+	assert fresh[0].mesh.index == 11 && fresh[1].mesh.index == 22;
+}
+
 test "removing a node takes its subtree with it and unlinks it from its parent" {
 	let context: DrawContext = contextOf(64, 1);
 	let scene: Scene3D = Scene3D.create(context);
