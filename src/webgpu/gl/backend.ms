@@ -601,7 +601,7 @@ struct PipelineSlot {
 
 struct BindGroupSlot {
 	group: int32;
-	entries: GPUBindGroupEntry[8];
+	entries: GPUBindGroupEntry[GPU_MAX_BIND_GROUP_ENTRIES];
 	entryCount: int32;
 }
 
