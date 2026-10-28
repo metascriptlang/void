@@ -1176,3 +1176,14 @@ takes the items writable) is reverted to that in `1f9987a3`.
 **The web build is blocked outside Void.** `scripts/build-web.sh` stops on yoga's `uint64` child
 index into `size_t` on wasm32 (`~/metascript/.inbox/yoga/2026-10-28-child-index-as-size-t-for-wasm32.md`);
 main is blocked the same way.
+
+**Later the same day, the Mac gate's own reds, fixed on the branch.** The index runs on the Mac
+again (3016/3016): `vulkanPassCheck` builds only where the Vulkan backend does; the sfnt digest
+mixes summary ids relative to the check's first (re-pinned, after the port matched the C's pins
+alone); the batcher pin moved to `tests/isolated/` because it sets the door's device up twice,
+and its pixel pins run on D3D11 WARP only, where they were recorded; the kb checks that reach
+`kb/unicodeTables.ms` are parked on arm64
+(`~/metascript/.inbox/compiler/2026-10-28-a-large-const-array-literal-fails-to-assemble-on-arm64.md`).
+The allocation check reaches the frame path again (its `draw:pushClip` key had stopped it) and found
+six copies and two allocations, all fixed. For Windows: the D3D11 row of `docs/TESTING.md` counts
+121 scenes while `tests/golden/table.ms` has 123; the goldens run in step 2 rewrites it.
