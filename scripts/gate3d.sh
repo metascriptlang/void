@@ -2912,15 +2912,16 @@ run_both_layers() {
 }
 
 # The tests/aborts protocol of void2d's gate: the first line names what the program must say as it
-# stops, and a program that runs to the end fails.
+# stops, and a program that runs to the end fails. A `// flags:` line adds msc build flags.
 run_aborts() {
 	for program in tests/aborts3d/*.ms; do
 		name=$(basename "$program" .ms)
 		expected=$(sed -n '1s#^// expect: ##p' "$program" | tr -d '\r')
+		flags=$(sed -n 's#^// flags: ##p' "$program" | tr -d '\r')
 		log="$WORK/abort-$name.log"
 		status=0
 		rm -f "out/tmp/abort-$name.exe"
-		if ! msc build "$program" --output="out/tmp/abort-$name.exe" > "$WORK/abort-$name.build.log" 2>&1; then
+		if ! msc build "$program" $flags --output="out/tmp/abort-$name.exe" > "$WORK/abort-$name.build.log" 2>&1; then
 			fail "aborts: $name does not build — see $WORK/abort-$name.build.log"
 			continue
 		fi
