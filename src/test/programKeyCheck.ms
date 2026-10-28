@@ -1177,7 +1177,7 @@ test "particleVisual declares additive program14 layout9 with original billboard
 			? 1 << (LIGHT_RECORDS_VIEW_SLOT as uint32)
 			: CLUSTER_SCENE_VIEWS;
 		assert textureSlotMask(key) == 1 + lightViews;
-		assert samplerSlotMask(key) == 1 + CLUSTER_SCENE_SAMPLERS;
+		assert samplerSlotMask(key) == 1;
 		const skin: ProgramKey = { ...key, skinned: true };
 		assert !declares(skin);
 	}
@@ -1223,7 +1223,7 @@ test "a pbr-maps key sets bit 17, is declared in all four variants and binds slo
 		}
 	}
 	assert textureSlotMask(base) == 7 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
-	assert samplerSlotMask(base) == 1 + ENV_SCENE_SAMPLERS + CLUSTER_SCENE_SAMPLERS;
+	assert samplerSlotMask(base) == 1 + ENV_SCENE_SAMPLERS;
 	assert textureSlotMask(base.withShadowed()) ==
 		23 + 64 + 4096 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
 	assert textureSlotMask(tangent) == 39 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
