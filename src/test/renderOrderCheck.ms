@@ -7,12 +7,12 @@ import { PassList, collect, sortBackToFront, sortByLayer } from "../void3d/passL
 import {
 	Scene3D,
 	NodeId3D,
-	NodeFlag,
 	NO_NODE_ID,
 	SceneError,
 	Transform3D,
 	addMeshNode,
 	addCameraNode,
+	setCulled,
 	collectDrawListFor,
 	refresh,
 	remove,
@@ -127,9 +127,9 @@ test "an un-culled node comes back with its order" {
 	const _b: NodeId3D = meshAt(scene, context, 1, 0.0);
 	setRenderOrder(scene, a, 9);
 	let items: Vec<DrawItem> = [];
-	scene.nodes[a.index].flags = scene.nodes[a.index].flags.incl(NodeFlag.Culled);
+	setCulled(scene, a, true);
 	assert refresh(scene, items) == 1;
-	scene.nodes[a.index].flags = scene.nodes[a.index].flags.excl(NodeFlag.Culled);
+	setCulled(scene, a, false);
 	assert refresh(scene, items) == 2;
 	assert items[0].order == 9 && items[1].order == 0;
 }

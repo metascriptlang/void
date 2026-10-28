@@ -28,6 +28,7 @@ import {
 	setLightPower,
 	setAmbient,
 	setVisible,
+	setCulled,
 	setName,
 	nameOf,
 	findByName,
@@ -333,8 +334,7 @@ test "an empty scene collects nothing and syncs only its root" {
 
 // The defect review found this armed and waiting: `refresh` used to return `items.length` and
 // never truncate, so a node culled after the list was collected left the previous frame's tail
-// in place and drew it again, and un-culling it wrote past the end. Culling deliberately does
-// not set `structureChanged` — if it did, the fast path would never be taken.
+// in place and drew it again, and un-culling it wrote past the end.
 test "a node culled after collection leaves the list, and does not leave a ghost behind" {
 	let context: DrawContext = contextOf(64, 1);
 	let scene: Scene3D = Scene3D.create(context);
@@ -342,7 +342,7 @@ test "a node culled after collection leaves the list, and does not leave a ghost
 	const _second: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 22);
 	let items: Vec<DrawItem> = [];
 	assert refresh(scene, items) == 2;
-	scene.nodes[first.index].flags = scene.nodes[first.index].flags.incl(NodeFlag.Culled);
+	setCulled(scene, first, true);
 	assert refresh(scene, items) == 1;
 	assert (items.length as int32) == 1;
 	assert items[0].mesh.index == 22;
@@ -354,12 +354,27 @@ test "un-culling a node puts it back without writing past the end" {
 	const first: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
 	const _second: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 22);
 	let items: Vec<DrawItem> = [];
-	scene.nodes[first.index].flags = scene.nodes[first.index].flags.incl(NodeFlag.Culled);
+	setCulled(scene, first, true);
 	assert refresh(scene, items) == 1;
-	scene.nodes[first.index].flags = scene.nodes[first.index].flags.excl(NodeFlag.Culled);
+	setCulled(scene, first, false);
 	assert refresh(scene, items) == 2;
 	assert items[0].mesh.index == 11;
 	assert items[1].mesh.index == 22;
+}
+
+test "culling marks the list for a rebuild only when the flag changes" {
+	let context: DrawContext = contextOf(64, 1);
+	let scene: Scene3D = Scene3D.create(context);
+	const first: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
+	let items: Vec<DrawItem> = [];
+	assert refresh(scene, items) == 1;
+	setCulled(scene, first, false);
+	assert !scene.structureChanged;
+	setCulled(scene, first, true);
+	assert scene.structureChanged;
+	assert refresh(scene, items) == 0;
+	setCulled(scene, first, true);
+	assert !scene.structureChanged;
 }
 
 // setMeshOf runs on every campfire frame and had no test at all: its only evidence was pixels.

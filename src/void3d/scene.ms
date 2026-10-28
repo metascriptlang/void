@@ -1189,6 +1189,16 @@ export function setVisible(scene: Scene3D, id: NodeId3D, visible: boolean): void
 	scene.structureChanged = true;
 }
 
+// Heaps' `culled`, written through the scene so the draw list hears of it, like Bevy's change
+// detection: rewriting the value a node already holds leaves the list's shape alone.
+export function setCulled(scene: Scene3D, id: NodeId3D, culled: boolean): void {
+	const row: int32 = scene.liveRow(id, "setCulled");
+	const flags: BitSet<NodeFlag> = scene.nodes[row].flags;
+	if (flags.has(NodeFlag.Culled) == culled) { return; }
+	scene.nodes[row].flags = culled ? flags.incl(NodeFlag.Culled) : flags.excl(NodeFlag.Culled);
+	scene.structureChanged = true;
+}
+
 export function setLayers(scene: Scene3D, id: NodeId3D, layers: uint32): void {
 	const row: int32 = scene.liveRow(id, "setLayers");
 	scene.nodes[row].layers = layers;
