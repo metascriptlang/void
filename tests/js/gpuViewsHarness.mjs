@@ -7,7 +7,7 @@ const minifyAfterPatch = process.argv.includes("--minify");
 
 const [bundlePath, backend] = process.argv.slice(2).filter((a) => a !== "--minify");
 if (!bundlePath || (backend !== "gl" && backend !== "gpu")) {
-	throw new Error("usage: node tests/js/gpuViewsHarness.mjs <bundle> gl|gpu [--minify]   (msc build src/examples/viewsJsEntry.jms --target=js [-d:webgl2] --output=<bundle>)");
+	throw new Error("usage: node tests/js/gpuViewsHarness.mjs <bundle> gl|gpu [--minify]   (msc build src/examples/viewsJsEntry.jms --target=js -d:webgpu|-d:webgl2 --output=<bundle>)");
 }
 
 const doorStubs = ["doorSetup", "doorShutdown", "doorBeginScreenPass", "doorCommit"];

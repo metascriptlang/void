@@ -1,13 +1,18 @@
 // Void GPU on the browser's JS target: gpu.wms's surface over the backend this bundle selects
-// (-d:webgl2, else WebGPU), and the device and door its two drivers share, as bridgeWeb.c drives
+// (-d:webgl2 or -d:webgpu, one of them required), and the device and door its two drivers share, as bridgeWeb.c drives
 // them. The window driver is gpuWindow.jms (one canvas, the AppWindow events, the frame timing),
 // the views driver gpuViews.jms (a root per canvas, no AppWindow); an entry imports the one it
 // runs, so its bundle carries no other. A document uses one of the two.
 
+import { requireBrowserBackend } from "./requireBackend";
 import { CanvasView, publishRun } from "../platform/web/window";
 import { PixelFormat, doorMakeImage, doorMakeTextureView, doorSetup, doorShutdown } from "../gpu/doorGpu";
 
 extern function thrownText(error: Error): string from "((e)=>''+(e&&e.message||e))(#)";
+
+when (!webgl2 && !webgpu) {
+	requireBrowserBackend();
+}
 
 when (webgl2) {
 	import { acquireContext } from "../webgpu/gl/glCalls";
