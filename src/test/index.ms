@@ -133,7 +133,9 @@ import "./slotsCheck";
 import "./poolCheck";
 import "./vulkanMemoryCheck";
 import "./vulkanResourcesCheck";
-import "./vulkanPassCheck";
+when (windows || linux || android) {
+	import "./vulkanPassCheck";
+}
 import "./featureBitCheck";
 import "./webgpuValidateCheck";
 import "./uniformPoolCheck";
