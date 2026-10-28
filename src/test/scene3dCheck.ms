@@ -743,6 +743,23 @@ test "an invisible light is not collected" {
 	assert holdsRecords(block, 0);
 }
 
+test "a light culled or added after a collect is seen by the next collect" {
+	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const first: NodeId3D = oneLight(scene, vec3(1.0, 0.0, 0.0), {
+		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
+	});
+	let block: Vec<float32> = blockOf();
+	assert collectLights(scene, block).ok && holdsRecords(block, 1);
+	setCulled(scene, first, true);
+	assert collectLights(scene, block).ok && holdsRecords(block, 0);
+	const _second: NodeId3D = oneLight(scene, vec3(2.0, 0.0, 0.0), {
+		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
+	});
+	assert collectLights(scene, block).ok && holdsRecords(block, 1);
+	setCulled(scene, first, false);
+	assert collectLights(scene, block).ok && holdsRecords(block, 2);
+}
+
 test "ambient comes from the scene and zeroed slots mean unlit" {
 	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	setAmbient(scene, vec3(0.33, 0.36, 0.6));

@@ -283,6 +283,10 @@ export interface Scene3D {
 	drawNodes: Vec<int32>;
 	root: int32;
 	structureChanged: boolean;
+	// Counts structural changes, so a list kept beside the draw list knows when it is stale.
+	structureRevision: uint64;
+	lightNodes: Vec<int32>;
+	lightNodesRevision: uint64;
 	posChanged: boolean;
 	closed: boolean;
 }
@@ -299,6 +303,11 @@ export function fromTranslation(this typeof Transform3D, position: Vec3): Transf
 // The matrix a node's own transform describes, before its parent is applied.
 export function toMatrix(this t: Transform3D): Mat4 {
 	return composeTransform(t.position, t.rotation, t.scale);
+}
+
+function markStructureChanged(scene: Scene3D): void {
+	scene.structureChanged = true;
+	scene.structureRevision = scene.structureRevision + 1;
 }
 
 function freshFlags(): BitSet<NodeFlag> {
@@ -408,6 +417,9 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 		drawNodes: [],
 		root: NO_NODE_3D,
 		structureChanged: true,
+		structureRevision: 1,
+		lightNodes: [],
+		lightNodesRevision: 0,
 		posChanged: true,
 		closed: false,
 	};
@@ -440,7 +452,7 @@ function parentRow(scene: Scene3D, parent: NodeId3D | null, call: string): int32
 
 function linkChild(scene: Scene3D, parent: int32, child: int32): void {
 	if (parent != NO_NODE_3D) { scene.nodes[parent].children.push(child); }
-	scene.structureChanged = true;
+	markStructureChanged(scene);
 }
 
 function connectedRow(scene: Scene3D, index: int32): boolean {
@@ -925,7 +937,7 @@ export function setActiveCamera(scene: Scene3D, id: NodeId3D | null): void {
 		const _camera: int32 = cameraRow(scene, id, "setActiveCamera");
 	}
 	scene.activeCamera = id;
-	scene.structureChanged = true;
+	markStructureChanged(scene);
 }
 
 export function cameraOf(scene: Scene3D, fallback: Camera3D): Result<Camera3D, CameraError> {
@@ -947,7 +959,7 @@ export function cameraViewOf(scene: Scene3D, id: NodeId3D): Result<Camera3D, Cam
 export function setCameraLayers(scene: Scene3D, id: NodeId3D, layers: uint32): void {
 	const row: int32 = cameraRow(scene, id, "setCameraLayers");
 	scene.cameras[row].layers = layers;
-	scene.structureChanged = true;
+	markStructureChanged(scene);
 }
 
 export function cameraLayersOf(scene: Scene3D, id: NodeId3D): uint32 {
@@ -1033,7 +1045,7 @@ function placeNode(
 			scene.nodes[child].flags = scene.nodes[child].flags.incl(NodeFlag.PosChanged);
 		}
 	}
-	scene.structureChanged = true;
+	markStructureChanged(scene);
 }
 
 export function attach(scene: Scene3D, parent: NodeId3D, node: NodeId3D): void {
@@ -1155,7 +1167,7 @@ function removeNode(scene: Scene3D, id: NodeId3D, call: string): int32 {
 		releasePayload(scene, index);
 		vacate(scene.slots, index);
 	}
-	scene.structureChanged = true;
+	markStructureChanged(scene);
 	return count;
 }
 
@@ -1189,7 +1201,7 @@ export function setVisible(scene: Scene3D, id: NodeId3D, visible: boolean): void
 		flags.excl(NodeFlag.Visible);
 	// Visibility does not move anything, so the world matrices stay valid; only the draw list
 	// changes, and `collect` reads the flag as it walks.
-	scene.structureChanged = true;
+	markStructureChanged(scene);
 }
 
 // Heaps' `culled`, written through the scene so the draw list hears of it, like Bevy's change
@@ -1199,13 +1211,13 @@ export function setCulled(scene: Scene3D, id: NodeId3D, culled: boolean): void {
 	const flags: BitSet<NodeFlag> = scene.nodes[row].flags;
 	if (flags.has(NodeFlag.Culled) == culled) { return; }
 	scene.nodes[row].flags = culled ? flags.incl(NodeFlag.Culled) : flags.excl(NodeFlag.Culled);
-	scene.structureChanged = true;
+	markStructureChanged(scene);
 }
 
 export function setLayers(scene: Scene3D, id: NodeId3D, layers: uint32): void {
 	const row: int32 = scene.liveRow(id, "setLayers");
 	scene.nodes[row].layers = layers;
-	scene.structureChanged = true;
+	markStructureChanged(scene);
 }
 
 // three.js `Object3D.renderOrder`: written like a transform, not like a layer. The draw list
@@ -1713,6 +1725,28 @@ export function collectLights(scene: Scene3D, ref out: Vec<float32>): Result<int
 	return collectLightsFor(scene, activeLayers(scene), out);
 }
 
+// The visible light nodes in tree order, whatever their layers: only a structural change moves
+// them, so `collectLightsFor` walks the tree once per change rather than once per call.
+function keepLightNodes(scene: Scene3D): void {
+	while ((scene.lightNodes.length as int32) > 0) { scene.lightNodes.pop(); }
+	scene.lightNodesRevision = scene.structureRevision;
+	if (scene.root == NO_NODE_3D) { return; }
+	let top: int32 = 0;
+	scene.stack[top] = scene.root;
+	top = top + 1;
+	while (top > 0) {
+		top = top - 1;
+		const index: int32 = scene.stack[top];
+		if (!scene.nodes[index].isVisible()) { continue; }
+		if (scene.nodes[index].kind == NodeKind.Light) { scene.lightNodes.push(index); }
+		const count: int32 = scene.nodes[index].children.length as int32;
+		for (let i = count - 1; i >= 0; i--) {
+			scene.stack[top] = scene.nodes[index].children[i];
+			top = top + 1;
+		}
+	}
+}
+
 export function collectLightsFor(
 	scene: Scene3D, layers: uint32, ref out: Vec<float32>,
 ): Result<int32, LightError> {
@@ -1724,38 +1758,26 @@ export function collectLightsFor(
 	let toward: Vec3 = vec3(0.0, 0.0, 0.0);
 	let sunPower: float32 = 0.0;
 	let sunColor: Vec3 = vec3(0.0, 0.0, 0.0);
-	if (scene.root != NO_NODE_3D) {
-		let top: int32 = 0;
-		scene.stack[top] = scene.root;
-		top = top + 1;
-		while (top > 0) {
-			top = top - 1;
-			const index: int32 = scene.stack[top];
-			if (!scene.nodes[index].isVisible()) { continue; }
-			const seen: boolean = layersTest(scene.nodes[index].layers, layers);
-			if (seen && scene.nodes[index].kind == NodeKind.Light) {
-				const light: LightInstance = scene.lights[scene.nodes[index].payload];
-				if (light.kind == LightKind.Directional) {
-					if (light.shadows) { return Result.err(LightError.UnshadowableLight); }
-					if (light.cookie.isTexture()) { return Result.err(LightError.UncookableLight); }
-					if (seenDirectional) { return Result.err(LightError.TooManyDirectionalLights); }
-					seenDirectional = true;
-					// fwd.DirLight.emit reads absPos.front() normalized; the shader wants the
-					// vector pointing at the light, which is the front vector negated.
-					const forward: Vec3 = vec3(0.0, 0.0, 1.0);
-					const front: Vec3 = transformDirection(forward, scene.nodes[index].world);
-					toward = front.scaled(-1.0).normalized();
-					sunPower = light.power;
-					sunColor = light.color;
-				} else {
-					scene.lightOrder.push(index);
-				}
-			}
-			const count: int32 = scene.nodes[index].children.length as int32;
-			for (let i = count - 1; i >= 0; i--) {
-				scene.stack[top] = scene.nodes[index].children[i];
-				top = top + 1;
-			}
+	if (scene.lightNodesRevision != scene.structureRevision) { keepLightNodes(scene); }
+	const visible: int32 = scene.lightNodes.length as int32;
+	for (let at = 0; at < visible; at++) {
+		const index: int32 = scene.lightNodes[at];
+		if (!layersTest(scene.nodes[index].layers, layers)) { continue; }
+		const light: LightInstance = scene.lights[scene.nodes[index].payload];
+		if (light.kind == LightKind.Directional) {
+			if (light.shadows) { return Result.err(LightError.UnshadowableLight); }
+			if (light.cookie.isTexture()) { return Result.err(LightError.UncookableLight); }
+			if (seenDirectional) { return Result.err(LightError.TooManyDirectionalLights); }
+			seenDirectional = true;
+			// fwd.DirLight.emit reads absPos.front() normalized; the shader wants the vector
+			// pointing at the light, which is the front vector negated.
+			const forward: Vec3 = vec3(0.0, 0.0, 1.0);
+			const front: Vec3 = transformDirection(forward, scene.nodes[index].world);
+			toward = front.scaled(-1.0).normalized();
+			sunPower = light.power;
+			sunColor = light.color;
+		} else {
+			scene.lightOrder.push(index);
 		}
 	}
 	const found: int32 = scene.lightOrder.length as int32;
@@ -1911,7 +1933,7 @@ export function closeScene(scene: Scene3D): void {
 	}
 	scene.nodes[scene.root].children = [];
 	scene.closed = true;
-	scene.structureChanged = true;
+	markStructureChanged(scene);
 }
 
 export function isClosed(this scene: Scene3D): boolean {
