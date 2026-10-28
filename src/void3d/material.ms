@@ -171,6 +171,7 @@ function cutoutOf(program: Program): ProgramKey {
 		Program.Sao => stopOnNoCutout(program),
 		Program.Blur => stopOnNoCutout(program),
 		Program.Line => stopOnNoCutout(program),
+		Program.Fxaa => stopOnNoCutout(program),
 	};
 }
 

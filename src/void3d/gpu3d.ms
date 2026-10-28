@@ -69,6 +69,8 @@ export enum Program {
 	Blur,
 	// h3d.scene.Graphics' screen-space lines over graphics3d.ms' roots (LINE_*).
 	Line,
+	// Heaps' FXAA over a texture the target's size (fxaa.ms).
+	Fxaa,
 }
 
 // Heaps adds a pass's output shaders to a material's (h3d.pass.Output); sokol-shdc programs
@@ -329,6 +331,7 @@ export function isScreenProgram(program: Program): boolean {
 		Program.Sao => true,
 		Program.Blur => true,
 		Program.Line => false,
+		Program.Fxaa => true,
 	};
 }
 

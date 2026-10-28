@@ -1,5 +1,5 @@
-// void3d's fullscreen passes written as MetaScript shader functions: tone map, bloom, outline and
-// ambient occlusion.
+// void3d's fullscreen passes written as MetaScript shader functions: tone map, bloom, outline,
+// ambient occlusion, blur and FXAA.
 // tools/genShaders.ms writes their GLSL into shader3dGen.glsl; src/test/post3dCheck.ms runs them on
 // the CPU.
 
@@ -188,6 +188,46 @@ export function blurFs(input: PostInput, b: BlurBindings): Vec4f {
 		color = color + textureSample(b.blurSource, b.blurSampler, at) * tap.x;
 	}
 	return color;
+}
+
+export struct FxaaBindings {
+	@binding(0) fxaaSource: Texture2d;
+	@binding(0) fxaaSampler: Sampler;
+}
+
+function lumaOf(rgb: Vec3f): float32 {
+	return dot(rgb, vec3f(0.299, 0.587, 0.114));
+}
+
+// h3d.pass.FXAA over a source the target's size, its delta one texel of it: the colour along the
+// edge the four diagonal neighbours' luma finds, with the centre's alpha.
+export function fxaaFs(input: PostInput, b: FxaaBindings): Vec4f {
+	const size = textureDimensions(b.fxaaSource, b.fxaaSampler, 0);
+	const delta = vec2f(1.0 / (size.x as float32), 1.0 / (size.y as float32));
+	const uv = input.position.xy * delta;
+	const nw = textureSample(b.fxaaSource, b.fxaaSampler, uv + vec2f(-1.0, -1.0) * delta).xyz;
+	const ne = textureSample(b.fxaaSource, b.fxaaSampler, uv + vec2f(1.0, -1.0) * delta).xyz;
+	const sw = textureSample(b.fxaaSource, b.fxaaSampler, uv + vec2f(-1.0, 1.0) * delta).xyz;
+	const se = textureSample(b.fxaaSource, b.fxaaSampler, uv + vec2f(1.0, 1.0) * delta).xyz;
+	const origin = textureSample(b.fxaaSource, b.fxaaSampler, uv);
+	const lumNW = lumaOf(nw);
+	const lumNE = lumaOf(ne);
+	const lumSW = lumaOf(sw);
+	const lumSE = lumaOf(se);
+	const lumMid = lumaOf(origin.xyz);
+	const lumMin = min(lumMid, min(min(lumNW, lumNE), min(lumSW, lumSE)));
+	const lumMax = max(lumMid, max(max(lumNW, lumNE), max(lumSW, lumSE)));
+	const edge = vec2f(-((lumNW + lumNE) - (lumSW + lumSE)), (lumNW + lumSW) - (lumNE + lumSE));
+	const dirReduce = max((lumNW + lumNE + lumSW + lumSE) * (0.25 / 128.0), 1.0 / 8.0);
+	const rcpDirMin = 1.0 / (min(abs(edge.x), abs(edge.y)) + dirReduce);
+	const dir = min(vec2f(8.0, 8.0), max(vec2f(-8.0, -8.0), edge * rcpDirMin)) * delta;
+	const rgbA = (textureSample(b.fxaaSource, b.fxaaSampler, uv + dir * (1.0 / 3.0 - 0.5)).xyz +
+		textureSample(b.fxaaSource, b.fxaaSampler, uv + dir * (2.0 / 3.0 - 0.5)).xyz) * 0.5;
+	const rgbB = rgbA * 0.5 + (textureSample(b.fxaaSource, b.fxaaSampler, uv + dir * -0.5).xyz +
+		textureSample(b.fxaaSource, b.fxaaSampler, uv + dir * 0.5).xyz) * 0.25;
+	const lumB = lumaOf(rgbB);
+	const inside: float32 = lumB > lumMin && lumB < lumMax ? 1.0 : 0.0;
+	return vec4f(mix(rgbA, rgbB, vec3f(inside)), origin.w);
 }
 
 export struct FullscreenAttributes {
