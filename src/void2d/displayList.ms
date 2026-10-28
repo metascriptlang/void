@@ -318,6 +318,7 @@ export interface DrawContext2D {
 	dirtySprites: boolean;
 	dirtyUi: Vec<int32>;
 	dirtyUiTotal: int32;
+	uiSkipped: int32;
 	limited: boolean;
 	limit: PaintIndex;
 	spill: PaintIndex;
@@ -433,6 +434,7 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		dirtySprites: false,
 		dirtyUi: new Array(2),
 		dirtyUiTotal: 0,
+		uiSkipped: 0,
 		limited: false,
 		limit: NO_PAINT,
 		spill: NO_PAINT,
@@ -828,6 +830,18 @@ export function limitWrites(end: PaintIndex): void {
 }
 
 export function unlimitWrites(): void { activeContext.limited = false; }
+
+export function writesLimited(): boolean { return activeContext.limited; }
+
+export function skipUiInstances(count: int32): void {
+	const to: int32 = activeContext.uiInstanceTotal + count;
+	if (!activeContext.limited || to > activeContext.limit.uiInstances) {
+		console.log("void2d: UI records skipped outside a node's own range");
+		unreachable;
+	}
+	activeContext.uiInstanceTotal = to;
+	activeContext.uiSkipped = activeContext.uiSkipped + count;
+}
 
 function vertexSlot(): int32 {
 	if (!activeContext.limited || activeContext.vertexTotal < activeContext.limit.vertices) {
