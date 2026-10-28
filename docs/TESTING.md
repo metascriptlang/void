@@ -411,8 +411,8 @@ in the same change as the fix.
 
 | Backend | Conformance | Runs |
 |---|---|---|
-| D3D11 | **120 / 120 scenes byte-identical** | every full gate, this box |
-| GL core 4.3 desktop (glsl430) | **120 / 120**: 94 byte-identical, 26 within the cross-backend bound, 0 structural failures, 0 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
+| D3D11 | **121 / 121 scenes byte-identical** | every full gate, this box |
+| GL core 4.3 desktop (glsl430) | **121 / 121**: 95 byte-identical, 26 within the cross-backend bound, 0 structural failures, 0 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
 | Metal macOS | **120 / 120** on an Apple GPU, 2026-10-23: 15 byte-identical, 87 within the cross-backend bound, 18 within their measured `@metal` budgets (`tests/PENDING.md`, delta 2 to 4 spread over many pixels with no shape moved). The readback is `doorReadScreen`, the door's swapchain copy, as on D3D11 and GL; it stops by name rather than wait behind a command buffer that is not committed | `sh scripts/golden.sh --backend metal`, and every full gate on a Mac |
 | Metal iOS | **120 / 120** on an iPhone 13 Pro (iOS 27.0.1) and an iPad Pro 12.9-inch 5th generation (iPadOS 26.6.1), 2026-10-24, BUILD `6b8655024`: the same verdict as Metal macOS (15 byte-identical, 87 within the bound, 18 within their `@metal` budgets). The two device sets are byte-identical to each other, and 116 of 120 to the Mac's (`prim/boxFills`, `dashedBorder`, `gradientOklab`, `textModes` differ, inside their bounds). Same `doorReadScreen` readback; on iOS the PNGs land in the app's Documents and are copied off with `devicectl` | `bash scripts/iosDevice.sh golden auto`, and the gate on a Mac with `--ios`: it picks the first paired, reachable device (`VOID_IOS_DEVICE` names one, `VOID_IOS_PROFILE` a profile) and fails by name when there is none, the device is locked, or the install is refused |
 | GLES3 Android | shares the `glReadPixels` path; needs the human's device | SKIP |

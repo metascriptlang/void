@@ -175,7 +175,7 @@ function init(): void {
 	writeCamera();
 }
 
-function prepare(renderer: ForwardRenderer, items: Vec<DrawItem>, lights: Vec<float32>): void {
+function prepare(renderer: ForwardRenderer, items: Span<DrawItem>, lights: Vec<float32>): void {
 	const prepared: Result<int32, ForwardError> =
 		prepareFrame(renderer, items, camera, lights, fbWidth(), fbHeight());
 	if (!prepared.ok) { fail(`a 3D frame was refused, ${prepared.error.toString()}`); }

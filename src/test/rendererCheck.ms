@@ -288,7 +288,7 @@ test "a LUT refuses an empty palette and levels it cannot address" {
 test "pass lists keep item order per phase and sort alpha back to front" {
 	const phases: Vec<Phase> = [Phase.Opaque, Phase.Alpha, Phase.Additive];
 	const context: DrawContext = contextWith(phases);
-	const items: Vec<DrawItem> = [
+	let items: Vec<DrawItem> = [
 		itemAt(context, 0, 0.1),
 		itemAt(context, 1, 0.2),
 		itemAt(context, 0, 0.3),
