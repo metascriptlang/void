@@ -244,7 +244,7 @@ function shdcText(source: string, programs: Program[]): string {
 }
 
 function effectsOf(program: Program): string[] {
-	return programEffects(program.source, program.features);
+	return programEffects(program.source, program.fragment, program.features);
 }
 
 function linkedModule(program: Program): ShaderModule {

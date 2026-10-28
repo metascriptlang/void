@@ -1,9 +1,14 @@
 import { glslSegmentIr } from "../shader/emit";
-import { emissive } from "./shader3d";
+import { dissolveDiscard, dissolveEdge, emissive } from "./shader3d";
 
-const EFFECTS: string[][] = [["CORE", "EMISSIVE", glslSegmentIr(emissive)]];
+const EFFECTS: string[][] = [
+	["CORE", "litTexturedFs", "DISSOLVE", glslSegmentIr(dissolveDiscard)],
+	["CORE", "shadowLitTexturedFs", "DISSOLVE", glslSegmentIr(dissolveDiscard)],
+	["CORE", "litTexturedFs", "EMISSIVE", glslSegmentIr(emissive)],
+	["CORE", "litTexturedFs", "DISSOLVE", glslSegmentIr(dissolveEdge)],
+];
 
-export function programEffects(source: string, features: string[]): string[] {
-	return EFFECTS.filter((effect) => effect[0] == source && features.includes(effect[1]))
-		.map((effect) => effect[2]);
+export function programEffects(source: string, fragment: string, features: string[]): string[] {
+	return EFFECTS.filter((effect) => effect[0] == source && effect[1] == fragment &&
+		features.includes(effect[2])).map((effect) => effect[3]);
 }

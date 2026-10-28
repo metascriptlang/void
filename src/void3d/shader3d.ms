@@ -455,6 +455,17 @@ export struct EmissiveKey {
 	@feature(DISSOLVE) dissolve: boolean;
 }
 
+export struct DissolveBindings {
+	movingMaterialParams: MovingMaterialParams;
+	movingEmissiveMaterialParams: MovingEmissiveMaterialParams;
+	dissolveTexture: Texture2d;
+	dissolveSampler: Sampler;
+}
+
+export struct DissolveKey {
+	@feature(EMISSIVE) emissive: boolean;
+}
+
 function skinRow(b: VertexBindings, joints: Vec4f, weights: Vec4f, column: int32): Vec4f {
 	return b.skinParams.skinRows[(joints.x as int32) * 3 + column] * weights.x +
 		b.skinParams.skinRows[(joints.y as int32) * 3 + column] * weights.y +
@@ -1435,6 +1446,40 @@ export function emissive(lit: LitShaded, b: EmissiveBindings, key: EmissiveKey):
 	return { color: color, uv: lit.uv, noise: lit.noise };
 }
 
+function dissolveParamsOf(b: DissolveBindings, key: DissolveKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.dissolve;
+	} else {
+		return b.movingMaterialParams.dissolve;
+	}
+}
+
+function dissolveEdgeColorOf(b: DissolveBindings, key: DissolveKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.dissolveEdge;
+	} else {
+		return b.movingMaterialParams.dissolveEdge;
+	}
+}
+
+export function dissolveDiscard(
+	surface: SurfaceTexel,
+	b: DissolveBindings,
+	key: DissolveKey,
+): SurfaceTexel {
+	const noise = textureSample(b.dissolveTexture, b.dissolveSampler, surface.surfaceUv).x;
+	if (noise < dissolveParamsOf(b, key).x) {
+		discard();
+	}
+	return { texel: surface.texel, surfaceUv: surface.surfaceUv, noise: noise };
+}
+
+export function dissolveEdge(lit: LitShaded, b: DissolveBindings, key: DissolveKey): LitShaded {
+	const color = dissolveEdgeOver(lit.color, lit.noise, dissolveParamsOf(b, key),
+		dissolveEdgeColorOf(b, key));
+	return { color: color, uv: lit.uv, noise: lit.noise };
+}
+
 export function pbrOf(b: LitBindings, key: LitKey): Vec4f {
 	if (key.emissive) {
 		return b.pbrEmissiveMaterialParams.pbr;
@@ -2114,13 +2159,7 @@ export function litTexturedFs(
 			discard();
 		}
 	}
-	let noise = surface.noise;
-	if (key.dissolve) {
-		noise = textureSample(b.dissolveTexture, b.dissolveSampler, surface.surfaceUv).x;
-		if (noise < dissolveOf(b, key).x) {
-			discard();
-		}
-	}
+	const noise = surface.noise;
 	if (key.premultiplied) {
 		texel = straightTexel(texel);
 	}
@@ -2154,9 +2193,6 @@ export function litTexturedFs(
 	const litShaded: LitShaded = { color: shaded, uv: uv, noise: noise };
 	const lit = hook(litShaded);
 	shaded = lit.color;
-	if (key.dissolve) {
-		shaded = dissolveEdgeOver(shaded, lit.noise, dissolveOf(b, key), dissolveEdgeOf(b, key));
-	}
 	if (key.cutout) {
 		if (shaded.a < params.w) {
 			discard();
@@ -2188,12 +2224,6 @@ export function shadowLitTexturedFs(
 	}
 	const surfaceTexel: SurfaceTexel = { texel: texel, surfaceUv: input.surfaceUv, noise: 0.0 };
 	const surface = hook(surfaceTexel);
-	if (key.dissolve) {
-		const noise = textureSample(b.dissolveTexture, b.dissolveSampler, surface.surfaceUv).x;
-		if (noise < dissolveOf(b, key).x) {
-			discard();
-		}
-	}
 	if (key.cutout) {
 		const tint = materialColorOf(b, key);
 		if (input.baseColor.a * tint.a * surface.texel.a < materialOf(b, key).w) {
