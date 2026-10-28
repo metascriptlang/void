@@ -239,6 +239,7 @@ import "./post3dCheck";
 when (voidShaper) {
 	import "./shaperBridgeCheck";
 	import "./shapeOracleCheck";
+	import "./shaperPortCheck";
 	import "./shapedLayoutCheck";
 }
 when (voidBidi) {

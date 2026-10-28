@@ -1,5 +1,4 @@
 import {
-	glyphFaceBytes,
 	void2dGlyphPageBytes,
 	void2dGlyphPageCount,
 	void2dGlyphPageGeneration,
@@ -63,13 +62,5 @@ when (c) {
 	export function exportPageUploadBox(page: int32): Ptr<int32> | null {
 		if (page < 0 || page >= (state.pages.length as int32)) { return null; }
 		return (state.pages[page].takenBox as Span<int32>) as Ptr<int32>;
-	}
-
-	@exportName("void2dGlyphFaceData")
-	export function exportFaceData(face: int32, length: Ptr<int32>): Ptr<uint8> | null {
-		const holder = glyphFaceBytes(face);
-		if (holder == null) { return null; }
-		length[0] = holder.data.length as int32;
-		return (holder.data as Span<uint8>) as Ptr<uint8>;
 	}
 }

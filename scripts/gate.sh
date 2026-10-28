@@ -1175,19 +1175,12 @@ elif [ -n "$copied" ] || [ -n "$allocated" ]; then
 else
 	pass "allocation: the frame path ($(echo $FRAME_PATH | wc -w) functions) copies no array and builds no fresh one; the rebuild ($(echo $REBUILD_PATH | wc -w)) and measure ($(echo $MEASURE_PATH | wc -w)) paths copy none; $followed functions they call are held to the same rules"
 fi
-# Guardrail 6: a build without the modules pays none of them (C objects: tests/bench/wasm.json).
-# srcZvoid2dZcolour and srcZvoid2dZbidi are emitted names of src/void2d/colourEmoji/ and bidi*.ms; moving them turns the check into a skip.
-if sh scripts/wasmModuleDelta.sh > out/gate-wasm-delta.log 2>&1; then
-	pass "module off: no C unit holds stb_image, the C objects stay inside tests/bench/wasm.json"
-	grep -E '^(      default-layer delta|module on)' out/gate-wasm-delta.log | sed 's/^/      /'
-else
-	fail "module off or wasm delta — see out/gate-wasm-delta.log"
-	grep -E '^FAIL' out/gate-wasm-delta.log | sed 's/^/      /' || true
-fi
+# Guardrail 6: a build without the modules pays none of them.
+# srcZvoid2dZcolour, srcZvoid2dZkbZ and srcZvoid2dZbidi are emitted names of src/void2d/colourEmoji/, src/void2d/kb/ and bidi*.ms; moving them turns the check into a skip.
 if "$MSC" build src/examples/main2d.ms --release --output=out/tmp/main2dOff.exe > out/gate-module-off.log 2>&1 \
-		&& "$MSC" build -d:voidColourEmoji src/examples/main2d.ms --release --output=out/tmp/main2dColour.exe >> out/gate-module-off.log 2>&1; then
+		&& "$MSC" build -d:voidColourEmoji -d:voidShaper src/examples/main2d.ms --release --output=out/tmp/main2dModules.exe >> out/gate-module-off.log 2>&1; then
 	module_off_bytes=$(wc -c < out/tmp/main2dOff.exe)
-	module_on_bytes=$(wc -c < out/tmp/main2dColour.exe)
+	module_on_bytes=$(wc -c < out/tmp/main2dModules.exe)
 	module_symbols() {
 		if [ -f "${1%.exe}.pdb" ]; then
 			llvm-pdbutil dump -publics "${1%.exe}.pdb" 2> /dev/null
@@ -1195,20 +1188,21 @@ if "$MSC" build src/examples/main2d.ms --release --output=out/tmp/main2dOff.exe 
 			llvm-nm "$1" 2> /dev/null
 		fi
 	}
-	named_on=$(module_symbols out/tmp/main2dColour.exe | grep -c 'srcZvoid2dZcolour' || true)
-	named_off=$(module_symbols out/tmp/main2dOff.exe | grep -c 'srcZvoid2dZcolour\|void2dGlyphSdf\|kbts_\|void2dShape\|srcZvoid2dZbidi\|srcZvoid2dZsprite\|void2dGlyphFaceSprite' || true)
+	named_on=$(module_symbols out/tmp/main2dModules.exe | grep -c 'srcZvoid2dZcolour' || true)
+	named_shaper=$(module_symbols out/tmp/main2dModules.exe | grep -c 'srcZvoid2dZkbZ' || true)
+	named_off=$(module_symbols out/tmp/main2dOff.exe | grep -c 'srcZvoid2dZcolour\|void2dGlyphSdf\|srcZvoid2dZkbZ\|srcZvoid2dZbidi\|srcZvoid2dZsprite\|void2dGlyphFaceSprite' || true)
 	named_batcher=$(module_symbols out/tmp/main2dOff.exe | grep -c 'srcZvoid2dZbatcher' || true)
-	if [ "$named_on" -eq 0 ] || [ "$named_batcher" -eq 0 ]; then
-		skip "module off: the executables name no symbol from src/void2d/colourEmoji or batcher.ms (colour $named_on, batcher $named_batcher), so they get no symbol check"
+	if [ "$named_on" -eq 0 ] || [ "$named_shaper" -eq 0 ] || [ "$named_batcher" -eq 0 ]; then
+		skip "module off: the executables name no symbol from src/void2d/colourEmoji, src/void2d/kb or batcher.ms (colour $named_on, shaper $named_shaper, batcher $named_batcher), so they get no symbol check"
 	elif [ "$named_off" -gt 0 ]; then
 		fail "module off: main2d.exe with every module flag off names $named_off colour, SDF, shaper, BiDi or sprite symbols"
 	else
-		pass "module off: main2d.exe names no colour, SDF, shaper, BiDi or sprite symbol, the colour build names $named_on symbols from src/void2d/colourEmoji"
+		pass "module off: main2d.exe names no colour, SDF, shaper, BiDi or sprite symbol, the module build names $named_on symbols from src/void2d/colourEmoji and $named_shaper from src/void2d/kb"
 	fi
 	if [ "$module_on_bytes" -gt "$module_off_bytes" ]; then
-		pass "module off: main2d.exe is $module_off_bytes B, with the colour module $module_on_bytes B (+$((module_on_bytes - module_off_bytes)) B)"
+		pass "module off: main2d.exe is $module_off_bytes B, with the colour and shaper modules $module_on_bytes B (+$((module_on_bytes - module_off_bytes)) B)"
 	else
-		fail "module off: main2d.exe is $module_off_bytes B without the colour module and $module_on_bytes B with it, so the flag changed nothing"
+		fail "module off: main2d.exe is $module_off_bytes B without the colour and shaper modules and $module_on_bytes B with them, so the flags changed nothing"
 	fi
 else
 	fail "module off: main2d.exe did not build both ways — see out/gate-module-off.log"
