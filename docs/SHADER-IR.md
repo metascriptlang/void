@@ -112,9 +112,12 @@ SKIP it.
 ## The DXBC cache
 
 D3D11 compiles HLSL at load with `D3DCompile`, about 15 ms a stage (30 ms a program at first
-use), so the generated modules carry each HLSL stage's DXBC precompiled, as Heaps caches compiled
-shaders per platform keyed by a hash of the generated source (`hxsl/CacheFile.hx`,
-`h3d/impl/ShaderCache.hx`). `tools/irPrograms.ms` keys a stage by the SHA-256 (`std/crypto/sha256`)
+use), so the generated modules carry each HLSL stage's DXBC precompiled. Heaps' `hxsl/CacheFile.hx`
+caches the generated source text, one file per platform (`FILENAME` at `:23`, the platform tag at
+`:49` and `:53-70`, the text written at `:584-607`); the bytecode cache is
+`h3d/impl/ShaderCache.hx`, which keys a compiled blob by the MD5 of the source and a configuration
+key (`resolveShaderBinary`, `:135-146`). Void's key is the same shape with the profile, entry point
+and flags in it. `tools/irPrograms.ms` keys a stage by the SHA-256 (`std/crypto/sha256`)
 of its profile, entry point, flags and printed HLSL, and reads `src/shader/dxbc/<key>.dxbc`; on a
 miss it runs fxc with the backend's flags (`-Zpc -O3`, `d3d11.c` `d3dCompile`). The cache sits
 with the shader layer because one blob serves every module that prints the same stage: 518 HLSL
@@ -127,6 +130,30 @@ fxc and the runtime `D3DCompile` (`d3dcompiler_47.dll`) gave the same bytes for 
 (2026-10-23, fxc of Windows Kit 10.0.26100). `regen-shaders.sh` adds a compiled blob and deletes
 one no stage uses; `--check` reports either as stale. Where fxc is absent (macOS, Linux) a miss is
 printed, not stale: that stage keeps no bytecode and compiles at load until a Windows regen.
+
+### A program the app builds
+
+`shaderProgram`, `shaderModule` and `shaderCompute` (`src/shader/program.ms`) read and write the
+same keys while msc compiles the app, through `stageBlob`. A stage's blob is looked up in
+`<cwd>/shaders/{dxbc,metallib}` (tracked), then `<cwd>/out/shaders/...`, and compiled into
+`out/shaders/` on a miss: nothing is ever written outside `out/`. `<cwd>` is the directory msc runs
+in, so the cache is per project, not per module. A compute stage uses profile `cs_5_0`.
+
+- fxc is the path `-d:fxc=<path>` names, else the newest Windows Kit's (`findFxc`). Metal compiles
+  with `xcrun -sdk macosx|iphoneos metal` and `metallib` (`metallibStage`, flags in `metalFlags`).
+- A host without the tool keeps that stage's text and says so in a warning naming the program, the
+  stage and the tool. `-d:requireShaderBytecode` turns the warning into a compile error, for a
+  build that must not ship text.
+- `metal_ios` keeps its text beside the blob: an iphoneos metallib fails on the iOS simulator
+  ("library was not compiled for the simulator", measured on iOS 26.5), so the simulator
+  compiles the text (`mtlTakesBytecode`, `src/webgpu/metal/metal.m`). Every other language drops
+  the text of a stage that has a blob. SPIR-V words are the stage, so no tool is involved.
+- A tool that runs and refuses the source is an error at the program's name, never a keep-text.
+
+Measured on Windows, a quiet box, 2026-10-26, at
+branch tip `e7570edc` (the lane's probe, not kept): base64 of a 25 KB blob about 80 ms, SHA-256 of 25 KB about 1.3 ms,
+fxc about 76 ms a stage. The key costs nothing next to fxc, so a warm build pays the key plus the
+base64, and the base64 (`bytesBase64`, run in the macro VM) is what a cached 25 KB stage costs.
 
 ## The oracle
 

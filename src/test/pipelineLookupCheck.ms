@@ -8,6 +8,8 @@ function keyOf(n: int32): PipelineKey {
 		indexType: n % 2 == 0 ? IndexType.Uint16 : IndexType.Uint32,
 		state: ((n * 40503) & 0xFFFF) as uint32,
 		targets: (n / 11) as uint32,
+		stencilOps: (n % 3) as uint32,
+		stencilMasks: (n % 5) as uint32,
 	};
 }
 
@@ -65,9 +67,11 @@ test "keys that differ in one field are different entries" {
 		{ ...base, indexType: base.indexType == IndexType.Uint16 ? IndexType.Uint32 : IndexType.Uint16 },
 		{ ...base, state: base.state + 1 },
 		{ ...base, targets: base.targets + 1 },
+		{ ...base, stencilOps: base.stencilOps + 1 },
+		{ ...base, stencilMasks: base.stencilMasks + 1 },
 	];
 	for (let i = 0; i < (variants.length as int32); i++) { record(cache, variants[i], (i + 1) as uint32); }
-	assert cache.entries.length == 6;
+	assert cache.entries.length == 8;
 	for (let i = 0; i < (variants.length as int32); i++) { assert cache.indexOf(variants[i]) == i; }
 }
 

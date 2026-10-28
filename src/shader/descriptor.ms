@@ -17,6 +17,7 @@ import {
 	sameShaderType,
 	stmtOf,
 } from "./ir";
+import { byteAt, byteLength } from "std/core/string/bytes";
 import { irFromText } from "./irText";
 import { ShaderTarget, bindingSlots } from "./layout";
 import { GlslTarget, printGlsl } from "./printGlsl";
@@ -289,14 +290,7 @@ export function stageWords(m: ShaderModule, entry: int32): Result<uint32[], stri
 
 const BASE64_DIGITS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-export function wordsBase64(words: uint32[]): string {
-	let bytes: int32[] = [];
-	for (const w of words) {
-		bytes.push((w & 255) as int32);
-		bytes.push(((w >> 8) & 255) as int32);
-		bytes.push(((w >> 16) & 255) as int32);
-		bytes.push(((w >> 24) & 255) as int32);
-	}
+function base64Of(bytes: int32[]): string {
 	let out: string[] = [];
 	for (let i = 0; i < bytes.length; i += 3) {
 		const left = bytes.length - i;
@@ -309,6 +303,25 @@ export function wordsBase64(words: uint32[]): string {
 		out.push(left > 2 ? BASE64_DIGITS.charAt(chunk % 64) : "=");
 	}
 	return out.join("");
+}
+
+export function wordsBase64(words: uint32[]): string {
+	let bytes: int32[] = [];
+	for (const w of words) {
+		bytes.push((w & 255) as int32);
+		bytes.push(((w >> 8) & 255) as int32);
+		bytes.push(((w >> 16) & 255) as int32);
+		bytes.push(((w >> 24) & 255) as int32);
+	}
+	return base64Of(bytes);
+}
+
+// A binary file as std/meta readFile returns it: one char per byte through byteAt, never s[i].
+export function bytesBase64(blob: string): string {
+	let bytes: int32[] = [];
+	const n = blob.byteLength();
+	for (let i = 0; i < n; i++) { bytes.push(blob.byteAt(i) as int32); }
+	return base64Of(bytes);
 }
 
 export class ProgramSource {

@@ -402,8 +402,9 @@ test "what GLSL cannot carry is refused by name" {
 	let integers = fragmentModule();
 	prepend(integers.functions[0], assignOf(local(12), intrinsicOf(Intrinsic.Select, IVEC2,
 		[local(12), local(12), construct(vectorType(ScalarKind.Bool, 2), [literal(BOOL, 1.0)])])));
-	assert refusal(integers, 0, GlslTarget.Glsl430) == "printGlsl: Select of I32 by a bool " +
-		"vector: GLSL mixes float vectors only";
+	assert printed(integers, 0, [0], GlslTarget.Glsl430).includes("i2 = ivec2(bvec2(true).x ? " +
+		"i2.x : i2.x, bvec2(true).y ? i2.y : i2.y);
+");
 
 	let effect = computeModule();
 	let writer = shaderFunction("bump", [], [

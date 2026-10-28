@@ -35,20 +35,24 @@ import {
 	U32,
 	UVEC3,
 	VEC3,
+	VEC4,
 	binary,
 	blurModule,
 	caseOf,
 	computeModule,
 	construct,
 	depthModule,
+	entry,
 	everyModule,
 	f32,
 	fragmentModule,
 	i32,
 	io,
+	ioRead,
 	layeredBlurModule,
 	local,
 	prepend,
+	ret,
 	shaderFunction,
 	single,
 	update,
@@ -123,7 +127,7 @@ test "the vertex probe reads matrices through mul and blocks through packoffset"
 		"    float4 _0_lights[2] : packoffset(c10);\n};\n");
 	assert text.includes("clip_1 = mul(float4(position, 1.0), _0_viewProj);\n");
 	assert text.includes("mul(_0_tint, _0_normalMatrix)");
-	assert text.includes("    uint vertexIndex : SV_VertexID;\n    uint instanceIndex : SV_InstanceID;\n");
+	assert text.includes("    uint instanceIndex : SV_InstanceID;\n    uint vertexIndex : SV_VertexID;\n");
 	assert text.includes("struct StageOutput\n{\n    float4 shade : TEXCOORD0;\n" +
 		"    nointerpolation uint id : TEXCOORD1;\n    noperspective centroid float2 uvL : TEXCOORD2;\n" +
 		"    float4 clip_1 : SV_Position;\n};\n");
@@ -139,7 +143,7 @@ test "the fragment probe spells every intrinsic and statement" {
 		"float arr[3] = { f, f, 2.0 };\n",
 		"Sample s = makeSample(f, v2);\n",
 		"int2 size = int2(textureSize(albedo, uint(0)));\n",
-		"bool3 b3 = v3 <= v3;\n",
+		"bool3 b3 = (v3 <= v3);\n",
 		"f = rsqrt(f);\n", "f = mad(f, f, f);\n", "v3 = float3(sign(v3));\n", "v3 = frac(v3);\n",
 		"v3 = lerp(v3, v3, f);\n", "v3 = faceforward(v3, v3, v3);\n", "v3 = (b3 ? v3 : v3);\n",
 		"f = (b ? 1.0 : f);\n", "m4 = inverse(m4);\n", "m3 = ((float3x3)m4);\n",
@@ -177,7 +181,8 @@ test "the compute probe pads std430 elements and binds t and u registers" {
 		"RWTexture2D<float> heat : register(u1);\n",
 		"RWTexture2D<unorm float4> image : register(u2);\n",
 		"int2 size = int2(imageSize(image));\n",
-		"heat[uint2(int2(local.xy))] = float4(springs[flat].axis, heat[uint2(int2(local.xy))]).x;\n",
+		"heat[uint2(int2(local.xy))] = float4(springs[flat].axis, " +
+			"float4(heat[uint2(int2(local.xy))], 0.0, 0.0, 1.0).x).x;\n",
 		"[numthreads(8, 4, 1)]\nvoid main(StageInput stage_input)\n",
 		"    uint3 global : SV_DispatchThreadID;\n    uint3 local : SV_GroupThreadID;\n" +
 			"    uint flat : SV_GroupIndex;\n    uint3 group : SV_GroupID;\n",
@@ -309,6 +314,33 @@ test "printed modules are written for fxc" {
 	assert probe("compute.cs", printed(computeModule(), 0, [0]));
 	assert probe("depth.vs", printed(depthModule(), 0, [0, 1]));
 	assert probe("depth.ps", printed(depthModule(), 1, [0, 1]));
+}
+
+function facingFirstModule(): ShaderModule {
+	let m = new ShaderModule();
+	let colour = io("colour", ShaderStage.Fragment, IoDirection.Out, VEC4, Builtin.None);
+	colour.location = 0;
+	m.ios = [
+		io("facing", ShaderStage.Fragment, IoDirection.In, BOOL, Builtin.FrontFacing),
+		io("coord", ShaderStage.Fragment, IoDirection.In, VEC4, Builtin.Position),
+		colour,
+	];
+	m.functions = [shaderFunction("facingFirstFs", [], [
+		update(ioRead(2, VEC4), AssignOp.Set, ioRead(1, VEC4)),
+		ret(),
+	])];
+	m.entries = [entry("facingFirstFs", ShaderStage.Fragment, 0)];
+	return m;
+}
+
+test "fragment system values print SV_Position before the rasterizer's own values" {
+	const m = facingFirstModule();
+	assert irErrors(m).length == 0;
+	const text = printed(m, 0, []);
+	assert text.includes("    float4 coord : SV_Position;
+    bool facing : SV_IsFrontFace;
+");
+	assert probe("facingFirst.ps", text);
 }
 
 test "an array texture samples with its layer packed into the coordinates" {

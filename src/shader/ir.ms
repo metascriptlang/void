@@ -18,6 +18,8 @@ export enum ShaderTypeKind {
 	StorageTexture,
 	Atomic,
 	ExchangeResult,
+	ModfResult,
+	FrexpResult,
 }
 
 export enum TextureShape {
@@ -30,6 +32,7 @@ export enum TextureShape {
 	Depth2dArray,
 	DepthCube,
 	Multisampled2d,
+	D1,
 }
 
 export enum TexelFormat {
@@ -41,6 +44,37 @@ export enum TexelFormat {
 	R32float,
 	R32uint,
 	Rg32float,
+	Rgba8sint,
+	Rgba16uint,
+	Rgba16sint,
+	R32sint,
+	Rg32uint,
+	Rg32sint,
+	Rgba32uint,
+	Rgba32sint,
+	Bgra8unorm,
+}
+
+// The scalar of a storage texel: WGSL's texel format table gives each format the channel type
+// textureLoad returns and textureStore takes, a vec4 of it.
+export function texelScalar(format: TexelFormat): ScalarKind {
+	if (format == TexelFormat.Rgba8uint || format == TexelFormat.Rgba16uint ||
+		format == TexelFormat.R32uint || format == TexelFormat.Rg32uint ||
+		format == TexelFormat.Rgba32uint) {
+		return ScalarKind.U32;
+	}
+	if (format == TexelFormat.Rgba8sint || format == TexelFormat.Rgba16sint ||
+		format == TexelFormat.R32sint || format == TexelFormat.Rg32sint ||
+		format == TexelFormat.Rgba32sint) {
+		return ScalarKind.I32;
+	}
+	if (format == TexelFormat.Rgba8unorm || format == TexelFormat.Rgba8snorm ||
+		format == TexelFormat.Rgba16float || format == TexelFormat.Rgba32float ||
+		format == TexelFormat.R32float || format == TexelFormat.Rg32float ||
+		format == TexelFormat.Bgra8unorm) {
+		return ScalarKind.F32;
+	}
+	throw new Error("texelScalar: a texel format with no channel type");
 }
 
 export enum Access {
@@ -153,6 +187,12 @@ export enum Intrinsic {
 	Sinh,
 	Cosh,
 	Tanh,
+	Asinh,
+	Acosh,
+	Atanh,
+	Ldexp,
+	Modf,
+	Frexp,
 	Degrees,
 	Radians,
 	Min,
@@ -176,14 +216,30 @@ export enum Intrinsic {
 	Inverse,
 	UpperLeft3x3,
 	Select,
+	LessThan,
 	LessThanEqual,
+	GreaterThan,
+	GreaterThanEqual,
+	Equal,
+	NotEqual,
+	Any,
+	All,
 	Dpdx,
 	Dpdy,
 	Fwidth,
+	DpdxCoarse,
+	DpdxFine,
+	DpdyCoarse,
+	DpdyFine,
+	FwidthCoarse,
+	FwidthFine,
+	Bitcast,
 	CountOneBits,
 	ReverseBits,
 	FirstLeadingBit,
 	FirstTrailingBit,
+	CountLeadingZeros,
+	CountTrailingZeros,
 	ExtractBits,
 	InsertBits,
 	Pack4x8Unorm,
@@ -218,6 +274,10 @@ export enum Intrinsic {
 	TextureSampleLevel,
 	TextureSampleBias,
 	TextureSampleGrad,
+	TextureNumSamples,
+	ArrayLength,
+	WorkgroupUniformLoad,
+	TextureBarrier,
 }
 
 function isExplicitSample(op: Intrinsic): boolean {
@@ -225,9 +285,138 @@ function isExplicitSample(op: Intrinsic): boolean {
 		op == Intrinsic.TextureSampleGrad;
 }
 
+export function isSampling(op: Intrinsic): boolean {
+	return isExplicitSample(op) || op == Intrinsic.TextureSample ||
+		op == Intrinsic.TextureSampleCompare || op == Intrinsic.TextureSampleCompareLevel;
+}
+
 export function isArrayTexture(t: ShaderType): boolean {
 	return t.shape == TextureShape.D2Array || t.shape == TextureShape.CubeArray ||
 		t.shape == TextureShape.Depth2dArray;
+}
+
+// The operands of a sample before its constant offset: texture, sampler, coordinates, the layer
+// of an array, then the level, bias, reference or two derivatives.
+export function sampleBase(e: ShaderExpr): int32 {
+	let tail = 1;
+	if (e.intrinsic == Intrinsic.TextureSample) { tail = 0; }
+	if (e.intrinsic == Intrinsic.TextureSampleGrad) { tail = 2; }
+	return 3 + (isArrayTexture(e.operands[0].type) ? 1 : 0) + tail;
+}
+
+export function hasOffset(e: ShaderExpr): boolean {
+	return isSampling(e.intrinsic) && e.operands.length > 0 && e.operands.length == sampleBase(e) + 1;
+}
+
+export function offsetOf(e: ShaderExpr): ShaderExpr {
+	return e.operands[sampleBase(e)];
+}
+
+export function offsetRows(shape: TextureShape): int32 {
+	if (shape == TextureShape.D3) { return 3; }
+	const plane = shape == TextureShape.D2 || shape == TextureShape.D2Array ||
+		shape == TextureShape.Depth2d || shape == TextureShape.Depth2dArray;
+	return plane ? 2 : 0;
+}
+
+export const OFFSET_MIN = -8;
+export const OFFSET_MAX = 7;
+
+// The texel offsets of a constant vector of i32 literals, or none when it is anything else.
+export function offsetParts(e: ShaderExpr): float64[] {
+	let parts: float64[] = [];
+	if (e.kind != ExprKind.Construct || e.type.kind != ShaderTypeKind.Vector ||
+		e.type.scalar != ScalarKind.I32 || e.operands.length != e.type.rows) {
+		return parts;
+	}
+	for (const o of e.operands) {
+		if (o.kind != ExprKind.Literal || o.type.kind != ShaderTypeKind.Scalar ||
+			o.type.scalar != ScalarKind.I32) {
+			return [];
+		}
+		parts.push(o.value);
+	}
+	return parts;
+}
+
+function offsetError(e: ShaderExpr): string {
+	const name = e.intrinsic.toString();
+	const o = e.operands;
+	if (o.length == 0 || o[0].type.kind != ShaderTypeKind.Texture) { return ""; }
+	const base = sampleBase(e);
+	if (o.length <= base) { return ""; }
+	const shape = o[0].type.shape;
+	if (o.length > base + 1) { return name + " takes one constant offset, last, as WGSL's"; }
+	const rows = offsetRows(shape);
+	if (rows == 0) { return name + " takes no offset on a " + shape.toString() + " texture, as WGSL's"; }
+	const type = o[base].type;
+	if (type.kind != ShaderTypeKind.Vector || type.scalar != ScalarKind.I32 || type.rows != rows) {
+		return name + " takes a constant offset of " + String(rows) + " i32 for a " +
+			shape.toString() + " texture, as WGSL's";
+	}
+	const parts = offsetParts(o[base]);
+	let inRange = parts.length == rows;
+	for (const part of parts) {
+		if (part < OFFSET_MIN || part > OFFSET_MAX) { inRange = false; }
+	}
+	return inRange ? "" : name + " takes a constant offset in [-8, 7], as WGSL's";
+}
+
+function multisampleError(e: ShaderExpr): string {
+	const name = e.intrinsic.toString();
+	const o = e.operands;
+	const multisampled = o.length > 0 && o[0].type.kind == ShaderTypeKind.Texture &&
+		o[0].type.shape == TextureShape.Multisampled2d;
+	if (e.intrinsic == Intrinsic.TextureNumSamples) {
+		return o.length == 1 && multisampled ? "" : name + " takes one multisampled texture, as WGSL's";
+	}
+	if (!multisampled) { return ""; }
+	if (e.intrinsic == Intrinsic.TextureDimensions && o.length != 1) {
+		return name + " of a multisampled texture takes no level, as WGSL's";
+	}
+	if (e.intrinsic == Intrinsic.TextureLoad &&
+		(o.length != 3 || o[2].type.kind != ShaderTypeKind.Scalar ||
+		o[2].type.scalar != ScalarKind.I32 && o[2].type.scalar != ScalarKind.U32)) {
+		return name + " of a multisampled texture takes coordinates and an i32 or u32 sample " +
+			"index, as WGSL's";
+	}
+	return "";
+}
+
+function storageTexelError(e: ShaderExpr): string {
+	const o = e.operands;
+	if (o.length == 0 || o[0].type.kind != ShaderTypeKind.StorageTexture) { return ""; }
+	const texel = e.intrinsic == Intrinsic.TextureStore ? o[o.length - 1].type : e.type;
+	const wanted = texelScalar(o[0].type.format);
+	if (texel.kind == ShaderTypeKind.Vector && texel.rows == 4 && texel.scalar == wanted) {
+		return "";
+	}
+	return e.intrinsic.toString() + " of a " + o[0].type.format.toString() +
+		" storage texture takes a vec4 of " + wanted.toString() + ", as WGSL's";
+}
+
+function arrayLengthError(m: ShaderModule, e: ShaderExpr): string {
+	const o = e.operands;
+	const buffer = o.length == 1 && o[0].kind == ExprKind.Resource && o[0].index >= 0 &&
+		o[0].index < m.resources.length && m.resources[o[0].index].kind == ResourceKind.StorageBuffer;
+	if (!buffer) { return "ArrayLength takes one storage buffer, as WGSL's takes a runtime-sized array"; }
+	const count = e.type.kind == ShaderTypeKind.Scalar &&
+		(e.type.scalar == ScalarKind.U32 || e.type.scalar == ScalarKind.I32);
+	return count ? "" : "ArrayLength gives a u32 or an i32 count";
+}
+
+export function isUniformLoad(e: ShaderExpr): boolean {
+	return e.kind == ExprKind.Intrinsic && e.intrinsic == Intrinsic.WorkgroupUniformLoad;
+}
+
+function uniformLoadError(e: ShaderExpr): string {
+	const o = e.operands;
+	if (o.length != 1 || rootOf(o[0]).kind != ExprKind.Workgroup) {
+		return "WorkgroupUniformLoad takes a workgroup variable, as WGSL's takes a ptr<workgroup, T>";
+	}
+	const plain = o[0].type.kind == ShaderTypeKind.Scalar || o[0].type.kind == ShaderTypeKind.Vector;
+	return plain && e.type.kind == o[0].type.kind && e.type.scalar == o[0].type.scalar ? "" :
+		"WorkgroupUniformLoad loads a scalar or a vector";
 }
 
 function explicitSampleError(e: ShaderExpr): string {
@@ -238,17 +427,30 @@ function explicitSampleError(e: ShaderExpr): string {
 		return name + " takes a texture, a sampler and coordinates first";
 	}
 	const t = o[0].type;
+	if (t.shape == TextureShape.D1 && e.intrinsic != Intrinsic.TextureSampleLevel) {
+		return name + " of a D1 texture: WGSL samples it with textureSample and " +
+			"textureSampleLevel only";
+	}
 	const color = t.shape == TextureShape.D2 || t.shape == TextureShape.D2Array ||
-		t.shape == TextureShape.D3 || t.shape == TextureShape.Cube ||
+		t.shape == TextureShape.D1 || t.shape == TextureShape.D3 || t.shape == TextureShape.Cube ||
 		t.shape == TextureShape.CubeArray;
-	if (!color || t.scalar != ScalarKind.F32) {
+	const depth = t.shape == TextureShape.Depth2d || t.shape == TextureShape.Depth2dArray ||
+		t.shape == TextureShape.DepthCube;
+	const depthLevel = depth && e.intrinsic == Intrinsic.TextureSampleLevel;
+	if (!depthLevel && (!color || t.scalar != ScalarKind.F32)) {
 		return name + " of a " + t.shape.toString() + " texture of " + t.scalar.toString() +
 			": it samples a float color texture here";
 	}
 	const tail = e.intrinsic == Intrinsic.TextureSampleGrad ? 2 : 1;
-	if (o.length != 3 + (isArrayTexture(t) ? 1 : 0) + tail) {
+	const base = 3 + (isArrayTexture(t) ? 1 : 0) + tail;
+	if (o.length != base && o.length != base + 1) {
 		return name + " takes a texture, a sampler, coordinates, a layer of an array, and " +
 			(tail == 2 ? "two derivatives" : "a level or bias") + ", as WGSL's";
+	}
+	const level = o[base - 1].type;
+	if (depthLevel && (level.kind != ShaderTypeKind.Scalar ||
+		level.scalar != ScalarKind.I32 && level.scalar != ScalarKind.U32)) {
+		return name + " of a " + t.shape.toString() + " texture takes an i32 or u32 level, as WGSL's";
 	}
 	return "";
 }
@@ -308,6 +510,53 @@ function bitsError(e: ShaderExpr): string {
 	return "";
 }
 
+function isNumericShape(t: ShaderType): boolean {
+	return (t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector) &&
+		t.scalar != ScalarKind.Bool;
+}
+
+function sameShape(a: ShaderType, b: ShaderType): boolean {
+	return a.kind == b.kind && (a.kind == ShaderTypeKind.Scalar || a.rows == b.rows);
+}
+
+function isMixedMath(op: Intrinsic): boolean {
+	return op == Intrinsic.Bitcast || op == Intrinsic.Ldexp;
+}
+
+// Bitcast keeps its operand's shape and changes its scalar; ldexp scales an f32 shape by an i32 one.
+function mixedMathError(e: ShaderExpr): string {
+	const name = e.intrinsic.toString();
+	const o = e.operands;
+	const first = o.length > 0 ? o[0].type : new ShaderType();
+	if (e.intrinsic == Intrinsic.Bitcast) {
+		if (o.length != 1 || !isNumericShape(first) || !isNumericShape(e.type) ||
+			!sameShape(first, e.type) || first.scalar == e.type.scalar) {
+			return name + " takes one i32, u32 or f32 scalar or vector and answers the same shape " +
+				"of another scalar";
+		}
+		return "";
+	}
+	if (o.length != 2 || !isNumericShape(first) || first.scalar != ScalarKind.F32 ||
+		!isNumericShape(o[1].type) || o[1].type.scalar != ScalarKind.I32 ||
+		!sameShape(first, o[1].type) || !sameShaderType(e.type, first)) {
+		return name + " takes an f32 scalar or vector and an i32 of its shape, as WGSL's";
+	}
+	return "";
+}
+
+// modf and frexp take an f32 scalar or vector and answer the predeclared result of its width.
+function splitError(e: ShaderExpr): string {
+	const name = e.intrinsic.toString();
+	const o = e.operands;
+	const want = e.intrinsic == Intrinsic.Modf ? ShaderTypeKind.ModfResult : ShaderTypeKind.FrexpResult;
+	if (o.length != 1 || !isNumericShape(o[0].type) || o[0].type.scalar != ScalarKind.F32 ||
+		e.type.kind != want || e.type.rows != o[0].type.rows) {
+		return name + " takes an f32 scalar or vector and answers the predeclared result of its " +
+			"width, as WGSL's";
+	}
+	return "";
+}
+
 export function isAtomic(op: Intrinsic): boolean {
 	return match (op) {
 		Intrinsic.AtomicLoad | Intrinsic.AtomicStore | Intrinsic.AtomicAdd | Intrinsic.AtomicSub |
@@ -320,7 +569,8 @@ export function isAtomic(op: Intrinsic): boolean {
 
 export function isEffect(op: Intrinsic): boolean {
 	return op == Intrinsic.TextureStore || op == Intrinsic.WorkgroupBarrier ||
-		op == Intrinsic.StorageBarrier || isAtomic(op) && op != Intrinsic.AtomicLoad;
+		op == Intrinsic.StorageBarrier || op == Intrinsic.TextureBarrier ||
+		op == Intrinsic.WorkgroupUniformLoad || isAtomic(op) && op != Intrinsic.AtomicLoad;
 }
 
 export class ShaderExpr {
@@ -459,6 +709,7 @@ export enum Builtin {
 	NumWorkgroups,
 	SampleIndex,
 	SampleMask,
+	PrimitiveIndex,
 }
 
 export enum Interpolation {
@@ -601,6 +852,35 @@ export function exchangeResultType(scalar: ScalarKind): ShaderType {
 	return t;
 }
 
+// WGSL's __modf_result_* and __frexp_result_*: rows is 1 for the f32 forms and the width of a vector
+// form otherwise. Member 0 is fract, member 1 whole for modf and exp for frexp.
+export function modfResultType(rows: int32): ShaderType {
+	let t = scalarType(ScalarKind.F32);
+	t.kind = ShaderTypeKind.ModfResult;
+	t.rows = rows;
+	return t;
+}
+
+export function frexpResultType(rows: int32): ShaderType {
+	let t = modfResultType(rows);
+	t.kind = ShaderTypeKind.FrexpResult;
+	return t;
+}
+
+export function isPredeclaredResult(t: ShaderType): boolean {
+	return t.kind == ShaderTypeKind.ExchangeResult || t.kind == ShaderTypeKind.ModfResult ||
+		t.kind == ShaderTypeKind.FrexpResult;
+}
+
+function shapeOf(scalar: ScalarKind, rows: int32): ShaderType {
+	return rows == 1 ? scalarType(scalar) : vectorType(scalar, rows);
+}
+
+export function predeclaredMemberType(t: ShaderType, member: int32): ShaderType {
+	const exponent = t.kind == ShaderTypeKind.FrexpResult && member == 1;
+	return shapeOf(exponent ? ScalarKind.I32 : ScalarKind.F32, t.rows);
+}
+
 export function sameShaderType(a: ShaderType, b: ShaderType): boolean {
 	if (a.kind != b.kind || a.scalar != b.scalar || a.rows != b.rows || a.columns != b.columns ||
 		a.length != b.length || a.structIndex != b.structIndex || a.shape != b.shape ||
@@ -700,13 +980,13 @@ function builtinStages(b: Builtin, direction: IoDirection): ShaderStage[] {
 			Builtin.None | Builtin.VertexIndex | Builtin.InstanceIndex | Builtin.FrontFacing |
 				Builtin.LocalInvocationId | Builtin.LocalInvocationIndex |
 				Builtin.GlobalInvocationId | Builtin.WorkgroupId | Builtin.NumWorkgroups |
-				Builtin.SampleIndex => [],
+				Builtin.SampleIndex | Builtin.PrimitiveIndex => [],
 		};
 	}
 	return match (b) {
 		Builtin.VertexIndex | Builtin.InstanceIndex => [ShaderStage.Vertex],
-		Builtin.Position | Builtin.FrontFacing | Builtin.SampleIndex | Builtin.SampleMask =>
-			[ShaderStage.Fragment],
+		Builtin.Position | Builtin.FrontFacing | Builtin.SampleIndex | Builtin.SampleMask |
+			Builtin.PrimitiveIndex => [ShaderStage.Fragment],
 		Builtin.None | Builtin.FragDepth => [],
 		Builtin.LocalInvocationId | Builtin.LocalInvocationIndex | Builtin.GlobalInvocationId |
 			Builtin.WorkgroupId | Builtin.NumWorkgroups => [ShaderStage.Compute],
@@ -740,6 +1020,21 @@ function holdsAtomic(m: ShaderModule, t: ShaderType): boolean {
 	return t.element.some((e) => holdsAtomic(m, e));
 }
 
+function holdsBool(m: ShaderModule, t: ShaderType, seen: int32[]): boolean {
+	if ((t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector) &&
+		t.scalar == ScalarKind.Bool) {
+		return true;
+	}
+	if (t.kind == ShaderTypeKind.Struct) {
+		if (t.structIndex < 0 || t.structIndex >= m.structs.length || seen.includes(t.structIndex)) {
+			return false;
+		}
+		seen.push(t.structIndex);
+		return m.structs[t.structIndex].members.some((f) => holdsBool(m, f.type, seen));
+	}
+	return t.element.some((e) => holdsBool(m, e, seen));
+}
+
 const RUNTIME_ARRAY = "is a runtime array, which only a storage buffer is";
 
 function holdsRuntimeArray(t: ShaderType): boolean {
@@ -753,15 +1048,23 @@ class Checker {
 	callees: int32[][] = [];
 	fragmentOnly: string[][] = [];
 	computeOnly: string[][] = [];
+	uniformLoads: int32 = 0;
+}
+
+export function isDerivative(op: Intrinsic): boolean {
+	return op == Intrinsic.Dpdx || op == Intrinsic.Dpdy || op == Intrinsic.Fwidth ||
+		op == Intrinsic.DpdxCoarse || op == Intrinsic.DpdxFine || op == Intrinsic.DpdyCoarse ||
+		op == Intrinsic.DpdyFine || op == Intrinsic.FwidthCoarse || op == Intrinsic.FwidthFine;
 }
 
 function isFragmentOnly(op: Intrinsic): boolean {
-	return op == Intrinsic.Dpdx || op == Intrinsic.Dpdy || op == Intrinsic.Fwidth ||
-		op == Intrinsic.TextureSampleBias || op == Intrinsic.TextureSampleCompare;
+	return isDerivative(op) || op == Intrinsic.TextureSampleBias ||
+		op == Intrinsic.TextureSampleCompare;
 }
 
 function isComputeOnly(op: Intrinsic): boolean {
-	return op == Intrinsic.WorkgroupBarrier || op == Intrinsic.StorageBarrier;
+	return op == Intrinsic.WorkgroupBarrier || op == Intrinsic.StorageBarrier ||
+		op == Intrinsic.TextureBarrier || op == Intrinsic.WorkgroupUniformLoad;
 }
 
 function noted(list: string[], what: string): void {
@@ -865,8 +1168,39 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 		const error = explicitSampleError(e);
 		if (error != "") { c.errors.push(owner + ": " + error); }
 	}
+	if (e.kind == ExprKind.Intrinsic && e.intrinsic == Intrinsic.ArrayLength) {
+		const error = arrayLengthError(m, e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
+	if (isUniformLoad(e)) {
+		c.uniformLoads += 1;
+		const error = uniformLoadError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
+	if (e.kind == ExprKind.Intrinsic && (e.intrinsic == Intrinsic.TextureLoad ||
+		e.intrinsic == Intrinsic.TextureDimensions || e.intrinsic == Intrinsic.TextureNumSamples)) {
+		const error = multisampleError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
+	if (e.kind == ExprKind.Intrinsic && (e.intrinsic == Intrinsic.TextureLoad ||
+		e.intrinsic == Intrinsic.TextureStore)) {
+		const error = storageTexelError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
+	if (e.kind == ExprKind.Intrinsic && isSampling(e.intrinsic)) {
+		const error = offsetError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
 	if (e.kind == ExprKind.Intrinsic && isBitsOp(e.intrinsic)) {
 		const error = bitsError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
+	if (e.kind == ExprKind.Intrinsic && isMixedMath(e.intrinsic)) {
+		const error = mixedMathError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
+	if (e.kind == ExprKind.Intrinsic && (e.intrinsic == Intrinsic.Modf || e.intrinsic == Intrinsic.Frexp)) {
+		const error = splitError(e);
 		if (error != "") { c.errors.push(owner + ": " + error); }
 	}
 	const atomic = e.kind == ExprKind.Intrinsic && isAtomic(e.intrinsic);
@@ -885,9 +1219,36 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 	}
 }
 
+export function rootOf(e: ShaderExpr): ShaderExpr {
+	const through = e.kind == ExprKind.Field || e.kind == ExprKind.Swizzle || e.kind == ExprKind.Index;
+	return through && e.operands.length > 0 ? rootOf(e.operands[0]) : e;
+}
+
 function stmtErrors(c: Checker, s: ShaderStmt, f: ShaderFunction, owner: string): void {
+	const loadsBefore = c.uniformLoads;
 	exprErrors(c, s.expr, f, owner);
 	exprErrors(c, s.target, f, owner);
+	const loads = c.uniformLoads - loadsBefore;
+	if (loads > 0 && !(loads == 1 && s.kind == StmtKind.Let && isUniformLoad(s.expr))) {
+		c.errors.push(owner + ": a WorkgroupUniformLoad is the initializer of a const or let of its " +
+			"own, because the barriers around it sit between two statements");
+	}
+	if (s.kind == StmtKind.For) {
+		for (const inner of s.init.concat(s.update)) {
+			if (isUniformLoad(inner.expr)) {
+				c.errors.push(owner + ": a WorkgroupUniformLoad is no part of a for header");
+			}
+		}
+	}
+	const root = rootOf(s.target);
+	if (s.kind == StmtKind.Assign && root.kind == ExprKind.Resource &&
+		root.index >= 0 && root.index < c.module.resources.length) {
+		const r = c.module.resources[root.index];
+		if (r.kind == ResourceKind.StorageBuffer && r.access != Access.ReadWrite) {
+			c.errors.push(owner + ": a write to storage buffer '" + r.name +
+				"', whose access is " + r.access.toString().toLowerCase() + ", not read_write");
+		}
+	}
 	if (holdsAtomic(c.module, s.expr.type) || holdsAtomic(c.module, s.target.type)) {
 		c.errors.push(owner + ": an atomic is read and written only through atomic operations, " +
 			"as WGSL's");
@@ -948,10 +1309,15 @@ export function irErrors(m: ShaderModule): string[] {
 		if (!shapeHolds) {
 			c.errors.push(owner + ": its type does not fit a " + r.kind.toString());
 		}
-		if (r.kind == ResourceKind.StorageTexture && r.type.shape != TextureShape.D2 &&
-			r.type.shape != TextureShape.D2Array && r.type.shape != TextureShape.D3) {
+		if (r.kind == ResourceKind.StorageTexture && r.type.shape != TextureShape.D1 &&
+			r.type.shape != TextureShape.D2 && r.type.shape != TextureShape.D2Array &&
+			r.type.shape != TextureShape.D3) {
 			c.errors.push(owner + ": a storage texture of shape " + r.type.shape.toString() +
-				", where WGSL's is 2d, 2d array or 3d");
+				", where WGSL's is 1d, 2d, 2d array or 3d");
+		}
+		const shared = r.kind == ResourceKind.UniformBlock || r.kind == ResourceKind.StorageBuffer;
+		if (shared && holdsBool(m, r.type, [])) {
+			c.errors.push(owner + ": a bool is no uniform or storage member, as WGSL's");
 		}
 		if (r.kind == ResourceKind.StorageBuffer && r.access != Access.ReadWrite &&
 			holdsAtomic(m, r.type)) {
@@ -976,6 +1342,9 @@ export function irErrors(m: ShaderModule): string[] {
 			c.errors.push(owner + ": a flat varying takes no sampling, as WGSL's");
 		}
 		if (holdsRuntimeArray(io.type)) { c.errors.push(owner + ": it " + RUNTIME_ARRAY); }
+		if (io.builtin == Builtin.None && holdsBool(m, io.type, [])) {
+			c.errors.push(owner + ": a bool is no attribute, varying or output, as WGSL's");
+		}
 		if (io.builtin == Builtin.None && io.type.kind == ShaderTypeKind.Array) {
 			c.errors.push(owner + ": an attribute, varying or output is no array, as WGSL's");
 		}
@@ -984,6 +1353,10 @@ export function irErrors(m: ShaderModule): string[] {
 		for (const f of s.members) {
 			if (holdsRuntimeArray(f.type)) {
 				c.errors.push("struct '" + s.name + "': member '" + f.name + "' " + RUNTIME_ARRAY);
+			}
+			if (isPredeclaredResult(f.type)) {
+				c.errors.push("struct '" + s.name + "': member '" + f.name + "' is a predeclared result, " +
+					"which WGSL cannot name");
 			}
 		}
 	}

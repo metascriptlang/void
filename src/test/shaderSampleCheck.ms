@@ -187,12 +187,12 @@ test "every target spells textureSampleLevel, textureSampleBias and textureSampl
 		"  float4 layer = layers.sample(atlasSampler, uv, uint(1), level(0.0));\n");
 }
 
-test "an explicit sample of a depth texture, or without its level, is refused by name" {
+test "an explicit sample of a depth texture with a float level, or without its level, is refused by name" {
 	let depth = programOf();
 	const lifted = depth.functions[depth.entries[0].functionIndex].body[0].expr;
 	lifted.operands[0].type.shape = TextureShape.Depth2d;
 	assert irErrors(depth).includes("function 'liftedVs': TextureSampleLevel of a Depth2d " +
-		"texture of F32: it samples a float color texture here");
+		"texture takes an i32 or u32 level, as WGSL's");
 	let short = programOf();
 	const body = short.functions[short.entries[1].functionIndex].body;
 	const graded = body.filter((s) => s.kind == StmtKind.Let &&

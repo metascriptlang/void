@@ -12,6 +12,8 @@ import {
 	ShaderTypeKind,
 	StmtKind,
 	isEffect,
+	rootOf,
+	sameShaderType,
 	scalarType,
 	vectorType,
 } from "./ir";
@@ -32,15 +34,10 @@ export function builtinType(b: Builtin): ShaderType {
 		Builtin.LocalInvocationId | Builtin.GlobalInvocationId | Builtin.WorkgroupId |
 			Builtin.NumWorkgroups => vectorType(ScalarKind.U32, 3),
 		Builtin.VertexIndex | Builtin.InstanceIndex | Builtin.LocalInvocationIndex |
-			Builtin.SampleIndex | Builtin.SampleMask => scalarType(ScalarKind.U32),
+			Builtin.SampleIndex | Builtin.SampleMask | Builtin.PrimitiveIndex =>
+			scalarType(ScalarKind.U32),
 		Builtin.None => { throw new Error("internal: builtinType of Builtin.None"); },
 	};
-}
-
-export function rootOf(e: ShaderExpr): ShaderExpr {
-	const through = e.kind == ExprKind.Field || e.kind == ExprKind.Swizzle ||
-		e.kind == ExprKind.Index;
-	return through && e.operands.length > 0 ? rootOf(e.operands[0]) : e;
 }
 
 function stmtsHaveEffect(m: ShaderModule, effects: int32[], stmts: ShaderStmt[]): boolean {
@@ -165,4 +162,30 @@ export function unspecialized(
 		}
 	}
 	return "";
+}
+
+function exprSplits(e: ShaderExpr, out: ShaderType[]): void {
+	const split = e.type.kind == ShaderTypeKind.ModfResult || e.type.kind == ShaderTypeKind.FrexpResult;
+	if (split && !out.some((t) => sameShaderType(t, e.type))) { out.push(e.type); }
+	for (const o of e.operands) { exprSplits(o, out); }
+}
+
+function stmtSplits(stmts: ShaderStmt[], out: ShaderType[]): void {
+	for (const s of stmts) {
+		exprSplits(s.expr, out);
+		exprSplits(s.target, out);
+		for (const list of [s.init, s.update, s.body, s.otherwise]) { stmtSplits(list, out); }
+		for (const arm of s.cases) {
+			for (const label of arm.labels) { exprSplits(label, out); }
+			stmtSplits(arm.body, out);
+		}
+	}
+}
+
+// The modf and frexp result types the functions use, in first-use order: a printer declares each
+// one's struct and the helper that makes it once, before any function.
+export function splitResults(m: ShaderModule, functions: int32[]): ShaderType[] {
+	let out: ShaderType[] = [];
+	for (const f of functions) { stmtSplits(m.functions[f].body, out); }
+	return out;
 }

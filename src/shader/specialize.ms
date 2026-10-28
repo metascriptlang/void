@@ -309,8 +309,6 @@ function copyStmt(r: Remap, s: ShaderStmt): ShaderStmt {
 	return c;
 }
 
-// Keep every held io, read or not: shdc's DCE preserves the stage interface (sokol-tools
-// src/shdc/spirv.cc CreateAggressiveDCEPass(true)), so its reflection lists them all.
 export function specialize(m: ShaderModule, on: string[]): Result<ShaderModule, string> {
 	let w = new Walk();
 	w.module = m;

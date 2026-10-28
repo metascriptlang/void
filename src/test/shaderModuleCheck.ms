@@ -7,7 +7,10 @@ import {
 	Vec4f,
 	binding,
 	builtin,
+	lt,
+	select,
 	textureSample,
+	vec2i,
 	vec4f,
 } from "../shader/std";
 
@@ -45,9 +48,27 @@ function pictureFs(input: PictureFragment, b: PictureBindings): Vec4f {
 
 shaderModule(picture, pictureVs, pictureFs);
 
+struct BelowBindings {
+	@binding(0) tintParams: PictureTint;
+}
+
+function belowFs(input: PictureFragment, b: BelowBindings): Vec4f {
+	return select(vec4f(0.0, 0.0, 0.0, 0.0), b.tintParams.tint, lt(b.tintParams.tint, vec4f(0.5, 0.5, 0.5, 0.5)));
+}
+
+shaderModule(below, pictureVs, belowFs);
+
+function nudgedFs(input: PictureFragment, b: PictureBindings): Vec4f {
+	const shift = vec2i(1, -1);
+	return textureSample(b.picture, b.smoothing, input.uv, shift);
+}
+
+shaderModule(nudged, pictureVs, nudgedFs);
+
 test "shaderModule declares the program's WebGPU shader module for this build's backend" {
 	assert (pictureModule.label ?? "") == "picture";
-	assert pictureModule.vertexCode.length > 0 && pictureModule.fragmentCode.length > 0;
+	assert pictureModule.vertexCode.length + pictureModule.vertexBytecode.length > 0;
+	assert pictureModule.fragmentCode.length + pictureModule.fragmentBytecode.length > 0;
 	assert pictureModule.vertexEntryPoint != "" && pictureModule.fragmentEntryPoint != "";
 	const kind: string = pictureModule.bindings[3].kind;
 	assert kind == "";
@@ -64,4 +85,16 @@ test "shaderModule numbers bindings as shdc's WGSL output does" {
 	const sampler = pictureModule.bindings[2];
 	assert sampler.group == 1 && sampler.binding == 32 && sampler.kind == "sampler";
 	assert sampler.samplerType == "filtering";
+}
+
+test "shaderModule spells a componentwise comparison while the macro prints it" {
+	const code = belowModule.fragmentCode;
+	assert code.includes("<") || code.includes("lessThan(");
+	assert !code.includes("null");
+}
+
+test "shaderModule folds a function's const of constants into the offset while the macro prints it" {
+	const code = nudgedModule.fragmentCode;
+	assert code.includes("vec2i(1i, (-1i))") || code.includes("int2(1, -1))") || code.includes("int2(1, (-1)))") ||
+		code.includes("ivec2(1, -1))"), code;
 }

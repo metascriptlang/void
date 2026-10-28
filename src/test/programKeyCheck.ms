@@ -439,7 +439,7 @@ test "an HDR forward preset takes a tone map block and material, and its core wr
 		if (pass !== null) {
 			const toneMap: ProgramKey = context.materials[pass.material.index].program;
 			assert toneMap == ProgramKey.of(Program.Post);
-			assert pass.block.slot == TONE_MAP_UNIFORM_SLOT;
+			assert pass.block.block.slot == TONE_MAP_UNIFORM_SLOT;
 		}
 		closeForward(forward);
 		assert context.liveMaterials() == 0;

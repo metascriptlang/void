@@ -1043,6 +1043,30 @@ export struct Mat4x4f {
 	columns: Vec4f[4];
 }
 
+export struct Mat2x3f {
+	columns: Vec3f[2];
+}
+
+export struct Mat2x4f {
+	columns: Vec4f[2];
+}
+
+export struct Mat3x2f {
+	columns: Vec2f[3];
+}
+
+export struct Mat3x4f {
+	columns: Vec4f[3];
+}
+
+export struct Mat4x2f {
+	columns: Vec2f[4];
+}
+
+export struct Mat4x3f {
+	columns: Vec3f[4];
+}
+
 export function vec2f(x: float32, y: float32): Vec2f { return { x, y }; }
 export function vec2f(s: float32): Vec2f { return { x: s, y: s }; }
 export function vec2f(v: Vec2i): Vec2f { return { x: v.x as float32, y: v.y as float32 }; }
@@ -1129,6 +1153,24 @@ export function mat3x3f(
 	return mat3x3f(vec3f(c0x, c0y, c0z), vec3f(c1x, c1y, c1z), vec3f(c2x, c2y, c2z));
 }
 export function mat4x4f(c0: Vec4f, c1: Vec4f, c2: Vec4f, c3: Vec4f): Mat4x4f {
+	return { columns: [c0, c1, c2, c3] };
+}
+export function mat2x3f(c0: Vec3f, c1: Vec3f): Mat2x3f {
+	return { columns: [c0, c1] };
+}
+export function mat2x4f(c0: Vec4f, c1: Vec4f): Mat2x4f {
+	return { columns: [c0, c1] };
+}
+export function mat3x2f(c0: Vec2f, c1: Vec2f, c2: Vec2f): Mat3x2f {
+	return { columns: [c0, c1, c2] };
+}
+export function mat3x4f(c0: Vec4f, c1: Vec4f, c2: Vec4f): Mat3x4f {
+	return { columns: [c0, c1, c2] };
+}
+export function mat4x2f(c0: Vec2f, c1: Vec2f, c2: Vec2f, c3: Vec2f): Mat4x2f {
+	return { columns: [c0, c1, c2, c3] };
+}
+export function mat4x3f(c0: Vec3f, c1: Vec3f, c2: Vec3f, c3: Vec3f): Mat4x3f {
 	return { columns: [c0, c1, c2, c3] };
 }
 
@@ -1328,9 +1370,129 @@ export function `*`(this a: Mat3x3f, b: Mat3x3f): Mat3x3f {
 	const c = b.columns;
 	return mat3x3f(a * c[0], a * c[1], a * c[2]);
 }
+export function `*`(this m: Mat2x3f, v: Vec2f): Vec3f {
+	return m.columns[0] * v.x + m.columns[1] * v.y;
+}
+export function `*`(this m: Mat2x4f, v: Vec2f): Vec4f {
+	return m.columns[0] * v.x + m.columns[1] * v.y;
+}
+export function `*`(this m: Mat3x2f, v: Vec3f): Vec2f {
+	return m.columns[0] * v.x + m.columns[1] * v.y + m.columns[2] * v.z;
+}
+export function `*`(this m: Mat3x4f, v: Vec3f): Vec4f {
+	return m.columns[0] * v.x + m.columns[1] * v.y + m.columns[2] * v.z;
+}
+export function `*`(this m: Mat4x2f, v: Vec4f): Vec2f {
+	return m.columns[0] * v.x + m.columns[1] * v.y + m.columns[2] * v.z + m.columns[3] * v.w;
+}
+export function `*`(this m: Mat4x3f, v: Vec4f): Vec3f {
+	return m.columns[0] * v.x + m.columns[1] * v.y + m.columns[2] * v.z + m.columns[3] * v.w;
+}
+export function `*`(this v: Vec2f, m: Mat2x2f): Vec2f {
+	return vec2f(dot(v, m.columns[0]), dot(v, m.columns[1]));
+}
+export function `*`(this v: Vec3f, m: Mat2x3f): Vec2f {
+	return vec2f(dot(v, m.columns[0]), dot(v, m.columns[1]));
+}
+export function `*`(this v: Vec4f, m: Mat2x4f): Vec2f {
+	return vec2f(dot(v, m.columns[0]), dot(v, m.columns[1]));
+}
+export function `*`(this v: Vec2f, m: Mat3x2f): Vec3f {
+	return vec3f(dot(v, m.columns[0]), dot(v, m.columns[1]), dot(v, m.columns[2]));
+}
+export function `*`(this v: Vec3f, m: Mat3x3f): Vec3f {
+	return vec3f(dot(v, m.columns[0]), dot(v, m.columns[1]), dot(v, m.columns[2]));
+}
+export function `*`(this v: Vec4f, m: Mat3x4f): Vec3f {
+	return vec3f(dot(v, m.columns[0]), dot(v, m.columns[1]), dot(v, m.columns[2]));
+}
+export function `*`(this v: Vec2f, m: Mat4x2f): Vec4f {
+	const c = m.columns;
+	return vec4f(dot(v, c[0]), dot(v, c[1]), dot(v, c[2]), dot(v, c[3]));
+}
+export function `*`(this v: Vec3f, m: Mat4x3f): Vec4f {
+	const c = m.columns;
+	return vec4f(dot(v, c[0]), dot(v, c[1]), dot(v, c[2]), dot(v, c[3]));
+}
+export function `*`(this v: Vec4f, m: Mat4x4f): Vec4f {
+	const c = m.columns;
+	return vec4f(dot(v, c[0]), dot(v, c[1]), dot(v, c[2]), dot(v, c[3]));
+}
 export function `*`(this a: Mat4x4f, b: Mat4x4f): Mat4x4f {
 	const c = b.columns;
 	return mat4x4f(a * c[0], a * c[1], a * c[2], a * c[3]);
+}
+export function `*`(this a: Mat2x2f, b: Mat3x2f): Mat3x2f {
+	return mat3x2f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
+}
+export function `*`(this a: Mat2x2f, b: Mat4x2f): Mat4x2f {
+	return mat4x2f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat2x3f, b: Mat2x2f): Mat2x3f {
+	return mat2x3f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat2x3f, b: Mat3x2f): Mat3x3f {
+	return mat3x3f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
+}
+export function `*`(this a: Mat2x3f, b: Mat4x2f): Mat4x3f {
+	return mat4x3f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat2x4f, b: Mat2x2f): Mat2x4f {
+	return mat2x4f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat2x4f, b: Mat3x2f): Mat3x4f {
+	return mat3x4f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
+}
+export function `*`(this a: Mat2x4f, b: Mat4x2f): Mat4x4f {
+	return mat4x4f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat3x2f, b: Mat2x3f): Mat2x2f {
+	return mat2x2f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat3x2f, b: Mat3x3f): Mat3x2f {
+	return mat3x2f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
+}
+export function `*`(this a: Mat3x2f, b: Mat4x3f): Mat4x2f {
+	return mat4x2f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat3x3f, b: Mat2x3f): Mat2x3f {
+	return mat2x3f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat3x3f, b: Mat4x3f): Mat4x3f {
+	return mat4x3f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat3x4f, b: Mat2x3f): Mat2x4f {
+	return mat2x4f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat3x4f, b: Mat3x3f): Mat3x4f {
+	return mat3x4f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
+}
+export function `*`(this a: Mat3x4f, b: Mat4x3f): Mat4x4f {
+	return mat4x4f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat4x2f, b: Mat2x4f): Mat2x2f {
+	return mat2x2f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat4x2f, b: Mat3x4f): Mat3x2f {
+	return mat3x2f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
+}
+export function `*`(this a: Mat4x2f, b: Mat4x4f): Mat4x2f {
+	return mat4x2f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat4x3f, b: Mat2x4f): Mat2x3f {
+	return mat2x3f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat4x3f, b: Mat3x4f): Mat3x3f {
+	return mat3x3f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
+}
+export function `*`(this a: Mat4x3f, b: Mat4x4f): Mat4x3f {
+	return mat4x3f(a * b.columns[0], a * b.columns[1], a * b.columns[2], a * b.columns[3]);
+}
+export function `*`(this a: Mat4x4f, b: Mat2x4f): Mat2x4f {
+	return mat2x4f(a * b.columns[0], a * b.columns[1]);
+}
+export function `*`(this a: Mat4x4f, b: Mat3x4f): Mat3x4f {
+	return mat3x4f(a * b.columns[0], a * b.columns[1], a * b.columns[2]);
 }
 
 export function transpose(m: Mat2x2f): Mat2x2f {
@@ -1352,6 +1514,54 @@ export function transpose(m: Mat4x4f): Mat4x4f {
 		vec4f(c[0].y, c[1].y, c[2].y, c[3].y),
 		vec4f(c[0].z, c[1].z, c[2].z, c[3].z),
 		vec4f(c[0].w, c[1].w, c[2].w, c[3].w),
+	);
+}
+export function transpose(m: Mat2x3f): Mat3x2f {
+	const c = m.columns;
+	return mat3x2f(
+		vec2f(c[0].x, c[1].x),
+		vec2f(c[0].y, c[1].y),
+		vec2f(c[0].z, c[1].z),
+	);
+}
+export function transpose(m: Mat2x4f): Mat4x2f {
+	const c = m.columns;
+	return mat4x2f(
+		vec2f(c[0].x, c[1].x),
+		vec2f(c[0].y, c[1].y),
+		vec2f(c[0].z, c[1].z),
+		vec2f(c[0].w, c[1].w),
+	);
+}
+export function transpose(m: Mat3x2f): Mat2x3f {
+	const c = m.columns;
+	return mat2x3f(
+		vec3f(c[0].x, c[1].x, c[2].x),
+		vec3f(c[0].y, c[1].y, c[2].y),
+	);
+}
+export function transpose(m: Mat3x4f): Mat4x3f {
+	const c = m.columns;
+	return mat4x3f(
+		vec3f(c[0].x, c[1].x, c[2].x),
+		vec3f(c[0].y, c[1].y, c[2].y),
+		vec3f(c[0].z, c[1].z, c[2].z),
+		vec3f(c[0].w, c[1].w, c[2].w),
+	);
+}
+export function transpose(m: Mat4x2f): Mat2x4f {
+	const c = m.columns;
+	return mat2x4f(
+		vec4f(c[0].x, c[1].x, c[2].x, c[3].x),
+		vec4f(c[0].y, c[1].y, c[2].y, c[3].y),
+	);
+}
+export function transpose(m: Mat4x3f): Mat3x4f {
+	const c = m.columns;
+	return mat3x4f(
+		vec4f(c[0].x, c[1].x, c[2].x, c[3].x),
+		vec4f(c[0].y, c[1].y, c[2].y, c[3].y),
+		vec4f(c[0].z, c[1].z, c[2].z, c[3].z),
 	);
 }
 
@@ -1473,6 +1683,15 @@ export function atan2(y: float32, x: float32): float32 {
 export function sinh(x: float32): float32 { return Math.sinh(x) as float32; }
 export function cosh(x: float32): float32 { return Math.cosh(x) as float32; }
 export function tanh(x: float32): float32 { return Math.tanh(x) as float32; }
+export function asinh(x: float32): float32 { return Math.asinh(x) as float32; }
+export function acosh(x: float32): float32 {
+	if (!(x >= 1.0)) { unreachable("acosh: the GPU result is undefined below 1"); }
+	return Math.acosh(x) as float32;
+}
+export function atanh(x: float32): float32 {
+	if (!(Math.abs(x) < 1.0)) { unreachable("atanh: the GPU result is undefined at or past -1 and 1"); }
+	return Math.atanh(x) as float32;
+}
 export function degrees(x: float32): float32 { return (x * 180.0 / Math.PI) as float32; }
 export function radians(x: float32): float32 { return (x * Math.PI / 180.0) as float32; }
 
@@ -1597,6 +1816,129 @@ export function cosh(v: Vec4f): Vec4f { return vec4f(cosh(v.x), cosh(v.y), cosh(
 export function tanh(v: Vec2f): Vec2f { return vec2f(tanh(v.x), tanh(v.y)); }
 export function tanh(v: Vec3f): Vec3f { return vec3f(tanh(v.x), tanh(v.y), tanh(v.z)); }
 export function tanh(v: Vec4f): Vec4f { return vec4f(tanh(v.x), tanh(v.y), tanh(v.z), tanh(v.w)); }
+export function asinh(v: Vec2f): Vec2f { return vec2f(asinh(v.x), asinh(v.y)); }
+export function asinh(v: Vec3f): Vec3f { return vec3f(asinh(v.x), asinh(v.y), asinh(v.z)); }
+export function asinh(v: Vec4f): Vec4f { return vec4f(asinh(v.x), asinh(v.y), asinh(v.z), asinh(v.w)); }
+export function acosh(v: Vec2f): Vec2f { return vec2f(acosh(v.x), acosh(v.y)); }
+export function acosh(v: Vec3f): Vec3f { return vec3f(acosh(v.x), acosh(v.y), acosh(v.z)); }
+export function acosh(v: Vec4f): Vec4f { return vec4f(acosh(v.x), acosh(v.y), acosh(v.z), acosh(v.w)); }
+export function atanh(v: Vec2f): Vec2f { return vec2f(atanh(v.x), atanh(v.y)); }
+export function atanh(v: Vec3f): Vec3f { return vec3f(atanh(v.x), atanh(v.y), atanh(v.z)); }
+export function atanh(v: Vec4f): Vec4f { return vec4f(atanh(v.x), atanh(v.y), atanh(v.z), atanh(v.w)); }
+
+// WGSL's ldexp: e1 * 2^e2. The specification leaves an e2 past 128 undefined.
+export function ldexp(x: float32, e: int32): float32 {
+	if (e > 128) { unreachable("ldexp: the exponent is past 128, which WGSL leaves undefined"); }
+	return (x * Math.pow(2.0, e as float64)) as float32;
+}
+export function ldexp(x: Vec2f, e: Vec2i): Vec2f { return vec2f(ldexp(x.x, e.x), ldexp(x.y, e.y)); }
+export function ldexp(x: Vec3f, e: Vec3i): Vec3f { return vec3f(ldexp(x.x, e.x), ldexp(x.y, e.y), ldexp(x.z, e.z)); }
+export function ldexp(x: Vec4f, e: Vec4i): Vec4f { return vec4f(ldexp(x.x, e.x), ldexp(x.y, e.y), ldexp(x.z, e.z), ldexp(x.w, e.w)); }
+
+// WGSL's modf and frexp answer a struct whose fields the specification names: a fraction and the
+// whole part or the exponent. Each width of each is a ./std struct, as the atomic exchange results
+// are; the IR marks the type as one a printer declares. An infinity or NaN has no result the
+// targets agree on, so the oracle refuses it.
+export struct ModfResultF32 {
+	fract: float32;
+	whole: float32;
+}
+
+export struct ModfResultVec2f {
+	fract: Vec2f;
+	whole: Vec2f;
+}
+
+export struct ModfResultVec3f {
+	fract: Vec3f;
+	whole: Vec3f;
+}
+
+export struct ModfResultVec4f {
+	fract: Vec4f;
+	whole: Vec4f;
+}
+
+export struct FrexpResultF32 {
+	fract: float32;
+	exp: int32;
+}
+
+export struct FrexpResultVec2f {
+	fract: Vec2f;
+	exp: Vec2i;
+}
+
+export struct FrexpResultVec3f {
+	fract: Vec3f;
+	exp: Vec3i;
+}
+
+export struct FrexpResultVec4f {
+	fract: Vec4f;
+	exp: Vec4i;
+}
+
+function finite(x: float32): float32 {
+	if (!(Math.abs(x) <= 3.4028234663852886e38)) {
+		unreachable("modf and frexp: an infinity or NaN has no result the targets agree on");
+	}
+	return x;
+}
+
+export function modf(x: float32): ModfResultF32 {
+	const whole = Math.trunc(finite(x)) as float32;
+	return { fract: x - whole, whole };
+}
+export function modf(v: Vec2f): ModfResultVec2f {
+	const x = modf(v.x);
+	const y = modf(v.y);
+	return { fract: vec2f(x.fract, y.fract), whole: vec2f(x.whole, y.whole) };
+}
+export function modf(v: Vec3f): ModfResultVec3f {
+	const x = modf(v.x);
+	const y = modf(v.y);
+	const z = modf(v.z);
+	return { fract: vec3f(x.fract, y.fract, z.fract), whole: vec3f(x.whole, y.whole, z.whole) };
+}
+export function modf(v: Vec4f): ModfResultVec4f {
+	const x = modf(v.x);
+	const y = modf(v.y);
+	const z = modf(v.z);
+	const w = modf(v.w);
+	return {
+		fract: vec4f(x.fract, y.fract, z.fract, w.fract),
+		whole: vec4f(x.whole, y.whole, z.whole, w.whole),
+	};
+}
+
+// C's frexp: x = fract * 2^exp with |fract| in [0.5, 1), and a zero keeps its sign and exponent 0.
+export function frexp(x: float32): FrexpResultF32 {
+	if (finite(x) == 0.0) { return { fract: x, exp: 0 }; }
+	const e = binaryExponent(Math.abs(x) as float64) + 1.0;
+	return { fract: ((x as float64) / Math.pow(2.0, e)) as float32, exp: e as int32 };
+}
+export function frexp(v: Vec2f): FrexpResultVec2f {
+	const x = frexp(v.x);
+	const y = frexp(v.y);
+	return { fract: vec2f(x.fract, y.fract), exp: vec2i(x.exp, y.exp) };
+}
+export function frexp(v: Vec3f): FrexpResultVec3f {
+	const x = frexp(v.x);
+	const y = frexp(v.y);
+	const z = frexp(v.z);
+	return { fract: vec3f(x.fract, y.fract, z.fract), exp: vec3i(x.exp, y.exp, z.exp) };
+}
+export function frexp(v: Vec4f): FrexpResultVec4f {
+	const x = frexp(v.x);
+	const y = frexp(v.y);
+	const z = frexp(v.z);
+	const w = frexp(v.w);
+	return {
+		fract: vec4f(x.fract, y.fract, z.fract, w.fract),
+		exp: vec4i(x.exp, y.exp, z.exp, w.exp),
+	};
+}
 export function degrees(v: Vec2f): Vec2f { return vec2f(degrees(v.x), degrees(v.y)); }
 export function degrees(v: Vec3f): Vec3f { return vec3f(degrees(v.x), degrees(v.y), degrees(v.z)); }
 export function degrees(v: Vec4f): Vec4f {
@@ -1785,11 +2127,36 @@ export function fwidth(v: Vec2f): Vec2f { unreachable("fwidth: only a GPU fragme
 export function fwidth(v: Vec3f): Vec3f { unreachable("fwidth: only a GPU fragment has one"); }
 export function fwidth(v: Vec4f): Vec4f { unreachable("fwidth: only a GPU fragment has one"); }
 
-// WGSL's operand order: the value when false comes first.
-export function select(f: float32, t: float32, cond: boolean): float32 { return cond ? t : f; }
-export function select(f: Vec3f, t: Vec3f, cond: boolean): Vec3f { return cond ? t : f; }
-export function select(f: Vec3f, t: Vec3f, cond: Vec3b): Vec3f {
-	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y, z: cond.z ? t.z : f.z };
+// The coarse and fine derivatives: a fragment quad's too, so they have no CPU meaning either.
+export function dpdxCoarse(v: float32): float32 { unreachable("dpdxCoarse: only a GPU fragment has one"); }
+export function dpdxCoarse(v: Vec2f): Vec2f { unreachable("dpdxCoarse: only a GPU fragment has one"); }
+export function dpdxCoarse(v: Vec3f): Vec3f { unreachable("dpdxCoarse: only a GPU fragment has one"); }
+export function dpdxCoarse(v: Vec4f): Vec4f { unreachable("dpdxCoarse: only a GPU fragment has one"); }
+export function dpdxFine(v: float32): float32 { unreachable("dpdxFine: only a GPU fragment has one"); }
+export function dpdxFine(v: Vec2f): Vec2f { unreachable("dpdxFine: only a GPU fragment has one"); }
+export function dpdxFine(v: Vec3f): Vec3f { unreachable("dpdxFine: only a GPU fragment has one"); }
+export function dpdxFine(v: Vec4f): Vec4f { unreachable("dpdxFine: only a GPU fragment has one"); }
+export function dpdyCoarse(v: float32): float32 { unreachable("dpdyCoarse: only a GPU fragment has one"); }
+export function dpdyCoarse(v: Vec2f): Vec2f { unreachable("dpdyCoarse: only a GPU fragment has one"); }
+export function dpdyCoarse(v: Vec3f): Vec3f { unreachable("dpdyCoarse: only a GPU fragment has one"); }
+export function dpdyCoarse(v: Vec4f): Vec4f { unreachable("dpdyCoarse: only a GPU fragment has one"); }
+export function dpdyFine(v: float32): float32 { unreachable("dpdyFine: only a GPU fragment has one"); }
+export function dpdyFine(v: Vec2f): Vec2f { unreachable("dpdyFine: only a GPU fragment has one"); }
+export function dpdyFine(v: Vec3f): Vec3f { unreachable("dpdyFine: only a GPU fragment has one"); }
+export function dpdyFine(v: Vec4f): Vec4f { unreachable("dpdyFine: only a GPU fragment has one"); }
+export function fwidthCoarse(v: float32): float32 { unreachable("fwidthCoarse: only a GPU fragment has one"); }
+export function fwidthCoarse(v: Vec2f): Vec2f { unreachable("fwidthCoarse: only a GPU fragment has one"); }
+export function fwidthCoarse(v: Vec3f): Vec3f { unreachable("fwidthCoarse: only a GPU fragment has one"); }
+export function fwidthCoarse(v: Vec4f): Vec4f { unreachable("fwidthCoarse: only a GPU fragment has one"); }
+export function fwidthFine(v: float32): float32 { unreachable("fwidthFine: only a GPU fragment has one"); }
+export function fwidthFine(v: Vec2f): Vec2f { unreachable("fwidthFine: only a GPU fragment has one"); }
+export function fwidthFine(v: Vec3f): Vec3f { unreachable("fwidthFine: only a GPU fragment has one"); }
+export function fwidthFine(v: Vec4f): Vec4f { unreachable("fwidthFine: only a GPU fragment has one"); }
+
+// WGSL's boolean vectors, and the componentwise tests and selects that make and take them.
+export struct Vec2b {
+	x: boolean;
+	y: boolean;
 }
 
 export struct Vec3b {
@@ -1798,10 +2165,235 @@ export struct Vec3b {
 	z: boolean;
 }
 
+export struct Vec4b {
+	x: boolean;
+	y: boolean;
+	z: boolean;
+	w: boolean;
+}
+
+export function vec2b(x: boolean, y: boolean): Vec2b { return { x, y }; }
+export function vec3b(x: boolean, y: boolean, z: boolean): Vec3b { return { x, y, z }; }
+export function vec4b(x: boolean, y: boolean, z: boolean, w: boolean): Vec4b {
+	return { x, y, z, w };
+}
+
+export function eq(a: Vec2f, b: Vec2f): Vec2b { return { x: a.x == b.x, y: a.y == b.y }; }
+export function eq(a: Vec3f, b: Vec3f): Vec3b {
+	return { x: a.x == b.x, y: a.y == b.y, z: a.z == b.z };
+}
+export function eq(a: Vec4f, b: Vec4f): Vec4b {
+	return { x: a.x == b.x, y: a.y == b.y, z: a.z == b.z, w: a.w == b.w };
+}
+export function eq(a: Vec2i, b: Vec2i): Vec2b { return { x: a.x == b.x, y: a.y == b.y }; }
+export function eq(a: Vec3i, b: Vec3i): Vec3b {
+	return { x: a.x == b.x, y: a.y == b.y, z: a.z == b.z };
+}
+export function eq(a: Vec4i, b: Vec4i): Vec4b {
+	return { x: a.x == b.x, y: a.y == b.y, z: a.z == b.z, w: a.w == b.w };
+}
+export function eq(a: Vec2u, b: Vec2u): Vec2b { return { x: a.x == b.x, y: a.y == b.y }; }
+export function eq(a: Vec3u, b: Vec3u): Vec3b {
+	return { x: a.x == b.x, y: a.y == b.y, z: a.z == b.z };
+}
+export function eq(a: Vec4u, b: Vec4u): Vec4b {
+	return { x: a.x == b.x, y: a.y == b.y, z: a.z == b.z, w: a.w == b.w };
+}
+
+export function ne(a: Vec2f, b: Vec2f): Vec2b { return { x: a.x != b.x, y: a.y != b.y }; }
+export function ne(a: Vec3f, b: Vec3f): Vec3b {
+	return { x: a.x != b.x, y: a.y != b.y, z: a.z != b.z };
+}
+export function ne(a: Vec4f, b: Vec4f): Vec4b {
+	return { x: a.x != b.x, y: a.y != b.y, z: a.z != b.z, w: a.w != b.w };
+}
+export function ne(a: Vec2i, b: Vec2i): Vec2b { return { x: a.x != b.x, y: a.y != b.y }; }
+export function ne(a: Vec3i, b: Vec3i): Vec3b {
+	return { x: a.x != b.x, y: a.y != b.y, z: a.z != b.z };
+}
+export function ne(a: Vec4i, b: Vec4i): Vec4b {
+	return { x: a.x != b.x, y: a.y != b.y, z: a.z != b.z, w: a.w != b.w };
+}
+export function ne(a: Vec2u, b: Vec2u): Vec2b { return { x: a.x != b.x, y: a.y != b.y }; }
+export function ne(a: Vec3u, b: Vec3u): Vec3b {
+	return { x: a.x != b.x, y: a.y != b.y, z: a.z != b.z };
+}
+export function ne(a: Vec4u, b: Vec4u): Vec4b {
+	return { x: a.x != b.x, y: a.y != b.y, z: a.z != b.z, w: a.w != b.w };
+}
+
+export function lt(a: Vec2f, b: Vec2f): Vec2b { return { x: a.x < b.x, y: a.y < b.y }; }
+export function lt(a: Vec3f, b: Vec3f): Vec3b {
+	return { x: a.x < b.x, y: a.y < b.y, z: a.z < b.z };
+}
+export function lt(a: Vec4f, b: Vec4f): Vec4b {
+	return { x: a.x < b.x, y: a.y < b.y, z: a.z < b.z, w: a.w < b.w };
+}
+export function lt(a: Vec2i, b: Vec2i): Vec2b { return { x: a.x < b.x, y: a.y < b.y }; }
+export function lt(a: Vec3i, b: Vec3i): Vec3b {
+	return { x: a.x < b.x, y: a.y < b.y, z: a.z < b.z };
+}
+export function lt(a: Vec4i, b: Vec4i): Vec4b {
+	return { x: a.x < b.x, y: a.y < b.y, z: a.z < b.z, w: a.w < b.w };
+}
+export function lt(a: Vec2u, b: Vec2u): Vec2b { return { x: a.x < b.x, y: a.y < b.y }; }
+export function lt(a: Vec3u, b: Vec3u): Vec3b {
+	return { x: a.x < b.x, y: a.y < b.y, z: a.z < b.z };
+}
+export function lt(a: Vec4u, b: Vec4u): Vec4b {
+	return { x: a.x < b.x, y: a.y < b.y, z: a.z < b.z, w: a.w < b.w };
+}
+
+export function le(a: Vec2f, b: Vec2f): Vec2b { return { x: a.x <= b.x, y: a.y <= b.y }; }
 export function le(a: Vec3f, b: Vec3f): Vec3b {
 	return { x: a.x <= b.x, y: a.y <= b.y, z: a.z <= b.z };
 }
+export function le(a: Vec4f, b: Vec4f): Vec4b {
+	return { x: a.x <= b.x, y: a.y <= b.y, z: a.z <= b.z, w: a.w <= b.w };
+}
+export function le(a: Vec2i, b: Vec2i): Vec2b { return { x: a.x <= b.x, y: a.y <= b.y }; }
+export function le(a: Vec3i, b: Vec3i): Vec3b {
+	return { x: a.x <= b.x, y: a.y <= b.y, z: a.z <= b.z };
+}
+export function le(a: Vec4i, b: Vec4i): Vec4b {
+	return { x: a.x <= b.x, y: a.y <= b.y, z: a.z <= b.z, w: a.w <= b.w };
+}
+export function le(a: Vec2u, b: Vec2u): Vec2b { return { x: a.x <= b.x, y: a.y <= b.y }; }
+export function le(a: Vec3u, b: Vec3u): Vec3b {
+	return { x: a.x <= b.x, y: a.y <= b.y, z: a.z <= b.z };
+}
+export function le(a: Vec4u, b: Vec4u): Vec4b {
+	return { x: a.x <= b.x, y: a.y <= b.y, z: a.z <= b.z, w: a.w <= b.w };
+}
 
+export function gt(a: Vec2f, b: Vec2f): Vec2b { return { x: a.x > b.x, y: a.y > b.y }; }
+export function gt(a: Vec3f, b: Vec3f): Vec3b {
+	return { x: a.x > b.x, y: a.y > b.y, z: a.z > b.z };
+}
+export function gt(a: Vec4f, b: Vec4f): Vec4b {
+	return { x: a.x > b.x, y: a.y > b.y, z: a.z > b.z, w: a.w > b.w };
+}
+export function gt(a: Vec2i, b: Vec2i): Vec2b { return { x: a.x > b.x, y: a.y > b.y }; }
+export function gt(a: Vec3i, b: Vec3i): Vec3b {
+	return { x: a.x > b.x, y: a.y > b.y, z: a.z > b.z };
+}
+export function gt(a: Vec4i, b: Vec4i): Vec4b {
+	return { x: a.x > b.x, y: a.y > b.y, z: a.z > b.z, w: a.w > b.w };
+}
+export function gt(a: Vec2u, b: Vec2u): Vec2b { return { x: a.x > b.x, y: a.y > b.y }; }
+export function gt(a: Vec3u, b: Vec3u): Vec3b {
+	return { x: a.x > b.x, y: a.y > b.y, z: a.z > b.z };
+}
+export function gt(a: Vec4u, b: Vec4u): Vec4b {
+	return { x: a.x > b.x, y: a.y > b.y, z: a.z > b.z, w: a.w > b.w };
+}
+
+export function ge(a: Vec2f, b: Vec2f): Vec2b { return { x: a.x >= b.x, y: a.y >= b.y }; }
+export function ge(a: Vec3f, b: Vec3f): Vec3b {
+	return { x: a.x >= b.x, y: a.y >= b.y, z: a.z >= b.z };
+}
+export function ge(a: Vec4f, b: Vec4f): Vec4b {
+	return { x: a.x >= b.x, y: a.y >= b.y, z: a.z >= b.z, w: a.w >= b.w };
+}
+export function ge(a: Vec2i, b: Vec2i): Vec2b { return { x: a.x >= b.x, y: a.y >= b.y }; }
+export function ge(a: Vec3i, b: Vec3i): Vec3b {
+	return { x: a.x >= b.x, y: a.y >= b.y, z: a.z >= b.z };
+}
+export function ge(a: Vec4i, b: Vec4i): Vec4b {
+	return { x: a.x >= b.x, y: a.y >= b.y, z: a.z >= b.z, w: a.w >= b.w };
+}
+export function ge(a: Vec2u, b: Vec2u): Vec2b { return { x: a.x >= b.x, y: a.y >= b.y }; }
+export function ge(a: Vec3u, b: Vec3u): Vec3b {
+	return { x: a.x >= b.x, y: a.y >= b.y, z: a.z >= b.z };
+}
+export function ge(a: Vec4u, b: Vec4u): Vec4b {
+	return { x: a.x >= b.x, y: a.y >= b.y, z: a.z >= b.z, w: a.w >= b.w };
+}
+
+export function any(v: Vec2b): boolean { return v.x || v.y; }
+export function any(v: Vec3b): boolean { return v.x || v.y || v.z; }
+export function any(v: Vec4b): boolean { return v.x || v.y || v.z || v.w; }
+export function all(v: Vec2b): boolean { return v.x && v.y; }
+export function all(v: Vec3b): boolean { return v.x && v.y && v.z; }
+export function all(v: Vec4b): boolean { return v.x && v.y && v.z && v.w; }
+export function not(v: boolean): boolean { return !v; }
+export function not(v: Vec2b): Vec2b { return { x: !v.x, y: !v.y }; }
+export function not(v: Vec3b): Vec3b { return { x: !v.x, y: !v.y, z: !v.z }; }
+export function not(v: Vec4b): Vec4b { return { x: !v.x, y: !v.y, z: !v.z, w: !v.w }; }
+
+// WGSL's operand order: the value when false comes first.
+export function select(f: float32, t: float32, cond: boolean): float32 { return cond ? t : f; }
+export function select(f: int32, t: int32, cond: boolean): int32 { return cond ? t : f; }
+export function select(f: uint32, t: uint32, cond: boolean): uint32 { return cond ? t : f; }
+export function select(f: boolean, t: boolean, cond: boolean): boolean { return cond ? t : f; }
+export function select(f: Vec2f, t: Vec2f, cond: boolean): Vec2f { return cond ? t : f; }
+export function select(f: Vec2f, t: Vec2f, cond: Vec2b): Vec2f {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y };
+}
+export function select(f: Vec3f, t: Vec3f, cond: boolean): Vec3f { return cond ? t : f; }
+export function select(f: Vec3f, t: Vec3f, cond: Vec3b): Vec3f {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y, z: cond.z ? t.z : f.z };
+}
+export function select(f: Vec4f, t: Vec4f, cond: boolean): Vec4f { return cond ? t : f; }
+export function select(f: Vec4f, t: Vec4f, cond: Vec4b): Vec4f {
+	return {
+		x: cond.x ? t.x : f.x,
+		y: cond.y ? t.y : f.y,
+		z: cond.z ? t.z : f.z,
+		w: cond.w ? t.w : f.w,
+	};
+}
+export function select(f: Vec2i, t: Vec2i, cond: boolean): Vec2i { return cond ? t : f; }
+export function select(f: Vec2i, t: Vec2i, cond: Vec2b): Vec2i {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y };
+}
+export function select(f: Vec3i, t: Vec3i, cond: boolean): Vec3i { return cond ? t : f; }
+export function select(f: Vec3i, t: Vec3i, cond: Vec3b): Vec3i {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y, z: cond.z ? t.z : f.z };
+}
+export function select(f: Vec4i, t: Vec4i, cond: boolean): Vec4i { return cond ? t : f; }
+export function select(f: Vec4i, t: Vec4i, cond: Vec4b): Vec4i {
+	return {
+		x: cond.x ? t.x : f.x,
+		y: cond.y ? t.y : f.y,
+		z: cond.z ? t.z : f.z,
+		w: cond.w ? t.w : f.w,
+	};
+}
+export function select(f: Vec2u, t: Vec2u, cond: boolean): Vec2u { return cond ? t : f; }
+export function select(f: Vec2u, t: Vec2u, cond: Vec2b): Vec2u {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y };
+}
+export function select(f: Vec3u, t: Vec3u, cond: boolean): Vec3u { return cond ? t : f; }
+export function select(f: Vec3u, t: Vec3u, cond: Vec3b): Vec3u {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y, z: cond.z ? t.z : f.z };
+}
+export function select(f: Vec4u, t: Vec4u, cond: boolean): Vec4u { return cond ? t : f; }
+export function select(f: Vec4u, t: Vec4u, cond: Vec4b): Vec4u {
+	return {
+		x: cond.x ? t.x : f.x,
+		y: cond.y ? t.y : f.y,
+		z: cond.z ? t.z : f.z,
+		w: cond.w ? t.w : f.w,
+	};
+}
+export function select(f: Vec2b, t: Vec2b, cond: boolean): Vec2b { return cond ? t : f; }
+export function select(f: Vec2b, t: Vec2b, cond: Vec2b): Vec2b {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y };
+}
+export function select(f: Vec3b, t: Vec3b, cond: boolean): Vec3b { return cond ? t : f; }
+export function select(f: Vec3b, t: Vec3b, cond: Vec3b): Vec3b {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y, z: cond.z ? t.z : f.z };
+}
+export function select(f: Vec4b, t: Vec4b, cond: boolean): Vec4b { return cond ? t : f; }
+export function select(f: Vec4b, t: Vec4b, cond: Vec4b): Vec4b {
+	return {
+		x: cond.x ? t.x : f.x,
+		y: cond.y ? t.y : f.y,
+		z: cond.z ? t.z : f.z,
+		w: cond.w ? t.w : f.w,
+	};
+}
 export function builtin(): void {}
 export function location(): void {}
 export function binding(): void {}
@@ -1814,6 +2406,14 @@ export function format(): void {}
 
 export function workgroupBarrier(): void {}
 export function storageBarrier(): void {}
+export function textureBarrier(): void {}
+
+// WGSL's workgroupUniformLoad(&v): a barrier, a read of workgroup memory that every invocation
+// of the group sees alike, and a barrier. The CPU runs one invocation at a time, so it is the read.
+export function workgroupUniformLoad(ref v: float32): float32 { return v; }
+export function workgroupUniformLoad(ref v: int32): int32 { return v; }
+export function workgroupUniformLoad(ref v: uint32): uint32 { return v; }
+export function workgroupUniformLoad(ref v: boolean): boolean { return v; }
 
 // WGSL's atomic<i32> and atomic<u32>, in a storage buffer element or workgroup memory. An
 // operation takes it by ref, as WGSL takes &a; the CPU runs one invocation at a time, so each
@@ -2053,6 +2653,178 @@ export function textureLoad(texture: StorageTexture3d, at: Vec3i): Vec4f {
 	return loadTexel(texture.texels, first);
 }
 
+// WGSL's texture_storage_1d: one row of texels addressed by a scalar, four floats a texel.
+export struct StorageTexture1d {
+	width: int32;
+	texels: float32[];
+}
+
+export function textureDimensions(texture: StorageTexture1d): int32 {
+	return texture.width;
+}
+
+export function textureStore(texture: StorageTexture1d, at: int32, value: Vec4f): void {
+	const first = storageTexel(texture.width, 1, 1, at, 0, 0);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture1d, at: int32): Vec4f {
+	const first = storageTexel(texture.width, 1, 1, at, 0, 0);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
+// WGSL's texture_storage_2d of a uint format (r32uint, rgba16uint, ...): its texel is a
+// vec4<u32>, so the texels are four uint32 each and textureLoad and textureStore take a Vec4u.
+export struct StorageTexture2dU32 {
+	width: int32;
+	height: int32;
+	texels: uint32[];
+}
+
+export function textureDimensions(texture: StorageTexture2dU32): Vec2i {
+	return { x: texture.width, y: texture.height };
+}
+
+export function textureStore(texture: StorageTexture2dU32, at: Vec2i, value: Vec4u): void {
+	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture2dU32, at: Vec2i): Vec4u {
+	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
+export struct StorageTexture2dArrayU32 {
+	width: int32;
+	height: int32;
+	layers: int32;
+	texels: uint32[];
+}
+
+export function textureDimensions(texture: StorageTexture2dArrayU32): Vec2i {
+	return { x: texture.width, y: texture.height };
+}
+
+export function textureStore(
+	texture: StorageTexture2dArrayU32,
+	at: Vec2i,
+	layer: int32,
+	value: Vec4u,
+): void {
+	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture2dArrayU32, at: Vec2i, layer: int32): Vec4u {
+	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
+export struct StorageTexture3dU32 {
+	width: int32;
+	height: int32;
+	depth: int32;
+	texels: uint32[];
+}
+
+export function textureDimensions(texture: StorageTexture3dU32): Vec3i {
+	return { x: texture.width, y: texture.height, z: texture.depth };
+}
+
+export function textureStore(texture: StorageTexture3dU32, at: Vec3i, value: Vec4u): void {
+	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture3dU32, at: Vec3i): Vec4u {
+	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
+// WGSL's texture_storage_2d of a sint format (r32sint, rgba16sint, ...): its texel is a
+// vec4<i32>, so the texels are four int32 each and textureLoad and textureStore take a Vec4i.
+export struct StorageTexture2dI32 {
+	width: int32;
+	height: int32;
+	texels: int32[];
+}
+
+export function textureDimensions(texture: StorageTexture2dI32): Vec2i {
+	return { x: texture.width, y: texture.height };
+}
+
+export function textureStore(texture: StorageTexture2dI32, at: Vec2i, value: Vec4i): void {
+	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture2dI32, at: Vec2i): Vec4i {
+	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
+export struct StorageTexture2dArrayI32 {
+	width: int32;
+	height: int32;
+	layers: int32;
+	texels: int32[];
+}
+
+export function textureDimensions(texture: StorageTexture2dArrayI32): Vec2i {
+	return { x: texture.width, y: texture.height };
+}
+
+export function textureStore(
+	texture: StorageTexture2dArrayI32,
+	at: Vec2i,
+	layer: int32,
+	value: Vec4i,
+): void {
+	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture2dArrayI32, at: Vec2i, layer: int32): Vec4i {
+	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
+export struct StorageTexture3dI32 {
+	width: int32;
+	height: int32;
+	depth: int32;
+	texels: int32[];
+}
+
+export function textureDimensions(texture: StorageTexture3dI32): Vec3i {
+	return { x: texture.width, y: texture.height, z: texture.depth };
+}
+
+export function textureStore(texture: StorageTexture3dI32, at: Vec3i, value: Vec4i): void {
+	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture3dI32, at: Vec3i): Vec4i {
+	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
 function insideTexture(width: int32, height: int32, at: Vec2i): boolean {
 	return at.x >= 0 && at.y >= 0 && at.x < width && at.y < height;
 }
@@ -2077,6 +2849,28 @@ function storeTexel(texels: float32[], first: int32, value: Vec4f): void {
 }
 
 function loadTexel(texels: float32[], first: int32): Vec4f {
+	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
+}
+
+function storeTexel(texels: uint32[], first: int32, value: Vec4u): void {
+	texels[first] = value.x;
+	texels[first + 1] = value.y;
+	texels[first + 2] = value.z;
+	texels[first + 3] = value.w;
+}
+
+function loadTexel(texels: uint32[], first: int32): Vec4u {
+	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
+}
+
+function storeTexel(texels: int32[], first: int32, value: Vec4i): void {
+	texels[first] = value.x;
+	texels[first + 1] = value.y;
+	texels[first + 2] = value.z;
+	texels[first + 3] = value.w;
+}
+
+function loadTexel(texels: int32[], first: int32): Vec4i {
 	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
 }
 
@@ -2110,6 +2904,47 @@ export function textureLoad(texture: Texture2dU32, at: Vec2i, level: int32): Vec
 	const first = (at.y * texture.width + at.x) * 4;
 	const texels = texture.texels;
 	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
+}
+
+// WGSL's texture_2d_array<u32>: layers of one size, four uint32s a texel, fetched, never filtered.
+export struct Texture2dArrayU32 {
+	width: int32;
+	height: int32;
+	layers: int32;
+	texels: uint32[];
+}
+
+export function textureLoad(
+	texture: Texture2dArrayU32,
+	at: Vec2i,
+	layer: int32,
+	level: int32,
+): Vec4u {
+	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
+	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	if (!insideTexture(texture.width, texture.height, at)) {
+		unreachable("textureLoad: the texel is outside the texture");
+	}
+	return loadTexel(texture.texels,
+		((layer * texture.height + at.y) * texture.width + at.x) * 4);
+}
+
+// WGSL's texture_3d<u32>: slices of one size, four uint32s a texel, fetched, never filtered.
+export struct Texture3dU32 {
+	width: int32;
+	height: int32;
+	depth: int32;
+	texels: uint32[];
+}
+
+export function textureLoad(texture: Texture3dU32, at: Vec3i, level: int32): Vec4u {
+	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
+	if (at.z < 0 || at.z >= texture.depth ||
+		!insideTexture(texture.width, texture.height, { x: at.x, y: at.y })) {
+		unreachable("textureLoad: the texel is outside the texture");
+	}
+	return loadTexel(texture.texels,
+		((at.z * texture.height + at.y) * texture.width + at.x) * 4);
 }
 
 // WGSL's texture_2d_array<f32>: layers of one size, one picked by its index.
@@ -2314,28 +3149,51 @@ function lerp(a: Vec4f, b: Vec4f, t: float32): Vec4f {
 	};
 }
 
-// WGSL's textureSample on a texture of one mip level, as void3d's are.
-export function textureSample(texture: Texture2d, sampler: Sampler, uv: Vec2f): Vec4f {
+// WGSL's texture offset is a constant in [-8, 7] added to the texel indices before they wrap
+// (the Vulkan specification's "Texel Offset" and "Wrapping Operation").
+function checkedOffset(offset: Vec2i): Vec2i {
+	if (offset.x < -8 || offset.x > 7 || offset.y < -8 || offset.y > 7) {
+		unreachable("a texture offset is a constant in [-8, 7]");
+	}
+	return offset;
+}
+
+function sampleAt(texture: Texture2d, sampler: Sampler, uv: Vec2f, offset: Vec2i): Vec4f {
 	const width = texture.width;
 	const height = texture.height;
 	const wrap = sampler.wrap;
 	if (sampler.nearest) {
-		const x = wrapped(texelIndex(uv.x * (width as float32)), width, wrap);
-		return texelAt(texture, x, wrapped(texelIndex(uv.y * (height as float32)), height, wrap));
+		const x = wrapped(texelIndex(uv.x * (width as float32)) + offset.x, width, wrap);
+		return texelAt(texture, x,
+			wrapped(texelIndex(uv.y * (height as float32)) + offset.y, height, wrap));
 	}
 	const u: float32 = uv.x * (width as float32) - 0.5;
 	const v: float32 = uv.y * (height as float32) - 0.5;
 	const column = texelIndex(u);
 	const row = texelIndex(v);
-	const x0 = wrapped(column, width, wrap);
-	const x1 = wrapped(column + 1, width, wrap);
-	const y0 = wrapped(row, height, wrap);
-	const y1 = wrapped(row + 1, height, wrap);
+	const x0 = wrapped(column + offset.x, width, wrap);
+	const x1 = wrapped(column + 1 + offset.x, width, wrap);
+	const y0 = wrapped(row + offset.y, height, wrap);
+	const y1 = wrapped(row + 1 + offset.y, height, wrap);
 	const fractionU: float32 = u - (column as float32);
 	const fractionV: float32 = v - (row as float32);
 	const top = lerp(texelAt(texture, x0, y0), texelAt(texture, x1, y0), fractionU);
 	const bottom = lerp(texelAt(texture, x0, y1), texelAt(texture, x1, y1), fractionU);
 	return lerp(top, bottom, fractionV);
+}
+
+// WGSL's textureSample on a texture of one mip level, as void3d's are.
+export function textureSample(texture: Texture2d, sampler: Sampler, uv: Vec2f): Vec4f {
+	return sampleAt(texture, sampler, uv, { x: 0, y: 0 });
+}
+
+export function textureSample(
+	texture: Texture2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(texture, sampler, uv, checkedOffset(offset));
 }
 
 // WGSL's texture_2d<i32>: four int32 a texel, fetched, never filtered.
@@ -2353,6 +3211,113 @@ export function textureLoad(texture: Texture2dI32, at: Vec2i, level: int32): Vec
 	const first = (at.y * texture.width + at.x) * 4;
 	const texels = texture.texels;
 	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
+}
+
+// WGSL's texture_2d_array<i32>: layers of one size, four int32s a texel, fetched, never filtered.
+export struct Texture2dArrayI32 {
+	width: int32;
+	height: int32;
+	layers: int32;
+	texels: int32[];
+}
+
+export function textureLoad(
+	texture: Texture2dArrayI32,
+	at: Vec2i,
+	layer: int32,
+	level: int32,
+): Vec4i {
+	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
+	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	if (!insideTexture(texture.width, texture.height, at)) {
+		unreachable("textureLoad: the texel is outside the texture");
+	}
+	return loadTexel(texture.texels,
+		((layer * texture.height + at.y) * texture.width + at.x) * 4);
+}
+
+// WGSL's texture_3d<i32>: slices of one size, four int32s a texel, fetched, never filtered.
+export struct Texture3dI32 {
+	width: int32;
+	height: int32;
+	depth: int32;
+	texels: int32[];
+}
+
+export function textureLoad(texture: Texture3dI32, at: Vec3i, level: int32): Vec4i {
+	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
+	if (at.z < 0 || at.z >= texture.depth ||
+		!insideTexture(texture.width, texture.height, { x: at.x, y: at.y })) {
+		unreachable("textureLoad: the texel is outside the texture");
+	}
+	return loadTexel(texture.texels,
+		((at.z * texture.height + at.y) * texture.width + at.x) * 4);
+}
+
+// WGSL's texture_multisampled_2d<f32>: `samples` images of one size, four floats a texel, the
+// sample of a texel at `((sample * height + y) * width + x) * 4`. It is fetched, never filtered.
+export struct TextureMultisampled2d {
+	width: int32;
+	height: int32;
+	samples: int32;
+	texels: float32[];
+}
+
+export function textureDimensions(texture: TextureMultisampled2d): Vec2i {
+	return { x: texture.width, y: texture.height };
+}
+
+export function textureNumSamples(texture: TextureMultisampled2d): int32 {
+	return texture.samples;
+}
+
+export function textureLoad(
+	texture: TextureMultisampled2d,
+	at: Vec2i,
+	sampleIndex: int32,
+): Vec4f {
+	if (sampleIndex < 0 || sampleIndex >= texture.samples) {
+		unreachable("textureLoad: the sample is outside the texture");
+	}
+	if (!insideTexture(texture.width, texture.height, at)) {
+		unreachable("textureLoad: the texel is outside the texture");
+	}
+	return loadTexel(texture.texels,
+		((sampleIndex * texture.height + at.y) * texture.width + at.x) * 4);
+}
+
+// WGSL's texture_1d<f32>: one row of texels addressed by a scalar, four floats a texel. WGSL gives
+// it textureSample and textureSampleLevel only, never a bias, derivatives or an offset, and it has
+// one mip level, so a sample is the 2D sample of a one-texel-high texture at the middle of its row.
+export struct Texture1d {
+	width: int32;
+	texels: float32[];
+}
+
+function rowOf(texture: Texture1d): Texture2d {
+	return { width: texture.width, height: 1, texels: texture.texels };
+}
+
+export function textureDimensions(texture: Texture1d, level: int32): int32 {
+	if (level != 0) { unreachable("textureDimensions: the CPU texture has no mip levels"); }
+	return texture.width;
+}
+
+export function textureLoad(texture: Texture1d, at: int32, level: int32): Vec4f {
+	return textureLoad(rowOf(texture), { x: at, y: 0 }, level);
+}
+
+export function textureSample(texture: Texture1d, sampler: Sampler, u: float32): Vec4f {
+	return textureSample(rowOf(texture), sampler, { x: u, y: 0.5 });
+}
+
+export function textureSampleLevel(
+	texture: Texture1d,
+	sampler: Sampler,
+	u: float32,
+	level: float32,
+): Vec4f {
+	return textureSample(texture, sampler, u);
 }
 
 // WGSL's texture_3d<f32>: slices of one size, four floats a texel.
@@ -2388,19 +3353,34 @@ export function textureLoad(texture: Texture3d, at: Vec3i, level: int32): Vec4f 
 
 // Trilinear on a texture of one level: each of the two slices around the coordinate is sampled
 // as textureSample, then the results mix by the coordinate's fraction between them.
-export function textureSample(texture: Texture3d, sampler: Sampler, uv: Vec3f): Vec4f {
+function sample3d(texture: Texture3d, sampler: Sampler, uv: Vec3f, offset: Vec3i): Vec4f {
 	const depth = texture.depth;
 	const flat: Vec2f = { x: uv.x, y: uv.y };
+	const plane: Vec2i = checkedOffset({ x: offset.x, y: offset.y });
+	if (offset.z < -8 || offset.z > 7) { unreachable("a texture offset is a constant in [-8, 7]"); }
 	if (sampler.nearest) {
-		const z = wrapped(texelIndex(uv.z * (depth as float32)), depth, sampler.wrap);
-		return textureSample(sliceOf(texture, z), sampler, flat);
+		const z = wrapped(texelIndex(uv.z * (depth as float32)) + offset.z, depth, sampler.wrap);
+		return sampleAt(sliceOf(texture, z), sampler, flat, plane);
 	}
 	const w: float32 = uv.z * (depth as float32) - 0.5;
 	const slice = texelIndex(w);
-	const z0 = wrapped(slice, depth, sampler.wrap);
-	const z1 = wrapped(slice + 1, depth, sampler.wrap);
-	return lerp(textureSample(sliceOf(texture, z0), sampler, flat),
-		textureSample(sliceOf(texture, z1), sampler, flat), w - (slice as float32));
+	const z0 = wrapped(slice + offset.z, depth, sampler.wrap);
+	const z1 = wrapped(slice + 1 + offset.z, depth, sampler.wrap);
+	return lerp(sampleAt(sliceOf(texture, z0), sampler, flat, plane),
+		sampleAt(sliceOf(texture, z1), sampler, flat, plane), w - (slice as float32));
+}
+
+export function textureSample(texture: Texture3d, sampler: Sampler, uv: Vec3f): Vec4f {
+	return sample3d(texture, sampler, uv, { x: 0, y: 0, z: 0 });
+}
+
+export function textureSample(
+	texture: Texture3d,
+	sampler: Sampler,
+	uv: Vec3f,
+	offset: Vec3i,
+): Vec4f {
+	return sample3d(texture, sampler, uv, offset);
 }
 
 export function textureSampleLevel(
@@ -2541,6 +3521,217 @@ export function textureSampleCompareLevel(
 	reference: float32,
 ): float32 {
 	return textureSampleCompare(texture, sampler, dir, reference);
+}
+
+// WGSL's textureSampleLevel on a depth texture takes an integer level and answers the depth
+// itself, no comparison. A CPU depth texture has one level and a level past the last clamps to
+// it (the Vulkan specification's "Level-of-Detail Operation"), so each samples the texels as
+// textureSample does, read as the x of a color texture.
+function depthColor(texels: float32[], first: int32, size: Vec2i): Texture2d {
+	let colors: float32[] = [];
+	for (let i = 0; i < size.x * size.y; i++) {
+		colors.push(texels[first + i]);
+		colors.push(0.0);
+		colors.push(0.0);
+		colors.push(0.0);
+	}
+	return { width: size.x, height: size.y, texels: colors };
+}
+
+export function textureSampleLevel(
+	texture: TextureDepth2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	level: int32,
+): float32 {
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	return textureSample(depthColor(texture.texels, 0, size), sampler, uv).x;
+}
+
+export function textureSampleLevel(
+	texture: TextureDepth2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+	level: int32,
+): float32 {
+	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	const colors = depthColor(texture.texels, layer * texture.width * texture.height, size);
+	return textureSample(colors, sampler, uv).x;
+}
+
+export function textureSampleLevel(
+	texture: TextureDepthCube,
+	sampler: Sampler,
+	dir: Vec3f,
+	level: int32,
+): float32 {
+	const size: Vec2i = { x: texture.size, y: texture.size };
+	const colors = depthColor(texture.texels, cubeFaceIndex(dir) * texture.size * texture.size, size);
+	const clamped: Sampler = { nearest: sampler.nearest, wrap: Wrap.Clamp };
+	return textureSample(colors, clamped, cubeFaceUv(dir)).x;
+}
+
+// WGSL's constant texel offset on every sampling builtin that takes one: the last argument,
+// a vec2<i32> (vec3<i32> for a 3d texture) in [-8, 7], shifts the texels read, not the
+// coordinate, so the filter and the wrap act on the shifted indices. A cube has no offset.
+export function textureSample(
+	texture: Texture2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(layerOf(texture, layer), sampler, uv, checkedOffset(offset));
+}
+
+export function textureSampleLevel(
+	texture: Texture2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	level: float32,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(texture, sampler, uv, checkedOffset(offset));
+}
+
+export function textureSampleLevel(
+	texture: Texture2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+	level: float32,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(layerOf(texture, layer), sampler, uv, checkedOffset(offset));
+}
+
+export function textureSampleLevel(
+	texture: Texture3d,
+	sampler: Sampler,
+	uv: Vec3f,
+	level: float32,
+	offset: Vec3i,
+): Vec4f {
+	return sample3d(texture, sampler, uv, offset);
+}
+
+export function textureSampleBias(
+	texture: Texture2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	bias: float32,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(texture, sampler, uv, checkedOffset(offset));
+}
+
+export function textureSampleBias(
+	texture: Texture2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+	bias: float32,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(layerOf(texture, layer), sampler, uv, checkedOffset(offset));
+}
+
+export function textureSampleGrad(
+	texture: Texture2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	ddx: Vec2f,
+	ddy: Vec2f,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(texture, sampler, uv, checkedOffset(offset));
+}
+
+export function textureSampleGrad(
+	texture: Texture2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+	ddx: Vec2f,
+	ddy: Vec2f,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(layerOf(texture, layer), sampler, uv, checkedOffset(offset));
+}
+
+export function textureSampleLevel(
+	texture: TextureDepth2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	level: int32,
+	offset: Vec2i,
+): float32 {
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	return sampleAt(depthColor(texture.texels, 0, size), sampler, uv, checkedOffset(offset)).x;
+}
+
+export function textureSampleLevel(
+	texture: TextureDepth2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+	level: int32,
+	offset: Vec2i,
+): float32 {
+	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	const colors = depthColor(texture.texels, layer * texture.width * texture.height, size);
+	return sampleAt(colors, sampler, uv, checkedOffset(offset)).x;
+}
+
+export function textureSampleCompare(
+	texture: TextureDepth2d,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	reference: float32,
+	offset: Vec2i,
+): float32 {
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	const compared = comparedTexels(sampler, reference, texture.texels, 0, size);
+	return sampleAt(compared, plainSampler(sampler), uv, checkedOffset(offset)).x;
+}
+
+export function textureSampleCompare(
+	texture: TextureDepth2dArray,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	layer: int32,
+	reference: float32,
+	offset: Vec2i,
+): float32 {
+	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	const compared = comparedTexels(sampler, reference, texture.texels,
+		layer * texture.width * texture.height, size);
+	return sampleAt(compared, plainSampler(sampler), uv, checkedOffset(offset)).x;
+}
+
+export function textureSampleCompareLevel(
+	texture: TextureDepth2d,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	reference: float32,
+	offset: Vec2i,
+): float32 {
+	return textureSampleCompare(texture, sampler, uv, reference, offset);
+}
+
+export function textureSampleCompareLevel(
+	texture: TextureDepth2dArray,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	layer: int32,
+	reference: float32,
+	offset: Vec2i,
+): float32 {
+	return textureSampleCompare(texture, sampler, uv, layer, reference, offset);
 }
 
 // WGSL's integer bit builtins on one invocation. The core runs on uint32 bits; int32 goes
@@ -2800,6 +3991,86 @@ export function insertBits(e: Vec4i, newBits: Vec4i, offset: uint32, count: uint
 	);
 }
 
+// WGSL's countLeadingZeros and countTrailingZeros: the full 32 for a zero, where firstLeadingBit and
+// firstTrailingBit answer -1.
+export function countLeadingZeros(x: uint32): uint32 { return (31 - highestBit(x)) as uint32; }
+export function countLeadingZeros(x: int32): int32 {
+	return int32Bits(countLeadingZeros(uint32Bits(x)));
+}
+export function countTrailingZeros(x: uint32): uint32 { return x == 0 ? 32 : lowestBit(x) as uint32; }
+export function countTrailingZeros(x: int32): int32 {
+	return int32Bits(countTrailingZeros(uint32Bits(x)));
+}
+export function countLeadingZeros(v: Vec2u): Vec2u { return vec2u(countLeadingZeros(v.x), countLeadingZeros(v.y)); }
+export function countLeadingZeros(v: Vec3u): Vec3u { return vec3u(countLeadingZeros(v.x), countLeadingZeros(v.y), countLeadingZeros(v.z)); }
+export function countLeadingZeros(v: Vec4u): Vec4u { return vec4u(countLeadingZeros(v.x), countLeadingZeros(v.y), countLeadingZeros(v.z), countLeadingZeros(v.w)); }
+export function countLeadingZeros(v: Vec2i): Vec2i { return vec2i(countLeadingZeros(v.x), countLeadingZeros(v.y)); }
+export function countLeadingZeros(v: Vec3i): Vec3i { return vec3i(countLeadingZeros(v.x), countLeadingZeros(v.y), countLeadingZeros(v.z)); }
+export function countLeadingZeros(v: Vec4i): Vec4i { return vec4i(countLeadingZeros(v.x), countLeadingZeros(v.y), countLeadingZeros(v.z), countLeadingZeros(v.w)); }
+export function countTrailingZeros(v: Vec2u): Vec2u { return vec2u(countTrailingZeros(v.x), countTrailingZeros(v.y)); }
+export function countTrailingZeros(v: Vec3u): Vec3u { return vec3u(countTrailingZeros(v.x), countTrailingZeros(v.y), countTrailingZeros(v.z)); }
+export function countTrailingZeros(v: Vec4u): Vec4u { return vec4u(countTrailingZeros(v.x), countTrailingZeros(v.y), countTrailingZeros(v.z), countTrailingZeros(v.w)); }
+export function countTrailingZeros(v: Vec2i): Vec2i { return vec2i(countTrailingZeros(v.x), countTrailingZeros(v.y)); }
+export function countTrailingZeros(v: Vec3i): Vec3i { return vec3i(countTrailingZeros(v.x), countTrailingZeros(v.y), countTrailingZeros(v.z)); }
+export function countTrailingZeros(v: Vec4i): Vec4i { return vec4i(countTrailingZeros(v.x), countTrailingZeros(v.y), countTrailingZeros(v.z), countTrailingZeros(v.w)); }
+
+// floor(log2(a)) of a positive finite a, corrected for log2's rounding at a power of two.
+function binaryExponent(a: float64): float64 {
+	let e = Math.floor(Math.log2(a));
+	if (Math.pow(2.0, e) > a) { e -= 1.0; }
+	if (Math.pow(2.0, e + 1.0) <= a) { e += 1.0; }
+	return e;
+}
+
+// IEEE binary32 by arithmetic, as halfBits is binary16. WGSL leaves the bits of an infinity or NaN
+// indeterminate, so the oracle refuses both ways.
+function floatToBits(x: float32): uint32 {
+	if (!(Math.abs(x) <= 3.4028234663852886e38)) {
+		unreachable("bitcast: an infinity or NaN has no defined bits in WGSL");
+	}
+	const sign: uint32 = x < 0.0 || (x == 0.0 && 1.0 / x < 0.0) ? 0x80000000 : 0;
+	const a = Math.abs(x) as float64;
+	if (a < 1.1754943508222875e-38) { return sign | ((a * Math.pow(2.0, 149.0)) as uint32); }
+	const e = binaryExponent(a);
+	const fraction = (a / Math.pow(2.0, e) - 1.0) * 8388608.0;
+	return sign | (((e + 127.0) as uint32) << 23) | (fraction as uint32);
+}
+
+function bitsToFloat(bits: uint32): float32 {
+	const exponent = (bits >> 23) & 255;
+	if (exponent == 255) { unreachable("bitcast: bits of an infinity or NaN are indeterminate in WGSL"); }
+	const fraction = (bits & 0x7FFFFF) as float64;
+	const magnitude = exponent == 0 ? fraction * Math.pow(2.0, -149.0) :
+		(1.0 + fraction / 8388608.0) * Math.pow(2.0, (exponent as float64) - 127.0);
+	return (bits & 0x80000000) != 0 ? -magnitude as float32 : magnitude as float32;
+}
+
+// WGSL's bitcast<T>(e) by source and target scalar, in TypeGPU's names.
+export function bitcastF32toU32(x: float32): uint32 { return floatToBits(x); }
+export function bitcastF32toI32(x: float32): int32 { return int32Bits(floatToBits(x)); }
+export function bitcastI32toF32(x: int32): float32 { return bitsToFloat(uint32Bits(x)); }
+export function bitcastI32toU32(x: int32): uint32 { return uint32Bits(x); }
+export function bitcastU32toF32(x: uint32): float32 { return bitsToFloat(x); }
+export function bitcastU32toI32(x: uint32): int32 { return int32Bits(x); }
+export function bitcastF32toU32(v: Vec2f): Vec2u { return vec2u(bitcastF32toU32(v.x), bitcastF32toU32(v.y)); }
+export function bitcastF32toU32(v: Vec3f): Vec3u { return vec3u(bitcastF32toU32(v.x), bitcastF32toU32(v.y), bitcastF32toU32(v.z)); }
+export function bitcastF32toU32(v: Vec4f): Vec4u { return vec4u(bitcastF32toU32(v.x), bitcastF32toU32(v.y), bitcastF32toU32(v.z), bitcastF32toU32(v.w)); }
+export function bitcastF32toI32(v: Vec2f): Vec2i { return vec2i(bitcastF32toI32(v.x), bitcastF32toI32(v.y)); }
+export function bitcastF32toI32(v: Vec3f): Vec3i { return vec3i(bitcastF32toI32(v.x), bitcastF32toI32(v.y), bitcastF32toI32(v.z)); }
+export function bitcastF32toI32(v: Vec4f): Vec4i { return vec4i(bitcastF32toI32(v.x), bitcastF32toI32(v.y), bitcastF32toI32(v.z), bitcastF32toI32(v.w)); }
+export function bitcastI32toF32(v: Vec2i): Vec2f { return vec2f(bitcastI32toF32(v.x), bitcastI32toF32(v.y)); }
+export function bitcastI32toF32(v: Vec3i): Vec3f { return vec3f(bitcastI32toF32(v.x), bitcastI32toF32(v.y), bitcastI32toF32(v.z)); }
+export function bitcastI32toF32(v: Vec4i): Vec4f { return vec4f(bitcastI32toF32(v.x), bitcastI32toF32(v.y), bitcastI32toF32(v.z), bitcastI32toF32(v.w)); }
+export function bitcastI32toU32(v: Vec2i): Vec2u { return vec2u(bitcastI32toU32(v.x), bitcastI32toU32(v.y)); }
+export function bitcastI32toU32(v: Vec3i): Vec3u { return vec3u(bitcastI32toU32(v.x), bitcastI32toU32(v.y), bitcastI32toU32(v.z)); }
+export function bitcastI32toU32(v: Vec4i): Vec4u { return vec4u(bitcastI32toU32(v.x), bitcastI32toU32(v.y), bitcastI32toU32(v.z), bitcastI32toU32(v.w)); }
+export function bitcastU32toF32(v: Vec2u): Vec2f { return vec2f(bitcastU32toF32(v.x), bitcastU32toF32(v.y)); }
+export function bitcastU32toF32(v: Vec3u): Vec3f { return vec3f(bitcastU32toF32(v.x), bitcastU32toF32(v.y), bitcastU32toF32(v.z)); }
+export function bitcastU32toF32(v: Vec4u): Vec4f { return vec4f(bitcastU32toF32(v.x), bitcastU32toF32(v.y), bitcastU32toF32(v.z), bitcastU32toF32(v.w)); }
+export function bitcastU32toI32(v: Vec2u): Vec2i { return vec2i(bitcastU32toI32(v.x), bitcastU32toI32(v.y)); }
+export function bitcastU32toI32(v: Vec3u): Vec3i { return vec3i(bitcastU32toI32(v.x), bitcastU32toI32(v.y), bitcastU32toI32(v.z)); }
+export function bitcastU32toI32(v: Vec4u): Vec4i { return vec4i(bitcastU32toI32(v.x), bitcastU32toI32(v.y), bitcastU32toI32(v.z), bitcastU32toI32(v.w)); }
+
 // WGSL's data packing: component 0 in the low bits, a normalized value ⌊0.5 + scale * clamp⌋ as the
 // specification defines it. A NaN has no defined packing, so the oracle refuses it.
 function packedUnorm(x: float32, scale: float32): uint32 {
@@ -2871,9 +4142,7 @@ function halfBits(x: float32): uint32 {
 	const sign: uint32 = x < 0.0 || (x == 0.0 && 1.0 / x < 0.0) ? 0x8000 : 0;
 	const a = Math.abs(x) as float64;
 	if (a < 0.00006103515625) { return sign | (nearestEven(a * 16777216.0) as uint32); }
-	let e = Math.floor(Math.log2(a));
-	if (Math.pow(2.0, e) > a) { e -= 1.0; }
-	if (Math.pow(2.0, e + 1.0) <= a) { e += 1.0; }
+	let e = binaryExponent(a);
 	let fraction = nearestEven((a / Math.pow(2.0, e) - 1.0) * 1024.0);
 	if (fraction == 1024.0) {
 		e += 1.0;
