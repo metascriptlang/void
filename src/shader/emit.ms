@@ -412,6 +412,17 @@ export macro glslComputeAs(entry: Node, workgroupSize: Node, form: Node): Node {
 		callee: bindSym("glslStage"), arguments: [entry, workgroupSize, entry, form] };
 }
 
+export macro glslSegmentIr(segment: Node): Node {
+	return { kind: NodeKind.CallExpr, line: segment.line, column: segment.column,
+		callee: bindSym("glslStage"), arguments: [segment,
+			{ kind: NodeKind.ArrayLiteral, line: segment.line, column: segment.column,
+				elements: [] },
+			{ kind: NodeKind.ArrayLiteral, line: segment.line, column: segment.column,
+				elements: [] },
+			{ kind: NodeKind.StringLiteral, line: segment.line, column: segment.column,
+				value: "segment" }] };
+}
+
 function shaderField(name: string, type: ShaderType): ShaderField {
 	let f = new ShaderField();
 	f.name = name;
@@ -762,6 +773,12 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		error("glsl: " + msg, n);
 	}
 
+	const formName = form.kind == NodeKind.StringLiteral ? (form as StringLiteralData).value : "";
+	if (formName != "glsl" && formName != "ir" && formName != "segment") {
+		fail(form, "internal: the stage form is \"glsl\", \"ir\" or \"segment\"");
+	}
+	const segment = formName == "segment";
+
 	const typeNodes = shaderTypeNodes(getTypeImpl(ShaderTypeRegistry)!);
 	const stdModule = typeNodes.stdModule;
 	const textureNode = getTypeImpl(Texture2d);
@@ -897,7 +914,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 
 	const outputType = signature.typExprReturn;
 	const vectorOutput = vectorTypes.some((v) => outputType != null && sameType(outputType, v));
-	const outputs = vectorOutput ? null : fieldsOf(outputType);
+	const outputs = vectorOutput || segment ? null : fieldsOf(outputType);
 	const vertex = outputs != null && hasPosition(outputs);
 	const computeBuiltins = ["globalInvocationId", "localInvocationId", "localInvocationIndex",
 		"workgroupId", "numWorkgroups"];
@@ -909,10 +926,42 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	let bindingsType: Node | null = null;
 	let uniformLoadSite: Node | null = null;
 	let keyType: Node | null = null;
+	let phaseType: Node | null = null;
+
+	function typeName(t: Node | null): string {
+		const fields = fieldsOf(t);
+		if (fields != null) { return fields.typExprTypeName; }
+		return t != null && t.kind == NodeKind.Identifier ? t.name : "a value that is no struct";
+	}
+
 	for (let i = 0; i < signature.typExprParams.length; i++) {
 		const name = signature.typExprParamNames[i];
 		const t = signature.typExprParams[i];
 		const fields = fieldsOf(t);
+		if (segment) {
+			const what = "segment '" + fn.fnName + "'";
+			if (i == 0) {
+				if (!isAuthorStruct(t)) {
+					fail(fn, what + ": its first parameter '" + name + "' is the phase struct " +
+						"it reads and returns, and " + typeName(t) + " is no author struct");
+				}
+				if (outputType == null || !sameType(outputType, t)) {
+					fail(fn, what + " returns " + typeName(outputType) + ", and a segment " +
+						"returns its phase struct " + typeName(t));
+				}
+				phaseType = t;
+			} else if (i == 1) {
+				if (fields == null) {
+					fail(fn, what + ": its second parameter '" + name + "' is its bindings " +
+						"struct");
+				}
+				bindingsType = t;
+			} else {
+				fail(fn, what + " takes its phase struct and its bindings struct, and '" + name +
+					"' is a third parameter");
+			}
+			continue;
+		}
 		if (fields == null) {
 			fail(fn, "parameter '" + name + "' is not the input, bindings or program key struct");
 		}
@@ -1092,11 +1141,16 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			const name = bindings.typExprFieldNames[f];
 			const t = bindings.typExprFieldTypes[f];
 			const decorators = bindings.typExprFieldDecorators[f];
-			const binding = decorator(decorators, "binding");
-			if (binding == null) {
+			const numbered = decorator(decorators, "binding");
+			if (segment && numbered != null) {
+				fail(numbered, "segment binding '" + name + "' carries @binding(n): the linker " +
+					"numbers a segment's bindings");
+			}
+			if (!segment && numbered == null) {
 				fail(fieldSite(decorators), "binding '" + name + "' has no @binding(n)");
 			}
-			const slot = argumentNumber(binding);
+			const binding = numbered == null ? fieldSite(decorators) : numbered;
+			const slot = numbered == null ? -1 : argumentNumber(numbered);
 			const sampleType = decorator(decorators, "sampleType");
 			const samplerKind = decorator(decorators, "samplerType");
 			const access = decorator(decorators, "access");
@@ -1191,7 +1245,11 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				layout.name = block.typExprTypeName;
 				for (let k = 0; k < block.typExprFieldNames.length; k++) {
 					const memberName = block.typExprFieldNames[k];
-					claimMember(memberName, slot, binding);
+					if (segment) {
+						claim(memberName, binding);
+					} else {
+						claimMember(memberName, slot, binding);
+					}
 					const own = blockMemberOf(typeNodes, block as TypeObjectData, k as int32);
 					if (!own.ok) { fail(binding, own.error); }
 					layout.members.push(own.value);
@@ -2514,13 +2572,13 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	if (compute && !noOutput) { fail(fn, "a compute entry returns nothing"); }
 	if (noOutput) {
 		if (vertex) { fail(fn, "a vertex entry returns its outputs"); }
-	} else if (outputs == null) {
+	} else if (outputs == null && !segment) {
 		const colour = glslType(outputType, fn);
 		claim("fragColor", fn);
 		const io = addIo(stage, "fragColor", IoDirection.Out, colour, Builtin.None,
 			new FeatureCondition());
 		m.ios[io].location = 0;
-	} else {
+	} else if (outputs != null) {
 		for (let f = 0; f < outputs.typExprFieldNames.length; f++) {
 			const name = outputs.typExprFieldNames[f];
 			const decorators = outputs.typExprFieldDecorators[f];
@@ -2574,9 +2632,21 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	gather(fn.fnBody, entry.resolvedSym.modulePath, [], null);
 	let main = new ShaderFunction();
 	main.name = fn.fnName;
+	if (segment && phaseType == null) {
+		fail(fn, "segment '" + fn.fnName + "' takes its phase struct as its first parameter");
+	}
+	if (phaseType != null) {
+		checkName(fn.fnName, fn);
+		checkName(signature.typExprParamNames[0], fn);
+		main.result = valueType(phaseType, fn);
+		main.params.push(shaderField(signature.typExprParamNames[0], main.result));
+	}
 	const mainIndex = addFunction(main);
 	enterScope(entry.resolvedSym.modulePath, main);
+	for (const p of main.params) { paramNames.push(p.name); }
+	inHelper = segment;
 	main.body = lowerBody(fn.fnBody);
+	inHelper = false;
 	if (m.workgroups.length > 0) { main.body = zeroedWorkgroups(main).concat(main.body); }
 	for (let s = 0; s < storageResources.length; s++) {
 		const element = storageElements[s];
@@ -2608,15 +2678,11 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			stageEntry.workgroupSize[a] = n == null ? 1 : intValue(n) as int32;
 		}
 	}
-	m.entries.push(stageEntry);
+	if (!segment) { m.entries.push(stageEntry); }
 	const broken = irErrors(m);
 	if (broken.length > 0) {
 		fail(entry, "internal: the lowered module breaks the IR: " + broken[0]);
 	}
-	const formName = form.kind == NodeKind.StringLiteral ? (form as StringLiteralData).value : "";
-	if (formName != "glsl" && formName != "ir") {
-		fail(form, "internal: the stage form is \"glsl\" or \"ir\"");
-	}
 	return { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column,
-		value: formName == "ir" ? irText(m) : printGlsl450(m) };
+		value: formName == "glsl" ? printGlsl450(m) : irText(m) };
 }

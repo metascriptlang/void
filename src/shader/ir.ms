@@ -1353,7 +1353,8 @@ export function irErrors(m: ShaderModule): string[] {
 		for (let j = 0; j < i; j++) {
 			const other = m.resources[j];
 			const alternatives = r.kind == other.kind;
-			if (other.group == r.group && other.binding == r.binding && !alternatives) {
+			if (r.binding >= 0 && other.group == r.group && other.binding == r.binding &&
+				!alternatives) {
 				c.errors.push(owner + ": binding " + String(r.binding) + " is also '" +
 					other.name + "'");
 			}
