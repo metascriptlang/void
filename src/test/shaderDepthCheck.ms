@@ -1,7 +1,7 @@
 // textureSampleCompare and textureSampleCompareLevel authored in MetaScript on depth textures and
 // a comparison sampler, and @builtin(fragDepth): each entry runs on the CPU, is pinned as GLSL and
 // printed for every target into out/<target>Probe/ for scripts/validateWgsl.sh,
-// scripts/validateHlsl.sh and naga's GLSL front end.
+// scripts/validateHlsl.sh and the GLSL validator.
 
 import { mkdir, writeFile } from "std/fs";
 import { Compare, Wrap } from "../gpu/state";

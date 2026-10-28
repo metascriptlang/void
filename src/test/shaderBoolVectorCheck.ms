@@ -1,6 +1,6 @@
 // WGSL's boolean vectors authored in MetaScript: the CPU oracle of the componentwise tests,
 // any, all, not and select, an entry that uses each, its text per target, the probe files that
-// naga, fxc and spirv-val read, and the places a bool cannot go.
+// fxc and spirv-val read, and the places a bool cannot go.
 
 import { mkdir, writeFile } from "std/fs";
 import { programModule, stageSource } from "../shader/descriptor";
@@ -361,7 +361,7 @@ test "HLSL spells them as operators and a ternary on a bool vector" {
 	assert hlsl.includes("weigh(any(above), 1.0)") && hlsl.includes("any(!same)");
 }
 
-test "MSL spells them as naga does, a select by a bool vector as metal's select" {
+test "MSL spells a select by a bool vector as metal's select" {
 	const msl = printedFor(programOf(), 1, ShaderTarget.Msl, "boolVector");
 	assert msl.includes("  bool3 below = (in.low < in.high);
 " +

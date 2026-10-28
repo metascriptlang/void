@@ -221,8 +221,7 @@ function typeName(p: Printer, t: ShaderType): string {
 	};
 }
 
-// SPIRV-Cross's GLSL atomics (measured through sokol-shdc): GLSL 4.30 has no atomic load or
-// store, so a load is an add of 0 and a store an exchange.
+// GLSL 4.30 has no atomic load or store, so a load is an add of 0 and a store an exchange.
 function atomicText(p: Printer, e: ShaderExpr): string {
 	if (p.es) { return fail(p, e.intrinsic.toString() + " has no GLSL ES 3.00 form"); }
 	const o = e.operands;

@@ -580,7 +580,7 @@ function inverseCall(p: Printer, e: ShaderExpr): string {
 	return inverseName(t.rows) + "(" + exprText(p, e.operands[0]) + ")";
 }
 
-// The compound spellings, as naga's back-end writes them: ctz and clz count the full width, where
+// The compound spellings: ctz and clz count the full width, where
 // WGSL answers -1 for no bit, and extract_bits and insert_bits are undefined past the 32 bits
 // WGSL clamps to. An operand printed more than once must not call a function.
 function bitsText(p: Printer, e: ShaderExpr): string {

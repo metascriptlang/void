@@ -160,7 +160,7 @@ function texturedModule(): ShaderModule {
 	return m;
 }
 
-// shady's compute1: each invocation walks its row, writing a storage buffer's value to a texel.
+// compute1: each invocation walks its row, writing a storage buffer's value to a texel.
 function computeModule(): ShaderModule {
 	const f32 = scalarType(ScalarKind.F32);
 	const i32 = scalarType(ScalarKind.I32);

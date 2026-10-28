@@ -1,5 +1,5 @@
 // workgroupUniformLoad(v): the entry runs on the CPU, is pinned as GLSL and printed into
-// out/<target>Probe/ for scripts/validateWgsl.sh, scripts/validateHlsl.sh, naga and spirv-val.
+// out/<target>Probe/ for scripts/validateWgsl.sh, scripts/validateHlsl.sh and spirv-val.
 
 import { mkdir, writeFile } from "std/fs";
 import { computeModule } from "../shader/descriptor";

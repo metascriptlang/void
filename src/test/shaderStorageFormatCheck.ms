@@ -2,7 +2,7 @@
 // type of a format (f32, u32, i32) is the texel type textureLoad returns and textureStore takes, and
 // each channel type has its own storage texture struct. Each entry runs on the CPU, is pinned as GLSL
 // and is printed for every target into out/<target>Probe/ for scripts/validateWgsl.sh,
-// scripts/validateHlsl.sh, naga and spirv-val.
+// scripts/validateHlsl.sh and spirv-val.
 
 import { mkdir, writeFile } from "std/fs";
 import { Buffer } from "std/core/buffer";

@@ -1,6 +1,6 @@
 // The probe modules printed as GLSL 430 and GLSL ES 3.00: the blur keeps the committed interface
 // of both, every intrinsic and statement kind has a spelling, and each refusal names its case.
-// The printed files land in out/glslProbe/ for naga.
+// The printed files land in out/glslProbe/ for the GLSL validator.
 
 import { mkdir, readFile, writeFile } from "std/fs";
 import {

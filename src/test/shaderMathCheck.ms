@@ -1,6 +1,6 @@
 // WGSL's remaining math and bit builtins authored in MetaScript: the CPU oracle of countLeadingZeros,
 // countTrailingZeros, the bitcasts, ldexp, asinh, acosh and atanh, three entries that use them and
-// the coarse and fine derivatives, their text per target, the probe files that naga, fxc and
+// the coarse and fine derivatives, their text per target, the probe files that fxc and
 // spirv-val read, and the places they are refused.
 
 import { mkdir, writeFile } from "std/fs";

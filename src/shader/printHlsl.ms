@@ -264,7 +264,7 @@ function splitTypes(t: ShaderType): string[] {
 	return [fract, t.rows == 1 ? "int" : "int" + String(t.rows)];
 }
 
-// naga's HLSL back-end writes the same two functions: frexp and modf hand back one half through an
+// frexp and modf hand back one half through an
 // out parameter, and frexp's mantissa is signed by hand because HLSL's carries no sign.
 function splitResult(p: Printer, t: ShaderType): string {
 	const types = splitTypes(t);
@@ -305,7 +305,7 @@ function interlockedName(p: Printer, op: Intrinsic): string {
 	};
 }
 
-// SPIRV-Cross's HLSL atomics: Interlocked* hands the old value back through an out parameter,
+// Interlocked* hands the old value back through an out parameter,
 // so an atomic is a statement of its own, a load is an add of 0 and a store an exchange.
 function atomicStatement(p: Printer, e: ShaderExpr, result: string, at: string): string {
 	const o = e.operands;
@@ -748,7 +748,7 @@ function packText(op: Intrinsic): string {
 	};
 }
 
-// HLSL has no intrinsic for these: each is a helper function, as naga writes them, so an operand
+// HLSL has no intrinsic for these: each is a helper function, so an operand
 // is evaluated once. FXC has no int overload of countbits, reversebits, firstbithigh and firstbitlow.
 function bitsOf(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
@@ -798,8 +798,8 @@ function bitsOf(p: Printer, e: ShaderExpr): string {
 	return name + "(" + expr(p, o[0]) + ")";
 }
 
-// HLSL has no asinh, acosh, atanh or coarse and fine fwidth: each is a helper, as naga writes
-// them, so an operand is evaluated once. asinh is odd by construction, where naga's form loses
+// HLSL has no asinh, acosh, atanh or coarse and fine fwidth: each is a helper, so an operand
+// is evaluated once. asinh is odd by construction, where the plain form loses
 // every digit of a large negative operand to the cancellation in e + sqrt(e * e + 1).
 function polyfillOf(p: Printer, e: ShaderExpr): string {
 	const op = e.intrinsic;

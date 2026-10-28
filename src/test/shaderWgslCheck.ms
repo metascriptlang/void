@@ -1,5 +1,5 @@
 // Hand-built IR modules print as WGSL, one module per entry. Each printed module is written to
-// out/wgslProbe/, which scripts/validateWgsl.sh hands to naga.
+// out/wgslProbe/, which scripts/validateWgsl.sh validates.
 
 import { mkdir, writeFile } from "std/fs";
 import {

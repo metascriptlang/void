@@ -1,7 +1,7 @@
 // WGSL's texture_2d_array and texture_3d of u32 and i32 texels beside texture_2d: textureLoad
 // returns vec4u or vec4i, and no sampling builtin takes them. Each entry runs on the CPU, is pinned
 // as GLSL and printed for every target into out/<target>Probe/ for scripts/validateWgsl.sh,
-// scripts/validateHlsl.sh, naga and spirv-val.
+// scripts/validateHlsl.sh and spirv-val.
 
 import { mkdir, writeFile } from "std/fs";
 import { programModule, stageSource } from "../shader/descriptor";

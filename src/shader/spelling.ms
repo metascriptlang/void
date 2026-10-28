@@ -233,7 +233,7 @@ function unsignedOf(signedType: string): string {
 	return signedType == "int" ? "uint" : "u" + signedType.substring(1);
 }
 
-// The GLSL spelling of the bit and pack builtins, as naga's back-end writes them. bitCount, findMSB
+// The GLSL spelling of the bit and pack builtins. bitCount, findMSB
 // and findLSB return int, so an unsigned operand's result is converted back; bitfieldExtract and
 // bitfieldInsert are undefined past the 32 bits WGSL clamps to, so the offset and count clamp first.
 // The offset of an extract and of an insert is printed twice.
@@ -289,7 +289,7 @@ export function glslBitcast(
 }
 
 // The structs of modf and frexp are predeclared in WGSL; the other targets declare one per width
-// the module uses, with a helper that makes it, as naga's back-ends do.
+// the module uses, with a helper that makes it.
 export function splitStructName(t: ShaderType): string {
 	const head = t.kind == ShaderTypeKind.ModfResult ? "ModfResult" : "FrexpResult";
 	return head + (t.rows == 1 ? "F32" : "Vec" + String(t.rows) + "f");

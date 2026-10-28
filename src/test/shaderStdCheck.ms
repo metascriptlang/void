@@ -562,7 +562,7 @@ test "a scalar operand of a vector operator applies to every component, on eithe
 	assert (frame * frame) * vec3f(0.0, 0.0, 1.0) == vec3f(4.0, 6.0, 1.0);
 }
 
-test "shady's mandelbrot step and mathFrag colour compute on the CPU" {
+test "the mandelbrot step and mathFrag colour compute on the CPU" {
 	const o = vec2f(0.25, 0.5);
 	const v = 0.55 - mat2x2f(-o.y, o.x, o.x, o.y) * vec2f(o.y, o.x) + vec2f(0.1, 0.2);
 	assert near(v.x, 0.8375) && near(v.y, 0.5);

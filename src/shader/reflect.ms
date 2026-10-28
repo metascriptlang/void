@@ -223,7 +223,7 @@ function bindingsOf(m: ShaderModule, entries: int32[], target: ShaderTarget):
 	return Result.ok(bindings);
 }
 
-// HLSL reads attribute n at TEXCOORD<n> (sokol-shdc src/shdc/reflection.cc sem_index = slot).
+// HLSL reads attribute n at TEXCOORD<n>.
 export function reflectProgram(m: ShaderModule, vertex: int32, fragment: int32,
 	target: ShaderTarget): Result<Reflection, string> {
 	const v = try entryOf(m, vertex, ShaderStage.Vertex);

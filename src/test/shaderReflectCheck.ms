@@ -1,5 +1,5 @@
-// The reflection of a hand-built void2d blur program equals the descriptor sokol-shdc's output
-// gave it, per target, and a compute program reflects its storage resources.
+// The reflection of a hand-built void2d blur program equals the committed descriptor
+// per target, and a compute program reflects its storage resources.
 
 import {
 	Access,

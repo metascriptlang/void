@@ -1,6 +1,6 @@
 // The integer and compute vocabulary past the basic forms, authored in MetaScript: each entry runs
 // on the CPU, is pinned as GLSL, and is printed for every target into out/<target>Probe/ for
-// scripts/validateWgsl.sh, scripts/validateHlsl.sh and naga's GLSL front end.
+// scripts/validateWgsl.sh, scripts/validateHlsl.sh and the GLSL validator.
 
 import { mkdir, writeFile } from "std/fs";
 import { computeModule, stageSource } from "../shader/descriptor";

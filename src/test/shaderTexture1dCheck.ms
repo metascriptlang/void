@@ -1,7 +1,7 @@
 // WGSL's texture_1d<f32> (textureSample, textureSampleLevel, textureLoad, textureDimensions) and
 // texture_storage_1d (textureLoad, textureStore, textureDimensions): each entry runs on the CPU, is
 // pinned as GLSL and printed for every target into out/<target>Probe/ for scripts/validateWgsl.sh,
-// scripts/validateHlsl.sh, naga and spirv-val.
+// scripts/validateHlsl.sh and spirv-val.
 
 import { mkdir, writeFile } from "std/fs";
 import { Wrap } from "../gpu/state";

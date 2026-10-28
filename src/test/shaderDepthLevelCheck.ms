@@ -1,7 +1,7 @@
 // textureSampleLevel on depth textures authored in MetaScript, WGSL's `textureSampleLevel(t:
 // texture_depth_2d | texture_depth_2d_array | texture_depth_cube, s: sampler, coords, [layer,]
 // level: i32) -> f32`: each entry runs on the CPU, is pinned as GLSL and printed for every target
-// into out/<target>Probe/ for scripts/validateWgsl.sh, scripts/validateHlsl.sh, naga and spirv-val.
+// into out/<target>Probe/ for scripts/validateWgsl.sh, scripts/validateHlsl.sh and spirv-val.
 
 import { mkdir, writeFile } from "std/fs";
 import { Wrap } from "../gpu/state";

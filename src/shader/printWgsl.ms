@@ -369,7 +369,7 @@ function runsEffect(e: ShaderExpr): boolean {
 }
 
 // select evaluates both arms, so a conditional with a call in an arm becomes a var assigned in
-// an if/else ahead of its statement, as Tint's PromoteSideEffectsToDecl does.
+// an if/else ahead of its statement.
 function isHoisted(e: ShaderExpr): boolean {
 	return e.kind == ExprKind.Conditional &&
 		(hasCallOrEffect(e.operands[1]) || hasCallOrEffect(e.operands[2]));

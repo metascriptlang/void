@@ -1,6 +1,6 @@
 // @builtin(primitiveIndex) authored in MetaScript: the entry runs on the CPU, is pinned as GLSL
 // and printed for every target into out/<target>Probe/ for scripts/validateWgsl.sh,
-// scripts/validateHlsl.sh, naga and spirv-val. A shaderModule prints it for the build's target.
+// scripts/validateHlsl.sh and spirv-val. A shaderModule prints it for the build's target.
 
 import { programModule, stageSource } from "../shader/descriptor";
 import { glsl, glslIr } from "../shader/emit";

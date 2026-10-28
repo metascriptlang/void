@@ -1,7 +1,7 @@
 // The constant texel offset of textureSample, textureSampleLevel, textureSampleBias,
 // textureSampleGrad, textureSampleCompare and textureSampleCompareLevel, WGSL's last argument:
 // each entry runs on the CPU, is pinned as GLSL and printed for every target into out/<target>Probe/
-// for scripts/validateWgsl.sh, scripts/validateHlsl.sh, naga and spirv-val.
+// for scripts/validateWgsl.sh, scripts/validateHlsl.sh and spirv-val.
 
 import { mkdir, writeFile } from "std/fs";
 import { Compare, Wrap } from "../gpu/state";

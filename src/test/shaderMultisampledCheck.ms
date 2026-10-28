@@ -1,6 +1,6 @@
 // WGSL's texture_multisampled_2d<f32> with textureLoad(t, coords, sample_index), textureDimensions(t)
 // and textureNumSamples(t): each entry runs on the CPU, is pinned as GLSL and printed for every
-// target into out/<target>Probe/ for scripts/validateWgsl.sh, scripts/validateHlsl.sh, naga and
+// target into out/<target>Probe/ for scripts/validateWgsl.sh, scripts/validateHlsl.sh and
 // spirv-val.
 
 import { mkdir, writeFile } from "std/fs";

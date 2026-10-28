@@ -1,7 +1,7 @@
 // WGSL's non-square matrices authored in MetaScript: Mat2x3f, Mat2x4f, Mat3x2f, Mat3x4f, Mat4x2f and
 // Mat4x3f with their constructors, products, transposes and column reads. The CPU oracle runs every
 // overload against a fixed value, one entry uses the shapes through a uniform block, and the text
-// per target and the probe files that naga, fxc and spirv-val read are pinned. A matrix of two rows
+// per target and the probe files that fxc and spirv-val read are pinned. A matrix of two rows
 // keeps WGSL's host layout in a uniform block on every target: columns eight bytes apart.
 
 import { mkdir, writeFile } from "std/fs";

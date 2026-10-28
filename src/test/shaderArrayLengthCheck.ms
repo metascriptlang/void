@@ -1,6 +1,6 @@
 // The length of a runtime-sized storage array (WGSL's arrayLength, spelled `.length`): the entry
 // runs on the CPU, is pinned as GLSL and printed into out/<target>Probe/ for scripts/validateWgsl.sh,
-// scripts/validateHlsl.sh, naga and spirv-val. MSL is a refusal. A fragment entry reaches it through
+// scripts/validateHlsl.sh and spirv-val. MSL is a refusal. A fragment entry reaches it through
 // shaderModule.
 
 import { mkdir, writeFile } from "std/fs";

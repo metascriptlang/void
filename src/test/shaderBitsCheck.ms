@@ -1,7 +1,7 @@
 // WGSL's bit and data-packing builtins authored in MetaScript: the CPU oracle is checked against
 // the WGSL specification's values, and an entry that calls each is pinned as GLSL and printed for
 // every target into out/<target>Probe/ for scripts/validateWgsl.sh, scripts/validateHlsl.sh and
-// naga's GLSL front end.
+// the GLSL validator.
 
 import { mkdir, writeFile } from "std/fs";
 import { programModule, stageSource } from "../shader/descriptor";
@@ -314,7 +314,7 @@ test "HLSL spells them as FXC takes them, and writes the rest as helper function
 		"    return f32tof16(e.x) | (f32tof16(e.y) << 16);\n}\n");
 }
 
-test "MSL spells them as naga does, from popcount to extract_bits" {
+test "MSL spells them from popcount to extract_bits" {
 	const msl = printedFor(programOf(), 1, ShaderTarget.Msl, "bits");
 	assert msl.includes("  uint counted = popcount(in.word);\n" +
 		"  int reversed = reverse_bits(in.signedWord);\n" +

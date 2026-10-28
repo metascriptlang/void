@@ -1,6 +1,6 @@
 // @builtin(fragDepth) authored in MetaScript: the entry runs on the CPU, is pinned as GLSL and
 // printed for every target into out/<target>Probe/ for scripts/validateWgsl.sh,
-// scripts/validateHlsl.sh and naga's GLSL front end.
+// scripts/validateHlsl.sh and the GLSL validator.
 
 import { mkdir, writeFile } from "std/fs";
 import { programModule, stageSource } from "../shader/descriptor";

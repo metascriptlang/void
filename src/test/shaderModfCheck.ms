@@ -1,5 +1,5 @@
 // WGSL's modf and frexp authored in MetaScript: the CPU oracle, entries that use them for a scalar
-// and for every vector width, their text per target, the probe files that naga, fxc and spirv-val
+// and for every vector width, their text per target, the probe files that fxc and spirv-val
 // read, and the places they are refused.
 
 import { mkdir, writeFile } from "std/fs";
