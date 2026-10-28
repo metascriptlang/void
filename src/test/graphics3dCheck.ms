@@ -1,5 +1,6 @@
 import { Graphics3D, GraphicsError, moveTo, lineTo, lineStyle } from "../void3d/graphics3d";
 import { clearGraphics, setGraphicsColorF } from "../void3d/graphics3d";
+import { flushGraphics, setIs3D } from "../void3d/graphics3d";
 import { vertexCount, indexCount } from "../void3d/meshData";
 
 function near(a: float32, b: float32): boolean { return Math.abs(a - b) < 0.00001; }
@@ -120,4 +121,116 @@ test "Graphics3D reuses MeshData wide index promotion without a second stream AB
 	assert g.data.vertexCount() == 65540 && g.data.indexCount() == 98310;
 	assert g.data.wideIndices !== null && g.data.indices.length == 0;
 	assert g.data.wideIndices[98304] == 65536 && g.data.wideIndices[98309] == 65537;
+}
+
+function vertexAt(
+	g: Graphics3D, v: int32, x: float32, y: float32, u: float32, side: float32,
+): boolean {
+	const at: int32 = v * 12;
+	return near(g.data.vertices[at], x) && near(g.data.vertices[at + 1], y) &&
+		g.data.vertices[at + 3] == 0 && g.data.vertices[at + 4] == 0 &&
+		g.data.vertices[at + 5] == 1 &&
+		g.data.vertices[at + 6] == u && g.data.vertices[at + 7] == side;
+}
+
+function indicesAre(g: Graphics3D, expected: int32[]): boolean {
+	if (g.data.indexCount() != (expected.length as int32)) { return false; }
+	for (let i = 0; i < expected.length; i++) {
+		if (g.data.indices[i] != (expected[i] as uint32)) { return false; }
+	}
+	return true;
+}
+
+test "Graphics3D in 3D waits for a flush, then mitres an open polyline in the XY plane" {
+	let g = Graphics3D.create();
+	assert g.lineSize == 0 && !g.is3D && g.points.length == 0;
+	setIs3D(g, true);
+	assert lineStyle(g, 1, 0xff0000).ok;
+	assert moveTo(g, 0, 0, 3).ok;
+	assert lineTo(g, 2, 0, 3).ok;
+	assert lineTo(g, 2, 2, 3).ok;
+	assert g.data.vertexCount() == 0 && g.points.length == 3;
+	assert flushGraphics(g).ok;
+	assert g.points.length == 0 && g.data.vertexCount() == 6;
+	assert vertexAt(g, 0, 0, 0.5, 0, 0);
+	assert vertexAt(g, 1, 0, -0.5, 1, 0);
+	assert vertexAt(g, 2, 1.5, 0.5, 0, 1);
+	assert vertexAt(g, 3, 2.5, -0.5, 1, 1);
+	assert vertexAt(g, 4, 1.5, 2, 0, 0);
+	assert vertexAt(g, 5, 2.5, 2, 1, 0);
+	assert g.data.vertices[2] == 3 && g.data.vertices[8] == 1 && g.data.vertices[9] == 0;
+	assert indicesAre(g, [0, 1, 2, 2, 1, 3, 2, 3, 4, 4, 3, 5]);
+	assert g.width == 1.5;
+}
+
+test "Graphics3D in 3D closes a loop whose last point is its first and wraps to the start" {
+	let g = Graphics3D.create();
+	setIs3D(g, true);
+	assert lineStyle(g, 2).ok;
+	assert moveTo(g, 0, 0, 0).ok;
+	assert lineTo(g, 2, 0, 0).ok;
+	assert lineTo(g, 2, 2, 0).ok;
+	assert lineTo(g, 0, 2, 0).ok;
+	assert lineTo(g, 0, 0, 0).ok;
+	assert flushGraphics(g).ok;
+	assert g.data.vertexCount() == 8;
+	assert vertexAt(g, 0, 1, 1, 0, 0);
+	assert vertexAt(g, 1, -1, -1, 1, 0);
+	assert vertexAt(g, 6, 1, 1, 0, 1);
+	assert indicesAre(g, [
+		0, 1, 2, 2, 1, 3, 2, 3, 4, 4, 3, 5, 4, 5, 6, 6, 5, 7, 6, 7, 0, 0, 7, 1,
+	]);
+}
+
+test "Graphics3D in 3D flushes on moveTo, lineStyle and a switch out, and clear drops points" {
+	let g = Graphics3D.create();
+	setIs3D(g, true);
+	assert lineStyle(g, 1).ok;
+	assert moveTo(g, 0, 0, 0).ok;
+	assert lineTo(g, 1, 0, 0).ok;
+	assert moveTo(g, 5, 5, 0).ok;
+	assert g.data.vertexCount() == 4 && g.points.length == 1;
+	assert lineTo(g, 6, 5, 0).ok;
+	assert lineStyle(g, 1, 0x00ff00).ok;
+	assert g.data.vertexCount() == 8 && g.points.length == 0;
+	assert lineTo(g, 7, 5, 0).ok;
+	clearGraphics(g);
+	assert g.data.vertexCount() == 0 && g.points.length == 0;
+	assert lineTo(g, 7, 5, 0).ok;
+	setIs3D(g, true);
+	assert g.points.length == 1;
+	setIs3D(g, false);
+	assert g.points.length == 0 && g.data.vertexCount() == 0 && !g.is3D;
+}
+
+test "Graphics3D in 3D refuses a joint with no miter direction and drops its points" {
+	let g = Graphics3D.create();
+	setIs3D(g, true);
+	assert lineStyle(g, 1).ok;
+	assert moveTo(g, 1, 1, 0).ok;
+	const lone = moveTo(g, 2, 2, 0);
+	assert !lone.ok && lone.error == GraphicsError.Degenerate;
+	assert g.points.length == 0 && g.data.vertexCount() == 0;
+	assert moveTo(g, 0, 0, 0).ok;
+	assert lineTo(g, 1, 0, 0).ok;
+	assert lineTo(g, 0, 0, 0).ok;
+	const back = flushGraphics(g);
+	assert !back.ok && back.error == GraphicsError.Degenerate;
+	assert g.points.length == 0 && g.data.vertexCount() == 0;
+}
+
+test "Graphics3D keeps Heaps' lineSize beside the screen width, and its bounds from the cursor" {
+	let g = Graphics3D.create();
+	assert lineStyle(g, 4).ok;
+	assert g.width == 4 && g.lineSize == 4;
+	setIs3D(g, true);
+	assert lineStyle(g, 2).ok;
+	assert g.width == 4 && g.lineSize == 2;
+	setIs3D(g, false);
+	assert lineStyle(g, 2).ok;
+	assert g.width == 4;
+	setIs3D(g, true);
+	assert moveTo(g, 5, 5, 5).ok;
+	assert lineTo(g, 6, 6, 6).ok;
+	assert g.data.bounds.min.x == 0 && g.data.bounds.max.x == 6;
 }
