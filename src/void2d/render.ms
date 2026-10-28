@@ -43,6 +43,7 @@ import {
 	CMD_SAMPLER,
 	RoundClip,
 	NO_ROUND_CLIP,
+	pushGlyphInstance,
 } from "./displayList";
 import {
 	fillQuad,
@@ -52,7 +53,9 @@ import {
 	rewriteSprite,
 	spriteInstancingAvailable,
 	drawUiInstance,
-	drawGlyphInstance,
+	useGlyphRun,
+	originXOffset,
+	originYOffset,
 	uiInstancingAvailable,
 	imageQuad,
 	imageQuadUV,
@@ -675,6 +678,8 @@ struct GlyphSpace {
 	originX: float32;
 	originY: float32;
 	scale: float32;
+	shiftX: float32;
+	shiftY: float32;
 }
 
 function emitGlyph(
@@ -701,14 +706,14 @@ function emitGlyph(
 	const affine: Transform2D = space.affine;
 	const colour: boolean = kind == PageKind.Rgba;
 	if (space.instanced && colour) {
-		drawGlyphInstance(
-			view, blend, InstanceMode.Image, 0.0, 1.0, affine, x, y, w, h, p.u0, p.v0, p.u1, p.v1,
-			fill,
+		pushGlyphInstance(
+			InstanceMode.Image, 0.0, 1.0, affine, x, y, w, h, p.u0, p.v0, p.u1, p.v1, fill,
+			space.shiftX, space.shiftY,
 		);
 	} else if (space.instanced) {
-		drawGlyphInstance(
-			view, blend, InstanceMode.Glyph, kind == PageKind.Sdf ? SDF_GLYPH_FLAG : 0.0, 0.0,
-			affine, x, y, w, h, p.u0, p.v0, p.u1, p.v1, fill,
+		pushGlyphInstance(
+			InstanceMode.Glyph, kind == PageKind.Sdf ? SDF_GLYPH_FLAG : 0.0, 0.0,
+			affine, x, y, w, h, p.u0, p.v0, p.u1, p.v1, fill, space.shiftX, space.shiftY,
 		);
 	} else {
 		const rx: float32 = affine.a * w;
@@ -738,6 +743,7 @@ when (voidTextOutline) {
 				view = glyphPageView(glyphPageHandle(p.page));
 				viewPage = p.page;
 				markGlyphPageDrawn(p.page);
+				if (space.instanced) { useGlyphRun(view, blend); }
 			}
 			emitGlyph(space, blend, view, p, kind, ink);
 		}
@@ -776,6 +782,8 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 		originX: originX,
 		originY: originY,
 		scale: scale,
+		shiftX: originXOffset(),
+		shiftY: originYOffset(),
 	};
 	if (text.regime == TextRegime.Sdf) { setSampler(Smooth.On, false); }
 	emitOutline(space, blend, text, na);
@@ -798,6 +806,7 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 				view = glyphPageView(glyphPageHandle(p.page));
 				viewPage = p.page;
 				markGlyphPageDrawn(p.page);
+				if (space.instanced) { useGlyphRun(view, blend); }
 			}
 			const run: Color = styled && p.run != NO_RUN ? text.runs[p.run].color.tinted(col) : col;
 			const fill: Color = kind == PageKind.Rgba ? rgba(1.0, 1.0, 1.0, run.a) : run;
@@ -823,10 +832,13 @@ function emitIcon(s: Scene2D, i: int32, world: Transform2D, col: Color): void {
 		originX: Math.floor(world.tx * scale) as float32,
 		originY: Math.floor(world.ty * scale) as float32,
 		scale: scale,
+		shiftX: originXOffset(),
+		shiftY: originYOffset(),
 	};
 	setSampler(Smooth.On, false);
 	markGlyphPageDrawn(placed.glyph.page);
 	const view: uint32 = glyphPageView(glyphPageHandle(placed.glyph.page));
+	if (space.instanced) { useGlyphRun(view, s.paints[i].blend); }
 	emitGlyph(space, s.paints[i].blend, view, placed.glyph, PageKind.Mask, col);
 	setSampler(Smooth.Inherit, false);
 }

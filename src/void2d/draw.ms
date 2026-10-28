@@ -27,7 +27,7 @@ import { void2dGlyphPageCount } from "./glyph";
 import { beginGlyphFrame, setSdfRegime } from "./labelText";
 import { GlyphPageHandle } from "./glyphAtlas";
 import { gammaRatios, DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST } from "./textGamma";
-import { InstanceMode, UiInstance } from "./instance";
+import { UiInstance } from "./instance";
 import {
 	CommandKind, BreakReason,
 	COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS, NO_EFFECT,
@@ -40,7 +40,7 @@ import {
 	DrawContext2D, currentContext, useContext, useDefaultContext, isDefaultContext, uploaded,
 	spriteInstanceCount,
 	effectField, effectMatrix,
-	uiInstanceCount, pushUiInstance, pushGlyphInstance, recordUiDraw,
+	uiInstanceCount, pushUiInstance, recordUiDraw,
 	resetContext, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
 	targetDepth, renderTargetScaleNow, beginTargetList, endTargetList,
 	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
@@ -1487,27 +1487,8 @@ export function drawUiInstance(view: uint32, blend: BlendMode, inst: UiInstance)
 	pushUiInstance(inst, originXOffset(), originYOffset());
 }
 
-export function drawGlyphInstance(
-	view: uint32,
-	blend: BlendMode,
-	mode: InstanceMode,
-	flag: float32,
-	image: float32,
-	affine: Transform2D,
-	x: float32,
-	y: float32,
-	w: float32,
-	h: float32,
-	u0: float32,
-	v0: float32,
-	u1: float32,
-	v1: float32,
-	fill: Color,
-): void {
+export function useGlyphRun(view: uint32, blend: BlendMode): void {
 	useRun(Pipeline.Ui, view == 0 ? void2dWhiteView() : view, false, blend);
-	pushGlyphInstance(
-		mode, flag, image, affine, x, y, w, h, u0, v0, u1, v1, fill, originXOffset(), originYOffset(),
-	);
 }
 
 export function uiInstancingAvailable(): boolean {
@@ -1523,9 +1504,9 @@ export function recordedSpriteInstanceCount(): int32 { return spriteInstanceCoun
 // origin as each vertex is written. An instance carries its origin once, so the same
 // subtraction applies there - and it has to be the same two numbers, or a filtered sprite
 // lands somewhere else than a filtered anything else.
-function originXOffset(): float32 {
+export function originXOffset(): float32 {
 	const ctx: DrawContext2D = currentContext(); return ctx.originX; }
-function originYOffset(): float32 {
+export function originYOffset(): float32 {
 	const ctx: DrawContext2D = currentContext(); return ctx.originY; }
 
 // True when the instanced path is legal for the state the emitter is in. The only thing that
