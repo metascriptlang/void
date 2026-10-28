@@ -1,26 +1,28 @@
 import { mkdir, writeFile } from "std/fs";
-import { programModule, stageSource } from "../shader/descriptor";
+import { programModule, programSource, stageSource } from "../shader/descriptor";
 import { glslIr, glslLinkedIr, glslSegmentIr } from "../shader/emit";
 import {
 	ExprKind,
 	IoDirection,
-	ResourceKind,
 	ShaderExpr,
 	ShaderModule,
-	ShaderResource,
 	ShaderStage,
 	StmtKind,
+	irErrors,
 } from "../shader/ir";
 import { irFromText, irText } from "../shader/irText";
 import { ShaderTarget } from "../shader/layout";
 import { link } from "../shader/link";
 import {
+	Sampler,
+	Texture2d,
 	Vec2f,
 	Vec4f,
 	binding,
 	builtin,
 	discard,
 	hook,
+	textureSample,
 	vec2f,
 	vec4f,
 } from "../shader/std";
@@ -148,7 +150,7 @@ const LINKED =
 	"[[],[[\"Frame\",[[\"time\",[1,0,1,1,0,[],-1,0,0,0]]]],[\"UvStage\",[[\"uv\",[2,0,2,1,0,[" +
 	"],-1,0,0,0]]]],[\"Shaded\",[[\"color\",[2,0,4,1,0,[],-1,0,0,0]]]],[\"Tint\",[[\"tint\",[" +
 	"2,0,4,1,0,[],-1,0,0,0]]]]],[],[[0,\"frame\",0,0,[6,0,1,1,0,[],0,0,0,0],0,0,0,[0,\"\",[]]" +
-	"],[0,\"tintParams\",0,-1,[6,0,1,1,0,[],3,0,0,0],0,0,0,[0,\"\",[]]]],[[\"position\",0,0,[" +
+	"],[0,\"tintParams\",0,1,[6,0,1,1,0,[],3,0,0,0],0,0,0,[0,\"\",[]]]],[[\"position\",0,0,[" +
 	"2,0,2,1,0,[],-1,0,0,0],-1,0,0,0,[0,\"\",[]]],[\"clip\",0,1,[2,0,4,1,0,[],-1,0,0,0],-1,3," +
 	"0,0,[0,\"\",[]]],[\"uv\",0,1,[2,0,2,1,0,[],-1,0,0,0],-1,0,0,0,[0,\"\",[]]],[\"position\"" +
 	",1,0,[2,0,4,1,0,[],-1,0,0,0],-1,3,0,0,[0,\"\",[]]],[\"uv\",1,0,[2,0,2,1,0,[],-1,0,0,0],-" +
@@ -422,6 +424,31 @@ const CHAIN_HLSL =
 	"    return stage_output;\n" +
 	"}\n";
 
+const CHAIN_REFLECTED =
+	"0/0 uniform -1,0/1 uniform -1
+" +
+	"0/0 uniform 0,0/1 uniform 1
+" +
+	"0/0 uniform -1 frame,0/1 uniform -1 tintParams
+" +
+	"0/0 uniform -1 frame,0/1 uniform -1 tintParams
+" +
+	"0/0 uniform 0,0/1 uniform 1";
+
+const DETAIL_REFLECTED =
+	"0/0 uniform -1,0/1 uniform -1,1/0 texture -1,1/1 texture -1,1/32 sampler -1," +
+	"1/33 sampler -1
+" +
+	"0/0 uniform 0,0/1 uniform 1,1/0 texture 0,1/1 texture 1,1/32 sampler 0,1/33 sampler 1
+" +
+	"0/0 uniform -1 frame,0/1 uniform -1 tintParams,1/0 texture -1,1/1 texture -1," +
+	"1/32 sampler -1 detailA_detailASampler,1/33 sampler -1 detailB_detailBSampler
+" +
+	"0/0 uniform -1 frame,0/1 uniform -1 tintParams,1/0 texture -1,1/1 texture -1," +
+	"1/32 sampler -1 detailA_detailASampler,1/33 sampler -1 detailB_detailBSampler
+" +
+	"0/0 uniform 0,0/1 uniform 1,1/0 texture 0,1/1 texture 1,1/32 sampler 0,1/33 sampler 1";
+
 const SPLIT_VS_WGSL =
 	"var<private> position : vec2f;\n" +
 	"\n" +
@@ -590,21 +617,6 @@ function refusal(base: ShaderModule, effects: ShaderModule[]): string {
 	return m.ok ? "" : m.error;
 }
 
-function spaceOf(r: ShaderResource): int32 {
-	if (r.kind == ResourceKind.UniformBlock) { return 0; }
-	return r.kind == ResourceKind.Sampler ? 1 : 2;
-}
-
-function numberedForTest(m: ShaderModule): ShaderModule {
-	for (const r of m.resources) {
-		if (r.binding >= 0) { continue; }
-		let free = 0;
-		while (m.resources.some((o) => o.binding == free && spaceOf(o) == spaceOf(r))) { free++; }
-		r.binding = free;
-	}
-	return m;
-}
-
 function printed(m: ShaderModule, target: ShaderTarget, path: string, entry: int32): string {
 	const text = stageSource(m, entry, target);
 	if (!text.ok) { return text.error; }
@@ -657,7 +669,7 @@ test "the effects of a phase chain at its hook site in the author's order" {
 	assert siteChain(m, "UvStage") == "uvScroll(phase)";
 	assert siteChain(m, "Shaded") == "killAlpha(colourAdd(phase))";
 	assert m.resources.map((r) => r.name + "@" + String(r.binding)).join(",") ==
-		"frame@0,tintParams@-1";
+		"frame@0,tintParams@1";
 }
 
 test "the linked chain folds on the CPU to the chained base" {
@@ -668,10 +680,37 @@ test "the linked chain folds on the CPU to the chained base" {
 	assert sameColour(chainedFs(PIXEL, FRAME, TINT), folded);
 }
 
-test "the linked fragment prints for WGSL and HLSL once its effect bindings are numbered" {
-	const m = numberedForTest(linkedModule([UV_SCROLL, COLOUR_ADD, KILL_ALPHA]));
+test "the linked fragment prints for WGSL and HLSL with its effect bindings numbered" {
+	const m = linkedModule([UV_SCROLL, COLOUR_ADD, KILL_ALPHA]);
+	assert irErrors(m).length == 0;
 	assert printed(m, ShaderTarget.Wgsl, "chainFs.wgsl", 1) == CHAIN_WGSL;
 	assert printed(m, ShaderTarget.Hlsl5, "chainFs.ps.hlsl", 1) == CHAIN_HLSL;
+}
+
+const TARGETS = [
+	ShaderTarget.Wgsl,
+	ShaderTarget.Hlsl5,
+	ShaderTarget.Glsl430,
+	ShaderTarget.Glsl300es,
+	ShaderTarget.Msl,
+];
+
+function reflected(m: ShaderModule): string {
+	let out: string[] = [];
+	for (const target of TARGETS) {
+		const s = programSource(m, target);
+		if (!s.ok) { return s.error; }
+		if (s.value.refusal != "") { return s.value.refusal; }
+		out.push(s.value.reflection.bindings.map((b) => String(b.group) + "/" +
+			String(b.binding) + " " + b.kind + " " + String(b.nativeSlot) +
+			(b.nativeName == null ? "" : " " + b.nativeName)).join(","));
+	}
+	return out.join("
+");
+}
+
+test "the linked program prints and reflects for every target" {
+	assert reflected(linkedModule([UV_SCROLL, COLOUR_ADD, KILL_ALPHA])) == CHAIN_REFLECTED;
 }
 
 test "two effects on one phase chain in the order given" {
@@ -739,4 +778,47 @@ test "the linked stages print without the dropped varying" {
 	assert detail.every((t) => t.includes(" main("));
 	assert vsWgsl == SPLIT_VS_WGSL && fsWgsl == SPLIT_FS_WGSL;
 	assert vsHlsl == SPLIT_VS_HLSL && fsHlsl == SPLIT_FS_HLSL;
+}
+
+struct DetailABindings {
+	detailA: Texture2d;
+	detailASampler: Sampler;
+}
+
+struct DetailBBindings {
+	detailB: Texture2d;
+	detailBSampler: Sampler;
+}
+
+function detailA(shaded: Shaded, b: DetailABindings): Shaded {
+	return { color: shaded.color * textureSample(b.detailA, b.detailASampler, vec2f(0.25, 0.5)) };
+}
+
+function detailB(shaded: Shaded, b: DetailBBindings): Shaded {
+	return { color: shaded.color * textureSample(b.detailB, b.detailBSampler, vec2f(0.5, 0.25)) };
+}
+
+const DETAIL_A = glslSegmentIr(detailA);
+const DETAIL_B = glslSegmentIr(detailB);
+
+test "two texture effects get distinct views and samplers" {
+	const m = linkedModule([COLOUR_ADD, DETAIL_A, DETAIL_B]);
+	assert m.resources.map((r) => r.name + "@" + String(r.group) + "/" + String(r.binding))
+		.join(",") ==
+		"frame@0/0,tintParams@0/1,detailA@1/0,detailASampler@2/0,detailB@1/1,detailBSampler@2/1";
+	assert irErrors(m).length == 0;
+	assert reflected(m) == DETAIL_REFLECTED;
+	assert printed(m, ShaderTarget.Wgsl, "detailFs.wgsl", 1).includes(" main(");
+	assert printed(m, ShaderTarget.Hlsl5, "detailFs.ps.hlsl", 1).includes(" main(");
+}
+
+test "an effect past the last view binding is refused" {
+	let effects: ShaderModule[] = [];
+	for (let i = 0; i < 33; i++) {
+		let e = moduleOf(DETAIL_A);
+		e.resources[0].name = "detail" + String(i);
+		effects.push(e);
+	}
+	assert refusal(baseOf(), effects) ==
+		"link: effect 'detailA' finds no binding for Texture 'detail32': bindings 0..31 are taken";
 }
