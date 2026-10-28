@@ -74,7 +74,7 @@ test "shaderModule declares the program's WebGPU shader module for this build's 
 	assert pictureModule.attributes[0].location == 0 && pictureModule.attributes[1].location == 1;
 }
 
-test "shaderModule numbers bindings as shdc's WGSL output does" {
+test "shaderModule numbers bindings on the WGSL slots: blocks group 0, views group 1, samplers from 32" {
 	const tint = pictureModule.bindings[0];
 	assert tint.group == 0 && tint.binding == 1 && tint.kind == "uniform" && tint.visibility == (GPUShaderStage.FRAGMENT as int32);
 	assert tint.size == 16;
