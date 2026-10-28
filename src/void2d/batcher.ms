@@ -261,7 +261,7 @@ function field(cmd: Readonly<Span<float32>>, index: int32): int32 {
 }
 
 function growWords(words: uint32[], count: int32): void {
-	while ((words.length as int32) < count) { words.push(0); }
+	if ((words.length as int32) < count) { words.setLength(count as number); }
 }
 
 function packColor(records: Readonly<Span<float32>>, at: int32): uint32 {
