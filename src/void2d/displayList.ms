@@ -641,29 +641,52 @@ export function uploaded(): void {
 }
 
 
-function keep(at: int32, value: float32): void {
-	if (at < (activeContext.saved.length as int32)) {
-		activeContext.saved[at] = value;
-	} else {
-		activeContext.saved.push(value);
+export function saveRange(a: PaintIndex, b: PaintIndex): void {
+	const ui: int32 = (b.uiInstances - a.uiInstances) * REC_UI_FLOATS;
+	const sprites: int32 = (b.spriteInstances - a.spriteInstances) * REC_SPRITE_FLOATS;
+	const vertices: int32 = (b.vertices - a.vertices) * VERTEX_FLOATS;
+	growTo(activeContext.saved, ui + sprites + vertices);
+	if (ui > 0) {
+		copyFloats(activeContext.saved, 0, activeContext.uiInstances, a.uiInstances * REC_UI_FLOATS, ui);
+	}
+	if (sprites > 0) {
+		copyFloats(activeContext.saved, ui, activeContext.spriteInstances,
+			a.spriteInstances * REC_SPRITE_FLOATS, sprites);
+	}
+	if (vertices > 0) {
+		copyFloats(activeContext.saved, ui + sprites, activeContext.vertices, a.vertices * VERTEX_FLOATS,
+			vertices);
 	}
 }
 
-export function saveRange(a: PaintIndex, b: PaintIndex): void {
-	let k: int32 = 0;
-	for (let i: int32 = a.uiInstances * REC_UI_FLOATS; i < b.uiInstances * REC_UI_FLOATS; i++) {
-		keep(k, activeContext.uiInstances[i]);
-		k = k + 1;
+function recordDiffers(
+	a: Readonly<Span<float32>>, aAt: int32, b: Readonly<Span<float32>>, bAt: int32, stride: int32,
+): boolean {
+	for (let f: int32 = 0; f < stride; f++) {
+		if (a[aAt + f] != b[bAt + f]) { return true; }
 	}
-	for (let i: int32 = a.spriteInstances * REC_SPRITE_FLOATS;
-			i < b.spriteInstances * REC_SPRITE_FLOATS; i++) {
-		keep(k, activeContext.spriteInstances[i]);
-		k = k + 1;
+	return false;
+}
+
+function firstDiff(
+	a: Readonly<Span<float32>>, aAt: int32, b: Readonly<Span<float32>>, bAt: int32, records: int32,
+	stride: int32,
+): int32 | null {
+	for (let r: int32 = 0; r < records; r++) {
+		if (recordDiffers(a, aAt + r * stride, b, bAt + r * stride, stride)) { return r; }
 	}
-	for (let i: int32 = a.vertices * VERTEX_FLOATS; i < b.vertices * VERTEX_FLOATS; i++) {
-		keep(k, activeContext.vertices[i]);
-		k = k + 1;
+	return null;
+}
+
+function lastDiff(
+	a: Readonly<Span<float32>>, aAt: int32, b: Readonly<Span<float32>>, bAt: int32, records: int32,
+	stride: int32,
+): int32 {
+	for (let r: int32 = records - 1; r >= 0; r--) {
+		if (recordDiffers(a, aAt + r * stride, b, bAt + r * stride, stride)) { return r; }
 	}
+	console.log("void2d: lastDiff found no differing record after firstDiff found one");
+	unreachable;
 }
 
 function addDirtyUi(from: int32, to: int32): void {
@@ -694,34 +717,28 @@ export function noteRange(a: PaintIndex, b: PaintIndex): void {
 			unreachable;
 		}
 	}
-	let k: int32 = 0;
-	let first: int32 = -1;
-	let last: int32 = -1;
-	for (let r: int32 = a.uiInstances; r < b.uiInstances; r++) {
-		for (let f: int32 = 0; f < REC_UI_FLOATS; f++) {
-			if (activeContext.saved[k] != activeContext.uiInstances[r * REC_UI_FLOATS + f]) {
-				if (first < 0) { first = r; }
-				last = r;
-				k = k + (REC_UI_FLOATS - f);
-				break;
-			}
-			k = k + 1;
+	const ui: int32 = b.uiInstances - a.uiInstances;
+	if (ui > 0) {
+		const live: int32 = a.uiInstances * REC_UI_FLOATS;
+		const first: int32 | null = firstDiff(activeContext.saved, 0, activeContext.uiInstances, live, ui,
+			REC_UI_FLOATS);
+		if (first !== null) {
+			const last: int32 = lastDiff(activeContext.saved, 0, activeContext.uiInstances, live, ui,
+				REC_UI_FLOATS);
+			addDirtyUi(a.uiInstances + first, a.uiInstances + last + 1);
 		}
 	}
-	if (first >= 0) { addDirtyUi(first, last + 1); }
-	let changed: boolean = false;
-	for (let i: int32 = a.spriteInstances * REC_SPRITE_FLOATS;
-			i < b.spriteInstances * REC_SPRITE_FLOATS; i++) {
-		if (activeContext.saved[k] != activeContext.spriteInstances[i]) { changed = true; }
-		k = k + 1;
+	const k: int32 = ui * REC_UI_FLOATS;
+	const sprites: int32 = (b.spriteInstances - a.spriteInstances) * REC_SPRITE_FLOATS;
+	if (sprites > 0 && firstDiff(activeContext.saved, k, activeContext.spriteInstances,
+		a.spriteInstances * REC_SPRITE_FLOATS, sprites, 1) !== null) {
+		activeContext.dirtySprites = true;
 	}
-	if (changed) { activeContext.dirtySprites = true; }
-	changed = false;
-	for (let i: int32 = a.vertices * VERTEX_FLOATS; i < b.vertices * VERTEX_FLOATS; i++) {
-		if (activeContext.saved[k] != activeContext.vertices[i]) { changed = true; }
-		k = k + 1;
+	const vertices: int32 = (b.vertices - a.vertices) * VERTEX_FLOATS;
+	if (vertices > 0 && firstDiff(activeContext.saved, k + sprites, activeContext.vertices,
+		a.vertices * VERTEX_FLOATS, vertices, 1) !== null) {
+		activeContext.dirtyVertices = true;
 	}
-	if (changed) { activeContext.dirtyVertices = true; }
 }
 export function paintEndOf(row: int32): PaintIndex { return activeContext.paintEnds[row]; }
 
