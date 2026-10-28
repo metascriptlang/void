@@ -1875,33 +1875,35 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			negated.unary = UnaryOp.Not;
 			return negated;
 		}
-		const fragmentOnly = vertex || compute;
+		const outsideFragment = vertex || compute;
 		const derivative = derivativeNames.indexOf(name);
 		if (derivative >= 0) {
-			return fragmentOnly ?
+			return outsideFragment ?
 				fail(n, name + " exists only in a fragment entry, as WGSL's does") :
 				intrinsicOf(derivatives[derivative], type, args);
 		}
+		const computeOnly = ["workgroupBarrier", "storageBarrier", "textureBarrier",
+			"workgroupUniformLoad"];
+		if (!compute && computeOnly.includes(name)) {
+			fail(n, name + " exists only in a compute entry, as WGSL's does");
+		}
+		const fragmentSamples = ["textureSample", "textureSampleBias", "textureSampleCompare"];
+		if (outsideFragment && fragmentSamples.includes(name)) {
+			fail(n, name + " samples only in a fragment entry, as WGSL's does");
+		}
 		return withConstantOffset(n, name, match (name) {
-			"workgroupBarrier" | "storageBarrier" => !compute ?
-				fail(n, name + " exists only in a compute entry, as WGSL's does") :
+			"workgroupBarrier" | "storageBarrier" =>
 				intrinsicOf(name == "workgroupBarrier" ? Intrinsic.WorkgroupBarrier :
 					Intrinsic.StorageBarrier, type, args),
-			"textureBarrier" => !compute ?
-				fail(n, name + " exists only in a compute entry, as WGSL's does") :
-				intrinsicOf(Intrinsic.TextureBarrier, type, args),
-			"workgroupUniformLoad" => !compute ?
-				fail(n, name + " exists only in a compute entry, as WGSL's does") :
-				n != uniformLoadSite ?
+			"textureBarrier" => intrinsicOf(Intrinsic.TextureBarrier, type, args),
+			"workgroupUniformLoad" => n != uniformLoadSite ?
 				fail(n, name + " is the initializer of a const or let of its own, because the " +
 					"barriers around it sit between two statements") :
 				intrinsicOf(Intrinsic.WorkgroupUniformLoad, type, args),
-			"textureSample" | "textureSampleBias" => fragmentOnly ?
-				fail(n, name + " samples only in a fragment entry, as WGSL's does") :
+			"textureSample" | "textureSampleBias" =>
 				intrinsicOf(name == "textureSample" ? Intrinsic.TextureSample :
 					Intrinsic.TextureSampleBias, type, args),
-			"textureSampleCompare" => fragmentOnly ?
-				fail(n, name + " samples only in a fragment entry, as WGSL's does") :
+			"textureSampleCompare" =>
 				intrinsicOf(Intrinsic.TextureSampleCompare, type, args),
 			"textureSampleCompareLevel" =>
 				intrinsicOf(Intrinsic.TextureSampleCompareLevel, type, args),
