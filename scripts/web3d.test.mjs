@@ -95,7 +95,7 @@ test('WebGL2 matrix registers wide LOD and posed skin shadow variants', () => {
 		'particleMesh',
 		'particleMesh:VOID_PARTICLE_MESH_PIXEL_ART=1',
 	]);
-	assert.equal(runs.length, 39);
+	assert.equal(runs.length, 42);
 });
 
 test('native LOD controls require staged pixel failures and exit one', () => {

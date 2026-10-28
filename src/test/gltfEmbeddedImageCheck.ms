@@ -1,4 +1,6 @@
-import { loadGltf, loadGlb, GltfError } from "../void3d/gltf";
+import {
+	loadGltf, loadGlb, GltfError, GltfFileSystem, GltfMaterialImport,
+} from "../void3d/gltf";
 import { FilterMode, Wrap } from "../gpu/state";
 import { rgbaPng } from "./imageBytes";
 
@@ -151,4 +153,36 @@ test "embedded image support neither resolves external URIs nor accepts two imag
 		singleViewStorage(bytes.length as int32)), bytes);
 	assert !both.ok;
 	if (!both.ok) { assert both.error == GltfError.Unsupported; }
+}
+
+function filesHolding(path: string, bytes: Vec<uint8>): GltfFileSystem {
+	return {
+		exists: (name: string): boolean => name == path,
+		getBytes: (name: string): Vec<uint8> => bytes,
+	};
+}
+
+test "an image named by URI decodes from the caller's file system, its type sniffed or declared" {
+	const files: GltfFileSystem = filesHolding("textures/a.png", rgbaPng());
+	const legacy: GltfMaterialImport = GltfMaterialImport.Legacy;
+	for (const mime of ["", ',"mimeType":"image/png"']) {
+		const result = loadGltf(imageDocument(uriImage("textures/a.png", mime)), [], legacy, files);
+		assert result.ok;
+		if (!result.ok) { return; }
+		const texture = result.value.textures[0];
+		assert texture.width == 2 && texture.height == 2;
+		const expected: Vec<uint32> = [0xFF0000FF, 0xFF00FF00, 0xFFFF0000, 0x8000FFFF];
+		for (let i = 0; i < 4; i++) { assert texture.pixels[i] == expected[i]; }
+	}
+	const declared = loadGltf(imageDocument(uriImage("textures/a.png", ',"mimeType":"image/jpeg"')),
+		[], legacy, files);
+	assert !declared.ok && declared.error == GltfError.BadImage;
+	const absent = loadGltf(imageDocument(uriImage("textures/b.png")), [], legacy, files);
+	assert !absent.ok && absent.error == GltfError.FileNotFound;
+	const encoded = loadGltf(imageDocument(uriImage("textures/a%20b.png")), [], legacy,
+		filesHolding("textures/a%20b.png", rgbaPng()));
+	assert !encoded.ok && encoded.error == GltfError.Unsupported;
+	const notImage = loadGltf(imageDocument(uriImage("textures/a.png")), [], legacy,
+		filesHolding("textures/a.png", [1, 2, 3, 4]));
+	assert !notImage.ok && notImage.error == GltfError.BadImage;
 }

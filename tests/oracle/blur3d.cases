@@ -1,0 +1,189 @@
+# h3d.pass.Blur's kernel (calcValues, getKernelSize) against src/void3d/blur.ms blurKernel.
+#
+# Same shape as color3d.cases: `sh scripts/oracle.sh regen tests/oracle/blur3d.cases` replays the
+# Haxe side through real Heaps. Each case is one tap of one settings row: its weight, its offset,
+# the number of weights and the kernel size, with 0 for a tap past the last weight. Heaps keeps
+# the offsets of the weights calcValues drops; the program reads only as many as there are weights.
+#
+# lib: heaps format
+# haxe-prelude: class H {
+# haxe-prelude: public static function tap(r: Float, g: Float, l: Float, q: Float, i: Int): Array<Float> {
+# haxe-prelude: var b = new h3d.pass.Blur(r, g, l, q);
+# haxe-prelude: var size = b.getKernelSize();
+# haxe-prelude: var v: Array<Float> = @:privateAccess b.values;
+# haxe-prelude: var o: Array<Float> = @:privateAccess b.offsets;
+# haxe-prelude: return [i < v.length ? v[i] : 0.0, i < v.length ? o[i] : 0.0, v.length, size];
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { BlurSettings, BlurKernel, blurKernel, blurKernelSize } from "../../../src/void3d/blur";
+# ms-prelude: function tap(r: float32, g: float32, l: float32, q: float32, i: int32): Vec<float32> {
+# ms-prelude: const settings: BlurSettings = { radius: r, gain: g, linear: l, quality: q };
+# ms-prelude: const k: BlurKernel = blurKernel(settings);
+# ms-prelude: const n: int32 = k.values.length as int32;
+# ms-prelude: return [i < n ? k.values[i] : 0.0, i < n ? k.offsets[i] : 0.0, n as float32,
+# ms-prelude: blurKernelSize(settings) as float32];
+# ms-prelude: }
+
+case default-tap0 tol=1e-6
+haxe> emit("default-tap0", H.tap(1.0, 1.0, 0.0, 1.0, 0));
+ms> { const t: Vec<float32> = tap(1.0, 1.0, 0.0, 1.0, 0); emit4("default-tap0", t[0], t[1], t[2], t[3]); }
+
+case default-tap1 tol=1e-6
+haxe> emit("default-tap1", H.tap(1.0, 1.0, 0.0, 1.0, 1));
+ms> { const t: Vec<float32> = tap(1.0, 1.0, 0.0, 1.0, 1); emit4("default-tap1", t[0], t[1], t[2], t[3]); }
+
+case default-tap2 tol=1e-6
+haxe> emit("default-tap2", H.tap(1.0, 1.0, 0.0, 1.0, 2));
+ms> { const t: Vec<float32> = tap(1.0, 1.0, 0.0, 1.0, 2); emit4("default-tap2", t[0], t[1], t[2], t[3]); }
+
+case radius4-tap0 tol=1e-6
+haxe> emit("radius4-tap0", H.tap(4.0, 1.0, 0.0, 1.0, 0));
+ms> { const t: Vec<float32> = tap(4.0, 1.0, 0.0, 1.0, 0); emit4("radius4-tap0", t[0], t[1], t[2], t[3]); }
+
+case radius4-tap1 tol=1e-6
+haxe> emit("radius4-tap1", H.tap(4.0, 1.0, 0.0, 1.0, 1));
+ms> { const t: Vec<float32> = tap(4.0, 1.0, 0.0, 1.0, 1); emit4("radius4-tap1", t[0], t[1], t[2], t[3]); }
+
+case radius4-tap2 tol=1e-6
+haxe> emit("radius4-tap2", H.tap(4.0, 1.0, 0.0, 1.0, 2));
+ms> { const t: Vec<float32> = tap(4.0, 1.0, 0.0, 1.0, 2); emit4("radius4-tap2", t[0], t[1], t[2], t[3]); }
+
+case radius4-tap3 tol=1e-6
+haxe> emit("radius4-tap3", H.tap(4.0, 1.0, 0.0, 1.0, 3));
+ms> { const t: Vec<float32> = tap(4.0, 1.0, 0.0, 1.0, 3); emit4("radius4-tap3", t[0], t[1], t[2], t[3]); }
+
+case radius9-tap0 tol=1e-6
+haxe> emit("radius9-tap0", H.tap(9.0, 1.0, 0.0, 1.0, 0));
+ms> { const t: Vec<float32> = tap(9.0, 1.0, 0.0, 1.0, 0); emit4("radius9-tap0", t[0], t[1], t[2], t[3]); }
+
+case radius9-tap1 tol=1e-6
+haxe> emit("radius9-tap1", H.tap(9.0, 1.0, 0.0, 1.0, 1));
+ms> { const t: Vec<float32> = tap(9.0, 1.0, 0.0, 1.0, 1); emit4("radius9-tap1", t[0], t[1], t[2], t[3]); }
+
+case radius9-tap2 tol=1e-6
+haxe> emit("radius9-tap2", H.tap(9.0, 1.0, 0.0, 1.0, 2));
+ms> { const t: Vec<float32> = tap(9.0, 1.0, 0.0, 1.0, 2); emit4("radius9-tap2", t[0], t[1], t[2], t[3]); }
+
+case radius9-tap3 tol=1e-6
+haxe> emit("radius9-tap3", H.tap(9.0, 1.0, 0.0, 1.0, 3));
+ms> { const t: Vec<float32> = tap(9.0, 1.0, 0.0, 1.0, 3); emit4("radius9-tap3", t[0], t[1], t[2], t[3]); }
+
+case radius9-tap4 tol=1e-6
+haxe> emit("radius9-tap4", H.tap(9.0, 1.0, 0.0, 1.0, 4));
+ms> { const t: Vec<float32> = tap(9.0, 1.0, 0.0, 1.0, 4); emit4("radius9-tap4", t[0], t[1], t[2], t[3]); }
+
+case radius9-tap5 tol=1e-6
+haxe> emit("radius9-tap5", H.tap(9.0, 1.0, 0.0, 1.0, 5));
+ms> { const t: Vec<float32> = tap(9.0, 1.0, 0.0, 1.0, 5); emit4("radius9-tap5", t[0], t[1], t[2], t[3]); }
+
+case low-quality-tap0 tol=1e-6
+haxe> emit("low-quality-tap0", H.tap(8.0, 1.5, 0.0, 0.5, 0));
+ms> { const t: Vec<float32> = tap(8.0, 1.5, 0.0, 0.5, 0); emit4("low-quality-tap0", t[0], t[1], t[2], t[3]); }
+
+case low-quality-tap1 tol=1e-6
+haxe> emit("low-quality-tap1", H.tap(8.0, 1.5, 0.0, 0.5, 1));
+ms> { const t: Vec<float32> = tap(8.0, 1.5, 0.0, 0.5, 1); emit4("low-quality-tap1", t[0], t[1], t[2], t[3]); }
+
+case low-quality-tap2 tol=1e-6
+haxe> emit("low-quality-tap2", H.tap(8.0, 1.5, 0.0, 0.5, 2));
+ms> { const t: Vec<float32> = tap(8.0, 1.5, 0.0, 0.5, 2); emit4("low-quality-tap2", t[0], t[1], t[2], t[3]); }
+
+case low-quality-tap3 tol=1e-6
+haxe> emit("low-quality-tap3", H.tap(8.0, 1.5, 0.0, 0.5, 3));
+ms> { const t: Vec<float32> = tap(8.0, 1.5, 0.0, 0.5, 3); emit4("low-quality-tap3", t[0], t[1], t[2], t[3]); }
+
+case low-quality-tap4 tol=1e-6
+haxe> emit("low-quality-tap4", H.tap(8.0, 1.5, 0.0, 0.5, 4));
+ms> { const t: Vec<float32> = tap(8.0, 1.5, 0.0, 0.5, 4); emit4("low-quality-tap4", t[0], t[1], t[2], t[3]); }
+
+case linear-half-tap0 tol=1e-6
+haxe> emit("linear-half-tap0", H.tap(5.0, 1.0, 0.5, 1.0, 0));
+ms> { const t: Vec<float32> = tap(5.0, 1.0, 0.5, 1.0, 0); emit4("linear-half-tap0", t[0], t[1], t[2], t[3]); }
+
+case linear-half-tap1 tol=1e-6
+haxe> emit("linear-half-tap1", H.tap(5.0, 1.0, 0.5, 1.0, 1));
+ms> { const t: Vec<float32> = tap(5.0, 1.0, 0.5, 1.0, 1); emit4("linear-half-tap1", t[0], t[1], t[2], t[3]); }
+
+case linear-half-tap2 tol=1e-6
+haxe> emit("linear-half-tap2", H.tap(5.0, 1.0, 0.5, 1.0, 2));
+ms> { const t: Vec<float32> = tap(5.0, 1.0, 0.5, 1.0, 2); emit4("linear-half-tap2", t[0], t[1], t[2], t[3]); }
+
+case linear-half-tap3 tol=1e-6
+haxe> emit("linear-half-tap3", H.tap(5.0, 1.0, 0.5, 1.0, 3));
+ms> { const t: Vec<float32> = tap(5.0, 1.0, 0.5, 1.0, 3); emit4("linear-half-tap3", t[0], t[1], t[2], t[3]); }
+
+case radius0-tap0 tol=1e-6
+haxe> emit("radius0-tap0", H.tap(0.0, 1.0, 0.0, 1.0, 0));
+ms> { const t: Vec<float32> = tap(0.0, 1.0, 0.0, 1.0, 0); emit4("radius0-tap0", t[0], t[1], t[2], t[3]); }
+
+case radius0-tap1 tol=1e-6
+haxe> emit("radius0-tap1", H.tap(0.0, 1.0, 0.0, 1.0, 1));
+ms> { const t: Vec<float32> = tap(0.0, 1.0, 0.0, 1.0, 1); emit4("radius0-tap1", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap0 tol=1e-6
+haxe> emit("radius31-tap0", H.tap(31.0, 1.0, 0.0, 1.0, 0));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 0); emit4("radius31-tap0", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap1 tol=1e-6
+haxe> emit("radius31-tap1", H.tap(31.0, 1.0, 0.0, 1.0, 1));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 1); emit4("radius31-tap1", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap2 tol=1e-6
+haxe> emit("radius31-tap2", H.tap(31.0, 1.0, 0.0, 1.0, 2));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 2); emit4("radius31-tap2", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap3 tol=1e-6
+haxe> emit("radius31-tap3", H.tap(31.0, 1.0, 0.0, 1.0, 3));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 3); emit4("radius31-tap3", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap4 tol=1e-6
+haxe> emit("radius31-tap4", H.tap(31.0, 1.0, 0.0, 1.0, 4));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 4); emit4("radius31-tap4", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap5 tol=1e-6
+haxe> emit("radius31-tap5", H.tap(31.0, 1.0, 0.0, 1.0, 5));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 5); emit4("radius31-tap5", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap6 tol=1e-6
+haxe> emit("radius31-tap6", H.tap(31.0, 1.0, 0.0, 1.0, 6));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 6); emit4("radius31-tap6", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap7 tol=1e-6
+haxe> emit("radius31-tap7", H.tap(31.0, 1.0, 0.0, 1.0, 7));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 7); emit4("radius31-tap7", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap8 tol=1e-6
+haxe> emit("radius31-tap8", H.tap(31.0, 1.0, 0.0, 1.0, 8));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 8); emit4("radius31-tap8", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap9 tol=1e-6
+haxe> emit("radius31-tap9", H.tap(31.0, 1.0, 0.0, 1.0, 9));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 9); emit4("radius31-tap9", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap10 tol=1e-6
+haxe> emit("radius31-tap10", H.tap(31.0, 1.0, 0.0, 1.0, 10));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 10); emit4("radius31-tap10", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap11 tol=1e-6
+haxe> emit("radius31-tap11", H.tap(31.0, 1.0, 0.0, 1.0, 11));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 11); emit4("radius31-tap11", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap12 tol=1e-6
+haxe> emit("radius31-tap12", H.tap(31.0, 1.0, 0.0, 1.0, 12));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 12); emit4("radius31-tap12", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap13 tol=1e-6
+haxe> emit("radius31-tap13", H.tap(31.0, 1.0, 0.0, 1.0, 13));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 13); emit4("radius31-tap13", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap14 tol=1e-6
+haxe> emit("radius31-tap14", H.tap(31.0, 1.0, 0.0, 1.0, 14));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 14); emit4("radius31-tap14", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap15 tol=1e-6
+haxe> emit("radius31-tap15", H.tap(31.0, 1.0, 0.0, 1.0, 15));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 15); emit4("radius31-tap15", t[0], t[1], t[2], t[3]); }
+
+case radius31-tap16 tol=1e-6
+haxe> emit("radius31-tap16", H.tap(31.0, 1.0, 0.0, 1.0, 16));
+ms> { const t: Vec<float32> = tap(31.0, 1.0, 0.0, 1.0, 16); emit4("radius31-tap16", t[0], t[1], t[2], t[3]); }

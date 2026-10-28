@@ -31,11 +31,20 @@ import { PbrProperties, PbrResponseError } from "./pbrResponse";
 import { TextureId, NO_TEXTURE } from "./texture";
 
 // Which of the renderer's pass lists draws the material: the passes h3d.scene.fwd.Renderer
-// draws, in this order ("default", "alpha" back to front, "additive").
+// draws, in this order ("default", "alpha" back to front, "additive"), then the decals of
+// h3d.scene.pbr.Renderer, drawn by drawDecals with the scene depth as a texture and no depth
+// attachment: Decal, "beforeTonemappingDecal" over the lit colour (Renderer.hx:864), and
+// DecalAfterToneMap, "afterTonemappingDecal" over the tone-mapped one (Renderer.hx:873).
 export enum Phase {
 	Opaque,
 	Alpha,
 	Additive,
+	Decal,
+	DecalAfterToneMap,
+}
+
+export function isDecalPhase(phase: Phase): boolean {
+	return phase == Phase.Decal || phase == Phase.DecalAfterToneMap;
 }
 
 // h3d.mat.Material's DefaultKind without Hidden.
@@ -162,6 +171,10 @@ function cutoutOf(program: Program): ProgramKey {
 		Program.OutlineMask => stopOnNoCutout(program),
 		Program.OutlineMix => stopOnNoCutout(program),
 		Program.OutlineWidth => stopOnNoCutout(program),
+		Program.Decal => stopOnNoCutout(program),
+		Program.Sao => stopOnNoCutout(program),
+		Program.Blur => stopOnNoCutout(program),
+		Program.Line => stopOnNoCutout(program),
 	};
 }
 
@@ -181,7 +194,7 @@ function castsByDefault(program: Program): boolean {
 // (h3d/mat/Material.hx:240-246): the quads of a particle or a billboard are seen from either side.
 function culledByDefault(program: Program): boolean {
 	return program != Program.Billboard && program != Program.Particle &&
-		program != Program.ParticleVisual;
+		program != Program.ParticleVisual && program != Program.Line;
 }
 
 // The caller writes alphaKillFor(kind) into the material block, as every other uniform value.

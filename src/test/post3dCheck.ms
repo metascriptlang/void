@@ -2,7 +2,7 @@
 // emitted GLSL draws.
 
 import { Wrap } from "../gpu/state";
-import { Texture2d, Vec4f, vec2f, vec4f } from "../shader/std";
+import { Texture2d, Vec2f, Vec4f, vec2f, vec3f, vec4f } from "../shader/std";
 import {
 	BloomBindings,
 	OutlineMaskBindings,
@@ -14,8 +14,15 @@ import {
 	outlineMaskFs,
 	outlineMixFs,
 	outlineWidthFs,
+	saoFaded,
+	saoOcclusion,
+	saoScalableRadius,
+	saoScreenRadius,
+	saoTap,
+	saoTapOffset,
 	toneMapFs,
 } from "../void3d/post3d";
+import { approx } from "./helpers";
 
 function at(x: float32, y: float32): PostInput {
 	return { position: { x, y, z: 0.5, w: 1.0 } };
@@ -158,4 +165,39 @@ function widthOf(invert: float32): Vec4f {
 test "the outline width grows the covered side, or the uncovered one when inverted" {
 	assert near(widthOf(0.0), vec4f(0.25));
 	assert near(widthOf(1.0), vec4f(0.25));
+}
+
+function nearVec2(actual: Vec2f, x: float32, y: float32): boolean {
+	return approx(actual.x, x) && approx(actual.y, y);
+}
+
+test "an SAO tap obscures by its offset along the normal, nothing past the radius or behind" {
+	const up = vec3f(0.0, 0.0, 1.0);
+	assert approx(saoTap(vec3f(0.0, 0.0, 0.5), up, 1.0, 0.01), 0.795072);
+	assert approx(saoTap(vec3f(0.3, 0.0, 0.4), up, 1.0, 0.01), 0.632813);
+	assert approx(saoTap(vec3f(0.0, 0.0, 0.5), up, 2.0, 0.01), 1.521184);
+	assert saoTap(vec3f(0.0, 0.0, 2.0), up, 1.0, 0.01) == 0.0;
+	assert saoTap(vec3f(0.0, 0.0, -0.5), up, 1.0, 0.01) == 0.0;
+	assert saoTap(vec3f(0.5, 0.0, 0.0), up, 1.0, 0.01) == 0.0;
+}
+
+test "SAO taps walk a spiral outward, turned by the noise rotation" {
+	assert nearVec2(saoTapOffset(0, 20, 7, 0.0), 0.011362, 0.022269);
+	assert nearVec2(saoTapOffset(19, 20, 7, 1.0), 0.967836, -0.117975);
+}
+
+test "the SAO radius, occlusion and fades follow ScalableAO's" {
+	assert approx(saoScreenRadius(1.0, 0.866025, 2.0), 0.433013);
+	assert approx(saoScalableRadius(1.0, 1.718282), 2.0);
+	assert approx(saoScalableRadius(0.5, 3.0), 1.193147);
+	assert saoScalableRadius(1.0, 0.0) == 1.0;
+	assert saoOcclusion(0.0, 20, 1.0) == 1.0;
+	assert approx(saoOcclusion(10.0, 20, 1.0), 0.25);
+	assert approx(saoOcclusion(5.0, 20, 0.5), 0.649519);
+	assert saoOcclusion(30.0, 20, 1.0) == 0.0;
+	assert saoFaded(0.25, 0.5, 1.0, 2.0, 10.0, 20.0) == 1.0;
+	assert approx(saoFaded(0.25, 1.5, 1.0, 2.0, 10.0, 20.0), 0.625);
+	assert saoFaded(0.25, 5.0, 1.0, 2.0, 10.0, 20.0) == 0.25;
+	assert approx(saoFaded(0.25, 15.0, 1.0, 2.0, 10.0, 20.0), 0.625);
+	assert saoFaded(0.25, 25.0, 1.0, 2.0, 10.0, 20.0) == 1.0;
 }

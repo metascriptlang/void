@@ -293,8 +293,9 @@ export function sortByMaterial(
 }
 
 // Output.draw: the collected items, in the list's order, into the current pass, each with its
-// program in `drawn`, which is indexed like `items`, and its material's pass. Neighbours that
-// differ only in their world matrices draw as one batch, whose instances keep the list's order.
+// material's program in `drawn`, which is indexed like the context's materials, and its pass.
+// Neighbours that differ only in their world matrices draw as one batch, whose instances keep the
+// list's order.
 export function drawPassList(
 	context: DrawContext,
 	list: PassList,
@@ -307,16 +308,16 @@ export function drawPassList(
 	let i: int32 = 0;
 	while (i < list.count) {
 		const index: int32 = list.indices[i];
+		const program: ProgramKey = drawn[items[index].material.index];
 		const material: Material = context.materials[items[index].material.index];
 		let end: int32 = i + 1;
 		while (end < list.count && items[index].sameBatch(items[list.indices[end]])) {
 			end = end + 1;
 		}
 		if (end - i == 1) {
-			drawItemWith(context, items[index], drawn[index], material.pass, targets, globals,
-				scene);
+			drawItemWith(context, items[index], program, material.pass, targets, globals, scene);
 		} else {
-			drawBatchWith(context, items, list.indices[i..end], drawn[index], material.pass,
+			drawBatchWith(context, items, list.indices[i..end], program, material.pass,
 				targets, globals, scene);
 		}
 		i = end;

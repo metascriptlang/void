@@ -623,6 +623,36 @@ test "the pixel-art preset refuses a blended material in the opaque phase" {
 	assert renderer.core.generation == 0 && renderer.view.width == 0;
 }
 
+test "a decal pass neither writes nor tests depth, and the pixel-art preset draws no decal" {
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	const unwritten: RenderState = RenderState.defaults().withDepth(false, Compare.Always);
+	const states: Vec<RenderState> = [
+		RenderState.defaults(), RenderState.defaults().withDepth(true, Compare.Always),
+		RenderState.defaults().withDepth(false, Compare.LessEqual),
+	];
+	for (const state of states) {
+		for (const phase of [Phase.Decal, Phase.DecalAfterToneMap]) {
+			const refused: Result<MaterialId, MaterialError> =
+				addMaterial(context, Material.plain(Program.Particle, state, phase));
+			assert !refused.ok && refused.error == MaterialError.DecalDepth;
+		}
+	}
+	const created: Result<PixelArtRenderer, PixelArtError> =
+		PixelArtRenderer.create(context, PixelArtSettings.full(), look());
+	if (!created.ok) { unreachable; }
+	let renderer: PixelArtRenderer = created.value;
+	const made: Result<MaterialId, MaterialError> =
+		addMaterial(context, Material.plain(Program.Particle, unwritten, Phase.Decal));
+	if (!made.ok) { unreachable; }
+	let items: Vec<DrawItem> = [itemOnItsLayout(context, made.value)];
+	const refused: Result<int32, PixelArtError> =
+		renderFrame(renderer, items, camera, lights, view(1080, 2400, 360, 1, 0));
+	assert !refused.ok && refused.error == PixelArtError.Decal;
+	assert renderer.core.generation == 0 && renderer.view.width == 0;
+}
+
 test "with the depth texture sampled, the pixel-art preset refuses a translucent depth write" {
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
