@@ -198,6 +198,7 @@ import "./shaderReflectCheck";
 import "./shaderUniformLayoutCheck";
 import "./shaderUniformWriterCheck";
 import "./shaderHlslCheck";
+import "./shaderMacroPrintCheck";
 import "./shaderWgslCheck";
 import "./shaderIrProgramCheck";
 import "./shaderGlslCheck";
