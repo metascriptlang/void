@@ -247,6 +247,49 @@ test "a line inserted above keeps the shapes of the lines below it" {
 	assert cache.lines[1].shaped === beta;
 }
 
+test "a line whose runs or shaping breaks change shapes again although its text is kept" {
+	const text: string = "alpha
+beta
+gamma";
+	let runs: Vec<TextRun> = new Array(0);
+	runs.push(runOf(6, DEFAULT_FONT));
+	runs.push(runOf(5, DEFAULT_FONT));
+	runs.push(runOf(5, DEFAULT_FONT));
+	const noBreaks: Vec<int32> = new Array(0);
+	let cache: LineShapes = emptyLineShapes(STYLE);
+	assert matchesWhole(text, runs, noBreaks, cache);
+	const alpha = cache.lines[0].shaped;
+	const beta = cache.lines[1].shaped;
+	let split: Vec<TextRun> = new Array(0);
+	split.push(runOf(6, DEFAULT_FONT));
+	split.push(runOf(2, DEFAULT_FONT));
+	split.push(runOf(3, DEFAULT_FONT));
+	split.push(runOf(5, DEFAULT_FONT));
+	assert matchesWhole(text, split, noBreaks, cache);
+	assert cache.lines[0].shaped === alpha;
+	assert cache.lines[1].shaped !== beta;
+	const splitBeta = cache.lines[1].shaped;
+	let breaks: Vec<int32> = new Array(0);
+	breaks.push(8);
+	assert matchesWhole(text, split, breaks, cache);
+	assert cache.lines[0].shaped === alpha;
+	assert cache.lines[1].shaped !== splitBeta;
+	const brokenBeta = cache.lines[1].shaped;
+	let moved: Vec<int32> = new Array(0);
+	moved.push(9);
+	assert matchesWhole(text, split, moved, cache);
+	assert cache.lines[1].shaped !== brokenBeta;
+	const movedBeta = cache.lines[1].shaped;
+	let resplit: Vec<TextRun> = new Array(0);
+	resplit.push(runOf(6, DEFAULT_FONT));
+	resplit.push(runOf(3, DEFAULT_FONT));
+	resplit.push(runOf(2, DEFAULT_FONT));
+	resplit.push(runOf(5, DEFAULT_FONT));
+	assert matchesWhole(text, resplit, moved, cache);
+	assert cache.lines[0].shaped === alpha;
+	assert cache.lines[1].shaped !== movedBeta;
+}
+
 test "a style change shapes every line again" {
 	const noRuns: Vec<TextRun> = new Array(0);
 	const noBreaks: Vec<int32> = new Array(0);
