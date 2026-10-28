@@ -40,6 +40,8 @@ import {
 	EMISSIVE_LENGTH,
 	emissiveBase,
 	MOVING_LENGTH,
+	MOVING_FADE_FAR_START,
+	MOVING_FADE_FAR_END,
 	VERTEX_UNIFORM_SLOT,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_SLOT,
@@ -708,6 +710,43 @@ test "the core refuses a pbr material until the camera position is set" {
 		const placed: Result<boolean, RendererError> = beginFrame(core, items, shortCamera, lights);
 		assert !placed.ok && placed.error == RendererError.CameraBlockLength;
 	}
+}
+
+// The error beginFrame gives a moving unlit material whose far fade runs from `start` to `end`,
+// with the camera position set when `placed`; its plain lit mesh is the wrong layout.
+function fadeRefusal(start: float32, end: float32, placed: boolean): RendererError {
+	let context: DrawContext = DrawContext.withUniformCapacity(
+		RENDERER_UNIFORM_LENGTH + MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
+	);
+	const key: ProgramKey = ProgramKey.of(Program.UnlitTextured).withUvTransform();
+	const block: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
+	if (!block.ok) { unreachable; }
+	let values: Vec<float32> = new Array(MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
+	values[movingBase(key) + MOVING_FADE_FAR_START] = start;
+	values[movingBase(key) + MOVING_FADE_FAR_END] = end;
+	if (!writeUniforms(context, block.value, values).ok) { unreachable; }
+	const _faded: Result<MaterialId, MaterialError> = addMaterial(context, {
+		...Material.plain(Program.UnlitTextured, RenderState.defaults(), Phase.Alpha),
+		program: key, uniforms: block.value,
+	});
+	const created: Result<Renderer, RendererError> = Renderer.create(context);
+	if (!created.ok) { unreachable; }
+	let core: Renderer = created.value;
+	if (placed) { setCameraPosition(core, vec3(1, 2, 3)); }
+	const mesh: MeshId = added(context, litShape());
+	let items: Vec<DrawItem> = [{ ...itemOf(context, firstMaterial(context)), mesh: mesh }];
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const began: Result<boolean, RendererError> = beginFrame(core, items, camera, lights);
+	if (began.ok) { unreachable; }
+	return began.error;
+}
+
+test "the core refuses a distance fade until the camera position is set" {
+	assert fadeRefusal(10.0, 20.0, false) == RendererError.CameraPosition;
+	assert fadeRefusal(10.0, 20.0, true) == RendererError.VertexLayout;
+	assert fadeRefusal(10.0, 10.0, false) == RendererError.VertexLayout;
 }
 
 test "the core refuses a billboard without its texture and sampler, or off the quad's shape" {

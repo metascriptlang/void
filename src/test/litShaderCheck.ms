@@ -23,6 +23,7 @@ import {
 	litFs,
 	litTexturedFs,
 	litTexturedVs,
+	distanceFade,
 	flipbookBlend,
 	flipbookUvs,
 	litVs,
@@ -260,6 +261,15 @@ test "a flipbook that does not loop holds its last frame, and starts at its star
 	const late = vec4f(1.0, 2.7, 1.0, 0.0);
 	assert nearUv(flipbookUvs(uv, grid, late, 1.25).xy, vec2f(0.25, 0.75));
 	assert flipbookBlend(grid, late, 1.25) == 0.0;
+}
+
+test "a distance fade rises over its near pair, falls over its far pair, and an empty pair is off" {
+	const range = vec4f(2.0, 4.0, 10.0, 20.0);
+	assert within(distanceFade(1.0, range), 0.0) && within(distanceFade(3.0, range), 0.5);
+	assert within(distanceFade(5.0, range), 1.0) && within(distanceFade(15.0, range), 0.5);
+	assert within(distanceFade(25.0, range), 0.0);
+	assert distanceFade(0.0, vec4f(0.0)) == 1.0 && distanceFade(100.0, vec4f(0.0)) == 1.0;
+	assert distanceFade(100.0, vec4f(2.0, 4.0, 0.0, 0.0)) == 1.0;
 }
 
 test "a straight texel divides the colour by its alpha, and a clear texel stays clear" {
