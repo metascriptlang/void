@@ -6126,8 +6126,9 @@ The overlay ports in steps, each with its own check:
    `DecalOverlay`'s params and constants into the material block, refuses an empty fade range,
    and gives the pass: alpha blend, no depth, back faces drawn. The program outside the Decal
    phase is refused (`MaterialError.DecalPhase`).
-4. The after-tone-map pass, then the normal fade. **Built (2026-10-27), GPU readback not yet
-   run.** `Phase.DecalAfterToneMap` is a fifth pass list, Heaps' `afterTonemappingDecal`
+4. The after-tone-map pass, then the normal fade. **Built (2026-10-27), read back
+   2026-10-29** in the land gate of `7e3a196a`: `tests/integration/decal.ms` passed every stage
+   on D3D11 (gate3d) and on WebGL2 (web3d), HDR stages included. `Phase.DecalAfterToneMap` is a fifth pass list, Heaps' `afterTonemappingDecal`
    (`Renderer.hx:873`), drawn by `drawDecals` onto the tone-mapped colour: in the forward preset
    after the Decal list for LDR, and after the tone map for HDR and the outline path. A decal
    names its pass with `DecalPass`, as PbrMaterial's BeforeTonemappingDecal and
