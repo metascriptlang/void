@@ -38,12 +38,16 @@ import "./trueTypePortCheck";
 import "./pngPortCheck";
 import "./colourFacePortCheck";
 import "./svgMaskPortCheck";
-import "./kbUnicodePortCheck";
-import "./kbBreakPortCheck";
 import "./kbFontPortCheck";
-import "./kbLookupPortCheck";
-import "./kbConfigPortCheck";
-import "./kbShapeTablesCheck";
+// Parked: arm64 cannot assemble the module init msc emits for kb/unicodeTables.ms
+// (~/metascript/.inbox/compiler/2026-10-28-a-large-const-array-literal-fails-to-assemble-on-arm64.md).
+when (!arm64) {
+	import "./kbUnicodePortCheck";
+	import "./kbBreakPortCheck";
+	import "./kbLookupPortCheck";
+	import "./kbConfigPortCheck";
+	import "./kbShapeTablesCheck";
+}
 import "./ucdOracleCheck";
 import "./h2dOracleCheck";
 import "./math3dCheck";
