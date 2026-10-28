@@ -98,38 +98,22 @@ test "GLSL 450 asks the block member for its length" {
 	const _folder = mkdir("out/glslProbe");
 	const _written = writeFile("out/glslProbe/rowsLength.450.comp", "#version 450\n" + text);
 	assert text ==
-		"layout(local_size_x=64, local_size_y=1, local_size_z=1) in;
-" +
-		"struct Row {
-" +
-		"    float value;
-" +
-		"};
-" +
-		"layout(binding=0) buffer rowsBuffer {
-" +
-		"    Row rows[];
-" +
-		"};
-" +
-		"layout(binding=1) readonly buffer seedsBuffer {
-" +
-		"    Row seeds[];
-" +
-		"};
-" +
-		"void main() {
-" +
-		"    int at = ivec2(gl_GlobalInvocationID.xy).x;
-" +
-		"    if (at < seeds.length()) {
-" +
-		"        rows[at].value = seeds[at].value + float(rows.length());
-" +
-		"    }
-" +
-		"}
-";
+		"layout(local_size_x=64, local_size_y=1, local_size_z=1) in;\n" +
+		"struct Row {\n" +
+		"    float value;\n" +
+		"};\n" +
+		"layout(binding=0) buffer rowsBuffer {\n" +
+		"    Row rows[];\n" +
+		"};\n" +
+		"layout(binding=1) readonly buffer seedsBuffer {\n" +
+		"    Row seeds[];\n" +
+		"};\n" +
+		"void main() {\n" +
+		"    int at = ivec2(gl_GlobalInvocationID.xy).x;\n" +
+		"    if (at < seeds.length()) {\n" +
+		"        rows[at].value = seeds[at].value + float(rows.length());\n" +
+		"    }\n" +
+		"}\n";
 }
 
 test "every target spells the length" {

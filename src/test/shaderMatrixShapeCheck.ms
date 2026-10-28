@@ -542,48 +542,24 @@ function writeProbe(path: string, text: string): string {
 }
 
 test "GLSL 450 declares each two-row column of a uniform block as a vec2, rebuilt per read" {
-	const text = writeProbe("out/glslProbe/twosMat.450.frag", "#version 450
-" + glslLinked(twosFs, shapeVs));
-	assert text.includes("uniform twos {
-    vec2 a_col0;
-    vec2 a_col1;
-    vec2 b;
-" +
-		"    vec2 c_col0;
-    vec2 c_col1;
-    vec2 c_col2;
-" +
-		"    vec2 d_col0;
-    vec2 d_col1;
-    vec2 d_col2;
-    vec2 d_col3;
-};
-"), text;
+	const text = writeProbe("out/glslProbe/twosMat.450.frag", "#version 450\n" + glslLinked(twosFs, shapeVs));
+	assert text.includes("uniform twos {\n    vec2 a_col0;\n    vec2 a_col1;\n    vec2 b;\n" +
+		"    vec2 c_col0;\n    vec2 c_col1;\n    vec2 c_col2;\n" +
+		"    vec2 d_col0;\n    vec2 d_col1;\n    vec2 d_col2;\n    vec2 d_col3;\n};\n"), text;
 	const a = "mat2(a_col0, a_col1)";
 	const c = "mat3x2(c_col0, c_col1, c_col2)";
 	const d = "mat4x2(d_col0, d_col1, d_col2, d_col3)";
-	assert text.includes("turned = (" + a + " * vec2(amount.x, amount.y)) + b;
-"), text;
-	assert text.includes("mixed = " + c + " * amount;
-"), text;
-	assert text.includes("last = " + d + " * vec4(amount, 1.0);
-"), text;
-	assert text.includes("flipped = transpose(" + c + ");
-"), text;
+	assert text.includes("turned = (" + a + " * vec2(amount.x, amount.y)) + b;\n"), text;
+	assert text.includes("mixed = " + c + " * amount;\n"), text;
+	assert text.includes("last = " + d + " * vec4(amount, 1.0);\n"), text;
+	assert text.includes("flipped = transpose(" + c + ");\n"), text;
 	assert text.includes(d + "[at]"), text;
 	assert text.includes(a + "[1].x") && text.includes(c + "[1].y"), text;
 }
 
 test "GLSL 450 keeps matCx2 natural in a storage element, std430 strides vec2 at 8" {
-	const text = writeProbe("out/glslProbe/cells.450.comp", "#version 450
-" + glslCompute(cellsCs, [4, 1, 1]));
-	assert text.includes("struct Cell {
-    mat2 a;
-    vec2 b;
-    mat3x2 c;
-    mat4x2 d;
-};
-"), text;
+	const text = writeProbe("out/glslProbe/cells.450.comp", "#version 450\n" + glslCompute(cellsCs, [4, 1, 1]));
+	assert text.includes("struct Cell {\n    mat2 a;\n    vec2 b;\n    mat3x2 c;\n    mat4x2 d;\n};\n"), text;
 	assert !text.includes("_col"), text;
 }
 
@@ -643,14 +619,7 @@ function cellsText(target: ShaderTarget): string {
 
 test "a storage buffer holds two-row matrices at std430's offsets on every target" {
 	const glsl = cellsText(ShaderTarget.Glsl430);
-	assert glsl.includes("struct Cell
-{
-    mat2 a;
-    vec2 b;
-    mat3x2 c;
-    mat4x2 d;
-};
-"), glsl;
+	assert glsl.includes("struct Cell\n{\n    mat2 a;\n    vec2 b;\n    mat3x2 c;\n    mat4x2 d;\n};\n"), glsl;
 	const hlsl = cellsText(ShaderTarget.Hlsl5);
 	assert hlsl.includes("    row_major float2x2 a;\n    float2 b;\n    row_major float3x2 c;\n" +
 		"    row_major float4x2 d;\n};\n"), hlsl;

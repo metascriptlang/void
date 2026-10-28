@@ -334,9 +334,7 @@ test "fragment system values print SV_Position before the rasterizer's own value
 	const m = facingFirstModule();
 	assert irErrors(m).length == 0;
 	const text = printed(m, 0, []);
-	assert text.includes("    float4 coord : SV_Position;
-    bool facing : SV_IsFrontFace;
-");
+	assert text.includes("    float4 coord : SV_Position;\n    bool facing : SV_IsFrontFace;\n");
 	assert probe("facingFirst.ps", text);
 }
 

@@ -362,16 +362,13 @@ export function keyFromText(text: string): PipelineKey {
 
 // A magic line, then one key per line; a file of it is what a run keeps for the next one.
 export function keysText(keys: Readonly<Span<PipelineKey>>): string {
-	let text: string = KEYS_MAGIC + "
-";
-	for (const key of keys) { text += keyText(key) + "
-"; }
+	let text: string = KEYS_MAGIC + "\n";
+	for (const key of keys) { text += keyText(key) + "\n"; }
 	return text;
 }
 
 export function parseKeys(text: string): Result<PipelineKey[], string> {
-	const lines: string[] = text.split("
-");
+	const lines: string[] = text.split("\n");
 	if (lines[0] != KEYS_MAGIC) {
 		return Result.err(`pipeline keys text starts with "${lines[0]}", expected "${KEYS_MAGIC}"`);
 	}

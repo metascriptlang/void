@@ -186,32 +186,20 @@ test "the offset reaches an array layer, a volume slice and a depth texel" {
 
 test "a function's const of constants is a const-expression, as WGSL's, and prints as the offset" {
 	assert glsl(localOffsetFs) ==
-		"layout(binding=0) uniform texture2D color;
-" +
-		"layout(binding=0) uniform sampler linear;
-" +
-		"layout(location=0) out vec4 fragColor;
-" +
-		"void main() {
-" +
-		"    vec2 uv = vec2(0.25, 0.75);
-" +
-		"    ivec2 shift = ivec2(1, -1);
-" +
-		"    int unit = 1;
-" +
-		"    ivec2 built = ivec2(1, -1);
-" +
-		"    ivec2 again = shift;
-" +
+		"layout(binding=0) uniform texture2D color;\n" +
+		"layout(binding=0) uniform sampler linear;\n" +
+		"layout(location=0) out vec4 fragColor;\n" +
+		"void main() {\n" +
+		"    vec2 uv = vec2(0.25, 0.75);\n" +
+		"    ivec2 shift = ivec2(1, -1);\n" +
+		"    int unit = 1;\n" +
+		"    ivec2 built = ivec2(1, -1);\n" +
+		"    ivec2 again = shift;\n" +
 		"    fragColor = (textureOffset(sampler2D(color, linear), uv, ivec2(1, -1)) + " +
 		"textureLodOffset(sampler2D(color, linear), uv, 0.0, ivec2(1, -1))) + " +
-		"textureOffset(sampler2D(color, linear), uv, ivec2(1, -1), 0.5);
-" +
-		"    return;
-" +
-		"}
-";
+		"textureOffset(sampler2D(color, linear), uv, ivec2(1, -1), 0.5);\n" +
+		"    return;\n" +
+		"}\n";
 }
 
 function probePath(name: string, target: ShaderTarget, stage: string): string {

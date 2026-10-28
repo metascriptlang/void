@@ -257,74 +257,42 @@ function slopeProgram(): ShaderModule {
 
 test "GLSL 450 spells the counts, the casts, ldexp and the hyperbolics as GLSL's own names" {
 	assert glslLinked(bitsFs, bitsVs).includes(
-		"    uvec4 leading = uvec4(31 - findMSB(words));
-" +
-		"    uvec4 trailing = min(uvec4(findLSB(words)), 32u);
-" +
-		"    ivec2 leadingSigned = 31 - findMSB(uvec2(signedWords));
-" +
-		"    ivec2 trailingSigned = ivec2(min(uvec2(findLSB(signedWords)), 32u));
-" +
-		"    uint lone = uint(31 - findMSB(words.z));
-" +
-		"    int loneSigned = int(min(uint(findLSB(signedWords.y)), 32u));
-" +
-		"    uint pattern = floatBitsToUint(low.x);
-" +
-		"    ivec3 patternSigned = floatBitsToInt(low);
-" +
-		"    float back = uintBitsToFloat(pattern);
-" +
-		"    vec3 backSigned = intBitsToFloat(patternSigned);
-" +
-		"    ivec4 swapped = ivec4(words);
-" +
-		"    uvec2 swappedBack = uvec2(signedWords);
-");
+		"    uvec4 leading = uvec4(31 - findMSB(words));\n" +
+		"    uvec4 trailing = min(uvec4(findLSB(words)), 32u);\n" +
+		"    ivec2 leadingSigned = 31 - findMSB(uvec2(signedWords));\n" +
+		"    ivec2 trailingSigned = ivec2(min(uvec2(findLSB(signedWords)), 32u));\n" +
+		"    uint lone = uint(31 - findMSB(words.z));\n" +
+		"    int loneSigned = int(min(uint(findLSB(signedWords.y)), 32u));\n" +
+		"    uint pattern = floatBitsToUint(low.x);\n" +
+		"    ivec3 patternSigned = floatBitsToInt(low);\n" +
+		"    float back = uintBitsToFloat(pattern);\n" +
+		"    vec3 backSigned = intBitsToFloat(patternSigned);\n" +
+		"    ivec4 swapped = ivec4(words);\n" +
+		"    uvec2 swappedBack = uvec2(signedWords);\n");
 	const math = glslLinked(mathFs, smoothVs);
-	assert math.includes("    vec3 wide = asinh(low);
-");
-	assert math.includes("    vec3 steep = acosh(vec3(low.y, low.z, low.y));
-");
-	assert math.includes("    vec3 scaled = ldexp(low, ivec3(1, 2, 3));
-");
-	assert math.includes("    float whole = ldexp(low.x, 3);
-");
+	assert math.includes("    vec3 wide = asinh(low);\n");
+	assert math.includes("    vec3 steep = acosh(vec3(low.y, low.z, low.y));\n");
+	assert math.includes("    vec3 scaled = ldexp(low, ivec3(1, 2, 3));\n");
+	assert math.includes("    float whole = ldexp(low.x, 3);\n");
 	const slope = glslLinked(slopeFs, smoothVs);
-	assert slope.includes("    vec3 across = dFdxCoarse(low);
-") && slope.includes("    vec3 down = dFdyFine(low);
-");
-	assert slope.includes("    float wide = fwidthCoarse(low.x);
-") && slope.includes("    vec3 fine = fwidthFine(low);
-");
+	assert slope.includes("    vec3 across = dFdxCoarse(low);\n") && slope.includes("    vec3 down = dFdyFine(low);\n");
+	assert slope.includes("    float wide = fwidthCoarse(low.x);\n") && slope.includes("    vec3 fine = fwidthFine(low);\n");
 }
 
 test "WGSL spells them by its own names and a bitcast as bitcast<T>" {
 	const bits = printedFor(bitsProgram(), 1, ShaderTarget.Wgsl, "mathBits");
-	assert bits.includes("  var leading : vec4u = countLeadingZeros(words);
-" +
-		"  var trailing : vec4u = countTrailingZeros(words);
-" +
-		"  var leadingSigned : vec2i = countLeadingZeros(signedWords);
-" +
-		"  var trailingSigned : vec2i = countTrailingZeros(signedWords);
-" +
-		"  var lone : u32 = countLeadingZeros(words.z);
-" +
-		"  var loneSigned : i32 = countTrailingZeros(signedWords.y);
-" +
-		"  var pattern : u32 = bitcast<u32>(low.x);
-" +
-		"  var patternSigned : vec3i = bitcast<vec3i>(low);
-" +
-		"  var back : f32 = bitcast<f32>(pattern);
-" +
-		"  var backSigned : vec3f = bitcast<vec3f>(patternSigned);
-" +
-		"  var swapped : vec4i = bitcast<vec4i>(words);
-" +
-		"  var swappedBack : vec2u = bitcast<vec2u>(signedWords);
-");
+	assert bits.includes("  var leading : vec4u = countLeadingZeros(words);\n" +
+		"  var trailing : vec4u = countTrailingZeros(words);\n" +
+		"  var leadingSigned : vec2i = countLeadingZeros(signedWords);\n" +
+		"  var trailingSigned : vec2i = countTrailingZeros(signedWords);\n" +
+		"  var lone : u32 = countLeadingZeros(words.z);\n" +
+		"  var loneSigned : i32 = countTrailingZeros(signedWords.y);\n" +
+		"  var pattern : u32 = bitcast<u32>(low.x);\n" +
+		"  var patternSigned : vec3i = bitcast<vec3i>(low);\n" +
+		"  var back : f32 = bitcast<f32>(pattern);\n" +
+		"  var backSigned : vec3f = bitcast<vec3f>(patternSigned);\n" +
+		"  var swapped : vec4i = bitcast<vec4i>(words);\n" +
+		"  var swappedBack : vec2u = bitcast<vec2u>(signedWords);\n");
 	const math = printedFor(mathProgram(), 1, ShaderTarget.Wgsl, "mathHyper");
 	assert math.includes("asinh(low)") && math.includes("acosh(vec3f(low.y, low.z, low.y))");
 	assert math.includes("atanh(vec2f((low.x * 0.5f), (low.x * 0.25f)))");
@@ -361,36 +329,20 @@ test "GLSL 430 and ES 300 print the casts and hyperbolics alike, bit counts and 
 
 test "HLSL counts through firstbithigh and firstbitlow, casts with as*, helpers for the rest" {
 	const bits = printedFor(bitsProgram(), 1, ShaderTarget.Hlsl5, "mathBits");
-	assert bits.includes("    uint4 leading = (31u - firstbithigh(words));
-" +
-		"    uint4 trailing = min(32u, firstbitlow(words));
-" +
-		"    int2 leadingSigned = asint(31u - firstbithigh(asuint(signedWords)));
-" +
-		"    int2 trailingSigned = asint(min(32u, firstbitlow(asuint(signedWords))));
-" +
-		"    uint lone = (31u - firstbithigh(words.z));
-" +
-		"    int loneSigned = asint(min(32u, firstbitlow(asuint(signedWords.y))));
-" +
-		"    uint pattern = asuint(low.x);
-" +
-		"    int3 patternSigned = asint(low);
-" +
-		"    float back = asfloat(pattern);
-" +
-		"    float3 backSigned = asfloat(patternSigned);
-" +
-		"    int4 swapped = asint(words);
-" +
-		"    uint2 swappedBack = asuint(signedWords);
-");
+	assert bits.includes("    uint4 leading = (31u - firstbithigh(words));\n" +
+		"    uint4 trailing = min(32u, firstbitlow(words));\n" +
+		"    int2 leadingSigned = asint(31u - firstbithigh(asuint(signedWords)));\n" +
+		"    int2 trailingSigned = asint(min(32u, firstbitlow(asuint(signedWords))));\n" +
+		"    uint lone = (31u - firstbithigh(words.z));\n" +
+		"    int loneSigned = asint(min(32u, firstbitlow(asuint(signedWords.y))));\n" +
+		"    uint pattern = asuint(low.x);\n" +
+		"    int3 patternSigned = asint(low);\n" +
+		"    float back = asfloat(pattern);\n" +
+		"    float3 backSigned = asfloat(patternSigned);\n" +
+		"    int4 swapped = asint(words);\n" +
+		"    uint2 swappedBack = asuint(signedWords);\n");
 	const math = printedFor(mathProgram(), 1, ShaderTarget.Hlsl5, "mathHyper");
-	assert math.includes("float3 asinh(float3 e)
-{
-    return sign(e) * log(abs(e) + sqrt(e * e + 1.0));
-}
-");
+	assert math.includes("float3 asinh(float3 e)\n{\n    return sign(e) * log(abs(e) + sqrt(e * e + 1.0));\n}\n");
 	assert math.includes("float acosh(float e)") &&
 		math.includes("return log(e + sqrt(e * e - 1.0));");
 	assert math.includes("return 0.5 * log((1.0 + e) / (1.0 - e));");
@@ -404,30 +356,18 @@ test "HLSL counts through firstbithigh and firstbitlow, casts with as*, helpers 
 
 test "MSL counts with clz and ctz, casts with as_type, and has the rest by name" {
 	const bits = printedFor(bitsProgram(), 1, ShaderTarget.Msl, "mathBits");
-	assert bits.includes("  uint4 leading = clz(in.words);
-" +
-		"  uint4 trailing = ctz(in.words);
-" +
-		"  int2 leadingSigned = clz(in.signedWords);
-" +
-		"  int2 trailingSigned = ctz(in.signedWords);
-" +
-		"  uint lone = clz(in.words.z);
-" +
-		"  int loneSigned = ctz(in.signedWords.y);
-" +
-		"  uint pattern = as_type<uint>(in.low.x);
-" +
-		"  int3 patternSigned = as_type<int3>(in.low);
-" +
-		"  float back = as_type<float>(pattern);
-" +
-		"  float3 backSigned = as_type<float3>(patternSigned);
-" +
-		"  int4 swapped = as_type<int4>(in.words);
-" +
-		"  uint2 swappedBack = as_type<uint2>(in.signedWords);
-");
+	assert bits.includes("  uint4 leading = clz(in.words);\n" +
+		"  uint4 trailing = ctz(in.words);\n" +
+		"  int2 leadingSigned = clz(in.signedWords);\n" +
+		"  int2 trailingSigned = ctz(in.signedWords);\n" +
+		"  uint lone = clz(in.words.z);\n" +
+		"  int loneSigned = ctz(in.signedWords.y);\n" +
+		"  uint pattern = as_type<uint>(in.low.x);\n" +
+		"  int3 patternSigned = as_type<int3>(in.low);\n" +
+		"  float back = as_type<float>(pattern);\n" +
+		"  float3 backSigned = as_type<float3>(patternSigned);\n" +
+		"  int4 swapped = as_type<int4>(in.words);\n" +
+		"  uint2 swappedBack = as_type<uint2>(in.signedWords);\n");
 	const math = printedFor(mathProgram(), 1, ShaderTarget.Msl, "mathHyper");
 	assert math.includes("asinh(in.low)") &&
 		math.includes("acosh(float3(in.low.y, in.low.z, in.low.y))");

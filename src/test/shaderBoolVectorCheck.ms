@@ -220,88 +220,51 @@ function programOf(): ShaderModule {
 
 test "GLSL 450 spells the tests as lessThan and its kin and a select by a bool vector as mix" {
 	assert glslLinked(boolFs, boolVs) ==
-		"in vec3 low;
-" +
-		"in vec3 high;
-" +
-		"flat in ivec2 signedLow;
-" +
-		"flat in ivec2 signedHigh;
-" +
-		"flat in uvec4 wordLow;
-" +
-		"flat in uvec4 wordHigh;
-" +
-		"layout(location=0) out vec4 fragColor;
-" +
-		"float weigh(bool set, float weight) {
-" +
-		"    return set ? weight : 0.0;
-" +
-		"}
-" +
-		"void main() {
-" +
-		"    bvec3 below = lessThan(low, high);
-" +
-		"    bvec2 noMore = lessThanEqual(signedLow, signedHigh);
-" +
-		"    bvec4 above = greaterThan(wordLow, wordHigh);
-" +
-		"    bvec3 noLess = greaterThanEqual(low, high);
-" +
-		"    bvec4 same = equal(wordLow, wordHigh);
-" +
-		"    bvec2 differ = notEqual(signedLow, signedHigh);
-" +
-		"    vec3 picked = mix(low, high, below);
-" +
-		"    ivec2 pickedSigned = mix(signedLow, signedHigh, (not(noMore)));
-" +
-		"    uvec4 pickedWords = mix(wordLow, wordHigh, same);
-" +
-		"    bvec3 pickedFlags = mix(below, noLess, bvec3(true, false, true));
-" +
-		"    int whole = (all(differ) ? signedHigh.x : signedLow.x);
-" +
+		"in vec3 low;\n" +
+		"in vec3 high;\n" +
+		"flat in ivec2 signedLow;\n" +
+		"flat in ivec2 signedHigh;\n" +
+		"flat in uvec4 wordLow;\n" +
+		"flat in uvec4 wordHigh;\n" +
+		"layout(location=0) out vec4 fragColor;\n" +
+		"float weigh(bool set, float weight) {\n" +
+		"    return set ? weight : 0.0;\n" +
+		"}\n" +
+		"void main() {\n" +
+		"    bvec3 below = lessThan(low, high);\n" +
+		"    bvec2 noMore = lessThanEqual(signedLow, signedHigh);\n" +
+		"    bvec4 above = greaterThan(wordLow, wordHigh);\n" +
+		"    bvec3 noLess = greaterThanEqual(low, high);\n" +
+		"    bvec4 same = equal(wordLow, wordHigh);\n" +
+		"    bvec2 differ = notEqual(signedLow, signedHigh);\n" +
+		"    vec3 picked = mix(low, high, below);\n" +
+		"    ivec2 pickedSigned = mix(signedLow, signedHigh, (not(noMore)));\n" +
+		"    uvec4 pickedWords = mix(wordLow, wordHigh, same);\n" +
+		"    bvec3 pickedFlags = mix(below, noLess, bvec3(true, false, true));\n" +
+		"    int whole = (all(differ) ? signedHigh.x : signedLow.x);\n" +
 		"    float flags = (weigh(any(above), 1.0) + weigh(all(pickedFlags), 2.0)) + " +
-		"weigh(any((not(same))), 4.0);
-" +
+		"weigh(any((not(same))), 4.0);\n" +
 		"    fragColor = vec4(((picked.x + picked.z) + float(pickedSigned.y)), " +
-		"(float(pickedWords.w) + float(whole)), flags, 1.0);
-" +
-		"    return;
-" +
-		"}
-";
+		"(float(pickedWords.w) + float(whole)), flags, 1.0);\n" +
+		"    return;\n" +
+		"}\n";
 }
 
 test "WGSL spells the tests as operators and the rest by its own names" {
 	const m = programOf();
 	assert irErrors(m).length == 0;
 	const wgsl = printedFor(m, 1, ShaderTarget.Wgsl, "boolVector");
-	assert wgsl.includes("  var below : vec3<bool> = (low < high);
-" +
-		"  var noMore : vec2<bool> = (signedLow <= signedHigh);
-" +
-		"  var above : vec4<bool> = (wordLow > wordHigh);
-" +
-		"  var noLess : vec3<bool> = (low >= high);
-" +
-		"  var same : vec4<bool> = (wordLow == wordHigh);
-" +
-		"  var differ : vec2<bool> = (signedLow != signedHigh);
-" +
-		"  var picked : vec3f = select(low, high, below);
-" +
-		"  var pickedSigned : vec2i = select(signedLow, signedHigh, (!noMore));
-" +
-		"  var pickedWords : vec4u = select(wordLow, wordHigh, same);
-" +
-		"  var pickedFlags : vec3<bool> = select(below, noLess, vec3<bool>(true, false, true));
-" +
-		"  var whole : i32 = select(signedLow.x, signedHigh.x, all(differ));
-");
+	assert wgsl.includes("  var below : vec3<bool> = (low < high);\n" +
+		"  var noMore : vec2<bool> = (signedLow <= signedHigh);\n" +
+		"  var above : vec4<bool> = (wordLow > wordHigh);\n" +
+		"  var noLess : vec3<bool> = (low >= high);\n" +
+		"  var same : vec4<bool> = (wordLow == wordHigh);\n" +
+		"  var differ : vec2<bool> = (signedLow != signedHigh);\n" +
+		"  var picked : vec3f = select(low, high, below);\n" +
+		"  var pickedSigned : vec2i = select(signedLow, signedHigh, (!noMore));\n" +
+		"  var pickedWords : vec4u = select(wordLow, wordHigh, same);\n" +
+		"  var pickedFlags : vec3<bool> = select(below, noLess, vec3<bool>(true, false, true));\n" +
+		"  var whole : i32 = select(signedLow.x, signedHigh.x, all(differ));\n");
 	assert wgsl.includes("weigh(any(above), 1f)") && wgsl.includes("any((!same))");
 }
 
@@ -309,90 +272,57 @@ test "GLSL 430 and ES 300 select an integer or bool vector lane by lane" {
 	const m = programOf();
 	for (const target of [ShaderTarget.Glsl430, ShaderTarget.Glsl300es]) {
 		const text = printedFor(m, 1, target, "boolVector");
-		assert text.includes("bvec3 below = lessThan(low, high);
-" +
-			"    bvec2 noMore = lessThanEqual(signedLow, signedHigh);
-" +
-			"    bvec4 above = greaterThan(wordLow, wordHigh);
-" +
-			"    bvec3 noLess = greaterThanEqual(low, high);
-" +
-			"    bvec4 same = equal(wordLow, wordHigh);
-" +
-			"    bvec2 differ = notEqual(signedLow, signedHigh);
-");
-		assert text.includes("vec3 picked = mix(low, high, below);
-");
+		assert text.includes("bvec3 below = lessThan(low, high);\n" +
+			"    bvec2 noMore = lessThanEqual(signedLow, signedHigh);\n" +
+			"    bvec4 above = greaterThan(wordLow, wordHigh);\n" +
+			"    bvec3 noLess = greaterThanEqual(low, high);\n" +
+			"    bvec4 same = equal(wordLow, wordHigh);\n" +
+			"    bvec2 differ = notEqual(signedLow, signedHigh);\n");
+		assert text.includes("vec3 picked = mix(low, high, below);\n");
 		assert text.includes(
 			"ivec2 pickedSigned = ivec2((not(noMore)).x ? signedHigh.x : signedLow.x, " +
-			"(not(noMore)).y ? signedHigh.y : signedLow.y);
-");
+			"(not(noMore)).y ? signedHigh.y : signedLow.y);\n");
 		assert text.includes("uvec4 pickedWords = uvec4(same.x ? wordHigh.x : wordLow.x, " +
 			"same.y ? wordHigh.y : wordLow.y, same.z ? wordHigh.z : wordLow.z, " +
-			"same.w ? wordHigh.w : wordLow.w);
-");
+			"same.w ? wordHigh.w : wordLow.w);\n");
 		assert text.includes(
 			"bvec3 pickedFlags = bvec3(bvec3(true, false, true).x ? noLess.x : below.x, " +
 			"bvec3(true, false, true).y ? noLess.y : below.y, " +
-			"bvec3(true, false, true).z ? noLess.z : below.z);
-");
-		assert text.includes("int whole = (all(differ) ? signedHigh.x : signedLow.x);
-");
+			"bvec3(true, false, true).z ? noLess.z : below.z);\n");
+		assert text.includes("int whole = (all(differ) ? signedHigh.x : signedLow.x);\n");
 		assert text.includes("weigh(any(above), 1.0)") && text.includes("any(not(same))");
 	}
 }
 
 test "HLSL spells them as operators and a ternary on a bool vector" {
 	const hlsl = printedFor(programOf(), 1, ShaderTarget.Hlsl5, "boolVector");
-	assert hlsl.includes("    bool3 below = (low < high);
-" +
-		"    bool2 noMore = (signedLow <= signedHigh);
-" +
-		"    bool4 above = (wordLow > wordHigh);
-" +
-		"    bool3 noLess = (low >= high);
-" +
-		"    bool4 same = (wordLow == wordHigh);
-" +
-		"    bool2 differ = (signedLow != signedHigh);
-" +
-		"    float3 picked = (below ? high : low);
-" +
-		"    int2 pickedSigned = ((!noMore) ? signedHigh : signedLow);
-" +
-		"    uint4 pickedWords = (same ? wordHigh : wordLow);
-" +
-		"    bool3 pickedFlags = (bool3(true, false, true) ? noLess : below);
-" +
-		"    int whole = (all(differ) ? signedHigh.x : signedLow.x);
-");
+	assert hlsl.includes("    bool3 below = (low < high);\n" +
+		"    bool2 noMore = (signedLow <= signedHigh);\n" +
+		"    bool4 above = (wordLow > wordHigh);\n" +
+		"    bool3 noLess = (low >= high);\n" +
+		"    bool4 same = (wordLow == wordHigh);\n" +
+		"    bool2 differ = (signedLow != signedHigh);\n" +
+		"    float3 picked = (below ? high : low);\n" +
+		"    int2 pickedSigned = ((!noMore) ? signedHigh : signedLow);\n" +
+		"    uint4 pickedWords = (same ? wordHigh : wordLow);\n" +
+		"    bool3 pickedFlags = (bool3(true, false, true) ? noLess : below);\n" +
+		"    int whole = (all(differ) ? signedHigh.x : signedLow.x);\n");
 	assert hlsl.includes("weigh(any(above), 1.0)") && hlsl.includes("any(!same)");
 }
 
 test "MSL spells a select by a bool vector as metal's select" {
 	const msl = printedFor(programOf(), 1, ShaderTarget.Msl, "boolVector");
-	assert msl.includes("  bool3 below = (in.low < in.high);
-" +
-		"  bool2 noMore = (in.signedLow <= in.signedHigh);
-" +
-		"  bool4 above = (in.wordLow > in.wordHigh);
-" +
-		"  bool3 noLess = (in.low >= in.high);
-" +
-		"  bool4 same = (in.wordLow == in.wordHigh);
-" +
-		"  bool2 differ = (in.signedLow != in.signedHigh);
-" +
-		"  float3 picked = select(in.low, in.high, below);
-" +
-		"  int2 pickedSigned = select(in.signedLow, in.signedHigh, (!noMore));
-" +
-		"  uint4 pickedWords = select(in.wordLow, in.wordHigh, same);
-" +
-		"  bool3 pickedFlags = select(below, noLess, bool3(true, false, true));
-" +
-		"  int whole = select(in.signedLow.x, in.signedHigh.x, all(differ));
-");
+	assert msl.includes("  bool3 below = (in.low < in.high);\n" +
+		"  bool2 noMore = (in.signedLow <= in.signedHigh);\n" +
+		"  bool4 above = (in.wordLow > in.wordHigh);\n" +
+		"  bool3 noLess = (in.low >= in.high);\n" +
+		"  bool4 same = (in.wordLow == in.wordHigh);\n" +
+		"  bool2 differ = (in.signedLow != in.signedHigh);\n" +
+		"  float3 picked = select(in.low, in.high, below);\n" +
+		"  int2 pickedSigned = select(in.signedLow, in.signedHigh, (!noMore));\n" +
+		"  uint4 pickedWords = select(in.wordLow, in.wordHigh, same);\n" +
+		"  bool3 pickedFlags = select(below, noLess, bool3(true, false, true));\n" +
+		"  int whole = select(in.signedLow.x, in.signedHigh.x, all(differ));\n");
 	assert msl.includes("weigh(any(above), 1.0)") && msl.includes("any((!same))");
 }
 

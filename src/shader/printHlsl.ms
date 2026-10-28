@@ -821,11 +821,7 @@ function polyfillOf(p: Printer, e: ShaderExpr): string {
 		_ => fail(p, op.toString() + " has no HLSL helper"),
 	};
 	const name = helper(p, op.toString() + " " + t, mathName(op), (n) =>
-		t + " " + n + "(" + t + " e)
-{
-    return " + body + ";
-}
-");
+		t + " " + n + "(" + t + " e)\n{\n    return " + body + ";\n}\n");
 	return name + "(" + expr(p, e.operands[0]) + ")";
 }
 

@@ -344,12 +344,10 @@ test "a depth comparison through a plain sampler, or of a colour texture, is ref
 	const COMPARE = Intrinsic.TextureSampleCompare;
 	const LEVEL = Intrinsic.TextureSampleCompareLevel;
 	const plain = irErrors(compared(ShaderStage.Fragment, LEVEL, TextureShape.Depth2d,
-		false)).join("
-");
+		false)).join("\n");
 	assert plain.includes("TextureSampleCompareLevel through a sampler that is no comparison " +
 		"sampler binding");
-	const colour = irErrors(compared(ShaderStage.Fragment, COMPARE, TextureShape.D2, true)).join("
-");
+	const colour = irErrors(compared(ShaderStage.Fragment, COMPARE, TextureShape.D2, true)).join("\n");
 	assert colour.includes("TextureSampleCompare of a D2 texture, which holds no depth");
 }
 

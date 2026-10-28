@@ -229,8 +229,7 @@ test "a sample through a comparison sampler, of a multisampled texture, or wrong
 	let comparison = programOf();
 	comparison.resources[gradedOf(
 		comparison).operands[1].index].samplerType = SamplerType.Comparison;
-	assert irErrors(comparison).join("
-").includes("TextureSampleGrad through a comparison " +
+	assert irErrors(comparison).join("\n").includes("TextureSampleGrad through a comparison " +
 		"sampler, which needs a depth reference");
 
 	let plain = programOf();
@@ -239,19 +238,16 @@ test "a sample through a comparison sampler, of a multisampled texture, or wrong
 	sample.operands = sample.operands.slice(0, 3);
 	assert irErrors(plain).length == 0;
 	plain.resources[sample.operands[1].index].samplerType = SamplerType.Comparison;
-	assert irErrors(plain).join("
-").includes("TextureSample through a comparison sampler, " +
+	assert irErrors(plain).join("\n").includes("TextureSample through a comparison sampler, " +
 		"which needs a depth reference");
 	plain.resources[sample.operands[1].index].samplerType = SamplerType.Filtering;
 
 	sample.operands[0].type.shape = TextureShape.Multisampled2d;
-	assert irErrors(plain).join("
-").includes("TextureSample of a multisampled texture");
+	assert irErrors(plain).join("\n").includes("TextureSample of a multisampled texture");
 	sample.operands[0].type.shape = TextureShape.D2;
 
 	sample.operands = sample.operands.slice(0, 2);
-	assert irErrors(plain).join("
-").includes("TextureSample takes a texture, a sampler, " +
+	assert irErrors(plain).join("\n").includes("TextureSample takes a texture, a sampler, " +
 		"coordinates and, for an array texture, a layer, and an optional constant offset");
 }
 
