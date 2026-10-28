@@ -1,7 +1,9 @@
 import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
 import { Vec3, Vec4, vec3 } from "../../src/math/math3d";
 import { RenderState, FilterMode, Wrap, Face } from "../../src/gpu/state";
-import { Material, Phase, UniformBlock, movingDefaults } from "../../src/void3d/material";
+import {
+	Material, MaterialKind, Phase, UniformBlock, movingDefaults, passFor,
+} from "../../src/void3d/material";
 import { MeshData, MeshError, Rgba, addTexturedQuad } from "../../src/void3d/meshData";
 import {
 	TextureData, TextureId, TextureUploadError, NO_TEXTURE,
@@ -11,7 +13,9 @@ import {
 	LIGHT_UNIFORM_LENGTH, MOVING_UV_MATRIX, MOVING_UV_OFFSET, MOVING_UV_SCROLL,
 	MOVING_BACK_UV_MATRIX, MOVING_BACK_UV_OFFSET, MOVING_DISSOLVE_THRESHOLD,
 	MOVING_DISSOLVE_EDGE_WIDTH, MOVING_DISSOLVE_EDGE_COLOR, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
-	MOVING_MATERIAL_UNIFORM_LENGTH, movingBase,
+	MOVING_MATERIAL_UNIFORM_LENGTH, MOVING_FLIPBOOK_COLUMNS, MOVING_FLIPBOOK_ROWS,
+	MOVING_FLIPBOOK_FRAMES, MOVING_FLIPBOOK_SPEED, MOVING_FLIPBOOK_START_TIME, MOVING_FLIPBOOK_LOOP,
+	MOVING_FLIPBOOK_BLEND, MOVING_FADE_NEAR_START, MOVING_FADE_NEAR_END, movingBase,
 } from "../../src/void3d/gpu3d";
 import {
 	DrawContext, DrawItem, MeshId, MaterialId, MeshUploadError, MaterialError,
@@ -24,7 +28,7 @@ import {
 } from "../../src/void3d/scene";
 import { Camera3D, CameraView, CameraError, ProjectionKind } from "../../src/void3d/camera";
 import { LowResView } from "../../src/void3d/blit";
-import { Renderer, setElapsedTime } from "../../src/void3d/renderer";
+import { Renderer, setCameraPosition, setElapsedTime } from "../../src/void3d/renderer";
 import {
 	ForwardRenderer, ForwardError, FORWARD_UNIFORM_LENGTH, renderFrame as renderForward,
 } from "../../src/void3d/forwardRenderer";
@@ -50,11 +54,14 @@ enum Quad {
 	Front,
 	Dissolve,
 	LitDissolve,
+	Flipbook,
+	BlendedFlipbook,
+	Fade,
 }
 
 const WIDTH: int32 = 320;
 const HEIGHT: int32 = 240;
-const HALF: float32 = 0.4;
+const HALF: float32 = 0.3;
 const WORLD_PER_TEXEL: float32 = 0.02;
 const BACKGROUND: Vec4 = { x: 0.1, y: 0.15, z: 0.2, w: 1.0 };
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
@@ -75,7 +82,7 @@ let pixelArt: boolean = voidCaptureEnvInt("VOID_MOVING_PIXEL_ART", 0) != 0;
 let control: boolean = voidCaptureEnvInt("VOID_MOVING_CONTROL", 0) != 0;
 let context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH +
-	5 * MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_MATERIAL_UNIFORM_LENGTH,
+	8 * MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_MATERIAL_UNIFORM_LENGTH,
 );
 let scene: Scene3D = Scene3D.create(context);
 let forward: ForwardRenderer = makeForward();
@@ -83,7 +90,7 @@ let preset: PixelArtRenderer = makePreset();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-let positions: Vec<float32> = [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5];
+let positions: Vec<float32> = [-2.8, -2.1, -1.4, -0.7, 0.0, 0.7, 1.4, 2.1, 2.8];
 let frameIndex: int32 = 0;
 let failures: int32 = 0;
 
@@ -133,6 +140,15 @@ function texture(pixels: Vec<uint32>, wrap: Wrap): TextureId {
 
 // The control draws every quad with its key's features off, over the plain block.
 function materialFor(key: ProgramKey, values: Vec<float32>, front: boolean): Material {
+	return blendedFor(key, values, front, false);
+}
+
+function blendedFor(
+	key: ProgramKey,
+	values: Vec<float32>,
+	front: boolean,
+	blended: boolean,
+): Material {
 	const drawn: ProgramKey = control ? ProgramKey.of(key.program) : key;
 	const unlit: boolean = key.program == Program.UnlitTextured;
 	let block: Vec<float32> = values;
@@ -143,8 +159,10 @@ function materialFor(key: ProgramKey, values: Vec<float32>, front: boolean): Mat
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, block.length as int32);
 	if (!reserved.ok) { unreachable; }
 	if (!writeUniforms(context, reserved.value, block).ok) { unreachable; }
-	const pass: RenderState = RenderState.defaults().withCulling(front ? Face.Back : Face.None);
-	return { ...Material.keyed(drawn, pass, Phase.Opaque), uniforms: reserved.value };
+	const faces: RenderState = RenderState.defaults().withCulling(front ? Face.Back : Face.None);
+	const pass: RenderState = blended ? passFor(MaterialKind.Alpha, faces) : faces;
+	const phase: Phase = blended ? Phase.Alpha : Phase.Opaque;
+	return { ...Material.keyed(drawn, pass, phase), uniforms: reserved.value };
 }
 
 // The key's block with the unlit colour white, or the lit block's ramp levels at 4.
@@ -155,6 +173,19 @@ function valuesOf(key: ProgramKey): Vec<float32> {
 	} else {
 		values[0] = 4.0;
 	}
+	return values;
+}
+
+function flipbookValues(key: ProgramKey, start: float32, blend: float32): Vec<float32> {
+	let values: Vec<float32> = valuesOf(key);
+	const base: int32 = movingBase(key);
+	values[base + MOVING_FLIPBOOK_COLUMNS] = 2.0;
+	values[base + MOVING_FLIPBOOK_ROWS] = 1.0;
+	values[base + MOVING_FLIPBOOK_FRAMES] = 2.0;
+	values[base + MOVING_FLIPBOOK_SPEED] = 1.0;
+	values[base + MOVING_FLIPBOOK_START_TIME] = start;
+	values[base + MOVING_FLIPBOOK_LOOP] = 1.0;
+	values[base + MOVING_FLIPBOOK_BLEND] = blend;
 	return values;
 }
 
@@ -238,7 +269,24 @@ function init(): void {
 		...materialFor(litDissolve, litValues, true), texture: white, dissolveTexture: noise,
 	}, false);
 
+	// Two frames side by side, a frame a second; at 1.5 s and 2.5 s the first reads 1 then 0.
+	const flipbook: ProgramKey = ProgramKey.of(Program.UnlitTextured).withUvTransform();
+	const frames: TextureId = texture([BLUE, YELLOW], Wrap.Clamp);
+	place(Quad.Flipbook, {
+		...materialFor(flipbook, flipbookValues(flipbook, -0.5, 0.0), true), texture: frames,
+	}, false);
+	place(Quad.BlendedFlipbook, {
+		...materialFor(flipbook, flipbookValues(flipbook, -0.25, 1.0), true), texture: frames,
+	}, false);
+
+	// About 4.9 from the eye, inside a near fade from 4 to 6: a bit under half its alpha.
+	let fadeValues: Vec<float32> = valuesOf(flipbook);
+	fadeValues[movingBase(flipbook) + MOVING_FADE_NEAR_START] = 4.0;
+	fadeValues[movingBase(flipbook) + MOVING_FADE_NEAR_END] = 6.0;
+	place(Quad.Fade, { ...blendedFor(flipbook, fadeValues, true, true), texture: red }, false);
+
 	setAmbient(scene, vec3(1.0, 1.0, 1.0));
+	setCameraPosition(core(), vec3(0.0, 0.0, 4.0));
 	setElapsedTime(core(), ELAPSED);
 }
 
@@ -309,12 +357,36 @@ function check(camera: CameraView, swapped: boolean): void {
 	if (isBackground(litKept) || isColor(litKept, 0xFFFF00FF)) {
 		fail(`the lit kept half drew ${litKept}, outside its narrow edge band`);
 	}
+	checkFlipbooks(camera, swapped);
+	const faded: int64 = rgbAt(camera, Quad.Fade, 0.0);
+	const fadedRed: int64 = (faded >> 16) & 0xFF;
+	if (fadedRed < 60 || fadedRed > 200 || (faded & 0xFF) < 20) {
+		fail(`the faded quad drew ${faded}, not red over the background at about half alpha`);
+	}
+}
+
+// The plain flipbook holds one frame over the whole quad; the blended one leans a quarter of the
+// way to the next frame, so it is mostly yellow at 1.25 s and mostly blue at 2.25 s.
+function checkFlipbooks(camera: CameraView, first: boolean): void {
+	const held: uint32 = first ? YELLOW : BLUE;
+	const left: int64 = rgbAt(camera, Quad.Flipbook, -1.0);
+	const right: int64 = rgbAt(camera, Quad.Flipbook, 1.0);
+	if (!isColor(left, held) || !isColor(right, held)) {
+		fail(`the flipbook drew ${left} ${right}, not one frame over the quad`);
+	}
+	const mixed: int64 = rgbAt(camera, Quad.BlendedFlipbook, -1.0);
+	const red: int64 = (mixed >> 16) & 0xFF;
+	const blue: int64 = mixed & 0xFF;
+	const leaning: boolean = first ? red > blue + 40 : blue > red + 40;
+	if (isColor(mixed, YELLOW) || isColor(mixed, BLUE) || !leaning) {
+		fail(`the blended flipbook drew ${mixed}, not a quarter of the way to the next frame`);
+	}
 }
 
 function frame(): void {
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("the framebuffer size changed"); }
 	frameIndex = frameIndex + 1;
-	if (refresh(scene, items) != 6) { fail("the scene does not draw its six quads"); }
+	if (refresh(scene, items) != 9) { fail("the scene does not draw its nine quads"); }
 	const collected: Result<int32, LightError> = collectLights(scene, lights);
 	if (!collected.ok) { unreachable; }
 	const camera: CameraView = viewOf();
@@ -337,7 +409,7 @@ function frame(): void {
 	}
 	if (frameIndex < LAST_FRAME) { return; }
 	if (failures > 0) { voidCaptureExit(1); }
-	console.log("PASS moving material: affine, scroll, back texture, dissolve");
+	console.log("PASS moving material: affine, scroll, back texture, dissolve, flipbook, fade");
 	voidCaptureExit(0);
 }
 
