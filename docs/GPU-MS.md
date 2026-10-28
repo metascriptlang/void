@@ -1241,3 +1241,31 @@ The rows of `docs/TESTING.md` count 123.
 Metal until the Mac regenerates it. That run waits on nothing else here.
 
 Next on Windows: the per-backend A/B against main in a quiet window, then the land chain.
+
+### 2026-10-28, Windows: the A/B before the land, a baseline for the perf work after it
+
+**The person's call: land first, deep performance after, then D3D12.** This A/B is the record that
+work starts from; it does not hold the land.
+
+Side A `d036d675` (main, sokol), side B `f504fab6`, `run 5` from 23:00:54 to 23:18:45. It ran beside
+void3d-m5's land gate (gate3d), so `bench-ab.sh` kept too few clean pairs for a verdict on every
+d3d11 and gl scene. The medians below are from all five pairs per side, so they are indicative only.
+In every scene, B's `present.ms` (the CPU time to record and submit a frame) is higher than A's
+in nearly every pair. Campfire's A side includes `src/sokol/bridge.h` and B's includes
+`src/host/bridge.h`, with the same scene code.
+
+| scene | d3d11 A | d3d11 B | gl A | gl B |
+|---|---|---|---|---|
+| Ui | 0.023 | 0.040 | 0.019 | 0.058 |
+| Sprites | 0.020 | 0.040 | 0.030 | 0.078 |
+| Text | 0.019 | 0.042 | 0.023 | 0.037 |
+| Editor | 0.019 | 0.033 | 0.015 | 0.035 |
+| Scroll | 0.047 | 0.062 | 0.041 | 0.053 |
+| Campfire | 0.332 | 0.385 | 6.022 | 6.026 |
+
+(ms, `present.ms` median.) GL Campfire's 6 ms is a blocking swap on both sides. Vulkan on B alone:
+present 0.12-0.16 ms on the 2D scenes, 0.44 ms on Campfire; first paint 50 ms on Ui and 6-14 ms elsewhere.
+
+Next, after the land: rerun the A/B in a quiet window for a verdict, then split `submit` per flow
+(the door's per-draw path, the uniform ring, the 2D batch upload) to find where the 0.01-0.04 ms
+per frame goes, before any fix.
