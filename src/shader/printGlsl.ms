@@ -549,22 +549,8 @@ function rowCoordinate(p: Printer, t: ShaderType, text: string): string {
 function sampleOf(p: Printer, e: ShaderExpr): string {
 	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
 	const base = layered ? 4 : 3;
-	if (e.operands.length != base && e.operands.length != base + 1) {
-		return fail(p, "TextureSample takes a texture, a sampler, coordinates and, for an array " +
-			"texture, a layer, and an optional constant offset");
-	}
 	const [texture, sampler, at] = [e.operands[0], e.operands[1], e.operands[2]];
-	if (texture.type.kind != ShaderTypeKind.Texture ||
-		sampler.type.kind != ShaderTypeKind.Sampler) {
-		return fail(p, "TextureSample takes a texture and a sampler first");
-	}
-	if (texture.type.shape == TextureShape.Multisampled2d) {
-		return fail(p, "TextureSample of a multisampled texture");
-	}
 	const pair = pairOf(p, texture, sampler);
-	if (isComparison(p, pair)) {
-		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
-	}
 	const coords = layered ? "vec3(" + expr(p, at) + ", float(" + expr(p, e.operands[3]) + "))" :
 		rowCoordinate(p, texture.type, expr(p, at));
 	return narrowed(e.operands.length == base ? "texture(" + pair.name + ", " + coords + ")" :
@@ -575,10 +561,6 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
 	const pair = pairOf(p, o[0], o[1]);
-	if (isComparison(p, pair)) {
-		return fail(p, e.intrinsic.toString() + " through a comparison sampler, which needs a " +
-			"depth reference");
-	}
 	const layer = isArrayTexture(t) ? 1 : 0;
 	const at = layer == 0 ? rowCoordinate(p, t, expr(p, o[2])) : (t.shape == TextureShape.CubeArray ? "vec4(" :
 		"vec3(") + expr(p, o[2]) + ", float(" + expr(p, o[3]) + "))";
@@ -601,23 +583,11 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	const name = e.intrinsic.toString();
 	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
 	const base = layered ? 5 : 4;
-	if (e.operands.length != base && e.operands.length != base + 1) {
-		return fail(p, name + " takes a texture, a sampler, coordinates, for an array texture a " +
-			"layer, a depth reference, and an optional constant offset");
-	}
 	const [texture, sampler, at] = [e.operands[0], e.operands[1], e.operands[2]];
 	const reference = e.operands[base - 1];
 	const offset = e.operands.length == base ? "" : ", " + expr(p, e.operands[base]);
 	const suffix = offset == "" ? "" : "Offset";
-	if (texture.type.kind != ShaderTypeKind.Texture ||
-		sampler.type.kind != ShaderTypeKind.Sampler) {
-		return fail(p, name + " takes a texture and a sampler first");
-	}
 	const pair = pairOf(p, texture, sampler);
-	if (!isComparison(p, pair)) {
-		return fail(p, name + " through sampler pair '" + pair.name + "', whose sampler is no " +
-			"comparison sampler");
-	}
 	const coords = expr(p, at) + (layered ? ", float(" + expr(p, e.operands[3]) + ")" : "") +
 		", " + expr(p, reference);
 	if (p.es && offset != "" && !level && texture.type.shape == TextureShape.Depth2dArray) {

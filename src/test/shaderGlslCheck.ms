@@ -317,11 +317,6 @@ test "a depth comparison GLSL cannot spell is refused by name" {
 	assert refusal(vertex, 0, GlslTarget.Glsl430) ==
 		"printGlsl: entry 'depthVs': TextureSampleCompare outside a fragment entry";
 
-	let filtering = depthModule();
-	filtering.resources[6].samplerType = SamplerType.Filtering;
-	assert refusal(filtering, 0, GlslTarget.Glsl430) == "printGlsl: TextureSampleCompareLevel " +
-		"through sampler pair 'heightMap_heightSmp', whose sampler is no comparison sampler";
-
 	let colour = depthModule();
 	colour.resources[5].type = TEXTURE;
 	assert refusal(colour, 0, GlslTarget.Glsl430) ==

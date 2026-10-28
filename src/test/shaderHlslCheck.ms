@@ -283,17 +283,6 @@ test "a depth comparison HLSL cannot spell is refused by name" {
 	vertex.functions[0].body[1].expr.operands[2].operands[0].intrinsic =
 		Intrinsic.TextureSampleCompare;
 	assert refusal(vertex, 0) == "printHlsl: entry 'depthVs': TextureSampleCompare outside a fragment entry";
-
-	let filtering = depthModule();
-	filtering.resources[6].samplerType = SamplerType.Filtering;
-	assert refusal(filtering, 0) == "printHlsl: TextureSampleCompareLevel through a sampler " +
-		"that is no comparison sampler binding";
-
-	let colour = depthModule();
-	colour.functions[0].body[1].expr.operands[2].operands[0].operands[0].type.shape =
-		TextureShape.D2;
-	assert refusal(colour, 0) == "printHlsl: TextureSampleCompareLevel of a D2 texture, which " +
-		"holds no depth";
 }
 
 const PROBE_DIR = "out/hlslProbe";

@@ -30,8 +30,6 @@ import {
 	sampleBase,
 	isAtomic,
 	isUniformLoad,
-	isDepthShape,
-	isComparisonSampler,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import {
@@ -646,22 +644,8 @@ function layeredAt(p: Printer, e: ShaderExpr, layered: boolean): string {
 function sampleOf(p: Printer, e: ShaderExpr): string {
 	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
 	const base = layered ? 4 : 3;
-	if (e.operands.length != base && e.operands.length != base + 1) {
-		return fail(p, "TextureSample takes a texture, a sampler, coordinates and, for an array " +
-			"texture, a layer, and an optional constant offset");
-	}
 	const offset = e.operands.length == base ? "" : ", " + expr(p, e.operands[base]);
 	const [texture, sampler] = [e.operands[0], e.operands[1]];
-	if (texture.type.kind != ShaderTypeKind.Texture ||
-		sampler.type.kind != ShaderTypeKind.Sampler) {
-		return fail(p, "TextureSample takes a texture and a sampler first");
-	}
-	if (texture.type.shape == TextureShape.Multisampled2d) {
-		return fail(p, "TextureSample of a multisampled texture");
-	}
-	if (isComparisonSampler(p.module, sampler)) {
-		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
-	}
 	if (p.stage != ShaderStage.Fragment) {
 		return operand(p, texture) + ".SampleLevel(" + expr(p, sampler) + ", " +
 			layeredAt(p, e, layered) + ", 0.0" + offset + ")";
@@ -673,10 +657,6 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
-	if (isComparisonSampler(p.module, o[1])) {
-		return fail(p, e.intrinsic.toString() + " through a comparison sampler, which needs a " +
-			"depth reference");
-	}
 	const layer = isArrayTexture(t) ? 1 : 0;
 	const at = layer == 0 ? expr(p, o[2]) : (t.shape == TextureShape.CubeArray ? "float4(" :
 		"float3(") + expr(p, o[2]) + ", float(" + expr(p, o[3]) + "))";
@@ -691,27 +671,11 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 }
 
 function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
-	const name = e.intrinsic.toString();
 	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
 	const base = layered ? 5 : 4;
-	if (e.operands.length != base && e.operands.length != base + 1) {
-		return fail(p, name + " takes a texture, a sampler, coordinates, for an array texture a " +
-			"layer, a depth reference, and an optional constant offset");
-	}
 	const [texture, sampler] = [e.operands[0], e.operands[1]];
 	const reference = e.operands[base - 1];
 	const offset = e.operands.length == base ? "" : ", " + expr(p, e.operands[base]);
-	if (texture.type.kind != ShaderTypeKind.Texture ||
-		sampler.type.kind != ShaderTypeKind.Sampler) {
-		return fail(p, name + " takes a texture and a sampler first");
-	}
-	if (!isComparisonSampler(p.module, sampler)) {
-		return fail(p, name + " through a sampler that is no comparison sampler binding");
-	}
-	if (!isDepthShape(texture.type.shape)) {
-		return fail(p, name + " of a " + texture.type.shape.toString() + " texture, which holds " +
-			"no depth");
-	}
 	return operand(p, texture) + (level ? ".SampleCmpLevelZero(" : ".SampleCmp(") +
 		expr(p, sampler) + ", " + layeredAt(p, e, layered) + ", " + expr(p, reference) + offset + ")";
 }

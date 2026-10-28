@@ -359,8 +359,4 @@ test "depth comparison is refused by name where it cannot print" {
 	assert refused(compared(ShaderStage.Fragment, COMPARE, D2, true)) == "printed";
 	assert refused(compared(ShaderStage.Vertex, COMPARE, D2, true)) ==
 		"printMsl: entry 'tinyEntry': TextureSampleCompare outside a fragment entry";
-	assert refused(compared(ShaderStage.Fragment, LEVEL, D2, false)) ==
-		"printMsl: TextureSampleCompareLevel through a sampler that is no comparison sampler binding";
-	assert refused(compared(ShaderStage.Fragment, COMPARE, TextureShape.D2, true)) ==
-		"printMsl: TextureSampleCompare of a D2 texture, which holds no depth";
 }

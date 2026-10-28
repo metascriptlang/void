@@ -335,10 +335,18 @@ test "depth comparison is refused by name where it cannot print" {
 	assert refused(compared(ShaderStage.Fragment, COMPARE, D2, true)) == "printed";
 	assert refused(compared(ShaderStage.Vertex, COMPARE, D2, true)) ==
 		"printWgsl: entry 'tinyEntry': TextureSampleCompare outside a fragment entry";
-	assert refused(compared(ShaderStage.Fragment, LEVEL, D2, false)) ==
-		"printWgsl: TextureSampleCompareLevel through a sampler that is no comparison sampler binding";
-	assert refused(compared(ShaderStage.Fragment, COMPARE, TextureShape.D2, true)) ==
-		"printWgsl: TextureSampleCompare of a D2 texture, which holds no depth";
+}
+
+test "a depth comparison through a plain sampler, or of a colour texture, is refused for every target" {
+	const COMPARE = Intrinsic.TextureSampleCompare;
+	const LEVEL = Intrinsic.TextureSampleCompareLevel;
+	const plain = irErrors(compared(ShaderStage.Fragment, LEVEL, TextureShape.Depth2d, false)).join("
+");
+	assert plain.includes("TextureSampleCompareLevel through a sampler that is no comparison " +
+		"sampler binding");
+	const colour = irErrors(compared(ShaderStage.Fragment, COMPARE, TextureShape.D2, true)).join("
+");
+	assert colour.includes("TextureSampleCompare of a D2 texture, which holds no depth");
 }
 
 function helperCall(): ShaderExpr { return exprOf(ExprKind.Call, VEC4, 1, []); }

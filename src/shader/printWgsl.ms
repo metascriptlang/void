@@ -32,7 +32,6 @@ import {
 	isEffect,
 	isPredeclaredResult,
 	isDepthShape,
-	isComparisonSampler,
 } from "./ir";
 import { BindingSlot } from "./layout";
 import { builtinType, hasCallOrEffect, ioLocation, withoutSamplers } from "./irWalk";
@@ -430,22 +429,7 @@ function biasText(p: Printer, o: ShaderExpr[]): string {
 
 function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 	const o = e.operands;
-	const name = e.intrinsic.toString();
-	const layered = o.length > 0 && o[0].type.shape == TextureShape.Depth2dArray;
-	const base = layered ? 5 : 4;
-	if (o.length != base && o.length != base + 1 || o[0].type.kind != ShaderTypeKind.Texture ||
-		o[1].type.kind != ShaderTypeKind.Sampler) {
-		return refusal(p, name + " takes a texture, a sampler, coordinates, for an array texture " +
-			"a layer, a depth reference, and an optional constant offset");
-	}
 	if (!level) { p.derivatives = true; }
-	if (!isComparisonSampler(p.module, o[1])) {
-		return refusal(p, name + " through a sampler that is no comparison sampler binding");
-	}
-	if (!isDepthShape(o[0].type.shape)) {
-		return refusal(p, name + " of a " + o[0].type.shape.toString() + " texture, which holds " +
-			"no depth");
-	}
 	return (level ? "textureSampleCompareLevel(" : "textureSampleCompare(") + argsText(p, o) + ")";
 }
 

@@ -6,7 +6,15 @@ import { mkdir, writeFile } from "std/fs";
 import { Wrap } from "../gpu/state";
 import { programModule, stageSource } from "../shader/descriptor";
 import { glsl, glslIr, glslLinkedIr } from "../shader/emit";
-import { Intrinsic, ShaderModule, StmtKind, TextureShape, irErrors } from "../shader/ir";
+import {
+	Intrinsic,
+	SamplerType,
+	ShaderExpr,
+	ShaderModule,
+	StmtKind,
+	TextureShape,
+	irErrors,
+} from "../shader/ir";
 import { ShaderTarget } from "../shader/layout";
 import { reflectProgram } from "../shader/reflect";
 import { GPUShaderStage } from "../webgpu/types.ms";
@@ -200,6 +208,41 @@ test "an explicit sample of a depth texture with a float level, or without its l
 	graded.operands.pop();
 	assert irErrors(short).includes("function 'mippedFs': TextureSampleGrad takes a texture, a " +
 		"sampler, coordinates, a layer of an array, and two derivatives, as WGSL's");
+}
+
+function gradedOf(m: ShaderModule): ShaderExpr {
+	const body = m.functions[m.entries[1].functionIndex].body;
+	return body.filter((s) => s.kind == StmtKind.Let &&
+		s.expr.intrinsic == Intrinsic.TextureSampleGrad)[0].expr;
+}
+
+test "a sample through a comparison sampler, of a multisampled texture, or with the wrong operands is refused for every target" {
+	let comparison = programOf();
+	comparison.resources[gradedOf(comparison).operands[1].index].samplerType = SamplerType.Comparison;
+	assert irErrors(comparison).join("
+").includes("TextureSampleGrad through a comparison " +
+		"sampler, which needs a depth reference");
+
+	let plain = programOf();
+	const sample = gradedOf(plain);
+	sample.intrinsic = Intrinsic.TextureSample;
+	sample.operands = sample.operands.slice(0, 3);
+	assert irErrors(plain).length == 0;
+	plain.resources[sample.operands[1].index].samplerType = SamplerType.Comparison;
+	assert irErrors(plain).join("
+").includes("TextureSample through a comparison sampler, " +
+		"which needs a depth reference");
+	plain.resources[sample.operands[1].index].samplerType = SamplerType.Filtering;
+
+	sample.operands[0].type.shape = TextureShape.Multisampled2d;
+	assert irErrors(plain).join("
+").includes("TextureSample of a multisampled texture");
+	sample.operands[0].type.shape = TextureShape.D2;
+
+	sample.operands = sample.operands.slice(0, 2);
+	assert irErrors(plain).join("
+").includes("TextureSample takes a texture, a sampler, " +
+		"coordinates and, for an array texture, a layer, and an optional constant offset");
 }
 
 export struct Sky {

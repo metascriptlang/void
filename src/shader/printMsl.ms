@@ -30,8 +30,6 @@ import {
 	frexpResultType,
 	modfResultType,
 	texelScalar,
-	isDepthShape,
-	isComparisonSampler,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
 import {
@@ -407,20 +405,9 @@ function texelCoordinate(p: Printer, at: ShaderExpr): string {
 
 function sampleText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
-	if (o.length < 3 || o[0].type.kind != ShaderTypeKind.Texture ||
-		o[1].type.kind != ShaderTypeKind.Sampler) {
-		return fail(p, "TextureSample takes a texture, a sampler and coordinates");
-	}
 	const t = o[0].type;
-	if (t.shape == TextureShape.Multisampled2d) {
-		return fail(p, "TextureSample of a multisampled texture");
-	}
-	if (isComparisonSampler(p.module, o[1])) {
-		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
-	}
 	let args = [exprText(p, o[1]), exprText(p, o[2])];
 	if (isArrayed(t)) {
-		if (o.length < 4) { return fail(p, "TextureSample of an array texture without a layer"); }
 		args.push("uint(" + exprText(p, o[3]) + ")");
 	}
 	if (p.stage != ShaderStage.Fragment && t.shape != TextureShape.D1) { args.push("level(0.0)"); }
@@ -442,10 +429,6 @@ function gradientName(p: Printer, shape: TextureShape): string {
 function explicitSampleText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
-	if (isComparisonSampler(p.module, o[1])) {
-		return fail(p, e.intrinsic.toString() + " through a comparison sampler, which needs a " +
-			"depth reference");
-	}
 	const layer = isArrayed(t) ? 1 : 0;
 	let args = [exprText(p, o[1]), exprText(p, o[2])];
 	if (layer == 1) { args.push("uint(" + exprText(p, o[3]) + ")"); }
@@ -465,21 +448,8 @@ function explicitSampleText(p: Printer, e: ShaderExpr): string {
 
 function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 	const o = e.operands;
-	const name = e.intrinsic.toString();
-	const layered = o.length > 0 && o[0].type.shape == TextureShape.Depth2dArray;
+	const layered = o[0].type.shape == TextureShape.Depth2dArray;
 	const base = layered ? 5 : 4;
-	if (o.length != base && o.length != base + 1 || o[0].type.kind != ShaderTypeKind.Texture ||
-		o[1].type.kind != ShaderTypeKind.Sampler) {
-		return fail(p, name + " takes a texture, a sampler, coordinates, for an array texture a " +
-			"layer, a depth reference, and an optional constant offset");
-	}
-	if (!isComparisonSampler(p.module, o[1])) {
-		return fail(p, name + " through a sampler that is no comparison sampler binding");
-	}
-	const shape = o[0].type.shape;
-	if (!isDepthShape(shape)) {
-		return fail(p, name + " of a " + shape.toString() + " texture, which holds no depth");
-	}
 	let args = [exprText(p, o[1]), exprText(p, o[2])];
 	if (layered) { args.push("uint(" + exprText(p, o[3]) + ")"); }
 	args.push(exprText(p, o[base - 1]));

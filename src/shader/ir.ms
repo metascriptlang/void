@@ -464,6 +464,35 @@ function explicitSampleError(e: ShaderExpr): string {
 	return "";
 }
 
+function sampleError(m: ShaderModule, e: ShaderExpr): string {
+	const name = e.intrinsic.toString();
+	const o = e.operands;
+	const typed = o.length >= 2 && o[0].type.kind == ShaderTypeKind.Texture &&
+		o[1].type.kind == ShaderTypeKind.Sampler;
+	if (isExplicitSample(e.intrinsic)) {
+		return typed && isComparisonSampler(m, o[1]) ?
+			name + " through a comparison sampler, which needs a depth reference" : "";
+	}
+	const compare = e.intrinsic != Intrinsic.TextureSample;
+	const base = typed ? sampleBase(e) : 0;
+	if (!typed || o.length != base && o.length != base + 1) {
+		return compare ? name + " takes a texture, a sampler, coordinates, for an array texture a " +
+			"layer, a depth reference, and an optional constant offset" :
+			name + " takes a texture, a sampler, coordinates and, for an array texture, a layer, " +
+			"and an optional constant offset";
+	}
+	if (compare) {
+		if (!isComparisonSampler(m, o[1])) {
+			return name + " through a sampler that is no comparison sampler binding";
+		}
+		return isDepthShape(o[0].type.shape) ? "" :
+			name + " of a " + o[0].type.shape.toString() + " texture, which holds no depth";
+	}
+	if (o[0].type.shape == TextureShape.Multisampled2d) { return name + " of a multisampled texture"; }
+	return isComparisonSampler(m, o[1]) ?
+		name + " through a comparison sampler, which needs a depth reference" : "";
+}
+
 export function isBitsOp(op: Intrinsic): boolean {
 	const at = op as int32;
 	return at >= (Intrinsic.CountOneBits as int32) && at <= (Intrinsic.Unpack2x16Float as int32);
@@ -1189,8 +1218,10 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 		if (error != "") { c.errors.push(owner + ": " + error); }
 	}
 	if (e.kind == ExprKind.Intrinsic && isSampling(e.intrinsic)) {
-		const error = offsetError(e);
+		const error = sampleError(m, e);
 		if (error != "") { c.errors.push(owner + ": " + error); }
+		const offset = offsetError(e);
+		if (offset != "") { c.errors.push(owner + ": " + offset); }
 	}
 	if (e.kind == ExprKind.Intrinsic && isBitsOp(e.intrinsic)) {
 		const error = bitsError(e);
