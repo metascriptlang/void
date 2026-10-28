@@ -19,9 +19,11 @@ later replaces the hand-written GLSL source of each base.
   oracle), GLSL 430, GLSL ES 300, HLSL SM5, WGSL and MSL from it, one file each, as Mach's
   `codegen/*.zig`. Slots and uniform buffer layout are fixed on the IR before any printer, and that
   pass produces the `GPUShaderModuleDescriptor` reflection (Heaps `Flatten`). A program key is a
-  `FeatureCondition` over feature names; per key, the IR is specialized and its unread declarations
-  dropped (Heaps `Eval` + `Dce`). Own backends, once rejected because shdc wrote every target, are
-  chosen because sokol is being replaced ([docs/GPU.md](../../docs/GPU.md)). sokol-shdc is on no
+  `FeatureCondition` over feature names; per key, the IR is specialized, keeping every declared
+  resource, linked, and only then are its unread declarations dropped (Heaps `Eval`, `Linker`,
+  `Dce` in that order), so an effect merges by name into a block the key no longer reads. Own
+  backends, once rejected because shdc wrote every target, are chosen because sokol is being
+  replaced ([docs/GPU.md](../../docs/GPU.md)). sokol-shdc is on no
   build or regeneration path. Its reflection matched the committed modules on all three while
   fetches still took a sampler (2026-10-23, BUILD `4b5816aea`); it refuses every stage that
   fetches without one (see "No fetch without a sampler" below), so the goldens replaced it as the
@@ -81,8 +83,8 @@ later replaces the hand-written GLSL source of each base.
   that phase, in the order given, and merges as Heaps' `hxsl/Linker.hx` `allocVar` does: structs
   and resources by name, refused when a struct's members or a resource's kind or type differ;
   functions and constants renamed on a clash. An effect on a phase with no hook site is
-  refused. After each merge `link` numbers every resource still at binding -1 within its group
-  (blocks, views, samplers) at the next binding past the highest one there, in link order, as
+  refused. Once the unread declarations are dropped, `link` numbers every resource still at
+  binding -1 within its group (blocks, views, samplers) at the next binding past the highest one there, in link order, as
   Heaps' `hxsl/Flatten.hx` `packTextures` and `packBuffers` give each var the next position of its
   kind; a block stays its own block. A group past `slotLimit` (`layout.ms`: 8 blocks, 32 views,
   12 samplers) is refused, naming the effect and the resource. Pinned in
@@ -215,8 +217,8 @@ later replaces the hand-written GLSL source of each base.
   macro VM, in the author's order, before the same print and register path; `materialModule`
   declares the descriptor as `shaderModule` does. `[]` skips `link`, so it registers what
   `shaderProgram` registers. `linkedProgram` (`link.ms`) is that path for `shaderBuild` and
-  `tools/irPrograms.ms` alike: specialize per key, then link; a row of the tool links the
-  `EFFECTS` entries whose feature it has, in table order (none yet). A non-segment element is
+  `tools/irPrograms.ms` alike: specialize per key, link, then drop the unread declarations; a
+  row of the tool links the `EFFECTS` entries whose feature it has, in table order (none yet). A non-segment element is
   refused by its segment message at the function, a link refusal after "materialProgram '<name>': " at the name
   (`tests/refusals/material*.ms`); pinned in `src/test/shaderMaterialProgramCheck.ms`. Cost
   (2026-10-29, BUILD `df4c2416a`, Windows, `msc check`, three runs each): the file without
