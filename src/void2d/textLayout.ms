@@ -1099,6 +1099,7 @@ export struct ShapedLine {
 	runFonts: Vec<FontId>;
 	breaks: Vec<int32>;
 	shaped: ShapedText;
+	wrap: LineWrap;
 }
 
 export interface LineShapes {
@@ -1106,10 +1107,14 @@ export interface LineShapes {
 	shaping: boolean;
 	direction: TextDirection;
 	lines: Vec<ShapedLine>;
+	runMaps: Vec<Vec<int32>>;
 }
 
 export function emptyLineShapes(style: TextStyle): LineShapes {
-	return { style: style, shaping: false, direction: TextDirection.Auto, lines: new Array(0) };
+	return {
+		style: style, shaping: false, direction: TextDirection.Auto, lines: new Array(0),
+		runMaps: new Array(0),
+	};
 }
 
 function unitsOf(bytes: Readonly<Span<uint8>>, from: int32, to: int32): int32 {
@@ -1149,8 +1154,7 @@ function lineValues(shaped: Readonly<ShapedText>): Vec<int32> {
 
 // GPUI's LineLayoutCache (line_layout.rs:457-719, shape_text text_system.rs:750): the text is
 // shaped one hard line at a time and a line whose text, run slice, shaping breaks and style are
-// unchanged keeps its shape, so an edit shapes only the lines it touched. Joined, the lines equal
-// shapeText of the whole text: shaping, kerning, graphemes and BiDi paragraphs all stop at '\n'.
+// unchanged keeps its shape, so an edit shapes only the lines it touched.
 export function shapeLines(
 	text: string,
 	style: TextStyle,
@@ -1158,7 +1162,7 @@ export function shapeLines(
 	shapingBreaks: Readonly<Span<int32>>,
 	direction: TextDirection,
 	ref cache: LineShapes,
-): Result<ShapedText, TextError> {
+): Result<void, TextError> {
 	const shaping: boolean = textShapingOn();
 	let byText: Map<string, int32> = new Map<string, int32>();
 	if (cache.shaping == shaping && cache.direction == direction &&
@@ -1219,7 +1223,7 @@ export function shapeLines(
 			}
 			lines.push({
 				text: lineText, runLens: runLens, runFonts: runFonts, breaks: breaks,
-				shaped: shaped.value,
+				shaped: shaped.value, wrap: emptyWrap(),
 			});
 		}
 		runMaps.push(runMap);
@@ -1231,72 +1235,9 @@ export function shapeLines(
 	cache.shaping = shaping;
 	cache.direction = direction;
 	cache.lines = lines;
-	return Result.ok(joinLines(lines, runMaps, style, direction));
+	cache.runMaps = runMaps;
+	return Result.ok(null);
 }
-
-function joinLines(
-	lines: Readonly<Span<ShapedLine>>,
-	runMaps: Readonly<Span<Vec<int32>>>,
-	style: TextStyle,
-	direction: TextDirection,
-): ShapedText {
-	let glyphs: Vec<LaidGlyph> = new Array(0);
-	let values: Vec<int32> = new Array(0);
-	let bidi: BidiRuns = { levels: new Array(0), resets: new Array(0), paragraphs: new Array(0) };
-	let anyBidi: boolean = false;
-	for (const line of lines) {
-		if ((line.shaped.bidi.levels.length as int32) > 0) { anyBidi = true; }
-	}
-	let chars: int32 = 0;
-	let units: int32 = 0;
-	let bytes: int32 = 0;
-	let stop: float32 = 0.0;
-	const count: int32 = lines.length as int32;
-	for (let li: int32 = 0; li < count; li++) {
-		const shaped: Readonly<ShapedText> = lines[li].shaped;
-		for (const g of shaped.glyphs) {
-			glyphs.push({
-				...g,
-				line: li,
-				charIndex: g.charIndex + chars,
-				index: g.index + units,
-				byteStart: g.byteStart + bytes,
-				byteEnd: g.byteEnd + bytes,
-				run: g.run == NO_RUN ? NO_RUN : runMaps[li][g.run],
-			});
-		}
-		for (const v of shaped.values) { values.push(v); }
-		if (anyBidi) {
-			let paragraphs: Vec<int32> = new Array(0);
-			if ((shaped.bidi.levels.length as int32) == 0) {
-				resolveText(lineValues(shaped), direction, bidi.levels, bidi.resets, paragraphs);
-			} else {
-				for (const level of shaped.bidi.levels) { bidi.levels.push(level); }
-				for (const reset of shaped.bidi.resets) { bidi.resets.push(reset); }
-				for (const paragraph of shaped.bidi.paragraphs) { paragraphs.push(paragraph); }
-			}
-			const kept: int32 = li + 1 < count ? 1 : paragraphs.length as int32;
-			for (let p: int32 = 0; p < kept; p++) { bidi.paragraphs.push(paragraphs[p]); }
-		}
-		const last: int32 = (shaped.glyphs.length as int32) - 1;
-		chars = chars + (last >= 0 ? shaped.glyphs[last].charIndex + 1 : 0);
-		units = units + shaped.units;
-		bytes = bytes + shaped.bytes;
-		if (shaped.tabStop > stop) { stop = shaped.tabStop; }
-	}
-	return {
-		glyphs: glyphs,
-		values: values,
-		breaks: new Array(0),
-		ellipsis: new Array(0),
-		units: units,
-		bytes: bytes,
-		style: style,
-		tabStop: stop,
-		bidi: bidi,
-	};
-}
-
 
 function lineParagraph(shaped: ShapedText, lineStart: int32): int32 {
 	if (lineStart < (shaped.glyphs.length as int32)) { return shaped.glyphs[lineStart].line; }
@@ -1360,7 +1301,7 @@ function reorderRow(
 	inkRight: float32,
 	ref bidi: LayoutBidi,
 ): void {
-	if ((shaped.bidi.levels.length as int32) == 0) { return; }
+	if ((shaped.bidi.paragraphs.length as int32) == 0) { return; }
 	const paragraph: int32 = shaped.bidi.paragraphs[lineParagraph(shaped, lineStart)];
 	bidi.lineLevels.push(paragraph);
 	const total: int32 = glyphs.length as int32;
@@ -1644,22 +1585,20 @@ export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOpti
 	return wrapOnGrid(shaped, style, options, noCells);
 }
 
-export function wrapOnGrid(
-	shaped: ShapedText, style: TextStyle, options: LineOptions, cellWidths: Readonly<Span<uint8>>,
-): TextLayout {
+function mismatchedCells(bytes: int32, cellWidths: Readonly<Span<uint8>>): boolean {
 	const widths: int32 = cellWidths.length as int32;
-	if (widths != 0 && widths != shaped.bytes) {
-		console.log(
-			`void2d: cell widths cover ${widths} bytes, the text has ${shaped.bytes}; ` +
-			`laid out one cell per cluster`,
-		);
-		return wrapText(shaped, style, options);
-	}
-	const primary: int32 = fontFace(style.font);
-	const metrics = faceMetrics(primary, style.size);
-	const lineHeight: float32 = metrics.ascent + metrics.descent + metrics.lineGap;
-	const truncating: boolean = style.maxWidth > 0.0 && options.truncate != Truncate.None;
-	const wrapping: boolean = style.maxWidth > 0.0 && !truncating &&
+	if (widths == 0 || widths == bytes) { return false; }
+	console.log(
+		`void2d: cell widths cover ${widths} bytes, the text has ${bytes}; ` +
+		`laid out one cell per cluster`,
+	);
+	return true;
+}
+
+function wrapsAt(
+	shaped: ShapedText, style: TextStyle, options: LineOptions, cellWidths: Readonly<Span<uint8>>,
+): boolean {
+	const wrapping: boolean = style.maxWidth > 0.0 && options.truncate == Truncate.None &&
 		!fitsUnbroken(shaped, style.maxWidth, options.forceWidth, cellWidths);
 	const count: int32 = shaped.glyphs.length as int32;
 	if (wrapping && count > 0 && (shaped.breaks.length as int32) == 0) {
@@ -1670,90 +1609,307 @@ export function wrapOnGrid(
 			}
 		}
 	}
-	let glyphs: Vec<LaidGlyph> = new Array(0);
-	let layoutBidi: LayoutBidi = {
-		levels: new Array(0), resets: new Array(0), logicalX: new Array(0),
-		lineLevels: new Array(0),
+	return wrapping;
+}
+
+export struct WrapKey {
+	valid: boolean;
+	maxWidth: float32;
+	lineSpacing: float32;
+	options: LineOptions;
+	cells: Vec<uint8>;
+	bidi: boolean;
+}
+
+export interface LineWrap {
+	key: WrapKey;
+	glyphs: Vec<LaidGlyph>;
+	bidi: LayoutBidi;
+	rows: Vec<LineBox>;
+	width: float32;
+	top: float32;
+}
+
+function emptyWrap(): LineWrap {
+	return {
+		key: {
+			valid: false, maxWidth: 0.0, lineSpacing: 0.0, options: PLAIN_LINES,
+			cells: new Array(0), bidi: false,
+		},
+		glyphs: new Array(0),
+		bidi: {
+			levels: new Array(0), resets: new Array(0), logicalX: new Array(0),
+			lineLevels: new Array(0),
+		},
+		rows: new Array(0),
+		width: 0.0,
+		top: 0.0,
 	};
-	let lines: Vec<LineBox> = new Array(0);
-	let width: float32 = 0.0;
-	let top: float32 = 0.0;
+}
+
+function wrapParagraph(
+	shaped: ShapedText,
+	start: int32,
+	paragraphEnd: int32,
+	style: TextStyle,
+	options: LineOptions,
+	cellWidths: Readonly<Span<uint8>>,
+	wrapping: boolean,
+	primary: int32,
+	into: LineWrap,
+): void {
+	const count: int32 = shaped.glyphs.length as int32;
+	const truncating: boolean = style.maxWidth > 0.0 && options.truncate != Truncate.None;
+	let lineStart: int32 = start;
+	let continuation: boolean = false;
+	while (true) {
+		const indent: float32 = continuation ? options.hangingIndent : 0.0;
+		const room: float32 = style.maxWidth - indent;
+		const lineBreak: LineBreak = wrapping
+			? breakAfter(shaped, lineStart, paragraphEnd, room, options.forceWidth, cellWidths)
+			: { end: paragraphEnd, next: paragraphEnd };
+		const end: int32 = lineBreak.end;
+		const lineIndex: int32 = into.rows.length as int32;
+		const firstGlyph: int32 = into.glyphs.length as int32;
+		if (truncating) {
+			pushTruncated(
+				shaped, lineStart, end, lineIndex, into.glyphs, style.maxWidth, options.truncate,
+			);
+		} else {
+			pushLine(shaped, lineStart, end, lineIndex, into.glyphs);
+		}
+		let lineWidth: float32 = options.forceWidth > 0.0
+			? forceCells(into.glyphs, firstGlyph, options.forceWidth, cellWidths)
+			: lineWidthOf(into.glyphs, firstGlyph);
+		reorderRow(shaped, lineStart, into.glyphs, firstGlyph, lineWidth, into.bidi);
+		for (let k = firstGlyph; k < (into.glyphs.length as int32); k++) {
+			into.glyphs[k].x = into.glyphs[k].x + indent;
+		}
+		const box: FaceMetrics = options.forceWidth > 0.0
+			? faceMetrics(primary, style.size)
+			: tallestFaces(into.glyphs[firstGlyph..(into.glyphs.length as int32)], primary, style);
+		const height: float32 = box.ascent + box.descent + box.lineGap;
+		const atEnd: boolean = lineStart >= count;
+		const indexStart: int32 = atEnd ? shaped.units : shaped.glyphs[lineStart].index;
+		const byteStart: int32 = atEnd ? shaped.bytes : shaped.glyphs[lineStart].byteStart;
+		const indexEnd: int32 = end > lineStart ? unitsTo(shaped, end) : indexStart;
+		const byteEnd: int32 = end > lineStart ? shaped.glyphs[end - 1].byteEnd : byteStart;
+		into.rows.push({
+			firstGlyph: firstGlyph,
+			glyphCount: (into.glyphs.length as int32) - firstGlyph,
+			x: indent,
+			top: into.top,
+			baseline: into.top + box.ascent,
+			height: height,
+			width: lineWidth,
+			charStart: lineStart,
+			charEnd: end,
+			indexStart: indexStart,
+			indexEnd: indexEnd,
+			byteStart: byteStart,
+			byteEnd: byteEnd,
+		});
+		if (indent + lineWidth > into.width) { into.width = indent + lineWidth; }
+		into.top = into.top + height + style.lineSpacing;
+		if (lineBreak.next >= paragraphEnd) { break; }
+		lineStart = lineBreak.next;
+		continuation = true;
+	}
+}
+
+function paragraphEndFrom(shaped: ShapedText, start: int32): int32 {
+	const count: int32 = shaped.glyphs.length as int32;
+	let end: int32 = start;
+	while (end < count && shaped.glyphs[end].codepoint != NEWLINE) { end = end + 1; }
+	return end;
+}
+
+function laidOut(rows: LineWrap, style: TextStyle, primary: int32): TextLayout {
+	alignLines(rows.glyphs, rows.rows, style, rows.width);
+	const metrics = faceMetrics(primary, style.size);
+	return {
+		glyphs: rows.glyphs,
+		bidi: rows.bidi,
+		lines: rows.rows,
+		ascent: metrics.ascent,
+		descent: metrics.descent,
+		lineHeight: metrics.ascent + metrics.descent + metrics.lineGap,
+		width: rows.width,
+		height: rows.top - style.lineSpacing,
+		decoration: decorationMetrics(primary, style.size),
+	};
+}
+
+export function wrapOnGrid(
+	shaped: ShapedText, style: TextStyle, options: LineOptions, cellWidths: Readonly<Span<uint8>>,
+): TextLayout {
+	if (mismatchedCells(shaped.bytes, cellWidths)) { return wrapText(shaped, style, options); }
+	const primary: int32 = fontFace(style.font);
+	const wrapping: boolean = wrapsAt(shaped, style, options, cellWidths);
+	const count: int32 = shaped.glyphs.length as int32;
+	let rows: LineWrap = emptyWrap();
 	let start: int32 = 0;
 	while (true) {
-		let paragraphEnd: int32 = start;
-		while (paragraphEnd < count && shaped.glyphs[paragraphEnd].codepoint != NEWLINE) {
-			paragraphEnd = paragraphEnd + 1;
-		}
-		let lineStart: int32 = start;
-		let continuation: boolean = false;
-		while (true) {
-			const indent: float32 = continuation ? options.hangingIndent : 0.0;
-			const room: float32 = style.maxWidth - indent;
-			const lineBreak: LineBreak = wrapping
-				? breakAfter(shaped, lineStart, paragraphEnd, room, options.forceWidth, cellWidths)
-				: { end: paragraphEnd, next: paragraphEnd };
-			const end: int32 = lineBreak.end;
-			const lineIndex: int32 = lines.length as int32;
-			const firstGlyph: int32 = glyphs.length as int32;
-			if (truncating) {
-				pushTruncated(
-					shaped, lineStart, end, lineIndex, glyphs, style.maxWidth, options.truncate,
-				);
-			} else {
-				pushLine(shaped, lineStart, end, lineIndex, glyphs);
-			}
-			let lineWidth: float32 = options.forceWidth > 0.0
-				? forceCells(glyphs, firstGlyph, options.forceWidth, cellWidths)
-				: lineWidthOf(glyphs, firstGlyph);
-			reorderRow(shaped, lineStart, glyphs, firstGlyph, lineWidth, layoutBidi);
-			for (let k = firstGlyph; k < (glyphs.length as int32); k++) {
-				glyphs[k].x = glyphs[k].x + indent;
-			}
-			const box: FaceMetrics = options.forceWidth > 0.0
-				? metrics
-				: tallestFaces(glyphs[firstGlyph..(glyphs.length as int32)], primary, style);
-			const height: float32 = box.ascent + box.descent + box.lineGap;
-			const atEnd: boolean = lineStart >= count;
-			const indexStart: int32 = atEnd ? shaped.units : shaped.glyphs[lineStart].index;
-			const byteStart: int32 = atEnd ? shaped.bytes : shaped.glyphs[lineStart].byteStart;
-			const indexEnd: int32 = end > lineStart ? unitsTo(shaped, end) : indexStart;
-			const byteEnd: int32 = end > lineStart ? shaped.glyphs[end - 1].byteEnd : byteStart;
-			lines.push({
-				firstGlyph: firstGlyph,
-				glyphCount: (glyphs.length as int32) - firstGlyph,
-				x: indent,
-				top: top,
-				baseline: top + box.ascent,
-				height: height,
-				width: lineWidth,
-				charStart: lineStart,
-				charEnd: end,
-				indexStart: indexStart,
-				indexEnd: indexEnd,
-				byteStart: byteStart,
-				byteEnd: byteEnd,
-			});
-			if (indent + lineWidth > width) { width = indent + lineWidth; }
-			top = top + height + style.lineSpacing;
-			if (lineBreak.next >= paragraphEnd) { break; }
-			lineStart = lineBreak.next;
-			continuation = true;
-		}
+		const paragraphEnd: int32 = paragraphEndFrom(shaped, start);
+		wrapParagraph(
+			shaped, start, paragraphEnd, style, options, cellWidths, wrapping, primary, rows,
+		);
 		if (paragraphEnd >= count) { break; }
 		start = paragraphEnd + 1;
 	}
-	alignLines(glyphs, lines, style, width);
+	return laidOut(rows, style, primary);
+}
+
+function sameCells(a: Readonly<Span<uint8>>, b: Readonly<Span<uint8>>): boolean {
+	if (a.length != b.length) { return false; }
+	for (let k: int32 = 0; k < (a.length as int32); k++) {
+		if (a[k] != b[k]) { return false; }
+	}
+	return true;
+}
+
+function wrapHolds(
+	key: Readonly<WrapKey>,
+	style: TextStyle,
+	options: LineOptions,
+	cells: Readonly<Span<uint8>>,
+	bidi: boolean,
+): boolean {
+	return key.valid && key.maxWidth == style.maxWidth && key.lineSpacing == style.lineSpacing &&
+		key.options.truncate == options.truncate &&
+		key.options.hangingIndent == options.hangingIndent &&
+		key.options.forceWidth == options.forceWidth && key.bidi == bidi &&
+		sameCells(key.cells, cells);
+}
+
+function withBidi(shaped: ShapedText, direction: TextDirection): ShapedText {
+	let bidi: BidiRuns = { levels: new Array(0), resets: new Array(0), paragraphs: new Array(0) };
+	resolveText(lineValues(shaped), direction, bidi.levels, bidi.resets, bidi.paragraphs);
 	return {
-		glyphs: glyphs,
-		bidi: layoutBidi,
-		lines: lines,
-		ascent: metrics.ascent,
-		descent: metrics.descent,
-		lineHeight: lineHeight,
-		width: width,
-		height: top - style.lineSpacing,
-		decoration: decorationMetrics(primary, style.size),
+		glyphs: shaped.glyphs,
+		values: shaped.values,
+		breaks: new Array(0),
+		ellipsis: new Array(0),
+		units: shaped.units,
+		bytes: shaped.bytes,
+		style: shaped.style,
+		tabStop: shaped.tabStop,
+		bidi: bidi,
 	};
+}
+
+function wrapLine(
+	shaped: ShapedText,
+	style: TextStyle,
+	options: LineOptions,
+	cells: Readonly<Span<uint8>>,
+	bidi: boolean,
+	direction: TextDirection,
+	primary: int32,
+): LineWrap {
+	const source: ShapedText = bidi ? withBidi(shaped, direction) : shaped;
+	let rows: LineWrap = emptyWrap();
+	const wrapping: boolean = wrapsAt(source, style, options, cells);
+	wrapParagraph(
+		source, 0, paragraphEndFrom(source, 0), style, options, cells, wrapping, primary, rows,
+	);
+	let kept: Vec<uint8> = new Array(0);
+	for (const c of cells) { kept.push(c); }
+	rows.key = {
+		valid: true, maxWidth: style.maxWidth, lineSpacing: style.lineSpacing, options: options,
+		cells: kept, bidi: bidi,
+	};
+	return rows;
+}
+
+// GPUI's WrappedLineLayout (line_layout.rs:277), cached with its wrap width per line
+// (line_layout.rs:457-719): each hard line wraps on its own and keeps its rows while its shape,
+// width, options and cells hold.
+export function wrapLines(
+	ref shapes: LineShapes,
+	style: TextStyle,
+	options: LineOptions,
+	cellWidths: Readonly<Span<uint8>>,
+	ref out: TextLayout,
+): void {
+	const count: int32 = shapes.lines.length as int32;
+	let total: int32 = 0;
+	let anyBidi: boolean = false;
+	for (let li: int32 = 0; li < count; li++) {
+		total = total + shapes.lines[li].shaped.bytes;
+		if ((shapes.lines[li].shaped.bidi.paragraphs.length as int32) > 0) { anyBidi = true; }
+	}
+	const gridded: boolean = !mismatchedCells(total, cellWidths) &&
+		(cellWidths.length as int32) > 0;
+	const primary: int32 = fontFace(style.font);
+	out.glyphs.length = 0;
+	out.lines.length = 0;
+	out.bidi.levels.length = 0;
+	out.bidi.resets.length = 0;
+	out.bidi.logicalX.length = 0;
+	out.bidi.lineLevels.length = 0;
+	out.width = 0.0;
+	let top: float32 = 0.0;
+	let chars: int32 = 0;
+	let units: int32 = 0;
+	let bytes: int32 = 0;
+	let shapedBase: int32 = 0;
+	for (let li: int32 = 0; li < count; li++) {
+		const shaped: ShapedText = shapes.lines[li].shaped;
+		const cells: Readonly<Span<uint8>> =
+			cellWidths[(gridded ? bytes : 0)..(gridded ? bytes + shaped.bytes : 0)];
+		const bidi: boolean = anyBidi && (shaped.bidi.paragraphs.length as int32) == 0;
+		if (!wrapHolds(shapes.lines[li].wrap.key, style, options, cells, bidi)) {
+			shapes.lines[li].wrap =
+				wrapLine(shaped, style, options, cells, bidi, shapes.direction, primary);
+		}
+		const wrap: LineWrap = shapes.lines[li].wrap;
+		const glyphBase: int32 = out.glyphs.length as int32;
+		const rowBase: int32 = out.lines.length as int32;
+		for (const g of wrap.glyphs) {
+			out.glyphs.push({
+				...g,
+				line: g.line + rowBase,
+				charIndex: g.charIndex + chars,
+				index: g.index + units,
+				byteStart: g.byteStart + bytes,
+				byteEnd: g.byteEnd + bytes,
+				run: g.run == NO_RUN ? NO_RUN : shapes.runMaps[li][g.run],
+			});
+		}
+		for (const r of wrap.rows) {
+			out.lines.push({
+				...r,
+				firstGlyph: r.firstGlyph + glyphBase,
+				top: r.top + top,
+				baseline: r.baseline + top,
+				charStart: r.charStart + shapedBase,
+				charEnd: r.charEnd + shapedBase,
+				indexStart: r.indexStart + units,
+				indexEnd: r.indexEnd + units,
+				byteStart: r.byteStart + bytes,
+				byteEnd: r.byteEnd + bytes,
+			});
+		}
+		for (const level of wrap.bidi.levels) { out.bidi.levels.push(level); }
+		for (const reset of wrap.bidi.resets) { out.bidi.resets.push(reset); }
+		for (const x of wrap.bidi.logicalX) { out.bidi.logicalX.push(x); }
+		for (const level of wrap.bidi.lineLevels) { out.bidi.lineLevels.push(level); }
+		if (wrap.width > out.width) { out.width = wrap.width; }
+		top = top + wrap.top;
+		const last: int32 = (shaped.glyphs.length as int32) - 1;
+		chars = chars + (last >= 0 ? shaped.glyphs[last].charIndex + 1 : 0);
+		units = units + shaped.units;
+		bytes = bytes + shaped.bytes;
+		shapedBase = shapedBase + (shaped.glyphs.length as int32);
+	}
+	alignLines(out.glyphs, out.lines, style, out.width);
+	const metrics = faceMetrics(primary, style.size);
+	out.ascent = metrics.ascent;
+	out.descent = metrics.descent;
+	out.lineHeight = metrics.ascent + metrics.descent + metrics.lineGap;
+	out.height = top - style.lineSpacing;
+	out.decoration = decorationMetrics(primary, style.size);
 }
 
 function unitsTo(shaped: ShapedText, end: int32): int32 {

@@ -21,7 +21,6 @@ import {
 	RunSegment,
 	LineOptions,
 	LineShapes,
-	ShapedText,
 	TextError,
 	TextErrorKind,
 	describe,
@@ -34,9 +33,8 @@ import {
 	NO_RUN,
 	PLAIN_LINES,
 	shapeLines,
-	shapeText,
 	textShapingOn,
-	wrapOnGrid,
+	wrapLines,
 } from "./textLayout";
 import {
 	ColourGlyph,
@@ -145,7 +143,6 @@ export interface LabelText {
 	refused: int32;
 	runs: Vec<TextRun>;
 	decorations: Vec<Decoration>;
-	shaped: ShapedText;
 	lineShapes: LineShapes;
 	shapedText: string;
 	shapedWithShaping: boolean;
@@ -237,15 +234,6 @@ function emptyLayout(): TextLayout {
 	};
 }
 
-function emptyShaped(style: TextStyle): ShapedText {
-	const noRuns: Vec<TextRun> = new Array(0);
-	const noBreaks: Vec<int32> = new Array(0);
-	const shaped = shapeText("", style, noRuns, noBreaks);
-	if (shaped.ok) { return shaped.value; }
-	console.log(`void2d: the empty text was refused: ${shaped.error.describe()}`);
-	unreachable;
-}
-
 export function allocateLabelText(): int32 {
 	const style: TextStyle = {
 		font: DEFAULT_FONT,
@@ -270,7 +258,6 @@ export function allocateLabelText(): int32 {
 		refused: 0,
 		runs: new Array(0),
 		decorations: new Array(0),
-		shaped: emptyShaped(style),
 		lineShapes: emptyLineShapes(style),
 		shapedText: "",
 		shapedWithShaping: false,
@@ -327,8 +314,9 @@ export function releaseLabelText(index: int32): void {
 }
 
 function shapeStale(entry: LabelText, text: string, style: TextStyle): boolean {
-	const shapedWith: TextStyle = entry.shaped.style;
-	return entry.reshape || !text.equals(entry.shapedText) ||
+	const shapedWith: TextStyle = entry.lineShapes.style;
+	return entry.reshape || (entry.lineShapes.lines.length as int32) == 0 ||
+		!text.equals(entry.shapedText) ||
 		entry.shapedWithShaping != textShapingOn() || style.font != shapedWith.font ||
 		style.size != shapedWith.size || style.letterSpacing != shapedWith.letterSpacing;
 }
@@ -346,17 +334,22 @@ export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 		entry.shapedWithShaping = textShapingOn();
 		entry.reshape = false;
 		entry.textRefused = !shaped.ok;
-		if (shaped.ok) {
-			entry.shaped = shaped.value;
-		} else {
+		if (!shaped.ok) {
 			entry.textRefusal = shaped.error;
-			entry.shaped = emptyShaped(style);
 			console.log(`void2d: label text is not drawn: ${shaped.error.describe()}`);
+			const noRuns: Vec<TextRun> = new Array(0);
+			const noBreaks: Vec<int32> = new Array(0);
+			entry.lineShapes = emptyLineShapes(style);
+			const empty = shapeLines("", style, noRuns, noBreaks, entry.direction, entry.lineShapes);
+			if (!empty.ok) {
+				console.log(`void2d: the empty text was refused: ${empty.error.describe()}`);
+				unreachable;
+			}
 		}
 	}
 	entry.style = style;
 	entry.selectionStale = true;
-	entry.layout = wrapOnGrid(entry.shaped, style, entry.options, entry.cellWidths);
+	wrapLines(entry.lineShapes, style, entry.options, entry.cellWidths, entry.layout);
 	entry.decorations = entry.layout.runDecorations(entry.runs, style.size, entry.options.forceWidth);
 }
 
