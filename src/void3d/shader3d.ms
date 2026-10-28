@@ -196,6 +196,7 @@ export struct LitTexturedFragmentInput {
 
 export struct UnlitTexturedVaryings {
 	@feature(NORMAL_MRT) worldNormal: Vec3f;
+	@feature(UV_TRANSFORM) worldPosition: Vec3f;
 	surfaceUv: Vec2f;
 	baseColor: Vec4f;
 	@builtin(position) clip: Vec4f;
@@ -203,6 +204,7 @@ export struct UnlitTexturedVaryings {
 
 export struct UnlitTexturedFragmentInput {
 	@feature(NORMAL_MRT) worldNormal: Vec3f;
+	@feature(UV_TRANSFORM) worldPosition: Vec3f;
 	surfaceUv: Vec2f;
 	baseColor: Vec4f;
 	@builtin(frontFacing) frontFacing: boolean;
@@ -233,6 +235,7 @@ export struct MovingMaterialParams {
 	dissolveEdge: Vec4f;
 	flipbookGrid: Vec4f;
 	flipbookPlay: Vec4f;
+	distanceFade: Vec4f;
 }
 
 // gpu3d.ms PBR_*: materialParams, then metalness, roughness and occlusion in x, y and z, then the
@@ -274,6 +277,7 @@ export struct MovingEmissiveMaterialParams {
 	dissolveEdge: Vec4f;
 	flipbookGrid: Vec4f;
 	flipbookPlay: Vec4f;
+	distanceFade: Vec4f;
 	emissive: Vec4f;
 }
 
@@ -293,6 +297,7 @@ export struct MovingUnlitMaterialParams {
 	dissolveEdge: Vec4f;
 	flipbookGrid: Vec4f;
 	flipbookPlay: Vec4f;
+	distanceFade: Vec4f;
 }
 
 export struct LightParams {
@@ -810,17 +815,21 @@ export function unlitTexturedVs(
 ): UnlitTexturedVaryings {
 	if (key.skinned) {
 		const matrix = skinWorld(b, input.skinJoints, input.skinWeights);
+		const world = matrix * vec4f(input.position, 1.0);
 		return {
-			clip: b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0),
+			clip: b.vertexParams.viewProj * world,
 			worldNormal: skinNormal(matrix, input.normal),
+			worldPosition: world.xyz,
 			surfaceUv: input.uv,
 			baseColor: input.color,
 		};
 	} else {
 		const matrix = instanceWorld(input.instanceRow0, input.instanceRow1, input.instanceRow2);
+		const world = matrix * vec4f(input.position, 1.0);
 		return {
-			clip: b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0),
+			clip: b.vertexParams.viewProj * world,
 			worldNormal: skinNormal(matrix, input.normal),
+			worldPosition: world.xyz,
 			surfaceUv: input.uv,
 			baseColor: input.color * input.instanceColor,
 		};
@@ -1229,6 +1238,20 @@ export function flipbookBlend(grid: Vec4f, play: Vec4f, time: float32): float32 
 	return play.w == 1.0 ? fract((time - play.x) * grid.w + trunc(play.y)) : 0.0;
 }
 
+// h3d.shader.DistanceFade: Heaps' nearFadeEnabled and farFadeEnabled are each side's end lying
+// past its start (gpu3d.ms MOVING_FADE_*).
+export function distanceFade(distance: float32, range: Vec4f): float32 {
+	let near: float32 = 1.0;
+	let far: float32 = 1.0;
+	if (range.y > range.x) {
+		near = clamp((distance - range.x) / (range.y - range.x), 0.0, 1.0);
+	}
+	if (range.w > range.z) {
+		far = 1.0 - clamp((distance - range.z) / (range.w - range.z), 0.0, 1.0);
+	}
+	return min(near, far);
+}
+
 // The back texture is read on back faces through its own transform.
 export function backUv(uv: Vec2f, matrix: Vec4f, offset: Vec4f): Vec2f {
 	return mat2x2f(matrix.xy, matrix.zw) * uv + offset.xy;
@@ -1423,6 +1446,14 @@ export function flipbookPlayOf(b: LitBindings, key: LitKey): Vec4f {
 		return b.movingEmissiveMaterialParams.flipbookPlay;
 	} else {
 		return b.movingMaterialParams.flipbookPlay;
+	}
+}
+
+export function distanceFadeOf(b: LitBindings, key: LitKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.distanceFade;
+	} else {
+		return b.movingMaterialParams.distanceFade;
 	}
 }
 
@@ -2029,6 +2060,11 @@ export function litTexturedFs(
 			discard();
 		}
 	}
+	if (key.uvTransform) {
+		const eye = b.frameParams.cameraPosition.xyz;
+		const fade = distanceFade(length(input.worldPosition - eye), distanceFadeOf(b, key));
+		shaded = vec4f(shaded.rgb, shaded.a * fade);
+	}
 	let color = vec4f(toneMapped(shaded.rgb, b.frameParams.frame), shaded.a);
 	if (key.premultiplied) {
 		color = vec4f(color.rgb * color.a, color.a);
@@ -2140,6 +2176,12 @@ export function unlitTexturedFs(
 		if (shaded.a < params.w) {
 			discard();
 		}
+	}
+	if (key.uvTransform) {
+		const eye = b.frameParams.cameraPosition.xyz;
+		const range = b.movingUnlitMaterialParams.distanceFade;
+		const fade = distanceFade(length(input.worldPosition - eye), range);
+		shaded = vec4f(shaded.rgb, shaded.a * fade);
 	}
 	let color = vec4f(toneMapped(shaded.rgb, b.frameParams.frame), shaded.a);
 	if (key.premultiplied) {

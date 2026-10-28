@@ -1102,6 +1102,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
     vec4 flipbookGrid;
     vec4 flipbookPlay;
+    vec4 distanceFade;
 };
 #endif
 #if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -1123,6 +1124,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 dissolveEdge;
     vec4 flipbookGrid;
     vec4 flipbookPlay;
+    vec4 distanceFade;
     vec4 emissive;
 };
 #endif
@@ -1992,6 +1994,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
     vec4 flipbookGrid;
     vec4 flipbookPlay;
+    vec4 distanceFade;
 };
 #endif
 #if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -2013,6 +2016,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 dissolveEdge;
     vec4 flipbookGrid;
     vec4 flipbookPlay;
+    vec4 distanceFade;
     vec4 emissive;
 };
 #endif
@@ -2223,6 +2227,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
     vec4 flipbookGrid;
     vec4 flipbookPlay;
+    vec4 distanceFade;
 };
 #endif
 #if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -2244,6 +2249,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 dissolveEdge;
     vec4 flipbookGrid;
     vec4 flipbookPlay;
+    vec4 distanceFade;
     vec4 emissive;
 };
 #endif
@@ -3269,6 +3275,28 @@ vec4 dissolveEdgeOf() {
 #endif
 }
 #endif
+#ifdef UV_TRANSFORM
+float distanceFade_1(float distance_1, vec4 range) {
+    float near = 1.0;
+    float far = 1.0;
+    if (range.y > range.x) {
+        near = clamp(((distance_1 - range.x) / (range.y - range.x)), 0.0, 1.0);
+    }
+    if (range.w > range.z) {
+        far = 1.0 - clamp(((distance_1 - range.z) / (range.w - range.z)), 0.0, 1.0);
+    }
+    return min(near, far);
+}
+#endif
+#ifdef UV_TRANSFORM
+vec4 distanceFadeOf() {
+#ifdef EMISSIVE
+    return distanceFade;
+#else
+    return distanceFade;
+#endif
+}
+#endif
 vec3 toneCurved(vec3 exposed, float mode) {
     if (mode == 1.0) {
         return exposed / (exposed + vec3(1.0));
@@ -3383,6 +3411,11 @@ void main() {
         discard;
     }
 #endif
+#ifdef UV_TRANSFORM
+    vec3 eye = cameraPosition.xyz;
+    float fade = distanceFade_1(length((worldPosition - eye)), distanceFadeOf());
+    shaded = vec4(shaded.rgb, (shaded.a * fade));
+#endif
     vec4 color_1 = vec4(toneMapped(shaded.rgb, frame), shaded.a);
 #ifdef PREMULTIPLIED
     color_1 = vec4((color_1.rgb * color_1.a), color_1.a);
@@ -3414,6 +3447,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
     vec4 flipbookGrid;
     vec4 flipbookPlay;
+    vec4 distanceFade;
 };
 #endif
 #if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -3435,6 +3469,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 dissolveEdge;
     vec4 flipbookGrid;
     vec4 flipbookPlay;
+    vec4 distanceFade;
     vec4 emissive;
 };
 #endif
@@ -3592,6 +3627,9 @@ in vec4 instanceColor;
 #ifdef NORMAL_MRT
 out vec3 worldNormal;
 #endif
+#ifdef UV_TRANSFORM
+out vec3 worldPosition;
+#endif
 out vec2 surfaceUv;
 out vec4 baseColor;
 #ifdef SKINNED
@@ -3622,18 +3660,26 @@ mat4 instanceWorld(vec4 row0, vec4 row1, vec4 row2) {
 void main() {
 #ifdef SKINNED
     mat4 matrix = skinWorld(skinJoints, skinWeights);
-    gl_Position = ((viewProj * matrix) * vec4(position, 1.0));
+    vec4 world = matrix * vec4(position, 1.0);
+    gl_Position = (viewProj * world);
 #ifdef NORMAL_MRT
     worldNormal = skinNormal(matrix, normal);
+#endif
+#ifdef UV_TRANSFORM
+    worldPosition = world.xyz;
 #endif
     surfaceUv = uv;
     baseColor = color;
     return;
 #else
     mat4 matrix_1 = instanceWorld(instanceRow0, instanceRow1, instanceRow2);
-    gl_Position = ((viewProj * matrix_1) * vec4(position, 1.0));
+    vec4 world_1 = matrix_1 * vec4(position, 1.0);
+    gl_Position = (viewProj * world_1);
 #ifdef NORMAL_MRT
     worldNormal = skinNormal(matrix_1, normal);
+#endif
+#ifdef UV_TRANSFORM
+    worldPosition = world_1.xyz;
 #endif
     surfaceUv = uv;
     baseColor = (color * instanceColor);
@@ -3661,6 +3707,7 @@ layout(binding=3) uniform movingUnlitMaterialParams {
     vec4 dissolveEdge;
     vec4 flipbookGrid;
     vec4 flipbookPlay;
+    vec4 distanceFade;
 };
 #endif
 layout(binding=6) uniform frameParams {
@@ -3681,6 +3728,9 @@ layout(binding=1) uniform sampler dissolveSampler;
 #endif
 #ifdef NORMAL_MRT
 in vec3 worldNormal;
+#endif
+#ifdef UV_TRANSFORM
+in vec3 worldPosition;
 #endif
 in vec2 surfaceUv;
 in vec4 baseColor;
@@ -3754,6 +3804,19 @@ vec4 materialColorOf() {
 vec4 dissolveEdgeOver(vec4 color_1, float noise, vec4 dissolve_1, vec4 edge) {
     bool onEdge = (dissolve_1.x > 0.0) && (noise < (dissolve_1.x + dissolve_1.y));
     return onEdge ? vec4(mix(color_1.rgb, edge.rgb, edge.a), color_1.a) : color_1;
+}
+#endif
+#ifdef UV_TRANSFORM
+float distanceFade_1(float distance_1, vec4 range) {
+    float near = 1.0;
+    float far = 1.0;
+    if (range.y > range.x) {
+        near = clamp(((distance_1 - range.x) / (range.y - range.x)), 0.0, 1.0);
+    }
+    if (range.w > range.z) {
+        far = 1.0 - clamp(((distance_1 - range.z) / (range.w - range.z)), 0.0, 1.0);
+    }
+    return min(near, far);
 }
 #endif
 vec3 toneCurved(vec3 exposed, float mode) {
@@ -3855,6 +3918,12 @@ void main() {
         discard;
     }
 #endif
+#ifdef UV_TRANSFORM
+    vec3 eye = cameraPosition.xyz;
+    vec4 range = distanceFade;
+    float fade = distanceFade_1(length((worldPosition - eye)), range);
+    shaded = vec4(shaded.rgb, (shaded.a * fade));
+#endif
     vec4 color_1 = vec4(toneMapped(shaded.rgb, frame), shaded.a);
 #ifdef PREMULTIPLIED
     color_1 = vec4((color_1.rgb * color_1.a), color_1.a);
@@ -3886,6 +3955,7 @@ layout(binding=3) uniform movingUnlitMaterialParams {
     vec4 dissolveEdge;
     vec4 flipbookGrid;
     vec4 flipbookPlay;
+    vec4 distanceFade;
 };
 #endif
 #ifdef CUTOUT
@@ -3902,6 +3972,9 @@ layout(binding=1) uniform sampler dissolveSampler;
 #endif
 #ifdef NORMAL_MRT
 in vec3 worldNormal;
+#endif
+#ifdef UV_TRANSFORM
+in vec3 worldPosition;
 #endif
 in vec2 surfaceUv;
 in vec4 baseColor;

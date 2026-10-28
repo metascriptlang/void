@@ -54,6 +54,10 @@ import {
 	ENV_SCENE_SAMPLERS,
 	MOVING_UV_SCROLL,
 	MOVING_FLIPBOOK_FRAMES,
+	MOVING_FADE_NEAR_START,
+	MOVING_FADE_NEAR_END,
+	MOVING_FADE_FAR_START,
+	MOVING_FADE_FAR_END,
 	MOVING_FLIPBOOK_SPEED,
 	PBR_UV_SCROLL,
 	movingBase,
@@ -187,8 +191,8 @@ export interface Renderer {
 	// Forward's enabled outline draws opaque meshes with their normal MRT variants.
 	normalMrt: boolean;
 	frameValues: Vec<float32>;
-	// The eye a pbr key's view vector starts from (setCameraPosition); a frame drawing a pbr key
-	// without one is refused.
+	// The eye a pbr key's view vector and a distance fade start from (setCameraPosition); a frame
+	// drawing either without one is refused.
 	cameraPosition: Vec3 | null;
 	// The view the camera block was resolved from (setCameraView), which the frame's lights are
 	// clustered in; a frame with a positioned light and no view is refused.
@@ -1090,6 +1094,9 @@ function pairProgram(
 	if (!blockFits(drawn.value, material.uniforms)) {
 		return Result.err(RendererError.MaterialBlock);
 	}
+	if (renderer.cameraPosition === null && fadesWithDistance(context, id.index, drawn.value)) {
+		return Result.err(RendererError.CameraPosition);
+	}
 	const layout: VertexLayout = context.meshes[mesh.index].layout;
 	if (layout != vertexLayoutOf(drawn.value)) { return Result.err(RendererError.VertexLayout); }
 	if (drawsQuads(layout) && !context.meshes[mesh.index].isQuadShaped()) {
@@ -1106,6 +1113,15 @@ function collectSeen(
 	materials: Readonly<Span<Material>>,
 ): void {
 	if (seen) { collect(list, items, materials); } else { list.count = 0; }
+}
+
+export function fadesWithDistance(context: DrawContext, index: int32, key: ProgramKey): boolean {
+	if (!key.uvTransform) { return false; }
+	const at: int32 = context.materials[index].uniforms.offset + movingBase(key);
+	const near: boolean = context.uniforms.values[at + MOVING_FADE_NEAR_END] >
+		context.uniforms.values[at + MOVING_FADE_NEAR_START];
+	return near || context.uniforms.values[at + MOVING_FADE_FAR_END] >
+		context.uniforms.values[at + MOVING_FADE_FAR_START];
 }
 
 export function readsFrameTime(context: DrawContext, index: int32, key: ProgramKey): boolean {

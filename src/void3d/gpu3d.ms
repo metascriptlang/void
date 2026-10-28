@@ -606,7 +606,14 @@ export const MOVING_FLIPBOOK_START_TIME: int32 = 28;
 export const MOVING_FLIPBOOK_START_FRAME: int32 = 29;
 export const MOVING_FLIPBOOK_LOOP: int32 = 30;
 export const MOVING_FLIPBOOK_BLEND: int32 = 31;
-export const MOVING_LENGTH: int32 = 32;
+// A UV-transform key's distance fade, Heaps' DistanceFade on the distance to the camera: alpha
+// rises from 0 to 1 between the near start and end and falls back to 0 between the far start and
+// end. A side whose end is not past its start is unfaded.
+export const MOVING_FADE_NEAR_START: int32 = 32;
+export const MOVING_FADE_NEAR_END: int32 = 33;
+export const MOVING_FADE_FAR_START: int32 = 34;
+export const MOVING_FADE_FAR_END: int32 = 35;
+export const MOVING_LENGTH: int32 = 36;
 export const MOVING_MATERIAL_UNIFORM_LENGTH: int32 = MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH;
 export const MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH: int32 =
 	UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH;
