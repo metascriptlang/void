@@ -622,6 +622,11 @@ export function shaderTypeNodes(registry: Node): ShaderTypeNodes {
 	const modfs = groupStart(names, "modfF32");
 	const frexps = groupStart(names, "frexpF32");
 	const vectors = groupStart(names, "vec2f");
+	const matrices = groupStart(names, "mat2x2f");
+	if (!(atomics < exchanges && exchanges < modfs && modfs < frexps && frexps < vectors &&
+		vectors <= matrices)) {
+		throw new Error("internal: ShaderTypeRegistry groups are out of order");
+	}
 	let nodes = new ShaderTypeNodes();
 	nodes.stdModule = types[0].resolvedSym!.modulePath;
 	nodes.atomics = typesFrom(types, atomics, exchanges - atomics);
@@ -630,22 +635,31 @@ export function shaderTypeNodes(registry: Node): ShaderTypeNodes {
 	nodes.frexps = typesFrom(types, frexps, vectors - frexps);
 	nodes.vectors = typesFrom(types, vectors, (types.length - vectors) as int32);
 	nodes.vectorNames = names.slice(vectors);
-	nodes.firstMatrix = groupStart(names, "mat2x2f") - vectors;
+	nodes.firstMatrix = matrices - vectors;
 	return nodes;
 }
 
-function scalarOfLetter(letter: string): ScalarKind {
-	return letter == "f" ? ScalarKind.F32 : letter == "i" ? ScalarKind.I32 :
-		letter == "u" ? ScalarKind.U32 : ScalarKind.Bool;
+function scalarOfLetter(name: string, letter: string): ScalarKind {
+	if (letter == "f") { return ScalarKind.F32; }
+	if (letter == "i") { return ScalarKind.I32; }
+	if (letter == "u") { return ScalarKind.U32; }
+	if (letter == "b") { return ScalarKind.Bool; }
+	throw new Error("internal: ShaderTypeRegistry field " + name + " has no scalar letter f, i, u or b");
+}
+
+function dimensionAt(name: string, at: int32): int32 {
+	const digit = "234".indexOf(name.slice(at, at + 1));
+	if (digit < 0) {
+		throw new Error("internal: ShaderTypeRegistry field " + name + " has no dimension 2, 3 or 4 at " + at);
+	}
+	return (digit + 2) as int32;
 }
 
 function vectorAt(nodes: ShaderTypeNodes, i: number): ShaderType {
 	const name = nodes.vectorNames[i];
-	const leading = ("234".indexOf(name.slice(3, 4)) + 2) as int32;
-	if (i >= nodes.firstMatrix) {
-		return matrixType(leading, ("234".indexOf(name.slice(5, 6)) + 2) as int32);
-	}
-	return vectorType(scalarOfLetter(name.slice(4, 5)), leading);
+	const leading = dimensionAt(name, 3);
+	if (i >= nodes.firstMatrix) { return matrixType(leading, dimensionAt(name, 5)); }
+	return vectorType(scalarOfLetter(name, name.slice(4, 5)), leading);
 }
 
 function predeclaredTypeOf(nodes: ShaderTypeNodes, t: Node): ShaderType | null {
