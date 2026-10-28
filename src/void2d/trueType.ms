@@ -17,18 +17,20 @@ import {
 	u8At,
 	wrapInt16,
 } from "./trueType/fontInfo";
-import {
-	dictGetInts,
-	get8,
-	getGlyphInfoT2,
-	getGlyphShapeT2,
-	indexGet,
-	getSubrs,
-	range,
-	readIndex,
-	seekTo,
-	skip,
-} from "./trueType/cff";
+when (voidCff) {
+	import {
+		dictGetInts,
+		get8,
+		getGlyphInfoT2,
+		getGlyphShapeT2,
+		indexGet,
+		getSubrs,
+		range,
+		readIndex,
+		seekTo,
+		skip,
+	} from "./trueType/cff";
+}
 
 export {
 	Buf,
@@ -129,39 +131,43 @@ export function initFont(data: Readonly<Span<uint8>>, fontstart: int32): FontInf
 	if (info.glyf != 0) {
 		if (info.loca == 0) { return null; }
 	} else {
-		const cffTable = findTable(data, fontstart, "CFF ");
-		if (cffTable == 0) { return null; }
-		info.cff = { data: data, base: cffTable as int64, size: CFF_BUFFER_SIZE, cursor: 0 };
-		let b = info.cff;
-		b.skip(2);
-		b.seekTo(b.get8() as int64);
-		b.readIndex();
-		let topdictIndex = b.readIndex();
-		let topdict = indexGet(topdictIndex, 0);
-		b.readIndex();
-		info.gsubrs = b.readIndex();
-		let charstrings: int32[] = [0];
-		let charstringType: int32[] = [2];
-		let fdarrayOffset: int32[] = [0];
-		let fdselectOffset: int32[] = [0];
-		topdict.dictGetInts(17, charstrings);
-		topdict.dictGetInts(0x100 | 6, charstringType);
-		topdict.dictGetInts(0x100 | 36, fdarrayOffset);
-		topdict.dictGetInts(0x100 | 37, fdselectOffset);
-		info.subrs = getSubrs(b, topdict);
-		if (charstringType[0] != 2) { return null; }
-		if (charstrings[0] == 0) { return null; }
-		if (fdarrayOffset[0] != 0) {
-			if (fdselectOffset[0] == 0) { return null; }
-			b.seekTo(fdarrayOffset[0] as int64);
-			info.fontdicts = b.readIndex();
-			info.fdselect = b.range(
-				fdselectOffset[0],
-				asInt32((b.size as int64) - (fdselectOffset[0] as int64)),
-			);
+		when (voidCff) {
+			const cffTable = findTable(data, fontstart, "CFF ");
+			if (cffTable == 0) { return null; }
+			info.cff = { data: data, base: cffTable as int64, size: CFF_BUFFER_SIZE, cursor: 0 };
+			let b = info.cff;
+			b.skip(2);
+			b.seekTo(b.get8() as int64);
+			b.readIndex();
+			let topdictIndex = b.readIndex();
+			let topdict = indexGet(topdictIndex, 0);
+			b.readIndex();
+			info.gsubrs = b.readIndex();
+			let charstrings: int32[] = [0];
+			let charstringType: int32[] = [2];
+			let fdarrayOffset: int32[] = [0];
+			let fdselectOffset: int32[] = [0];
+			topdict.dictGetInts(17, charstrings);
+			topdict.dictGetInts(0x100 | 6, charstringType);
+			topdict.dictGetInts(0x100 | 36, fdarrayOffset);
+			topdict.dictGetInts(0x100 | 37, fdselectOffset);
+			info.subrs = getSubrs(b, topdict);
+			if (charstringType[0] != 2) { return null; }
+			if (charstrings[0] == 0) { return null; }
+			if (fdarrayOffset[0] != 0) {
+				if (fdselectOffset[0] == 0) { return null; }
+				b.seekTo(fdarrayOffset[0] as int64);
+				info.fontdicts = b.readIndex();
+				info.fdselect = b.range(
+					fdselectOffset[0],
+					asInt32((b.size as int64) - (fdselectOffset[0] as int64)),
+				);
+			}
+			b.seekTo(charstrings[0] as int64);
+			info.charstrings = b.readIndex();
+		} else {
+			return null;
 		}
-		b.seekTo(charstrings[0] as int64);
-		info.charstrings = b.readIndex();
 	}
 	const maxp = findTable(data, fontstart, "maxp");
 	info.numGlyphs = maxp != 0 ? data.u16At((maxp as int64) + 4) : 0xFFFF;
@@ -482,7 +488,9 @@ function compositeGlyphShape(info: FontInfo, g: int32): Vec<Vertex> {
 
 // stbtt_GetGlyphShape: the outline in font units; empty where stb returns 0 vertices.
 export function getGlyphShape(info: FontInfo, glyphIndex: int32): Vec<Vertex> {
-	if (info.cff.size != 0) { return getGlyphShapeT2(info, glyphIndex); }
+	when (voidCff) {
+		if (info.cff.size != 0) { return getGlyphShapeT2(info, glyphIndex); }
+	}
 	const g = glyfOffset(info, glyphIndex);
 	if (g < 0) { return []; }
 	const contours = info.data.i16At(g);
@@ -493,7 +501,9 @@ export function getGlyphShape(info: FontInfo, glyphIndex: int32): Vec<Vertex> {
 
 // stbtt_GetGlyphBox: null where stb returns 0 (an empty glyph, e.g. a space).
 export function getGlyphBox(info: FontInfo, glyphIndex: int32): GlyphBox | null {
-	if (info.cff.size != 0) { return getGlyphInfoT2(info, glyphIndex); }
+	when (voidCff) {
+		if (info.cff.size != 0) { return getGlyphInfoT2(info, glyphIndex); }
+	}
 	const g = glyfOffset(info, glyphIndex);
 	if (g < 0) { return null; }
 	const data = info.data;

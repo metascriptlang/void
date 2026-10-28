@@ -4,8 +4,24 @@ import { FIXTURE_NAMES, FIXTURE_HEX } from "./trueTypePortFixtures";
 // Pinned from the C stb_truetype.h (deps/stb) over the same inputs: per face the init and
 // metrics, the cmap sweep, per-glyph metrics and kerning, the outline, the bitmap box, the
 // bitmaps at 9, 17.5 and 64 px with two subpixel shifts, and the signed distance field.
-const PINNED_BYTES: uint32 = 4002692370;
-const PINNED_FILES: uint32 = 2444016670;
+const CFF_FIXTURE: string = "cffSynthetic.otf";
+
+function pinnedBytes(): uint32 {
+	when (voidCff) {
+		return 4002692370;
+	} else {
+		return 2256489126;
+	}
+}
+
+function pinnedFiles(): uint32 {
+	when (voidCff) {
+		return 2444016670;
+	} else {
+		return 904936238;
+	}
+}
+
 const CODEPOINT_STRIDE: int32 = 61;
 const SEED: uint32 = 2166136261;
 
@@ -25,10 +41,14 @@ test "the TrueType port over byte fixtures keeps the digest recorded from stb_tr
 	assert FIXTURE_NAMES.length == FIXTURE_HEX.length;
 	let result: uint32 = SEED;
 	for (let f: int32 = 0; f < (FIXTURE_HEX.length as int32); f++) {
+		when (voidCff) {
+		} else {
+			if (FIXTURE_NAMES[f] == CFF_FIXTURE) { continue; }
+		}
 		result = combineFont(decode(FIXTURE_HEX[f]), result, CODEPOINT_STRIDE);
 	}
 	console.log(`trueType bytes digest ${result}`);
-	assert result == PINNED_BYTES;
+	assert result == pinnedBytes();
 }
 
 // A font file is read only where the target has files: js holds faces as bytes.
@@ -49,6 +69,10 @@ when (js) {
 			let names: string[] = readDir(dir);
 			names.sort();
 			for (const name of names) {
+				when (voidCff) {
+				} else {
+					if (name == CFF_FIXTURE) { continue; }
+				}
 				if (isFont(name) && (READS_OUTSIDE.includes(name) != main)) { files.push(dir + name); }
 			}
 		}
@@ -68,7 +92,7 @@ when (js) {
 	test "the TrueType port over the repo font files keeps the digest recorded from stb_truetype" {
 		const result: uint32 = digestOf(fontFiles(true));
 		console.log(`trueType files digest ${result}`);
-		assert result == PINNED_FILES;
+		assert result == pinnedFiles();
 	}
 
 	test "the TrueType port reads the files stb_truetype reads outside of without faulting" {
