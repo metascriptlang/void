@@ -8,7 +8,7 @@
 
 import { env, exit } from "std/process";
 import { vec3, identityQuat, quatBetween } from "../../src/math/math3d";
-import { gfxSetup } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/host/gpu";
 import { commit } from "../../src/gpu/door";
 import { RenderState } from "../../src/gpu/state";
 import { Material, Phase, UniformBlock, pbrBlock } from "../../src/void3d/material";
@@ -34,7 +34,7 @@ import {
 import { added, litShape } from "../../src/test/drawHelpers";
 import { positiveEnv } from "./frameTimeLog";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,
