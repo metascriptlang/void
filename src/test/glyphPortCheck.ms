@@ -31,6 +31,7 @@ import {
 } from "../void2d/glyph";
 import { holdFontFile } from "./fontFile";
 
+const CFF_FIXTURE: string = "tests/fonts/cffSynthetic.otf";
 const PINNED: string[] = [
 	"2818068566", // assets/font.ttf
 	"3426308802", // tests/fonts/NotoSansSC-subset.ttf
@@ -259,6 +260,10 @@ function digestOf(path: string): string {
 test "the glyph port over the repo fonts keeps the digest recorded from glyph.c" {
 	assert PATHS.length == PINNED.length;
 	for (let f: int32 = 0; f < PATHS.length; f++) {
+		when (voidCff) {
+		} else {
+			if (PATHS[f] == CFF_FIXTURE) { continue; }
+		}
 		const got = digestOf(PATHS[f]);
 		if (got != PINNED[f]) { console.error(`glyph port digest moved for ${PATHS[f]}: ${got} != ${PINNED[f]}`); }
 		assert got == PINNED[f];

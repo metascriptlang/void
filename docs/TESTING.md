@@ -328,6 +328,7 @@ read from the log.
    (the glyph page table) and would starve the tests after it. Then `msc test --target=js
    tests/js/targetCheck.ms` with every module flag off and on: Void compiles on JS, and what needs
    C (decoding images, loading fonts) answers with a named error there, because JS has no C to call.
+   `-d:voidCff` is one of the flags: off, `tests/fonts/cffSynthetic.otf` is refused by name; on, the CFF tests run.
    Then `msc check src/examples/main2d.ms` for every backend the host does not run (D3D11, GL
    on Windows, Linux and Android, Metal on iOS, both web builds, the dummy), about 15 s in all, so
    a function one backend lacks is red on any host rather than on the first machine that builds it.
