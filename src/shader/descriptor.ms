@@ -18,6 +18,7 @@ import {
 	stmtOf,
 } from "./ir";
 import { irFromText } from "./irText";
+import { GPUShaderBinding } from "../webgpu/types.ms";
 import { ShaderTarget, bindingSlots } from "./layout";
 import { GlslTarget, printGlsl } from "./printGlsl";
 import { printHlsl } from "./printHlsl";
@@ -387,31 +388,54 @@ export function quotedSource(text: string): string {
 	return out + "\"";
 }
 
-function optional(name: string, value: string): string {
-	return value != "" ? ", " + name + ": \"" + value + "\"" : "";
+export struct BindingField {
+	key: string;
+	form: string;
+	text: string;
+	number: int32;
+}
+
+function numberField(key: string, value: int32): BindingField {
+	return { key: key, form: "number", text: String(value), number: value };
+}
+
+function textField(key: string, value: string): BindingField {
+	return { key: key, form: "text", text: value, number: 0 };
+}
+
+export function bindingFields(b: GPUShaderBinding): BindingField[] {
+	const kind: string = b.kind;
+	const sampleType: string = b.sampleType;
+	const samplerType: string = b.samplerType;
+	const bufferType: string = b.bufferType;
+	const viewDimension: string = b.viewDimension;
+	const storageAccess: string = b.storageAccess;
+	const storageFormat: string = b.storageFormat;
+	const name = b.nativeName;
+	let out: BindingField[] = [
+		numberField("group", b.group),
+		numberField("binding", b.binding),
+		textField("kind", kind),
+		numberField("visibility", b.visibility),
+		numberField("size", b.size),
+	];
+	if (sampleType != "") { out.push(textField("sampleType", sampleType)); }
+	if (samplerType != "") { out.push(textField("samplerType", samplerType)); }
+	out.push(numberField("nativeSlot", b.nativeSlot));
+	if (name !== null) { out.push(textField("nativeName", name)); }
+	out.push(numberField("textureBinding", b.textureBinding));
+	if (bufferType != "") { out.push(textField("bufferType", bufferType)); }
+	if (viewDimension != "") { out.push(textField("viewDimension", viewDimension)); }
+	if (b.multisampled) { out.push({ key: "multisampled", form: "flag", text: "true", number: 0 }); }
+	if (storageAccess != "") { out.push(textField("storageAccess", storageAccess)); }
+	if (storageFormat != "") { out.push(textField("storageFormat", storageFormat)); }
+	return out;
 }
 
 function bindingSource(r: Reflection): string[] {
-	return r.bindings.map((b) => {
-		const kind: string = b.kind;
-		const sampleType: string = b.sampleType;
-		const samplerType: string = b.samplerType;
-		const bufferType: string = b.bufferType;
-		const viewDimension: string = b.viewDimension;
-		const storageAccess: string = b.storageAccess;
-		const storageFormat: string = b.storageFormat;
-		const name = b.nativeName;
-		return "{ group: " + String(b.group) + ", binding: " + String(b.binding) + ", kind: \"" +
-			kind + "\", visibility: " + String(b.visibility) + ", size: " + String(b.size) +
-			optional("sampleType", sampleType) + optional("samplerType", samplerType) +
-			", nativeSlot: " + String(b.nativeSlot) +
-			(name !== null ? ", nativeName: " + quotedSource(name) : "") +
-			", textureBinding: " + String(b.textureBinding) +
-			optional("bufferType", bufferType) + optional("viewDimension", viewDimension) +
-			(b.multisampled ? ", multisampled: true" : "") +
-			optional("storageAccess", storageAccess) + optional("storageFormat", storageFormat) +
-			" }";
-	});
+	return r.bindings.map((b) =>
+		"{ " + bindingFields(b).map((f) =>
+			f.key + ": " + (f.form == "text" ? quotedSource(f.text) : f.text)).join(", ") + " }");
 }
 
 function attributeSource(r: Reflection): string[] {

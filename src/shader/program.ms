@@ -13,7 +13,13 @@ import {
 	typeKind,
 } from "std/meta";
 import { glslIr, glslLinkedIr } from "./emit";
-import { programModule, programSource, targetArms, wordsBase64 } from "./descriptor";
+import {
+	bindingFields,
+	programModule,
+	programSource,
+	targetArms,
+	wordsBase64,
+} from "./descriptor";
 import { shaderBytecodeFromBase64 } from "./dxbc";
 import { ShaderTarget } from "./layout";
 import { reflectProgram } from "./reflect";
@@ -231,11 +237,6 @@ export macro shaderBuild(
 			arguments: args,
 		};
 	}
-	function optional(keys: string[], values: Node[], key: string, value: string): void {
-		if (value == "") { return; }
-		keys.push(key);
-		values.push(text(value));
-	}
 
 	const module = programModule(stringValue(vertex), stringValue(fragment), []);
 	if (!module.ok) { refused(module.error); }
@@ -246,40 +247,12 @@ export macro shaderBuild(
 	if (s.refusal != "") { refused(s.refusal); }
 	const bindings: Node[] = [];
 	for (const b of s.reflection.bindings) {
-		const bindingKind: string = b.kind;
-		const keys = ["group", "binding", "kind", "visibility", "size"];
-		const values = [
-			integer(b.group),
-			integer(b.binding),
-			text(bindingKind),
-			integer(b.visibility),
-			integer(b.size),
-		];
-		const sampleType: string = b.sampleType;
-		const samplerType: string = b.samplerType;
-		optional(keys, values, "sampleType", sampleType);
-		optional(keys, values, "samplerType", samplerType);
-		keys.push("nativeSlot");
-		values.push(integer(b.nativeSlot));
-		const nativeName = b.nativeName;
-		if (nativeName !== null) {
-			keys.push("nativeName");
-			values.push(text(nativeName));
+		const keys: string[] = [];
+		const values: Node[] = [];
+		for (const f of bindingFields(b)) {
+			keys.push(f.key);
+			values.push(f.form == "number" ? integer(f.number) : f.form == "flag" ? flag() : text(f.text));
 		}
-		keys.push("textureBinding");
-		values.push(integer(b.textureBinding));
-		const bufferType: string = b.bufferType;
-		const viewDimension: string = b.viewDimension;
-		const storageAccess: string = b.storageAccess;
-		const storageFormat: string = b.storageFormat;
-		optional(keys, values, "bufferType", bufferType);
-		optional(keys, values, "viewDimension", viewDimension);
-		if (b.multisampled) {
-			keys.push("multisampled");
-			values.push(flag());
-		}
-		optional(keys, values, "storageAccess", storageAccess);
-		optional(keys, values, "storageFormat", storageFormat);
 		bindings.push(object(keys, values));
 	}
 	const attributes: Node[] = [];
