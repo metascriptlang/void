@@ -20,7 +20,9 @@ import { ShaderTypeRegistry, uniformBlockOf } from "./emit";
 import { ShaderModule, ShaderType, ShaderTypeKind } from "./ir";
 import { columnStride, uniformArrayStride, uniformBlockLayout } from "./layout";
 
-const COMPONENTS = ["x", "y", "z", "w"];
+function component(k: int32): string {
+	return "xyzw".slice(k, k + 1);
+}
 
 function integer(value: int32, at: Node): Node {
 	return createNodeAt(NodeKind.NumberLiteral, {
@@ -60,7 +62,7 @@ function store(s: Stores, values: Node, at: Node, floatIndex: int32, value: Node
 }
 
 function storeVector(s: Stores, values: Node, at: Node, floatIndex: int32, rows: int32, value: Node): void {
-	for (let k = 0; k < rows; k += 1) { store(s, values, at, floatIndex + k, member(value, COMPONENTS[k])); }
+	for (let k = 0; k < rows; k += 1) { store(s, values, at, floatIndex + k, member(value, component(k))); }
 }
 
 function storeMember(s: Stores, m: ShaderModule, values: Node, at: Node, floatIndex: int32,

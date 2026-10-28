@@ -548,9 +548,11 @@ function declarationCondition(contexts: FeatureCondition[][]): FeatureCondition 
 }
 
 const FIRST_MATRIX = 12;
-const MATRIX_SHAPES = [2, 2, 3, 3, 4, 4, 2, 3, 2, 4, 3, 2, 3, 4, 4, 2, 4, 3];
-const NOT_A_SHADER_VALUE = "a shader value is float32, int32, uint32, boolean, a ./std vector or matrix, " +
-	"or a struct of those";
+
+function notAShaderValue(): string {
+	return "a shader value is float32, int32, uint32, boolean, a ./std vector or matrix, " +
+		"or a struct of those";
+}
 
 export class ShaderTypeNodes {
 	stdModule: string = "";
@@ -622,8 +624,9 @@ function vectorAt(i: number): ShaderType {
 	if (i < 6) { return vectorType(ScalarKind.I32, (i - 1) as int32); }
 	if (i < 9) { return vectorType(ScalarKind.U32, (i - 4) as int32); }
 	if (i < 12) { return vectorType(ScalarKind.Bool, (i - 7) as int32); }
+	const shapes = [2, 2, 3, 3, 4, 4, 2, 3, 2, 4, 3, 2, 3, 4, 4, 2, 4, 3];
 	const at = (i - FIRST_MATRIX) * 2;
-	return matrixType(MATRIX_SHAPES[at] as int32, MATRIX_SHAPES[at + 1] as int32);
+	return matrixType(shapes[at] as int32, shapes[at + 1] as int32);
 }
 
 function predeclaredTypeOf(nodes: ShaderTypeNodes, t: Node): ShaderType | null {
@@ -682,7 +685,7 @@ export function interfaceMemberType(nodes: ShaderTypeNodes, t: Node, name: strin
 	}
 	const sized = array != null && array.typExprSize > 0;
 	const own = shaderTypeOf(nodes, sized ? array.typExprElement : t);
-	if (own == null) { return Result.err(NOT_A_SHADER_VALUE); }
+	if (own == null) { return Result.err(notAShaderValue()); }
 	return Result.ok(sized ? arrayType(own, array.typExprSize as int32) : own);
 }
 
@@ -774,7 +777,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	function glslType(t: Node | null, at: Node): ShaderType {
 		if (t == null) { fail(at, "the expression has no type"); }
 		const found = shaderTypeOf(typeNodes, t);
-		if (found == null) { fail(at, NOT_A_SHADER_VALUE); }
+		if (found == null) { fail(at, notAShaderValue()); }
 		return found;
 	}
 
