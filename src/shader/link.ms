@@ -6,6 +6,7 @@ import {
 	shiftExpr,
 	shiftStmts,
 	shiftType,
+	stageModule,
 } from "./descriptor";
 import {
 	AssignOp,
@@ -201,7 +202,7 @@ export function linkedProgram(vertexText: string, fragmentText: string, on: stri
 	if (segmentTexts.length == 0) { return programModule(vertexText, fragmentText, on); }
 	const m = try joinedProgram(vertexText, fragmentText, on);
 	let segments: ShaderModule[] = [];
-	for (const text of segmentTexts) { segments.push(try irFromText(text)); }
+	for (const text of segmentTexts) { segments.push(try stageModule(text, on, "a segment")); }
 	return checked(try link(m, segments), "the program");
 }
 

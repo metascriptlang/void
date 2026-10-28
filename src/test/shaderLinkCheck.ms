@@ -1088,3 +1088,40 @@ test "an effect's block keeps the base's binding where the key leaves the base's
 	assert slotsOf([], [COLOUR_ADD]) == "frame@0,tintParams@1";
 	assert slotsOf([], [GAIN, COLOUR_ADD]) == "frame@0,params@3,tintParams@4";
 }
+
+struct TintKey {
+	@feature(F) f: boolean;
+}
+
+function keyedTint(shaded: Shaded, b: TintBindings, key: TintKey): Shaded {
+	let color = shaded.color;
+	if (key.f) {
+		color = color + b.tintParams.tint;
+	} else {
+		color = color * b.tintParams.tint;
+	}
+	return { color: color };
+}
+
+const KEYED_TINT = glslSegmentIr(keyedTint);
+const ADDED = "color = (color + tintParams.tint);";
+const SCALED = "color = (color * tintParams.tint);";
+
+function keyedFragment(fragment: string, on: string[]): string {
+	const m = linkedProgram(SLOT_VS, fragment, on, [KEYED_TINT]);
+	if (!m.ok) { return m.error; }
+	return printed(m.value, ShaderTarget.Wgsl, "keyedTintFs.wgsl", 1);
+}
+
+test "a keyed segment links the branch its row's features pick" {
+	const on = keyedFragment(SLOT_FS, ["F"]);
+	const off = keyedFragment(SLOT_FS, []);
+	assert on.includes(ADDED) && !on.includes(SCALED);
+	assert off.includes(SCALED) && !off.includes(ADDED);
+}
+
+test "a segment's feature folds by the row even when the base declares no such key" {
+	const fragment = glslLinkedIr(baseFs, baseVs);
+	assert keyedFragment(fragment, ["F"]).includes(ADDED);
+	assert keyedFragment(fragment, []).includes(SCALED);
+}

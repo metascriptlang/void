@@ -321,6 +321,9 @@ export function specialize(m: ShaderModule, on: string[]): Result<ShaderModule, 
 	w.on = on;
 	w.folding = true;
 	for (const e of m.entries) { walkFunction(w, e.functionIndex); }
+	if (m.entries.length == 0 && m.functions.length > 0) {
+		walkFunction(w, (m.functions.length - 1) as int32);
+	}
 	let ios: int32[] = [];
 	for (let i = 0; i < m.ios.length; i++) {
 		if (holds(m.ios[i].condition, on)) {

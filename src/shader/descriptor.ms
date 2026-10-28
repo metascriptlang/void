@@ -160,7 +160,7 @@ function append(into: ShaderModule, from: ShaderModule): void {
 	}
 }
 
-function stageModule(text: string, on: string[], what: string): Result<ShaderModule, string> {
+export function stageModule(text: string, on: string[], what: string): Result<ShaderModule, string> {
 	const lowered = irFromText(text);
 	if (!lowered.ok) { return Result.err(what + ": " + lowered.error); }
 	const specialized = specialize(lowered.value, on);
