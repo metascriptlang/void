@@ -3,7 +3,9 @@
 // for.
 
 import { glslIr, glslLinkedIr } from "../shader/emit";
-import { descriptorSource, programModule, programSource } from "../shader/descriptor";
+import { descriptorSource, programSource } from "../shader/descriptor";
+import { linkedProgram } from "../shader/link";
+import { programEffects } from "../void3d/programEffects";
 import { irErrors } from "../shader/ir";
 import { irFromText, irText } from "../shader/irText";
 import { ShaderTarget } from "../shader/layout";
@@ -110,9 +112,9 @@ function mismatches(reflected: Reflection, committed: GPUShaderModuleDescriptor)
 	return out;
 }
 
-function matched(vertex: string, fragment: string, features: string[],
+function matched(source: string, vertex: string, fragment: string, features: string[],
 	committed: GPUShaderModuleDescriptor): string {
-	const m = programModule(vertex, fragment, features);
+	const m = linkedProgram(vertex, fragment, features, programEffects(source, features));
 	if (!m.ok) { return m.error; }
 	const s = programSource(m.value, builtTarget());
 	if (!s.ok) { return s.error; }
@@ -132,41 +134,42 @@ test "a lowered stage reads back as the module it was" {
 }
 
 test "the plain lit program reflects as its committed descriptor" {
-	assert matched(LIT_VS, glslLinkedIr(litFs, litVs), [], litShaderModule()) == "";
+	assert matched("CORE", LIT_VS, glslLinkedIr(litFs, litVs), [], litShaderModule()) == "";
 }
 
 test "a textured key with every texture reflects as its committed descriptor" {
-	assert matched(LIT_TEXTURED_VS, LIT_TEXTURED_FS,
+	assert matched("CORE", LIT_TEXTURED_VS, LIT_TEXTURED_FS,
 		["EMISSIVE", "NORMAL_MAP", "SHADOWED", "NORMAL_MRT", "SKINNED"],
 		skinLitTexturedEmissiveNormalMapShadowedNormalMrtShaderModule()) == "";
-	assert matched(LIT_TEXTURED_VS, LIT_TEXTURED_FS, ["DISSOLVE", "EMISSIVE"],
+	assert matched("CORE", LIT_TEXTURED_VS, LIT_TEXTURED_FS, ["DISSOLVE", "EMISSIVE"],
 		litTexturedDissolveEmissiveShaderModule()) == "";
 }
 
 test "a shadow caster reflects as its committed descriptor" {
-	assert matched(LIT_TEXTURED_VS, glslLinkedIr(shadowLitTexturedFs, litTexturedVs),
+	assert matched("CORE", LIT_TEXTURED_VS, glslLinkedIr(shadowLitTexturedFs, litTexturedVs),
 		["DISSOLVE"], shadowLitTexturedDissolveShaderModule()) == "";
 }
 
 test "a pixel-art key reflects as its committed descriptor" {
-	assert matched(glslIr(pixelArtLitTexturedVs),
+	assert matched("PIXEL_ART", glslIr(pixelArtLitTexturedVs),
 		glslLinkedIr(pixelArtLitTexturedFs, pixelArtLitTexturedVs), ["CUTOUT", "SHADOWED"],
 		pixelArtLitTexturedCutoutShadowedShaderModule()) == "";
 }
 
 test "a fragment over another vertex entry reflects as its committed descriptor" {
-	assert matched(glslIr(particleVisualVs), glslLinkedIr(billboardFs, billboardVs), ["CUTOUT"],
-		particleVisualCutoutShaderModule()) == "";
+	assert matched("CORE", glslIr(particleVisualVs), glslLinkedIr(billboardFs, billboardVs),
+		["CUTOUT"], particleVisualCutoutShaderModule()) == "";
 }
 
 test "fullscreen passes reflect as their committed descriptors" {
-	assert matched(FULLSCREEN_VS, glslIr(copyFs), [], copyShaderModule()) == "";
-	assert matched(FULLSCREEN_VS, glslIr(outlineMixFs), [], outlineMixShaderModule()) == "";
+	assert matched("CORE", FULLSCREEN_VS, glslIr(copyFs), [], copyShaderModule()) == "";
+	assert matched("CORE", FULLSCREEN_VS, glslIr(outlineMixFs), [], outlineMixShaderModule()) == "";
 }
 
 test "void2d programs reflect as their committed descriptors" {
-	assert matched(glslIr(uiVs), glslLinkedIr(uiFs, uiVs), [], uiShaderModule()) == "";
-	assert matched(glslIr(blurVs), glslLinkedIr(blurFs, blurVs), [], blurShaderModule()) == "";
+	assert matched("VOID2D", glslIr(uiVs), glslLinkedIr(uiFs, uiVs), [], uiShaderModule()) == "";
+	assert matched("VOID2D", glslIr(blurVs), glslLinkedIr(blurFs, blurVs), [],
+		blurShaderModule()) == "";
 }
 
 test "a field of the wrong JSON kind is an error, not a zero" {
@@ -176,7 +179,9 @@ test "a field of the wrong JSON kind is an error, not a zero" {
 }
 
 test "descriptorSource prints a binding's keys in the descriptor's order" {
-	const m = programModule(LIT_TEXTURED_VS, LIT_TEXTURED_FS, ["EMISSIVE", "NORMAL_MAP", "SHADOWED", "NORMAL_MRT", "SKINNED"]);
+	const features = ["EMISSIVE", "NORMAL_MAP", "SHADOWED", "NORMAL_MRT", "SKINNED"];
+	const m = linkedProgram(LIT_TEXTURED_VS, LIT_TEXTURED_FS, features,
+		programEffects("CORE", features));
 	assert m.ok;
 	const s = programSource(m.value, builtTarget());
 	assert s.ok;
