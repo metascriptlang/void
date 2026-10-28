@@ -35,7 +35,7 @@ import { functionOrder, hasEffect, stmtExprs } from "./irWalk";
 import { irFromText, irText } from "./irText";
 import { slotLimit } from "./layout";
 import { suffixed } from "./names";
-import { withoutUnread } from "./specialize";
+import { readsFrom, withoutUnread } from "./specialize";
 
 function phaseOf(m: ShaderModule, f: ShaderFunction): string {
 	if (f.params.length != 1 || f.result.kind != ShaderTypeKind.Struct ||
@@ -176,20 +176,33 @@ function numberBindings(m: ShaderModule, owners: string[], effects: string[]):
 	return Result.ok(null);
 }
 
+function ownerOf(names: string[], owners: string[], effects: string[]): string {
+	const owned = names.filter((n) => owners.includes(n));
+	return owned.length > 0 ? "effect '" + effects[owners.indexOf(owned[0])] + "'" : "the base";
+}
+
 function sharedMember(m: ShaderModule, owners: string[], effects: string[]):
 	Result<void, string> {
-	let names: string[] = [];
-	let bindings: int32[] = [];
-	for (const r of m.resources) {
-		if (r.kind != ResourceKind.UniformBlock) { continue; }
-		for (const f of m.structs[r.type.structIndex].members) {
-			const clash = names.some((n, k) => n == f.name && bindings[k] != r.binding);
-			if (clash) {
-				return Result.err("link: effect '" + effects[owners.indexOf(r.name)] + "': '" +
-					f.name + "' names two things in one stage");
+	for (const entry of m.entries) {
+		const reads = try readsFrom(m, entry.functionIndex);
+		let members: string[] = [];
+		let blocks: int32[] = [];
+		for (let i = 0; i < m.resources.length; i++) {
+			const r = m.resources[i];
+			if (r.kind != ResourceKind.UniformBlock || !reads.resources.includes(i as int32)) {
+				continue;
 			}
-			names.push(f.name);
-			bindings.push(r.binding);
+			for (const f of m.structs[r.type.structIndex].members) {
+				const k = members.findIndex((n, j) => n == f.name &&
+					m.resources[blocks[j]].binding != r.binding);
+				if (k >= 0) {
+					const pair = [r.name, m.resources[blocks[k]].name];
+					return Result.err("link: " + ownerOf(pair, owners, effects) + ": '" + f.name +
+						"' names two things in one stage");
+				}
+				members.push(f.name);
+				blocks.push(i as int32);
+			}
 		}
 	}
 	return Result.ok(null);
