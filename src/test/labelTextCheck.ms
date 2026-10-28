@@ -1,6 +1,8 @@
-import { Align, TextRun, TextStyle, Truncate, UnderlineStyle } from "../void2d/textLayout";
+import { Align, NO_GLYPH, TextRun, TextStyle, Truncate, UnderlineStyle } from "../void2d/textLayout";
 import { DEFAULT_FONT, FontId, addFont, fontFace } from "../void2d/font";
-import { decorationMetrics, faceMetrics, glyphAdvance, glyphIndex, glyphLookups } from "../void2d/face";
+import {
+	decorationMetrics, faceMetrics, glyphAdvance, glyphIndex, glyphInkBox, glyphLookups,
+} from "../void2d/face";
 
 when (voidSprites) {
 	import { spriteCellFor } from "../void2d/font";
@@ -566,6 +568,47 @@ test "a run change of a length or a font shapes the label again" {
 	const fonts: TextRun[] = [plainRun(1), { ...plainRun(3), font: hebrewFont() }];
 	n.setTextRuns(fonts);
 	assert labelTexts[payloadOf(n)].reshape && s.changed[n.id.index].has(Changed.Text);
+	n.dispose();
+}
+
+function inkHeld(n: NodeRef): boolean {
+	const layout = n.textLayout();
+	let xMin: float32 = 0.0;
+	let xMax: float32 = 0.0;
+	for (const line of layout.lines) {
+		if (line.x < xMin) { xMin = line.x; }
+		if (line.x + line.width > xMax) { xMax = line.x + line.width; }
+	}
+	let yMin: float32 = 0.0;
+	let yMax: float32 = layout.height;
+	for (const g of layout.glyphs) {
+		if (g.glyph == NO_GLYPH) { continue; }
+		const [left, top, right, bottom] = glyphInkBox(g.face, g.glyph, g.size);
+		if (right <= left || bottom <= top) { continue; }
+		const baseline: float32 = layout.lines[g.line].baseline + g.offsetY;
+		const penX: float32 = g.x + g.offsetX;
+		if (penX + left < xMin) { xMin = penX + left; }
+		if (penX + right > xMax) { xMax = penX + right; }
+		if (baseline + top < yMin) { yMin = baseline + top; }
+		if (baseline + bottom > yMax) { yMax = baseline + bottom; }
+	}
+	const b = n.scene.bounds[n.id.index];
+	return approx(b.xMin, xMin) && approx(b.yMin, yMin) && approx(b.xMax, xMax) &&
+		approx(b.yMax, yMax);
+}
+
+test "a label's bounds hold the ink of every glyph on its aligned rows, across an edit" {
+	const n = s.label("jolly\n\nzeta\nbeta gamma delta epsilon", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	n.setTextAlign(Align.Center);
+	n.setMaxWidth(80.0);
+	n.sync(identity2d(), false);
+	assert inkHeld(n);
+	n.setText("jolly\n\nzeta\nbeta gamma delta epsilon eta theta");
+	n.sync(identity2d(), false);
+	assert inkHeld(n);
+	n.setText("jolly\nbeta\n\nzeta");
+	n.sync(identity2d(), false);
+	assert inkHeld(n);
 	n.dispose();
 }
 
