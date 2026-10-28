@@ -851,7 +851,7 @@ function commandSlot(): int32 {
 }
 
 function copyFloats(
-	ref to: Vec<float32>, at: int32, from: Vec<float32>, start: int32, count: int32,
+	ref to: Vec<float32>, at: int32, from: Readonly<Span<float32>>, start: int32, count: int32,
 ): void {
 	for (let i: int32 = 0; i < count; i++) { to[at + i] = from[start + i]; }
 }
