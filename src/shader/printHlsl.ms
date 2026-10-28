@@ -55,6 +55,7 @@ import {
 	splitHelperName,
 	splitMember,
 	splitStructName,
+	scalarName,
 } from "./spelling";
 import { claimName } from "./names";
 import { printableEntry } from "./specialize";
@@ -178,15 +179,6 @@ class Printer {
 function fail(p: Printer, message: string): string {
 	if (p.error == "") { p.error = "printHlsl: " + message; }
 	return "";
-}
-
-function scalarName(s: ScalarKind): string {
-	return match (s) {
-		ScalarKind.F32 => "float",
-		ScalarKind.I32 => "int",
-		ScalarKind.U32 => "uint",
-		ScalarKind.Bool => "bool",
-	};
 }
 
 function arraySuffix(t: ShaderType): string {

@@ -61,6 +61,8 @@ import {
 	splitHelperName,
 	splitMember,
 	splitStructName,
+	scalarName,
+	vectorPrefix,
 } from "./spelling";
 
 function glslReservedWords(): string[] {
@@ -186,26 +188,8 @@ function gated(c: FeatureCondition, text: string): string {
 	return opening(c) + "\n" + text + "#endif\n";
 }
 
-function scalarName(s: ScalarKind): string {
-	return match (s) {
-		ScalarKind.F32 => "float",
-		ScalarKind.I32 => "int",
-		ScalarKind.U32 => "uint",
-		ScalarKind.Bool => "bool",
-	};
-}
-
 function broken(message: string): never {
 	throw new Error("printGlsl450: " + message);
-}
-
-function vectorPrefix(s: ScalarKind): string {
-	return match (s) {
-		ScalarKind.F32 => "",
-		ScalarKind.I32 => "i",
-		ScalarKind.U32 => "u",
-		ScalarKind.Bool => "b",
-	};
 }
 
 function splitAt(p: Glsl, t: ShaderType): int32 {

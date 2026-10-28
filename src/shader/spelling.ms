@@ -23,6 +23,24 @@ export function binaryOperator(op: BinaryOp): string {
 	};
 }
 
+export function scalarName(s: ScalarKind): string {
+	return match (s) {
+		ScalarKind.F32 => "float",
+		ScalarKind.I32 => "int",
+		ScalarKind.U32 => "uint",
+		ScalarKind.Bool => "bool",
+	};
+}
+
+export function vectorPrefix(s: ScalarKind): string {
+	return match (s) {
+		ScalarKind.F32 => "",
+		ScalarKind.I32 => "i",
+		ScalarKind.U32 => "u",
+		ScalarKind.Bool => "b",
+	};
+}
+
 export function isComponentCompare(op: Intrinsic): boolean {
 	return op == Intrinsic.LessThan || op == Intrinsic.LessThanEqual || op == Intrinsic.GreaterThan ||
 		op == Intrinsic.GreaterThanEqual || op == Intrinsic.Equal || op == Intrinsic.NotEqual;

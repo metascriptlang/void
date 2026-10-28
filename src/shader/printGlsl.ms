@@ -61,6 +61,8 @@ import {
 	splitHelperName,
 	splitMember,
 	splitStructName,
+	scalarName,
+	vectorPrefix,
 } from "./spelling";
 import { claimName } from "./names";
 import { printableEntry } from "./specialize";
@@ -209,24 +211,6 @@ function claimFixed(p: Printer, name: string, what: string): string {
 			"and GL binds it by that name");
 	}
 	return named;
-}
-
-function scalarName(s: ScalarKind): string {
-	return match (s) {
-		ScalarKind.F32 => "float",
-		ScalarKind.I32 => "int",
-		ScalarKind.U32 => "uint",
-		ScalarKind.Bool => "bool",
-	};
-}
-
-function vectorPrefix(s: ScalarKind): string {
-	return match (s) {
-		ScalarKind.F32 => "",
-		ScalarKind.I32 => "i",
-		ScalarKind.U32 => "u",
-		ScalarKind.Bool => "b",
-	};
 }
 
 function arraySuffix(p: Printer, t: ShaderType): string {
