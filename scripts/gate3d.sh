@@ -2491,14 +2491,15 @@ run_moving_material() {
 			> "$WORK/movingMaterial.control.$preset.log" 2>&1 || status=$?
 		for message in 'did not map the quad' 'did not move with the time' \
 			'not its mirrored back texture' \
-			'the dissolved half drew' 'not its edge colour' 'the lit dissolved half drew' 			'not one frame over the quad' 'not a quarter of the way' 'the faded quad drew'; do
+			'the dissolved half drew' 'not its edge colour' 'the lit dissolved half drew' 			'not one frame over the quad' 'not a quarter of the way' 'the faded quad drew' \
+			'the keyed texel drew'; do
 			if [ "$status" -eq 0 ] || ! grep -q "$message" "$WORK/movingMaterial.control.$preset.log"; then
 				fail "moving-material: the featureless control in preset $preset did not fail on '$message' (exit $status)"
 				return
 			fi
 		done
 	done
-	pass "moving-material: an affine UV transform, UV scroll on the frame time, a mirrored back texture, a dissolve with its edge band, a flipbook with and without its frame blend and a distance fade in both presets; the featureless control fails on each"
+	pass "moving-material: an affine UV transform, UV scroll on the frame time, a mirrored back texture, a dissolve with its edge band, a flipbook with and without its frame blend a distance fade and a colour key in both presets; the featureless control fails on each"
 }
 
 run_map_material() {

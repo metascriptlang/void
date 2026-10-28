@@ -15,7 +15,8 @@ import {
 	MOVING_DISSOLVE_EDGE_WIDTH, MOVING_DISSOLVE_EDGE_COLOR, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
 	MOVING_MATERIAL_UNIFORM_LENGTH, MOVING_FLIPBOOK_COLUMNS, MOVING_FLIPBOOK_ROWS,
 	MOVING_FLIPBOOK_FRAMES, MOVING_FLIPBOOK_SPEED, MOVING_FLIPBOOK_START_TIME, MOVING_FLIPBOOK_LOOP,
-	MOVING_FLIPBOOK_BLEND, MOVING_FADE_NEAR_START, MOVING_FADE_NEAR_END, movingBase,
+	MOVING_FLIPBOOK_BLEND, MOVING_FADE_NEAR_START, MOVING_FADE_NEAR_END, MOVING_COLOR_KEY,
+	movingBase,
 } from "../../src/void3d/gpu3d";
 import {
 	DrawContext, DrawItem, MeshId, MaterialId, MeshUploadError, MaterialError,
@@ -57,11 +58,12 @@ enum Quad {
 	Flipbook,
 	BlendedFlipbook,
 	Fade,
+	ColorKey,
 }
 
 const WIDTH: int32 = 320;
 const HEIGHT: int32 = 240;
-const HALF: float32 = 0.3;
+const HALF: float32 = 0.27;
 const WORLD_PER_TEXEL: float32 = 0.02;
 const BACKGROUND: Vec4 = { x: 0.1, y: 0.15, z: 0.2, w: 1.0 };
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
@@ -82,7 +84,7 @@ let pixelArt: boolean = voidCaptureEnvInt("VOID_MOVING_PIXEL_ART", 0) != 0;
 let control: boolean = voidCaptureEnvInt("VOID_MOVING_CONTROL", 0) != 0;
 let context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH +
-	8 * MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_MATERIAL_UNIFORM_LENGTH,
+	9 * MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_MATERIAL_UNIFORM_LENGTH,
 );
 let scene: Scene3D = Scene3D.create(context);
 let forward: ForwardRenderer = makeForward();
@@ -90,7 +92,7 @@ let preset: PixelArtRenderer = makePreset();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-let positions: Vec<float32> = [-2.8, -2.1, -1.4, -0.7, 0.0, 0.7, 1.4, 2.1, 2.8];
+let positions: Vec<float32> = [-2.79, -2.17, -1.55, -0.93, -0.31, 0.31, 0.93, 1.55, 2.17, 2.79];
 let frameIndex: int32 = 0;
 let failures: int32 = 0;
 
@@ -285,6 +287,12 @@ function init(): void {
 	fadeValues[movingBase(flipbook) + MOVING_FADE_NEAR_END] = 6.0;
 	place(Quad.Fade, { ...blendedFor(flipbook, fadeValues, true, true), texture: red }, false);
 
+	// Keyed on red, the halves texture keeps only its green half.
+	let keyValues: Vec<float32> = valuesOf(flipbook);
+	keyValues[movingBase(flipbook) + MOVING_COLOR_KEY] = 1.0;
+	keyValues[movingBase(flipbook) + MOVING_COLOR_KEY + 3] = 1.0;
+	place(Quad.ColorKey, { ...materialFor(flipbook, keyValues, true), texture: halves }, false);
+
 	setAmbient(scene, vec3(1.0, 1.0, 1.0));
 	setCameraPosition(core(), vec3(0.0, 0.0, 4.0));
 	setElapsedTime(core(), ELAPSED);
@@ -363,6 +371,9 @@ function check(camera: CameraView, swapped: boolean): void {
 	if (fadedRed < 60 || fadedRed > 200 || (faded & 0xFF) < 20) {
 		fail(`the faded quad drew ${faded}, not red over the background at about half alpha`);
 	}
+	if (!isBackground(rgbAt(camera, Quad.ColorKey, -1.0))) { fail("the keyed texel drew"); }
+	const unkeyed: int64 = rgbAt(camera, Quad.ColorKey, 1.0);
+	if (!isColor(unkeyed, GREEN)) { fail(`the unkeyed texel drew ${unkeyed}, not green`); }
 }
 
 // The plain flipbook holds one frame over the whole quad; the blended one leans a quarter of the
@@ -386,7 +397,7 @@ function checkFlipbooks(camera: CameraView, first: boolean): void {
 function frame(): void {
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("the framebuffer size changed"); }
 	frameIndex = frameIndex + 1;
-	if (refresh(scene, items) != 9) { fail("the scene does not draw its nine quads"); }
+	if (refresh(scene, items) != 10) { fail("the scene does not draw its ten quads"); }
 	const collected: Result<int32, LightError> = collectLights(scene, lights);
 	if (!collected.ok) { unreachable; }
 	const camera: CameraView = viewOf();
@@ -409,7 +420,8 @@ function frame(): void {
 	}
 	if (frameIndex < LAST_FRAME) { return; }
 	if (failures > 0) { voidCaptureExit(1); }
-	console.log("PASS moving material: affine, scroll, back texture, dissolve, flipbook, fade");
+	console.log("PASS moving material: affine, scroll, back texture, dissolve, flipbook, fade, " +
+		"colour key");
 	voidCaptureExit(0);
 }
 
