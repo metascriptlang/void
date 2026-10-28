@@ -541,12 +541,18 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 	if (t.kind != ShaderTypeKind.Texture) {
 		return fail(p, "TextureLoad of a " + t.kind.toString());
 	}
+	if (isLayered(t)) {
+		if (args.length < 4) {
+			return fail(p, "TextureLoad of a " + t.shape.toString() + " texture takes a layer and a level");
+		}
+		return texture + ".Load(int4(" + at + ", " + expr(p, args[2]) + ", " + expr(p, args[3]) + "))";
+	}
 	return match (t.shape) {
 		TextureShape.D2 | TextureShape.Depth2d =>
 			texture + ".Load(int3(" + at + ", " + level + "))",
 		TextureShape.D3 => texture + ".Load(int4(" + at + ", " + level + "))",
 		TextureShape.Multisampled2d => texture + ".Load(int2(" + at + "), " + level + ")",
-		_ => fail(p, "TextureLoad of a " + t.shape.toString() + " texture: the IR names no layer"),
+		_ => fail(p, "TextureLoad of a " + t.shape.toString() + " texture, which names no face"),
 	};
 }
 

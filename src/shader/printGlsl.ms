@@ -492,12 +492,19 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 	if (isComparison(p, pair)) {
 		return fail(p, "TextureLoad through comparison sampler pair '" + pair.name + "'");
 	}
-	const level = args.length > 2 ? intText(p, args[2]) : "0";
-	const fetch = "texelFetch(" + pair.name + ", " + intText(p, args[1]) + ", " + level + ")";
+	const layered = isLayered(t);
+	if (layered && args.length < 4) {
+		return fail(p, "TextureLoad of a " + t.shape.toString() + " texture takes a layer and a level");
+	}
+	const at = layered ?
+		"ivec3(" + intText(p, args[1]) + ", " + intText(p, args[2]) + ")" : intText(p, args[1]);
+	const levelAt = layered ? 3 : 2;
+	const level = args.length > levelAt ? intText(p, args[levelAt]) : "0";
+	const fetch = "texelFetch(" + pair.name + ", " + at + ", " + level + ")";
 	return match (t.shape) {
-		TextureShape.D2 | TextureShape.Depth2d | TextureShape.D3 | TextureShape.Multisampled2d =>
-			narrowed(fetch, e.type),
-		_ => fail(p, "TextureLoad of a " + t.shape.toString() + " texture: the IR names no layer"),
+		TextureShape.D2 | TextureShape.Depth2d | TextureShape.D3 | TextureShape.Multisampled2d |
+			TextureShape.D2Array | TextureShape.Depth2dArray => narrowed(fetch, e.type),
+		_ => fail(p, "TextureLoad of a " + t.shape.toString() + " texture, which names no face"),
 	};
 }
 
