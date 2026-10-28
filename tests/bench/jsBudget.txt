@@ -1,5 +1,5 @@
 profile scripts/jsBudget.sh --target=js entries windowJsEntry viewsJsEntry; rows are <entry>-<module> raw|gzip|shipRaw|shipGzip off <bytes> on <bytes>, gzip -9
-measured BUILD c85d84fb8 2026-10-28 tree 50e8d36cd464b35783e59beb98eb124a5f5fba8d
+measured BUILD c85d84fb8 2026-10-28 tree 57478514bf30b2b580066d8718f99ee8205ab91e
 windowJsEntry-shaper raw off 924177 on 924177
 windowJsEntry-shaper gzip off 120707 on 120707
 windowJsEntry-shaper shipRaw off 115590 on 115590
