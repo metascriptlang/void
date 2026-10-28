@@ -18,6 +18,15 @@ import {
 	vectorType,
 } from "./ir";
 
+export function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {
+	return args.filter((a) => a.type.kind != ShaderTypeKind.Sampler);
+}
+
+export function hasCallOrEffect(e: ShaderExpr): boolean {
+	return e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic) ||
+		e.operands.some((o) => hasCallOrEffect(o));
+}
+
 export function innermost(t: ShaderType): ShaderType {
 	return t.kind == ShaderTypeKind.Array ? innermost(t.element[0]) : t;
 }

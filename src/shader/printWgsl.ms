@@ -35,7 +35,7 @@ import {
 	isComparisonSampler,
 } from "./ir";
 import { BindingSlot } from "./layout";
-import { builtinType, ioLocation } from "./irWalk";
+import { builtinType, hasCallOrEffect, ioLocation, withoutSamplers } from "./irWalk";
 import { claimName } from "./names";
 import { printableEntry } from "./specialize";
 import {
@@ -369,14 +369,11 @@ function runsEffect(e: ShaderExpr): boolean {
 	return e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic);
 }
 
-function hasEffect(e: ShaderExpr): boolean {
-	return runsEffect(e) || e.operands.some((o) => hasEffect(o));
-}
-
 // select evaluates both arms, so a conditional with a call in an arm becomes a var assigned in
 // an if/else ahead of its statement, as Tint's PromoteSideEffectsToDecl does.
 function isHoisted(e: ShaderExpr): boolean {
-	return e.kind == ExprKind.Conditional && (hasEffect(e.operands[1]) || hasEffect(e.operands[2]));
+	return e.kind == ExprKind.Conditional &&
+		(hasCallOrEffect(e.operands[1]) || hasCallOrEffect(e.operands[2]));
 }
 
 function hoists(e: ShaderExpr): boolean {
@@ -424,10 +421,6 @@ function conditionalText(p: Printer, e: ShaderExpr): string {
 	emit(p, depth, "}");
 	p.depth = depth;
 	return name;
-}
-
-function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {
-	return args.filter((a) => a.type.kind != ShaderTypeKind.Sampler);
 }
 
 function biasText(p: Printer, o: ShaderExpr[]): string {

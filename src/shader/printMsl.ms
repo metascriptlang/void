@@ -29,13 +29,19 @@ import {
 	isUniformLoad,
 	frexpResultType,
 	modfResultType,
-	isEffect,
 	texelScalar,
 	isDepthShape,
 	isComparisonSampler,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
-import { builtinType, functionOrder, ioLocation, structOrder } from "./irWalk";
+import {
+	builtinType,
+	functionOrder,
+	hasCallOrEffect,
+	ioLocation,
+	structOrder,
+	withoutSamplers,
+} from "./irWalk";
 import { claimName } from "./names";
 import { printableEntry, readsFrom } from "./specialize";
 import {
@@ -389,17 +395,6 @@ function binaryText(p: Printer, e: ShaderExpr): string {
 	return (e.binary == BinaryOp.Equal ? "all" : "any") + text;
 }
 
-function hasEffect(e: ShaderExpr): boolean {
-	if (e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic)) {
-		return true;
-	}
-	return e.operands.some((o) => hasEffect(o));
-}
-
-function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {
-	return args.filter((a) => a.type.kind != ShaderTypeKind.Sampler);
-}
-
 function isArrayed(t: ShaderType): boolean {
 	return t.shape == TextureShape.D2Array || t.shape == TextureShape.CubeArray ||
 		t.shape == TextureShape.Depth2dArray;
@@ -561,7 +556,7 @@ function dimensionsText(p: Printer, e: ShaderExpr): string {
 	}
 	const levelled = t.kind == ShaderTypeKind.Texture && t.shape != TextureShape.Multisampled2d &&
 		t.shape != TextureShape.D1 && o.length > 1;
-	if (levelled && hasEffect(o[1])) {
+	if (levelled && hasCallOrEffect(o[1])) {
 		return fail(p, "TextureDimensions whose level calls a function");
 	}
 	const level = levelled ? "uint(" + exprText(p, o[1]) + ")" : "";
@@ -597,7 +592,7 @@ function lengthText(p: Printer, e: ShaderExpr): string {
 function signText(p: Printer, e: ShaderExpr): string {
 	const x = e.operands[0];
 	if (isFloat(x.type)) { return "sign(" + exprText(p, x) + ")"; }
-	if (hasEffect(x)) { return fail(p, "Sign of an integer whose operand calls a function"); }
+	if (hasCallOrEffect(x)) { return fail(p, "Sign of an integer whose operand calls a function"); }
 	const zero = literalText(p, x.type, 0.0);
 	const resultText = typeText(p, e.type);
 	const operand = exprText(p, x);
@@ -630,7 +625,7 @@ function bitsText(p: Printer, e: ShaderExpr): string {
 	const op = e.intrinsic;
 	const x = exprText(p, o[0]);
 	const repeated = op == Intrinsic.FirstLeadingBit ? 0 : repeatedBitsOperand(op);
-	if (repeated >= 0 && hasEffect(o[repeated])) {
+	if (repeated >= 0 && hasCallOrEffect(o[repeated])) {
 		return fail(p, op.toString() + " prints an operand more than once, and it calls a function");
 	}
 	if (op == Intrinsic.FirstTrailingBit) {
@@ -811,7 +806,7 @@ function assignText(p: Printer, s: ShaderStmt): string {
 		return fail(p, "an assignment of a whole array");
 	}
 	if (s.assign == AssignOp.Mod && isFloat(s.target.type)) {
-		if (hasEffect(s.target)) { return fail(p, "'%=' on a target that calls a function"); }
+		if (hasCallOrEffect(s.target)) { return fail(p, "'%=' on a target that calls a function"); }
 		return target + " = fmod(" + target + ", " + exprText(p, s.expr) + ")";
 	}
 	return match (s.assign) {

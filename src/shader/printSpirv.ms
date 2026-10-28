@@ -29,7 +29,6 @@ import {
 	isAtomic,
 	isUniformLoad,
 	isDerivative,
-	isEffect,
 	rootOf,
 	sameShaderType,
 	scalarType,
@@ -39,7 +38,7 @@ import {
 	isComparisonSampler,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
-import { builtinType, ioLocation } from "./irWalk";
+import { builtinType, hasCallOrEffect, ioLocation, withoutSamplers } from "./irWalk";
 import { Reads, printableEntry } from "./specialize";
 import { componentCompare, isComponentCompare, isMath } from "./spelling";
 
@@ -770,11 +769,6 @@ function localVariable(p: Spirv, t: ShaderType): int32 {
 	return id;
 }
 
-function effectful(e: ShaderExpr): boolean {
-	return e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic) ||
-		e.operands.some((o) => effectful(o));
-}
-
 function isPlace(p: Spirv, e: ShaderExpr): boolean {
 	return match (e.kind) {
 		ExprKind.Local | ExprKind.Param | ExprKind.Io | ExprKind.Workgroup |
@@ -1044,7 +1038,7 @@ function shortCircuit(p: Spirv, e: ShaderExpr): int32 {
 	const and = e.binary == BinaryOp.LogicalAnd;
 	const type = typeId(p, e.type);
 	const l = value(p, e.operands[0]);
-	if (!effectful(e.operands[1])) {
+	if (!hasCallOrEffect(e.operands[1])) {
 		const r = value(p, e.operands[1]);
 		return typed(p, and ? OP_LOGICAL_AND : OP_LOGICAL_OR, type, [l, r]);
 	}
@@ -1074,7 +1068,7 @@ function conditional(p: Spirv, e: ShaderExpr): int32 {
 	const type = typeId(p, t);
 	const c = value(p, o[0]);
 	const plain = t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector;
-	if (plain && !effectful(o[1]) && !effectful(o[2])) {
+	if (plain && !hasCallOrEffect(o[1]) && !hasCallOrEffect(o[2])) {
 		const yes = value(p, o[1]);
 		const no = value(p, o[2]);
 		return typed(p, OP_SELECT, type, [conditionFor(p, t, o[0].type, c), yes, no]);
@@ -1539,10 +1533,6 @@ function compare(p: Spirv, e: ShaderExpr): int32 {
 	}
 	return typed(p, OP_IMAGE_SAMPLE_DREF_EXPLICIT_LOD, type, [image, at, reference].concat(
 		imageOperands(p, e, IMAGE_LOD, [scalarConstant(p, ScalarKind.F32, 0.0)])));
-}
-
-function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {
-	return args.filter((a) => a.type.kind != ShaderTypeKind.Sampler);
 }
 
 function texelLoad(p: Spirv, e: ShaderExpr): int32 {
