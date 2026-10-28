@@ -18,6 +18,7 @@ import {
 	UnderlineStyle,
 	LaidGlyph,
 	LineBox,
+	RunSegment,
 	LineOptions,
 	LineShapes,
 	ShapedText,
@@ -372,10 +373,12 @@ function runDecorations(
 	let out: Vec<Decoration> = new Array(0);
 	if ((runs.length as int32) == 0) { return out; }
 	for (let li = 0; li < (layout.lines.length as int32); li++) {
-		layout.lineDecorations(runs, size, gridCell, li, DecorationKind.Background, out);
-		layout.lineDecorations(runs, size, gridCell, li, DecorationKind.Underline, out);
-		layout.lineDecorations(runs, size, gridCell, li, DecorationKind.Strikethrough, out);
-		layout.lineDecorations(runs, size, gridCell, li, DecorationKind.Overline, out);
+		const segments: Vec<RunSegment> = layout.runSegments(li);
+		const line: LineBox = layout.lines[li];
+		lineDecorations(runs, size, gridCell, line, segments, DecorationKind.Background, out);
+		lineDecorations(runs, size, gridCell, line, segments, DecorationKind.Underline, out);
+		lineDecorations(runs, size, gridCell, line, segments, DecorationKind.Strikethrough, out);
+		lineDecorations(runs, size, gridCell, line, segments, DecorationKind.Overline, out);
 	}
 	return out;
 }
@@ -396,16 +399,28 @@ function cellOf(face: int32, size: float32, gridCell: float32): float32 {
 	return glyphAdvance(face, glyphIndex(face, "0".code), size);
 }
 
+function slotColor(run: TextRun, slot: DecorationKind): Color {
+	return match (slot) {
+		DecorationKind.Background => run.background,
+		DecorationKind.Underline => run.underline,
+		DecorationKind.Overline => run.overline,
+		DecorationKind.Strikethrough => run.strikethrough,
+		_ => {
+			console.log(`void2d: no run colour for decoration slot ${slot}`);
+			unreachable;
+		},
+	};
+}
+
 function lineDecorations(
-	this layout: TextLayout,
 	runs: Readonly<Span<TextRun>>,
 	size: float32,
 	gridCell: float32,
-	li: int32,
+	line: LineBox,
+	segments: Readonly<Span<RunSegment>>,
 	slot: DecorationKind,
 	ref out: Vec<Decoration>,
 ): void {
-	const line: LineBox = layout.lines[li];
 	let open: boolean = false;
 	let openKind: DecorationKind = slot;
 	let openX: float32 = 0.0;
@@ -414,7 +429,7 @@ function lineDecorations(
 	let openH: float32 = 0.0;
 	let openCell: float32 = 0.0;
 	let openColor: Color = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
-	for (const segment of layout.runSegments(li)) {
+	for (const segment of segments) {
 		const run: int32 = segment.run;
 		const x0: float32 = segment.x0;
 		const right: float32 = segment.right;
@@ -424,13 +439,13 @@ function lineDecorations(
 		let h: float32 = line.height;
 		let cell: float32 = 0.0;
 		if (run != NO_RUN) {
+			color = slotColor(runs[run], slot);
+		}
+		if (color.a > 0.0 && slot != DecorationKind.Background) {
 			const style: TextRun = runs[run];
 			const face: int32 = fontFace(style.font);
 			const deco = decorationMetrics(face, size);
-			if (slot == DecorationKind.Background) {
-				color = style.background;
-			} else if (slot == DecorationKind.Underline) {
-				color = style.underline;
+			if (slot == DecorationKind.Underline) {
 				kind = underlineKind(style);
 				y = line.baseline + deco.underlineTop;
 				h = deco.underlineThickness;
@@ -442,11 +457,9 @@ function lineDecorations(
 					cell = cellOf(face, size, gridCell);
 				}
 			} else if (slot == DecorationKind.Overline) {
-				color = style.overline;
 				y = line.baseline - faceMetrics(face, size).ascent;
 				h = deco.underlineThickness;
 			} else {
-				color = style.strikethrough;
 				y = line.baseline + deco.strikethroughTop;
 				h = deco.strikethroughThickness;
 			}
