@@ -5,6 +5,7 @@ import { GPUTextureUsage, stop } from "../types.ms";
 
 @passC("-I../../../deps/vulkan-headers/include");
 
+@include("../../host/appWindow.h");
 extern function voidPresentMode(): int32;
 
 struct Screen {
