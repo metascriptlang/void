@@ -19,10 +19,12 @@ import {
 	LaidGlyph,
 	LineBox,
 	LineOptions,
+	LineShapes,
 	ShapedText,
 	TextError,
 	TextErrorKind,
 	describe,
+	emptyLineShapes,
 	lineIsBidi,
 	runSegments,
 	selectedExtents,
@@ -30,6 +32,7 @@ import {
 	NO_GLYPH,
 	NO_RUN,
 	PLAIN_LINES,
+	shapeLines,
 	shapeText,
 	textShapingOn,
 	wrapOnGrid,
@@ -142,6 +145,7 @@ export interface LabelText {
 	runs: Vec<TextRun>;
 	decorations: Vec<Decoration>;
 	shaped: ShapedText;
+	lineShapes: LineShapes;
 	shapedText: string;
 	shapedWithShaping: boolean;
 	reshape: boolean;
@@ -267,6 +271,7 @@ export function allocateLabelText(): int32 {
 		runs: new Array(0),
 		decorations: new Array(0),
 		shaped: emptyShaped(style),
+		lineShapes: emptyLineShapes(style),
 		shapedText: "",
 		shapedWithShaping: false,
 		reshape: true,
@@ -318,6 +323,7 @@ export function releaseLabelGlyphs(index: int32): void {
 export function releaseLabelText(index: int32): void {
 	releasePlacement(labelTexts[index]);
 	labelTexts[index].layout = emptyLayout();
+	labelTexts[index].lineShapes = emptyLineShapes(labelTexts[index].style);
 	freeLabelTexts.push(index);
 }
 
@@ -334,7 +340,9 @@ export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 	const entry: LabelText = labelTexts[index];
 	releasePlacement(entry);
 	if (shapeStale(entry, text, style)) {
-		const shaped = shapeText(text, style, entry.runs, entry.shapingBreaks, entry.direction);
+		const shaped = shapeLines(
+			text, style, entry.runs, entry.shapingBreaks, entry.direction, entry.lineShapes,
+		);
 		entry.shapedText = text;
 		entry.shapedWithShaping = textShapingOn();
 		entry.reshape = false;
