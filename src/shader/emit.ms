@@ -1008,6 +1008,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	let storageElements: Node[] = [];
 	let storageSites: Node[] = [];
 	let hookedStructs: int32[] = [];
+	let authorFunctions: int32[] = [];
+	let authorSites: Node[] = [];
 	const resourceRead = 0;
 	const ioRead = 1;
 	const callRead = 2;
@@ -1746,6 +1748,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		let f = new ShaderFunction();
 		f.name = helper.fnName;
 		const index = addFunction(f);
+		authorFunctions.push(index);
+		authorSites.push(callee);
 		functionKeys.push(key);
 		functionIndices.push(index);
 
@@ -2671,6 +2675,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		main.params.push(shaderField(signature.typExprParamNames[0], main.result));
 	}
 	const mainIndex = addFunction(main);
+	authorFunctions.push(mainIndex);
+	authorSites.push(fn);
 	enterScope(entry.resolvedSym.modulePath, main);
 	for (const p of main.params) { paramNames.push(p.name); }
 	inHelper = segment;
@@ -2685,6 +2691,13 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		}
 		m.resources[storageResources[s]].type.element[0].structIndex =
 			structIndex(element, storageSites[s]);
+	}
+	for (let k = 0; k < authorFunctions.length; k++) {
+		const name = m.functions[authorFunctions[k]].name;
+		if (m.structs.some((s) => s.name == name)) {
+			fail(authorSites[k], "function '" + name + "' is named as the struct '" + name +
+				"'; a struct's name is its hook site's");
+		}
 	}
 	for (let r = 0; r < m.resources.length; r++) {
 		m.resources[r].condition = declarationCondition(resourceContexts[r]);
