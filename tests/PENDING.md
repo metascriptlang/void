@@ -95,7 +95,6 @@ renderer cannot produce. The phase that lands the feature adds the row to
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| golden-missing:text/underlineStyles | T2 | the scene is in `tests/golden/table.ms` and `scenes.ms` at DPI 1.25 with no PNG, and `compare.ms` makes a scene with no golden an error, so the golden stage is red until the capture exists. Closes when the human runs `sh scripts/golden.sh --update text/underlineStyles` on D3D11 and deletes this row in the same commit | human | 2026-10-27 |
 | bidi:weak-caret-and-visual-motion | T1 | a second (weak) caret at a direction boundary and cursor motion in visual order are not built: `xForIndex` and `indexAt` answer the strong caret only (VOID2D.md P7, mechanism C), and a boundary between a Latin and a Hebrew run has a second position that nothing can reach. The references are Pango's `get_cursor_pos` (strong and weak) and cosmic-text's `Affinity`; GPUI and Makepad have neither. New public surface with no rendering-layer reference, so the human decides whether Neon needs it; Neon owns focus and key handling. Closes when the human says yes and the surface is specified, or says no and the row is deleted | human | 2026-10-08 |
 
 ## Human inputs for end-game verification
