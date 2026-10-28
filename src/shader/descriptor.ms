@@ -26,7 +26,7 @@ import { printMsl } from "./printMsl";
 import { printSpirv } from "./printSpirv";
 import { printWgsl } from "./printWgsl";
 import { Reflection, reflectCompute, reflectProgram } from "./reflect";
-import { specialize } from "./specialize";
+import { specialize, withoutUnread } from "./specialize";
 
 export struct Offsets {
 	structs: int32[];
@@ -199,14 +199,14 @@ function colourWritten(m: ShaderModule): void {
 	}
 }
 
-function checked(m: ShaderModule, what: string): Result<ShaderModule, string> {
-	colourWritten(m);
-	const broken = irErrors(m);
+export function checked(m: ShaderModule, what: string): Result<ShaderModule, string> {
+	const kept = try withoutUnread(m);
+	const broken = irErrors(kept);
 	if (broken.length > 0) { return Result.err(what + ": " + broken[0]); }
-	return Result.ok(m);
+	return Result.ok(kept);
 }
 
-export function programModule(vertexText: string, fragmentText: string, on: string[]):
+export function joinedProgram(vertexText: string, fragmentText: string, on: string[]):
 	Result<ShaderModule, string> {
 	let m = try stageModule(vertexText, on, "the vertex stage");
 	const fragment = try stageModule(fragmentText, on, "the fragment stage");
@@ -215,14 +215,21 @@ export function programModule(vertexText: string, fragmentText: string, on: stri
 		m.entries[1].stage != ShaderStage.Fragment) {
 		return Result.err("a program is one vertex and one fragment entry");
 	}
-	return checked(m, "the program");
+	colourWritten(m);
+	return Result.ok(m);
+}
+
+export function programModule(vertexText: string, fragmentText: string, on: string[]):
+	Result<ShaderModule, string> {
+	return checked(try joinedProgram(vertexText, fragmentText, on), "the program");
 }
 
 export function computeModule(text: string, on: string[]): Result<ShaderModule, string> {
-	const m = try stageModule(text, on, "the compute stage");
+	let m = try stageModule(text, on, "the compute stage");
 	if (m.entries.length != 1 || m.entries[0].stage != ShaderStage.Compute) {
 		return Result.err("a compute program is one compute entry");
 	}
+	colourWritten(m);
 	return checked(m, "the compute program");
 }
 

@@ -328,16 +328,35 @@ export function specialize(m: ShaderModule, on: string[]): Result<ShaderModule, 
 			walkType(w, m.ios[i].type);
 		}
 	}
+	for (let i = 0; i < m.resources.length; i++) {
+		if (note(w.reads.resources, i)) { walkType(w, m.resources[i].type); }
+	}
 	if (w.errors.length > 0) { return Result.err(w.errors.join("\n")); }
+	return Result.ok(rebuilt(m, on, w.reads, ios));
+}
 
+export function withoutUnread(m: ShaderModule): Result<ShaderModule, string> {
+	let w = new Walk();
+	w.module = m;
+	for (const e of m.entries) { walkFunction(w, e.functionIndex); }
+	let ios: int32[] = [];
+	for (let i = 0; i < m.ios.length; i++) {
+		ios.push(i);
+		walkType(w, m.ios[i].type);
+	}
+	if (w.errors.length > 0) { return Result.err(w.errors.join("\n")); }
+	return Result.ok(rebuilt(m, [], w.reads, ios));
+}
+
+function rebuilt(m: ShaderModule, on: string[], reads: Reads, ios: int32[]): ShaderModule {
 	const r: Remap = {
 		on,
-		structs: keptIndices(m.structs.length as int32, w.reads.structs),
-		constants: keptIndices(m.constants.length as int32, w.reads.constants),
-		resources: keptIndices(m.resources.length as int32, w.reads.resources),
+		structs: keptIndices(m.structs.length as int32, reads.structs),
+		constants: keptIndices(m.constants.length as int32, reads.constants),
+		resources: keptIndices(m.resources.length as int32, reads.resources),
 		ios: keptIndices(m.ios.length as int32, ios),
-		functions: keptIndices(m.functions.length as int32, w.reads.functions),
-		workgroups: keptIndices(m.workgroups.length as int32, w.reads.workgroups),
+		functions: keptIndices(m.functions.length as int32, reads.functions),
+		workgroups: keptIndices(m.workgroups.length as int32, reads.workgroups),
 	};
 
 	let out = new ShaderModule();
@@ -419,5 +438,5 @@ export function specialize(m: ShaderModule, on: string[]): Result<ShaderModule, 
 		c.index = index;
 		out.declarations.push(c);
 	}
-	return Result.ok(out);
+	return out;
 }
