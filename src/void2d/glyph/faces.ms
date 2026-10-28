@@ -3,6 +3,7 @@ import {
 	GlyphBox,
 	Vertex,
 	findGlyphIndex,
+	findTable,
 	getFontOffsetForIndex,
 	getFontVMetrics,
 	getGlyphBox,
@@ -374,6 +375,16 @@ export function void2dGlyphFaceLoad(path: string, index: int32): int32 {
 				}
 				outlines = platform != null;
 			}
+		}
+	}
+	when (voidCff) {
+	} else {
+		if (!outlines && offset >= 0 && findTable(holder.data, offset, "glyf") == 0 &&
+			findTable(holder.data, offset, "CFF ") != 0) {
+			console.error(
+				`void2d: ${path} has CFF outlines, which need the CFF module (-d:voidCff); the font is refused`,
+			);
+			return FACE_NOT_A_FONT;
 		}
 	}
 	if (!outlines || found == null) {

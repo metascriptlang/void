@@ -25,16 +25,20 @@ const STEM_RIGHT: float32 = 370.0;
 const STEM_TOP: float32 = 1490.0;
 
 let loadedFace: int32 = -1;
-let cffFace: int32 = -1;
+when (voidCff) {
+	let cffFace: int32 = -1;
+}
 
 function testFace(): int32 {
 	if (loadedFace < 0) { loadedFace = try loadFace("assets/font.ttf") catch -1; }
 	return loadedFace;
 }
 
-function cubicFace(): int32 {
-	if (cffFace < 0) { cffFace = try loadFace("tests/fonts/cffSynthetic.otf") catch -1; }
-	return cffFace;
+when (voidCff) {
+	function cubicFace(): int32 {
+		if (cffFace < 0) { cffFace = try loadFace("tests/fonts/cffSynthetic.otf") catch -1; }
+		return cffFace;
+	}
 }
 
 function keyOf(face: int32, glyph: int32, size: float32, variant: int32, lane: int32): GlyphKey {
@@ -205,36 +209,38 @@ test "a lane of zero, a bad variant and a plain acquire are refused by name" {
 	assert atlas.pageCount() == 0;
 }
 
-test "a cubic glyph gets an outline tile that holds its fill" {
-	const face = cubicFace();
-	assert face >= 0;
-	const glyph: int32 = glyphIndex(face, "A".code);
-	const atlas = GlyphAtlas.create(1024, 4);
-	defer atlas.dispose();
-	const outline = atlas.acquireOutline(keyOf(face, glyph, 40.0, 0, laneOf(2.0)));
-	const fill = atlas.acquire(keyOf(face, glyph, 40.0, 0, 0));
-	assert outline.ok && fill.ok;
-	if (outline.ok && fill.ok) {
-		const o: GlyphTile = atlas.tile(outline.value);
-		const f: GlyphTile = atlas.tile(fill.value);
-		assert o.width > f.width && o.height > f.height;
-		let fillInk: int32 = 0;
-		let outlineInk: int32 = 0;
-		for (let row = 0; row < f.height; row++) {
-			for (let col = 0; col < f.width; col++) {
-				const covered: int32 = texel(atlas, f, col, row);
-				fillInk = fillInk + covered;
-				const at: int32 = texel(atlas, o, f.left + col - o.left, f.top + row - o.top);
-				if (covered > 0) { assert at + 1 >= covered; }
+when (voidCff) {
+	test "a cubic glyph gets an outline tile that holds its fill" {
+		const face = cubicFace();
+		assert face >= 0;
+		const glyph: int32 = glyphIndex(face, "A".code);
+		const atlas = GlyphAtlas.create(1024, 4);
+		defer atlas.dispose();
+		const outline = atlas.acquireOutline(keyOf(face, glyph, 40.0, 0, laneOf(2.0)));
+		const fill = atlas.acquire(keyOf(face, glyph, 40.0, 0, 0));
+		assert outline.ok && fill.ok;
+		if (outline.ok && fill.ok) {
+			const o: GlyphTile = atlas.tile(outline.value);
+			const f: GlyphTile = atlas.tile(fill.value);
+			assert o.width > f.width && o.height > f.height;
+			let fillInk: int32 = 0;
+			let outlineInk: int32 = 0;
+			for (let row = 0; row < f.height; row++) {
+				for (let col = 0; col < f.width; col++) {
+					const covered: int32 = texel(atlas, f, col, row);
+					fillInk = fillInk + covered;
+					const at: int32 = texel(atlas, o, f.left + col - o.left, f.top + row - o.top);
+					if (covered > 0) { assert at + 1 >= covered; }
+				}
 			}
-		}
-		for (let row = 0; row < o.height; row++) {
-			for (let col = 0; col < o.width; col++) {
-				outlineInk = outlineInk + texel(atlas, o, col, row);
+			for (let row = 0; row < o.height; row++) {
+				for (let col = 0; col < o.width; col++) {
+					outlineInk = outlineInk + texel(atlas, o, col, row);
+				}
 			}
+			assert fillInk > 0;
+			assert outlineInk > fillInk + fillInk / 8;
 		}
-		assert fillInk > 0;
-		assert outlineInk > fillInk + fillInk / 8;
 	}
 }
 
@@ -319,13 +325,20 @@ when (voidSdfText) {
 		assert atlas.outlineRasterizations == 2;
 	}
 
-	test "a cubic glyph has no SDF outline and a lane outside the key is refused by name" {
-		const face = cubicFace();
+	when (voidCff) {
+		test "a cubic glyph has no SDF outline" {
+			const face = cubicFace();
+			const atlas = GlyphAtlas.create(1024, 2);
+			defer atlas.dispose();
+			const cubic = atlas.acquireSdfOutline(face, glyphIndex(face, "A".code), 16);
+			assert !cubic.ok;
+			if (!cubic.ok) { assert cubic.error == AtlasError.SdfCubicOutline; }
+		}
+	}
+
+	test "a lane outside the key is refused by name" {
 		const atlas = GlyphAtlas.create(1024, 2);
 		defer atlas.dispose();
-		const cubic = atlas.acquireSdfOutline(face, glyphIndex(face, "A".code), 16);
-		assert !cubic.ok;
-		if (!cubic.ok) { assert cubic.error == AtlasError.SdfCubicOutline; }
 		const plain = testFace();
 		const none = atlas.acquireSdfOutline(plain, glyphIndex(plain, "g".code), 0);
 		assert !none.ok;

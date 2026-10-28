@@ -11,7 +11,7 @@ const SHADER = `
 `;
 
 async function main(): Promise<void> {
-	acquireContext("#void", 1, () => {});
+	acquireContext("#void", 1, () => {}, () => {});
 	const device = requestDevice({ device: null, context: null, colorFormat: "rgba8unorm", depthFormat: "depth32float", sampleCount: 1 });
 	const target = device.createTexture({
 		label: "target",

@@ -1,4 +1,5 @@
 import {
+	FaceError,
 	loadFace,
 	glyphIndex,
 	glyphAdvance,
@@ -58,6 +59,7 @@ const COLOUR_ONLY: string = "tests/fonts/cbdtSynthetic.ttf";
 const COLOUR_DRAWABLE: string = "tests/fonts/sbixSynthetic.ttf";
 const COLLECTION: string = "tests/fonts/symbolCollection.ttc";
 const JOINERS: string = "tests/fonts/cmap/joiners.ttf";
+const CFF_FACE: string = "tests/fonts/cffSynthetic.otf";
 const UNLOADABLE: string = "tests/fonts/cmap/coversButUnloadable.otf";
 const NO_OUTLINES: string = "tests/fonts/cmap/noOutlines.ttf";
 
@@ -455,6 +457,19 @@ test "a fallback that covers a codepoint but will not load is skipped, and only 
 	assert faceSlotFor(keeper, 0x1F600, Presentation.Default) >= 0;
 	assert codepointFaceFor(broken, 0x1F600, Presentation.Default).face == fontFace(broken);
 	assert fallbackProbes() == probes;
+}
+
+when (voidCff) {
+} else {
+	test "a CFF face is refused by name when the CFF module is not built" {
+		holdFontFile(CFF_FACE);
+		const loaded = loadFace(CFF_FACE);
+		assert !loaded.ok;
+		if (!loaded.ok) { assert loaded.error == FaceError.NotAFont; }
+		const font = addFont(CFF_FACE);
+		assert !font.ok;
+		if (!font.ok) { assert font.error == FontError.NotLoaded; }
+	}
 }
 
 test "a selector or joiner takes the face before it and loads no face of its own" {
