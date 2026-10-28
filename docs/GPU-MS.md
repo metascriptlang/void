@@ -1214,3 +1214,27 @@ verdict holds for the land. A change to shared `.ms` after `3c289539` needs a Ma
    the moment Void `main` has the rename.
 4. After the land: retire the lanes `void-wt-gpu-ms-core` and `void-wt-gpu-ms-2d`, close the card
    `~/metascript/.wt/gpu-ms.md`, then start D3D12 as its own arc from `main`.
+
+### 2026-10-28, Windows: GO for the land from the GPU side; what the Mac reruns
+
+**Verdict on Windows: GO.** Goldens at `2a48a971`: D3D11 123 pass of 123, GL 4.3 core 96 pass and
+27 within the cross-backend bound of 123, Vulkan 119 pass and 4 pending of 123, 0 fail on all three.
+`msc test src/test/index.ms` at `9c93af0c`: 299/299 files, 3301/3301 tests. `msc check` is clean on
+the 11 `main2d` targets, emcc included (yoga's `6a1cc06` closes the wasm32 child index here).
+The rows of `docs/TESTING.md` count 123.
+
+**Shared `.ms` changed after `3c289539`**, so the Mac reruns `msc test src/test/index.ms` and
+`sh scripts/golden.sh --backend metal` on this tip:
+- main merged again at `d036d675` (SAO, blur, decal, line and spot cookie programs), DXBC
+  regenerated; the door grows to fifteen views and eight samplers (`21e9b67c`).
+- main's LOD inheritance ported onto the read-only pick (`2a48a971`): `setInheritLod`, the topmost
+  inheriting ancestor hands its screen ratio down through the frame's items, `pickMeshLods` refuses
+  a source that is not an earlier LOD item.
+- test fixes only (`f95406bc`, `1f92f731`, `eb88ac9b`, `9c93af0c`): main's checks without the
+  dropped load samplers, the stencil check sized from the door's word count, the fake texture and
+  the renderer checks follow the live GPU context.
+
+**Metal needs the Mac:** the metallib predates the programs main added, so they cannot draw on
+Metal until the Mac regenerates it. That run waits on nothing else here.
+
+Next on Windows: the per-backend A/B against main in a quiet window, then the land chain.
