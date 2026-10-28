@@ -3,11 +3,11 @@
 // scripts/validateHlsl.sh and spirv-val. A shaderModule prints it for the build's target.
 
 import { programModule, stageSource } from "../shader/descriptor";
-import { glsl, glslIr } from "../shader/emit";
+import { glsl, glslIr, glslLinkedIr } from "../shader/emit";
 import { Builtin, ShaderModule, irErrors, scalarType, ScalarKind } from "../shader/ir";
 import { ShaderTarget } from "../shader/layout";
 import { shaderModule } from "../shader/program";
-import { printedProbe, printedSpirv } from "./shaderProbePrint";
+import { fragmentText, printedProbe, printedSpirv } from "./shaderProbePrint";
 import { Vec2f, Vec4f, builtin, vec4f } from "../shader/std";
 
 export struct Facet {
@@ -79,5 +79,6 @@ test "the primitive index is a u32 as WGSL's" {
 shaderModule(facet, plainVs, facetFs);
 
 test "shaderModule prints the primitive index for the build's target" {
-	assert facetModule.fragmentCode.length > 0 && !facetModule.fragmentCode.includes("null");
+	const code = fragmentText(facetModule, glslIr(plainVs), glslLinkedIr(facetFs, plainVs));
+	assert code.length > 0 && !code.includes("null");
 }

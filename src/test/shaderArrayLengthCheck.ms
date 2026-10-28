@@ -6,11 +6,11 @@
 
 import { mkdir, writeFile } from "std/fs";
 import { computeModule } from "../shader/descriptor";
-import { glslCompute, glslComputeIr } from "../shader/emit";
+import { glslCompute, glslComputeIr, glslIr, glslLinkedIr } from "../shader/emit";
 import { ResourceKind, ShaderModule, irErrors } from "../shader/ir";
 import { ShaderTarget } from "../shader/layout";
 import { shaderModule } from "../shader/program";
-import { printedProbe, printedSpirv } from "./shaderProbePrint";
+import { fragmentText, printedProbe, printedSpirv } from "./shaderProbePrint";
 import {
 	Vec2f,
 	Vec3u,
@@ -79,7 +79,8 @@ function weightedFs(input: Pixel, b: Weighted): Vec4f {
 shaderModule(weighted, plainVs, weightedFs);
 
 test "shaderModule prints arrayLength while the macro prints the program" {
-	assert weightedModule.fragmentCode.length > 0 && !weightedModule.fragmentCode.includes("null");
+	const code = fragmentText(weightedModule, glslIr(plainVs), glslLinkedIr(weightedFs, plainVs));
+	assert code.length > 0 && !code.includes("null");
 }
 
 function computeOf(): ShaderModule {

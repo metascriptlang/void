@@ -1,10 +1,7 @@
-import { byteAt, byteLength } from "std/core/string/bytes";
-import { readFile } from "std/fs";
-import { programModule, programSource } from "../shader/descriptor";
 import { glslIr, glslLinkedIr } from "../shader/emit";
-import { ShaderTarget } from "../shader/layout";
-import { shaderModule, stageBlob } from "../shader/program";
-import { GPUShaderModuleDescriptor, GPUShaderStage } from "../webgpu/types.ms";
+import { shaderModule } from "../shader/program";
+import { fragmentText } from "./shaderProbePrint";
+import { GPUShaderStage } from "../webgpu/types.ms";
 import {
 	Sampler,
 	Texture2d,
@@ -90,23 +87,6 @@ test "shaderModule numbers bindings on the WGSL slots: blocks group 0, views gro
 	const sampler = pictureModule.bindings[2];
 	assert sampler.group == 1 && sampler.binding == 32 && sampler.kind == "sampler";
 	assert sampler.samplerType == "filtering";
-}
-
-// On a host with fxc the descriptor carries DXBC and no text: the text is then the one this binary
-// prints, and "" unless the descriptor's blob is the cache file that text keys.
-function fragmentText(module: GPUShaderModuleDescriptor, vs: string, fs: string): string {
-	if (module.fragmentCode != "") { return module.fragmentCode; }
-	const m = programModule(vs, fs, []);
-	if (!m.ok) { return ""; }
-	const source = programSource(m.value, ShaderTarget.Hlsl5);
-	if (!source.ok) { return ""; }
-	const s = source.value;
-	const file = readFile(stageBlob("hlsl5", "fragment", s.fragmentCode, s.entryPoint, "").path);
-	if (!file.ok || file.value.byteLength() != module.fragmentBytecode.length) { return ""; }
-	for (let i = 0; i < module.fragmentBytecode.length; i++) {
-		if (module.fragmentBytecode[i] as int32 != file.value.byteAt(i) as int32) { return ""; }
-	}
-	return s.fragmentCode;
 }
 
 test "shaderModule spells a componentwise comparison while the macro prints it" {
