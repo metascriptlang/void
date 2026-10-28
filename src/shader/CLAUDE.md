@@ -62,6 +62,14 @@ later replaces the hand-written GLSL source of each base.
   The return is the stage output: a fragment's vector is `fragColor`; a struct names each output
   `@location(n)`, and `@feature(NAME)` declares one only under that feature; `void` writes none.
   `discard()` is WGSL's. The stage and program name are the generator's (`@fs litFs`).
+- **A segment is an effect on a phase struct** (the person's decision 2026-10-29: typed phase
+  structs as hook points). `glslSegmentIr(f)` lowers `f(phase: P, b: OwnBindings): P` as an entry
+  is lowered, but its module has no entry and no io: the segment is its last function (helpers are
+  defined before it), taking `P` as a value and returning `P`, and its bindings are resources at
+  `binding` -1, which the linker numbers and `irErrors` never counts as a collision. So the
+  `irText` record stays the entry's. Refused at the declaration: a return other than `P`, a first
+  parameter that is no author struct, a `@binding` on a bindings field
+  (`tests/refusals/segment*.ms`). Pinned in `src/test/shaderSegmentCheck.ms`.
 - **Each declaration sits under the conditions its reads run under, and an unread one is left
   out.** A uniform or texture a variant does not read is still one its draw would have to bind, and
   shdc would reflect it. The condition is the `||` of every distinct context a read runs in,
