@@ -75,7 +75,7 @@ export const LEGACY_QUAD_BYTES: int32 = 192;
 // A colour channel as the GPU will store it. Rounding, not truncation: truncation loses a
 // full level at every channel and turns 1.0 into 254. Guardrail 9 needs this to be the same
 // arithmetic everywhere, so it lives here and is tested rather than being open-coded in C.
-export function packChannel(value: float32): int32 {
+@inline export function packChannel(value: float32): int32 {
 	const scaled: float32 = value * 255.0 + 0.5;
 	if (scaled <= 0.0) { return 0; }
 	if (scaled >= 255.0) { return 255; }
