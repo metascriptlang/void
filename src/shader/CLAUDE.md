@@ -83,6 +83,15 @@ later replaces the hand-written GLSL source of each base.
   functions and constants renamed on a clash. An effect on a phase with no hook site is
   refused. Effect resources keep binding -1 until numbering, so a linked module prints only
   after its bindings are numbered (`numberedForTest` in `src/test/shaderLinkCheck.ms`).
+- **A linked program carries only the varyings its fragment reads**, so attaching an effect
+  decides what crosses the stages. After chaining, `link` writes zero into each struct field of a
+  local that nothing reads (a hook site whose chain is empty passes its argument through), then
+  drops each vertex output and the fragment input at its position that the fragment no longer
+  reads, with the vertex's stores to it: Heaps' `hxsl/Splitter.hx` makes a vertex var a varying
+  only when the fragment reads it (:66-70), and `hxsl/Dce.hx` drops the dead stores (:347-348).
+  Builtins stay; a dropped store whose value has an effect is refused. The field liveness is per
+  function and flow-insensitive, and a struct passed to any other function keeps every field.
+  An unlinked program keeps every io (`specialize`), so its printed text does not move.
 - **Each declaration sits under the conditions its reads run under, and an unread one is left
   out.** A uniform or texture a variant does not read is still one its draw would have to bind, and
   shdc would reflect it. The condition is the `||` of every distinct context a read runs in,
