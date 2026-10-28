@@ -36,6 +36,7 @@ import {
 	scalarType,
 	vectorType,
 	predeclaredMemberType,
+	isDepthShape,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
 import { builtinType, ioLocation } from "./irWalk";
@@ -529,11 +530,6 @@ function loadHoisted(p: Spirv, e: ShaderExpr): int32 {
 		columns.push(typed(p, OP_LOAD, typeId(p, column), [place]));
 	}
 	return typed(p, OP_COMPOSITE_CONSTRUCT, typeId(p, e.type), columns);
-}
-
-function isDepthShape(shape: TextureShape): boolean {
-	return shape == TextureShape.Depth2d || shape == TextureShape.Depth2dArray ||
-		shape == TextureShape.DepthCube;
 }
 
 function imageTypeId(p: Spirv, operands: int32[]): int32 {

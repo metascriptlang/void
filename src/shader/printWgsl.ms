@@ -31,6 +31,7 @@ import {
 	isDerivative,
 	isEffect,
 	isPredeclaredResult,
+	isDepthShape,
 } from "./ir";
 import { BindingSlot } from "./layout";
 import { builtinType, ioLocation } from "./irWalk";
@@ -428,11 +429,6 @@ function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {
 	return args.filter((a) => a.type.kind != ShaderTypeKind.Sampler);
 }
 
-function isDepth(t: ShaderType): boolean {
-	return t.shape == TextureShape.Depth2d || t.shape == TextureShape.Depth2dArray ||
-		t.shape == TextureShape.DepthCube;
-}
-
 function biasText(p: Printer, o: ShaderExpr[]): string {
 	p.derivatives = true;
 	return "textureSampleBias(" + argsText(p, o) + ")";
@@ -453,7 +449,7 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 	if (sampler === null || sampler.samplerType != SamplerType.Comparison) {
 		return refusal(p, name + " through a sampler that is no comparison sampler binding");
 	}
-	if (!isDepth(o[0].type)) {
+	if (!isDepthShape(o[0].type.shape)) {
 		return refusal(p, name + " of a " + o[0].type.shape.toString() + " texture, which holds " +
 			"no depth");
 	}
@@ -487,7 +483,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.UpperLeft3x3 => UPPER_LEFT + "(" + exprText(p, o[0]) + ")",
 		Intrinsic.TextureSample => "textureSampleLevel(" +
 			argsText(p, hasOffset(e) ? o.slice(0, sampleBase(e)) : o) + ", " +
-			(isDepth(o[0].type) ? "0i" : "0.0f") + (hasOffset(e) ? ", " + exprText(p, offsetOf(e)) : "") +
+			(isDepthShape(o[0].type.shape) ? "0i" : "0.0f") + (hasOffset(e) ? ", " + exprText(p, offsetOf(e)) : "") +
 			")",
 		Intrinsic.TextureLoad => "textureLoad(" + argsText(p, withoutSamplers(o)) + ")",
 		Intrinsic.TextureStore => "textureStore(" + argsText(p, o) + ")",

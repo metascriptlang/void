@@ -30,6 +30,7 @@ import {
 	sampleBase,
 	isAtomic,
 	isUniformLoad,
+	isDepthShape,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import {
@@ -717,11 +718,7 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 		p.module.resources[sampler.index].samplerType != SamplerType.Comparison) {
 		return fail(p, name + " through a sampler that is no comparison sampler binding");
 	}
-	const depth = match (texture.type.shape) {
-		TextureShape.Depth2d | TextureShape.Depth2dArray | TextureShape.DepthCube => true,
-		_ => false,
-	};
-	if (!depth) {
+	if (!isDepthShape(texture.type.shape)) {
 		return fail(p, name + " of a " + texture.type.shape.toString() + " texture, which holds " +
 			"no depth");
 	}

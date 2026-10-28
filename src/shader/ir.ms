@@ -289,6 +289,11 @@ export function isSampling(op: Intrinsic): boolean {
 		op == Intrinsic.TextureSampleCompare || op == Intrinsic.TextureSampleCompareLevel;
 }
 
+export function isDepthShape(shape: TextureShape): boolean {
+	return shape == TextureShape.Depth2d || shape == TextureShape.Depth2dArray ||
+		shape == TextureShape.DepthCube;
+}
+
 export function isArrayTexture(t: ShaderType): boolean {
 	return t.shape == TextureShape.D2Array || t.shape == TextureShape.CubeArray ||
 		t.shape == TextureShape.Depth2dArray;

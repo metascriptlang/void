@@ -32,6 +32,7 @@ import {
 	modfResultType,
 	isEffect,
 	texelScalar,
+	isDepthShape,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
 import { builtinType, functionOrder, ioLocation, structOrder } from "./irWalk";
@@ -486,8 +487,7 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 		return fail(p, name + " through a sampler that is no comparison sampler binding");
 	}
 	const shape = o[0].type.shape;
-	if (shape != TextureShape.Depth2d && shape != TextureShape.Depth2dArray &&
-		shape != TextureShape.DepthCube) {
+	if (!isDepthShape(shape)) {
 		return fail(p, name + " of a " + shape.toString() + " texture, which holds no depth");
 	}
 	let args = [exprText(p, o[1]), exprText(p, o[2])];

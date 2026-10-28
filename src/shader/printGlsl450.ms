@@ -36,6 +36,7 @@ import {
 	isUniformLoad,
 	sameShaderType,
 	texelScalar,
+	isDepthShape,
 } from "./ir";
 import { splitResults } from "./irWalk";
 import {
@@ -510,11 +511,6 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 		},
 		_ => isAtomic(e.intrinsic) ? atomicText(e, args) : intrinsicName(e.intrinsic) + all,
 	};
-}
-
-function isDepthShape(shape: TextureShape): boolean {
-	return shape == TextureShape.Depth2d || shape == TextureShape.Depth2dArray ||
-		shape == TextureShape.DepthCube;
 }
 
 function offsetSuffix(e: ShaderExpr): string {
