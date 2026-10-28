@@ -326,6 +326,7 @@ export function checkedDrawState(call: string, indexed: boolean): void {
 // to its slot (Dawn CommandBufferStateTracker.cpp:405-510, RenderEncoderBase.cpp:136-190). An
 // indexed draw checks only its instance-step slots, since its indices pick the vertices.
 export function drawSignRefusal(call: string, indexed: boolean, count: int32, instanceCount: int32, first: int32, firstInstance: int32): string {
+	if (count >= 0 && instanceCount >= 0 && first >= 0 && firstInstance >= 0) { return ""; }
 	const unsigned = indexed ? ["indexCount", "instanceCount", "firstIndex", "firstInstance"] : ["vertexCount", "instanceCount", "firstVertex", "firstInstance"];
 	const values = [count, instanceCount, first, firstInstance];
 	for (let i = 0; i < 4; i++) {
