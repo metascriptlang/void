@@ -1,5 +1,5 @@
-import { GRAPHEME_RANGES } from "./graphemeTable";
-import { rangeValue } from "./unicodeRanges";
+import { GRAPHEME_PACKED } from "./graphemeTable";
+import { rangeValue, unpackRanges } from "./unicodeRanges";
 
 export enum ClusterBreak {
 	Other,
@@ -45,6 +45,13 @@ const HANGUL_FIRST: int32 = 0xAC00;
 const HANGUL_LAST: int32 = 0xD7A3;
 const HANGUL_T_COUNT: int32 = 28;
 
+let graphemeRangesCache: uint32[] = new Array(0);
+
+function graphemeRanges(): uint32[] {
+	if (graphemeRangesCache.length == 0) { graphemeRangesCache = unpackRanges(GRAPHEME_PACKED, 8); }
+	return graphemeRangesCache;
+}
+
 export function graphemePacked(codepoint: int32): int32 {
 	if (codepoint < 0 || codepoint > 0x10FFFF) { return 0; }
 	if (codepoint >= 0x20 && codepoint < 0x7F) { return 0; }
@@ -53,7 +60,7 @@ export function graphemePacked(codepoint: int32): int32 {
 			ClusterBreak.LV : ClusterBreak.LVT;
 		return syllable as int32;
 	}
-	return rangeValue(GRAPHEME_RANGES, 8, 0xFF, codepoint);
+	return rangeValue(graphemeRanges(), 8, 0xFF, codepoint);
 }
 
 export function graphemeProperty(codepoint: int32): GraphemeProperty {
