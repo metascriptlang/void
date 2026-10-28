@@ -283,12 +283,14 @@ function checkFeaturesRead(program: Program): void {
 	const fragmentText = stageText(program.source, program.fragment);
 	const lines = (printGlsl450(parsed(vertexText, program.vertex)) +
 		printGlsl450(parsed(fragmentText, program.fragment))).split("\n");
+	const effects = effectsOf(program).map((text) => parsed(text, program.name + " effect"));
 	for (const feature of program.features) {
 		const read = lines.some((line) => line == "#ifdef " + feature ||
-			(line.startsWith("#if ") && line.includes("defined(" + feature + ")")));
+			(line.startsWith("#if ") && line.includes("defined(" + feature + ")"))) ||
+			effects.some((effect) => effect.features.includes(feature));
 		if (!read) {
 			fail("programKeys.txt: row " + program.name + " asks for " + feature + ", which " +
-				program.vertex + " and " + program.fragment + " never read");
+				program.vertex + ", " + program.fragment + " and its effects never read");
 		}
 	}
 }
