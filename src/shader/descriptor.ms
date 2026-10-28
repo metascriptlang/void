@@ -28,8 +28,8 @@ import { printWgsl } from "./printWgsl";
 import { Reflection, reflectCompute, reflectProgram } from "./reflect";
 import { specialize } from "./specialize";
 
-struct Offsets {
-	structs: int32;
+export struct Offsets {
+	structs: int32[];
 	constants: int32;
 	resources: int32[];
 	ios: int32[];
@@ -37,12 +37,12 @@ struct Offsets {
 	workgroups: int32;
 }
 
-function shiftType(o: Offsets, t: ShaderType): void {
-	if (t.kind == ShaderTypeKind.Struct) { t.structIndex += o.structs; }
+export function shiftType(o: Offsets, t: ShaderType): void {
+	if (t.kind == ShaderTypeKind.Struct) { t.structIndex = o.structs[t.structIndex]; }
 	for (const e of t.element) { shiftType(o, e); }
 }
 
-function shiftExpr(o: Offsets, e: ShaderExpr): void {
+export function shiftExpr(o: Offsets, e: ShaderExpr): void {
 	shiftType(o, e.type);
 	match (e.kind) {
 		ExprKind.Constant => { e.index += o.constants; },
@@ -55,7 +55,7 @@ function shiftExpr(o: Offsets, e: ShaderExpr): void {
 	for (const operand of e.operands) { shiftExpr(o, operand); }
 }
 
-function shiftStmts(o: Offsets, stmts: ShaderStmt[]): void {
+export function shiftStmts(o: Offsets, stmts: ShaderStmt[]): void {
 	for (const s of stmts) {
 		shiftExpr(o, s.target);
 		shiftExpr(o, s.expr);
@@ -91,8 +91,12 @@ function append(into: ShaderModule, from: ShaderModule): void {
 		ios.push(io.stage == stage ? next : -1);
 		if (io.stage == stage) { next++; }
 	}
+	let structs: int32[] = [];
+	for (let i = 0; i < from.structs.length; i++) {
+		structs.push((into.structs.length + i) as int32);
+	}
 	let o: Offsets = {
-		structs: into.structs.length as int32,
+		structs,
 		constants: into.constants.length as int32,
 		resources: [],
 		ios,
@@ -146,11 +150,11 @@ function append(into: ShaderModule, from: ShaderModule): void {
 		into.entries.push(e);
 	}
 	for (const d of from.declarations) {
-		d.index += match (d.kind) {
-			DeclarationKind.Struct => o.structs,
-			DeclarationKind.Constant => o.constants,
-			DeclarationKind.Function => o.functions,
-			DeclarationKind.Workgroup => o.workgroups,
+		d.index = match (d.kind) {
+			DeclarationKind.Struct => o.structs[d.index],
+			DeclarationKind.Constant => d.index + o.constants,
+			DeclarationKind.Function => d.index + o.functions,
+			DeclarationKind.Workgroup => d.index + o.workgroups,
 		};
 		into.declarations.push(d);
 	}
