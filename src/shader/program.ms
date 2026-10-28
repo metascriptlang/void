@@ -13,7 +13,7 @@ import {
 	typeKind,
 	warning,
 } from "std/meta";
-import { glslComputeIr, glslIr, glslLinkedIr } from "./emit";
+import { glslComputeIr, glslIr, glslLinkedIr, glslSegmentIr } from "./emit";
 import {
 	bindingFields,
 	bytesBase64,
@@ -27,8 +27,11 @@ import {
 import { readFileBytes } from "std/fs";
 import { dxbcStage, findFxc } from "./dxbcCache";
 import { shaderBytecodeFromBase64 } from "./dxbc";
+import { ShaderModule } from "./ir";
+import { irFromText } from "./irText";
 import { metalFlags, metallibStage } from "./metallibCache";
 import { ShaderTarget } from "./layout";
+import { link } from "./link";
 import { reflectProgram } from "./reflect";
 import { Vec2f, Vec2i, Vec2u, Vec3f, Vec3i, Vec3u, Vec4f, Vec4i, Vec4u } from "./std";
 import { GPUShaderModuleDescriptor, UNLIMITED_UNIFORM_BYTES, shaderBindingsRefusal } from "../webgpu/types.ms";
@@ -169,15 +172,19 @@ function splicedBuild(
 	linked: Node | null,
 	formats: Node | null,
 	one: Node | null,
+	segment: Node | null,
 	vertex: Node,
 	fragment: Node,
+	effects: Node[],
 ): Node | null {
 	if (build == null) { return null; }
 	if (ir == null) { return null; }
 	if (linked == null) { return null; }
+	if (segment == null) { return null; }
+	const program = product == "shaderProgram" || product == "materialProgram";
 	let formatsArg: Node = createNodeAt(NodeKind.StringLiteral, { value: "" }, at.location);
 	let productArg: Node = createNodeAt(NodeKind.StringLiteral, { value: product }, at.location);
-	if (product == "shaderProgram") {
+	if (program) {
 		if (formats == null) { return null; }
 		if (one == null) { return null; }
 		productArg = createNodeAt(NodeKind.CallExpr, {
@@ -193,14 +200,18 @@ function splicedBuild(
 		formatsArg = createNodeAt(NodeKind.CallExpr, { callee: formats, arguments: [vertex, fragment] },
 			at.location);
 	}
+	const lowered: Node[] = [];
+	for (const e of effects) {
+		lowered.push(createNodeAt(NodeKind.CallExpr, { callee: segment, arguments: [e] }, e.location));
+	}
 	const args: Node[] = [
 		createNodeAt(NodeKind.StringLiteral, { value: base }, at.location),
 		createNodeAt(NodeKind.CallExpr, { callee: ir, arguments: [vertex] }, at.location),
 		createNodeAt(NodeKind.CallExpr, { callee: linked, arguments: [fragment, vertex] }, at.location),
 		formatsArg,
 		productArg,
+		createNodeAt(NodeKind.ArrayLiteral, { elements: lowered }, at.location),
 	];
-	const program = product == "shaderProgram";
 	const declaration: Node = createNodeAt(NodeKind.VariableDecl, {
 		declName: program ? base : base + "Module",
 		declType: program ? "int32" : "",
@@ -216,9 +227,37 @@ export macro shaderProgram(name: Node, vertex: Node, fragment: Node): Node {
 		error("shaderProgram: the first argument names the program it declares", name);
 	}
 	const spliced = splicedBuild(name, name.name, "shaderProgram", bindSym("shaderBuild"),
-		bindSym("glslIr"), bindSym("glslLinkedIr"), bindSym("vertexFormats"), bindSym("oneProgram"), vertex,
-		fragment);
+		bindSym("glslIr"), bindSym("glslLinkedIr"), bindSym("vertexFormats"), bindSym("oneProgram"),
+		bindSym("glslSegmentIr"), vertex, fragment, []);
 	if (spliced == null) { error("shaderProgram: a macro it expands to is not in scope", name); }
+	return spliced;
+}
+
+export macro materialProgram(name: Node, vertex: Node, fragment: Node, effects: Node): Node {
+	if (name.kind != NodeKind.Identifier) {
+		error("materialProgram: the first argument names the program it declares", name);
+	}
+	if (effects.kind != NodeKind.ArrayLiteral) {
+		error("materialProgram: the fourth argument is an array of segments", effects);
+	}
+	const spliced = splicedBuild(name, name.name, "materialProgram", bindSym("shaderBuild"),
+		bindSym("glslIr"), bindSym("glslLinkedIr"), bindSym("vertexFormats"), bindSym("oneProgram"),
+		bindSym("glslSegmentIr"), vertex, fragment, effects.elements);
+	if (spliced == null) { error("materialProgram: a macro it expands to is not in scope", name); }
+	return spliced;
+}
+
+export macro materialModule(name: Node, vertex: Node, fragment: Node, effects: Node): Node {
+	if (name.kind != NodeKind.Identifier) {
+		error("materialModule: the first argument names the program it declares", name);
+	}
+	if (effects.kind != NodeKind.ArrayLiteral) {
+		error("materialModule: the fourth argument is an array of segments", effects);
+	}
+	const spliced = splicedBuild(name, name.name, "materialModule", bindSym("shaderBuild"),
+		bindSym("glslIr"), bindSym("glslLinkedIr"), null, null, bindSym("glslSegmentIr"), vertex,
+		fragment, effects.elements);
+	if (spliced == null) { error("materialModule: a macro it expands to is not in scope", name); }
 	return spliced;
 }
 
@@ -228,6 +267,7 @@ export macro shaderBuild(
 	fragment: Node,
 	formats: Node,
 	product: Node,
+	effects: Node,
 ): Node {
 	const kind = stringValue(product);
 	const base = stringValue(name);
@@ -308,8 +348,17 @@ export macro shaderBuild(
 		};
 	}
 
-	const module = compute ? computeModule(stringValue(vertex), []) :
+	const stages = compute ? computeModule(stringValue(vertex), []) :
 		programModule(stringValue(vertex), stringValue(fragment), []);
+	if (!stages.ok) { refused(stages.error); }
+	const segments: ShaderModule[] = [];
+	for (const e of effects.elements) {
+		const segment = irFromText(stringValue(e));
+		if (!segment.ok) { refused(segment.error); }
+		segments.push(segment.value);
+	}
+	let module: Result<ShaderModule, string> = Result.ok(stages.value);
+	if (segments.length > 0) { module = link(stages.value, segments); }
 	if (!module.ok) { refused(module.error); }
 	const arm = targetArms()[armIndex()];
 	const target = arm.target;
@@ -407,7 +456,7 @@ export macro shaderBuild(
 		descriptorValues.push(flag());
 	}
 	const descriptor = object(descriptorKeys, descriptorValues);
-	if (kind == "shaderModule" || kind == "shaderComputeModule") {
+	if (kind == "shaderModule" || kind == "shaderComputeModule" || kind == "materialModule") {
 		return called("shaderModuleOf", [descriptor]);
 	}
 	if (kind == "shaderCompute") { return called("shaderComputeRegister", [descriptor]); }
@@ -435,7 +484,8 @@ export macro shaderModule(name: Node, vertex: Node, fragment: Node): Node {
 		error("shaderModule: the first argument names the program it declares", name);
 	}
 	const spliced = splicedBuild(name, name.name, "shaderModule", bindSym("shaderBuild"),
-		bindSym("glslIr"), bindSym("glslLinkedIr"), null, null, vertex, fragment);
+		bindSym("glslIr"), bindSym("glslLinkedIr"), null, null, bindSym("glslSegmentIr"), vertex,
+		fragment, []);
 	if (spliced == null) { error("shaderModule: a macro it expands to is not in scope", name); }
 	return spliced;
 }
@@ -478,6 +528,7 @@ export macro shaderCompute(name: Node, kernel: Node, workgroupSize: Node): Node 
 					literal(""),
 					literal(""),
 					called(bindSym("oneProgram"), [literal("shaderCompute"), kernel]),
+					{ kind: NodeKind.ArrayLiteral, line: name.line, column: name.column, elements: [] },
 				]),
 				declKind: DeclKind.Const,
 				nameLocation: { line: name.line, column: name.column },
