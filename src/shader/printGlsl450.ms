@@ -54,8 +54,10 @@ import {
 	glslBitcast,
 	glslAccessWord,
 	glslBits,
+	glslFunctions,
 	glslImageFormat,
 	glslInterpolation,
+	glslKeywords,
 	glslMathName,
 	glslSampling,
 	glslSplitTypes,
@@ -68,47 +70,11 @@ import {
 } from "./spelling";
 
 function glslReservedWords(): string[] {
-	let words = [
-		"attribute", "const", "uniform", "varying", "buffer", "shared", "coherent", "volatile",
-		"restrict", "readonly", "writeonly", "atomic_uint", "layout", "centroid", "flat", "smooth",
-		"noperspective", "patch", "sample", "invariant", "precise", "break", "continue", "do",
-		"for", "while", "switch", "case", "default", "if", "else", "subroutine", "in", "out",
-		"inout", "float", "double", "int", "uint", "void", "bool", "true", "false", "discard",
-		"return", "lowp", "mediump", "highp", "precision", "struct", "sampler", "common",
-		"partition", "active", "asm", "class", "union", "enum", "typedef", "template", "this",
-		"resource", "goto", "inline", "noinline", "public", "static", "extern", "external",
-		"interface", "long", "short", "half", "fixed", "unsigned", "superp", "input", "output",
-		"hvec2", "hvec3", "hvec4", "fvec2", "fvec3", "fvec4", "sampler3DRect", "filter", "sizeof",
-		"cast", "namespace", "using",
-		"radians", "degrees", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh",
-		"asinh", "acosh", "atanh", "pow", "exp", "log", "exp2", "log2", "sqrt", "inversesqrt",
-		"abs", "sign", "floor", "trunc", "round", "roundEven", "ceil", "fract", "mod", "modf",
-		"min", "max", "clamp", "mix", "step", "smoothstep", "isnan", "isinf", "floatBitsToInt",
-		"floatBitsToUint", "intBitsToFloat", "uintBitsToFloat", "fma", "frexp", "ldexp",
-		"packUnorm2x16", "packSnorm2x16", "packUnorm4x8", "packSnorm4x8", "unpackUnorm2x16",
-		"unpackSnorm2x16", "unpackUnorm4x8", "unpackSnorm4x8", "packHalf2x16", "unpackHalf2x16",
-		"packDouble2x32", "unpackDouble2x32", "length", "distance", "dot", "cross", "normalize",
-		"ftransform", "faceforward", "reflect", "refract", "matrixCompMult", "outerProduct",
-		"transpose", "determinant", "inverse", "lessThan", "lessThanEqual", "greaterThan",
-		"greaterThanEqual", "equal", "notEqual", "any", "all", "not", "uaddCarry", "usubBorrow",
-		"umulExtended", "imulExtended", "bitfieldExtract", "bitfieldInsert", "bitfieldReverse",
-		"bitCount", "findLSB", "findMSB", "textureSize", "textureQueryLod", "textureQueryLevels",
-		"textureSamples", "texture", "textureProj", "textureLod", "textureOffset", "texelFetch",
-		"texelFetchOffset", "textureProjOffset", "textureLodOffset", "textureProjLod",
-		"textureProjLodOffset", "textureGrad", "textureGradOffset", "textureProjGrad",
-		"textureProjGradOffset", "textureGather", "textureGatherOffset", "textureGatherOffsets",
-		"atomicCounterIncrement", "atomicCounterDecrement", "atomicCounter", "atomicAdd",
-		"atomicMin", "atomicMax", "atomicAnd", "atomicOr", "atomicXor", "atomicExchange",
-		"atomicCompSwap", "imageSize", "imageSamples", "imageLoad", "imageStore",
-		"imageAtomicAdd", "imageAtomicMin", "imageAtomicMax", "imageAtomicAnd", "imageAtomicOr",
-		"imageAtomicXor", "imageAtomicExchange", "imageAtomicCompSwap", "EmitStreamVertex",
-		"EndStreamPrimitive", "EmitVertex", "EndPrimitive", "dFdx", "dFdy", "dFdxFine",
-		"dFdyFine", "dFdxCoarse", "dFdyCoarse", "fwidth", "fwidthFine", "fwidthCoarse",
-		"interpolateAtCentroid", "interpolateAtSample", "interpolateAtOffset", "noise1",
-		"noise2", "noise3", "noise4", "barrier", "memoryBarrier", "memoryBarrierAtomicCounter",
-		"memoryBarrierBuffer", "memoryBarrierShared", "memoryBarrierImage",
-		"groupMemoryBarrier", "subpassLoad",
-	];
+	let words = glslKeywords().concat(glslFunctions());
+	for (const word of ["sampler", "sampler3DRect", "subpassLoad"]) { words.push(word); }
+	for (const prefix of ["h", "f"]) {
+		for (let n = 2; n <= 4; n++) { words.push(prefix + "vec" + String(n)); }
+	}
 	for (const prefix of ["", "b", "i", "u", "d"]) {
 		for (let n = 2; n <= 4; n++) { words.push(prefix + "vec" + String(n)); }
 	}
