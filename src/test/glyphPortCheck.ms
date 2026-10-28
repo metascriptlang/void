@@ -29,6 +29,7 @@ import {
 	void2dGlyphRasterize,
 	void2dGlyphScale,
 } from "../void2d/glyph";
+import { holdFontFile } from "./fontFile";
 
 const PINNED: string[] = [
 	"2818068566", // assets/font.ttf
@@ -83,7 +84,10 @@ const PATHS: string[] = [
 	"tests/fonts/zeroedDecorations.ttf",
 ];
 
-function aLoad(path: string, index: int32): int32 { return void2dGlyphFaceLoad(path, index); }
+function aLoad(path: string, index: int32): int32 {
+	holdFontFile(path);
+	return void2dGlyphFaceLoad(path, index);
+}
 function aSynthetic(face: int32, bold: int32, italic: int32): int32 { return void2dGlyphFaceSynthetic(face, bold, italic); }
 function aScale(face: int32, size: float32): float32 { return void2dGlyphScale(face, size); }
 function aIndex(face: int32, cp: int32): int32 { return void2dGlyphIndex(face, cp); }
