@@ -144,7 +144,8 @@ test "the vertex probe reads its block through the flattened vec4 array" {
 	for (const text of [desktop, es]) {
 		for (const piece of [
 			"uniform vec4 camera[12];\n",
-			"gl_Position = mat4(camera[0], camera[1], camera[2], camera[3]) * vec4(position, 1.0);\n",
+			"gl_Position = mat4(camera[0], camera[1], camera[2], camera[3]) * vec4(position, " +
+			"1.0);\n",
 			"shade = (color * camera[5].w) + (vec4(mat3(camera[7].xyz, camera[8].xyz, " +
 				"camera[9].xyz) * camera[5].xyz, 0.0) + camera[11]);\n",
 			"id = uint(gl_VertexID) + uint(gl_InstanceID);\n",
@@ -178,11 +179,13 @@ test "the fragment probe spells every intrinsic and statement on both targets" {
 			"m3 = inverse(m3);\n", "m2 = inverse(m2);\n", "m3 = mat3(m4);\n", "v2 = dFdx(v2);\n",
 			"v2 = fwidth(v2);\n", "f = dFdy(f);\n", "i = sign(i);\n",
 			"v4 = texelFetch(albedo_albedoSmp, i2, 0);\n", "v4 *= m4;\n",
-			"f = f - 2.0 * trunc(f / 2.0);\n", "u = u % 4u;\n", "v4.zw = v2;\n", "shade_1(v3, f);\n",
+			"f = f - 2.0 * trunc(f / 2.0);\n", "u = u % 4u;\n", "v4.zw = v2;\n",
+			"shade_1(v3, f);\n",
 			"if (f < 0.0)\n    {\n        discard;\n    }\n    else\n",
 			"int k = 0; k < 3; k++)\n", "f += weights[k];\n",
 			"int j = 3;\n        for (; k < j; k++, j--)\n",
-			"        case 0:\n        case 1:\n        {\n            f += 1.0;\n            break;\n",
+			"        case 0:\n        case 1:\n        {\n            f += 1.0;\n            " +
+			"break;\n",
 			"        default:\n", "b = v3 == v3;\n", "b = v3 != v3;\n", "i = i / 2;\n",
 			"f = s.weight + v3[i];\n", "v2 = s.offset - gl_FragCoord.xy;\n", "v4 = m4[1];\n",
 			"v4 = mat4(material[1], material[2], material[3], material[4]) * (v4 * material[0]);\n",
@@ -208,7 +211,8 @@ test "the fragment probe spells every intrinsic and statement on both targets" {
 		"const highp float weights[3]", "highp vec3 shade_1(highp vec3 x, highp float k)\n",
 		"uniform highp vec4 material[5];\nuniform highp sampler2D albedo_albedoSmp;\n",
 		"in highp vec4 shade;\nflat in highp uint id;\n" +
-			"layout(location = 0) out highp vec4 color;\nlayout(location = 1) out highp vec4 extra;\n",
+			"layout(location = 0) out highp vec4 color;\nlayout(location = 1) out highp vec4 " +
+			"extra;\n",
 		"highp float arr[3]", "f = (f * f + f);\n",
 	]) {
 		if (!es.includes(piece)) { console.log("missing: " + piece); }
@@ -224,15 +228,18 @@ test "the compute probe declares std430 buffers and images on GLSL 430" {
 		"#version 430\n\nlayout(local_size_x = 8, local_size_y = 4, local_size_z = 1) in;\n",
 		"struct Particle\n{\n    vec3 position;\n    float mass;\n    vec2 velocity;\n};\n",
 		"struct Spring\n{\n    float rest;\n    vec3 axis;\n};\n",
-		"layout(std430, binding = 0) buffer particles_buffer\n{\n    Particle data[];\n} particles;\n",
+		"layout(std430, binding = 0) buffer particles_buffer\n{\n    Particle data[];\n} " +
+		"particles;\n",
 		"layout(std430, binding = 1) readonly buffer springs_buffer\n{\n    Spring data[];\n} " +
 			"springs;\n",
 		"layout(binding = 0, r32f) uniform image2D heat;\n",
 		"layout(binding = 1, rgba8) uniform writeonly image2D image;\n",
 		"ivec2 size = imageSize(image);\n",
-		"particles.data[gl_GlobalInvocationID.x].mass = springs.data[gl_LocalInvocationIndex].rest" +
+		"particles.data[gl_GlobalInvocationID.x].mass = " +
+		"springs.data[gl_LocalInvocationIndex].rest" +
 			" + float(gl_WorkGroupID.x);\n",
-		"imageStore(heat, ivec2(gl_LocalInvocationID.xy), vec4(springs.data[gl_LocalInvocationIndex]" +
+		"imageStore(heat, ivec2(gl_LocalInvocationID.xy), " +
+		"vec4(springs.data[gl_LocalInvocationIndex]" +
 			".axis, imageLoad(heat, ivec2(gl_LocalInvocationID.xy)).x));\n",
 		"imageStore(image, size.yx - ivec2(gl_LocalInvocationID.xy), vec4(",
 	]) {
@@ -414,7 +421,8 @@ test "printed modules are written for a GLSL front end" {
 		const tag = target == GlslTarget.Glsl430 ? "430" : "es";
 		assert probe("blur." + tag + ".vert", printed(blur, 0, [0, 1], target));
 		assert probe("blur." + tag + ".frag", printed(blur, 1, [0, 1], target));
-		assert probe("vertex." + tag + ".vert", printed(perspective(vertexModule()), 0, [0], target));
+		assert probe("vertex." + tag + ".vert",
+			printed(perspective(vertexModule()), 0, [0], target));
 		assert probe("fragment." + tag + ".frag", printed(fragmentModule(), 0, [0], target));
 	}
 	assert probe("vertex.430linear.vert", printed(vertexModule(), 0, [0], GlslTarget.Glsl430));

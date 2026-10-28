@@ -493,7 +493,8 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 	const pair = pairOf(p, e.operands[0], e.operands[1]);
 	const coords = layeredAt(p, e);
 	return narrowed(e.operands.length == base ? "texture(" + pair.name + ", " + coords + ")" :
-		"textureOffset(" + pair.name + ", " + coords + ", " + expr(p, e.operands[base]) + ")", e.type);
+		"textureOffset(" + pair.name + ", " + coords + ", " + expr(p, e.operands[base]) + ")",
+		e.type);
 }
 
 function explicitSampleOf(p: Printer, e: ShaderExpr): string {
@@ -502,8 +503,9 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const pair = pairOf(p, o[0], o[1]);
 	const layer = isArrayTexture(t) ? 1 : 0;
 	const at = layeredAt(p, e);
-	const tail = o.slice(3 + layer, sampleBase(e)).map((a) => a.type.kind == ShaderTypeKind.Scalar &&
-		a.type.scalar != ScalarKind.F32 ? "float(" + expr(p, a) + ")" : expr(p, a)).join(", ");
+	const tail = o.slice(3 + layer, sampleBase(e)).map((a) =>
+		a.type.kind == ShaderTypeKind.Scalar && a.type.scalar != ScalarKind.F32 ?
+			"float(" + expr(p, a) + ")" : expr(p, a)).join(", ");
 	const offset = hasOffset(e) ? expr(p, offsetOf(e)) : "";
 	const suffix = offset == "" ? "" : "Offset";
 	const name = match (e.intrinsic) {
@@ -537,8 +539,8 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 			"textureLod" + suffix + "(" + pair.name + ", vec3(" + coords + "), 0.0" + offset + ")" :
 			"texture" + suffix + "(" + pair.name + ", vec3(" + coords + ")" + offset + ")",
 		TextureShape.Depth2dArray => level ?
-			"textureGrad" + suffix + "(" + pair.name + ", vec4(" + coords + "), vec2(0.0), vec2(0.0)" +
-				offset + ")" :
+			"textureGrad" + suffix + "(" + pair.name + ", vec4(" + coords +
+				"), vec2(0.0), vec2(0.0)" + offset + ")" :
 			"texture" + suffix + "(" + pair.name + ", vec4(" + coords + ")" + offset + ")",
 		TextureShape.DepthCube => level ?
 			"textureGrad(" + pair.name + ", vec4(" + coords + "), vec3(0.0), vec3(0.0))" :
@@ -580,8 +582,9 @@ function storeOf(p: Printer, e: ShaderExpr): string {
 		ScalarKind.F32 => "0.0",
 		ScalarKind.Bool => fail(p, "a storage texture of bool texels"),
 	};
-	const written = rows == 4 ? converted(p, expr(p, value), typeName(p, value.type),
-		vectorType(channel, 4)) : texel + "(" + expr(p, value) + ", " + repeated(zero, 4 - rows) + ")";
+	const written = rows == 4 ?
+		converted(p, expr(p, value), typeName(p, value.type), vectorType(channel, 4)) :
+		texel + "(" + expr(p, value) + ", " + repeated(zero, 4 - rows) + ")";
 	return "imageStore(" + expr(p, o[0]) + ", " + imageAt(p, o) + ", " + written + ")";
 }
 
@@ -631,15 +634,16 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.Sign => converted(p, "sign(" + args() + ")", typeName(p, e.operands[0].type),
 			e.type),
 		Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
-			Intrinsic.FirstTrailingBit | Intrinsic.CountLeadingZeros | Intrinsic.CountTrailingZeros |
-			Intrinsic.ExtractBits | Intrinsic.InsertBits | Intrinsic.Pack4x8Unorm |
-			Intrinsic.Pack4x8Snorm | Intrinsic.Unpack4x8Unorm | Intrinsic.Unpack4x8Snorm =>
-			bitsText(p, e),
+			Intrinsic.FirstTrailingBit | Intrinsic.CountLeadingZeros |
+			Intrinsic.CountTrailingZeros | Intrinsic.ExtractBits | Intrinsic.InsertBits |
+			Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Unpack4x8Unorm |
+			Intrinsic.Unpack4x8Snorm => bitsText(p, e),
 		Intrinsic.Bitcast => glslBitcast(e.operands[0].type.scalar, e.type.scalar,
 			typeName(p, e.type), expr(p, e.operands[0])),
 		Intrinsic.Ldexp => p.es ? fail(p, "Ldexp is not in GLSL ES 3.00 (ES 3.10 has it)") :
 			"ldexp(" + args() + ")",
-		Intrinsic.Modf | Intrinsic.Frexp => splitNames(p, e.type, p.splitHelpers) + "(" + args() + ")",
+		Intrinsic.Modf | Intrinsic.Frexp =>
+			splitNames(p, e.type, p.splitHelpers) + "(" + args() + ")",
 		Intrinsic.Saturate => "clamp(" + args() + ", 0.0, 1.0)",
 		Intrinsic.Fma => p.es ? "(" + operand(p, e.operands[0]) + " * " +
 			operand(p, e.operands[1]) + " + " + operand(p, e.operands[2]) + ")" :
@@ -841,7 +845,8 @@ function expr(p: Printer, e: ShaderExpr): string {
 			if (base.type.kind == ShaderTypeKind.ExchangeResult) {
 				return postfixBase(p, base) + (e.index == 0 ? ".old_value" : ".exchanged");
 			}
-			if (base.type.kind == ShaderTypeKind.ModfResult || base.type.kind == ShaderTypeKind.FrexpResult) {
+			if (base.type.kind == ShaderTypeKind.ModfResult ||
+				base.type.kind == ShaderTypeKind.FrexpResult) {
 				return postfixBase(p, base) + "." + splitMember(base.type, e.index);
 			}
 			if (base.type.kind != ShaderTypeKind.Struct) {
@@ -1219,10 +1224,11 @@ export function printGlsl(
 		p.splitHelpers.push(helperName);
 		const types = glslSplitTypes(t);
 		const call = t.kind == ShaderTypeKind.ModfResult ? "modf" : "frexp";
-		exchanges += "struct " + structName + "\n{\n    " + types[0] + " " + splitMember(t, 0) + ";\n    " +
-			types[1] + " " + splitMember(t, 1) + ";\n};\n\n" +
-			structName + " " + helperName + "(" + types[0] + " arg)\n{\n    " + types[1] + " other;\n    " +
-			types[0] + " part = " + call + "(arg, other);\n    return " + structName + "(part, other);\n}\n\n";
+		exchanges += "struct " + structName + "\n{\n    " + types[0] + " " + splitMember(t, 0) +
+			";\n    " + types[1] + " " + splitMember(t, 1) + ";\n};\n\n" +
+			structName + " " + helperName + "(" + types[0] + " arg)\n{\n    " + types[1] +
+			" other;\n    " + types[0] + " part = " + call + "(arg, other);\n    return " +
+			structName + "(part, other);\n}\n\n";
 	}
 
 	const version = es ? "#version 300 es\n" : "#version 430\n";
@@ -1256,6 +1262,7 @@ export function printGlsl(
 	if (reads.workgroups.length > 0) { head += "\n"; }
 	const bodies = functions.map((f) => functionText(p, f)).join("\n");
 	if (p.error != "") { return Result.err(p.error); }
-	const extensions = p.samplesQueried ? "#extension GL_ARB_shader_texture_image_samples : require\n" : "";
+	const extensions = p.samplesQueried ?
+		"#extension GL_ARB_shader_texture_image_samples : require\n" : "";
 	return Result.ok(version + extensions + head + bodies);
 }

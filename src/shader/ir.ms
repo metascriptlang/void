@@ -314,7 +314,8 @@ export function sampleBase(e: ShaderExpr): int32 {
 }
 
 export function hasOffset(e: ShaderExpr): boolean {
-	return isSampling(e.intrinsic) && e.operands.length > 0 && e.operands.length == sampleBase(e) + 1;
+	return isSampling(e.intrinsic) && e.operands.length > 0 &&
+		e.operands.length == sampleBase(e) + 1;
 }
 
 export function offsetOf(e: ShaderExpr): ShaderExpr {
@@ -357,7 +358,9 @@ function offsetError(e: ShaderExpr): string {
 	const shape = o[0].type.shape;
 	if (o.length > base + 1) { return name + " takes one constant offset, last, as WGSL's"; }
 	const rows = offsetRows(shape);
-	if (rows == 0) { return name + " takes no offset on a " + shape.toString() + " texture, as WGSL's"; }
+	if (rows == 0) {
+		return name + " takes no offset on a " + shape.toString() + " texture, as WGSL's";
+	}
 	const type = o[base].type;
 	if (type.kind != ShaderTypeKind.Vector || type.scalar != ScalarKind.I32 || type.rows != rows) {
 		return name + " takes a constant offset of " + String(rows) + " i32 for a " +
@@ -377,7 +380,8 @@ function multisampleError(e: ShaderExpr): string {
 	const multisampled = o.length > 0 && o[0].type.kind == ShaderTypeKind.Texture &&
 		o[0].type.shape == TextureShape.Multisampled2d;
 	if (e.intrinsic == Intrinsic.TextureNumSamples) {
-		return o.length == 1 && multisampled ? "" : name + " takes one multisampled texture, as WGSL's";
+		return o.length == 1 && multisampled ? "" :
+			name + " takes one multisampled texture, as WGSL's";
 	}
 	if (!multisampled) { return ""; }
 	if (e.intrinsic == Intrinsic.TextureDimensions && o.length != 1) {
@@ -407,8 +411,11 @@ function storageTexelError(e: ShaderExpr): string {
 function arrayLengthError(m: ShaderModule, e: ShaderExpr): string {
 	const o = e.operands;
 	const buffer = o.length == 1 && o[0].kind == ExprKind.Resource && o[0].index >= 0 &&
-		o[0].index < m.resources.length && m.resources[o[0].index].kind == ResourceKind.StorageBuffer;
-	if (!buffer) { return "ArrayLength takes one storage buffer, as WGSL's takes a runtime-sized array"; }
+		o[0].index < m.resources.length &&
+		m.resources[o[0].index].kind == ResourceKind.StorageBuffer;
+	if (!buffer) {
+		return "ArrayLength takes one storage buffer, as WGSL's takes a runtime-sized array";
+	}
 	const count = e.type.kind == ShaderTypeKind.Scalar &&
 		(e.type.scalar == ScalarKind.U32 || e.type.scalar == ScalarKind.I32);
 	return count ? "" : "ArrayLength gives a u32 or an i32 count";
@@ -421,9 +428,11 @@ export function isUniformLoad(e: ShaderExpr): boolean {
 function uniformLoadError(e: ShaderExpr): string {
 	const o = e.operands;
 	if (o.length != 1 || rootOf(o[0]).kind != ExprKind.Workgroup) {
-		return "WorkgroupUniformLoad takes a workgroup variable, as WGSL's takes a ptr<workgroup, T>";
+		return "WorkgroupUniformLoad takes a workgroup variable, as WGSL's takes a " +
+			"ptr<workgroup, T>";
 	}
-	const plain = o[0].type.kind == ShaderTypeKind.Scalar || o[0].type.kind == ShaderTypeKind.Vector;
+	const plain = o[0].type.kind == ShaderTypeKind.Scalar ||
+		o[0].type.kind == ShaderTypeKind.Vector;
 	return plain && e.type.kind == o[0].type.kind && e.type.scalar == o[0].type.scalar ? "" :
 		"WorkgroupUniformLoad loads a scalar or a vector";
 }
@@ -459,7 +468,8 @@ function explicitSampleError(e: ShaderExpr): string {
 	const level = o[base - 1].type;
 	if (depthLevel && (level.kind != ShaderTypeKind.Scalar ||
 		level.scalar != ScalarKind.I32 && level.scalar != ScalarKind.U32)) {
-		return name + " of a " + t.shape.toString() + " texture takes an i32 or u32 level, as WGSL's";
+		return name + " of a " + t.shape.toString() +
+			" texture takes an i32 or u32 level, as WGSL's";
 	}
 	return "";
 }
@@ -476,7 +486,8 @@ function sampleError(m: ShaderModule, e: ShaderExpr): string {
 	const compare = e.intrinsic != Intrinsic.TextureSample;
 	const base = typed ? sampleBase(e) : 0;
 	if (!typed || o.length != base && o.length != base + 1) {
-		return compare ? name + " takes a texture, a sampler, coordinates, for an array texture a " +
+		return compare ? name +
+			" takes a texture, a sampler, coordinates, for an array texture a " +
 			"layer, a depth reference, and an optional constant offset" :
 			name + " takes a texture, a sampler, coordinates and, for an array texture, a layer, " +
 			"and an optional constant offset";
@@ -488,7 +499,9 @@ function sampleError(m: ShaderModule, e: ShaderExpr): string {
 		return isDepthShape(o[0].type.shape) ? "" :
 			name + " of a " + o[0].type.shape.toString() + " texture, which holds no depth";
 	}
-	if (o[0].type.shape == TextureShape.Multisampled2d) { return name + " of a multisampled texture"; }
+	if (o[0].type.shape == TextureShape.Multisampled2d) {
+		return name + " of a multisampled texture";
+	}
 	return isComparisonSampler(m, o[1]) ?
 		name + " through a comparison sampler, which needs a depth reference" : "";
 }
@@ -561,7 +574,8 @@ function isMixedMath(op: Intrinsic): boolean {
 	return op == Intrinsic.Bitcast || op == Intrinsic.Ldexp;
 }
 
-// Bitcast keeps its operand's shape and changes its scalar; ldexp scales an f32 shape by an i32 one.
+// Bitcast keeps its operand's shape and changes its scalar; ldexp scales an f32 shape by an i32
+// one.
 function mixedMathError(e: ShaderExpr): string {
 	const name = e.intrinsic.toString();
 	const o = e.operands;
@@ -569,7 +583,8 @@ function mixedMathError(e: ShaderExpr): string {
 	if (e.intrinsic == Intrinsic.Bitcast) {
 		if (o.length != 1 || !isNumericShape(first) || !isNumericShape(e.type) ||
 			!sameShape(first, e.type) || first.scalar == e.type.scalar) {
-			return name + " takes one i32, u32 or f32 scalar or vector and answers the same shape " +
+			return name +
+				" takes one i32, u32 or f32 scalar or vector and answers the same shape " +
 				"of another scalar";
 		}
 		return "";
@@ -586,7 +601,8 @@ function mixedMathError(e: ShaderExpr): string {
 function splitError(e: ShaderExpr): string {
 	const name = e.intrinsic.toString();
 	const o = e.operands;
-	const want = e.intrinsic == Intrinsic.Modf ? ShaderTypeKind.ModfResult : ShaderTypeKind.FrexpResult;
+	const want = e.intrinsic == Intrinsic.Modf ?
+		ShaderTypeKind.ModfResult : ShaderTypeKind.FrexpResult;
 	if (o.length != 1 || !isNumericShape(o[0].type) || o[0].type.scalar != ScalarKind.F32 ||
 		e.type.kind != want || e.type.rows != o[0].type.rows) {
 		return name + " takes an f32 scalar or vector and answers the predeclared result of its " +
@@ -889,7 +905,8 @@ export function exchangeResultType(scalar: ScalarKind): ShaderType {
 	return t;
 }
 
-// WGSL's __modf_result_* and __frexp_result_*: rows is 1 for the f32 forms and the width of a vector
+// WGSL's __modf_result_* and __frexp_result_*: rows is 1 for the f32 forms and the width of a
+// vector
 // form otherwise. Member 0 is fract, member 1 whole for modf and exp for frexp.
 export function modfResultType(rows: int32): ShaderType {
 	let t = scalarType(ScalarKind.F32);
@@ -1058,7 +1075,8 @@ function holdsBool(m: ShaderModule, t: ShaderType, seen: int32[]): boolean {
 		return true;
 	}
 	if (t.kind == ShaderTypeKind.Struct) {
-		if (t.structIndex < 0 || t.structIndex >= m.structs.length || seen.includes(t.structIndex)) {
+		if (t.structIndex < 0 || t.structIndex >= m.structs.length ||
+			seen.includes(t.structIndex)) {
 			return false;
 		}
 		seen.push(t.structIndex);
@@ -1231,7 +1249,8 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 		const error = mixedMathError(e);
 		if (error != "") { c.errors.push(owner + ": " + error); }
 	}
-	if (e.kind == ExprKind.Intrinsic && (e.intrinsic == Intrinsic.Modf || e.intrinsic == Intrinsic.Frexp)) {
+	if (e.kind == ExprKind.Intrinsic &&
+		(e.intrinsic == Intrinsic.Modf || e.intrinsic == Intrinsic.Frexp)) {
 		const error = splitError(e);
 		if (error != "") { c.errors.push(owner + ": " + error); }
 	}
@@ -1252,7 +1271,8 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 }
 
 export function rootOf(e: ShaderExpr): ShaderExpr {
-	const through = e.kind == ExprKind.Field || e.kind == ExprKind.Swizzle || e.kind == ExprKind.Index;
+	const through = e.kind == ExprKind.Field || e.kind == ExprKind.Swizzle ||
+		e.kind == ExprKind.Index;
 	return through && e.operands.length > 0 ? rootOf(e.operands[0]) : e;
 }
 
@@ -1262,7 +1282,8 @@ function stmtErrors(c: Checker, s: ShaderStmt, f: ShaderFunction, owner: string)
 	exprErrors(c, s.target, f, owner);
 	const loads = c.uniformLoads - loadsBefore;
 	if (loads > 0 && !(loads == 1 && s.kind == StmtKind.Let && isUniformLoad(s.expr))) {
-		c.errors.push(owner + ": a WorkgroupUniformLoad is the initializer of a const or let of its " +
+		c.errors.push(owner +
+			": a WorkgroupUniformLoad is the initializer of a const or let of its " +
 			"own, because the barriers around it sit between two statements");
 	}
 	if (s.kind == StmtKind.For) {
@@ -1387,7 +1408,8 @@ export function irErrors(m: ShaderModule): string[] {
 				c.errors.push("struct '" + s.name + "': member '" + f.name + "' " + RUNTIME_ARRAY);
 			}
 			if (isPredeclaredResult(f.type)) {
-				c.errors.push("struct '" + s.name + "': member '" + f.name + "' is a predeclared result, " +
+				c.errors.push("struct '" + s.name + "': member '" + f.name +
+					"' is a predeclared result, " +
 					"which WGSL cannot name");
 			}
 		}
@@ -1470,7 +1492,8 @@ export function irErrors(m: ShaderModule): string[] {
 					"the fragment input");
 			} else if (written[i].interpolation != read[i].interpolation ||
 				written[i].sampling != read[i].sampling) {
-				c.errors.push("varying " + String(i) + " is interpolated differently by the vertex " +
+				c.errors.push("varying " + String(i) +
+					" is interpolated differently by the vertex " +
 					"output and the fragment input");
 			}
 		}

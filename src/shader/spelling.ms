@@ -52,8 +52,9 @@ export function vectorPrefix(s: ScalarKind): string {
 }
 
 export function isComponentCompare(op: Intrinsic): boolean {
-	return op == Intrinsic.LessThan || op == Intrinsic.LessThanEqual || op == Intrinsic.GreaterThan ||
-		op == Intrinsic.GreaterThanEqual || op == Intrinsic.Equal || op == Intrinsic.NotEqual;
+	return op == Intrinsic.LessThan || op == Intrinsic.LessThanEqual ||
+		op == Intrinsic.GreaterThan || op == Intrinsic.GreaterThanEqual ||
+		op == Intrinsic.Equal || op == Intrinsic.NotEqual;
 }
 
 // The operator that spells a componentwise test where the target compares vectors by operator.
@@ -92,21 +93,21 @@ export function isMath(op: Intrinsic): boolean {
 			Intrinsic.Sin | Intrinsic.Cos | Intrinsic.Tan | Intrinsic.Asin | Intrinsic.Acos |
 			Intrinsic.Atan | Intrinsic.Atan2 | Intrinsic.Sinh | Intrinsic.Cosh | Intrinsic.Tanh |
 			Intrinsic.Asinh | Intrinsic.Acosh | Intrinsic.Atanh | Intrinsic.Ldexp | Intrinsic.Modf |
-			Intrinsic.Frexp | Intrinsic.Degrees | Intrinsic.Radians | Intrinsic.Min | Intrinsic.Max |
-			Intrinsic.Clamp | Intrinsic.Saturate | Intrinsic.Mix | Intrinsic.Step |
+			Intrinsic.Frexp | Intrinsic.Degrees | Intrinsic.Radians | Intrinsic.Min |
+			Intrinsic.Max | Intrinsic.Clamp | Intrinsic.Saturate | Intrinsic.Mix | Intrinsic.Step |
 			Intrinsic.Smoothstep | Intrinsic.Fma | Intrinsic.Dot | Intrinsic.Cross |
 			Intrinsic.Length | Intrinsic.Distance | Intrinsic.Normalize | Intrinsic.Reflect |
 			Intrinsic.Refract | Intrinsic.FaceForward | Intrinsic.Transpose |
-			Intrinsic.Determinant | Intrinsic.Any | Intrinsic.All | Intrinsic.Dpdx | Intrinsic.Dpdy |
-			Intrinsic.Fwidth | Intrinsic.DpdxCoarse | Intrinsic.DpdxFine | Intrinsic.DpdyCoarse |
-			Intrinsic.DpdyFine | Intrinsic.FwidthCoarse | Intrinsic.FwidthFine | Intrinsic.Bitcast |
-			Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
-			Intrinsic.FirstTrailingBit | Intrinsic.CountLeadingZeros | Intrinsic.CountTrailingZeros |
-			Intrinsic.ExtractBits | Intrinsic.InsertBits |
-			Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Pack2x16Unorm |
-			Intrinsic.Pack2x16Snorm | Intrinsic.Pack2x16Float | Intrinsic.Unpack4x8Unorm |
-			Intrinsic.Unpack4x8Snorm | Intrinsic.Unpack2x16Unorm | Intrinsic.Unpack2x16Snorm |
-			Intrinsic.Unpack2x16Float => true,
+			Intrinsic.Determinant | Intrinsic.Any | Intrinsic.All | Intrinsic.Dpdx |
+			Intrinsic.Dpdy | Intrinsic.Fwidth | Intrinsic.DpdxCoarse | Intrinsic.DpdxFine |
+			Intrinsic.DpdyCoarse | Intrinsic.DpdyFine | Intrinsic.FwidthCoarse |
+			Intrinsic.FwidthFine | Intrinsic.Bitcast | Intrinsic.CountOneBits |
+			Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit | Intrinsic.FirstTrailingBit |
+			Intrinsic.CountLeadingZeros | Intrinsic.CountTrailingZeros | Intrinsic.ExtractBits |
+			Intrinsic.InsertBits | Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm |
+			Intrinsic.Pack2x16Unorm | Intrinsic.Pack2x16Snorm | Intrinsic.Pack2x16Float |
+			Intrinsic.Unpack4x8Unorm | Intrinsic.Unpack4x8Snorm | Intrinsic.Unpack2x16Unorm |
+			Intrinsic.Unpack2x16Snorm | Intrinsic.Unpack2x16Float => true,
 	};
 }
 
@@ -235,7 +236,8 @@ function unsignedOf(signedType: string): string {
 
 // The GLSL spelling of the bit and pack builtins. bitCount, findMSB
 // and findLSB return int, so an unsigned operand's result is converted back; bitfieldExtract and
-// bitfieldInsert are undefined past the 32 bits WGSL clamps to, so the offset and count clamp first.
+// bitfieldInsert are undefined past the 32 bits WGSL clamps to, so the offset and count clamp
+// first.
 // The offset of an extract and of an insert is printed twice.
 export function glslBits(
 	op: Intrinsic,
@@ -305,14 +307,16 @@ export function splitMember(t: ShaderType, member: int32): string {
 	return t.kind == ShaderTypeKind.ModfResult ? "whole" : "exp";
 }
 
-// GLSL's float or vec and the type of the second field: the same for modf, an int or ivec for frexp.
+// GLSL's float or vec and the type of the second field: the same for modf, an int or ivec for
+// frexp.
 export function glslSplitTypes(t: ShaderType): string[] {
 	const arg = t.rows == 1 ? "float" : "vec" + String(t.rows);
 	if (t.kind == ShaderTypeKind.ModfResult) { return [arg, arg]; }
 	return [arg, t.rows == 1 ? "int" : "ivec" + String(t.rows)];
 }
 
-// The layout qualifier of a storage texture's format; bgra8unorm has none, so a printer refuses it first.
+// The layout qualifier of a storage texture's format; bgra8unorm has none, so a printer refuses it
+// first.
 export function glslImageFormat(f: TexelFormat): string {
 	return match (f) {
 		TexelFormat.Rgba8unorm => "rgba8",
@@ -331,7 +335,9 @@ export function glslImageFormat(f: TexelFormat): string {
 		TexelFormat.Rg32float => "rg32f",
 		TexelFormat.Rg32uint => "rg32ui",
 		TexelFormat.Rg32sint => "rg32i",
-		TexelFormat.Bgra8unorm => { throw new Error("internal: bgra8unorm has no GLSL image format"); },
+		TexelFormat.Bgra8unorm => {
+			throw new Error("internal: bgra8unorm has no GLSL image format");
+		},
 	};
 }
 
@@ -351,7 +357,8 @@ export function glslSampling(s: Sampling): string {
 	};
 }
 
-// The GLSL function of an intrinsic whose name WGSL spells differently, shared by 430, ES 300 and 450.
+// The GLSL function of an intrinsic whose name WGSL spells differently, shared by 430, ES 300 and
+// 450.
 export function glslMathName(op: Intrinsic): string {
 	return match (op) {
 		Intrinsic.Round => "roundEven",

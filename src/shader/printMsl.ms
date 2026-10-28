@@ -78,8 +78,8 @@ function mslReservedWords(): string[] {
 		"texture2d", "texture3d", "texturecube", "texture2d_array", "texturecube_array",
 		"texture2d_ms", "depth2d", "depth2d_array", "depthcube", "depth2d_ms", "level", "bias",
 		"discard_fragment", "select", "fmod", "rint", "rsqrt", "faceforward", "dfdx", "dfdy",
-		"all", "any", "as_type", "ctz", "clz", "extract_bits", "insert_bits", "popcount", "reverse_bits",
-		"half", "modf", "frexp",
+		"all", "any", "as_type", "ctz", "clz", "extract_bits", "insert_bits", "popcount",
+		"reverse_bits", "half", "modf", "frexp",
 	];
 	for (const scalar of ["float", "int", "uint", "bool", "half"]) {
 		for (let n = 2; n <= 4; n++) {
@@ -121,7 +121,8 @@ function builtinName(op: Intrinsic): string {
 		Intrinsic.Unpack2x16Snorm => "unpack_snorm2x16_to_float",
 		Intrinsic.FirstLeadingBit | Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits |
 			Intrinsic.InsertBits | Intrinsic.Pack2x16Float | Intrinsic.Unpack2x16Float => "",
-		Intrinsic.Sign | Intrinsic.Degrees | Intrinsic.Radians | Intrinsic.Modf | Intrinsic.Frexp => "",
+		Intrinsic.Sign | Intrinsic.Degrees | Intrinsic.Radians | Intrinsic.Modf |
+			Intrinsic.Frexp => "",
 		_ => mathName(op),
 	};
 }
@@ -298,9 +299,9 @@ function splitText(t: ShaderType): string {
 	const types = splitTypes(t);
 	const result = splitStructName(t);
 	const call = t.kind == ShaderTypeKind.ModfResult ? "modf" : "frexp";
-	return "struct " + result + " {\n  " + types[0] + " " + splitMember(t, 0) + ";\n  " + types[1] + " " +
-		splitMember(t, 1) + ";\n};\n\nstatic inline " + result + " " + splitHelperName(t) + "(" +
-		types[0] + " arg) {\n  " + types[1] + " other;\n  " + types[0] + " part = " + call +
+	return "struct " + result + " {\n  " + types[0] + " " + splitMember(t, 0) + ";\n  " + types[1] +
+		" " + splitMember(t, 1) + ";\n};\n\nstatic inline " + result + " " + splitHelperName(t) +
+		"(" + types[0] + " arg) {\n  " + types[1] + " other;\n  " + types[0] + " part = " + call +
 		"(arg, other);\n  return " + result + "{part, other};\n}";
 }
 
@@ -548,8 +549,9 @@ function samplesText(p: Printer, e: ShaderExpr): string {
 }
 
 function lengthText(p: Printer, e: ShaderExpr): string {
-	return fail(p, "ArrayLength of storage buffer '" + p.module.resources[e.operands[0].index].name +
-		"': MSL reads no buffer length, so it needs a sizes buffer the host fills at a reflected slot");
+	const name = p.module.resources[e.operands[0].index].name;
+	return fail(p, "ArrayLength of storage buffer '" + name + "': MSL reads no buffer length, " +
+		"so it needs a sizes buffer the host fills at a reflected slot");
 }
 
 function signText(p: Printer, e: ShaderExpr): string {
@@ -589,7 +591,8 @@ function bitsText(p: Printer, e: ShaderExpr): string {
 	const x = exprText(p, o[0]);
 	const repeated = op == Intrinsic.FirstLeadingBit ? 0 : repeatedBitsOperand(op);
 	if (repeated >= 0 && hasCallOrEffect(o[repeated])) {
-		return fail(p, op.toString() + " prints an operand more than once, and it calls a function");
+		return fail(p, op.toString() +
+			" prints an operand more than once, and it calls a function");
 	}
 	if (op == Intrinsic.FirstTrailingBit) {
 		return "(((ctz(" + x + ") + 1) % 33) - 1)";
@@ -629,7 +632,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 			Intrinsic.InsertBits | Intrinsic.Pack2x16Float | Intrinsic.Unpack2x16Float =>
 			bitsText(p, e),
 		Intrinsic.Sign => signText(p, e),
-		Intrinsic.Modf | Intrinsic.Frexp => splitCallName(p, e.type) + "(" + exprText(p, o[0]) + ")",
+		Intrinsic.Modf | Intrinsic.Frexp =>
+			splitCallName(p, e.type) + "(" + exprText(p, o[0]) + ")",
 		Intrinsic.Degrees => "(" + exprText(p, o[0]) + " * 57.295779513082323)",
 		Intrinsic.Radians => "(" + exprText(p, o[0]) + " * 0.017453292519943295)",
 		Intrinsic.Inverse => inverseCall(p, e),

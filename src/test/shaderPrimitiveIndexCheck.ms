@@ -53,15 +53,19 @@ test "every target reads the primitive index" {
 	const wgsl = printedProbe(m, 1, ShaderTarget.Wgsl, "facet", "frag");
 	assert wgsl.startsWith("enable primitive_index;\n") &&
 		wgsl.includes("@builtin(primitive_index) primitive_param : u32");
-	assert printedProbe(m, 1, ShaderTarget.Hlsl5, "facet", "frag").includes("uint primitive : SV_PrimitiveID;\n");
-	assert printedProbe(m, 1, ShaderTarget.Glsl430, "facet", "frag").includes("uint(gl_PrimitiveID)");
-	assert printedProbe(m, 1, ShaderTarget.Msl, "facet", "frag").includes("uint primitive [[primitive_id]]");
+	assert printedProbe(m, 1, ShaderTarget.Hlsl5, "facet",
+		"frag").includes("uint primitive : SV_PrimitiveID;\n");
+	assert printedProbe(m, 1, ShaderTarget.Glsl430, "facet",
+		"frag").includes("uint(gl_PrimitiveID)");
+	assert printedProbe(m, 1, ShaderTarget.Msl, "facet",
+		"frag").includes("uint primitive [[primitive_id]]");
 	assert printedSpirv(m, 1, "facet") == "";
 }
 
 test "GLSL ES 3.00 has no primitive index" {
 	const refused = stageSource(facetOf(), 1, ShaderTarget.Glsl300es);
-	assert !refused.ok && refused.error.endsWith("PrimitiveIndex: GLSL ES 3.00 has no gl_PrimitiveID");
+	assert !refused.ok &&
+		refused.error.endsWith("PrimitiveIndex: GLSL ES 3.00 has no gl_PrimitiveID");
 }
 
 test "the primitive index is a u32 as WGSL's" {

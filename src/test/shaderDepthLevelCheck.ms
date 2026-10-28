@@ -74,11 +74,12 @@ function depthsOf(nearest: boolean): Depths {
 	};
 }
 
-test "a depth texture samples a texel as a number: nearest picks one, linear mixes four, a level past the last clamps to it" {
+test "a depth texture samples a texel as a number: nearest, linear, and a clamped level" {
 	const nearest = depthsOf(true);
 	const out = levelFs({ position: vec4f(0.0) }, nearest);
 	assert out.x == 0.8 && out.y == 0.8 && out.z == 0.9 && out.w == 0.0;
-	assert textureSampleLevel(nearest.shadowCube, nearest.rawSampler, vec3f(1.0, 0.0, 0.0), 0) == 0.1;
+	assert textureSampleLevel(nearest.shadowCube, nearest.rawSampler, vec3f(1.0, 0.0, 0.0),
+		0) == 0.1;
 	const linear = depthsOf(false);
 	const mixed = textureSampleLevel(linear.shadowMap, linear.rawSampler, vec2f(0.5, 0.5), 0);
 	assert Math.abs(mixed - 0.5) < 0.0001;
@@ -88,9 +89,12 @@ test "a depth texture samples a texel as a number: nearest picks one, linear mix
 function probePath(name: string, target: ShaderTarget, stage: string): string {
 	return match (target) {
 		ShaderTarget.Wgsl => "out/wgslProbe/" + name + stage + ".wgsl",
-		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") + ".hlsl",
-		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." + (stage == "Vs" ? "vert" : "frag"),
-		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." + (stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") +
+		".hlsl",
+		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." +
+		(stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." +
+		(stage == "Vs" ? "vert" : "frag"),
 		ShaderTarget.Msl => "out/mslProbe/" + name + stage + ".metal",
 		ShaderTarget.Spirv => "out/spirvProbe/" + name + stage + ".spv",
 	};
@@ -126,8 +130,10 @@ test "GLSL 450 samples a depth texture through a plain sampler and reads its fir
 		"void main() {\n" +
 		"    vec2 uv = vec2(0.25, 0.75);\n" +
 		"    float flat_1 = textureLod(sampler2D(shadowMap, rawSampler), uv, float(0)).x;\n" +
-		"    float layer = textureLod(sampler2DArray(shadowLayers, rawSampler), vec3(uv, float(1)), float(2)).x;\n" +
-		"    float cube = textureLod(samplerCube(shadowCube, rawSampler), vec3(uv.x, uv.y, 1.0), float(1)).x;\n" +
+		"    float layer = textureLod(sampler2DArray(shadowLayers, rawSampler), vec3(uv, " +
+		"float(1)), float(2)).x;\n" +
+		"    float cube = textureLod(samplerCube(shadowCube, rawSampler), vec3(uv.x, uv.y, 1.0), " +
+		"float(1)).x;\n" +
 		"    fragColor = vec4(flat_1, layer, cube, 0.0);\n" +
 		"    return;\n" +
 		"}\n";
@@ -142,7 +148,8 @@ test "every target spells textureSampleLevel on a depth texture" {
 	assert wgsl.includes("@binding(0) @group(1) var shadowMap : texture_depth_2d;\n");
 	assert wgsl.includes("  var flat : f32 = textureSampleLevel(shadowMap, rawSampler, uv, 0i);\n" +
 		"  var layer : f32 = textureSampleLevel(shadowLayers, rawSampler, uv, 1i, 2i);\n" +
-		"  var cube : f32 = textureSampleLevel(shadowCube, rawSampler, vec3f(uv.x, uv.y, 1f), 1i);\n");
+		"  var cube : f32 = textureSampleLevel(shadowCube, rawSampler, vec3f(uv.x, uv.y, 1f), " +
+		"1i);\n");
 	assert printedFor(m, 0, ShaderTarget.Hlsl5, "depthLevel").includes(
 		"    float lift = heightMap.SampleLevel(heightSampler, position, 1);\n");
 	const hlsl = printedFor(m, 1, ShaderTarget.Hlsl5, "depthLevel");
@@ -155,8 +162,10 @@ test "every target spells textureSampleLevel on a depth texture" {
 		const gl = printedFor(m, 1, target, "depthLevel");
 		assert gl.includes(" sampler2D shadowMap_rawSampler;\n");
 		assert gl.includes(" flat_1 = textureLod(shadowMap_rawSampler, uv, float(0)).x;\n");
-		assert gl.includes(" layer = textureLod(shadowLayers_rawSampler, vec3(uv, float(1)), float(2)).x;\n");
-		assert gl.includes(" cube = textureLod(shadowCube_rawSampler, vec3(uv.x, uv.y, 1.0), float(1)).x;\n");
+		assert gl.includes(
+			" layer = textureLod(shadowLayers_rawSampler, vec3(uv, float(1)), float(2)).x;\n");
+		assert gl.includes(
+			" cube = textureLod(shadowCube_rawSampler, vec3(uv.x, uv.y, 1.0), float(1)).x;\n");
 	}
 	assert printedFor(m, 0, ShaderTarget.Msl, "depthLevel").includes(
 		"  float lift = heightMap.sample(heightSampler, in.position, level(1));\n");
@@ -172,7 +181,8 @@ test "the reflection names a depth texture and a non-filtering sampler" {
 	const texture = reflected.value.bindings.filter((b) => b.kind == "texture");
 	assert texture.length == 4 && texture.filter((b) => b.sampleType == "depth").length == 4;
 	const samplers = reflected.value.bindings.filter((b) => b.kind == "sampler");
-	assert samplers.length == 2 && samplers.filter((b) => b.samplerType == "non-filtering").length == 2;
+	assert samplers.length == 2 &&
+		samplers.filter((b) => b.samplerType == "non-filtering").length == 2;
 }
 
 test "SPIR-V samples a depth image with an explicit level and keeps its first lane" {
@@ -183,7 +193,7 @@ test "SPIR-V samples a depth image with an explicit level and keeps its first la
 	assert fs.filter((i) => opcodeOf(i) == 90).length == 0;
 }
 
-test "only textureSampleLevel samples a depth texture without a reference, and its level is an integer" {
+test "only textureSampleLevel samples a depth texture without a reference, its level an integer" {
 	let m = programOf();
 	const sampled = m.functions[m.entries[1].functionIndex].body.filter((s) =>
 		s.expr.intrinsic == Intrinsic.TextureSampleLevel)[0].expr;

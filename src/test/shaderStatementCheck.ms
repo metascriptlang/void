@@ -255,7 +255,8 @@ test "an author struct is declared before its first reader and built in field or
 		"    return max(dot(light.direction, normal), 0.0) * light.intensity;\n" +
 		"}\n" +
 		"void main() {\n" +
-		"    Rig rig = Rig(keyLight(gl_FragCoord.x), Light(vec3(0.0, 1.0, 0.0), 0.5), float[2](1.0, 0.5));\n" +
+		"    Rig rig = Rig(keyLight(gl_FragCoord.x), Light(vec3(0.0, 1.0, 0.0), 0.5), " +
+		"float[2](1.0, 0.5));\n" +
 		"    rig.fill.intensity += 0.25;\n" +
 		"    rig.weights[1] = 0.5 * rig.weights[1];\n" +
 		"    vec3 normal = vec3(0.0, 0.0, 1.0);\n" +
@@ -263,7 +264,8 @@ test "an author struct is declared before its first reader and built in field or
 		"    Light[2] pair = Light[2](rig.key, rig.fill);\n" +
 		"    Tap tap = Tap(1.0, ivec2(0, 0));\n" +
 		"    tap.offset.x = 2;\n" +
-		"    fragColor = ((lit(pair[0], normal) * rig.weights[0]) + (lit(pair[1], normal) * rig.weights[1])) + (tap.sample_1 * float(tap.offset.x));\n" +
+		"    fragColor = ((lit(pair[0], normal) * rig.weights[0]) + (lit(pair[1], normal) * " +
+		"rig.weights[1])) + (tap.sample_1 * float(tap.offset.x));\n" +
 		"    return;\n" +
 		"}\n";
 	assert structFs(at(2.0, 0.0)) == 4.1875;

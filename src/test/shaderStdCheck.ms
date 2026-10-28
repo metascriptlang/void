@@ -228,7 +228,8 @@ test "glsl spells a cube texture and textureSampleLevel in their GLSL form" {
 // One texel per face, the red channel of each its face index.
 function faces(): TextureCube {
 	let texels: float32[] = [];
-	for (let face = 0; face < 6; face++) { texels.push(face as float32); texels.push(0.0); texels.push(0.0); texels.push(1.0); }
+	for (let face = 0; face < 6; face++) { texels.push(face as float32); texels.push(
+		0.0); texels.push(0.0); texels.push(1.0); }
 	return { size: 1, texels };
 }
 

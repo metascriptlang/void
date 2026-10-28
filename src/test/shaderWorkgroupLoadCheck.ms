@@ -102,14 +102,16 @@ test "a uniform load outside a const or let of its own is an error of the module
 	const entry = m.entries[0].functionIndex;
 	const at = m.functions[entry].body.findIndex((s) => s.kind == StmtKind.Let);
 	m.functions[entry].body[at].kind = StmtKind.Call;
-	assert irErrors(m).includes("function 'loadCs': a WorkgroupUniformLoad is the initializer of a " +
+	assert irErrors(m).includes(
+		"function 'loadCs': a WorkgroupUniformLoad is the initializer of a " +
 		"const or let of its own, because the barriers around it sit between two statements");
 }
 
 test "every target spells the load" {
 	const m = computeOf();
 	assert irErrors(m).length == 0;
-	for (const t of [ShaderTarget.Wgsl, ShaderTarget.Hlsl5, ShaderTarget.Glsl430, ShaderTarget.Msl]) {
+	for (const t of [ShaderTarget.Wgsl, ShaderTarget.Hlsl5, ShaderTarget.Glsl430,
+		ShaderTarget.Msl]) {
 		const text = printedProbe(m, 0, t, "uniformLoad", "comp");
 		assert text.length > 0 && !text.startsWith("print");
 	}

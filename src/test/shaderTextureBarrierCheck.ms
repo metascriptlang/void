@@ -1,4 +1,5 @@
-// textureBarrier(): the entry runs on the CPU, is pinned as GLSL and printed into out/<target>Probe/
+// textureBarrier(): the entry runs on the CPU, is pinned as GLSL and printed into
+// out/<target>Probe/
 // for scripts/validateWgsl.sh, scripts/validateHlsl.sh and spirv-val.
 
 import { mkdir, writeFile } from "std/fs";
@@ -38,7 +39,8 @@ export function swapCs(input: Ids, b: Pair): void {
 }
 
 test "the barrier waits for no one on the CPU" {
-	const b: Pair = { image: { width: 2, height: 1, texels: [0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0] } };
+	const b: Pair = { image: { width: 2, height: 1,
+		texels: [0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0] } };
 	swapCs({ id: { x: 0, y: 0, z: 0 } }, b);
 	assert b.image.texels[0] == 30.0;
 }
@@ -69,7 +71,8 @@ test "GLSL 450 fences the images before the barrier" {
 test "every target spells the barrier" {
 	const m = computeOf();
 	assert irErrors(m).length == 0;
-	for (const t of [ShaderTarget.Wgsl, ShaderTarget.Hlsl5, ShaderTarget.Glsl430, ShaderTarget.Msl]) {
+	for (const t of [ShaderTarget.Wgsl, ShaderTarget.Hlsl5, ShaderTarget.Glsl430,
+		ShaderTarget.Msl]) {
 		const text = printedProbe(m, 0, t, "textureBarrier", "comp");
 		assert text.length > 0 && !text.startsWith("print");
 	}

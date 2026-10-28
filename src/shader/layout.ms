@@ -395,7 +395,9 @@ export function bindingSlots(m: ShaderModule, entries: int32[], target: ShaderTa
 			nativeName: "",
 			textureBinding: -1,
 		};
-		if (p.pair.sampler >= 0) { s = slotOf(m, { resource: p.pair.sampler, stage: p.stage }, target); }
+		if (p.pair.sampler >= 0) {
+			s = slotOf(m, { resource: p.pair.sampler, stage: p.stage }, target);
+		}
 		s.texture = p.pair.texture;
 		s.nativeName = texture.name + "_" +
 			(p.pair.sampler >= 0 ? m.resources[p.pair.sampler].name : DUMMY_SAMPLER);

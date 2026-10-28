@@ -87,7 +87,8 @@ function storageAccessName(a: Access): GPUStorageTextureAccess {
 	};
 }
 
-function viewDimensionOf(shape: TextureShape, owner: string): Result<GPUTextureViewDimension, string> {
+function viewDimensionOf(shape: TextureShape,
+	owner: string): Result<GPUTextureViewDimension, string> {
 	const name: GPUTextureViewDimension | null = match (shape) {
 		TextureShape.D2Array | TextureShape.Depth2dArray => "2d-array" as GPUTextureViewDimension,
 		TextureShape.D3 => "3d" as GPUTextureViewDimension,

@@ -1,5 +1,6 @@
 // The length of a runtime-sized storage array (WGSL's arrayLength, spelled `.length`): the entry
-// runs on the CPU, is pinned as GLSL and printed into out/<target>Probe/ for scripts/validateWgsl.sh,
+// runs on the CPU, is pinned as GLSL and printed into out/<target>Probe/ for
+// scripts/validateWgsl.sh,
 // scripts/validateHlsl.sh and spirv-val. MSL is a refusal. A fragment entry reaches it through
 // shaderModule.
 
@@ -139,7 +140,8 @@ test "every target spells the length" {
 
 test "MSL refuses the length until the host fills a sizes buffer" {
 	const text = printedProbe(computeOf(), 0, ShaderTarget.Msl, "rowsLength", "comp");
-	assert text.startsWith("printMsl: ArrayLength of storage buffer 'seeds': MSL reads no buffer length");
+	assert text.startsWith(
+		"printMsl: ArrayLength of storage buffer 'seeds': MSL reads no buffer length");
 }
 
 test "the length of a buffer that is not a storage buffer is an error of the module" {

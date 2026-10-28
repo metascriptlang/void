@@ -219,7 +219,8 @@ export function unspecialized(
 }
 
 function exprSplits(e: ShaderExpr, out: ShaderType[]): void {
-	const split = e.type.kind == ShaderTypeKind.ModfResult || e.type.kind == ShaderTypeKind.FrexpResult;
+	const split = e.type.kind == ShaderTypeKind.ModfResult ||
+		e.type.kind == ShaderTypeKind.FrexpResult;
 	if (split && !out.some((t) => sameShaderType(t, e.type))) { out.push(e.type); }
 	for (const o of e.operands) { exprSplits(o, out); }
 }

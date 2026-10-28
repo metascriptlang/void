@@ -279,8 +279,9 @@ function splitCall(p: Printer, e: ShaderExpr): string {
 	const modf = e.type.kind == ShaderTypeKind.ModfResult;
 	const name = helper(p, "splitCall " + splitStructName(e.type), splitHelperName(e.type), (n) =>
 		result + " " + n + "(" + types[0] + " arg)\n{\n    " + types[0] + " other;\n    " + result +
-		" result;\n    result." + splitMember(e.type, 0) + " = " + (modf ? "modf" : "sign(arg) * frexp") +
-		"(arg, other);\n    result." + splitMember(e.type, 1) + " = " +
+		" result;\n    result." + splitMember(e.type, 0) + " = " +
+		(modf ? "modf" : "sign(arg) * frexp") + "(arg, other);\n    result." +
+		splitMember(e.type, 1) + " = " +
 		(modf ? "other" : types[1] + "(other)") + ";\n    return result;\n}\n");
 	return name + "(" + expr(p, e.operands[0]) + ")";
 }
@@ -640,7 +641,8 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 		return operand(p, texture) + ".SampleLevel(" + expr(p, sampler) + ", " +
 			layeredAt(p, e) + ", 0.0" + offset + ")";
 	}
-	return operand(p, texture) + ".Sample(" + expr(p, sampler) + ", " + layeredAt(p, e) + offset + ")";
+	return operand(p, texture) + ".Sample(" + expr(p, sampler) + ", " + layeredAt(p, e) +
+		offset + ")";
 }
 
 function explicitSampleOf(p: Printer, e: ShaderExpr): string {
@@ -648,7 +650,8 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const t = o[0].type;
 	const layer = isArrayTexture(t) ? 1 : 0;
 	const at = layeredAt(p, e);
-	const tail = o.slice(3 + layer, sampleBase(e) + (hasOffset(e) ? 1 : 0)).map((a) => expr(p, a)).join(", ");
+	const tail = o.slice(3 + layer, sampleBase(e) + (hasOffset(e) ? 1 : 0)).map((a) =>
+		expr(p, a)).join(", ");
 	const method = match (e.intrinsic) {
 		Intrinsic.TextureSampleLevel => ".SampleLevel(",
 		Intrinsic.TextureSampleBias => ".SampleBias(",
@@ -749,7 +752,8 @@ function packText(op: Intrinsic): string {
 }
 
 // HLSL has no intrinsic for these: each is a helper function, so an operand
-// is evaluated once. FXC has no int overload of countbits, reversebits, firstbithigh and firstbitlow.
+// is evaluated once. FXC has no int overload of countbits, reversebits, firstbithigh and
+// firstbitlow.
 function bitsOf(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const op = e.intrinsic;
@@ -830,13 +834,13 @@ function bitcastOf(p: Printer, e: ShaderExpr): string {
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const args = () => e.operands.map((o) => expr(p, o)).join(", ");
 	if (isComponentCompare(e.intrinsic)) {
-		return "(" + operand(p, e.operands[0]) + " " + binaryOperator(componentCompare(e.intrinsic)) +
-			" " + operand(p, e.operands[1]) + ")";
+		return "(" + operand(p, e.operands[0]) + " " +
+			binaryOperator(componentCompare(e.intrinsic)) + " " + operand(p, e.operands[1]) + ")";
 	}
 	return match (e.intrinsic) {
 		Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
-			Intrinsic.FirstTrailingBit | Intrinsic.CountLeadingZeros | Intrinsic.CountTrailingZeros |
-			Intrinsic.ExtractBits | Intrinsic.InsertBits |
+			Intrinsic.FirstTrailingBit | Intrinsic.CountLeadingZeros |
+			Intrinsic.CountTrailingZeros | Intrinsic.ExtractBits | Intrinsic.InsertBits |
 			Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Pack2x16Unorm |
 			Intrinsic.Pack2x16Snorm | Intrinsic.Pack2x16Float | Intrinsic.Unpack4x8Unorm |
 			Intrinsic.Unpack4x8Snorm | Intrinsic.Unpack2x16Unorm | Intrinsic.Unpack2x16Snorm |
@@ -954,7 +958,8 @@ function expr(p: Printer, e: ShaderExpr): string {
 			if (base.type.kind == ShaderTypeKind.ExchangeResult) {
 				return postfixBase(p, base) + (e.index == 0 ? ".old_value" : ".exchanged");
 			}
-			if (base.type.kind == ShaderTypeKind.ModfResult || base.type.kind == ShaderTypeKind.FrexpResult) {
+			if (base.type.kind == ShaderTypeKind.ModfResult ||
+				base.type.kind == ShaderTypeKind.FrexpResult) {
 				return postfixBase(p, base) + "." + splitMember(base.type, e.index);
 			}
 			if (base.type.kind != ShaderTypeKind.Struct) {
@@ -1109,7 +1114,8 @@ function packedSize(t: ShaderType): int32 {
 		ShaderTypeKind.Array => t.length * packedSize(t.element[0]),
 		ShaderTypeKind.Void | ShaderTypeKind.RuntimeArray | ShaderTypeKind.Struct |
 			ShaderTypeKind.Texture | ShaderTypeKind.Sampler | ShaderTypeKind.StorageTexture |
-			ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult => -1,
+			ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult |
+			ShaderTypeKind.FrexpResult => -1,
 	};
 }
 
@@ -1397,7 +1403,8 @@ export function printHlsl(
 
 	let functions: int32[] = [];
 	functionOrder(m, entry.functionIndex, [], functions);
-	const structs = entryStructs(m, functions, reads.resources, reads.constants, entry.stage, false);
+	const structs = entryStructs(m, functions, reads.resources, reads.constants, entry.stage,
+		false);
 	const constants = constantsInOrder(m, reads.constants);
 	const resources = ofKinds(m, reads.resources, [ResourceKind.UniformBlock,
 		ResourceKind.Texture, ResourceKind.Sampler, ResourceKind.StorageBuffer,

@@ -103,7 +103,8 @@ test "blur prints the interface of the committed HLSL" {
 		"float2 : TEXCOORD0;",
 		"float4 : SV_Position;",
 	].join("\n");
-	assert fs.includes("cbuffer blur_params : register(b0)\n{\n    float4 _2_dir : packoffset(c0);\n};\n");
+	assert fs.includes(
+		"cbuffer blur_params : register(b0)\n{\n    float4 _2_dir : packoffset(c0);\n};\n");
 	assert fs.includes("fragColor = srcTex.Sample(srcSmp, uv) * _2_dir;\n");
 	assert vs.includes("clip_1 = float4(pos, 0.0, 1.0);\n");
 	assert !fs.includes("struct BlurParams");
@@ -129,9 +130,11 @@ test "the vertex probe reads matrices through mul and blocks through packoffset"
 		"    float4 _0_lights[2] : packoffset(c10);\n};\n");
 	assert text.includes("clip_1 = mul(float4(position, 1.0), _0_viewProj);\n");
 	assert text.includes("mul(_0_tint, _0_normalMatrix)");
-	assert text.includes("    uint instanceIndex : SV_InstanceID;\n    uint vertexIndex : SV_VertexID;\n");
+	assert text.includes(
+		"    uint instanceIndex : SV_InstanceID;\n    uint vertexIndex : SV_VertexID;\n");
 	assert text.includes("struct StageOutput\n{\n    float4 shade : TEXCOORD0;\n" +
-		"    nointerpolation uint id : TEXCOORD1;\n    noperspective centroid float2 uvL : TEXCOORD2;\n" +
+		"    nointerpolation uint id : TEXCOORD1;\n    noperspective centroid float2 uvL : " +
+		"TEXCOORD2;\n" +
 		"    float4 clip_1 : SV_Position;\n};\n");
 }
 
@@ -157,7 +160,8 @@ test "the fragment probe spells every intrinsic and statement" {
 		"        case 0:\n        case 1:\n        {\n            f += 1.0;\n            break;\n",
 		"        default:\n", "b = all(v3 == v3);\n", "b = any(v3 != v3);\n", "i = i / 2;\n",
 		"f = s.weight + v3[i];\n", "v2 = s.offset - frag.xy;\n", "v4 = m4[1];\n",
-		"v4 = mul(v4 * _0_tint, _0_model);\n", "f = b ? f : 1.0;\n", "f = f + float(u + 2891336453u);\n",
+		"v4 = mul(v4 * _0_tint, _0_model);\n", "f = b ? f : 1.0;\n",
+		"f = f + float(u + 2891336453u);\n",
 		"    frag.w = 1.0 / frag.w;\n", "    nointerpolation uint id : TEXCOORD1;\n",
 		"    float4 frag : SV_Position;\n    bool facing : SV_IsFrontFace;\n",
 		"    float4 extra : SV_Target1;\n    float depth : SV_Depth;\n",
@@ -284,7 +288,8 @@ test "a depth comparison HLSL cannot spell is refused by name" {
 	let vertex = depthModule();
 	vertex.functions[0].body[1].expr.operands[2].operands[0].intrinsic =
 		Intrinsic.TextureSampleCompare;
-	assert refusal(vertex, 0) == "printHlsl: entry 'depthVs': TextureSampleCompare outside a fragment entry";
+	assert refusal(vertex,
+		0) == "printHlsl: entry 'depthVs': TextureSampleCompare outside a fragment entry";
 }
 
 const PROBE_DIR = "out/hlslProbe";

@@ -296,8 +296,8 @@ function typeText(p: Printer, t: ShaderType): string {
 			formatText(t.format) + ", " + accessText(t.access) + ">",
 		ShaderTypeKind.Atomic => "atomic<" + scalarText(t.scalar) + ">",
 		ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult =>
-			refusal(p, "a " + t.kind.toString() + ", which WGSL cannot name, outside the local it " +
-				"initializes"),
+			refusal(p, "a " + t.kind.toString() +
+				", which WGSL cannot name, outside the local it initializes"),
 		ShaderTypeKind.Void => refusal(p, "a value of type void"),
 	};
 }
@@ -460,8 +460,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.UpperLeft3x3 => UPPER_LEFT + "(" + exprText(p, o[0]) + ")",
 		Intrinsic.TextureSample => "textureSampleLevel(" +
 			argsText(p, hasOffset(e) ? o.slice(0, sampleBase(e)) : o) + ", " +
-			(isDepthShape(o[0].type.shape) ? "0i" : "0.0f") + (hasOffset(e) ? ", " + exprText(p, offsetOf(e)) : "") +
-			")",
+			(isDepthShape(o[0].type.shape) ? "0i" : "0.0f") +
+			(hasOffset(e) ? ", " + exprText(p, offsetOf(e)) : "") + ")",
 		Intrinsic.TextureLoad => "textureLoad(" + argsText(p, withoutSamplers(o)) + ")",
 		Intrinsic.TextureStore => "textureStore(" + argsText(p, o) + ")",
 		Intrinsic.TextureDimensions => dimensionsText(p, e),

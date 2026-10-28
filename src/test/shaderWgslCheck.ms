@@ -160,10 +160,12 @@ test "compute prints storage resources, builtins and its workgroup size" {
 	assert writeProbe("total", cs);
 	assert cs.includes("@binding(0) @group(1) var<storage, read> commands : array<Command>;\n");
 	assert cs.includes("@binding(1) @group(1) var<storage, read_write> results : array<Total>;\n");
-	assert cs.includes("@binding(2) @group(1) var image : texture_storage_2d<rgba8unorm, write>;\n");
+	assert cs.includes(
+		"@binding(2) @group(1) var image : texture_storage_2d<rgba8unorm, write>;\n");
 	assert cs.includes("@binding(3) @group(1) var lut : texture_2d<f32>;\n");
 	assert !cs.includes("lutSmp");
-	assert cs.includes("@compute @workgroup_size(32, 1, 1)\nfn main(@builtin(global_invocation_id)" +
+	assert cs.includes(
+		"@compute @workgroup_size(32, 1, 1)\nfn main(@builtin(global_invocation_id)" +
 		" id_param : vec3u, @builtin(local_invocation_id) local_param : vec3u, " +
 		"@builtin(local_invocation_index) index_param : u32, @builtin(workgroup_id) group_param :" +
 		" vec3u, @builtin(num_workgroups) groups_param : vec3u) {\n");
@@ -253,7 +255,8 @@ test "what WGSL cannot say is refused by name" {
 		"printWgsl: function 'tinyEntry': a literal that is not finite";
 	assert refusalOf(tiny(fragment, column(model())), 0, []) ==
 		"printWgsl: resource 'params' has no binding slot";
-	assert refusalOf(tiny(fragment, column(model())), 1, []) == "printWgsl: entry 1 is out of range";
+	assert refusalOf(tiny(fragment, column(model())), 1,
+		[]) == "printWgsl: entry 1 is out of range";
 
 	let unlevelled = tiny(fragment, intrinsicOf(Intrinsic.TextureLoad, VEC4, [
 		exprOf(ExprKind.Resource, TEXTURE, 1, []),
@@ -337,10 +340,11 @@ test "depth comparison is refused by name where it cannot print" {
 		"printWgsl: entry 'tinyEntry': TextureSampleCompare outside a fragment entry";
 }
 
-test "a depth comparison through a plain sampler, or of a colour texture, is refused for every target" {
+test "a depth comparison through a plain sampler, or of a colour texture, is refused everywhere" {
 	const COMPARE = Intrinsic.TextureSampleCompare;
 	const LEVEL = Intrinsic.TextureSampleCompareLevel;
-	const plain = irErrors(compared(ShaderStage.Fragment, LEVEL, TextureShape.Depth2d, false)).join("
+	const plain = irErrors(compared(ShaderStage.Fragment, LEVEL, TextureShape.Depth2d,
+		false)).join("
 ");
 	assert plain.includes("TextureSampleCompareLevel through a sampler that is no comparison " +
 		"sampler binding");

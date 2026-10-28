@@ -191,7 +191,8 @@ function columnName(member: string, column: int32): string {
 }
 
 function blockMemberText(p: Glsl, e: ShaderExpr): string {
-	const name = p.module.structs[p.module.resources[e.index].type.structIndex].members[e.member].name;
+	const owner = p.module.structs[p.module.resources[e.index].type.structIndex];
+	const name = owner.members[e.member].name;
 	if (!isTwoRowMatrix(e.type)) { return name; }
 	let columns: string[] = [];
 	for (let c: int32 = 0; c < e.type.columns; c++) { columns.push(columnName(name, c)); }
@@ -359,7 +360,8 @@ function expr(p: Glsl, e: ShaderExpr): string {
 			e.type.scalar == ScalarKind.U32 && e.operands[0].kind == ExprKind.Literal ?
 			integerText(e.operands[0].value) + "u" :
 			typeName(p, e.type) + "(" + value(p, e.operands[0]) + ")",
-		ExprKind.Field => splitField(e) ? expr(p, e.operands[0]) + "." + splitMember(e.operands[0].type, e.index) :
+		ExprKind.Field => splitField(e) ?
+			expr(p, e.operands[0]) + "." + splitMember(e.operands[0].type, e.index) :
 			e.operands[0].type.kind == ShaderTypeKind.ExchangeResult ?
 			expr(p, e.operands[0]) + (e.index == 0 ? ".old_value" : ".exchanged") :
 			expr(p, e.operands[0]) + "." + p.structFields[e.operands[0].type.structIndex][e.index],
@@ -399,7 +401,8 @@ function callsFunction(e: ShaderExpr): boolean {
 function bitsText(p: Glsl, e: ShaderExpr, args: string[]): string {
 	const at = repeatedBitsOperand(e.intrinsic);
 	if (at >= 0 && callsFunction(e.operands[at])) {
-		broken(e.intrinsic.toString() + " prints its offset twice, and the offset calls a function");
+		broken(e.intrinsic.toString() +
+			" prints its offset twice, and the offset calls a function");
 	}
 	return glslBits(e.intrinsic, args, typeName(p, e.type), e.type.scalar == ScalarKind.U32);
 }
@@ -470,7 +473,8 @@ function offsetTail(e: ShaderExpr, args: string[]): string {
 function explicitTail(e: ShaderExpr, args: string[], from: int32): string {
 	const rest = args.slice(from, sampleBase(e)).map((a, i) => {
 		const t = e.operands[from + i].type;
-		return t.kind == ShaderTypeKind.Scalar && t.scalar != ScalarKind.F32 ? "float(" + a + ")" : a;
+		return t.kind == ShaderTypeKind.Scalar && t.scalar != ScalarKind.F32 ?
+			"float(" + a + ")" : a;
 	}).join(", ");
 	if (!hasOffset(e)) { return rest; }
 	const offset = args[sampleBase(e)];
@@ -530,7 +534,8 @@ function compared(e: ShaderExpr, args: string[]): string {
 			"texture(samplerCubeShadow" + pair + ", vec4(" + coords + "))",
 		TextureShape.Depth2d => level ? "textureLod" + suffix + "(sampler2DShadow" + pair +
 			", vec3(" + coords + "), 0.0" + offset + ")" :
-			"texture" + suffix + "(sampler2DShadow" + pair + ", vec3(" + coords + ")" + offset + ")",
+			"texture" + suffix + "(sampler2DShadow" + pair + ", vec3(" + coords + ")" +
+				offset + ")",
 		_ => {
 			broken("a depth compare of a " + e.operands[0].type.shape.toString() + " texture");
 		},
@@ -705,7 +710,8 @@ function ioText(p: Glsl, index: int32): string {
 	if (io.direction == IoDirection.Out && io.stage == ShaderStage.Fragment) {
 		return "layout(location=" + String(io.location) + ") out " + spelled + ";\n";
 	}
-	return glslInterpolation(io.interpolation) + glslSampling(io.sampling) + (io.direction == IoDirection.In ? "in " : "out ") + spelled + ";\n";
+	return glslInterpolation(io.interpolation) + glslSampling(io.sampling) +
+		(io.direction == IoDirection.In ? "in " : "out ") + spelled + ";\n";
 }
 
 function nameDeclarations(p: Glsl): void {
@@ -841,8 +847,8 @@ export function printGlsl450(m: ShaderModule): string {
 		const t = p.splits[i];
 		const [argType, otherType] = glslSplitTypes(t);
 		const call = t.kind == ShaderTypeKind.ModfResult ? "modf" : "frexp";
-		out += "struct " + p.splitStructs[i] + " {\n    " + argType + " " + splitMember(t, 0) + ";\n    " +
-			otherType + " " + splitMember(t, 1) + ";\n};\n" + p.splitStructs[i] + " " +
+		out += "struct " + p.splitStructs[i] + " {\n    " + argType + " " + splitMember(t, 0) +
+			";\n    " + otherType + " " + splitMember(t, 1) + ";\n};\n" + p.splitStructs[i] + " " +
 			p.splitHelpers[i] + "(" + argType + " arg) {\n    " + otherType + " other;\n    " +
 			argType + " part = " + call + "(arg, other);\n    return " + p.splitStructs[i] +
 			"(part, other);\n}\n";

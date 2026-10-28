@@ -174,7 +174,8 @@ test "an offset sample prints alike" {
 	assert refusals(run) == 0;
 }
 
-// card: no card yet; countCs of shaderComputeOpsCheck (atomics) stops irFromText in the macro VM with "value 19228 not in range 0 .. 3", so it has no pin here.
+// card: no card yet; countCs of shaderComputeOpsCheck (atomics) stops irFromText in the macro VM
+// with "value 19228 not in range 0 .. 3", so it has no pin here.
 
 test "a compute stage with workgroup memory and a barrier prints alike" {
 	const run = printedCompute(glslComputeIr(loadCs, [64, 1, 1])) +

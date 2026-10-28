@@ -96,7 +96,8 @@ test "GLSL 450 writes the buffer member of the block" {
 test "every target spells the storage write" {
 	const m = computeOf();
 	assert irErrors(m).length == 0;
-	for (const t of [ShaderTarget.Wgsl, ShaderTarget.Hlsl5, ShaderTarget.Glsl430, ShaderTarget.Msl]) {
+	for (const t of [ShaderTarget.Wgsl, ShaderTarget.Hlsl5, ShaderTarget.Glsl430,
+		ShaderTarget.Msl]) {
 		const text = printedProbe(m, 0, t, "particleStep", "comp");
 		assert text.length > 0 && !text.startsWith("print");
 	}
