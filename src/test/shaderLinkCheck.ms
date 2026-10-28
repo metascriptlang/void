@@ -1116,3 +1116,87 @@ test "a segment's feature folds by the row even when the base declares no such k
 	assert keyedFragment(fragment, ["F"]).includes(ADDED);
 	assert keyedFragment(fragment, []).includes(SCALED);
 }
+
+struct Wide {
+	tint: Vec4f;
+	extra: Vec4f;
+}
+
+struct AltKey {
+	@feature(W) w: boolean;
+}
+
+struct AltBaseBindings {
+	@binding(0) frame: Frame;
+	@binding(1) tintParams: Tint;
+	@binding(1) wide: Wide;
+}
+
+struct AltBindings {
+	tintParams: Tint;
+	wide: Wide;
+}
+
+struct WideBindings {
+	wide: Wide;
+}
+
+function altFs(input: Pixel, b: AltBaseBindings, key: AltKey): Vec4f {
+	let color = vec4f(input.uv.x, input.uv.y, b.frame.time, 1.0);
+	if (key.w) {
+		color = color * b.wide.extra;
+	} else {
+		color = color * b.tintParams.tint;
+	}
+	const lit: Shaded = { color: color };
+	return hook(lit).color;
+}
+
+function altAdd(shaded: Shaded, b: AltBindings, key: AltKey): Shaded {
+	if (key.w) {
+		return { color: shaded.color + b.wide.tint };
+	} else {
+		return { color: shaded.color + b.tintParams.tint };
+	}
+}
+
+function wideAdd(shaded: Shaded, b: WideBindings): Shaded {
+	return { color: shaded.color + b.wide.tint };
+}
+
+function bothAdd(shaded: Shaded, b: AltBindings): Shaded {
+	return { color: shaded.color + b.wide.tint + b.tintParams.tint };
+}
+
+const ALT_FS = glslLinkedIr(altFs, baseVs);
+const ALT_ADD = glslSegmentIr(altAdd);
+const WIDE_ADD = glslSegmentIr(wideAdd);
+const BOTH_ADD = glslSegmentIr(bothAdd);
+
+function altProgram(on: string[]): ShaderModule {
+	const m = linkedProgram(SLOT_VS, ALT_FS, on, [ALT_ADD]);
+	return m.ok ? m.value : new ShaderModule();
+}
+
+test "a segment's alternative blocks merge onto the base's blocks at one binding" {
+	const wide = altProgram(["W"]);
+	const plain = altProgram([]);
+	assert wide.resources.map((r) => r.name + "@" + String(r.binding)).join(",") ==
+		"frame@0,wide@1";
+	assert plain.resources.map((r) => r.name + "@" + String(r.binding)).join(",") ==
+		"frame@0,tintParams@1";
+	assert irErrors(wide).length == 0 && irErrors(plain).length == 0;
+	const wideWgsl = printed(wide, ShaderTarget.Wgsl, "altWideFs.wgsl", 1);
+	const plainWgsl = printed(plain, ShaderTarget.Wgsl, "altPlainFs.wgsl", 1);
+	assert wideWgsl.includes("(shaded.color + wide.tint)") && !wideWgsl.includes("tintParams");
+	assert plainWgsl.includes("(shaded.color + tintParams.tint)") && !plainWgsl.includes("wide");
+	assert reflected(wide).split("\n").length == TARGETS.length;
+	assert reflected(plain).split("\n").length == TARGETS.length;
+}
+
+test "two effect blocks at numbered bindings that share a member name are refused" {
+	assert refusal(baseOf(), [moduleOf(COLOUR_ADD), moduleOf(WIDE_ADD)]) ==
+		"link: effect 'wideAdd': 'tint' names two things in one stage";
+	assert refusal(baseOf(), [moduleOf(BOTH_ADD)]) ==
+		"link: effect 'bothAdd': 'tint' names two things in one stage";
+}

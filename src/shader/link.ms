@@ -14,6 +14,7 @@ import {
 	DeclarationKind,
 	ExprKind,
 	IoDirection,
+	ResourceKind,
 	ShaderExpr,
 	ShaderFunction,
 	ShaderIo,
@@ -152,6 +153,25 @@ function numberBindings(m: ShaderModule, owners: string[], effects: string[]):
 	return Result.ok(null);
 }
 
+function sharedMember(m: ShaderModule, owners: string[], effects: string[]):
+	Result<void, string> {
+	let names: string[] = [];
+	let bindings: int32[] = [];
+	for (const r of m.resources) {
+		if (r.kind != ResourceKind.UniformBlock) { continue; }
+		for (const f of m.structs[r.type.structIndex].members) {
+			const clash = names.some((n, k) => n == f.name && bindings[k] != r.binding);
+			if (clash) {
+				return Result.err("link: effect '" + effects[owners.indexOf(r.name)] + "': '" +
+					f.name + "' names two things in one stage");
+			}
+			names.push(f.name);
+			bindings.push(r.binding);
+		}
+	}
+	return Result.ok(null);
+}
+
 export function link(base: ShaderModule, effects: ShaderModule[]): Result<ShaderModule, string> {
 	let m = try irFromText(irText(base));
 	let sites: int32[] = [];
@@ -194,6 +214,7 @@ export function link(base: ShaderModule, effects: ShaderModule[]): Result<Shader
 	for (const f of m.functions) { pruneDeadFields(m, f); }
 	const kept = try withoutUnread(try withoutUnreadVaryings(m));
 	try numberBindings(kept, owners, owning);
+	try sharedMember(kept, owners, owning);
 	return Result.ok(kept);
 }
 
