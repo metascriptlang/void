@@ -221,6 +221,30 @@ test "an edit lays out only its line again and the layout still equals the whole
 	assert matchesWhole("alphabetas\ngamma\ndelta", noRuns, noBreaks, cache);
 }
 
+test "an edit that keeps a line's length shapes that line again" {
+	const noRuns: Vec<TextRun> = new Array(0);
+	const noBreaks: Vec<int32> = new Array(0);
+	let cache: LineShapes = emptyLineShapes(STYLE);
+	assert matchesWhole("alpha\nbeta\ngamma", noRuns, noBreaks, cache);
+	assert matchesWhole("alpha\nbetz\ngamma", noRuns, noBreaks, cache);
+	assert matchesWhole("alpha\nzeta\ngamma", noRuns, noBreaks, cache);
+	assert matchesWhole("alpha\nzeta\ngammo", noRuns, noBreaks, cache);
+}
+
+test "a line inserted above keeps the shapes of the lines below it" {
+	const noRuns: Vec<TextRun> = new Array(0);
+	const noBreaks: Vec<int32> = new Array(0);
+	let cache: LineShapes = emptyLineShapes(STYLE);
+	assert matchesWhole("alpha\nbeta\ngamma", noRuns, noBreaks, cache);
+	const beta = cache.lines[1].shaped;
+	const gamma = cache.lines[2].shaped;
+	assert matchesWhole("new\nalpha\nbeta\ngamma", noRuns, noBreaks, cache);
+	assert cache.lines[2].shaped === beta;
+	assert cache.lines[3].shaped === gamma;
+	assert matchesWhole("alpha\nbeta\ngamma", noRuns, noBreaks, cache);
+	assert cache.lines[1].shaped === beta;
+}
+
 test "a style change shapes every line again" {
 	const noRuns: Vec<TextRun> = new Array(0);
 	const noBreaks: Vec<int32> = new Array(0);
