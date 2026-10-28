@@ -71,8 +71,7 @@ export function kbGlyphPassesLookupFilter(s: KbScratch, glyph: int32, lookup: Kb
 		}
 
 		if (result && lookup.markFilteringSet != 0) {
-			const blobArr = s.font.blob;
-			const cover = kbCoverGlyph(blobArr[0..blobArr.length], lookup.markFilteringSet,
+			const cover = kbCoverGlyph(s.font.blob[0..s.font.blob.length], lookup.markFilteringSet,
 				s.storage.glyphs[glyph].id as int32);
 			if (!cover.valid) { result = false; }
 		}
@@ -142,8 +141,7 @@ export function kbMatchCoverageSequence(
 	backward: boolean,
 ): KbSequenceMatch {
 	const font = s.font;
-	const blobArr = font.blob;
-	const m: Span<uint8> = blobArr[0..blobArr.length];
+	const m: Span<uint8> = font.blob[0..font.blob.length];
 	let atGlyph = startGlyph;
 	let coverageIndex: int64 = 0;
 	let glyphCounter: int64 = 0;
@@ -209,8 +207,7 @@ function sequenceContext1(
 	skipUnicodeFlags: uint32,
 ): KbSequenceLookupResult {
 	const font = s.font;
-	const blobArr = font.blob;
-	const m: Span<uint8> = blobArr[0..blobArr.length];
+	const m: Span<uint8> = font.blob[0..font.blob.length];
 	let result = emptyResult(s, atGlyph);
 	let inputGlyph = s.storage.glyphs[atGlyph].next;
 	let inputGlyphsTraversed: int32 = 1;
@@ -269,8 +266,7 @@ function sequenceContext2(
 	skipUnicodeFlags: uint32,
 ): KbSequenceLookupResult {
 	const font = s.font;
-	const blobArr = font.blob;
-	const m: Span<uint8> = blobArr[0..blobArr.length];
+	const m: Span<uint8> = font.blob[0..font.blob.length];
 	let result = emptyResult(s, atGlyph);
 	let inputGlyph = s.storage.glyphs[atGlyph].next;
 	let inputGlyphsTraversed: int32 = 1;
@@ -334,8 +330,7 @@ function sequenceContext3(
 	skipUnicodeFlags: uint32,
 ): KbSequenceLookupResult {
 	const font = s.font;
-	const blobArr = font.blob;
-	const m: Span<uint8> = blobArr[0..blobArr.length];
+	const m: Span<uint8> = font.blob[0..font.blob.length];
 	let result = emptyResult(s, atGlyph);
 	const glyphCount = m.kbU16(base + 2);
 	const coverageOffsets = base + 6;
@@ -363,8 +358,7 @@ function chainedSequenceContext1(
 	skipUnicodeFlags: uint32,
 ): KbSequenceLookupResult {
 	const font = s.font;
-	const blobArr = font.blob;
-	const m: Span<uint8> = blobArr[0..blobArr.length];
+	const m: Span<uint8> = font.blob[0..font.blob.length];
 	let result = emptyResult(s, atGlyph);
 	let inputGlyph = s.storage.glyphs[atGlyph].next;
 	let inputGlyphsTraversed: int32 = 1;
@@ -434,8 +428,7 @@ function chainedSequenceContext2(
 	skipUnicodeFlags: uint32,
 ): KbSequenceLookupResult {
 	const font = s.font;
-	const blobArr = font.blob;
-	const m: Span<uint8> = blobArr[0..blobArr.length];
+	const m: Span<uint8> = font.blob[0..font.blob.length];
 	let result = emptyResult(s, atGlyph);
 	let inputGlyph = s.storage.glyphs[atGlyph].next;
 	let inputGlyphsTraversed: int32 = 1;
@@ -525,8 +518,7 @@ function chainedSequenceContext3(
 	skipUnicodeFlags: uint32,
 ): KbSequenceLookupResult {
 	const font = s.font;
-	const blobArr = font.blob;
-	const m: Span<uint8> = blobArr[0..blobArr.length];
+	const m: Span<uint8> = font.blob[0..font.blob.length];
 	let result = emptyResult(s, atGlyph);
 	const inputGlyph = s.storage.glyphs[atGlyph].next;
 	const backtrackGlyph = s.storage.glyphs[atGlyph].prev;
@@ -576,8 +568,7 @@ export function kbDoSequenceLookup(
 	skipUnicodeFlags: uint32,
 ): KbSequenceLookupResult {
 	const font = s.font;
-	const blobArr = font.blob;
-	const m: Span<uint8> = blobArr[0..blobArr.length];
+	const m: Span<uint8> = font.blob[0..font.blob.length];
 	const key = (lookup.type << 16) | m.kbU16(base);
 	return match (key) {
 		0x50001 | 0x70001 => sequenceContext1(s, lookup, base, coverIndex, atGlyph, skipFlags,

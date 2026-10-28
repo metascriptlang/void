@@ -117,8 +117,7 @@ function attachGlyph(s: KbScratch, parent: int32, child: int32, x: int32, y: int
 
 function singleAdjustment(s: KbScratch, base: int64, coverIndex: int64, glyph: int32): boolean {
 	const font = s.font;
-	const blobArr = font.blob;
-	const m: Span<uint8> = blobArr[0..blobArr.length];
+	const m: Span<uint8> = font.blob[0..font.blob.length];
 	const valueFormat = m.kbU16(base + 4);
 	const format = m.kbU16(base);
 
@@ -148,8 +147,7 @@ function pairAdjustment(
 	outcome: KbAdjustOutcome,
 ): boolean {
 	const font = s.font;
-	const blobArr = font.blob;
-	const m: Span<uint8> = blobArr[0..blobArr.length];
+	const m: Span<uint8> = font.blob[0..font.blob.length];
 	const nextGlyph = kbNextGlyph(s, lookup, s.storage.glyphs[glyph].next, regularSkipFlags,
 		skipUnicodeFlags, false);
 	if (nextGlyph == KB_GLYPH_SENTINEL) { return false; }
@@ -235,8 +233,7 @@ function cursiveAdjustment(
 	skipUnicodeFlags: uint32,
 ): boolean {
 	const font = s.font;
-	const blobArr = font.blob;
-	const m: Span<uint8> = blobArr[0..blobArr.length];
+	const m: Span<uint8> = font.blob[0..font.blob.length];
 	const coverage = base + m.kbU16(base + 2);
 	const entryExits = base + 6;
 
@@ -348,8 +345,7 @@ function markToBaseAdjustment(
 	skipUnicodeFlags: uint32,
 ): boolean {
 	const font = s.font;
-	const blobArr = font.blob;
-	const m: Span<uint8> = blobArr[0..blobArr.length];
+	const m: Span<uint8> = font.blob[0..font.blob.length];
 	const countMarkAdvances = !shaperClearsMarkAdvancesInPostGposFixup(s.shaper);
 	const baseCoverage = base + m.kbU16(base + 4);
 	const markClassCount = m.kbU16(base + 6) as int64;
@@ -432,8 +428,7 @@ function markToLigatureAdjustment(
 	skipUnicodeFlags: uint32,
 ): boolean {
 	const font = s.font;
-	const blobArr = font.blob;
-	const m: Span<uint8> = blobArr[0..blobArr.length];
+	const m: Span<uint8> = font.blob[0..font.blob.length];
 	let advanceSinceBaseX: int32 = 0;
 	let advanceSinceBaseY: int32 = 0;
 	const baseClasses: int32 =
@@ -594,8 +589,7 @@ export function kbDoSingleAdjustment(
 	}
 
 	const font = s.font;
-	const blobArr = font.blob;
-	const m: Span<uint8> = blobArr[0..blobArr.length];
+	const m: Span<uint8> = font.blob[0..font.blob.length];
 	let lookup = lookupIn;
 	let base = baseIn;
 
