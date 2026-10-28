@@ -1,6 +1,6 @@
 // WGSL's assignment into an element, and a field of an element, of a read_write storage buffer:
 // the entry runs on the CPU, is pinned as GLSL and printed for every target into out/<target>Probe/
-// for scripts/validateWgsl.sh, scripts/validateHlsl.sh, naga and spirv-val.
+// for scripts/validateWgsl.sh, scripts/validateHlsl.sh and spirv-val.
 
 import { mkdir, writeFile } from "std/fs";
 import { computeModule } from "../shader/descriptor";
@@ -96,7 +96,8 @@ test "GLSL 450 writes the buffer member of the block" {
 test "every target spells the storage write" {
 	const m = computeOf();
 	assert irErrors(m).length == 0;
-	for (const t of [ShaderTarget.Wgsl, ShaderTarget.Hlsl5, ShaderTarget.Glsl430, ShaderTarget.Msl]) {
+	for (const t of [ShaderTarget.Wgsl, ShaderTarget.Hlsl5, ShaderTarget.Glsl430,
+		ShaderTarget.Msl]) {
 		const text = printedProbe(m, 0, t, "particleStep", "comp");
 		assert text.length > 0 && !text.startsWith("print");
 	}

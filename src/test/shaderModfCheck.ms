@@ -1,11 +1,19 @@
 // WGSL's modf and frexp authored in MetaScript: the CPU oracle, entries that use them for a scalar
-// and for every vector width, their text per target, the probe files that naga, fxc and spirv-val
+// and for every vector width, their text per target, the probe files that fxc and spirv-val
 // read, and the places they are refused.
 
 import { mkdir, writeFile } from "std/fs";
 import { programModule, stageSource } from "../shader/descriptor";
 import { glslIr, glslLinked, glslLinkedIr } from "../shader/emit";
-import { Intrinsic, ShaderModule, ShaderStage, intrinsicOf, irErrors, literal, modfResultType } from "../shader/ir";
+import {
+	Intrinsic,
+	ShaderModule,
+	ShaderStage,
+	intrinsicOf,
+	irErrors,
+	literal,
+	modfResultType,
+} from "../shader/ir";
 import { ShaderTarget } from "../shader/layout";
 import { opcodeOf, spirvProbe } from "./shaderProbeModules";
 import { VEC4, tiny } from "./shaderProbeModules";
@@ -41,7 +49,8 @@ export function partsVs(input: Corner): Parts {
 
 function wholeOf(r: ModfResultVec3f): Vec3f { return r.whole; }
 
-function exponentOf(r: FrexpResultVec3f): Vec3f { return vec3f(r.exp.x as float32, r.exp.y as float32, r.fract.z); }
+function exponentOf(r: FrexpResultVec3f): Vec3f { return vec3f(r.exp.x as float32,
+	r.exp.y as float32, r.fract.z); }
 
 export function modfFs(input: Parts): Vec4f {
 	const one = modf(input.amount.x);
@@ -88,7 +97,8 @@ test "modf splits a value into a fraction and a whole part that keep its sign" {
 	assert d.fract.x == -0.75 && d.fract.y == 0.5 && d.fract.z == 0.0;
 	assert d.whole.x == -2.0 && d.whole.y == 0.0 && d.whole.z == 6.0;
 	assert modf(vec2f(1.25, -3.5)).whole.y == -3.0 && modf(vec2f(1.25, -3.5)).fract.x == 0.25;
-	assert modf(vec4f(1.5, 2.5, -0.25, 7.125)).fract.w == 0.125 && modf(vec4f(1.5, 2.5, -0.25, 7.125)).whole.z == 0.0;
+	assert modf(vec4f(1.5, 2.5, -0.25, 7.125)).fract.w == 0.125 &&
+		modf(vec4f(1.5, 2.5, -0.25, 7.125)).whole.z == 0.0;
 	assert modf(16777216.0).fract == 0.0 && modf(0.0000001).whole == 0.0;
 }
 
@@ -111,13 +121,15 @@ test "frexp splits a value into a fraction in [0.5, 1) and a power of two" {
 	assert h.fract.x == -0.6875 && h.fract.y == 0.5 && h.fract.z == 0.75;
 	assert h.exp.x == 2 && h.exp.y == 0 && h.exp.z == 3;
 	assert frexp(vec2f(8.0, 0.375)).exp.y == -1 && frexp(vec2f(8.0, 0.375)).fract.x == 0.5;
-	assert frexp(vec4f(1.0, 2.0, 4.0, 0.125)).exp.w == -2 && frexp(vec4f(1.0, 2.0, 4.0, 0.125)).exp.z == 3;
+	assert frexp(vec4f(1.0, 2.0, 4.0, 0.125)).exp.w == -2 &&
+		frexp(vec4f(1.0, 2.0, 4.0, 0.125)).exp.z == 3;
 }
 
 test "the entries run on the CPU" {
 	const parts: Parts = { position: vec4f(0.0), amount: vec3f(-2.75, 0.5, 6.0) };
 	const split = modfFs(parts);
-	assert near(split.x, -2.75) && near(split.y, 0.5 + 6.0 + 0.0) && near(split.z, -2.0 + 0.5) && near(split.w, 1.0 + 0.5);
+	assert near(split.x, -2.75) && near(split.y, 0.5 + 6.0 + 0.0) && near(split.z, -2.0 + 0.5) &&
+		near(split.w, 1.0 + 0.5);
 	const scaled = frexpFs(parts);
 	assert near(scaled.x, -0.6875 + 2.0) && near(scaled.y, 0.5 + 3.0 + 0.75);
 	assert near(scaled.z, -0.6875 + 0.0) && near(scaled.w, 0.75 + (-1.0));
@@ -128,9 +140,12 @@ test "the entries run on the CPU" {
 function probePath(name: string, target: ShaderTarget, stage: string): string {
 	return match (target) {
 		ShaderTarget.Wgsl => "out/wgslProbe/" + name + stage + ".wgsl",
-		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") + ".hlsl",
-		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." + (stage == "Vs" ? "vert" : "frag"),
-		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." + (stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") +
+		".hlsl",
+		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." +
+		(stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." +
+		(stage == "Vs" ? "vert" : "frag"),
 		ShaderTarget.Msl => "out/mslProbe/" + name + stage + ".metal",
 		ShaderTarget.Spirv => "out/spirvProbe/" + name + stage + ".spv",
 	};
@@ -171,15 +186,18 @@ function structLines(name: string, first: string, second: string): string {
 test "GLSL 450 declares a struct and a helper per width and reads the fields by name" {
 	const modf450 = glslLinked(modfFs, partsVs);
 	assert modf450.includes("struct ModfResultVec3f {\n    vec3 fract;\n    vec3 whole;\n};\n" +
-		"ModfResultVec3f modfVec3f(vec3 arg) {\n    vec3 other;\n    vec3 part = modf(arg, other);\n" +
+		"ModfResultVec3f modfVec3f(vec3 arg) {\n    vec3 other;\n    vec3 part = modf(arg, " +
+		"other);\n" +
 		"    return ModfResultVec3f(part, other);\n}\n");
 	assert modf450.includes("struct ModfResultF32 {\n    float fract;\n    float whole;\n};\n");
 	assert modf450.includes("    ModfResultF32 one = modfF32(amount.x);\n");
 	assert modf450.includes("    ModfResultVec2f pair = modfVec2f(vec2(amount.x, amount.y));\n");
-	assert modf450.includes("(one.fract + one.whole)") && modf450.includes("modfF32(amount.z).fract");
+	assert modf450.includes("(one.fract + one.whole)") &&
+		modf450.includes("modfF32(amount.z).fract");
 	const frexp450 = glslLinked(frexpFs, partsVs);
 	assert frexp450.includes("struct FrexpResultVec3f {\n    vec3 fract;\n    ivec3 exp;\n};\n" +
-		"FrexpResultVec3f frexpVec3f(vec3 arg) {\n    ivec3 other;\n    vec3 part = frexp(arg, other);\n" +
+		"FrexpResultVec3f frexpVec3f(vec3 arg) {\n    ivec3 other;\n    vec3 part = frexp(arg, " +
+		"other);\n" +
 		"    return FrexpResultVec3f(part, other);\n}\n");
 	assert frexp450.includes("struct FrexpResultF32 {\n    float fract;\n    int exp;\n};\n");
 	assert frexp450.includes("float(one.exp)") && frexp450.includes("float(pair.exp.y)");
@@ -204,18 +222,21 @@ test "WGSL calls modf and frexp by name and reads fract, whole and exp, but cann
 test "GLSL 430 declares the structs once before the functions, and ES 300 has modf but not frexp" {
 	const modf = printedFor(modfProgram(), 1, ShaderTarget.Glsl430, "splitModf");
 	assert modf.includes(structLines("ModfResultVec3f", "vec3 fract", "vec3 whole") + "\n" +
-		"ModfResultVec3f modfVec3f(vec3 arg)\n{\n    vec3 other;\n    vec3 part = modf(arg, other);\n" +
+		"ModfResultVec3f modfVec3f(vec3 arg)\n{\n    vec3 other;\n    vec3 part = modf(arg, " +
+		"other);\n" +
 		"    return ModfResultVec3f(part, other);\n}\n");
 	assert modf.includes("    ModfResultVec3f many = modfVec3f(amount);\n");
 	assert modf.indexOf("struct ModfResultF32") < modf.indexOf("void main()");
 	const frexp = printedFor(frexpProgram(), 1, ShaderTarget.Glsl430, "splitFrexp");
 	assert frexp.includes(structLines("FrexpResultVec4f", "vec4 fract", "ivec4 exp") + "\n" +
-		"FrexpResultVec4f frexpVec4f(vec4 arg)\n{\n    ivec4 other;\n    vec4 part = frexp(arg, other);\n" +
+		"FrexpResultVec4f frexpVec4f(vec4 arg)\n{\n    ivec4 other;\n    vec4 part = frexp(arg, " +
+		"other);\n" +
 		"    return FrexpResultVec4f(part, other);\n}\n");
 	const held = printedFor(heldProgram(), 1, ShaderTarget.Glsl430, "splitHeld");
 	assert held.includes("vec3 wholeOf(ModfResultVec3f r)\n{\n    return r.whole;\n}\n");
 	const modfEs = printedFor(modfProgram(), 1, ShaderTarget.Glsl300es, "splitModf");
-	assert modfEs.includes("ModfResultVec3f modfVec3f(vec3 arg)\n{") && modfEs.includes("modf(arg, other)");
+	assert modfEs.includes("ModfResultVec3f modfVec3f(vec3 arg)\n{") &&
+		modfEs.includes("modf(arg, other)");
 	assert printedFor(frexpProgram(), 1, ShaderTarget.Glsl300es, "splitFrexp") ==
 		"printGlsl: Frexp is not in GLSL ES 3.00 (ES 3.10 has it)";
 }
@@ -223,15 +244,18 @@ test "GLSL 430 declares the structs once before the functions, and ES 300 has mo
 test "HLSL writes the struct and a helper, and signs frexp's mantissa by hand" {
 	const modf = printedFor(modfProgram(), 1, ShaderTarget.Hlsl5, "splitModf");
 	assert modf.includes(structLines("ModfResultVec3f", "float3 fract", "float3 whole") + "\n" +
-		"ModfResultVec3f modfVec3f(float3 arg)\n{\n    float3 other;\n    ModfResultVec3f result;\n" +
+		"ModfResultVec3f modfVec3f(float3 arg)\n{\n    float3 other;\n    ModfResultVec3f " +
+		"result;\n" +
 		"    result.fract = modf(arg, other);\n    result.whole = other;\n    return result;\n}\n");
 	assert modf.includes("    ModfResultF32 one = modfF32(amount.x);\n");
 	const frexp = printedFor(frexpProgram(), 1, ShaderTarget.Hlsl5, "splitFrexp");
 	assert frexp.includes(structLines("FrexpResultVec3f", "float3 fract", "int3 exp") + "\n" +
-		"FrexpResultVec3f frexpVec3f(float3 arg)\n{\n    float3 other;\n    FrexpResultVec3f result;\n" +
+		"FrexpResultVec3f frexpVec3f(float3 arg)\n{\n    float3 other;\n    FrexpResultVec3f " +
+		"result;\n" +
 		"    result.fract = sign(arg) * frexp(arg, other);\n    result.exp = int3(other);\n" +
 		"    return result;\n}\n");
-	assert frexp.includes("FrexpResultF32 frexpF32(float arg)") && frexp.includes("result.exp = int(other);");
+	assert frexp.includes("FrexpResultF32 frexpF32(float arg)") &&
+		frexp.includes("result.exp = int(other);");
 	const held = printedFor(heldProgram(), 1, ShaderTarget.Hlsl5, "splitHeld");
 	assert held.includes("float3 wholeOf(ModfResultVec3f r)\n{\n    return r.whole;\n}\n");
 }
@@ -273,11 +297,13 @@ test "SPIR-V calls GLSL.std.450's ModfStruct and FrexpStruct and extracts the fi
 }
 
 test "modf and frexp take an f32 shape and answer the result of its width" {
-	const wide = tiny(ShaderStage.Fragment, intrinsicOf(Intrinsic.Modf, VEC4, [literal(VEC4, 1.0)]));
+	const wide = tiny(ShaderStage.Fragment,
+		intrinsicOf(Intrinsic.Modf, VEC4, [literal(VEC4, 1.0)]));
 	assert irErrors(wide).includes("function 'tinyEntry': Modf takes an f32 scalar or vector and " +
 		"answers the predeclared result of its width, as WGSL's");
 	const wrong = tiny(ShaderStage.Fragment, intrinsicOf(Intrinsic.Frexp, modfResultType(4),
 		[literal(VEC4, 1.0)]));
-	assert irErrors(wrong).includes("function 'tinyEntry': Frexp takes an f32 scalar or vector and " +
+	assert irErrors(wrong).includes(
+		"function 'tinyEntry': Frexp takes an f32 scalar or vector and " +
 		"answers the predeclared result of its width, as WGSL's");
 }

@@ -1,5 +1,5 @@
 // Uniform blocks and storage elements get std140 and std430 offsets, and each target numbers the
-// bindings a program reads as sokol-shdc does.
+// bindings a program reads.
 
 import {
 	BinaryOp,

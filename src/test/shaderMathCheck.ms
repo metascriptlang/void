@@ -1,6 +1,7 @@
-// WGSL's remaining math and bit builtins authored in MetaScript: the CPU oracle of countLeadingZeros,
+// WGSL's remaining math and bit builtins authored in MetaScript: the CPU oracle of
+// countLeadingZeros,
 // countTrailingZeros, the bitcasts, ldexp, asinh, acosh and atanh, three entries that use them and
-// the coarse and fine derivatives, their text per target, the probe files that naga, fxc and
+// the coarse and fine derivatives, their text per target, the probe files that fxc and
 // spirv-val read, and the places they are refused.
 
 import { mkdir, writeFile } from "std/fs";
@@ -94,7 +95,8 @@ export function bitsFs(input: Bits): Vec4f {
 	return vec4f(
 		(leading.x + leading.y + leading.z + leading.w + lone) as float32,
 		(trailing.x + trailing.y + trailing.z + trailing.w) as float32,
-		(leadingSigned.x + leadingSigned.y + trailingSigned.x + trailingSigned.y + loneSigned) as float32,
+		(leadingSigned.x + leadingSigned.y + trailingSigned.x + trailingSigned.y +
+		loneSigned) as float32,
 		back + backSigned.y + ((swappedBack.x & 255) as float32) + (swapped.z as float32),
 	);
 }
@@ -126,8 +128,10 @@ test "countLeadingZeros and countTrailingZeros count the full 32 bits of a zero"
 	assert countLeadingZeros(0 as uint32) == 32 && countTrailingZeros(0 as uint32) == 32;
 	assert countLeadingZeros(1 as uint32) == 31 && countTrailingZeros(1 as uint32) == 0;
 	assert countLeadingZeros(256 as uint32) == 23 && countTrailingZeros(256 as uint32) == 8;
-	assert countLeadingZeros(0x80000000 as uint32) == 0 && countTrailingZeros(0x80000000 as uint32) == 31;
-	assert countLeadingZeros(0xFFFFFFFF as uint32) == 0 && countTrailingZeros(0xFFFFFFFF as uint32) == 0;
+	assert countLeadingZeros(0x80000000 as uint32) == 0 &&
+		countTrailingZeros(0x80000000 as uint32) == 31;
+	assert countLeadingZeros(0xFFFFFFFF as uint32) == 0 &&
+		countTrailingZeros(0xFFFFFFFF as uint32) == 0;
 	const none: int32 = 0;
 	const minusOne: int32 = -1;
 	const minusEight: int32 = -8;
@@ -147,19 +151,23 @@ test "countLeadingZeros and countTrailingZeros count the full 32 bits of a zero"
 	const s = vec2i(-8, 12);
 	assert countLeadingZeros(s).x == 0 && countLeadingZeros(s).y == 28;
 	assert countTrailingZeros(s).x == 3 && countTrailingZeros(s).y == 2;
-	assert countLeadingZeros(vec3i(0, -1, 1)).z == 31 && countTrailingZeros(vec4i(0, 0, 0, 2)).w == 1;
+	assert countLeadingZeros(vec3i(0, -1, 1)).z == 31 &&
+		countTrailingZeros(vec4i(0, 0, 0, 2)).w == 1;
 }
 
 test "a bitcast reinterprets the bits, to every scalar and for every shape" {
 	assert bitcastF32toU32(1.0) == 0x3F800000 && bitcastF32toU32(-2.0) == 0xC0000000;
 	assert bitcastF32toU32(0.0) == 0 && bitcastF32toU32(-0.0) == 0x80000000;
-	assert bitcastF32toU32(0.5) == 0x3F000000 && bitcastF32toU32(3.4028234663852886e38) == 0x7F7FFFFF;
+	assert bitcastF32toU32(0.5) == 0x3F000000 &&
+		bitcastF32toU32(3.4028234663852886e38) == 0x7F7FFFFF;
 	assert bitcastF32toU32(1.17549435e-38) == 0x00800000;
-	assert bitcastF32toU32(1.4012984643248171e-45) == 1 && bitcastF32toU32(1.1754942106924411e-38) == 0x007FFFFF;
+	assert bitcastF32toU32(1.4012984643248171e-45) == 1 &&
+		bitcastF32toU32(1.1754942106924411e-38) == 0x007FFFFF;
 	assert bitcastF32toI32(-2.0) == -1073741824 && bitcastF32toI32(1.0) == 1065353216;
 	assert bitcastU32toF32(0x3F800000) == 1.0 && bitcastU32toF32(0xC0000000) == -2.0;
 	assert bitcastU32toF32(0) == 0.0 && 1.0 / bitcastU32toF32(0x80000000) < 0.0;
-	assert bitcastU32toF32(1) == 1.4012984643248171e-45 && bitcastU32toF32(0x00800000) == 1.17549435e-38;
+	assert bitcastU32toF32(1) == 1.4012984643248171e-45 &&
+		bitcastU32toF32(0x00800000) == 1.17549435e-38;
 	assert bitcastI32toF32(-1073741824) == -2.0 && bitcastI32toF32(1065353216) == 1.0;
 	const all: int32 = -1;
 	assert bitcastI32toU32(all) == 0xFFFFFFFF && bitcastU32toI32(0xFFFFFFFF) == -1;
@@ -169,23 +177,28 @@ test "a bitcast reinterprets the bits, to every scalar and for every shape" {
 	assert bitcastF32toI32(f).z == 1073741824 && bitcastI32toF32(bitcastF32toI32(f)).y == -1.0;
 	assert bitcastU32toF32(vec2u(0x3F800000, 0x40000000)).y == 2.0;
 	assert bitcastU32toF32(vec4u(0x3F800000, 0, 0, 0xC0000000)).w == -2.0;
-	assert bitcastI32toU32(vec2i(-8, 12)).x == 0xFFFFFFF8 && bitcastU32toI32(vec4u(0, 1, 256, 0x80000000)).w == -2147483648;
-	assert bitcastF32toU32(vec2f(1.0, 2.0)).y == 0x40000000 && bitcastI32toF32(vec4i(0, 0, 0, 1065353216)).w == 1.0;
+	assert bitcastI32toU32(vec2i(-8, 12)).x == 0xFFFFFFF8 &&
+		bitcastU32toI32(vec4u(0, 1, 256, 0x80000000)).w == -2147483648;
+	assert bitcastF32toU32(vec2f(1.0, 2.0)).y == 0x40000000 &&
+		bitcastI32toF32(vec4i(0, 0, 0, 1065353216)).w == 1.0;
 	assert bitcastU32toI32(vec3u(7, 8, 9)).z == 9 && bitcastI32toU32(vec3i(7, 8, 9)).x == 7;
-	assert bitcastF32toI32(vec4f(1.0, 0.0, 0.0, 0.0)).x == 1065353216 && bitcastF32toI32(vec2f(1.0, -2.0)).y == -1073741824;
+	assert bitcastF32toI32(vec4f(1.0, 0.0, 0.0, 0.0)).x == 1065353216 &&
+		bitcastF32toI32(vec2f(1.0, -2.0)).y == -1073741824;
 }
 
 test "ldexp scales by a power of two, asinh acosh and atanh invert the hyperbolics" {
 	assert ldexp(0.5, 3) == 4.0 && ldexp(3.0, -2) == 0.75 && ldexp(1.5, 0) == 1.5;
 	const scaled = ldexp(vec3f(0.5, 1.5, 2.0), vec3i(1, 2, 3));
 	assert scaled.x == 1.0 && scaled.y == 6.0 && scaled.z == 16.0;
-	assert ldexp(vec2f(1.0, 3.0), vec2i(4, -1)).y == 1.5 && ldexp(vec4f(1.0), vec4i(1, 2, 3, 4)).w == 16.0;
+	assert ldexp(vec2f(1.0, 3.0), vec2i(4, -1)).y == 1.5 &&
+		ldexp(vec4f(1.0), vec4i(1, 2, 3, 4)).w == 16.0;
 	assert near(asinh(0.5), 0.48121183) && near(asinh(-0.5), -0.48121183) && asinh(0.0) == 0.0;
 	assert near(acosh(2.0), 1.3169579) && near(acosh(1.5), 0.9624237) && acosh(1.0) == 0.0;
 	assert near(atanh(0.25), 0.2554128) && near(atanh(-0.25), -0.2554128) && atanh(0.0) == 0.0;
 	const w = asinh(vec3f(0.5, 1.5, 2.0));
 	assert near(w.x, 0.48121183) && near(w.y, 1.1947632) && near(w.z, 1.4436355);
-	assert near(acosh(vec2f(2.0, 1.5)).y, 0.9624237) && near(atanh(vec4f(0.25, 0.0, 0.0, -0.25)).w, -0.2554128);
+	assert near(acosh(vec2f(2.0, 1.5)).y, 0.9624237) &&
+		near(atanh(vec4f(0.25, 0.0, 0.0, -0.25)).w, -0.2554128);
 }
 
 test "the entries run on the CPU" {
@@ -203,9 +216,12 @@ test "the entries run on the CPU" {
 function probePath(name: string, target: ShaderTarget, stage: string): string {
 	return match (target) {
 		ShaderTarget.Wgsl => "out/wgslProbe/" + name + stage + ".wgsl",
-		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") + ".hlsl",
-		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." + (stage == "Vs" ? "vert" : "frag"),
-		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." + (stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") +
+		".hlsl",
+		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." +
+		(stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." +
+		(stage == "Vs" ? "vert" : "frag"),
 		ShaderTarget.Msl => "out/mslProbe/" + name + stage + ".metal",
 		ShaderTarget.Spirv => "out/spirvProbe/" + name + stage + ".spv",
 	};
@@ -320,17 +336,20 @@ test "WGSL spells them by its own names and a bitcast as bitcast<T>" {
 	assert slope.includes("diagnostic(off, derivative_uniformity);");
 }
 
-test "GLSL 430 and ES 300 print the casts and the hyperbolics alike, the bit counts and ldexp on 430 only" {
+test "GLSL 430 and ES 300 print the casts and hyperbolics alike, bit counts and ldexp on 430 only" {
 	const slope430 = printedFor(slopeProgram(), 1, ShaderTarget.Glsl430, "mathSlope");
 	const slopeEs = printedFor(slopeProgram(), 1, ShaderTarget.Glsl300es, "mathSlope");
 	for (const text of [slope430, slopeEs]) {
 		assert text.includes("vec3 across = dFdx(low);") && text.includes("vec3 down = dFdy(low);");
-		assert text.includes("float wide = fwidth(low.x);") && text.includes("vec3 fine = fwidth(low);");
-		assert text.includes("float alongFine = dFdx(low.x);") && text.includes("float downCoarse = dFdy(low.x);");
+		assert text.includes("float wide = fwidth(low.x);") &&
+			text.includes("vec3 fine = fwidth(low);");
+		assert text.includes("float alongFine = dFdx(low.x);") &&
+			text.includes("float downCoarse = dFdy(low.x);");
 		assert !text.includes("Coarse(") && !text.includes("Fine(");
 	}
 	const math430 = printedFor(mathProgram(), 1, ShaderTarget.Glsl430, "mathHyper");
-	assert math430.includes("vec3 wide = asinh(low);") && math430.includes("ldexp(low, ivec3(1, 2, 3))");
+	assert math430.includes("vec3 wide = asinh(low);") &&
+		math430.includes("ldexp(low, ivec3(1, 2, 3))");
 	const mathEs = printedFor(mathProgram(), 1, ShaderTarget.Glsl300es, "mathHyper");
 	assert mathEs == "printGlsl: Ldexp is not in GLSL ES 3.00 (ES 3.10 has it)";
 	const bits430 = printedFor(bitsProgram(), 1, ShaderTarget.Glsl430, "mathBits");
@@ -340,7 +359,7 @@ test "GLSL 430 and ES 300 print the casts and the hyperbolics alike, the bit cou
 	assert bitsEs == "printGlsl: CountLeadingZeros is not in GLSL ES 3.00 (ES 3.10 has it)";
 }
 
-test "HLSL counts through firstbithigh and firstbitlow, casts with as*, and writes helpers for the rest" {
+test "HLSL counts through firstbithigh and firstbitlow, casts with as*, helpers for the rest" {
 	const bits = printedFor(bitsProgram(), 1, ShaderTarget.Hlsl5, "mathBits");
 	assert bits.includes("    uint4 leading = (31u - firstbithigh(words));
 " +
@@ -372,7 +391,8 @@ test "HLSL counts through firstbithigh and firstbitlow, casts with as*, and writ
     return sign(e) * log(abs(e) + sqrt(e * e + 1.0));
 }
 ");
-	assert math.includes("float acosh(float e)") && math.includes("return log(e + sqrt(e * e - 1.0));");
+	assert math.includes("float acosh(float e)") &&
+		math.includes("return log(e + sqrt(e * e - 1.0));");
 	assert math.includes("return 0.5 * log((1.0 + e) / (1.0 - e));");
 	assert math.includes("ldexp(low, int3(1, 2, 3))") && math.includes("ldexp(low.x, 3)");
 	const slope = printedFor(slopeProgram(), 1, ShaderTarget.Hlsl5, "mathSlope");
@@ -409,10 +429,12 @@ test "MSL counts with clz and ctz, casts with as_type, and has the rest by name"
 		"  uint2 swappedBack = as_type<uint2>(in.signedWords);
 ");
 	const math = printedFor(mathProgram(), 1, ShaderTarget.Msl, "mathHyper");
-	assert math.includes("asinh(in.low)") && math.includes("acosh(float3(in.low.y, in.low.z, in.low.y))");
+	assert math.includes("asinh(in.low)") &&
+		math.includes("acosh(float3(in.low.y, in.low.z, in.low.y))");
 	assert math.includes("ldexp(in.low, int3(1, 2, 3))");
 	const slope = printedFor(slopeProgram(), 1, ShaderTarget.Msl, "mathSlope");
-	assert slope.includes("dfdx(in.low)") && slope.includes("dfdy(in.low)") && slope.includes("fwidth(in.low)");
+	assert slope.includes("dfdx(in.low)") && slope.includes("dfdy(in.low)") &&
+		slope.includes("fwidth(in.low)");
 	assert !slope.includes("Coarse(") && !slope.includes("Fine(");
 }
 
@@ -424,7 +446,7 @@ function extensions(words: uint32[][], number: uint32): int32 {
 	return words.filter((i) => opcodeOf(i) == 12 && i[4] == number).length as int32;
 }
 
-test "SPIR-V counts with GLSL.std.450's FindUMsb and FindILsb, casts with OpBitcast, and takes the control capability" {
+test "SPIR-V counts with FindUMsb and FindILsb, casts with OpBitcast, takes the capability" {
 	const bitsModule = bitsProgram();
 	const _bitsVertex = spirvProbe(bitsModule, 0, "mathBits");
 	const bits = spirvProbe(bitsModule, 1, "mathBits");
@@ -447,17 +469,22 @@ test "SPIR-V counts with GLSL.std.450's FindUMsb and FindILsb, casts with OpBitc
 	assert opcodes(slope, 17) == 2;
 }
 
-test "a bitcast changes the scalar and keeps the shape, ldexp takes an i32 shape, coarse and fine are a fragment's" {
-	const same = tiny(ShaderStage.Fragment, intrinsicOf(Intrinsic.Bitcast, VEC4, [literal(VEC4, 1.0)]));
-	assert irErrors(same).includes("function 'tinyEntry': Bitcast takes one i32, u32 or f32 scalar or " +
+test "bitcast keeps the shape, ldexp takes an i32 shape, coarse and fine are fragment-only" {
+	const same = tiny(ShaderStage.Fragment,
+		intrinsicOf(Intrinsic.Bitcast, VEC4, [literal(VEC4, 1.0)]));
+	assert irErrors(same).includes(
+		"function 'tinyEntry': Bitcast takes one i32, u32 or f32 scalar or " +
 		"vector and answers the same shape of another scalar");
 	const scaled = tiny(ShaderStage.Fragment, intrinsicOf(Intrinsic.Ldexp, VEC4,
 		[literal(VEC4, 1.0), literal(VEC4, 1.0)]));
-	assert irErrors(scaled).includes("function 'tinyEntry': Ldexp takes an f32 scalar or vector and an " +
+	assert irErrors(scaled).includes(
+		"function 'tinyEntry': Ldexp takes an f32 scalar or vector and an " +
 		"i32 of its shape, as WGSL's");
-	for (const op of [Intrinsic.DpdxCoarse, Intrinsic.DpdxFine, Intrinsic.DpdyCoarse, Intrinsic.DpdyFine,
+	for (const op of [Intrinsic.DpdxCoarse, Intrinsic.DpdxFine, Intrinsic.DpdyCoarse,
+		Intrinsic.DpdyFine,
 		Intrinsic.FwidthCoarse, Intrinsic.FwidthFine]) {
 		const vertex = tiny(ShaderStage.Vertex, intrinsicOf(op, VEC4, [literal(VEC4, 1.0)]));
-		assert irErrors(vertex).includes("entry 'tinyEntry': " + op.toString() + " outside a fragment entry");
+		assert irErrors(vertex).includes("entry 'tinyEntry': " + op.toString() +
+			" outside a fragment entry");
 	}
 }

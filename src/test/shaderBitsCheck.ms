@@ -1,7 +1,7 @@
 // WGSL's bit and data-packing builtins authored in MetaScript: the CPU oracle is checked against
 // the WGSL specification's values, and an entry that calls each is pinned as GLSL and printed for
 // every target into out/<target>Probe/ for scripts/validateWgsl.sh, scripts/validateHlsl.sh and
-// naga's GLSL front end.
+// the GLSL validator.
 
 import { mkdir, writeFile } from "std/fs";
 import { programModule, stageSource } from "../shader/descriptor";
@@ -97,7 +97,8 @@ export function bitsFs(input: Lanes): Vec4f {
 }
 
 test "countOneBits, reverseBits and the first bits match the WGSL specification" {
-	assert countOneBits(u(61680)) == 8 && countOneBits(u(0)) == 0 && countOneBits(u(0xFFFFFFFF)) == 32;
+	assert countOneBits(u(61680)) == 8 && countOneBits(u(0)) == 0 &&
+		countOneBits(u(0xFFFFFFFF)) == 32;
 	assert countOneBits(-1 as int32) == 32 && countOneBits(vec2u(7, 255)).y == 8;
 	assert reverseBits(u(1)) == 2147483648 && reverseBits(u(0xF0)) == 251658240;
 	assert reverseBits(1 as int32) == -2147483648 && reverseBits(vec2i(0, -1)).y == -1;
@@ -117,7 +118,8 @@ test "extractBits and insertBits clamp offset and count and sign-extend an i32" 
 	assert extractBits(112 as int32, 4, 4) == 7 && extractBits(240 as int32, 4, 4) == -1;
 	assert extractBits(-5 as int32, 0, 32) == -5 && extractBits(-5 as int32, 3, 0) == 0;
 	assert extractBits(vec2u(240, 61680), 4, 4).y == 15;
-	assert insertBits(u(0), u(255), 4, 4) == 240 && insertBits(u(0xFFFFFFFF), u(0), 8, 8) == 4294902015;
+	assert insertBits(u(0), u(255), 4, 4) == 240 &&
+		insertBits(u(0xFFFFFFFF), u(0), 8, 8) == 4294902015;
 	assert insertBits(u(7), u(99), 0, 32) == 99 && insertBits(u(7), u(99), 40, 3) == 7;
 	assert insertBits(0 as int32, -1 as int32, 28, 4) == -268435456;
 	assert insertBits(vec2u(0, 1), vec2u(3, 3), 1, 2).y == 7;
@@ -168,9 +170,12 @@ test "the entry runs on the CPU" {
 function probePath(name: string, target: ShaderTarget, stage: string): string {
 	return match (target) {
 		ShaderTarget.Wgsl => "out/wgslProbe/" + name + stage + ".wgsl",
-		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") + ".hlsl",
-		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." + (stage == "Vs" ? "vert" : "frag"),
-		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." + (stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") +
+		".hlsl",
+		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." +
+		(stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." +
+		(stage == "Vs" ? "vert" : "frag"),
 		ShaderTarget.Msl => "out/mslProbe/" + name + stage + ".metal",
 		ShaderTarget.Spirv => "out/spirvProbe/" + name + stage + ".spv",
 	};
@@ -207,7 +212,8 @@ export function halvesVs(input: Corner): PlacedHalves {
 }
 
 export function halvesFs(input: Halves): Vec4f {
-	const shorts = pack2x16unorm(input.pair) + pack2x16snorm(input.pair) + pack2x16float(input.pair);
+	const shorts = pack2x16unorm(input.pair) + pack2x16snorm(input.pair) +
+		pack2x16float(input.pair);
 	const a = unpack2x16unorm(shorts) + unpack2x16snorm(shorts) + unpack2x16float(shorts);
 	return vec4f(a.x, a.y, 0.0, 1.0);
 }
@@ -230,15 +236,20 @@ test "GLSL 450 spells the bit and pack builtins" {
 		"    int reversed = bitfieldReverse(signedWord);\n" +
 		"    int high = findMSB(signedWord);\n" +
 		"    uint low = uvec2(findLSB(uvec2(word, 8))).y;\n" +
-		"    int field = bitfieldExtract(signedWord, int(min(4u, 32u)), int(min(8u, 32u - min(4u, 32u))));\n" +
-		"    uvec3 fields = bitfieldExtract(uvec3(word, 7, 9), int(min(1u, 32u)), int(min(3u, 32u - min(1u, 32u))));\n" +
-		"    uint placed = bitfieldInsert(word, 5u, int(min(4u, 32u)), int(min(8u, 32u - min(4u, 32u))));\n" +
+		"    int field = bitfieldExtract(signedWord, int(min(4u, 32u)), int(min(8u, 32u - " +
+		"min(4u, 32u))));\n" +
+		"    uvec3 fields = bitfieldExtract(uvec3(word, 7, 9), int(min(1u, 32u)), int(min(3u, " +
+		"32u - min(1u, 32u))));\n" +
+		"    uint placed = bitfieldInsert(word, 5u, int(min(4u, 32u)), int(min(8u, 32u - min(4u, " +
+		"32u))));\n" +
 		"    uint bytes = packUnorm4x8(unit) + packSnorm4x8(unit);\n" +
 		"    uint shorts = packUnorm2x16(pair) + packSnorm2x16(pair);\n" +
 		"    vec4 a = unpackUnorm4x8(bytes) + unpackSnorm4x8(bytes);\n" +
 		"    vec2 b = unpackUnorm2x16(shorts) + unpackSnorm2x16(shorts);\n" +
 		"    vec2 half_1 = unpackHalf2x16(packHalf2x16(pair));\n" +
-		"    fragColor = vec4((((float(counted) + float(reversed)) + float(high)) + float(low)), ((float(field) + float(fields.x)) + float(placed)), (((a.x + a.w) + b.x) + half_1.x), (((a.y + a.z) + b.y) + half_1.y));\n" +
+		"    fragColor = vec4((((float(counted) + float(reversed)) + float(high)) + float(low)), " +
+		"((float(field) + float(fields.x)) + float(placed)), (((a.x + a.w) + b.x) + half_1.x), " +
+		"(((a.y + a.z) + b.y) + half_1.y));\n" +
 		"    return;\n" +
 		"}\n";
 }
@@ -314,7 +325,7 @@ test "HLSL spells them as FXC takes them, and writes the rest as helper function
 		"    return f32tof16(e.x) | (f32tof16(e.y) << 16);\n}\n");
 }
 
-test "MSL spells them as naga does, from popcount to extract_bits" {
+test "MSL spells them from popcount to extract_bits" {
 	const msl = printedFor(programOf(), 1, ShaderTarget.Msl, "bits");
 	assert msl.includes("  uint counted = popcount(in.word);\n" +
 		"  int reversed = reverse_bits(in.signedWord);\n" +
@@ -354,7 +365,8 @@ test "a bit builtin keeps WGSL's operands and result" {
 	const counted = body.filter((s) => s.kind == StmtKind.Let &&
 		s.expr.intrinsic == Intrinsic.CountOneBits)[0].expr;
 	counted.operands[0].type = scalarType(ScalarKind.F32);
-	assert irErrors(m).includes("function 'bitsFs': CountOneBits takes an i32 or u32 scalar or vector, " +
+	assert irErrors(m).includes(
+		"function 'bitsFs': CountOneBits takes an i32 or u32 scalar or vector, " +
 		"as WGSL's");
 	let short = programOf();
 	const shortBody = short.functions[short.entries[1].functionIndex].body;

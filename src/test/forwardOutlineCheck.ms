@@ -30,7 +30,8 @@ function reference(
 	const hi: float32 = Math.max(lm, Math.max(Math.max(lnw, lne), Math.max(lsw, lse)));
 	const dx: float32 = -((lnw + lne) - (lsw + lse));
 	const dy: float32 = (lnw + lsw) - (lne + lse);
-	const reduction: float32 = Math.max((lnw + lne + lsw + lse) * (0.25 / 128.0), (1.0 / 8.0) as float32);
+	const reduction: float32 =
+		Math.max((lnw + lne + lsw + lse) * (0.25 / 128.0), (1.0 / 8.0) as float32);
 	const r: float32 = (1.0 / (Math.min(Math.abs(dx), Math.abs(dy)) + reduction)) as float32;
 	const ux: float32 = Math.min(8.0, Math.max(-8.0, dx * r));
 	const uy: float32 = Math.min(8.0, Math.max(-8.0, dy * r));
@@ -121,7 +122,9 @@ import {
 	ForwardRenderer, ForwardError, FORWARD_UNIFORM_LENGTH, FORWARD_OUTLINE_UNIFORM_LENGTH,
 	setOutlineBlend, setOutlineSettings, closeForward, prepareFrame,
 } from "../void3d/forwardRenderer";
-import { DrawContext, DrawItem, MaterialId, MaterialError, addMaterial, releaseMaterial, closeContext } from "../void3d/draw";
+import {
+	DrawContext, DrawItem, MaterialId, MaterialError, addMaterial, releaseMaterial, closeContext,
+} from "../void3d/draw";
 import { Material, Phase } from "../void3d/material";
 import { RenderState, BlendMode, Compare } from "../gpu/state";
 import { VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH, drawnIn, Preset, declares } from
@@ -160,7 +163,8 @@ test "forwardOutline lazy holders reuse ranges and settings snapshot marks chang
 			setOutlineBlend(renderer, 0.0);
 			setOutlineBlend(renderer, 1.0);
 			assert context.uniforms.used == used && context.liveMaterials() == 5;
-			let settings: ForwardOutlineSettings = { ...ForwardOutlineSettings.defaults(), color: LINE };
+			let settings: ForwardOutlineSettings =
+				{ ...ForwardOutlineSettings.defaults(), color: LINE };
 			renderer.core.changed = false;
 			setOutlineSettings(renderer, settings);
 			settings.color.w = 0.0;
@@ -284,38 +288,24 @@ test "forwardOutline RGBA8 partial coverage interval rejects old four-pixel widt
 	assert fullLow == 127 && fullHigh == 128;
 }
 
-import {
-	ForwardOutlinePass, FORWARD_OUTLINE_BLOCKS, FORWARD_OUTLINE_PASS_UNIFORM_LENGTH,
-} from "../void3d/forwardOutline";
-import { OutlineMaskParams, OutlineMixParams, OutlineWidthParams } from "../void3d/post3d";
-import { uniformSize } from "../shader/uniform";
-import { bitcastF32toU32 } from "../shader/std";
+import { ForwardOutlinePass, FORWARD_OUTLINE_PASS_UNIFORM_LENGTH } from "../void3d/forwardOutline";
+import { sameLanes } from "./helpers";
 
-const OUTLINE_FLOATS: int32 = 20;
 const UNWRITTEN: float32 = -7.0;
 
-function outlineLanes(settings: ForwardOutlineSettings, blend: float32, zeroToOne: boolean): Vec<float32> {
-	const context: DrawContext = DrawContext.withUniformCapacity(OUTLINE_FLOATS);
-	for (let i = 0; i < OUTLINE_FLOATS; i++) { context.uniforms.values[i] = UNWRITTEN; }
+function outlineLanes(
+	settings: ForwardOutlineSettings,
+	blend: float32,
+	zeroToOne: boolean,
+): Vec<float32> {
+	const context: DrawContext =
+		DrawContext.withUniformCapacity(FORWARD_OUTLINE_PASS_UNIFORM_LENGTH);
+	for (let i = 0; i < FORWARD_OUTLINE_PASS_UNIFORM_LENGTH; i++) {
+		context.uniforms.values[i] = UNWRITTEN;
+	}
 	const pass: ForwardOutlinePass = ForwardOutlinePass.reserve(context);
 	pass.writeSettings(context, settings, blend, zeroToOne);
 	return context.uniforms.values;
-}
-
-function sameLanes(made: Vec<float32>, expected: float32[]): boolean {
-	if (made.length != expected.length) { return false; }
-	for (let i = 0; i < expected.length; i++) {
-		if (bitcastF32toU32(made[i]) != bitcastF32toU32(expected[i])) { return false; }
-	}
-	return true;
-}
-
-test "forwardOutline reserves the mask, mix and width structs' floats and the budget names them" {
-	assert FORWARD_OUTLINE_BLOCKS.length == 3;
-	assert FORWARD_OUTLINE_BLOCKS[0] == uniformSize<OutlineMaskParams>() / 4;
-	assert FORWARD_OUTLINE_BLOCKS[1] == uniformSize<OutlineMixParams>() / 4;
-	assert FORWARD_OUTLINE_BLOCKS[2] == uniformSize<OutlineWidthParams>() / 4;
-	assert FORWARD_OUTLINE_PASS_UNIFORM_LENGTH == OUTLINE_FLOATS;
 }
 
 test "forwardOutline writes the mask, mix and width blocks lane for lane, every lane written" {

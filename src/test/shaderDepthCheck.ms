@@ -1,7 +1,7 @@
 // textureSampleCompare and textureSampleCompareLevel authored in MetaScript on depth textures and
 // a comparison sampler, and @builtin(fragDepth): each entry runs on the CPU, is pinned as GLSL and
 // printed for every target into out/<target>Probe/ for scripts/validateWgsl.sh,
-// scripts/validateHlsl.sh and naga's GLSL front end.
+// scripts/validateHlsl.sh and the GLSL validator.
 
 import { mkdir, writeFile } from "std/fs";
 import { Compare, Wrap } from "../gpu/state";
@@ -82,7 +82,7 @@ function shadowsOf(nearest: boolean, compare: Compare): Shadows {
 	};
 }
 
-test "a depth texture compares the reference with a texel: nearest picks one, linear mixes the four results" {
+test "a depth texture compares the reference with a texel: nearest picks one, linear mixes four" {
 	const nearest = shadowFs({ position: vec4f(0.0) }, shadowsOf(true, Compare.Less));
 	assert nearest.x == 1.0;
 	assert nearest.y == 1.0;
@@ -95,17 +95,23 @@ test "a depth texture compares the reference with a texel: nearest picks one, li
 	assert textureSampleCompare(b.shadowMap, b.shadowSampler, vec2f(0.5, 0.5), 0.1) == 1.0;
 	assert textureSampleCompare(b.shadowMap, b.shadowSampler, vec2f(0.5, 0.5), 0.9) == 0.0;
 	const down = shadowsOf(true, Compare.Less);
-	assert textureSampleCompare(down.shadowCube, down.shadowSampler, vec3f(0.0, -1.0, 0.0), 0.5) == 0.0;
-	assert textureSampleCompare(down.shadowCube, down.shadowSampler, vec3f(0.0, 0.0, 1.0), 0.5) == 1.0;
-	assert textureSampleCompare(down.shadowCube, down.shadowSampler, vec3f(1.0, 0.0, 0.0), 0.5) == 0.0;
+	assert textureSampleCompare(down.shadowCube, down.shadowSampler, vec3f(0.0, -1.0, 0.0),
+		0.5) == 0.0;
+	assert textureSampleCompare(down.shadowCube, down.shadowSampler, vec3f(0.0, 0.0, 1.0),
+		0.5) == 1.0;
+	assert textureSampleCompare(down.shadowCube, down.shadowSampler, vec3f(1.0, 0.0, 0.0),
+		0.5) == 0.0;
 }
 
 function probePath(name: string, target: ShaderTarget, stage: string): string {
 	return match (target) {
 		ShaderTarget.Wgsl => "out/wgslProbe/" + name + stage + ".wgsl",
-		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") + ".hlsl",
-		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." + (stage == "Vs" ? "vert" : "frag"),
-		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." + (stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") +
+		".hlsl",
+		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." +
+		(stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." +
+		(stage == "Vs" ? "vert" : "frag"),
 		ShaderTarget.Msl => "out/mslProbe/" + name + stage + ".metal",
 		ShaderTarget.Spirv => "out/spirvProbe/" + name + stage + ".spv",
 	};
@@ -141,9 +147,12 @@ test "GLSL 450 spells the comparison through a shadow sampler" {
 		"void main() {\n" +
 		"    vec2 uv = vec2(0.25, 0.75);\n" +
 		"    float flat_1 = texture(sampler2DShadow(shadowMap, shadowSampler), vec3(uv, 0.5));\n" +
-		"    float layer = texture(sampler2DArrayShadow(shadowLayers, shadowSampler), vec4(uv, float(1), 0.5));\n" +
-		"    float cube = texture(samplerCubeShadow(shadowCube, shadowSampler), vec4(vec3(uv.x, uv.y, 1.0), 0.5));\n" +
-		"    float level = textureGrad(sampler2DArrayShadow(shadowLayers, shadowSampler), vec4(uv, float(0), 0.5), vec2(0.0), vec2(0.0));\n" +
+		"    float layer = texture(sampler2DArrayShadow(shadowLayers, shadowSampler), vec4(uv, " +
+		"float(1), 0.5));\n" +
+		"    float cube = texture(samplerCubeShadow(shadowCube, shadowSampler), vec4(vec3(uv.x, " +
+		"uv.y, 1.0), 0.5));\n" +
+		"    float level = textureGrad(sampler2DArrayShadow(shadowLayers, shadowSampler), " +
+		"vec4(uv, float(0), 0.5), vec2(0.0), vec2(0.0));\n" +
 		"    fragColor = vec4(flat_1, layer, cube, level);\n" +
 		"    return;\n" +
 		"}\n";
@@ -157,12 +166,16 @@ test "every target spells textureSampleCompare and textureSampleCompareLevel" {
 		wgsl.includes("@binding(1) @group(1) var shadowLayers : texture_depth_2d_array;\n") &&
 		wgsl.includes("@binding(2) @group(1) var shadowCube : texture_depth_cube;\n") &&
 		wgsl.includes("var shadowSampler : sampler_comparison;\n");
-	assert wgsl.includes("  var flat : f32 = textureSampleCompare(shadowMap, shadowSampler, uv, 0.5f);\n" +
+	assert wgsl.includes(
+		"  var flat : f32 = textureSampleCompare(shadowMap, shadowSampler, uv, 0.5f);\n" +
 		"  var layer : f32 = textureSampleCompare(shadowLayers, shadowSampler, uv, 1i, 0.5f);\n" +
-		"  var cube : f32 = textureSampleCompare(shadowCube, shadowSampler, vec3f(uv.x, uv.y, 1f), 0.5f);\n" +
-		"  var level : f32 = textureSampleCompareLevel(shadowLayers, shadowSampler, uv, 0i, 0.5f);\n");
+		"  var cube : f32 = textureSampleCompare(shadowCube, shadowSampler, vec3f(uv.x, uv.y, " +
+		"1f), 0.5f);\n" +
+		"  var level : f32 = textureSampleCompareLevel(shadowLayers, shadowSampler, uv, 0i, " +
+		"0.5f);\n");
 	assert printedFor(m, 0, ShaderTarget.Wgsl, "shadow").includes(
-		"  var lift : f32 = textureSampleCompareLevel(heightMap, heightSampler, position, 0.5f);\n");
+		"  var lift : f32 = textureSampleCompareLevel(heightMap, heightSampler, position, " +
+		"0.5f);\n");
 	const hlsl = printedFor(m, 1, ShaderTarget.Hlsl5, "shadow");
 	assert hlsl.startsWith("Texture2D<float> shadowMap : register(t0);\n" +
 		"Texture2DArray<float> shadowLayers : register(t1);\n" +
@@ -171,12 +184,14 @@ test "every target spells textureSampleCompare and textureSampleCompareLevel" {
 	assert hlsl.includes("    float flat = shadowMap.SampleCmp(shadowSampler, uv, 0.5);\n" +
 		"    float layer = shadowLayers.SampleCmp(shadowSampler, float3(uv, float(1)), 0.5);\n" +
 		"    float cube = shadowCube.SampleCmp(shadowSampler, float3(uv.x, uv.y, 1.0), 0.5);\n" +
-		"    float level = shadowLayers.SampleCmpLevelZero(shadowSampler, float3(uv, float(0)), 0.5);\n");
+		"    float level = shadowLayers.SampleCmpLevelZero(shadowSampler, float3(uv, float(0)), " +
+		"0.5);\n");
 	assert printedFor(m, 0, ShaderTarget.Hlsl5, "shadow").includes(
 		"    float lift = heightMap.SampleCmpLevelZero(heightSampler, position, 0.5);\n");
 	const gl = printedFor(m, 1, ShaderTarget.Glsl430, "shadow");
 	assert gl.includes("layout(binding = 0) uniform sampler2DShadow shadowMap_shadowSampler;\n") &&
-		gl.includes("layout(binding = 1) uniform sampler2DArrayShadow shadowLayers_shadowSampler;\n") &&
+		gl.includes("layout(binding = 1) uniform sampler2DArrayShadow " +
+		"shadowLayers_shadowSampler;\n") &&
 		gl.includes("layout(binding = 2) uniform samplerCubeShadow shadowCube_shadowSampler;\n");
 	assert gl.includes("    float flat_1 = texture(shadowMap_shadowSampler, vec3(uv, 0.5));\n" +
 		"    float layer = texture(shadowLayers_shadowSampler, vec4(uv, float(1), 0.5));\n" +
@@ -189,7 +204,8 @@ test "every target spells textureSampleCompare and textureSampleCompareLevel" {
 	assert msl.includes("  float flat = shadowMap.sample_compare(shadowSampler, uv, 0.5);\n" +
 		"  float layer = shadowLayers.sample_compare(shadowSampler, uv, uint(1), 0.5);\n" +
 		"  float cube = shadowCube.sample_compare(shadowSampler, float3(uv.x, uv.y, 1.0), 0.5);\n" +
-		"  float level_1 = shadowLayers.sample_compare(shadowSampler, uv, uint(0), 0.5, level(0.0));\n");
+		"  float level_1 = shadowLayers.sample_compare(shadowSampler, uv, uint(0), 0.5, " +
+		"level(0.0));\n");
 }
 
 test "the reflection names a depth texture and a comparison sampler" {
@@ -199,7 +215,8 @@ test "the reflection names a depth texture and a comparison sampler" {
 	assert texture.length == 4 && texture.filter((b) => b.sampleType == "depth").length == 4;
 	assert texture.map((b) => b.viewDimension).join("|") == "|2d-array|cube|";
 	const samplers = reflected.value.bindings.filter((b) => b.kind == "sampler");
-	assert samplers.length == 2 && samplers.filter((b) => b.samplerType == "comparison").length == 2;
+	assert samplers.length == 2 &&
+		samplers.filter((b) => b.samplerType == "comparison").length == 2;
 }
 
 export function plainVs(input: Corner): Placed {
@@ -242,5 +259,6 @@ test "SPIR-V compares with the implicit level in the fragment and level 0 in the
 	const vs = spirvProbe(programOf(), 0, "shadow");
 	const fs = spirvProbe(programOf(), 1, "shadow");
 	assert fs.filter(i => opcodeOf(i) == 89).length > 0;
-	assert vs.filter(i => opcodeOf(i) == 90).length > 0 && vs.filter(i => opcodeOf(i) == 89).length == 0;
+	assert vs.filter(i => opcodeOf(i) == 90).length > 0 &&
+		vs.filter(i => opcodeOf(i) == 89).length == 0;
 }

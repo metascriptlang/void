@@ -34,14 +34,14 @@ import {
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import {
-	constantOrder,
-	exprStructs,
+	constantsInOrder,
+	entryStructs,
 	functionOrder,
 	hasEffect,
 	innermost,
 	ioLocation,
-	stmtStructs,
-	structOrder,
+	ofKinds,
+	withoutSamplers,
 } from "./irWalk";
 import {
 	binaryOperator,
@@ -54,6 +54,7 @@ import {
 	splitHelperName,
 	splitMember,
 	splitStructName,
+	scalarName,
 } from "./spelling";
 import { claimName } from "./names";
 import { demotedDiscards } from "./demote";
@@ -181,15 +182,6 @@ function fail(p: Printer, message: string): string {
 	return "";
 }
 
-function scalarName(s: ScalarKind): string {
-	return match (s) {
-		ScalarKind.F32 => "float",
-		ScalarKind.I32 => "int",
-		ScalarKind.U32 => "uint",
-		ScalarKind.Bool => "bool",
-	};
-}
-
 function arraySuffix(t: ShaderType): string {
 	return t.kind == ShaderTypeKind.Array ?
 		"[" + String(t.length) + "]" + arraySuffix(t.element[0]) : "";
@@ -275,7 +267,7 @@ function splitTypes(t: ShaderType): string[] {
 	return [fract, t.rows == 1 ? "int" : "int" + String(t.rows)];
 }
 
-// naga's HLSL back-end writes the same two functions: frexp and modf hand back one half through an
+// frexp and modf hand back one half through an
 // out parameter, and frexp's mantissa is signed by hand because HLSL's carries no sign.
 function splitResult(p: Printer, t: ShaderType): string {
 	const types = splitTypes(t);
@@ -290,8 +282,9 @@ function splitCall(p: Printer, e: ShaderExpr): string {
 	const modf = e.type.kind == ShaderTypeKind.ModfResult;
 	const name = helper(p, "splitCall " + splitStructName(e.type), splitHelperName(e.type), (n) =>
 		result + " " + n + "(" + types[0] + " arg)\n{\n    " + types[0] + " other;\n    " + result +
-		" result;\n    result." + splitMember(e.type, 0) + " = " + (modf ? "modf" : "sign(arg) * frexp") +
-		"(arg, other);\n    result." + splitMember(e.type, 1) + " = " +
+		" result;\n    result." + splitMember(e.type, 0) + " = " +
+		(modf ? "modf" : "sign(arg) * frexp") + "(arg, other);\n    result." +
+		splitMember(e.type, 1) + " = " +
 		(modf ? "other" : types[1] + "(other)") + ";\n    return result;\n}\n");
 	return name + "(" + expr(p, e.operands[0]) + ")";
 }
@@ -316,7 +309,7 @@ function interlockedName(p: Printer, op: Intrinsic): string {
 	};
 }
 
-// SPIRV-Cross's HLSL atomics: Interlocked* hands the old value back through an out parameter,
+// Interlocked* hands the old value back through an out parameter,
 // so an atomic is a statement of its own, a load is an add of 0 and a store an exchange.
 function atomicStatement(p: Printer, e: ShaderExpr, result: string, at: string): string {
 	const o = e.operands;
@@ -512,10 +505,6 @@ function inverseOf(p: Printer, e: ShaderExpr): string {
 	return name + "(" + expr(p, e.operands[0]) + ")";
 }
 
-function withoutSampler(e: ShaderExpr): ShaderExpr[] {
-	return e.operands.filter((o) => o.type.kind != ShaderTypeKind.Sampler);
-}
-
 function converted(p: Printer, text: string, from: string, to: ShaderType): string {
 	const target = typeName(p, to);
 	return from == target ? text : target + "(" + text + ")";
@@ -543,7 +532,7 @@ function sizeResult(shape: TextureShape, result: string, kept: string): string {
 }
 
 function sizeOf(p: Printer, e: ShaderExpr): string {
-	const args = withoutSampler(e);
+	const args = withoutSamplers(e.operands);
 	const t = args[0].type;
 	const texture = expr(p, args[0]);
 	if (t.kind == ShaderTypeKind.StorageTexture) {
@@ -589,11 +578,7 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 }
 
 function samplesOf(p: Printer, e: ShaderExpr): string {
-	const t = e.operands[0].type;
-	if (t.kind != ShaderTypeKind.Texture || t.shape != TextureShape.Multisampled2d) {
-		return fail(p, "TextureNumSamples takes a multisampled texture");
-	}
-	const typeText = typeName(p, t);
+	const typeText = typeName(p, e.operands[0].type);
 	const name = helper(p, "textureSamples " + typeText, "textureSamples", (n) =>
 		"uint " + n + "(" + typeText + " t)\n{\n    uint width;\n    uint height;\n" +
 		"    uint samples;\n    t.GetDimensions(width, height, samples);\n" +
@@ -610,7 +595,7 @@ function lengthOf(p: Printer, e: ShaderExpr): string {
 }
 
 function loadOf(p: Printer, e: ShaderExpr): string {
-	const args = withoutSampler(e);
+	const args = withoutSamplers(e.operands);
 	const t = args[0].type;
 	const texture = operand(p, args[0]);
 	if (args.length < 2) { return fail(p, "TextureLoad without coordinates"); }
@@ -643,55 +628,33 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 	};
 }
 
-function isLayered(t: ShaderType): boolean {
-	return t.shape == TextureShape.D2Array || t.shape == TextureShape.Depth2dArray;
-}
-
-function layeredAt(p: Printer, e: ShaderExpr, layered: boolean): string {
-	return layered ? "float3(" + expr(p, e.operands[2]) + ", float(" + expr(p, e.operands[3]) +
-		"))" : expr(p, e.operands[2]);
+function layeredAt(p: Printer, e: ShaderExpr): string {
+	const t = e.operands[0].type;
+	if (!isArrayTexture(t)) { return expr(p, e.operands[2]); }
+	return (t.shape == TextureShape.CubeArray ? "float4(" : "float3(") + expr(p, e.operands[2]) +
+		", float(" + expr(p, e.operands[3]) + "))";
 }
 
 function sampleOf(p: Printer, e: ShaderExpr): string {
-	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
+	const layered = e.operands.length > 0 && isArrayTexture(e.operands[0].type);
 	const base = layered ? 4 : 3;
-	if (e.operands.length != base && e.operands.length != base + 1) {
-		return fail(p, "TextureSample takes a texture, a sampler, coordinates and, for an array " +
-			"texture, a layer, and an optional constant offset");
-	}
 	const offset = e.operands.length == base ? "" : ", " + expr(p, e.operands[base]);
 	const [texture, sampler] = [e.operands[0], e.operands[1]];
-	if (texture.type.kind != ShaderTypeKind.Texture ||
-		sampler.type.kind != ShaderTypeKind.Sampler) {
-		return fail(p, "TextureSample takes a texture and a sampler first");
-	}
-	if (texture.type.shape == TextureShape.Multisampled2d) {
-		return fail(p, "TextureSample of a multisampled texture");
-	}
-	if (sampler.kind == ExprKind.Resource &&
-		p.module.resources[sampler.index].samplerType == SamplerType.Comparison) {
-		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
-	}
 	if (p.stage != ShaderStage.Fragment) {
 		return operand(p, texture) + ".SampleLevel(" + expr(p, sampler) + ", " +
-			layeredAt(p, e, layered) + ", 0.0" + offset + ")";
+			layeredAt(p, e) + ", 0.0" + offset + ")";
 	}
-	return operand(p, texture) + ".Sample(" + expr(p, sampler) + ", " + layeredAt(p, e, layered) +
+	return operand(p, texture) + ".Sample(" + expr(p, sampler) + ", " + layeredAt(p, e) +
 		offset + ")";
 }
 
 function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
-	if (o[1].kind == ExprKind.Resource &&
-		p.module.resources[o[1].index].samplerType == SamplerType.Comparison) {
-		return fail(p, e.intrinsic.toString() + " through a comparison sampler, which needs a " +
-			"depth reference");
-	}
 	const layer = isArrayTexture(t) ? 1 : 0;
-	const at = layer == 0 ? expr(p, o[2]) : (t.shape == TextureShape.CubeArray ? "float4(" :
-		"float3(") + expr(p, o[2]) + ", float(" + expr(p, o[3]) + "))";
-	const tail = o.slice(3 + layer, sampleBase(e) + (hasOffset(e) ? 1 : 0)).map((a) => expr(p, a)).join(", ");
+	const at = layeredAt(p, e);
+	const tail = o.slice(3 + layer, sampleBase(e) + (hasOffset(e) ? 1 : 0)).map((a) =>
+		expr(p, a)).join(", ");
 	const method = match (e.intrinsic) {
 		Intrinsic.TextureSampleLevel => ".SampleLevel(",
 		Intrinsic.TextureSampleBias => ".SampleBias(",
@@ -702,34 +665,13 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 }
 
 function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
-	const name = e.intrinsic.toString();
-	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
+	const layered = e.operands.length > 0 && isArrayTexture(e.operands[0].type);
 	const base = layered ? 5 : 4;
-	if (e.operands.length != base && e.operands.length != base + 1) {
-		return fail(p, name + " takes a texture, a sampler, coordinates, for an array texture a " +
-			"layer, a depth reference, and an optional constant offset");
-	}
 	const [texture, sampler] = [e.operands[0], e.operands[1]];
 	const reference = e.operands[base - 1];
 	const offset = e.operands.length == base ? "" : ", " + expr(p, e.operands[base]);
-	if (texture.type.kind != ShaderTypeKind.Texture ||
-		sampler.type.kind != ShaderTypeKind.Sampler) {
-		return fail(p, name + " takes a texture and a sampler first");
-	}
-	if (sampler.kind != ExprKind.Resource ||
-		p.module.resources[sampler.index].samplerType != SamplerType.Comparison) {
-		return fail(p, name + " through a sampler that is no comparison sampler binding");
-	}
-	const depth = match (texture.type.shape) {
-		TextureShape.Depth2d | TextureShape.Depth2dArray | TextureShape.DepthCube => true,
-		_ => false,
-	};
-	if (!depth) {
-		return fail(p, name + " of a " + texture.type.shape.toString() + " texture, which holds " +
-			"no depth");
-	}
 	return operand(p, texture) + (level ? ".SampleCmpLevelZero(" : ".SampleCmp(") +
-		expr(p, sampler) + ", " + layeredAt(p, e, layered) + ", " + expr(p, reference) + offset + ")";
+		expr(p, sampler) + ", " + layeredAt(p, e) + ", " + expr(p, reference) + offset + ")";
 }
 
 function storageAt(p: Printer, args: ShaderExpr[]): string {
@@ -812,8 +754,9 @@ function packText(op: Intrinsic): string {
 	};
 }
 
-// HLSL has no intrinsic for these: each is a helper function, as naga writes them, so an operand
-// is evaluated once. FXC has no int overload of countbits, reversebits, firstbithigh and firstbitlow.
+// HLSL has no intrinsic for these: each is a helper function, so an operand
+// is evaluated once. FXC has no int overload of countbits, reversebits, firstbithigh and
+// firstbitlow.
 function bitsOf(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const op = e.intrinsic;
@@ -862,8 +805,8 @@ function bitsOf(p: Printer, e: ShaderExpr): string {
 	return name + "(" + expr(p, o[0]) + ")";
 }
 
-// HLSL has no asinh, acosh, atanh or coarse and fine fwidth: each is a helper, as naga writes
-// them, so an operand is evaluated once. asinh is odd by construction, where naga's form loses
+// HLSL has no asinh, acosh, atanh or coarse and fine fwidth: each is a helper, so an operand
+// is evaluated once. asinh is odd by construction, where the plain form loses
 // every digit of a large negative operand to the cancellation in e + sqrt(e * e + 1).
 function polyfillOf(p: Printer, e: ShaderExpr): string {
 	const op = e.intrinsic;
@@ -894,13 +837,13 @@ function bitcastOf(p: Printer, e: ShaderExpr): string {
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const args = () => e.operands.map((o) => expr(p, o)).join(", ");
 	if (isComponentCompare(e.intrinsic)) {
-		return "(" + operand(p, e.operands[0]) + " " + binaryOperator(componentCompare(e.intrinsic)) +
-			" " + operand(p, e.operands[1]) + ")";
+		return "(" + operand(p, e.operands[0]) + " " +
+			binaryOperator(componentCompare(e.intrinsic)) + " " + operand(p, e.operands[1]) + ")";
 	}
 	return match (e.intrinsic) {
 		Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
-			Intrinsic.FirstTrailingBit | Intrinsic.CountLeadingZeros | Intrinsic.CountTrailingZeros |
-			Intrinsic.ExtractBits | Intrinsic.InsertBits |
+			Intrinsic.FirstTrailingBit | Intrinsic.CountLeadingZeros |
+			Intrinsic.CountTrailingZeros | Intrinsic.ExtractBits | Intrinsic.InsertBits |
 			Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Pack2x16Unorm |
 			Intrinsic.Pack2x16Snorm | Intrinsic.Pack2x16Float | Intrinsic.Unpack4x8Unorm |
 			Intrinsic.Unpack4x8Snorm | Intrinsic.Unpack2x16Unorm | Intrinsic.Unpack2x16Snorm |
@@ -1019,7 +962,8 @@ function expr(p: Printer, e: ShaderExpr): string {
 			if (base.type.kind == ShaderTypeKind.ExchangeResult) {
 				return postfixBase(p, base) + (e.index == 0 ? ".old_value" : ".exchanged");
 			}
-			if (base.type.kind == ShaderTypeKind.ModfResult || base.type.kind == ShaderTypeKind.FrexpResult) {
+			if (base.type.kind == ShaderTypeKind.ModfResult ||
+				base.type.kind == ShaderTypeKind.FrexpResult) {
 				return postfixBase(p, base) + "." + splitMember(base.type, e.index);
 			}
 			if (base.type.kind != ShaderTypeKind.Struct) {
@@ -1174,7 +1118,8 @@ function packedSize(t: ShaderType): int32 {
 		ShaderTypeKind.Array => t.length * packedSize(t.element[0]),
 		ShaderTypeKind.Void | ShaderTypeKind.RuntimeArray | ShaderTypeKind.Struct |
 			ShaderTypeKind.Texture | ShaderTypeKind.Sampler | ShaderTypeKind.StorageTexture |
-			ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult => -1,
+			ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult |
+			ShaderTypeKind.FrexpResult => -1,
 	};
 }
 
@@ -1466,38 +1411,12 @@ export function printHlsl(
 
 	let functions: int32[] = [];
 	functionOrder(m, entry.functionIndex, [], functions);
-	let structs: int32[] = [];
-	for (const f of functions) {
-		const shaderFunction = m.functions[f];
-		for (const v of shaderFunction.params) { structOrder(m, v.type, structs); }
-		for (const v of shaderFunction.locals) { structOrder(m, v.type, structs); }
-		structOrder(m, shaderFunction.result, structs);
-		stmtStructs(m, shaderFunction.body, false, structs);
-	}
-	for (const r of reads.resources) {
-		if (m.resources[r].kind == ResourceKind.StorageBuffer) {
-			structOrder(m, m.resources[r].type, structs);
-		}
-	}
-	for (const c of reads.constants) { exprStructs(m, m.constants[c].value, false, structs); }
-	for (const io of m.ios) {
-		if (io.stage == entry.stage) { structOrder(m, io.type, structs); }
-	}
-	let constants: int32[] = [];
-	for (const c of reads.constants) {
-		let read = new ShaderExpr();
-		read.kind = ExprKind.Constant;
-		read.index = c;
-		constantOrder(m, read, constants);
-	}
-	const kinds = [ResourceKind.UniformBlock, ResourceKind.Texture, ResourceKind.Sampler,
-		ResourceKind.StorageBuffer, ResourceKind.StorageTexture];
-	let resources: int32[] = [];
-	for (const kind of kinds) {
-		for (const r of reads.resources) {
-			if (m.resources[r].kind == kind) { resources.push(r); }
-		}
-	}
+	const structs = entryStructs(m, functions, reads.resources, reads.constants, entry.stage,
+		false);
+	const constants = constantsInOrder(m, reads.constants);
+	const resources = ofKinds(m, reads.resources, [ResourceKind.UniformBlock,
+		ResourceKind.Texture, ResourceKind.Sampler, ResourceKind.StorageBuffer,
+		ResourceKind.StorageTexture]);
 
 	for (const r of resources) {
 		if (m.resources[r].kind != ResourceKind.UniformBlock) { continue; }

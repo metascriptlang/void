@@ -21,7 +21,7 @@ import { dxbcStage } from "../src/shader/dxbcCache";
 import { metalFlags, metallibStage } from "../src/shader/metallibCache";
 import { irFromText } from "../src/shader/irText";
 import { ResourceKind, ShaderModule, ShaderStage } from "../src/shader/ir";
-import { uniformBlockLayout } from "../src/shader/layout";
+import { ShaderTarget, uniformBlockLayout } from "../src/shader/layout";
 import { printGlsl450 } from "../src/shader/printGlsl450";
 import {
 	billboardFs,
@@ -469,6 +469,13 @@ function textShared(texts: Map<string, string>, code: string, bytecode: string,
 	return "TEXT_" + key;
 }
 
+function freshSource(name: string, language: string, m: ShaderModule, target: ShaderTarget):
+	ProgramSource {
+	const fresh = programSource(m, target);
+	if (!fresh.ok) { fail(name + " " + language + ": " + fresh.error); }
+	return fresh.value;
+}
+
 function moduleText(
 	programs: Program[],
 	typesPath: string,
@@ -486,12 +493,8 @@ function moduleText(
 		for (let a = 0; a < ARMS.length; a++) {
 			const language = ARMS[a].language;
 			const earlier = ARMS.findIndex((other) => other.target == ARMS[a].target);
-			let printed = earlier < a ? row[earlier] : new ProgramSource();
-			if (earlier == a) {
-				const fresh = programSource(shaderModule, ARMS[a].target);
-				if (!fresh.ok) { fail(program.name + " " + language + ": " + fresh.error); }
-				printed = fresh.value;
-			}
+			const printed = earlier < a ? row[earlier] :
+				freshSource(program.name, language, shaderModule, ARMS[a].target);
 			if (printed.refusal != "") {
 				fail(program.name + " " + language + ": " + printed.refusal);
 			}

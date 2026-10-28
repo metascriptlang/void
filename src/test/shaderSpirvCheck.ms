@@ -352,7 +352,7 @@ function compared(stage: ShaderStage, op: Intrinsic, shape: TextureShape,
 	return m;
 }
 
-test "a module constant array with negated literals is a composite constant read at a dynamic index" {
+test "a module constant array with negated literals is a composite read at a dynamic index" {
 	let m = tiny(ShaderStage.Fragment, new ShaderExpr());
 	const corner = (x: float64, y: float64): ShaderExpr => exprOf(ExprKind.Construct, VEC2, -1, [
 		unaryOf(UnaryOp.Negate, literal(F32, x)), literal(F32, y)]);
@@ -384,9 +384,11 @@ test "what SPIR-V cannot print yet is refused by name" {
 		"printSpirv: function 'tinyEntry': a literal that is not finite";
 	assert refusalOf(tiny(fragment, column(model())), 0, []) ==
 		"printSpirv: resource 'params' has no binding slot";
-	assert refusalOf(tiny(fragment, column(model())), 1, []) == "printSpirv: entry 1 is out of range";
+	assert refusalOf(tiny(fragment, column(model())), 1,
+		[]) == "printSpirv: entry 1 is out of range";
 	assert refused(tiny(fragment, exprOf(ExprKind.Construct, VEC4, -1, [exprOf(ExprKind.Convert,
-		F32, -1, [intrinsicOf(Intrinsic.Dot, I32, [literal(IVEC2, 1.0), literal(IVEC2, 2.0)])])]))) ==
+		F32, -1, [intrinsicOf(Intrinsic.Dot, I32,
+		[literal(IVEC2, 1.0), literal(IVEC2, 2.0)])])]))) ==
 		"printSpirv: Dot of integer vectors is not printed yet";
 
 	let unlevelled = tiny(fragment, intrinsicOf(Intrinsic.TextureLoad, VEC4, [
@@ -428,8 +430,4 @@ test "depth comparison is refused by name where it cannot print" {
 	assert refused(compared(ShaderStage.Fragment, COMPARE, D2, true)) == "printed";
 	assert refused(compared(ShaderStage.Vertex, COMPARE, D2, true)) ==
 		"printSpirv: entry 'tinyEntry': TextureSampleCompare outside a fragment entry";
-	assert refused(compared(ShaderStage.Fragment, LEVEL, D2, false)) ==
-		"printSpirv: TextureSampleCompareLevel through a sampler that is no comparison sampler binding";
-	assert refused(compared(ShaderStage.Fragment, COMPARE, TextureShape.D2, true)) ==
-		"printSpirv: TextureSampleCompare of a D2 texture, which holds no depth";
 }

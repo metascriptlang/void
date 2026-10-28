@@ -20,7 +20,7 @@ import {
 	addMeshData, addMaterial, addTargetTexture, releaseMesh, releaseMaterial, releaseTexture,
 	reserveBlock, writeBlock, releaseBlock,
 } from "./draw";
-import { UniformError } from "./uniformPool";
+import { UniformError, stopOnFailedWrite } from "./uniformPool";
 import {
 	Scene3D, Transform3D, NodeId3D, SceneError, NO_NODE_3D, addMeshNode, setLocal, remove,
 	syncWorld,
@@ -221,7 +221,9 @@ export function create(
 		return Result.err(WorldLabelError.Uniforms);
 	}
 	const uv: LabelUv = { scaleU: 1.0, scaleV: 1.0, offsetV: 0.0 };
-	if (!writeBlock(context, reserved.value, labelParams(uv, WHITE)).ok) { unreachable; }
+	const written: Result<int32, UniformError> =
+		writeBlock(context, reserved.value, labelParams(uv, WHITE));
+	if (!written.ok) { stopOnFailedWrite("WorldLabel.create", written.error); }
 	const material: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.keyed(labelKey(), premultipliedPass(), Phase.Alpha),
 		texture: shown.value, uniforms: reserved.value.block,
@@ -253,9 +255,9 @@ export function create(
 }
 
 function writeParams(this label: WorldLabel): void {
-	if (!writeBlock(label.scene.context, label.uniforms, labelParams(label.uv, label.tint)).ok) {
-		unreachable;
-	}
+	const written: Result<int32, UniformError> =
+		writeBlock(label.scene.context, label.uniforms, labelParams(label.uv, label.tint));
+	if (!written.ok) { stopOnFailedWrite("WorldLabel.writeParams", written.error); }
 }
 
 export function redraw(this label: WorldLabel): void {

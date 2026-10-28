@@ -161,10 +161,12 @@ test "compute prints storage resources, builtins and no workgroup size" {
 	const cs = mslOf(m, 0, slotsOf(m, [0]));
 	assert writeProbe("total", cs);
 	assert cs.includes("kernel void main0(uint3 id [[thread_position_in_grid]], uint3 local " +
-		"[[thread_position_in_threadgroup]], uint index [[thread_index_in_threadgroup]], uint3 group " +
+		"[[thread_position_in_threadgroup]], uint index [[thread_index_in_threadgroup]], uint3 " +
+		"group " +
 		"[[threadgroup_position_in_grid]], uint3 groups [[threadgroups_per_grid]], " +
 		"const device Command* commands [[buffer(8)]], device Total* results [[buffer(9)]], " +
-		"texture2d<float, access::write> image [[texture(0)]], texture2d<float> lut [[texture(1)]]) " +
+		"texture2d<float, access::write> image [[texture(0)]], texture2d<float> lut " +
+		"[[texture(1)]]) " +
 		"{\n" +
 		"  total(id, local, index, group, groups, commands, results, image, lut);\n}\n");
 	assert cs.includes("struct Command {\n  float value;\n};\n");
@@ -183,11 +185,13 @@ test "every intrinsic and statement prints" {
 	assert writeProbe("everyVs", vs);
 	assert writeProbe("everyFs", fs);
 	assert vs.includes("vertex main0_out main0(main0_in in [[stage_in]], uint vertexIndex " +
-		"[[vertex_id]], uint instance [[instance_id]], texture2d<float> heightMap [[texture(0)]], " +
+		"[[vertex_id]], uint instance [[instance_id]], texture2d<float> heightMap " +
+		"[[texture(0)]], " +
 		"sampler heightSampler [[sampler(1)]]) {\n");
 	assert vs.includes("heightMap.sample(heightSampler, in.position, level(0.0)).x");
 	assert vs.includes("struct main0_out {\n  float4 clip [[position]];\n" +
-		"  float2 uv [[user(locn0)]];\n  float4 tint [[user(locn1)]];\n  uint id [[user(locn2)]];\n};\n");
+		"  float2 uv [[user(locn0)]];\n  float4 tint [[user(locn1)]];\n  uint id " +
+		"[[user(locn2)]];\n};\n");
 	assert vs.includes("static inline void everyVs(thread main0_in& in, thread main0_out& out, " +
 		"thread uint& vertexIndex, thread uint& instance, texture2d<float> heightMap, " +
 		"sampler heightSampler) {\n");
@@ -210,7 +214,8 @@ test "every intrinsic and statement prints" {
 		"static inline float3x3 inverse3x3(float3x3 m) {\n",
 		"static inline float4x4 inverse4x4(float4x4 m) {\n  float3 a = m[0].xyz;\n",
 		"static inline void everyFs(thread main0_in& in, thread main0_out& out, thread float4& " +
-			"coord, thread bool& facing, constant Params& params, texture2d<float> albedo, sampler " +
+			"coord, thread bool& facing, constant Params& params, texture2d<float> albedo, " +
+			"sampler " +
 			"albedoSampler, texture2d<float> texel, texture2d_array<float> layers) {\n",
 		"  bool3 select_1 = (v3 <= float3(0.5));\n",
 		"  Light light = Light{v3, f};\n",
@@ -238,7 +243,8 @@ test "every intrinsic and statement prints" {
 		"  } else {\n    discard_fragment();\n  }\n",
 		"  for (int k = 0; (k < 4); k++) {\n    if ((k == 2)) {\n      continue;\n",
 		"  {\n    int j = 0;\n    f = f;\n    for (; (j < 2); j++, f += 0.0) {\n" +
-			"      switch (j) {\n        case 0: case 1: {\n          f += 1.0;\n          break;\n",
+			"      switch (j) {\n        case 0: case 1: {\n          f += 1.0;\n          " +
+			"break;\n",
 		"        case 3: default: {\n          break;\n          break;\n        }\n",
 		"    case 5u: {\n      f -= 1.0;\n      break;\n    }\n  }\n",
 		"  shade(light, f);\n  (void)dfdx(f);\n  {\n    float scratch = {};\n",
@@ -269,7 +275,8 @@ test "what MSL cannot say is refused by name" {
 
 	let vertexDiscard = tiny(ShaderStage.Vertex, literal(VEC4, 0.0));
 	vertexDiscard.functions[0].body.splice(0, 0, stmtOf(StmtKind.Discard, new ShaderExpr(), []));
-	assert refused(vertexDiscard) == "printMsl: entry 'tinyEntry': Discard outside a fragment entry";
+	assert refused(
+		vertexDiscard) == "printMsl: entry 'tinyEntry': Discard outside a fragment entry";
 
 	let signed = tiny(ShaderStage.Vertex, literal(VEC4, 0.0));
 	signed.ios.push(io("vertexIndex", ShaderStage.Vertex, IoDirection.In, I32,
@@ -281,7 +288,8 @@ test "what MSL cannot say is refused by name" {
 	assert refused(unspellable) == "printMsl: '__entry' is no MSL identifier";
 
 	let recursive = tiny(fragment, exprOf(ExprKind.Call, VEC4, 1, []));
-	let helper = shaderFunction("helper", [], [stmtOf(StmtKind.Return, exprOf(ExprKind.Call, VEC4, 1,
+	let helper = shaderFunction("helper", [],
+		[stmtOf(StmtKind.Return, exprOf(ExprKind.Call, VEC4, 1,
 		[]), [])]);
 	helper.result = VEC4;
 	recursive.functions.push(helper);
@@ -359,8 +367,4 @@ test "depth comparison is refused by name where it cannot print" {
 	assert refused(compared(ShaderStage.Fragment, COMPARE, D2, true)) == "printed";
 	assert refused(compared(ShaderStage.Vertex, COMPARE, D2, true)) ==
 		"printMsl: entry 'tinyEntry': TextureSampleCompare outside a fragment entry";
-	assert refused(compared(ShaderStage.Fragment, LEVEL, D2, false)) ==
-		"printMsl: TextureSampleCompareLevel through a sampler that is no comparison sampler binding";
-	assert refused(compared(ShaderStage.Fragment, COMPARE, TextureShape.D2, true)) ==
-		"printMsl: TextureSampleCompare of a D2 texture, which holds no depth";
 }

@@ -1,8 +1,10 @@
 // WGSL's core storage texel formats  authored in MetaScript: the channel
-// type of a format (f32, u32, i32) is the texel type textureLoad returns and textureStore takes, and
-// each channel type has its own storage texture struct. Each entry runs on the CPU, is pinned as GLSL
+// type of a format (f32, u32, i32) is the texel type textureLoad returns and textureStore takes,
+// and
+// each channel type has its own storage texture struct. Each entry runs on the CPU, is pinned as
+// GLSL
 // and is printed for every target into out/<target>Probe/ for scripts/validateWgsl.sh,
-// scripts/validateHlsl.sh, naga and spirv-val.
+// scripts/validateHlsl.sh and spirv-val.
 
 import { mkdir, writeFile } from "std/fs";
 import { Buffer } from "std/core/buffer";
@@ -97,7 +99,8 @@ function unsignedImages(): UnsignedImages {
 		wide: { width: 2, height: 1, texels: [0, 0, 0, 0, 0, 0, 0, 0] },
 		pairs: { width: 2, height: 1, texels: [0, 0, 0, 0, 0, 0, 0, 0] },
 		full: { width: 2, height: 1, texels: [0, 0, 0, 0, 0, 0, 0, 0] },
-		bytes: { width: 2, height: 1, layers: 2, texels: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+		bytes: { width: 2, height: 1, layers: 2,
+		texels: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
 	};
 }
 

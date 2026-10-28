@@ -1,6 +1,7 @@
-// WGSL's texture_multisampled_2d<f32> with textureLoad(t, coords, sample_index), textureDimensions(t)
+// WGSL's texture_multisampled_2d<f32> with textureLoad(t, coords, sample_index),
+// textureDimensions(t)
 // and textureNumSamples(t): each entry runs on the CPU, is pinned as GLSL and printed for every
-// target into out/<target>Probe/ for scripts/validateWgsl.sh, scripts/validateHlsl.sh, naga and
+// target into out/<target>Probe/ for scripts/validateWgsl.sh, scripts/validateHlsl.sh and
 // spirv-val.
 
 import { mkdir, writeFile } from "std/fs";
@@ -80,9 +81,12 @@ test "a multisampled texture loads each sample of a texel and reports its size a
 function probePath(name: string, target: ShaderTarget, stage: string): string {
 	return match (target) {
 		ShaderTarget.Wgsl => "out/wgslProbe/" + name + stage + ".wgsl",
-		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") + ".hlsl",
-		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." + (stage == "Vs" ? "vert" : "frag"),
-		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." + (stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") +
+		".hlsl",
+		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." +
+		(stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." +
+		(stage == "Vs" ? "vert" : "frag"),
 		ShaderTarget.Msl => "out/mslProbe/" + name + stage + ".metal",
 		ShaderTarget.Spirv => "out/spirvProbe/" + name + stage + ".spv",
 	};

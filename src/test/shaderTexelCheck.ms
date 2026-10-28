@@ -1,7 +1,7 @@
 // A 3D texture (textureSample, textureSampleLevel, textureLoad, textureDimensions) and a texture of
 // int32 texels (textureLoad returning vec4i) authored in MetaScript: each entry runs on the CPU, is
 // pinned as GLSL and printed for every target into out/<target>Probe/ for scripts/validateWgsl.sh,
-// scripts/validateHlsl.sh and naga's GLSL front end.
+// scripts/validateHlsl.sh and the GLSL validator.
 
 import { mkdir, writeFile } from "std/fs";
 import { Wrap } from "../gpu/state";
@@ -109,9 +109,12 @@ test "an int32 texture fetches signed texels" {
 function probePath(name: string, target: ShaderTarget, stage: string): string {
 	return match (target) {
 		ShaderTarget.Wgsl => "out/wgslProbe/" + name + stage + ".wgsl",
-		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") + ".hlsl",
-		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." + (stage == "Vs" ? "vert" : "frag"),
-		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." + (stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Hlsl5 => "out/hlslProbe/" + name + "." + (stage == "Vs" ? "vs" : "ps") +
+		".hlsl",
+		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430." +
+		(stage == "Vs" ? "vert" : "frag"),
+		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es." +
+		(stage == "Vs" ? "vert" : "frag"),
 		ShaderTarget.Msl => "out/mslProbe/" + name + stage + ".metal",
 		ShaderTarget.Spirv => "out/spirvProbe/" + name + stage + ".spv",
 	};
@@ -148,7 +151,8 @@ test "GLSL 450 spells the 3D texture and the int32 texture" {
 		"    ivec3 size = textureSize(volume, 0);\n" +
 		"    vec4 texel = texelFetch(volume, ivec3(1, 0, 1), 0);\n" +
 		"    ivec4 count = texelFetch(counts, ivec2(1, 1), 0);\n" +
-		"    fragColor = vec4((smooth_1.x + level.y), (texel.z + float(size.z)), vec4(count).y, vec4(count).w);\n" +
+		"    fragColor = vec4((smooth_1.x + level.y), (texel.z + float(size.z)), vec4(count).y, " +
+		"vec4(count).w);\n" +
 		"    return;\n" +
 		"}\n";
 }
@@ -183,10 +187,12 @@ test "every target spells the 3D texture and the int32 texture" {
 			gl.includes(" count = texelFetch(counts_SPIRV_Cross_DummySampler, ivec2(1, 1), 0);\n");
 	}
 	const msl = printedFor(m, 1, ShaderTarget.Msl, "volume");
-	assert msl.includes("texture3d<float> volume [[texture(0)]], texture2d<int> counts [[texture(1)]]");
+	assert msl.includes(
+		"texture3d<float> volume [[texture(0)]], texture2d<int> counts [[texture(1)]]");
 	assert msl.includes("  float4 smooth = volume.sample(volumeSampler, at);\n" +
 		"  float4 level_1 = volume.sample(volumeSampler, at, level(1.0));\n" +
-		"  int3 size = int3(volume.get_width(uint(0)), volume.get_height(uint(0)), volume.get_depth(uint(0)));\n" +
+		"  int3 size = int3(volume.get_width(uint(0)), volume.get_height(uint(0)), " +
+		"volume.get_depth(uint(0)));\n" +
 		"  float4 texel = volume.read(uint3(int3(1, 0, 1)), uint(0));\n" +
 		"  int4 count = counts.read(uint2(int2(1, 1)), uint(0));\n");
 }
