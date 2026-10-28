@@ -6818,6 +6818,40 @@ The port, in steps:
    2 at width 2, in lineStyle's red, and stop at their ends. D3D11 passes. With the depth
    factor dropped it fails: 3 rows near and 1 far. gl-core and WebGL2 have not run yet.
 
+### Graphics3D world lines: Graphics' is3D, as built (2026-10-28)
+
+With `is3D` set, Heaps' `Graphics` drops `LineShader` and draws a white texture
+(`h3d/scene/Graphics.hx:63-76`). `lineTo` gathers points, and `flushLine` (`:78-187`) turns them
+into a strip `lineSize` wide. The strip lies in the XY plane with a Z-up normal and is mitred at
+every joint. It is closed when the last point equals the first, and its v alternates 0 and 1.
+`graphics3d.ms` ports this:
+
+- `setIs3D` and the `points` field;
+- `flushGraphics`, which Heaps runs from `sync` and `draw`; void3d has neither, so the app calls
+  it before it uploads `data`;
+- the flushes on `moveTo`, `lineStyle` and `clear`.
+
+Draw the strip with `Material.ofKind(Program.UnlitTextured, …)` and a white texture,
+`withCulling(Face.None)`, no shadows.
+
+Kept from the reference and pinned in `graphics3dCheck.ms`:
+
+- `lineSize` starts at 0, apart from the screen width's 1.5, and `lineStyle` sets the screen
+  width only while not in 3D and only when `lineSize` changes. So `lineStyle(4)`, then
+  `lineStyle(2)` in 3D, then `lineStyle(2)` back on screen leaves the screen width at 4.
+- A 3D `lineTo` adds the cursor to the bounds, and a 3D `moveTo` never moves the cursor. The
+  bounds therefore hold the origin, or the last screen-mode point, and leave out the half
+  width.
+
+One divergence: a joint with no miter direction (a lone point, a repeated point, a turn back
+on itself) makes `flushLine` write NaN vertices, which draw nothing. `flushGraphics` refuses it
+with `GraphicsError.Degenerate` from the call that flushed it and drops those points, because
+geometry that silently vanishes is lost data.
+
+Dropping the miter's `1 / (n · n1)` turns the open-polyline and closed-loop tests red.
+
+Next: a GPU readback of a strip's width and colour, queued with the line golden's kind.
+
 ### Trail: CPU history and ribbon checkpoint
 
 Apps sample a world pose/time into standalone `Trail` state and obtain `MeshData` through
