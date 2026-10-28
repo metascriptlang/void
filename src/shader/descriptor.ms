@@ -311,67 +311,64 @@ export function wordsBase64(words: uint32[]): string {
 	return out.join("");
 }
 
-export class ProgramSource {
-	reflection: Reflection = {
-		bindings: [],
-		attributes: [],
-		workgroupSize: [0, 0, 0],
-		readsVertexIndex: false,
-		readsInstanceIndex: false,
-	};
-	vertexCode: string = "";
-	fragmentCode: string = "";
-	computeCode: string = "";
-	vertexWords: uint32[] = [];
-	fragmentWords: uint32[] = [];
-	computeWords: uint32[] = [];
-	entryPoint: string = "main";
-	refusal: string = "";
+export struct ProgramSource {
+	reflection: Reflection;
+	vertexCode: string;
+	fragmentCode: string;
+	computeCode: string;
+	vertexWords: uint32[];
+	fragmentWords: uint32[];
+	computeWords: uint32[];
+	entryPoint: string;
+	refusal: string;
 }
 
-function spirvSource(m: ShaderModule, out: ProgramSource): Result<ProgramSource, string> {
-	if (m.entries.length == 1) {
-		out.reflection = try reflectCompute(m, 0, ShaderTarget.Spirv);
-		const words = stageWords(m, 0);
-		if (words.ok) { out.computeWords = words.value; } else { out.refusal = words.error; }
-		return Result.ok(out);
+struct ProgramStage {
+	code: string;
+	words: uint32[];
+}
+
+function programStage(m: ShaderModule, entry: int32, target: ShaderTarget):
+	Result<ProgramStage, string> {
+	if (target == ShaderTarget.Spirv) {
+		const words = stageWords(m, entry);
+		if (!words.ok) { return Result.err(words.error); }
+		return Result.ok({ code: "", words: words.value });
 	}
-	out.reflection = try reflectProgram(m, 0, 1, ShaderTarget.Spirv);
-	const vertex = stageWords(m, 0);
-	const fragment = stageWords(m, 1);
-	if (!vertex.ok) {
-		out.refusal = vertex.error;
-	} else if (!fragment.ok) {
-		out.refusal = fragment.error;
-	} else {
-		out.vertexWords = vertex.value;
-		out.fragmentWords = fragment.value;
-	}
-	return Result.ok(out);
+	const code = stageSource(m, entry, target);
+	if (!code.ok) { return Result.err(code.error); }
+	return Result.ok({ code: code.value, words: [] });
+}
+
+function stageAt(stages: ProgramStage[], i: int32): ProgramStage {
+	return i < stages.length ? stages[i] : { code: "", words: [] };
 }
 
 export function programSource(m: ShaderModule, target: ShaderTarget):
 	Result<ProgramSource, string> {
-	let out = new ProgramSource();
-	out.entryPoint = entryPointOf(target);
-	if (target == ShaderTarget.Spirv) { return spirvSource(m, out); }
-	if (m.entries.length == 1) {
-		out.reflection = try reflectCompute(m, 0, target);
-		const code = stageSource(m, 0, target);
-		if (code.ok) { out.computeCode = code.value; } else { out.refusal = code.error; }
-		return Result.ok(out);
+	const compute = m.entries.length == 1;
+	const reflection = compute ? try reflectCompute(m, 0, target) :
+		try reflectProgram(m, 0, 1, target);
+	let stages: ProgramStage[] = [];
+	let refusal = "";
+	for (let i = 0; i < (compute ? 1 : 2) && refusal == ""; i++) {
+		const stage = programStage(m, i, target);
+		if (stage.ok) { stages.push(stage.value); } else { refusal = stage.error; }
 	}
-	out.reflection = try reflectProgram(m, 0, 1, target);
-	const vertex = stageSource(m, 0, target);
-	const fragment = stageSource(m, 1, target);
-	if (!vertex.ok) {
-		out.refusal = vertex.error;
-	} else if (!fragment.ok) {
-		out.refusal = fragment.error;
-	} else {
-		out.vertexCode = vertex.value;
-		out.fragmentCode = fragment.value;
-	}
+	if (refusal != "") { stages = []; }
+	const first = stageAt(stages, 0);
+	const second = stageAt(stages, 1);
+	const out: ProgramSource = {
+		reflection: reflection,
+		vertexCode: compute ? "" : first.code,
+		fragmentCode: second.code,
+		computeCode: compute ? first.code : "",
+		vertexWords: compute ? [] : first.words,
+		fragmentWords: second.words,
+		computeWords: compute ? first.words : [],
+		entryPoint: entryPointOf(target),
+		refusal: refusal,
+	};
 	return Result.ok(out);
 }
 
