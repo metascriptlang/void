@@ -1712,9 +1712,12 @@ export interface LineWrap {
 	glyphs: Vec<LaidGlyph>;
 	bidi: LayoutBidi;
 	rows: Vec<LineBox>;
+	ink: Vec<float32>;
 	width: float32;
 	top: float32;
 }
+
+export const NO_INK: float32 = 1e30;
 
 function emptyWrap(): LineWrap {
 	return {
@@ -1728,9 +1731,31 @@ function emptyWrap(): LineWrap {
 			lineLevels: new Array(0),
 		},
 		rows: new Array(0),
+		ink: new Array(0),
 		width: 0.0,
 		top: 0.0,
 	};
+}
+
+function rowInk(ref wrap: LineWrap): void {
+	for (let r: int32 = 0; r < (wrap.rows.length as int32); r++) {
+		wrap.ink.push(NO_INK);
+		wrap.ink.push(NO_INK);
+		wrap.ink.push(-NO_INK);
+		wrap.ink.push(-NO_INK);
+	}
+	for (const g of wrap.glyphs) {
+		if (g.glyph == NO_GLYPH) { continue; }
+		const [left, top, right, bottom] = glyphInkBox(g.face, g.glyph, g.size);
+		if (right <= left || bottom <= top) { continue; }
+		const baseline: float32 = wrap.rows[g.line].baseline + g.offsetY;
+		const penX: float32 = g.x + g.offsetX;
+		const k: int32 = 4 * g.line;
+		if (penX + left < wrap.ink[k]) { wrap.ink[k] = penX + left; }
+		if (baseline + top < wrap.ink[k + 1]) { wrap.ink[k + 1] = baseline + top; }
+		if (penX + right > wrap.ink[k + 2]) { wrap.ink[k + 2] = penX + right; }
+		if (baseline + bottom > wrap.ink[k + 3]) { wrap.ink[k + 3] = baseline + bottom; }
+	}
 }
 
 function wrapParagraph(
@@ -1919,6 +1944,7 @@ function wrapLine(
 		valid: true, maxWidth: style.maxWidth, lineSpacing: style.lineSpacing, options: options,
 		cells: kept, constraints: keptConstraints, bidi: bidi,
 	};
+	rowInk(rows);
 	return rows;
 }
 
