@@ -44,6 +44,9 @@ import {
 	RoundClip,
 	NO_ROUND_CLIP,
 	pushGlyphInstance,
+	uiInstanceCount,
+	writesLimited,
+	skipUiInstances,
 } from "./displayList";
 import {
 	fillQuad,
@@ -99,6 +102,10 @@ import {
 	labelTexts,
 	LabelText,
 	PlacedGlyph,
+	PlacedLine,
+	LineEmitKey,
+	NO_LINE_EMIT_KEY,
+	NOT_EMITTED,
 	TextRegime,
 	translationOnly,
 	Decoration,
@@ -753,6 +760,14 @@ when (voidTextOutline) {
 	}
 }
 
+function sameRunColours(text: LabelText): boolean {
+	if (text.runs.length != text.emitRunColours.length) { return false; }
+	for (let k: int32 = 0; k < (text.runs.length as int32); k++) {
+		if (text.runs[k].color != text.emitRunColours[k]) { return false; }
+	}
+	return true;
+}
+
 function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: float32): void {
 	const payload: int32 = s.payloads[i];
 	if (payload == NO_LABEL_TEXT) { return; }
@@ -789,29 +804,74 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 	emitOutline(space, blend, text, na);
 	const passes: int32 = text.colourGlyphs > 0 ? 2 : 1;
 	const scaled: boolean = !translationOnly(world);
+	const lineEmits: boolean = instanced && passes == 1;
+	const key: LineEmitKey = {
+		world: world, col: col, scale: scale, shiftX: space.shiftX, shiftY: space.shiftY,
+		context: currentContext().id,
+	};
+	const skips: boolean = lineEmits && writesLimited() && text.emitKey == key &&
+		sameRunColours(text);
+	const lineCount: int32 = text.placedLines.length as int32;
+	const placedEnd: int32 = lineCount > 0
+		? text.placedLines[lineCount - 1].first + text.placedLines[lineCount - 1].count
+		: 0;
+	if (placedEnd != (text.placed.length as int32)) {
+		console.log(`void2d: a label's lines hold ${placedEnd} of its ${text.placed.length} glyphs`);
+		unreachable;
+	}
 	for (let pass: int32 = 0; pass < passes; pass++) {
 		if (pass == 1 && scaled) { setSampler(Smooth.On, false); }
 		let seenPage: GlyphPage = NO_GLYPH_PAGE;
 		let kind: PageKind = PageKind.Coverage;
 		let viewPage: GlyphPage = NO_GLYPH_PAGE;
 		let view: uint32 = 0;
-		for (const p of text.placed) {
-			if (p.w <= 0.0 || p.h <= 0.0) { continue; }
-			if (p.page != seenPage) {
-				kind = glyphPageKind(p.page);
-				seenPage = p.page;
+		for (let li: int32 = 0; li < lineCount; li++) {
+			const line: PlacedLine = text.placedLines[li];
+			if (skips && line.emitAt == uiInstanceCount() &&
+				(line.emitCount == 0 || line.emitPage != NO_GLYPH_PAGE)) {
+				if (line.emitCount > 0 && line.emitPage != viewPage) {
+					kind = glyphPageKind(line.emitPage);
+					seenPage = line.emitPage;
+					view = glyphPageView(glyphPageHandle(line.emitPage));
+					viewPage = line.emitPage;
+					markGlyphPageDrawn(line.emitPage);
+					useGlyphRun(view, blend);
+				}
+				skipUiInstances(line.emitCount);
+				continue;
 			}
-			if (passes == 2 && (kind == PageKind.Rgba) != (pass == 1)) { continue; }
-			if (p.page != viewPage) {
-				view = glyphPageView(glyphPageHandle(p.page));
-				viewPage = p.page;
-				markGlyphPageDrawn(p.page);
-				if (space.instanced) { useGlyphRun(view, blend); }
+			const at: int32 = uiInstanceCount();
+			let linePage: GlyphPage = NO_GLYPH_PAGE;
+			let mixed: boolean = false;
+			for (let k: int32 = line.first; k < line.first + line.count; k++) {
+				const p: PlacedGlyph = text.placed[k];
+				if (p.w <= 0.0 || p.h <= 0.0) { continue; }
+				if (p.page != seenPage) {
+					kind = glyphPageKind(p.page);
+					seenPage = p.page;
+				}
+				if (passes == 2 && (kind == PageKind.Rgba) != (pass == 1)) { continue; }
+				if (p.page != viewPage) {
+					view = glyphPageView(glyphPageHandle(p.page));
+					viewPage = p.page;
+					markGlyphPageDrawn(p.page);
+					if (space.instanced) { useGlyphRun(view, blend); }
+				}
+				if (linePage == NO_GLYPH_PAGE) { linePage = p.page; }
+				if (p.page != linePage) { mixed = true; }
+				const run: Color = styled && p.run != NO_RUN ? text.runs[p.run].color.tinted(col) : col;
+				const fill: Color = kind == PageKind.Rgba ? rgba(1.0, 1.0, 1.0, run.a) : run;
+				emitGlyph(space, blend, view, p, kind, fill);
 			}
-			const run: Color = styled && p.run != NO_RUN ? text.runs[p.run].color.tinted(col) : col;
-			const fill: Color = kind == PageKind.Rgba ? rgba(1.0, 1.0, 1.0, run.a) : run;
-			emitGlyph(space, blend, view, p, kind, fill);
+			text.placedLines[li].emitAt = lineEmits ? at : NOT_EMITTED;
+			text.placedLines[li].emitCount = uiInstanceCount() - at;
+			text.placedLines[li].emitPage = mixed ? NO_GLYPH_PAGE : linePage;
 		}
+	}
+	text.emitKey = lineEmits ? key : NO_LINE_EMIT_KEY;
+	if (lineEmits && !sameRunColours(text)) {
+		text.emitRunColours.length = 0;
+		for (const r of text.runs) { text.emitRunColours.push(r.color); }
 	}
 	if (styled) { emitDecorations(blend, text, world, na, false); }
 	if (instanced) { emitCaret(blend, text, world, na); }
