@@ -250,15 +250,13 @@ msc build tests/bench/benchParticles.ms --release --danger --cc=clang "--passC=-
 sh scripts/bench-ab.sh . . 6 Particles
 ```
 
-**wasm.** Keep object growth separate from linked entry size. `scripts/wasmModuleDelta.sh`
-uses the pre-link code-plus-data records in `tests/bench/wasm.json` (`tool` and `meaning`),
-not final wasm bytes, and only for the C units left under `src/void2d`; a MetaScript module
-has no object, so its cost is the linked row in `tests/bench/wasmBudget.txt`. `scripts/experiment-modulesWeb.sh` isolates text cost with its default
+**wasm.** `src/void2d` has no C unit left, so a module's cost is its linked row in
+`tests/bench/wasmBudget.txt`. `scripts/experiment-modulesWeb.sh` isolates text cost with its default
 `tests/experiments/modulesWeb.ms` entry, avoiding `node.ms` and its Yoga dependency; the demo
 entry `src/examples/mainSokol2d.ms` includes that retained-scene path. Their linked budgets
 and measured conditions are in "Linked wasm text modules" below and `tests/bench/wasmBudget.txt`.
 The experiment enforces artifact sizes; the native gate validates those declarations, not a
-fresh link. Neither replaces the object-growth checks.
+fresh link.
 
 ## T5 — judgement
 
