@@ -1,4 +1,6 @@
-import { sfntPeek, sfntPeekBytes, sfntCovers, sfntSequence, sfntFlags, SfntError } from "../void2d/sfnt";
+import {
+	sfntPeek, sfntPeekBytes, sfntCovers, sfntSequence, sfntFlags, sfntSummariesRead, SfntError,
+} from "../void2d/sfnt";
 import { FIXTURE_NAMES, FIXTURE_HEX } from "./sfntPortFixtures";
 
 // BEGIN PEEK API
@@ -35,9 +37,11 @@ function flagsOf(id: int32): int32 {
 }
 // END PEEK API
 
-// Pinned from the C peek (sfnt.c at 1ac6d6a8, removed with this port) over the same inputs.
-const PINNED_BYTES: uint32 = 499806152;
-const PINNED_FILES: uint32 = 488470174;
+// Pinned from the C peek (sfnt.c at 1ac6d6a8, removed with this port) over the same inputs: the
+// port matched the C's 499806152 and 488470174 when run alone, then summary ids became relative
+// to the first one this check reads, so a check that peeked earlier no longer moves the digest.
+const PINNED_BYTES: uint32 = 1535886047;
+const PINNED_FILES: uint32 = 1283504266;
 
 const PROBES: int32[] = [
 	0x0, 0x20, 0x41, 0x42, 0x43, 0x61, 0xFF, 0x100, 0x2700, 0x2702, 0x2703, 0x3042, 0xFFFF,
@@ -49,6 +53,13 @@ let digest: uint32 = 2166136261;
 
 function mix(value: int32): void {
 	digest = (digest ^ (value as uint32)) * 16777619;
+}
+
+let firstSummary: int32 = -1;
+
+function mixPeek(code: int32): void {
+	if (firstSummary < 0) { firstSummary = sfntSummariesRead(); }
+	mix(code >= 0 ? code - firstSummary : code);
 }
 
 function survey(id: int32, stride: int32): void {
@@ -63,7 +74,7 @@ function survey(id: int32, stride: int32): void {
 function peekedBytes(bytes: uint8[], stride: int32): void {
 	for (let index: int32 = 0; index < 3; index++) {
 		const code = peekBytesCode(bytes, index);
-		mix(code);
+		mixPeek(code);
 		if (code >= 0) { survey(code, stride); }
 	}
 }
@@ -133,7 +144,7 @@ when (js) {
 		for (const path of fontFiles()) {
 			for (let index: int32 = -1; index < 4; index++) {
 				const code = peekPathCode(path, index);
-				mix(code);
+				mixPeek(code);
 				if (code >= 0) { survey(code, 17); }
 			}
 		}
