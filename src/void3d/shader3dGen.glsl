@@ -1103,6 +1103,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 flipbookGrid;
     vec4 flipbookPlay;
     vec4 distanceFade;
+    vec4 colorKey;
 };
 #endif
 #if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -1125,6 +1126,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 flipbookGrid;
     vec4 flipbookPlay;
     vec4 distanceFade;
+    vec4 colorKey;
     vec4 emissive;
 };
 #endif
@@ -1995,6 +1997,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 flipbookGrid;
     vec4 flipbookPlay;
     vec4 distanceFade;
+    vec4 colorKey;
 };
 #endif
 #if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -2017,6 +2020,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 flipbookGrid;
     vec4 flipbookPlay;
     vec4 distanceFade;
+    vec4 colorKey;
     vec4 emissive;
 };
 #endif
@@ -2228,6 +2232,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 flipbookGrid;
     vec4 flipbookPlay;
     vec4 distanceFade;
+    vec4 colorKey;
 };
 #endif
 #if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -2250,6 +2255,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 flipbookGrid;
     vec4 flipbookPlay;
     vec4 distanceFade;
+    vec4 colorKey;
     vec4 emissive;
 };
 #endif
@@ -2538,6 +2544,21 @@ vec4 backUvOffsetOf() {
     return backUvOffset;
 #else
     return backUvOffset;
+#endif
+}
+#endif
+#ifdef UV_TRANSFORM
+bool colorKeyed(vec4 texel, vec4 colorKey_1) {
+    vec4 difference = texel - colorKey_1;
+    return (colorKey_1.w > 0.0) && (dot(difference, difference) < 0.00001);
+}
+#endif
+#ifdef UV_TRANSFORM
+vec4 colorKeyOf() {
+#ifdef EMISSIVE
+    return colorKey;
+#else
+    return colorKey;
 #endif
 }
 #endif
@@ -3367,6 +3388,11 @@ void main() {
     vec4 backTexel = texture(sampler2D(backTexture, baseSampler), backAt);
     texel = gl_FrontFacing ? texel : backTexel;
 #endif
+#ifdef UV_TRANSFORM
+    if (colorKeyed(texel, colorKeyOf())) {
+        discard;
+    }
+#endif
     float noise = 0.0;
 #ifdef DISSOLVE
     noise = texture(sampler2D(dissolveTexture, dissolveSampler), surfaceUv).x;
@@ -3448,6 +3474,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 flipbookGrid;
     vec4 flipbookPlay;
     vec4 distanceFade;
+    vec4 colorKey;
 };
 #endif
 #if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
@@ -3470,6 +3497,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 flipbookGrid;
     vec4 flipbookPlay;
     vec4 distanceFade;
+    vec4 colorKey;
     vec4 emissive;
 };
 #endif
@@ -3708,6 +3736,7 @@ layout(binding=3) uniform movingUnlitMaterialParams {
     vec4 flipbookGrid;
     vec4 flipbookPlay;
     vec4 distanceFade;
+    vec4 colorKey;
 };
 #endif
 layout(binding=6) uniform frameParams {
@@ -3771,6 +3800,12 @@ float flipbookBlend(vec4 grid, vec4 play, float time) {
 #ifdef BACK_TEXTURE
 vec2 backUv(vec2 uv, vec4 matrix, vec4 offset) {
     return (mat2(matrix.xy, matrix.zw) * uv) + offset.xy;
+}
+#endif
+#ifdef UV_TRANSFORM
+bool colorKeyed(vec4 texel, vec4 colorKey_1) {
+    vec4 difference = texel - colorKey_1;
+    return (colorKey_1.w > 0.0) && (dot(difference, difference) < 0.00001);
 }
 #endif
 #ifdef PREMULTIPLIED
@@ -3898,6 +3933,11 @@ void main() {
     vec4 backTexel = texture(sampler2D(backTexture, baseSampler), backAt);
     texel = gl_FrontFacing ? texel : backTexel;
 #endif
+#ifdef UV_TRANSFORM
+    if (colorKeyed(texel, colorKey)) {
+        discard;
+    }
+#endif
     float noise = 0.0;
 #ifdef DISSOLVE
     noise = texture(sampler2D(dissolveTexture, dissolveSampler), surfaceUv).x;
@@ -3956,6 +3996,7 @@ layout(binding=3) uniform movingUnlitMaterialParams {
     vec4 flipbookGrid;
     vec4 flipbookPlay;
     vec4 distanceFade;
+    vec4 colorKey;
 };
 #endif
 #ifdef CUTOUT
