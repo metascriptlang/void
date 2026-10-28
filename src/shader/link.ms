@@ -66,16 +66,28 @@ function sameMembers(into: ShaderModule, held: int32, from: ShaderModule, s: int
 	return true;
 }
 
+function functionIdentity(f: ShaderFunction): string {
+	let alone = new ShaderModule();
+	alone.functions = [f];
+	return irText(alone);
+}
+
+function mapCalls(e: ShaderExpr, functions: int32[]): void {
+	if (e.kind == ExprKind.Call) { e.index = functions[e.index]; }
+	for (const o of e.operands) { mapCalls(o, functions); }
+}
+
 function merge(into: ShaderModule, from: ShaderModule, effect: string): Result<int32, string> {
 	let o: Offsets = {
 		structs: [],
 		constants: into.constants.length as int32,
 		resources: [],
 		ios: [],
-		functions: into.functions.length as int32,
+		functions: 0,
 		workgroups: into.workgroups.length as int32,
 	};
 	const structsBefore = into.structs.length as int32;
+	const functionsBefore = into.functions.length as int32;
 	for (let i = 0; i < from.structs.length; i++) {
 		const s = from.structs[i];
 		for (const f of s.members) { shiftType(o, f.type); }
@@ -112,11 +124,21 @@ function merge(into: ShaderModule, from: ShaderModule, effect: string): Result<i
 		}
 		o.resources.push(held as int32);
 	}
+	let functions: int32[] = [];
 	for (const f of from.functions) {
 		for (const p of f.params) { shiftType(o, p.type); }
 		for (const l of f.locals) { shiftType(o, l.type); }
 		shiftType(o, f.result);
 		shiftStmts(o, f.body);
+		stmtExprs(f.body, (e) => mapCalls(e, functions));
+		const text = functionIdentity(f);
+		const held = into.functions.findIndex((g) => g.name == f.name &&
+			functionIdentity(g) == text);
+		if (held >= 0) {
+			functions.push(held as int32);
+			continue;
+		}
+		functions.push(into.functions.length as int32);
 		f.name = suffixed(f.name, into.functions.map((g) => g.name));
 		into.functions.push(f);
 	}
@@ -127,11 +149,12 @@ function merge(into: ShaderModule, from: ShaderModule, effect: string): Result<i
 		} else if (d.kind == DeclarationKind.Constant) {
 			d.index += o.constants;
 		} else {
-			d.index += o.functions;
+			if (functions[d.index] < functionsBefore) { continue; }
+			d.index = functions[d.index];
 		}
 		into.declarations.push(d);
 	}
-	return Result.ok((into.functions.length - 1) as int32);
+	return Result.ok(functions[functions.length - 1]);
 }
 
 function numberBindings(m: ShaderModule, owners: string[], effects: string[]):

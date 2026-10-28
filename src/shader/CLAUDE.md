@@ -87,7 +87,8 @@ later replaces the hand-written GLSL source of each base.
   `link.ms` replaces each placeholder's body with `return e2(e1(phase))` over the effects on
   that phase, in the order given, and merges as Heaps' `hxsl/Linker.hx` `allocVar` does: structs
   and resources by name, refused when a struct's members or a resource's kind or type differ;
-  functions and constants renamed on a clash. An effect on a phase with no hook site is
+  a function with the name and the IR of one already linked is that one, and other functions
+  and constants are renamed on a clash. An effect on a phase with no hook site is
   refused. Once the unread declarations are dropped, `link` numbers every resource still at
   binding -1 within its group (blocks, views, samplers) at the next binding past the highest one there, in link order, as
   Heaps' `hxsl/Flatten.hx` `packTextures` and `packBuffers` give each var the next position of its

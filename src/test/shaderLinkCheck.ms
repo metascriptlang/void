@@ -1200,3 +1200,54 @@ test "two effect blocks at numbered bindings that share a member name are refuse
 	assert refusal(baseOf(), [moduleOf(BOTH_ADD)]) ==
 		"link: effect 'bothAdd': 'tint' names two things in one stage";
 }
+
+function brighten(c: Vec4f): Vec4f {
+	return c * 2.0;
+}
+
+function dim(c: Vec4f): Vec4f {
+	return c * 0.5;
+}
+
+function brightFs(input: Pixel, b: BaseBindings): Vec4f {
+	const lit: Shaded = { color: brighten(vec4f(input.uv.x, input.uv.y, b.frame.time, 1.0)) };
+	return hook(lit).color;
+}
+
+function brightAdd(shaded: Shaded): Shaded {
+	return { color: brighten(shaded.color) };
+}
+
+function dimAdd(shaded: Shaded): Shaded {
+	return { color: dim(shaded.color) };
+}
+
+const BRIGHT_ADD = glslSegmentIr(brightAdd);
+const DIM_ADD = glslSegmentIr(dimAdd);
+
+function helperLinked(effect: ShaderModule): ShaderModule {
+	const base = programModule(glslIr(baseVs), glslLinkedIr(brightFs, baseVs), []);
+	if (!base.ok) { return new ShaderModule(); }
+	const m = link(base.value, [effect]);
+	return m.ok ? m.value : new ShaderModule();
+}
+
+test "an effect's helper identical to the base's links to the base's one copy" {
+	const m = helperLinked(moduleOf(BRIGHT_ADD));
+	assert m.functions.map((f) => f.name).join(",") == "baseVs,brighten,brightFs,Shaded,brightAdd";
+	assert siteChain(m, "Shaded") == "brightAdd(phase)";
+	assert irErrors(m).length == 0;
+	assert printed(m, ShaderTarget.Wgsl, "brightFs.wgsl", 1)
+		.includes("return Shaded(brighten(shaded.color));");
+}
+
+test "an effect's helper named as the base's with another body is renamed" {
+	let effect = moduleOf(DIM_ADD);
+	effect.functions[0].name = "brighten";
+	const m = helperLinked(effect);
+	assert m.functions.map((f) => f.name).join(",") ==
+		"baseVs,brighten,brightFs,Shaded,brighten_1,dimAdd";
+	assert irErrors(m).length == 0;
+	assert printed(m, ShaderTarget.Wgsl, "dimFs.wgsl", 1)
+		.includes("return Shaded(brighten_1(shaded.color));");
+}
