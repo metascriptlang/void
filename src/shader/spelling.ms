@@ -1,4 +1,12 @@
-import { BinaryOp, Intrinsic, ScalarKind, ShaderType, ShaderTypeKind } from "./ir";
+import {
+	Access,
+	BinaryOp,
+	Intrinsic,
+	ScalarKind,
+	ShaderType,
+	ShaderTypeKind,
+	TexelFormat,
+} from "./ir";
 
 export function binaryOperator(op: BinaryOp): string {
 	return match (op) {
@@ -300,4 +308,35 @@ export function glslSplitTypes(t: ShaderType): string[] {
 	const arg = t.rows == 1 ? "float" : "vec" + String(t.rows);
 	if (t.kind == ShaderTypeKind.ModfResult) { return [arg, arg]; }
 	return [arg, t.rows == 1 ? "int" : "ivec" + String(t.rows)];
+}
+
+// The layout qualifier of a storage texture's format; bgra8unorm has none, so a printer refuses it first.
+export function glslImageFormat(f: TexelFormat): string {
+	return match (f) {
+		TexelFormat.Rgba8unorm => "rgba8",
+		TexelFormat.Rgba8snorm => "rgba8_snorm",
+		TexelFormat.Rgba8uint => "rgba8ui",
+		TexelFormat.Rgba8sint => "rgba8i",
+		TexelFormat.Rgba16uint => "rgba16ui",
+		TexelFormat.Rgba16sint => "rgba16i",
+		TexelFormat.Rgba16float => "rgba16f",
+		TexelFormat.Rgba32uint => "rgba32ui",
+		TexelFormat.Rgba32sint => "rgba32i",
+		TexelFormat.Rgba32float => "rgba32f",
+		TexelFormat.R32float => "r32f",
+		TexelFormat.R32uint => "r32ui",
+		TexelFormat.R32sint => "r32i",
+		TexelFormat.Rg32float => "rg32f",
+		TexelFormat.Rg32uint => "rg32ui",
+		TexelFormat.Rg32sint => "rg32i",
+		TexelFormat.Bgra8unorm => { throw new Error("internal: bgra8unorm has no GLSL image format"); },
+	};
+}
+
+export function glslAccessWord(a: Access): string {
+	return match (a) {
+		Access.Read => "readonly ",
+		Access.Write => "writeonly ",
+		Access.ReadWrite => "",
+	};
 }

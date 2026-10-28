@@ -52,7 +52,9 @@ import {
 	floatText,
 	glslAtomicName,
 	glslBitcast,
+	glslAccessWord,
 	glslBits,
+	glslImageFormat,
 	glslSplitTypes,
 	isIntMin,
 	mathName,
@@ -222,25 +224,8 @@ function arraySuffix(p: Printer, t: ShaderType): string {
 }
 
 function imageFormat(p: Printer, format: TexelFormat): string {
-	return match (format) {
-		TexelFormat.Rgba8unorm => "rgba8",
-		TexelFormat.Rgba8snorm => "rgba8_snorm",
-		TexelFormat.Rgba8uint => "rgba8ui",
-		TexelFormat.Rgba8sint => "rgba8i",
-		TexelFormat.Rgba16uint => "rgba16ui",
-		TexelFormat.Rgba16sint => "rgba16i",
-		TexelFormat.Rgba16float => "rgba16f",
-		TexelFormat.Rgba32uint => "rgba32ui",
-		TexelFormat.Rgba32sint => "rgba32i",
-		TexelFormat.Rgba32float => "rgba32f",
-		TexelFormat.R32float => "r32f",
-		TexelFormat.R32uint => "r32ui",
-		TexelFormat.R32sint => "r32i",
-		TexelFormat.Rg32float => "rg32f",
-		TexelFormat.Rg32uint => "rg32ui",
-		TexelFormat.Rg32sint => "rg32i",
-		TexelFormat.Bgra8unorm => fail(p, "bgra8unorm has no GLSL image format"),
-	};
+	if (format == TexelFormat.Bgra8unorm) { return fail(p, "bgra8unorm has no GLSL image format"); }
+	return glslImageFormat(format);
 }
 
 function splitNames(p: Printer, t: ShaderType, names: string[]): string {
@@ -1091,14 +1076,6 @@ function slotOf(p: Printer, index: int32, slots: BindingSlot[]): int32 {
 	return found[0].nativeSlot;
 }
 
-function accessWord(a: Access): string {
-	return match (a) {
-		Access.Read => "readonly ",
-		Access.Write => "writeonly ",
-		Access.ReadWrite => "",
-	};
-}
-
 function combinedType(p: Printer, pair: Pair): string {
 	const t = p.module.resources[pair.texture].type;
 	const prefix = vectorPrefix(t.scalar == ScalarKind.Bool ? ScalarKind.F32 : t.scalar);
@@ -1143,11 +1120,11 @@ function resourceDeclaration(p: Printer, index: int32, slots: BindingSlot[]): st
 			const layout = storageElementLayout(p.module, index);
 			if (!layout.ok) { return fail(p, layout.error); }
 			return "layout(std430, binding = " + String(slotOf(p, index, slots)) + ") " +
-				accessWord(r.access) + "buffer " + p.blockNames[index] + "\n{\n    " +
+				glslAccessWord(r.access) + "buffer " + p.blockNames[index] + "\n{\n    " +
 				p.structNames[r.type.element[0].structIndex] + " data[];\n} " + name + ";\n";
 		},
 		ResourceKind.StorageTexture => "layout(binding = " + String(slotOf(p, index, slots)) +
-			", " + imageFormat(p, r.type.format) + ") uniform " + accessWord(r.type.access) +
+			", " + imageFormat(p, r.type.format) + ") uniform " + glslAccessWord(r.type.access) +
 			typeName(p, r.type) + " " + name + ";\n",
 	};
 }

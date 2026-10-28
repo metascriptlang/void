@@ -54,7 +54,9 @@ import {
 	exchangeSlot,
 	glslAtomicName,
 	glslBitcast,
+	glslAccessWord,
 	glslBits,
+	glslImageFormat,
 	glslSplitTypes,
 	mathName,
 	repeatedBitsOperand,
@@ -696,33 +698,8 @@ function samplerTypeName(t: SamplerType): string {
 }
 
 function formatName(f: TexelFormat): string {
-	return match (f) {
-		TexelFormat.Rgba8unorm => "rgba8",
-		TexelFormat.Rgba8snorm => "rgba8_snorm",
-		TexelFormat.Rgba8uint => "rgba8ui",
-		TexelFormat.Rgba8sint => "rgba8i",
-		TexelFormat.Rgba16uint => "rgba16ui",
-		TexelFormat.Rgba16sint => "rgba16i",
-		TexelFormat.Rgba16float => "rgba16f",
-		TexelFormat.Rgba32uint => "rgba32ui",
-		TexelFormat.Rgba32sint => "rgba32i",
-		TexelFormat.Rgba32float => "rgba32f",
-		TexelFormat.R32float => "r32f",
-		TexelFormat.R32uint => "r32ui",
-		TexelFormat.R32sint => "r32i",
-		TexelFormat.Rg32float => "rg32f",
-		TexelFormat.Rg32uint => "rg32ui",
-		TexelFormat.Rg32sint => "rg32i",
-		TexelFormat.Bgra8unorm => { broken("bgra8unorm has no GLSL image format"); },
-	};
-}
-
-function accessMode(a: Access): string {
-	return match (a) {
-		Access.Read => "readonly ",
-		Access.Write => "writeonly ",
-		Access.ReadWrite => "",
-	};
+	if (f == TexelFormat.Bgra8unorm) { broken("bgra8unorm has no GLSL image format"); }
+	return glslImageFormat(f);
 }
 
 function sampleTag(r: ShaderResource): string {
@@ -759,7 +736,7 @@ function resourceText(p: Glsl, r: ShaderResource): string {
 			"buffer " + r.name + "Buffer {\n    " + typeName(p, r.type.element[0]) + " " + r.name +
 			"[];\n};\n",
 		ResourceKind.StorageTexture => "layout(binding=" + String(r.binding) + ", " +
-			formatName(r.type.format) + ") uniform " + accessMode(r.type.access) +
+			formatName(r.type.format) + ") uniform " + glslAccessWord(r.type.access) +
 			imageName(r.type) + " " + r.name + ";\n",
 	};
 }
