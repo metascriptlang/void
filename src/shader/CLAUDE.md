@@ -92,7 +92,9 @@ later replaces the hand-written GLSL source of each base.
   binding -1 within its group (blocks, views, samplers) at the next binding past the highest one there, in link order, as
   Heaps' `hxsl/Flatten.hx` `packTextures` and `packBuffers` give each var the next position of its
   kind; a block stays its own block. A group past `slotLimit` (`layout.ms`: 8 blocks, 32 views,
-  12 samplers) is refused, naming the effect and the resource. Pinned in
+  12 samplers) is refused, naming the effect and the resource. Then a member name two blocks
+  share is refused unless they sit at one binding, the base's rule for alternatives, checked
+  only here because a segment's blocks have no binding before link. Pinned in
   `src/test/shaderLinkCheck.ms` with each target's reflection.
 - **A linked program carries only the varyings its fragment reads**, so attaching an effect
   decides what crosses the stages. After chaining, `link` writes zero into each struct field of a

@@ -1253,11 +1253,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				layout.name = block.typExprTypeName;
 				for (let k = 0; k < block.typExprFieldNames.length; k++) {
 					const memberName = block.typExprFieldNames[k];
-					if (segment) {
-						claim(memberName, binding);
-					} else {
-						claimMember(memberName, slot, binding);
-					}
+					claimMember(memberName, slot, binding);
 					const own = blockMemberOf(typeNodes, block as TypeObjectData, k as int32);
 					if (!own.ok) { fail(binding, own.error); }
 					layout.members.push(own.value);
