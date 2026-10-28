@@ -1,5 +1,4 @@
 import {
-	Access,
 	AssignOp,
 	BinaryOp,
 	Builtin,
@@ -55,6 +54,8 @@ import {
 	glslAccessWord,
 	glslBits,
 	glslImageFormat,
+	glslInterpolation,
+	glslSampling,
 	glslSplitTypes,
 	isIntMin,
 	mathName,
@@ -1136,20 +1137,13 @@ function pairDeclaration(p: Printer, pair: Pair): string {
 }
 
 function interpolation(p: Printer, io: ShaderIo): string {
-	const mode = match (io.interpolation) {
-		Interpolation.Perspective => "",
-		Interpolation.Linear => p.es ?
-			fail(p, "io '" + io.name + "' is linear, which GLSL ES 3.00 has not") :
-			"noperspective ",
-		Interpolation.Flat => "flat ",
-	};
-	const sampling = match (io.sampling) {
-		Sampling.Center => "",
-		Sampling.Centroid => "centroid ",
-		Sampling.Sample => p.es ?
-			fail(p, "io '" + io.name + "' is per sample, which GLSL ES 3.00 has not") : "sample ",
-	};
-	return mode + sampling;
+	if (p.es && io.interpolation == Interpolation.Linear) {
+		return fail(p, "io '" + io.name + "' is linear, which GLSL ES 3.00 has not");
+	}
+	if (p.es && io.sampling == Sampling.Sample) {
+		return fail(p, "io '" + io.name + "' is per sample, which GLSL ES 3.00 has not");
+	}
+	return glslInterpolation(io.interpolation) + glslSampling(io.sampling);
 }
 
 function ioDeclarations(p: Printer): string {

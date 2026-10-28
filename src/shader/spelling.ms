@@ -1,7 +1,9 @@
 import {
 	Access,
 	BinaryOp,
+	Interpolation,
 	Intrinsic,
+	Sampling,
 	ScalarKind,
 	ShaderType,
 	ShaderTypeKind,
@@ -330,6 +332,22 @@ export function glslImageFormat(f: TexelFormat): string {
 		TexelFormat.Rg32uint => "rg32ui",
 		TexelFormat.Rg32sint => "rg32i",
 		TexelFormat.Bgra8unorm => { throw new Error("internal: bgra8unorm has no GLSL image format"); },
+	};
+}
+
+export function glslInterpolation(i: Interpolation): string {
+	return match (i) {
+		Interpolation.Perspective => "",
+		Interpolation.Linear => "noperspective ",
+		Interpolation.Flat => "flat ",
+	};
+}
+
+export function glslSampling(s: Sampling): string {
+	return match (s) {
+		Sampling.Center => "",
+		Sampling.Centroid => "centroid ",
+		Sampling.Sample => "sample ",
 	};
 }
 
