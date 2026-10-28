@@ -3,12 +3,11 @@ import { rgba } from "../void2d/types";
 import { paint, isDirty } from "../void2d/scene";
 import { begin2d, frameEnd } from "../void2d/draw";
 import {
-	voidProfilePresent, voidProfileMark, voidProfileState, voidProfileInput,
-	VOID_MARK_BEGIN, VOID_MARK_COMMIT, VOID_MARK_PRESENT_START, VOID_MARK_PRESENT_END,
-	VOID_FRAME_IDLE, VOID_FRAME_COMMITTED, VOID_FRAME_PRESENTED,
-} from "../void2d/frameClock.h";
+	frameClock, profilePresent, profileInput, MARK_BEGIN, MARK_COMMIT, MARK_PRESENT_START,
+	MARK_PRESENT_END, FRAME_IDLE, FRAME_COMMITTED, FRAME_PRESENTED,
+} from "../void2d/frameClock";
 import { NO_STAMP } from "../void2d/profiler";
-import { void2dQuadCoverage } from "../void2d/batcher.h";
+import { quadCoverage } from "../void2d/coverage";
 import {
 	frameStats, profilerCollect, profilerInputBegin, lastFrameRecord,
 	lastFrameCounters, frameCommitsWithoutFrame,
@@ -33,10 +32,10 @@ test "a frame closed by frameEnd becomes one record and is collected once" {
 	const s = settled();
 	const before: int32 = frameStats.frames;
 	drawFrame(s);
-	assert voidProfileState() == VOID_FRAME_COMMITTED;
+	assert frameClock.state == FRAME_COMMITTED;
 	assert profilerCollect();
 	assert !profilerCollect();
-	assert voidProfileState() == VOID_FRAME_IDLE;
+	assert frameClock.state == FRAME_IDLE;
 	assert frameStats.frames == before + 1;
 	assert lastFrameRecord().serial == frameStats.frames;
 }
@@ -64,13 +63,13 @@ test "two brackets before frameEnd are one record" {
 test "begin, commit, present start and present end are in order and the record carries them" {
 	const s = settled();
 	drawFrame(s);
-	voidProfilePresent(1);
-	voidProfilePresent(0);
-	assert voidProfileState() == VOID_FRAME_PRESENTED;
-	const begin: int64 = voidProfileMark(VOID_MARK_BEGIN);
-	const committed: int64 = voidProfileMark(VOID_MARK_COMMIT);
-	const presentStart: int64 = voidProfileMark(VOID_MARK_PRESENT_START);
-	const presentEnd: int64 = voidProfileMark(VOID_MARK_PRESENT_END);
+	profilePresent(1);
+	profilePresent(0);
+	assert frameClock.state == FRAME_PRESENTED;
+	const begin: int64 = frameClock.mark(MARK_BEGIN);
+	const committed: int64 = frameClock.mark(MARK_COMMIT);
+	const presentStart: int64 = frameClock.mark(MARK_PRESENT_START);
+	const presentEnd: int64 = frameClock.mark(MARK_PRESENT_END);
 	assert begin <= committed && committed <= presentStart && presentStart <= presentEnd;
 	assert profilerCollect();
 	assert lastFrameRecord().drawNs == committed - begin;
@@ -86,9 +85,9 @@ test "a frame with no present call records a present of no time" {
 
 test "a present hook for a commit with no void2d frame records nothing" {
 	settled();
-	voidProfilePresent(1);
-	voidProfilePresent(0);
-	assert voidProfileState() == VOID_FRAME_IDLE;
+	profilePresent(1);
+	profilePresent(0);
+	assert frameClock.state == FRAME_IDLE;
 	assert !profilerCollect();
 }
 
@@ -205,14 +204,14 @@ test "a headless frame has void2d counters of zero and no sokol measurement" {
 
 test "window events join the next frame, and events inside a frame are dropped" {
 	const s = settled();
-	voidProfileInput();
-	voidProfileInput();
+	profileInput();
+	profileInput();
 	drawFrame(s);
 	assert profilerCollect();
 	assert lastFrameRecord().inputEvents == 2;
 	assert lastFrameRecord().inputLatencyNs >= 0;
 	begin2d(100.0, 50.0, 1.0);
-	voidProfileInput();
+	profileInput();
 	frameEnd();
 	assert profilerCollect();
 	assert lastFrameRecord().droppedInputs == 1;
@@ -227,7 +226,7 @@ const IDENTITY: float32[] = [1.0, 0.0, 0.0, 1.0];
 const ROTATED: float32[] = [0.0, 1.0, -1.0, 0.0];
 
 function covered(a: float32[], x: float32, y: float32, w: float32, h: float32, scale: float32): float64 {
-	return void2dQuadCoverage(a[0], x, y, w, h, scale, 0, 0, SCREEN_W, SCREEN_H);
+	return quadCoverage(a[0..4], x, y, w, h, scale, 0, 0, SCREEN_W, SCREEN_H);
 }
 
 test "overdraw sums quad area over the screen's pixels: two full-screen quads are 2.0, half a screen is 0.5" {
@@ -241,7 +240,7 @@ test "a quad counts only the area inside its scissor, in device pixels" {
 	assert covered(IDENTITY, 150.0, 50.0, 100.0, 100.0, 1.0) == 50.0 * 50.0;
 	assert covered(IDENTITY, -50.0, -50.0, 100.0, 100.0, 1.0) == 50.0 * 50.0;
 	assert covered(IDENTITY, 300.0, 0.0, 10.0, 10.0, 1.0) == 0.0;
-	assert void2dQuadCoverage(IDENTITY[0], 0.0, 0.0, 50.0, 10.0, 2.0, 0, 0, 40, 40) == 40.0 * 20.0;
+	assert quadCoverage(IDENTITY[0..4], 0.0, 0.0, 50.0, 10.0, 2.0, 0, 0, 40, 40) == 40.0 * 20.0;
 }
 
 test "a rotated quad keeps its area and loses what falls outside" {

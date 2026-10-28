@@ -123,7 +123,7 @@ sokol's WebGPU backend does for it:
   by the pipeline and the bound ids; a collision replaces the entry, as sokol's
   `_sg_wgpu_bindgroups_cache` does (`:18462-18763`).
 - **Frame statistics** (draws, pipelines, passes, uploaded bytes) are counted through a frame and
-  handed over at commit, sokol's `prev_frame` (`_sg_update_stats`); `src/void2d/frameClock.c`
+  handed over at commit, sokol's `prev_frame` (`_sg_update_stats`); `src/void2d/frameClock.ms`
   reads them through `doorFrameStat`.
 
 C reaches the door through `@exportName` functions, whose prototypes are `door.h`. A C unit that

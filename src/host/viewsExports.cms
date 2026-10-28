@@ -1,0 +1,125 @@
+// The host views on the C targets: views.ms over the voidPlatform* set each platform's C half
+// defines, and the voidView* names its host code calls (viewsExports.h).
+
+@include("viewsPlatform.h");
+
+import { Views, ViewsPlatform } from "./views";
+
+extern function voidFail(format: cstring, message: cstring): never;
+extern function voidViewsPoolPush(): Ptr<void> | null;
+extern function voidViewsPoolPop(pool: Ptr<void> | null): void;
+extern function voidPlatformDeviceEnsure(): void;
+extern function voidPlatformRunInit(init: () => void): void;
+extern function voidPlatformSurfaceCreate(native: Ptr<void> | null, width: int32, height: int32): Ptr<void> | null;
+extern function voidPlatformSurfaceResize(surface: Ptr<void> | null, width: int32, height: int32): void;
+extern function voidPlatformSurfaceReady(surface: Ptr<void> | null): int32;
+extern function voidPlatformSurfaceAcquire(surface: Ptr<void> | null): int32;
+extern function voidPlatformSurfacePresent(surface: Ptr<void> | null): void;
+extern function voidPlatformSurfaceDestroy(surface: Ptr<void> | null): void;
+extern function voidPlatformSurfaceNative(surface: Ptr<void> | null): int64;
+
+class CPlatform extends ViewsPlatform {
+	surfaces: (Ptr<void> | null)[] = [];
+
+	constructor() {
+		super();
+		for (let i: int32 = 0; i < 16; i++) { this.surfaces.push(null); }
+	}
+
+	fail(message: string): never { voidFail("%s", message); }
+	deviceEnsure(): void { voidPlatformDeviceEnsure(); }
+	runInit(init: () => void): void { voidPlatformRunInit(init); }
+	surfaceCreate(slot: int32, native: int64, width: int32, height: int32): boolean {
+		const surface = voidPlatformSurfaceCreate(native as Ptr<void>, width, height);
+		this.surfaces[slot] = surface;
+		return surface != null;
+	}
+	surfaceResize(slot: int32, width: int32, height: int32): void {
+		voidPlatformSurfaceResize(this.surfaces[slot], width, height);
+	}
+	surfaceReady(slot: int32): boolean { return voidPlatformSurfaceReady(this.surfaces[slot]) != 0; }
+	surfaceAcquire(slot: int32): boolean { return voidPlatformSurfaceAcquire(this.surfaces[slot]) != 0; }
+	surfacePresent(slot: int32): void { voidPlatformSurfacePresent(this.surfaces[slot]); }
+	surfaceDestroy(slot: int32): void {
+		voidPlatformSurfaceDestroy(this.surfaces[slot]);
+		this.surfaces[slot] = null;
+	}
+	surfaceNative(slot: int32): int64 { return voidPlatformSurfaceNative(this.surfaces[slot]); }
+}
+
+const platform = new CPlatform();
+const views = new Views(platform);
+
+@exportName("voidEmbedRegister")
+export function exportRegister(init: () => void, frame: () => void): void { views.register(init, frame); }
+
+@exportName("voidViewsSetSampleCount")
+export function exportSetSampleCount(count: int32): void { views.setSampleCount(count); }
+
+@exportName("voidViewsSampleCount")
+export function exportSampleCount(): int32 { return views.sampleCount(); }
+
+@exportName("voidEmbedSetMessagePump")
+export function exportSetMessagePump(pump: () => void): void { views.setMessagePump(pump); }
+
+@exportName("voidEmbedPumpMessages")
+export function exportPumpMessages(): void { views.pumpMessages(); }
+
+@exportName("voidViewCreate")
+export function exportViewCreate(native: int64, width: int32, height: int32, scale: float32): int32 {
+	const pool = voidViewsPoolPush();
+	const view = views.create(native, width, height, scale);
+	voidViewsPoolPop(pool);
+	return view;
+}
+
+@exportName("voidViewResize")
+export function exportViewResize(view: int32, width: int32, height: int32, scale: float32): void {
+	const pool = voidViewsPoolPush();
+	views.resize(view, width, height, scale);
+	voidViewsPoolPop(pool);
+}
+
+@exportName("voidViewFrame")
+export function exportViewFrame(view: int32): int32 {
+	const pool = voidViewsPoolPush();
+	const drawn = views.frame(view);
+	voidViewsPoolPop(pool);
+	return drawn ? 1 : 0;
+}
+
+@exportName("voidViewReady")
+export function exportViewReady(view: int32): int32 { return views.ready(view) ? 1 : 0; }
+
+@exportName("voidViewDestroy")
+export function exportViewDestroy(view: int32): void {
+	const pool = voidViewsPoolPush();
+	views.destroy(view);
+	voidViewsPoolPop(pool);
+}
+
+@exportName("voidViewSwapChain")
+export function exportViewSwapChain(view: int32): int64 { return views.swapChain(view); }
+
+@exportName("voidCurrentView")
+export function exportCurrentView(): int32 { return views.currentView; }
+
+@exportName("voidViewsFbWidth")
+export function exportFbWidth(): int32 { return views.fbWidth(); }
+
+@exportName("voidViewsFbHeight")
+export function exportFbHeight(): int32 { return views.fbHeight(); }
+
+@exportName("voidViewsDpiScale")
+export function exportDpiScale(): float32 { return views.dpiScale(); }
+
+@exportName("voidViewsCurrentSurface")
+export function exportCurrentSurface(): Ptr<void> | null { return platform.surfaces[views.currentSurfaceSlot()]; }
+
+@exportName("voidViewsPresent")
+export function exportPresent(): void { views.present(); }
+
+@exportName("voidViewsSurfaceAt")
+export function exportSurfaceAt(slot: int32): Ptr<void> | null {
+	return views.usedSlot(slot) ? platform.surfaces[slot] : null;
+}

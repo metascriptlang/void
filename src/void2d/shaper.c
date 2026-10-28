@@ -1,5 +1,5 @@
 #include "shaper.h"
-#include "glyph.h"
+#include "glyphExports.h"
 #include <stdio.h>
 #include <stdlib.h>
 

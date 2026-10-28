@@ -1,6 +1,6 @@
 // Void driver — macOS (Metal). Two drivers in one binary, like bridgeWin.c: voidRun is the Cocoa
 // window of src/platform/macos/window.m with no sokol_app, and voidViewCreate is the host-view
-// driver behind views.c, one CAMetalLayer per view over one shared MTLDevice. The first of the
+// driver behind views.ms, one CAMetalLayer per view over one shared MTLDevice. The first of the
 // two chooses the driver for the process. The GPU door's Metal backend draws on the shared
 // device; the resource and pass wrappers are bridge.c's.
 
@@ -9,7 +9,7 @@
 #import <Metal/Metal.h>
 
 #include "bridge.h"
-#include "views.h"
+#include "viewsExports.h"
 #include "../gpu/door.h"
 #include "../webgpu/metal/metal.h"
 #include "metalSurface.h"

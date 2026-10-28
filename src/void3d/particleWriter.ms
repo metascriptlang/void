@@ -16,7 +16,7 @@ import {
 	COLOR_A, FRAME, AGE, DRAW_FLIP_U, DRAW_FLIP_V, MOVE_X, MOVE_Y, MOVE_Z,
 } from "../particles/system";
 import { AtlasTile } from "./billboard";
-import { sortKeyOf } from "./sortKey.h";
+import { sortKeyOf } from "./sortKey";
 
 // Floats per instance of the Particle layout (position, size, rgba) and of ParticleVisual
 // (position, width, height, anchor, rotation, uv rect, rgba, velocity, look, scale, pull and the

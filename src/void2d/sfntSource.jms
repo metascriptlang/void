@@ -1,0 +1,15 @@
+import { fontBytesFind, fontBytesRead, fontBytesSize } from "./fontBytes";
+
+// A browser has no font files: a face arrives as bytes (holdFaceBytes, peekFaceBytes), and a
+// path that is not held stops here.
+export function sfntSourceSize(path: string): int64 {
+	const held = fontBytesFind(path);
+	if (held >= 0) { return fontBytesSize(held); }
+	throw new Error(`sfntSource: js cannot open the font file ${path}; hold its bytes with holdFaceBytes or pass them to peekFaceBytes`);
+}
+
+export function sfntSourceRead(path: string, at: int64, into: Span<uint8>): boolean {
+	const held = fontBytesFind(path);
+	if (held >= 0) { return fontBytesRead(held, at, into); }
+	throw new Error(`sfntSource: js cannot read the font file ${path}; hold its bytes with holdFaceBytes or pass them to peekFaceBytes`);
+}

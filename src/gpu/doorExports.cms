@@ -1,0 +1,78 @@
+// The door's C ABI (door.h) for the C targets: each wrapper gives a doorGpu.ms function the
+// name its C caller links, so the JS build carries none of them.
+
+import {
+	doorSetup,
+	doorShutdown,
+	doorValid,
+	doorContextGeneration,
+	doorMakeTexture,
+	doorMakeTextureView,
+	doorReadScreen,
+	doorBeginScreenPass,
+	doorBeginColorPass,
+	doorEndPass,
+	doorCommit,
+	doorPassState,
+} from "./doorGpu";
+
+@exportName("doorSetup")
+export function exportSetup(
+	nativeDevice: Ptr<void> | null,
+	nativeContext: Ptr<void> | null,
+	colorFormat: int32,
+	depthFormat: int32,
+	sampleCount: int32,
+): void {
+	doorSetup(nativeDevice, nativeContext, colorFormat, depthFormat, sampleCount);
+}
+
+@exportName("doorShutdown")
+export function exportShutdown(): void { doorShutdown(); }
+
+@exportName("doorValid")
+export function exportValid(): int32 { return doorValid(); }
+
+@exportName("doorContextGeneration")
+export function exportContextGeneration(): int32 { return doorContextGeneration(); }
+
+@exportName("doorMakeTexture")
+export function exportMakeTexture(
+	width: int32,
+	height: int32,
+	format: int32,
+	data: Readonly<Span<uint8>>,
+): uint32 {
+	return doorMakeTexture(width, height, format, data);
+}
+
+@exportName("doorMakeTextureView")
+export function exportMakeTextureView(image: uint32): uint32 { return doorMakeTextureView(image); }
+
+@exportName("doorReadScreen")
+export function exportReadScreen(out: Span<uint8>): int32 { return doorReadScreen(out); }
+
+@exportName("doorBeginScreenPass")
+export function exportBeginScreenPass(red: float32, green: float32, blue: float32, alpha: float32): void {
+	doorBeginScreenPass(red, green, blue, alpha);
+}
+
+@exportName("doorBeginColorPass")
+export function exportBeginColorPass(
+	view: uint32,
+	red: float32,
+	green: float32,
+	blue: float32,
+	alpha: float32,
+): void {
+	doorBeginColorPass(view, red, green, blue, alpha);
+}
+
+@exportName("doorEndPass")
+export function exportEndPass(): void { doorEndPass(); }
+
+@exportName("doorCommit")
+export function exportCommit(): void { doorCommit(); }
+
+@exportName("doorPassState")
+export function exportPassState(): int32 { return doorPassState(); }

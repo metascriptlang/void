@@ -1,4 +1,4 @@
-// Run in a process of its own (scripts/gate.sh): it exhausts glyph.c's process-wide page table,
+// Run in a process of its own (scripts/gate.sh): it exhausts src/void2d/glyph/state.ms's process-wide page table,
 // which would starve every test that ran after it in src/test/index.ms.
 
 import { loadFace, glyphIndex } from "../../src/void2d/face";

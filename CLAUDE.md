@@ -19,7 +19,7 @@ src/
 ├── webgpu/   device.ms, types.ms, validate.ms, pool.ms + one dir per backend
 │             ← the WebGPU-shaped device; shared validation runs before every backend
 ├── gpu/      door.ms, doorGpu.ms, pipeline.ms, ...  ← the door: what void2d/void3d call
-├── host/     bridge.{h,c}, bridge<Platform>.*, appWindow.c, gpu.ms, window.ms
+├── host/     bridge.{h,c}, bridge<Platform>.*, appWindow.ms, views.ms, gpu.ms, window.ms
 │             ← per-platform host: window, frame loop (voidRun), embedding
 ├── platform/ windowCore.h + macos/ win32/ linux/ web/  ← window core ported from sokol_app
 ├── shader/   shader IR and its printers (WGSL, GLSL, HLSL, MSL, SPIR-V)
@@ -56,7 +56,7 @@ Build with **`msc`** — the synced local build on `$PATH` (`~/.metascript/bin/m
 
 - **Device** `src/webgpu/` — `device.ms` runs the shared checks in `validate.ms`, keeps ids in `pool.ms`, then calls the backend. Design and measured costs: `docs/GPU.md`; the Windows/Mac channel for the arc: `docs/GPU-MS.md`.
 - **Door** `src/gpu/` — the calls `void2d` and `void3d` make (`doorGpu.ms`); pipelines are cached by key in `pipeline.ms`.
-- **void2d** `src/void2d/` — batcher logic in MetaScript (`draw.ms`), thin C in `batcher.c`, text via fontstash. See [docs/VOID2D.md](docs/VOID2D.md); 3D: [docs/VOID3D.md](docs/VOID3D.md).
+- **void2d** `src/void2d/` — batcher logic in MetaScript (`draw.ms`), the replay and frame-linear GPU resources in `batcher.ms` over the door, no C. See [docs/VOID2D.md](docs/VOID2D.md); 3D: [docs/VOID3D.md](docs/VOID3D.md).
 - **Shaders** are MetaScript functions (`src/void2d/shader2d.ms`, `src/void3d/shader3d.ms`); `scripts/regen-shaders.sh` prints the generated modules, `--check` fails when one is stale. An app's own program uses `shaderProgram` (`src/shader/program.ms`) with no regen step.
 - **GPU data in MetaScript:** sized typed arrays (`float32[]` / `Vec<float32>`) are packed native-size; hand `arr[0]` to a `Borrow<float32>` C param (borrow-promotion) — no C data files, no malloc. Only `number[]` is `double`-backed.
 

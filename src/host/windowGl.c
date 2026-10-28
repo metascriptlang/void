@@ -1,6 +1,6 @@
 #include "backend.h"
 #include "windowSurface.h"
-#include "views.h"
+#include "viewsExports.h"
 #include "../gpu/door.h"
 #include "../platform/win32/window.h"
 #include "appWindow.h"

@@ -28,8 +28,50 @@ import { Color, rgba } from "./types";
 import { Mat4 } from "../math/math3d";
 import { NO_COLOR_MATRIX, writeColorMatrix, readColorMatrix } from "./effect";
 import { BlendMode } from "../gpu/state";
-import { void2dCommandView, void2dCopyFloats } from "./batcher.h";
 import "./face";
+import {
+	COMMAND_FLOATS,
+	commandViewOf,
+	CMD_KIND,
+	CMD_BREAK,
+	CMD_VERTEX_OFFSET,
+	CMD_VERTEX_COUNT,
+	CMD_VIEW,
+	CMD_BLEND,
+	CMD_SAMPLER,
+	SAMPLER_COUNT,
+	CMD_EFFECT,
+	CMD_CLIP_X,
+	CMD_CLIP_Y,
+	CMD_CLIP_W,
+	CMD_CLIP_H,
+	CMD_ARG0,
+	CMD_ARG1,
+	CMD_RT_MODE,
+	CMD_CLEAR_R,
+	CMD_CLEAR_G,
+	CMD_CLEAR_B,
+	CMD_CLEAR_A,
+	CMD_PIPELINE,
+	CMD_INSTANCE_OFFSET,
+	CMD_INSTANCE_COUNT,
+	CMD_CLIP_U_X,
+	CMD_CLIP_U_Y,
+	CMD_CLIP_U_MIN,
+	CMD_CLIP_U_MAX,
+	CMD_CLIP_V_X,
+	CMD_CLIP_V_Y,
+	CMD_CLIP_V_MIN,
+	CMD_CLIP_V_MAX,
+	CMD_VIEW_HIGH,
+	CMD_SCOPE,
+	CMD_CLIP_ROUND_U,
+	CMD_CLIP_ROUND_V,
+	CMD_CLIP_RADII,
+	SCOPE_FLOATS,
+	NO_SCOPE,
+} from "./commandFields";
+export * from "./commandFields";
 import { UI_PARAM_MODE, UiInstance } from "./instance";
 import {
 	UI_STRIDE, SPRITE_STRIDE,
@@ -67,59 +109,10 @@ export enum BreakReason {
 	Pipeline,
 }
 
-export const COMMAND_FLOATS: int32 = 44;
 export const EFFECT_FLOATS: int32 = 44;
 export const VERTEX_FLOATS: int32 = 8;
 export const NO_EFFECT: int32 = -1;
 
-// Field offsets inside one command record. Named, because `commands[base + 7]` in the
-// emitter and `cmd[7]` in the replay is exactly how the two drift apart.
-export const CMD_KIND: int32 = 0;
-export const CMD_BREAK: int32 = 1;
-export const CMD_VERTEX_OFFSET: int32 = 2;
-export const CMD_VERTEX_COUNT: int32 = 3;
-export const CMD_VIEW: int32 = 4;
-export const CMD_BLEND: int32 = 5;
-export const CMD_SAMPLER: int32 = 6;
-export const SAMPLER_COUNT: int32 = 4;
-export const SOURCE_PREMULTIPLIED: int32 = SAMPLER_COUNT;
-export const CMD_EFFECT: int32 = 7;
-export const CMD_CLIP_X: int32 = 8;
-export const CMD_CLIP_Y: int32 = 9;
-export const CMD_CLIP_W: int32 = 10;
-export const CMD_CLIP_H: int32 = 11;
-export const CMD_ARG0: int32 = 12;
-export const CMD_ARG1: int32 = 13;
-export const CMD_RT_MODE: int32 = 14;
-// Zero for the swapchain; otherwise the render target's physical-pixels-per-logical-pixel
-// scale. The replay uses nonzero to choose the offscreen pipeline and the value to scale
-// logical scissors.
-export const CMD_CLEAR_R: int32 = 15;
-export const CMD_CLEAR_G: int32 = 16;
-export const CMD_CLEAR_B: int32 = 17;
-export const CMD_CLEAR_A: int32 = 18;
-// Which of P2's two pipelines the run wants, and the instance range inside the stream that
-// pipeline reads. A Draw carries either a vertex range or an instance range, never both;
-// the field says which, so the replay branches on the record rather than on a guess about
-// whether a count is zero.
-export const CMD_PIPELINE: int32 = 19;
-export const CMD_INSTANCE_OFFSET: int32 = 20;
-export const CMD_INSTANCE_COUNT: int32 = 21;
-export const CMD_CLIP_U_X: int32 = 22;
-export const CMD_CLIP_U_Y: int32 = 23;
-export const CMD_CLIP_U_MIN: int32 = 24;
-export const CMD_CLIP_U_MAX: int32 = 25;
-export const CMD_CLIP_V_X: int32 = 26;
-export const CMD_CLIP_V_Y: int32 = 27;
-export const CMD_CLIP_V_MIN: int32 = 28;
-export const CMD_CLIP_V_MAX: int32 = 29;
-export const CMD_VIEW_HIGH: int32 = 30;
-export const CMD_SCOPE: int32 = 31;
-export const CMD_CLIP_ROUND_U: int32 = 32;
-export const CMD_CLIP_ROUND_V: int32 = 36;
-export const CMD_CLIP_RADII: int32 = 40;
-export const SCOPE_FLOATS: int32 = 8;
-export const NO_SCOPE: int32 = -1;
 export const EFFECT_GRADIENT_META: int32 = 24;
 export const EFFECT_GRADIENT_PARAMS: int32 = 28;
 export const EFFECT_GRADIENT_COLOR0: int32 = 32;
@@ -781,7 +774,7 @@ export function copyPainted(old: DrawContext2D, a: PaintIndex, b: PaintIndex): v
 		const to: int32 = activeContext.uiInstanceTotal * REC_UI_FLOATS;
 		const from: int32 = a.uiInstances * REC_UI_FLOATS;
 		growTo(activeContext.uiInstances, to + ui * REC_UI_FLOATS);
-		void2dCopyFloats(activeContext.uiInstances[to], old.uiInstances[from], ui * REC_UI_FLOATS);
+		copyFloats(activeContext.uiInstances, to, old.uiInstances, from, ui * REC_UI_FLOATS);
 		activeContext.uiInstanceTotal = activeContext.uiInstanceTotal + ui;
 	}
 	const sprites: int32 = b.spriteInstances - a.spriteInstances;
@@ -789,7 +782,7 @@ export function copyPainted(old: DrawContext2D, a: PaintIndex, b: PaintIndex): v
 		const to: int32 = activeContext.spriteInstanceTotal * REC_SPRITE_FLOATS;
 		const from: int32 = a.spriteInstances * REC_SPRITE_FLOATS;
 		growTo(activeContext.spriteInstances, to + sprites * REC_SPRITE_FLOATS);
-		void2dCopyFloats(activeContext.spriteInstances[to], old.spriteInstances[from],
+		copyFloats(activeContext.spriteInstances, to, old.spriteInstances, from,
 			sprites * REC_SPRITE_FLOATS);
 		activeContext.spriteInstanceTotal = activeContext.spriteInstanceTotal + sprites;
 	}
@@ -798,7 +791,7 @@ export function copyPainted(old: DrawContext2D, a: PaintIndex, b: PaintIndex): v
 		const to: int32 = activeContext.vertexTotal * VERTEX_FLOATS;
 		const from: int32 = a.vertices * VERTEX_FLOATS;
 		growTo(activeContext.vertices, to + vertices * VERTEX_FLOATS);
-		void2dCopyFloats(activeContext.vertices[to], old.vertices[from], vertices * VERTEX_FLOATS);
+		copyFloats(activeContext.vertices, to, old.vertices, from, vertices * VERTEX_FLOATS);
 		activeContext.vertexTotal = activeContext.vertexTotal + vertices;
 	}
 }
@@ -855,6 +848,12 @@ function commandSlot(): int32 {
 	const at: int32 = activeContext.spill.commands;
 	activeContext.spill = { ...activeContext.spill, commands: at + 1 };
 	return at;
+}
+
+function copyFloats(
+	ref to: Vec<float32>, at: int32, from: Vec<float32>, start: int32, count: int32,
+): void {
+	for (let i: int32 = 0; i < count; i++) { to[at + i] = from[start + i]; }
 }
 
 function growTo(ref stream: Vec<float32>, length: int32): void {
@@ -1413,13 +1412,13 @@ function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
 	}
 	match (pipeline) {
 		Pipeline.Sprite => {
-			void2dCopyFloats(activeContext.laneScratch[0], activeContext.spriteInstances[lo * width], span);
+			copyFloats(activeContext.laneScratch, 0, activeContext.spriteInstances, lo * width, span);
 		},
 		Pipeline.Ui => {
-			void2dCopyFloats(activeContext.laneScratch[0], activeContext.uiInstances[lo * width], span);
+			copyFloats(activeContext.laneScratch, 0, activeContext.uiInstances, lo * width, span);
 		},
 		Pipeline.Vertex => {
-			void2dCopyFloats(activeContext.laneScratch[0], activeContext.vertices[lo * width], span);
+			copyFloats(activeContext.laneScratch, 0, activeContext.vertices, lo * width, span);
 		},
 	}
 	for (const src of activeContext.laneOrder) {
@@ -1430,13 +1429,13 @@ function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
 		const to: int32 = activeContext.laneOffsets[src - c0] * width;
 		match (pipeline) {
 			Pipeline.Sprite => {
-				void2dCopyFloats(activeContext.spriteInstances[to], activeContext.laneScratch[from], n);
+				copyFloats(activeContext.spriteInstances, to, activeContext.laneScratch, from, n);
 			},
 			Pipeline.Ui => {
-				void2dCopyFloats(activeContext.uiInstances[to], activeContext.laneScratch[from], n);
+				copyFloats(activeContext.uiInstances, to, activeContext.laneScratch, from, n);
 			},
 			Pipeline.Vertex => {
-				void2dCopyFloats(activeContext.vertices[to], activeContext.laneScratch[from], n);
+				copyFloats(activeContext.vertices, to, activeContext.laneScratch, from, n);
 			},
 		}
 	}
@@ -1639,8 +1638,8 @@ test "a view id past 2^24 reaches the replay whole, in the stream and in a targe
 	recordBlur(view, 1.0, 0.0);
 	assert commandView(0) == view;
 	assert commandView(1) == view;
-	assert void2dCommandView(activeContext.commands[0]) == view;
-	assert void2dCommandView(activeContext.commands[COMMAND_FLOATS]) == view;
+	assert commandViewOf(activeContext.commands[0..COMMAND_FLOATS]) == view;
+	assert commandViewOf(activeContext.commands[COMMAND_FLOATS..COMMAND_FLOATS * 2]) == view;
 	resetContext();
 	beginTargetList(view, 64.0, 32.0, 1.0, 0.0, 0.0, 0.0, 0.0);
 	recordDraw(BreakReason.First, 0, 6, view, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);

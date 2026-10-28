@@ -111,9 +111,8 @@ import {
 } from "./table";
 import { Texture, TextureError } from "../../src/gpu/texture";
 import { mixedVoid3dTarget, mixedVoid3dTranslucentTarget } from "./mixedScenes";
-import {
-	loadImageSync, imageWidth, imageHeight, freeImage, decodeAnimation,
-} from "../../src/assets/image";
+import { decodeAnimation } from "../../src/assets/image";
+import { loadImageFile } from "../../src/assets/imageFile";
 import { GifFrame, animatedGif } from "../../src/test/imageBytes";
 import { AnimationSheet, uploadAnimation, animation } from "../../src/void2d/animation";
 
@@ -126,12 +125,11 @@ let sheetLoaded: boolean = false;
 
 function sheet(): Tile {
 	if (!sheetLoaded) {
-		const pixels = loadImageSync("assets/test.png", 4);
-		const w: int32 = imageWidth();
-		const h: int32 = imageHeight();
-		const image: uint32 = makeImage(pixels, w, h);
+		const loaded = loadImageFile("assets/test.png");
+		const w: int32 = loaded.width;
+		const h: int32 = loaded.height;
+		const image: uint32 = makeImage(loaded.pixels as Span<uint32> as Ptr<void>, w, h);
 		sheetTile = tile(Texture.adopt(image, makeView(image), w, h), w as float32, h as float32);
-		freeImage(pixels);
 		sheetLoaded = true;
 	}
 	return sheetTile;

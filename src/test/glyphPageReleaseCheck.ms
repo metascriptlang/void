@@ -10,7 +10,7 @@ import {
 	void2dGlyphPageTakeUpload,
 	void2dGlyphPageUploadBox,
 	void2dGlyphPagesFrameBegin,
-} from "../void2d/glyph.h";
+} from "../void2d/glyph";
 
 const RENDERER_PAGE_VIEWS: int32 = 64;
 

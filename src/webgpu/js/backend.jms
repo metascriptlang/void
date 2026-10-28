@@ -1,0 +1,1462 @@
+import { DeviceLoss } from "../types.ms";
+import { lostAction } from "../wgpu/lost.ms";
+import {
+	BindingKind,
+	GPU_MAX_BIND_GROUP_ENTRIES,
+	GPU_MAX_COLOR_ATTACHMENTS,
+	GPU_MAX_UNIFORM_BLOCKS,
+	GPU_MAX_VERTEX_ATTRIBUTES,
+	GPU_MAX_VERTEX_BUFFERS,
+	GPU_RESOURCE_GROUP,
+	GPU_UNIFORM_GROUP,
+	GPU_DRAW_INDEXED_INDIRECT_STRIDE,
+	GPUAdapterInfo,
+	GPUBindGroup,
+	GPUBindGroupDescriptor,
+	GPUBindGroupEntry,
+	GPUBlendComponent,
+	GPUBuffer,
+	GPUBufferDescriptor,
+	GPUBufferUsage,
+	GPUColor,
+	GPUCommandBuffer,
+	GPUCommandEncoder,
+	GPUComputePassDescriptor,
+	GPUComputePassEncoder,
+	GPUComputePipeline,
+	GPUComputePipelineDescriptor,
+	GPUDevice,
+	GPUExtent3D,
+	GPUFeatureName,
+	GPUIndexFormat,
+	GPUPassTimestampWrites,
+	GPUQuerySet,
+	GPUQuerySetDescriptor,
+	GPURenderPassDescriptor,
+	GPURenderPassEncoder,
+	GPURenderPipeline,
+	GPURenderPipelineDescriptor,
+	GPUSampler,
+	GPUSamplerDescriptor,
+	GPUShaderBinding,
+	GPUShaderModule,
+	GPUShaderModuleDescriptor,
+	GPUShaderStage,
+	GPUStencilFaceState,
+	GPUSupportedFeatures,
+	GPUSupportedLimits,
+	GPUTexelCopyBufferInfo,
+	GPUTexelCopyBufferLayout,
+	GPUTexelCopyTextureInfo,
+	GPUTexture,
+	GPUTextureDescriptor,
+	GPUTextureFormat,
+	GPUTextureUsage,
+	GPUTextureView,
+	GPUTextureViewDescriptor,
+	TextureFormatFacts,
+	addressModeNative,
+	bindingKind,
+	blendFactorNative,
+	blendOperationNative,
+	checkedDepthTexelCopy,
+	checkedTexelBufferLayout,
+	checkedTexelWritePitch,
+	compareNative,
+	featureBit,
+	samplerMaxLod,
+	stencilOperationNative,
+	stopOnUnportedShaderBindings,
+	stopOnUnportedShaderBytecode,
+	textureFormatFacts,
+	topologyNative,
+	vertexFormatNative,
+} from "../types.ms";
+import {
+	addressesBinding,
+	cachedCanvas,
+	checkedComputeModule,
+	checkedRenderModule,
+	clampedAnisotropy,
+	colorWriteBits,
+	entryBytes,
+	stencil8Mask,
+} from "../validate.ms";
+import {
+	TextureRecord,
+	ViewRecord,
+	bindGroupRecords,
+	bufferRecords,
+	layoutRecords,
+	pipelineRecords,
+	put,
+	querySetRecords,
+	samplerRecords,
+	shaderRecords,
+	slotIndex,
+	slotOf,
+	textureRecords,
+	vacate,
+	viewRecords,
+} from "../pool.ms";
+
+
+export struct NativeEnvironment {
+	device: Ptr<void> | null;
+	context: Ptr<void> | null;
+	colorFormat: GPUTextureFormat;
+	depthFormat: GPUTextureFormat;
+	sampleCount: int32;
+}
+export struct NativeSwapchain {
+	width: int32;
+	height: int32;
+	sampleCount: int32;
+	renderView: Ptr<void> | null;
+	resolveView: Ptr<void> | null;
+	depthStencilView: Ptr<void> | null;
+}
+
+extern class Js {
+	length: number;
+	extern destroy(): void;
+	extern has(name: string): boolean;
+	extern createBuffer(descriptor: Js): Js;
+	extern createTexture(descriptor: Js): Js;
+	extern createView(descriptor: Js): Js;
+	extern createSampler(descriptor: Js): Js;
+	extern createShaderModule(descriptor: Js): Js;
+	extern createBindGroupLayout(descriptor: Js): Js;
+	extern createPipelineLayout(descriptor: Js): Js;
+	extern createRenderPipeline(descriptor: Js): Js;
+	extern createComputePipeline(descriptor: Js): Js;
+	extern createBindGroup(descriptor: Js): Js;
+	extern createQuerySet(descriptor: Js): Js;
+	extern createCommandEncoder(): Js;
+	extern beginRenderPass(descriptor: Js): Js;
+	extern beginComputePass(descriptor: Js): Js;
+	extern finish(): Js;
+	extern end(): void;
+	extern submit(commands: Js): void;
+	extern writeBuffer(buffer: Js, offset: number, data: Js): void;
+	extern writeTexture(destination: Js, data: Js, layout: Js, size: Js): void;
+	extern copyBufferToBuffer(source: Js, sourceOffset: number, destination: Js, destinationOffset: number, size: number): void;
+	extern copyBufferToTexture(source: Js, destination: Js, size: Js): void;
+	extern copyTextureToBuffer(source: Js, destination: Js, size: Js): void;
+	extern copyTextureToTexture(source: Js, destination: Js, size: Js): void;
+	extern resolveQuerySet(querySet: Js, first: number, count: number, destination: Js, offset: number): void;
+	extern pushDebugGroup(label: string): void;
+	extern popDebugGroup(): void;
+	extern insertDebugMarker(label: string): void;
+	extern setPipeline(pipeline: Js): void;
+	extern setVertexBuffer(slot: number, buffer: Js, offset: number): void;
+	extern setIndexBuffer(buffer: Js, format: string, offset: number): void;
+	extern setBindGroup(index: number, group: Js, offsets: Js): void;
+	extern setScissorRect(x: number, y: number, width: number, height: number): void;
+	extern setViewport(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void;
+	extern setBlendConstant(color: Js): void;
+	extern setStencilReference(reference: number): void;
+	extern draw(vertexCount: number, instanceCount: number, firstVertex: number, firstInstance: number): void;
+	extern drawIndexed(indexCount: number, instanceCount: number, firstIndex: number, baseVertex: number, firstInstance: number): void;
+	extern drawIndexedIndirect(buffer: Js, offset: number): void;
+	extern dispatchWorkgroups(x: number, y: number, z: number): void;
+	extern dispatchWorkgroupsIndirect(buffer: Js, offset: number): void;
+	extern beginOcclusionQuery(index: number): void;
+	extern endOcclusionQuery(): void;
+	extern getCurrentTexture(): Js;
+	extern configure(descriptor: Js): void;
+	extern unconfigure(): void;
+	extern push(value: Js): void;
+	extern requestDevice(descriptor: Js): Promise<Js>;
+}
+
+extern function hasWebGpu(): boolean from "(typeof navigator !== 'undefined' && !!navigator.gpu)";
+extern function requestAdapter(): Promise<Js> from "navigator.gpu.requestAdapter()";
+extern function canvasContextOf(selector: string): Js from "document.querySelector(#).getContext('webgpu')";
+extern function preferredFormat(): string from "navigator.gpu.getPreferredCanvasFormat()";
+extern function isNone(value: Js): boolean from "(# == null)";
+extern function same(a: Js, b: Js): boolean from "(# === #)";
+extern function jsNull(): Js from "(null)";
+extern function jsNew(): Js from "({})";
+extern function jsList(): Js from "([])";
+extern function setText(target: Js, key: string, value: string): void from "((o,k,v)=>{o[k]=v})(#,#,#)";
+extern function setNumber(target: Js, key: string, value: number): void from "((o,k,v)=>{o[k]=v})(#,#,#)";
+extern function setFlag(target: Js, key: string, value: boolean): void from "((o,k,v)=>{o[k]=v})(#,#,#)";
+extern function setObject(target: Js, key: string, value: Js): void from "((o,k,v)=>{o[k]=v})(#,#,#)";
+extern function num(value: int64): number from "Number(#)";
+extern function extent3(a: number, b: number, c: number): Js from "[#,#,#]";
+extern function limitInt(limits: Js, name: string): int32 from "((l,k)=>l[k]|0)(#,#)";
+extern function limitBig(limits: Js, name: string): int64 from "((l,k)=>BigInt(l[k]))(#,#)";
+extern function offsetsOf(offsets: Readonly<Span<uint32>>, count: int32): Js from "((s,n)=>s.base.slice(s.off,s.off+n))(#,#)";
+extern function deviceDescriptor(adapter: Js): Js from "((a)=>({requiredFeatures:['depth32float-stencil8','texture-compression-bc','texture-compression-etc2','texture-compression-astc','dual-source-blending','shader-f16','float32-filterable','float32-blendable','texture-formats-tier2','timestamp-query','rg11b10ufloat-renderable','bgra8unorm-storage'].filter((f)=>f==='depth32float-stencil8'||a.features.has(f)),requiredLimits:{maxColorAttachments:a.limits.maxColorAttachments,maxSampledTexturesPerShaderStage:a.limits.maxSampledTexturesPerShaderStage,maxStorageBuffersPerShaderStage:a.limits.maxStorageBuffersPerShaderStage,maxStorageTexturesPerShaderStage:a.limits.maxStorageTexturesPerShaderStage}}))(#)";
+extern function watchDevice(device: Js, onLost: (reason: int32, message: string) => void): void from "((d,h)=>{d.lost.then((i)=>h(i.reason==='destroyed'?2:1,i.message));d.addEventListener('uncapturederror',(e)=>console.log('webgpu js: WebGPU error: '+e.error.message));})(#,#)";
+extern function queueOf(device: Js): Js from "#.queue";
+extern function limitsOf(device: Js): Js from "#.limits";
+extern function featuresOf(device: Js): Js from "#.features";
+extern function commandList(commands: Js): Js from "[#]";
+extern function padded(data: Js): Js from "((t)=>{const b=t.byteLength;if(!(b&3))return t;const u=new Uint8Array((b+3)&~3);u.set(new Uint8Array(t.buffer,t.byteOffset,b));return u;})(#)";
+extern function typedElements<T>(data: Readonly<Span<T>>, kind: int32): Js from "((d,k)=>{const a=d.base.slice(d.off,d.off+d.len);switch(k){case 0:return Float32Array.from(a);case 1:return Float64Array.from(a);case 2:return Int8Array.from(a);case 3:return Uint8Array.from(a);case 4:return Int16Array.from(a);case 5:return Uint16Array.from(a);case 6:return Int32Array.from(a);case 7:return Uint32Array.from(a);case 8:return BigInt64Array.from(a,(v)=>BigInt.asIntN(64,BigInt(v)));default:return BigUint64Array.from(a,(v)=>BigInt.asUintN(64,BigInt(v)));}})(#,#)";
+
+function elementKind(sample: float32): int32 { return 0; }
+function elementKind(sample: float64): int32 { return 1; }
+function elementKind(sample: int8): int32 { return 2; }
+function elementKind(sample: uint8): int32 { return 3; }
+function elementKind(sample: int16): int32 { return 4; }
+function elementKind(sample: uint16): int32 { return 5; }
+function elementKind(sample: int32): int32 { return 6; }
+function elementKind(sample: uint32): int32 { return 7; }
+function elementKind(sample: int64): int32 { return 8; }
+function elementKind(sample: uint64): int32 { return 9; }
+
+const NONE: Js = jsNull();
+
+struct BufferSlot { native: Js; }
+struct TextureSlot { info: TextureFormatFacts; native: Js; }
+struct ViewSlot { native: Js; binding: Js; swapchainResolve: Js; dimension: string; }
+struct SamplerSlot { native: Js; }
+
+struct ShaderBinding {
+	binding: int32;
+	kind: BindingKind;
+	visibility: int32;
+	bindingType: string;
+	viewDimension: string;
+	storageFormat: string;
+	size: int32;
+	writable: boolean;
+}
+
+struct ShaderSlot {
+	vertex: Js;
+	fragment: Js;
+	compute: Js;
+	isCompute: boolean;
+	vertexEntry: string;
+	fragmentEntry: string;
+	computeEntry: string;
+	uniformLayout: Js;
+	resourceLayout: Js;
+	uniforms: ShaderBinding[8];
+	uniformCount: int32;
+	resources: ShaderBinding[8];
+	resourceCount: int32;
+}
+
+struct PipelineSlot { shader: uint32; native: Js; compute: boolean; }
+struct QuerySetSlot { native: Js; }
+struct BindGroupSlot { group: int32; native: Js; }
+
+export const BACKEND = "js";
+
+let device: Js = NONE;
+let queue: Js = NONE;
+let encoder: Js = NONE;
+let commands: Js = NONE;
+let renderPass: Js = NONE;
+let computePass: Js = NONE;
+let passWidth: int32 = 0;
+let passHeight: int32 = 0;
+let swapchainColor: uint32 = 0;
+let swapchainDepth: uint32 = 0;
+let onDeviceLost: () => void = () => {};
+let deviceLive = false;
+let pendingDevice: Promise<void> | null = null;
+
+export class Surface {
+	context: Js;
+	msaaTexture: Js = NONE;
+	msaaView: Js = NONE;
+	msaaWidth: int32 = 0;
+	msaaHeight: int32 = 0;
+	msaaSamples: int32 = 0;
+	depthTexture: Js = NONE;
+	depthView: Js = NONE;
+	depthWidth: int32 = 0;
+	depthHeight: int32 = 0;
+
+	constructor(context: Js) { this.context = context; }
+}
+
+const surfaces: Surface[] = [];
+let current: Surface | null = null;
+
+let buffers: Vec<BufferSlot> = [{ native: NONE }];
+let textures: Vec<TextureSlot> = [{ info: { index: 0, bytesPerPixel: 0, depth: false, stencil: false }, native: NONE }];
+let views: Vec<ViewSlot> = [{ native: NONE, binding: NONE, swapchainResolve: NONE, dimension: "" }];
+let samplers: Vec<SamplerSlot> = [{ native: NONE }];
+let shaders: Vec<ShaderSlot> = [{ vertex: NONE, fragment: NONE, compute: NONE, isCompute: false, vertexEntry: "", fragmentEntry: "", computeEntry: "", uniformLayout: NONE, resourceLayout: NONE }];
+let pipelines: Vec<PipelineSlot> = [{ shader: 0, native: NONE, compute: false }];
+let querySets: Vec<QuerySetSlot> = [{ native: NONE }];
+let bindGroups: Vec<BindGroupSlot> = [{ group: 0, native: NONE }];
+
+@noinline function stop(message: string): never {
+	console.log(`webgpu js: ${message}`);
+	unreachable;
+}
+
+@noinline function stopOnMember(member: string, value: string): string {
+	console.log(`webgpu js: ${member} '${value}' is not supported`);
+	unreachable;
+}
+
+@inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
+
+function hasFeature(name: string): boolean { return featuresOf(device).has(name); }
+
+function formatInfo(format: GPUTextureFormat, member: string): TextureFormatFacts {
+	return textureFormatFacts(format, member, "js");
+}
+
+function labelled(descriptor: Js, label: string | null): Js {
+	if (label !== null) { setText(descriptor, "label", label); }
+	return descriptor;
+}
+
+// Await this before requestDevice. onLost runs on a recoverable device loss, when a new device can be asked for.
+export async function acquireDevice(onLost: () => void): Promise<void> {
+	onDeviceLost = onLost;
+	if (deviceLive) { return; }
+	if (pendingDevice === null) { pendingDevice = openDevice(); }
+	await pendingDevice;
+}
+
+async function openDevice(): Promise<void> {
+	try {
+		if (!hasWebGpu()) { stop("navigator.gpu is absent: this browser has no WebGPU"); }
+		const adapter = await requestAdapter();
+		if (isNone(adapter)) { stop("navigator.gpu.requestAdapter gave no adapter"); }
+		const opened = await adapter.requestDevice(deviceDescriptor(adapter));
+		device = opened;
+		queue = queueOf(opened);
+		deviceLive = true;
+		watchDevice(opened, (reason: int32, message: string): void => {
+			const action = lostAction(reason);
+			if (action == (DeviceLoss.None as int32) || !same(opened, device)) { return; }
+			console.log(`webgpu js: the WebGPU device was lost: ${message}`);
+			if (action == (DeviceLoss.Recover as int32)) {
+				deviceLive = false;
+				onDeviceLost();
+			} else {
+				stop(`the WebGPU device was lost with reason ${reason}, which Void does not recover from`);
+			}
+		});
+		for (const surface of surfaces) {
+			dropAttachments(surface);
+			configure(surface);
+		}
+	} finally {
+		pendingDevice = null;
+	}
+}
+
+function configure(surface: Surface): void {
+	const configuration = jsNew();
+	setObject(configuration, "device", device);
+	setText(configuration, "format", preferredFormat());
+	setNumber(configuration, "usage", (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32));
+	setText(configuration, "alphaMode", "premultiplied");
+	surface.context.configure(configuration);
+}
+
+function dropAttachments(surface: Surface): void {
+	if (!isNone(surface.msaaTexture)) { surface.msaaTexture.destroy(); }
+	if (!isNone(surface.depthTexture)) { surface.depthTexture.destroy(); }
+	surface.msaaTexture = NONE;
+	surface.depthTexture = NONE;
+	surface.msaaWidth = 0;
+	surface.depthWidth = 0;
+}
+
+export function surfaceCreate(selector: string): Surface {
+	if (!deviceLive) { stop("surfaceCreate needs the device acquireDevice opens; await it first"); }
+	const surface = new Surface(canvasContextOf(selector));
+	configure(surface);
+	surfaces.push(surface);
+	return surface;
+}
+
+export function surfaceResize(surface: Surface): void {
+	dropAttachments(surface);
+	configure(surface);
+}
+
+export function surfaceDestroy(surface: Surface): void {
+	const at = surfaces.indexOf(surface);
+	if (at < 0) { return; }
+	surfaces.splice(at, 1);
+	dropAttachments(surface);
+	surface.context.unconfigure();
+	if (current === surface) { current = null; }
+}
+
+export function surfaceUse(surface: Surface): void { current = surface; }
+
+export function setup(environment: NativeEnvironment): GPUDevice {
+	if (isNone(device)) { stop("requestDevice needs the device acquireDevice opens; await it first"); }
+	const canvas = cachedCanvas();
+	const sampleCount = canvas.sampleCount;
+	if (sampleCount != 1 && sampleCount != 4) { stopOnMember("NativeEnvironment.sampleCount", `${sampleCount}`); }
+	encoder = NONE;
+	commands = NONE;
+	renderPass = NONE;
+	computePass = NONE;
+	return { id: 1, queue: { id: 1 } };
+}
+
+export function adoptSwapchain(color: uint32, depth: uint32): void {
+	swapchainColor = color;
+	swapchainDepth = depth;
+	adoptSwapchainTexture(color, "NativeEnvironment.colorFormat");
+	if (depth != 0) { adoptSwapchainTexture(depth, "NativeEnvironment.depthFormat"); }
+}
+
+function adoptSwapchainTexture(id: uint32, member: string): void {
+	put(textures, id, { info: formatInfo(textureRecords.slots[textureRecords.slotIndex(id)].format, member), native: NONE });
+	put(views, textureRecords.slots[textureRecords.slotIndex(id)].swapchainView, { native: NONE, binding: NONE, swapchainResolve: NONE, dimension: "2d" });
+}
+
+export function formatRenderable(format: GPUTextureFormat): boolean {
+	formatInfo(format, "formatRenderable format");
+	return true;
+}
+
+export function shutdown(): void {
+	encoder = NONE;
+	commands = NONE;
+	renderPass = NONE;
+	computePass = NONE;
+}
+
+export function adapterInfo(): GPUAdapterInfo {
+	return { backend: "webgpu", originTopLeft: true, depthZeroToOne: true };
+}
+
+export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void {
+	const usage = descriptor.usage;
+	if (has(usage, (GPUBufferUsage.MAP_READ as int32) | (GPUBufferUsage.MAP_WRITE as int32))) {
+		stop("GPUBufferUsage MAP_READ and MAP_WRITE are not ported to js: GPUBuffer.mapAsync returns a Promise the event loop settles later, and this surface maps synchronously");
+	}
+	const native = jsNew();
+	setNumber(native, "size", num(descriptor.size));
+	setNumber(native, "usage", usage);
+	put(buffers, id, { native: device.createBuffer(labelled(native, descriptor.label)) });
+}
+
+export function destroyBuffer(buffer: GPUBuffer): void {
+	buffers[bufferRecords.slotIndex(buffer.id)].native.destroy();
+	vacate(buffers, buffer.id);
+}
+
+export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
+	if (data.length == 0) { return; }
+	const elements = typedElements(data, elementKind(data[0]));
+	queue.writeBuffer(buffers[bufferRecords.slotIndex(buffer.id)].native, num(offset), padded(elements));
+}
+
+export function createTexture(texture: TextureRecord, descriptor: GPUTextureDescriptor): void {
+	const info = formatInfo(descriptor.format, "GPUTextureDescriptor.format");
+	const dimension: string = descriptor.dimension;
+	if (dimension != "" && dimension != "2d" && dimension != "3d") { stopOnMember("GPUTextureDescriptor.dimension", dimension); }
+	const sampleCount = texture.sampleCount;
+	if (sampleCount != 1 && sampleCount != 4) { stopOnMember("GPUTextureDescriptor.sampleCount", `${sampleCount}`); }
+	const usage = texture.usage;
+	if (has(usage, GPUTextureUsage.STORAGE_BINDING as int32)) { storageFormatOf(descriptor.format, "GPUTextureDescriptor.format"); }
+	if (sampleCount > 1 && has(usage, GPUTextureUsage.STORAGE_BINDING as int32)) { stop("a multisampled texture cannot be STORAGE_BINDING"); }
+	if (has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32) && descriptor.format == "rg11b10ufloat" && !hasFeature("rg11b10ufloat-renderable")) {
+		stop("rg11b10ufloat as RENDER_ATTACHMENT needs the device feature rg11b10ufloat-renderable, which this device was not created with");
+	}
+	const native = jsNew();
+	setObject(native, "size", extent3(texture.width, texture.height, texture.layers));
+	setText(native, "dimension", texture.volume ? "3d" : "2d");
+	setText(native, "format", descriptor.format);
+	setNumber(native, "mipLevelCount", texture.mipLevels);
+	setNumber(native, "sampleCount", sampleCount);
+	setNumber(native, "usage", usage);
+	put(textures, texture.id, { info: info, native: device.createTexture(labelled(native, descriptor.label)) });
+}
+
+export function destroyTexture(texture: GPUTexture): void {
+	textures[textureRecords.slotIndex(texture.id)].native.destroy();
+	vacate(textures, texture.id);
+}
+
+export function writeTexture<T>(
+	destination: GPUTexelCopyTextureInfo,
+	data: Readonly<Span<T>>,
+	layout: GPUTexelCopyBufferLayout,
+	size: GPUExtent3D,
+): void {
+	const index = textureRecords.slotIndex(destination.texture.id);
+	const bytes = (data.length as int64) * (sizeof(T) as int64);
+	const record = textureRecords.slots[index];
+	if (!has(record.usage, GPUTextureUsage.COPY_DST as int32)) {
+		stop(`writeTexture on GPUTexture ${destination.texture.id}, created without COPY_DST`);
+	}
+	const mip = destination.mipLevel;
+	const depth = record.volume && mip >= 0 && mip < record.mipLevels ? Math.max(1, record.layers >> mip) : record.layers;
+	const bytesPerRow = checkedTexelWritePitch(record.width, record.height, record.mipLevels, depth, textures[index].info.bytesPerPixel, bytes, destination, layout, size);
+	if (data.length == 0) { return; }
+	const target = jsNew();
+	setObject(target, "texture", textures[index].native);
+	setNumber(target, "mipLevel", mip);
+	setObject(target, "origin", extent3(destination.origin.x, destination.origin.y, destination.origin.z));
+	const shape = jsNew();
+	setNumber(shape, "offset", num(layout.offset));
+	setNumber(shape, "bytesPerRow", bytesPerRow);
+	setNumber(shape, "rowsPerImage", layout.rowsPerImage == 0 ? size.height : layout.rowsPerImage);
+	queue.writeTexture(target, typedElements(data, elementKind(data[0])), shape, extent3(size.width, size.height, size.depthOrArrayLayers));
+}
+
+function viewDimensionOf(name: string): string {
+	if (name == "2d" || name == "2d-array" || name == "cube" || name == "cube-array" || name == "3d") { return name; }
+	return stopOnMember("GPUTextureViewDescriptor.dimension", name);
+}
+
+export function createView(view: ViewRecord, descriptor: GPUTextureViewDescriptor): void {
+	const t = textureRecords.slotIndex(view.texture);
+	const dimension = viewDimensionOf(view.dimension);
+	const native = jsNew();
+	setText(native, "dimension", dimension);
+	setNumber(native, "baseMipLevel", view.baseMip);
+	setNumber(native, "mipLevelCount", view.mipCount);
+	setNumber(native, "baseArrayLayer", view.baseLayer);
+	setNumber(native, "arrayLayerCount", view.layerCount);
+	labelled(native, descriptor.label);
+	const created = textures[t].native.createView(native);
+	let binding = NONE;
+	if (has(textureRecords.slots[t].usage, GPUTextureUsage.TEXTURE_BINDING as int32)) {
+		binding = created;
+		if (textures[t].info.stencil) {
+			setText(native, "aspect", "depth-only");
+			binding = textures[t].native.createView(native);
+		}
+	}
+	put(views, view.id, { native: created, binding: binding, swapchainResolve: NONE, dimension: dimension });
+}
+
+export function destroyView(view: GPUTextureView): void {
+	vacate(views, view.id);
+}
+
+function ensureAttachment(format: string, width: int32, height: int32, sampleCount: int32, label: string): Js {
+	const native = jsNew();
+	setObject(native, "size", extent3(width, height, 1));
+	setText(native, "format", format);
+	setNumber(native, "sampleCount", sampleCount);
+	setNumber(native, "usage", GPUTextureUsage.RENDER_ATTACHMENT as int32);
+	setText(native, "label", label);
+	return device.createTexture(native);
+}
+
+export function acquireSwapchain(swapchain: NativeSwapchain): void {
+	const surface = current;
+	if (surface === null) { stop("getCurrentTexture needs a surface: choose one with surfaceUse"); return; }
+	const canvas = cachedCanvas();
+	const v = viewRecords.slotIndex(textureRecords.slots[textureRecords.slotIndex(swapchainColor)].swapchainView);
+	const texture = surface.context.getCurrentTexture().createView(jsNew());
+	if (swapchain.sampleCount > 1) {
+		if (isNone(surface.msaaTexture) || surface.msaaWidth != swapchain.width || surface.msaaHeight != swapchain.height || surface.msaaSamples != swapchain.sampleCount) {
+			if (!isNone(surface.msaaTexture)) { surface.msaaTexture.destroy(); }
+			surface.msaaTexture = ensureAttachment(canvas.format, swapchain.width, swapchain.height, swapchain.sampleCount, "multisample target");
+			surface.msaaView = surface.msaaTexture.createView(jsNew());
+			surface.msaaWidth = swapchain.width;
+			surface.msaaHeight = swapchain.height;
+			surface.msaaSamples = swapchain.sampleCount;
+		}
+		views[v].native = surface.msaaView;
+		views[v].swapchainResolve = texture;
+	} else {
+		views[v].native = texture;
+		views[v].swapchainResolve = NONE;
+	}
+	if (swapchainDepth != 0) {
+		if (isNone(surface.depthTexture) || surface.depthWidth != swapchain.width || surface.depthHeight != swapchain.height) {
+			if (!isNone(surface.depthTexture)) { surface.depthTexture.destroy(); }
+			surface.depthTexture = ensureAttachment(canvas.depthFormat, swapchain.width, swapchain.height, swapchain.sampleCount, "depth target");
+			surface.depthView = surface.depthTexture.createView(jsNew());
+			surface.depthWidth = swapchain.width;
+			surface.depthHeight = swapchain.height;
+		}
+		views[viewRecords.slotIndex(textureRecords.slots[textureRecords.slotIndex(swapchainDepth)].swapchainView)].native = surface.depthView;
+	}
+}
+
+const ADDRESS_MODES: string[] = ["clamp-to-edge", "repeat", "mirror-repeat"];
+const COMPARE_FUNCTIONS: string[] = ["never", "less", "equal", "less-equal", "greater", "not-equal", "greater-equal", "always"];
+const BLEND_FACTORS: string[] = [
+	"zero", "one", "src", "one-minus-src", "src-alpha", "one-minus-src-alpha", "dst", "one-minus-dst",
+	"dst-alpha", "one-minus-dst-alpha", "src-alpha-saturated", "constant", "one-minus-constant",
+];
+const BLEND_OPERATIONS: string[] = ["add", "subtract", "reverse-subtract", "min", "max"];
+const STENCIL_OPERATIONS: string[] = ["keep", "zero", "replace", "invert", "increment-clamp", "decrement-clamp", "increment-wrap", "decrement-wrap"];
+const TOPOLOGIES: string[] = ["point-list", "line-list", "line-strip", "triangle-list", "triangle-strip"];
+const VERTEX_FORMATS: string[] = [
+	"uint8x2", "uint8x4", "sint8x2", "sint8x4", "unorm8x2", "unorm8x4", "snorm8x2", "snorm8x4",
+	"uint16x2", "uint16x4", "sint16x2", "sint16x4", "unorm16x2", "unorm16x4", "snorm16x2", "snorm16x4",
+	"float16x2", "float16x4", "float32", "float32x2", "float32x3", "float32x4", "uint32", "uint32x2",
+	"uint32x3", "uint32x4", "sint32", "sint32x2", "sint32x3", "sint32x4",
+];
+
+function compareFunction(compare: string, member: string): string { return compareNative(COMPARE_FUNCTIONS, compare, member, "js"); }
+
+function blendFactor(factor: string, member: string): string { return blendFactorNative(BLEND_FACTORS, factor, member, "js"); }
+
+function destinationFactor(factor: string, member: string): string {
+	if (factor == "") { return "zero"; }
+	return blendFactor(factor, member);
+}
+
+function blendOperation(operation: string, member: string): string { return blendOperationNative(BLEND_OPERATIONS, operation, member, "js"); }
+
+function stencilOperation(operation: string, member: string): string { return stencilOperationNative(STENCIL_OPERATIONS, operation, member, "js"); }
+
+function addressMode(mode: string, member: string): string { return addressModeNative(ADDRESS_MODES, mode, member, "js"); }
+
+function filterMode(filter: string, member: string): string {
+	return match (filter) {
+		"" | "nearest" => "nearest",
+		"linear" => "linear",
+		_ => stopOnMember(member, filter),
+	};
+}
+
+function indexFormat(format: GPUIndexFormat): string {
+	const value: string = format;
+	return match (value) {
+		"uint16" | "uint32" => value,
+		_ => stopOnMember("setIndexBuffer indexFormat", value),
+	};
+}
+
+function cullMode(cull: string): string {
+	return match (cull) {
+		"" | "none" => "none",
+		"front" | "back" => cull,
+		_ => stopOnMember("primitive.cullMode", cull),
+	};
+}
+
+function frontFace(face: string): string {
+	return match (face) {
+		"" | "ccw" => "ccw",
+		"cw" => "cw",
+		_ => stopOnMember("primitive.frontFace", face),
+	};
+}
+
+function stepMode(mode: string): string {
+	return match (mode) {
+		"" | "vertex" => "vertex",
+		"instance" => "instance",
+		_ => stopOnMember("vertex.buffers stepMode", mode),
+	};
+}
+
+function attachmentMember(index: int32, field: string): string {
+	return index < 0 ? `depthStencilAttachment.${field}` : `colorAttachments[${index}].${field}`;
+}
+
+function loadOp(op: string, index: int32, field: string): string {
+	return match (op) {
+		"clear" | "load" => op,
+		_ => stopOnMember(attachmentMember(index, field), op),
+	};
+}
+
+function storeOp(op: string, index: int32, field: string): string {
+	return match (op) {
+		"store" | "discard" => op,
+		_ => stopOnMember(attachmentMember(index, field), op),
+	};
+}
+
+export function createSampler(id: uint32, descriptor: GPUSamplerDescriptor): void {
+	const native = jsNew();
+	setText(native, "addressModeU", addressMode(descriptor.addressModeU, "GPUSamplerDescriptor.addressModeU"));
+	setText(native, "addressModeV", addressMode(descriptor.addressModeV, "GPUSamplerDescriptor.addressModeV"));
+	setText(native, "addressModeW", addressMode(descriptor.addressModeW, "GPUSamplerDescriptor.addressModeW"));
+	setText(native, "magFilter", filterMode(descriptor.magFilter, "GPUSamplerDescriptor.magFilter"));
+	setText(native, "minFilter", filterMode(descriptor.minFilter, "GPUSamplerDescriptor.minFilter"));
+	setText(native, "mipmapFilter", filterMode(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter"));
+	setNumber(native, "lodMinClamp", descriptor.lodMinClamp);
+	setNumber(native, "lodMaxClamp", samplerMaxLod(descriptor.lodMaxClamp));
+	const compare: string = descriptor.compare;
+	if (compare != "") { setText(native, "compare", compareFunction(compare, "GPUSamplerDescriptor.compare")); }
+	setNumber(native, "maxAnisotropy", clampedAnisotropy(descriptor.maxAnisotropy));
+	put(samplers, id, { native: device.createSampler(labelled(native, descriptor.label)) });
+}
+
+export function destroySampler(sampler: GPUSampler): void {
+	vacate(samplers, sampler.id);
+}
+
+function entryPoint(name: string): string { return name == "" ? "main" : name; }
+
+function createModule(code: string, label: string | null): Js {
+	const native = jsNew();
+	setText(native, "code", code);
+	return device.createShaderModule(labelled(native, label));
+}
+
+function sampleType(sample: string): string {
+	return match (sample) {
+		"" | "float" => "float",
+		"unfilterable-float" | "sint" | "uint" => sample,
+		_ => stopOnMember("GPUShaderBinding.sampleType", sample),
+	};
+}
+
+function bindingViewDimension(dimension: string): string {
+	return match (dimension) {
+		"" | "2d" => "2d",
+		"2d-array" | "cube" | "cube-array" | "3d" => dimension,
+		_ => stopOnMember("GPUShaderBinding.viewDimension", dimension),
+	};
+}
+
+function samplerType(sampler: string): string {
+	return match (sampler) {
+		"" | "filtering" => "filtering",
+		"non-filtering" => "non-filtering",
+		_ => stopOnMember("GPUShaderBinding.samplerType", sampler),
+	};
+}
+
+function storageBufferType(type: string): string {
+	return match (type) {
+		"storage" | "read-only-storage" => type,
+		_ => stopOnMember("GPUShaderBinding.bufferType", type),
+	};
+}
+
+function storageAccess(access: string): string {
+	return match (access) {
+		"write-only" | "read-only" | "read-write" => access,
+		_ => stopOnMember("GPUShaderBinding.storageAccess", access),
+	};
+}
+
+function bindingType(binding: GPUShaderBinding, kind: BindingKind): string {
+	return match (kind) {
+		BindingKind.Uniform => "uniform",
+		BindingKind.Texture => sampleType(binding.sampleType),
+		BindingKind.Sampler => samplerType(binding.samplerType),
+		BindingKind.StorageBuffer => storageBufferType(binding.bufferType),
+		BindingKind.StorageTexture => storageAccess(binding.storageAccess),
+	};
+}
+
+function storageCapable(format: string): boolean {
+	if (format == "bgra8unorm") { return hasFeature("bgra8unorm-storage"); }
+	return format == "rgba8unorm" || format == "rgba8uint" || format == "rgba8sint"
+		|| format == "rgba16uint" || format == "rgba16float" || format == "r32uint"
+		|| format == "r32float" || format == "rg32float" || format == "rgba32float";
+}
+
+function storageFormatOf(format: GPUTextureFormat, member: string): string {
+	const name: string = format;
+	if (name == "") { stop(`${member} is required for a storage-texture binding`); }
+	formatInfo(format, member);
+	if (!storageCapable(name)) { stop(`${member} '${name}' is not a WebGPU storage texture format (bgra8unorm needs the device feature bgra8unorm-storage)`); }
+	return name;
+}
+
+const MAX_UNIFORM_WGSL_BINDING = 16;
+const MAX_RESOURCE_WGSL_BINDING = 128;
+
+@noinline function checkBinding(native: ShaderBinding, group: int32): void {
+	const limit = native.kind == BindingKind.Uniform ? MAX_UNIFORM_WGSL_BINDING : MAX_RESOURCE_WGSL_BINDING;
+	if (native.binding < 0 || native.binding >= limit) {
+		const last = limit - 1;
+		stop(`shader binding ${native.binding} is outside the WGSL group ${group} range 0..${last}`);
+	}
+	if (native.writable && (native.visibility & (GPUShaderStage.VERTEX as int32)) != 0) {
+		stop(`shader binding ${native.binding} is writable storage in the vertex stage, which WebGPU does not allow`);
+	}
+	if (native.kind == BindingKind.StorageTexture && (native.viewDimension == "cube" || native.viewDimension == "cube-array")) {
+		stop(`shader binding ${native.binding} is a storage texture with a cube viewDimension, which WebGPU does not allow`);
+	}
+}
+
+function layoutEntry(binding: ShaderBinding): Js {
+	const entry = jsNew();
+	setNumber(entry, "binding", binding.binding);
+	setNumber(entry, "visibility", binding.visibility);
+	const detail = jsNew();
+	match (binding.kind) {
+		BindingKind.Uniform => {
+			setText(detail, "type", "uniform");
+			setFlag(detail, "hasDynamicOffset", true);
+			setObject(entry, "buffer", detail);
+		},
+		BindingKind.Texture => {
+			setText(detail, "sampleType", binding.bindingType);
+			setText(detail, "viewDimension", binding.viewDimension);
+			setObject(entry, "texture", detail);
+		},
+		BindingKind.StorageBuffer => {
+			setText(detail, "type", binding.bindingType);
+			setObject(entry, "buffer", detail);
+		},
+		BindingKind.StorageTexture => {
+			setText(detail, "access", binding.bindingType);
+			setText(detail, "format", binding.storageFormat);
+			setText(detail, "viewDimension", binding.viewDimension);
+			setObject(entry, "storageTexture", detail);
+		},
+		BindingKind.Sampler => {
+			setText(detail, "type", binding.bindingType);
+			setObject(entry, "sampler", detail);
+		},
+	};
+	return entry;
+}
+
+function layoutOf(bindings: ShaderBinding[8], count: int32, label: string | null): Js {
+	const entries = jsList();
+	for (let i = 0; i < count; i++) { entries.push(layoutEntry(bindings[i])); }
+	const descriptor = jsNew();
+	setObject(descriptor, "entries", entries);
+	return device.createBindGroupLayout(labelled(descriptor, label));
+}
+
+export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescriptor): void {
+	stopOnUnportedShaderBindings("js", descriptor);
+	stopOnUnportedShaderBytecode("js", descriptor);
+	let slot: ShaderSlot = {
+		vertex: NONE,
+		fragment: NONE,
+		compute: NONE,
+		isCompute: descriptor.computeCode != "",
+		vertexEntry: "",
+		fragmentEntry: "",
+		computeEntry: "",
+		uniformLayout: NONE,
+		resourceLayout: NONE,
+	};
+	for (let i = 0; i < descriptor.bindings.length; i++) {
+		const source = descriptor.bindings[i];
+		const kindName: string = source.kind;
+		if (kindName == "") { continue; }
+		const kind = bindingKind(kindName, "js");
+		const type = bindingType(source, kind);
+		const native: ShaderBinding = {
+			binding: source.binding,
+			kind: kind,
+			visibility: source.visibility,
+			bindingType: type,
+			viewDimension: bindingViewDimension(source.viewDimension),
+			storageFormat: kind == BindingKind.StorageTexture ? storageFormatOf(source.storageFormat, "GPUShaderBinding.storageFormat") : "",
+			size: source.size,
+			writable: (kind == BindingKind.StorageBuffer && type == "storage") || (kind == BindingKind.StorageTexture && type != "read-only"),
+		};
+		checkBinding(native, source.group);
+		if (kind == BindingKind.Uniform) {
+			slot.uniforms[slot.uniformCount] = native;
+			slot.uniformCount += 1;
+		} else {
+			slot.resources[slot.resourceCount] = native;
+			slot.resourceCount += 1;
+		}
+	}
+	if (slot.isCompute) {
+		slot.compute = createModule(descriptor.computeCode, descriptor.label);
+		slot.computeEntry = entryPoint(descriptor.computeEntryPoint);
+	} else {
+		slot.vertex = createModule(descriptor.vertexCode, descriptor.label);
+		slot.fragment = createModule(descriptor.fragmentCode, descriptor.label);
+		slot.vertexEntry = entryPoint(descriptor.vertexEntryPoint);
+		slot.fragmentEntry = entryPoint(descriptor.fragmentEntryPoint);
+	}
+	slot.uniformLayout = layoutOf(slot.uniforms, slot.uniformCount, descriptor.label);
+	slot.resourceLayout = layoutOf(slot.resources, slot.resourceCount, descriptor.label);
+	put(shaders, id, slot);
+}
+
+export function destroyShaderModule(module: GPUShaderModule): void {
+	vacate(shaders, module.id);
+}
+
+function pipelineLayoutOf(shader: ShaderSlot, label: string | null): Js {
+	const groups = jsList();
+	groups.push(shader.uniformLayout);
+	groups.push(shader.resourceLayout);
+	const descriptor = jsNew();
+	setObject(descriptor, "bindGroupLayouts", groups);
+	return device.createPipelineLayout(labelled(descriptor, label));
+}
+
+function stencilFace(face: GPUStencilFaceState, member: string): Js {
+	const native = jsNew();
+	setText(native, "compare", compareFunction(face.compare, `${member}.compare`));
+	setText(native, "failOp", stencilOperation(face.failOp, `${member}.failOp`));
+	setText(native, "depthFailOp", stencilOperation(face.depthFailOp, `${member}.depthFailOp`));
+	setText(native, "passOp", stencilOperation(face.passOp, `${member}.passOp`));
+	return native;
+}
+
+function vertexBuffers(descriptor: GPURenderPipelineDescriptor): Js {
+	const list = jsList();
+	let count = 0;
+	for (let b = 0; b < GPU_MAX_VERTEX_BUFFERS; b++) {
+		const layout = descriptor.vertex.buffers[b];
+		let used = layout.arrayStride != 0;
+		for (let a = 0; a < GPU_MAX_VERTEX_ATTRIBUTES; a++) {
+			const format: string = layout.attributes[a].format;
+			if (format != "") { used = true; }
+		}
+		if (used) { count = b + 1; }
+	}
+	for (let b = 0; b < count; b++) {
+		const layout = descriptor.vertex.buffers[b];
+		const attributes = jsList();
+		for (let a = 0; a < GPU_MAX_VERTEX_ATTRIBUTES; a++) {
+			const format: string = layout.attributes[a].format;
+			if (format == "") { continue; }
+			const attribute = jsNew();
+			setText(attribute, "format", vertexFormatNative(VERTEX_FORMATS, format, "vertex attribute format", "js"));
+			setNumber(attribute, "offset", layout.attributes[a].offset);
+			setNumber(attribute, "shaderLocation", layout.attributes[a].shaderLocation);
+			attributes.push(attribute);
+		}
+		const native = jsNew();
+		setNumber(native, "arrayStride", layout.arrayStride);
+		setText(native, "stepMode", stepMode(layout.stepMode));
+		setObject(native, "attributes", attributes);
+		list.push(layout.arrayStride == 0 && attributes.length == 0 ? NONE : native);
+	}
+	return list;
+}
+
+function blendComponent(component: GPUBlendComponent, member: string): Js {
+	const native = jsNew();
+	setText(native, "operation", blendOperation(component.operation, `${member}.operation`));
+	setText(native, "srcFactor", blendFactor(component.srcFactor, `${member}.srcFactor`));
+	setText(native, "dstFactor", destinationFactor(component.dstFactor, `${member}.dstFactor`));
+	return native;
+}
+
+function colorTargets(descriptor: GPURenderPipelineDescriptor): Js {
+	const list = jsList();
+	let count = 0;
+	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
+		const format: string = descriptor.fragment.targets[i].format;
+		if (format != "") { count = i + 1; }
+	}
+	for (let i = 0; i < count; i++) {
+		const target = descriptor.fragment.targets[i];
+		const format: string = target.format;
+		if (format == "") {
+			list.push(NONE);
+			continue;
+		}
+		const member = `fragment.targets[${i}].format`;
+		const info = formatInfo(target.format, member);
+		if (info.depth) { stopOnMember(member, format); }
+		const float32 = format == "r32float" || format == "rg32float" || format == "rgba32float";
+		if (float32 && target.blendEnabled && !hasFeature("float32-blendable")) {
+			stop(`fragment.targets[${i}] blends a ${format} target, which needs the device feature float32-blendable`);
+		}
+		const native = jsNew();
+		setText(native, "format", format);
+		setNumber(native, "writeMask", colorWriteBits(target.writeMask));
+		if (target.blendEnabled) {
+			const blend = jsNew();
+			setObject(blend, "color", blendComponent(target.blend.color, "blend.color"));
+			setObject(blend, "alpha", blendComponent(target.blend.alpha, "blend.alpha"));
+			setObject(native, "blend", blend);
+		}
+		list.push(native);
+	}
+	return list;
+}
+
+export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDescriptor): void {
+	const s = shaderRecords.slotIndex(descriptor.vertex.module.id);
+	checkedRenderModule(shaders[s].isCompute);
+	const native = jsNew();
+	setObject(native, "layout", pipelineLayoutOf(shaders[s], descriptor.label));
+	const vertex = jsNew();
+	setObject(vertex, "module", shaders[s].vertex);
+	setText(vertex, "entryPoint", shaders[s].vertexEntry);
+	setObject(vertex, "buffers", vertexBuffers(descriptor));
+	setObject(native, "vertex", vertex);
+	const primitive = jsNew();
+	setText(primitive, "topology", topologyNative(TOPOLOGIES, descriptor.primitive.topology, "primitive.topology", "js"));
+	const strip: string = descriptor.primitive.stripIndexFormat;
+	if (strip != "") { setText(primitive, "stripIndexFormat", indexFormat(descriptor.primitive.stripIndexFormat)); }
+	setText(primitive, "cullMode", cullMode(descriptor.primitive.cullMode));
+	setText(primitive, "frontFace", frontFace(descriptor.primitive.frontFace));
+	setObject(native, "primitive", primitive);
+	const depthFormat: string = descriptor.depthStencil.format;
+	if (depthFormat != "") {
+		const info = formatInfo(descriptor.depthStencil.format, "depthStencil.format");
+		if (!info.depth) { stopOnMember("depthStencil.format", depthFormat); }
+		const ds = descriptor.depthStencil;
+		const depth = jsNew();
+		setText(depth, "format", depthFormat);
+		setFlag(depth, "depthWriteEnabled", ds.depthWriteEnabled);
+		setText(depth, "depthCompare", compareFunction(ds.depthCompare, "depthStencil.depthCompare"));
+		setNumber(depth, "stencilReadMask", stencil8Mask(ds.stencilReadMask));
+		setNumber(depth, "stencilWriteMask", stencil8Mask(ds.stencilWriteMask));
+		setNumber(depth, "depthBias", ds.depthBias);
+		setNumber(depth, "depthBiasSlopeScale", ds.depthBiasSlopeScale);
+		setNumber(depth, "depthBiasClamp", ds.depthBiasClamp);
+		setObject(depth, "stencilFront", stencilFace(ds.stencilFront, "depthStencil.stencilFront"));
+		setObject(depth, "stencilBack", stencilFace(ds.stencilBack, "depthStencil.stencilBack"));
+		setObject(native, "depthStencil", depth);
+	}
+	const multisample = jsNew();
+	setNumber(multisample, "count", descriptor.multisample.count);
+	setObject(native, "multisample", multisample);
+	const targets = colorTargets(descriptor);
+	if (targets.length > 0) {
+		const fragment = jsNew();
+		setObject(fragment, "module", shaders[s].fragment);
+		setText(fragment, "entryPoint", shaders[s].fragmentEntry);
+		setObject(fragment, "targets", targets);
+		setObject(native, "fragment", fragment);
+	}
+	put(pipelines, id, { shader: descriptor.vertex.module.id, native: device.createRenderPipeline(labelled(native, descriptor.label)), compute: false });
+}
+
+export function createComputePipeline(id: uint32, descriptor: GPUComputePipelineDescriptor): void {
+	const s = shaderRecords.slotIndex(descriptor.compute.module.id);
+	const entry = entryPoint(descriptor.compute.entryPoint);
+	checkedComputeModule(shaders[s].isCompute, entry, shaders[s].computeEntry);
+	const native = jsNew();
+	setObject(native, "layout", pipelineLayoutOf(shaders[s], descriptor.label));
+	const stage = jsNew();
+	setObject(stage, "module", shaders[s].compute);
+	setText(stage, "entryPoint", shaders[s].computeEntry);
+	setObject(native, "compute", stage);
+	put(pipelines, id, { shader: descriptor.compute.module.id, native: device.createComputePipeline(labelled(native, descriptor.label)), compute: true });
+}
+
+export function destroyRenderPipeline(pipeline: GPURenderPipeline): void {
+	vacate(pipelines, pipeline.id);
+}
+
+function uniformEntrySize(shader: int32, entry: GPUBindGroupEntry): int64 {
+	for (let u = 0; u < shaders[shader].uniformCount; u++) {
+		const binding = shaders[shader].uniforms[u];
+		if (addressesBinding(GPU_UNIFORM_GROUP, entry.binding, binding.binding, BindingKind.Uniform)) {
+			return entry.size == 0 ? binding.size as int64 : entry.size;
+		}
+	}
+	stop(`bind group entry ${entry.binding} (Uniform) is not a binding of the pipeline's shader`);
+}
+
+function resourceIndex(shader: int32, group: int32, binding: int32): int32 {
+	for (let r = 0; r < shaders[shader].resourceCount; r++) {
+		const resource = shaders[shader].resources[r];
+		if (addressesBinding(group, binding, resource.binding, resource.kind)) { return r; }
+	}
+	return -1;
+}
+
+export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor): void {
+	const l = layoutRecords.slotIndex(descriptor.layout.id);
+	const group = layoutRecords.slots[l].group;
+	const shader = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(layoutRecords.slots[l].pipeline)].shader);
+	const entries = jsList();
+	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
+		const entry: GPUBindGroupEntry = descriptor.entries[i];
+		if (entry.buffer.id == 0 && entry.textureView.id == 0 && entry.sampler.id == 0) { continue; }
+		const native = jsNew();
+		setNumber(native, "binding", entry.binding);
+		if (entry.buffer.id != 0) {
+			const range = jsNew();
+			setObject(range, "buffer", buffers[bufferRecords.slotIndex(entry.buffer.id)].native);
+			setNumber(range, "offset", num(entry.offset));
+			setNumber(range, "size", num(group == GPU_UNIFORM_GROUP
+				? uniformEntrySize(shader, entry)
+				: entryBytes(entry, bufferRecords.slots[bufferRecords.slotIndex(entry.buffer.id)].size)));
+			setObject(native, "resource", range);
+		} else if (entry.textureView.id != 0) {
+			const v = viewRecords.slotIndex(entry.textureView.id);
+			const r = resourceIndex(shader, group, entry.binding);
+			if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.StorageTexture) {
+				const expected = shaders[shader].resources[r].viewDimension;
+				if (views[v].dimension != expected) {
+					stop(`bind group entry ${entry.binding}: the view dimension ${views[v].dimension} differs from the shader's ${expected}`);
+				}
+				setObject(native, "resource", views[v].native);
+			} else {
+				setObject(native, "resource", views[v].binding);
+			}
+		} else {
+			setObject(native, "resource", samplers[samplerRecords.slotIndex(entry.sampler.id)].native);
+		}
+		entries.push(native);
+	}
+	const native = jsNew();
+	setObject(native, "layout", group == GPU_UNIFORM_GROUP ? shaders[shader].uniformLayout : shaders[shader].resourceLayout);
+	setObject(native, "entries", entries);
+	put(bindGroups, id, { group: group, native: device.createBindGroup(labelled(native, descriptor.label)) });
+}
+
+export function destroyBindGroup(bindGroup: GPUBindGroup): void {
+	vacate(bindGroups, bindGroup.id);
+}
+
+export function createCommandEncoder(): GPUCommandEncoder {
+	if (!isNone(encoder)) { stop("wgpuDeviceCreateCommandEncoder: an encoder is already open"); }
+	encoder = device.createCommandEncoder();
+	return { id: 1 };
+}
+
+export function finish(commandEncoder: GPUCommandEncoder): GPUCommandBuffer {
+	commands = encoder.finish();
+	encoder = NONE;
+	return { id: 1 };
+}
+
+export function submit(submitted: GPUCommandBuffer): void {
+	queue.submit(commandList(commands));
+	commands = NONE;
+}
+
+function timestampWritesOf(writes: GPUPassTimestampWrites): Js {
+	const native = jsNew();
+	setObject(native, "querySet", querySets[querySetRecords.slotIndex(writes.querySet.id)].native);
+	if (writes.beginningOfPassWriteIndex >= 0) { setNumber(native, "beginningOfPassWriteIndex", writes.beginningOfPassWriteIndex); }
+	if (writes.endOfPassWriteIndex >= 0) { setNumber(native, "endOfPassWriteIndex", writes.endOfPassWriteIndex); }
+	return native;
+}
+
+export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {
+	passWidth = extent.width;
+	passHeight = extent.height;
+	const colors = jsList();
+	let count = 0;
+	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
+		if (descriptor.colorAttachments[i].view.id != 0) { count = i + 1; }
+	}
+	for (let i = 0; i < count; i++) {
+		const attachment = descriptor.colorAttachments[i];
+		if (attachment.view.id == 0) {
+			colors.push(NONE);
+			continue;
+		}
+		const v = viewRecords.slotIndex(attachment.view.id);
+		let resolve = views[v].swapchainResolve;
+		if (attachment.resolveTarget.id != 0) { resolve = views[viewRecords.slotIndex(attachment.resolveTarget.id)].native; }
+		const native = jsNew();
+		setObject(native, "view", views[v].native);
+		if (!isNone(resolve)) { setObject(native, "resolveTarget", resolve); }
+		if (views[v].dimension == "3d") { setNumber(native, "depthSlice", attachment.depthSlice); }
+		const color = jsNew();
+		setNumber(color, "r", attachment.clearValue.r);
+		setNumber(color, "g", attachment.clearValue.g);
+		setNumber(color, "b", attachment.clearValue.b);
+		setNumber(color, "a", attachment.clearValue.a);
+		setObject(native, "clearValue", color);
+		setText(native, "loadOp", loadOp(attachment.loadOp, i, "loadOp"));
+		setText(native, "storeOp", storeOp(attachment.storeOp, i, "storeOp"));
+		colors.push(native);
+	}
+	const pass = jsNew();
+	setObject(pass, "colorAttachments", colors);
+	const depthId = descriptor.depthStencilAttachment.view.id;
+	if (depthId != 0) {
+		const v = viewRecords.slotIndex(depthId);
+		const depth = descriptor.depthStencilAttachment;
+		const native = jsNew();
+		setObject(native, "view", views[v].native);
+		setText(native, "depthLoadOp", loadOp(depth.depthLoadOp, -1, "depthLoadOp"));
+		setText(native, "depthStoreOp", storeOp(depth.depthStoreOp, -1, "depthStoreOp"));
+		setNumber(native, "depthClearValue", depth.depthClearValue);
+		if (textures[textureRecords.slotIndex(viewRecords.slots[v].texture)].info.stencil) {
+			setText(native, "stencilLoadOp", loadOp(depth.stencilLoadOp, -1, "stencilLoadOp"));
+			setText(native, "stencilStoreOp", storeOp(depth.stencilStoreOp, -1, "stencilStoreOp"));
+			setNumber(native, "stencilClearValue", depth.stencilClearValue);
+		}
+		setObject(pass, "depthStencilAttachment", native);
+	}
+	if (descriptor.occlusionQuerySet.id != 0) {
+		setObject(pass, "occlusionQuerySet", querySets[querySetRecords.slotIndex(descriptor.occlusionQuerySet.id)].native);
+	}
+	if (descriptor.timestampWrites.querySet.id != 0) { setObject(pass, "timestampWrites", timestampWritesOf(descriptor.timestampWrites)); }
+	renderPass = encoder.beginRenderPass(labelled(pass, descriptor.label));
+	return { id: 1 };
+}
+
+export function endPass(): void {
+	renderPass.end();
+	renderPass = NONE;
+}
+
+export function setPipeline(pipeline: GPURenderPipeline): void {
+	renderPass.setPipeline(pipelines[pipelineRecords.slotIndex(pipeline.id)].native);
+}
+
+export function setVertexBuffer(slot: int32, buffer: GPUBuffer, offset: int64): void {
+	renderPass.setVertexBuffer(slot, buffers[bufferRecords.slotIndex(buffer.id)].native, num(offset));
+}
+
+export function setIndexBuffer(buffer: GPUBuffer, format: GPUIndexFormat, offset: int64): void {
+	renderPass.setIndexBuffer(buffers[bufferRecords.slotIndex(buffer.id)].native, indexFormat(format), num(offset));
+}
+
+function stageBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>, compute: boolean): void {
+	const target = compute ? computePass : renderPass;
+	if (bindGroup.id == 0) {
+		target.setBindGroup(index, NONE, jsList());
+		return;
+	}
+	const g = bindGroupRecords.slotIndex(bindGroup.id);
+	target.setBindGroup(index, bindGroups[g].native, offsetsOf(dynamicOffsets, bindGroupRecords.slots[g].dynamicCount));
+}
+
+export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
+	stageBindGroup(index, bindGroup, dynamicOffsets, false);
+}
+
+export function setScissorRect(x: int32, y: int32, width: int32, height: int32): void {
+	let left = x < 0 ? 0 : (x > passWidth - 1 ? passWidth - 1 : x);
+	let top = y < 0 ? 0 : (y > passHeight - 1 ? passHeight - 1 : y);
+	let w = width;
+	let h = height;
+	if (left + w > passWidth) { w = passWidth - left; }
+	if (top + h > passHeight) { h = passHeight - top; }
+	if (w < 1) { w = 1; }
+	if (h < 1) { h = 1; }
+	renderPass.setScissorRect(left, top, w, h);
+}
+
+export function setViewport(x: float32, y: float32, width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
+	renderPass.setViewport(x, y, width, height, minDepth, maxDepth);
+}
+
+export function setBlendConstant(color: GPUColor): void {
+	const native = jsNew();
+	setNumber(native, "r", color.r);
+	setNumber(native, "g", color.g);
+	setNumber(native, "b", color.b);
+	setNumber(native, "a", color.a);
+	renderPass.setBlendConstant(native);
+}
+
+export function setStencilReference(reference: uint32): void {
+	renderPass.setStencilReference(reference);
+}
+
+export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
+	renderPass.draw(vertexCount, instanceCount, firstVertex, firstInstance);
+}
+
+export function drawIndexed(indexCount: int32, instanceCount: int32, firstIndex: int32, baseVertex: int32, firstInstance: int32): void {
+	renderPass.drawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
+}
+
+export function multiDrawIndexedIndirect(buffer: GPUBuffer, offset: int64, drawCount: int32): void {
+	const native = buffers[slotOf(buffer.id)].native;
+	for (let i = 0; i < drawCount; i++) {
+		renderPass.drawIndexedIndirect(native, num(offset + (i as int64) * GPU_DRAW_INDEXED_INDIRECT_STRIDE));
+	}
+}
+
+function copyableTexture(info: GPUTexelCopyTextureInfo, member: string): int32 {
+	const index = textureRecords.slotIndex(info.texture.id);
+	if (textureRecords.slots[index].swapchainView != 0) { stop(`${member}: the swapchain texture belongs to the platform`); }
+	return index;
+}
+
+function texelFormatOf(index: int32, member: string, writes: boolean, copy: GPUTexelCopyTextureInfo, size: GPUExtent3D): TextureFormatFacts {
+	const info = textures[index].info;
+	if (info.depth) {
+		const record = textureRecords.slots[index];
+		checkedDepthTexelCopy(member, record.id, record.format, info.stencil, writes, record.width, record.height, copy.mipLevel, size);
+	}
+	return info;
+}
+
+@noinline function checkedBufferLayout(member: string, bytesPerPixel: int32, slot: int32, info: GPUTexelCopyBufferInfo, size: GPUExtent3D): int32 {
+	if (info.offset % 4 != 0) { stop(`${member}.offset ${info.offset} is not a multiple of 4`); }
+	return checkedTexelBufferLayout(member, bytesPerPixel, bufferRecords.slots[slot].size, info, size);
+}
+
+function copyTexture(info: GPUTexelCopyTextureInfo, index: int32): Js {
+	const native = jsNew();
+	setObject(native, "texture", textures[index].native);
+	setNumber(native, "mipLevel", info.mipLevel);
+	setObject(native, "origin", extent3(info.origin.x, info.origin.y, info.origin.z));
+	return native;
+}
+
+function copyBuffer(info: GPUTexelCopyBufferInfo, slot: int32, bytesPerRow: int32, size: GPUExtent3D): Js {
+	const native = jsNew();
+	setObject(native, "buffer", buffers[slot].native);
+	setNumber(native, "offset", num(info.offset));
+	setNumber(native, "bytesPerRow", bytesPerRow);
+	setNumber(native, "rowsPerImage", info.rowsPerImage == 0 ? size.height : info.rowsPerImage);
+	return native;
+}
+
+export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
+	encoder.copyBufferToBuffer(
+		buffers[bufferRecords.slotIndex(source.id)].native,
+		num(sourceOffset),
+		buffers[bufferRecords.slotIndex(destination.id)].native,
+		num(destinationOffset),
+		num(size),
+	);
+}
+
+export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
+	const from = bufferRecords.slotIndex(source.buffer.id);
+	const to = copyableTexture(destination, "copyBufferToTexture destination");
+	const info = texelFormatOf(to, "copyBufferToTexture destination", true, destination, size);
+	const bytesPerRow = checkedBufferLayout("copyBufferToTexture source", info.bytesPerPixel, from, source, size);
+	encoder.copyBufferToTexture(copyBuffer(source, from, bytesPerRow, size), copyTexture(destination, to), extent3(size.width, size.height, size.depthOrArrayLayers));
+}
+
+export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
+	const from = copyableTexture(source, "copyTextureToBuffer source");
+	const to = bufferRecords.slotIndex(destination.buffer.id);
+	const info = texelFormatOf(from, "copyTextureToBuffer source", false, source, size);
+	const bytesPerRow = checkedBufferLayout("copyTextureToBuffer destination", info.bytesPerPixel, to, destination, size);
+	encoder.copyTextureToBuffer(copyTexture(source, from), copyBuffer(destination, to, bytesPerRow, size), extent3(size.width, size.height, size.depthOrArrayLayers));
+}
+
+export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
+	const from = copyableTexture(source, "copyTextureToTexture source");
+	const to = copyableTexture(destination, "copyTextureToTexture destination");
+	encoder.copyTextureToTexture(copyTexture(source, from), copyTexture(destination, to), extent3(size.width, size.height, size.depthOrArrayLayers));
+}
+
+export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, length: int64): void {
+	stop("mapAsync is not ported to js: GPUBuffer.mapAsync returns a Promise the event loop settles later, and this surface maps synchronously");
+}
+
+export function getMappedRange(buffer: GPUBuffer, offset: int64, length: int64): Vec<uint8> {
+	stop("getMappedRange is not ported to js: it needs mapAsync");
+}
+
+export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
+	stop("writeMappedRange is not ported to js: it needs mapAsync");
+}
+
+export function beginComputePass(passEncoder: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
+	const pass = jsNew();
+	if (descriptor.timestampWrites.querySet.id != 0) { setObject(pass, "timestampWrites", timestampWritesOf(descriptor.timestampWrites)); }
+	computePass = encoder.beginComputePass(labelled(pass, descriptor.label));
+	return { id: 1 };
+}
+
+export function setComputePipeline(pipeline: GPUComputePipeline): void {
+	computePass.setPipeline(pipelines[pipelineRecords.slotIndex(pipeline.id)].native);
+}
+
+export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
+	stageBindGroup(index, bindGroup, dynamicOffsets, true);
+}
+
+export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
+	computePass.dispatchWorkgroups(x, y, z);
+}
+
+export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void {
+	computePass.dispatchWorkgroupsIndirect(buffers[slotOf(buffer.id)].native, num(offset));
+}
+
+export function endComputePass(): void {
+	computePass.end();
+	computePass = NONE;
+}
+
+export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
+	const kind: string = descriptor.type;
+	const native = jsNew();
+	setText(native, "type", kind == "timestamp" ? "timestamp" : "occlusion");
+	setNumber(native, "count", descriptor.count);
+	put(querySets, id, { native: device.createQuerySet(labelled(native, descriptor.label)) });
+}
+
+export function destroyQuerySet(querySet: GPUQuerySet): void {
+	querySets[querySetRecords.slotIndex(querySet.id)].native.destroy();
+	vacate(querySets, querySet.id);
+}
+
+export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryCount: int32, destination: GPUBuffer, destinationOffset: int64): void {
+	encoder.resolveQuerySet(
+		querySets[querySetRecords.slotIndex(querySet.id)].native,
+		firstQuery,
+		queryCount,
+		buffers[bufferRecords.slotIndex(destination.id)].native,
+		num(destinationOffset),
+	);
+}
+
+export function beginOcclusionQuery(queryIndex: int32): void {
+	renderPass.beginOcclusionQuery(queryIndex);
+}
+
+export function endOcclusionQuery(): void {
+	renderPass.endOcclusionQuery();
+}
+
+function debugTarget(): Js {
+	if (!isNone(renderPass)) { return renderPass; }
+	if (!isNone(computePass)) { return computePass; }
+	return encoder;
+}
+
+export function pushDebugGroup(label: string): void { debugTarget().pushDebugGroup(label); }
+
+export function popDebugGroup(): void { debugTarget().popDebugGroup(); }
+
+export function insertDebugMarker(label: string): void { debugTarget().insertDebugMarker(label); }
+
+export function limits(): GPUSupportedLimits {
+	const l = limitsOf(device);
+	return {
+		maxTextureDimension1D: limitInt(l, "maxTextureDimension1D"),
+		maxTextureDimension2D: limitInt(l, "maxTextureDimension2D"),
+		maxTextureDimension3D: limitInt(l, "maxTextureDimension3D"),
+		maxTextureArrayLayers: limitInt(l, "maxTextureArrayLayers"),
+		maxBindGroups: Math.min(limitInt(l, "maxBindGroups"), GPU_RESOURCE_GROUP + 1),
+		maxSampledTexturesPerShaderStage: Math.min(limitInt(l, "maxSampledTexturesPerShaderStage"), GPU_MAX_BIND_GROUP_ENTRIES),
+		maxSamplersPerShaderStage: Math.min(limitInt(l, "maxSamplersPerShaderStage"), GPU_MAX_BIND_GROUP_ENTRIES),
+		maxStorageBuffersPerShaderStage: Math.min(limitInt(l, "maxStorageBuffersPerShaderStage"), GPU_MAX_BIND_GROUP_ENTRIES),
+		maxStorageTexturesPerShaderStage: Math.min(limitInt(l, "maxStorageTexturesPerShaderStage"), GPU_MAX_BIND_GROUP_ENTRIES),
+		maxUniformBuffersPerShaderStage: Math.min(limitInt(l, "maxUniformBuffersPerShaderStage"), GPU_MAX_UNIFORM_BLOCKS),
+		maxUniformBufferBindingSize: limitBig(l, "maxUniformBufferBindingSize"),
+		maxStorageBufferBindingSize: limitBig(l, "maxStorageBufferBindingSize"),
+		maxVertexBuffers: Math.min(limitInt(l, "maxVertexBuffers"), GPU_MAX_VERTEX_BUFFERS),
+		maxVertexAttributes: Math.min(limitInt(l, "maxVertexAttributes"), GPU_MAX_VERTEX_ATTRIBUTES),
+		maxColorAttachments: Math.min(limitInt(l, "maxColorAttachments"), GPU_MAX_COLOR_ATTACHMENTS),
+		maxComputeWorkgroupSizeX: limitInt(l, "maxComputeWorkgroupSizeX"),
+		maxComputeWorkgroupSizeY: limitInt(l, "maxComputeWorkgroupSizeY"),
+		maxComputeWorkgroupSizeZ: limitInt(l, "maxComputeWorkgroupSizeZ"),
+		maxComputeInvocationsPerWorkgroup: limitInt(l, "maxComputeInvocationsPerWorkgroup"),
+		maxComputeWorkgroupsPerDimension: limitInt(l, "maxComputeWorkgroupsPerDimension"),
+		minUniformBufferOffsetAlignment: limitInt(l, "minUniformBufferOffsetAlignment"),
+		minStorageBufferOffsetAlignment: limitInt(l, "minStorageBufferOffsetAlignment"),
+	};
+}
+
+const FEATURE_NAMES: GPUFeatureName[] = [
+	"timestamp-query",
+	"texture-compression-bc",
+	"texture-compression-etc2",
+	"texture-compression-astc",
+	"depth32float-stencil8",
+	"depth-clip-control",
+	"float32-filterable",
+	"float32-blendable",
+	"rg11b10ufloat-renderable",
+	"bgra8unorm-storage",
+	"indirect-first-instance",
+	"shader-f16",
+	"dual-source-blending",
+];
+
+export function features(): GPUSupportedFeatures {
+	let bits: uint32 = 0;
+	for (const name of FEATURE_NAMES) {
+		if (hasFeature(name)) { bits = bits | featureBit(name); }
+	}
+	return { bits: bits };
+}

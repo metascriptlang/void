@@ -77,7 +77,7 @@ float voidSafeAreaRight(void);
 // pixels; 0 when it is hidden or floating, and on drivers that have none. Resized follows a change.
 float voidKeyboardHeight(void);
 
-// What sokol_app offers beyond events (src/host/appWindow.c over the window drivers: Windows,
+// What sokol_app offers beyond events (src/host/appWindow.ms over the window drivers: Windows,
 // the browser and Linux). A feature a driver has not ported aborts naming the feature and the
 // platform. Every call needs the window to exist, so make it from the handler or after init.
 // voidRequestQuit sends QuitRequested to the handler on the next frame, and voidCancelQuit
@@ -117,16 +117,7 @@ int voidDroppedFileCount(void);
 void voidSetTextInput(int on);
 void voidSetImeRect(int x, int y, int w, int h);
 
-typedef int VoidViewId;
 void voidEmbedRegister(msClosure init, msClosure frame);
-void voidViewsSetSampleCount(int count);
-VoidViewId voidViewCreate(long long native, int w, int h, float scale);
-void voidViewResize(VoidViewId v, int w, int h, float scale);
-int voidViewReady(VoidViewId v);
-int voidViewFrame(VoidViewId v);
-void voidViewDestroy(VoidViewId v);
-long long voidViewSwapChain(VoidViewId v);
-VoidViewId voidCurrentView(void);
 void voidEmbedSetMessagePump(msClosure pump);
 void voidEmbedPumpMessages(void);
 
@@ -157,9 +148,5 @@ int voidKeyDown(int keycode);
 // Resource creation — door ids (0 = invalid).
 uint32_t voidMakeImage(const void *rgba, int w, int h);
 uint32_t voidMakeView(uint32_t image);
-
-// Frame sequence.
-void voidSetCommitHook(void (*fn)(void));
-void voidSetPresentHook(void (*fn)(int begin));
 
 #endif

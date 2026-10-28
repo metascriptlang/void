@@ -181,11 +181,11 @@ A Material has one or more Passes. Each Pass has render state + a list of shader
 
 ```typescript
 // Void approach: direct loading, no VFS abstraction
-const tex = loadImageSync("assets/player.png", 4);   // stb_image via C bridge — DONE
+const tex = loadImageFile("assets/player.png");      // shared MetaScript PNG/JPEG decoder — DONE
 const mesh = loadMesh("assets/level.gltf");            // TODO — mesh loaders not yet built
 ```
 
-Direct file loading is the current path (`src/assets/image.{h,c,ms}`). Add a VFS abstraction only when prod packaging needs it (embed, pak archives).
+Direct file loading is the current path (`src/assets/imageFile.ms` over `image.ms`). Add a VFS abstraction only when prod packaging needs it (embed, pak archives).
 
 ### Supported formats — CURRENT STATE
 

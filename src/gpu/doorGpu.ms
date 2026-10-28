@@ -62,7 +62,7 @@ import {
 	voidSwapchainResolveView,
 	voidSwapchainSampleCount,
 	voidSwapchainWidth,
-} from "../platform/swapchain.h";
+} from "../platform/swapchainFrame";
 import "../host/gpu";
 import { stop } from "./stop";
 import {
@@ -79,7 +79,7 @@ import {
 	timerState,
 } from "./gpuTimer";
 import { Feature, featureSetup, requireFeature } from "./feature";
-import { Vec4 } from "../math/math3d";
+import { Vec4 } from "../math/vec4";
 import {
 	Blend,
 	Compare,
@@ -98,7 +98,7 @@ import {
 	DOOR_BINDING_SAMPLER,
 	DOOR_BINDING_VERTEX_BUFFER,
 	DOOR_BINDING_VIEW,
-} from "./doorWords.h";
+} from "./doorWords.ms";
 
 export const DOOR_UNIFORM_SLOTS: int32 = 8;
 export const DOOR_MAX_COLOR_ATTACHMENTS: int32 = 4;
@@ -140,7 +140,6 @@ export enum StoreAction {
 	DontCare,
 }
 
-// The ordinals are door.h's DOOR_PASS_NONE, DOOR_PASS_TARGET and DOOR_PASS_SCREEN.
 export enum PassState {
 	None,
 	Target,
@@ -268,7 +267,6 @@ let dataImages: Vec<DataImage> = [];
 // before a new setup are stale, which doorContextGeneration tells the layers above. It starts at
 // 1 and only a setup after the first moves it, as bridgeWin.c and bridgeWeb.c counted, so 0 stays
 // the generation nothing current carries.
-@exportName("doorSetup")
 export function doorSetup(
 	nativeDevice: Ptr<void> | null,
 	nativeContext: Ptr<void> | null,
@@ -312,7 +310,6 @@ export function doorSetup(
 	everSetUp = true;
 }
 
-@exportName("doorShutdown")
 export function doorShutdown(): void {
 	if (device.id == 0) { return; }
 	device.destroy();
@@ -321,7 +318,7 @@ export function doorShutdown(): void {
 	resetStats();
 }
 
-// sokol's sg_frame_stats, the members frameClock.c reads: counted through a frame and handed
+// sokol's sg_frame_stats, the members frameClock.ms reads: counted through a frame and handed
 // over at commit as the previous frame's (sokol_gfx.h _sg_update_stats). The first
 // DOOR_STAT_PER_FRAME_COUNT are those per-frame counts; the DOOR_STAT_RESIDENT_* after them are
 // the bytes alive now, never reset per frame, and read live rather than from the previous frame.
@@ -342,7 +339,6 @@ export const DOOR_STAT_COUNT: int32 = 11;
 let frameStats: int64[DOOR_STAT_COUNT] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 let lastFrameStats: int64[DOOR_STAT_COUNT] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
-@exportName("doorFrameStat")
 export function doorFrameStat(which: int32): int64 {
 	if (which < 0 || which >= DOOR_STAT_COUNT) {
 		stop("no frame stat " + String(which) + ", the door counts " + String(DOOR_STAT_COUNT));
@@ -445,10 +441,8 @@ function makeBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 	return buffer;
 }
 
-@exportName("doorValid")
 export function doorValid(): int32 { return device.id != 0 ? 1 : 0; }
 
-@exportName("doorContextGeneration")
 export function doorContextGeneration(): int32 { return generation; }
 
 // ---- registries ----
@@ -1047,7 +1041,6 @@ export function doorMakeArrayAttachmentView(image: uint32, layer: int32): uint32
 	}).id;
 }
 
-@exportName("doorMakeTextureView")
 export function doorMakeTextureView(image: uint32): uint32 {
 	const texture: GPUTexture = { id: image };
 	if (cubeImages.includes(image)) {
@@ -1059,7 +1052,6 @@ export function doorMakeTextureView(image: uint32): uint32 {
 	return texture.createView({ label: "makeTextureView" }).id;
 }
 
-@exportName("doorMakeSampler")
 export function doorMakeSampler(filter: int32, wrap: int32): uint32 {
 	const f = FILTERS[filter as FilterMode as int32];
 	const w = WRAPS[wrap as Wrap as int32];
@@ -1100,13 +1092,11 @@ export function doorMakeSamplerEx(
 	}).id;
 }
 
-@exportName("doorImageAlive")
 export function doorImageAlive(image: uint32): int32 {
 	const texture: GPUTexture = { id: image };
 	return texture.isAlive() ? 1 : 0;
 }
 
-@exportName("doorViewAlive")
 export function doorViewAlive(view: uint32): int32 {
 	const textureView: GPUTextureView = { id: view };
 	return textureView.isAlive() ? 1 : 0;
@@ -1138,7 +1128,6 @@ export function doorDestroyPipeline(pipeline: uint32): void {
 	}
 }
 
-@exportName("doorDestroyImage")
 export function doorDestroyImage(image: uint32): void {
 	if (image == 0) { return; }
 	const cube = cubeImages.indexOf(image);
@@ -1152,14 +1141,12 @@ export function doorDestroyImage(image: uint32): void {
 	texture.destroy();
 }
 
-@exportName("doorDestroyView")
 export function doorDestroyView(view: uint32): void {
 	if (view == 0) { return; }
 	const textureView: GPUTextureView = { id: view };
 	textureView.destroy();
 }
 
-@exportName("doorDestroySampler")
 export function doorDestroySampler(sampler: uint32): void {
 	if (sampler == 0) { return; }
 	const handle: GPUSampler = { id: sampler };
@@ -1178,7 +1165,6 @@ function alignedToFour(bytes: int64): int64 {
 }
 
 // `data` empty makes a buffer of `size` bytes to fill later; otherwise the buffer is `data`.
-@exportName("doorMakeBuffer")
 export function doorMakeBuffer(usage: int32, data: Readonly<Span<uint8>>, size: int64): uint32 {
 	const bytes = data.length > 0 ? data.length as int64 : size;
 	if (bytes <= 0) { return 0; }
@@ -1232,11 +1218,6 @@ export function doorUpdateBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int3
 	return 1;
 }
 
-@exportName("doorUpdateBuffer")
-export function doorUpdateBuffer(id: uint32, data: Readonly<Span<uint8>>): int32 {
-	return doorUpdateBufferOf(id, data);
-}
-
 function appendCursorOf(buffer: uint32): int32 {
 	for (let i = 0; i < appendCursors.length; i++) {
 		if (appendCursors[i].buffer == buffer) { return i as int32; }
@@ -1266,12 +1247,6 @@ export function doorAppendBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int6
 	return offset;
 }
 
-@exportName("doorAppendBuffer")
-export function doorAppendBuffer(id: uint32, data: Readonly<Span<uint8>>): int64 {
-	return doorAppendBufferOf(id, data);
-}
-
-@exportName("doorDestroyBuffer")
 export function doorDestroyBuffer(id: uint32): void {
 	if (id == 0) { return; }
 	untrackBuffer(id);
@@ -1281,7 +1256,6 @@ export function doorDestroyBuffer(id: uint32): void {
 	if (at >= 0) { appendCursors.splice(at, 1); }
 }
 
-@exportName("doorBufferAlive")
 export function doorBufferAlive(id: uint32): int32 {
 	const buffer: GPUBuffer = { id };
 	return buffer.isAlive() ? 1 : 0;
@@ -1294,7 +1268,6 @@ export function doorBufferSize(id: uint32): int64 {
 }
 
 // A sampled texture of PixelFormat `format`; `data` empty leaves it to doorUpdateTexture.
-@exportName("doorMakeTexture")
 export function doorMakeTexture(
 	width: int32,
 	height: int32,
@@ -1315,7 +1288,6 @@ export function doorMakeTexture(
 }
 
 // sokol's sg_update_image: the whole texture, `data` exactly its rows.
-@exportName("doorUpdateTexture")
 export function doorUpdateTexture(id: uint32, data: Readonly<Span<uint8>>): void {
 	doorUpdateTextureOf(id, data);
 }
@@ -1342,7 +1314,6 @@ export function doorUpdateTextureOf<T>(id: uint32, data: Readonly<Span<T>>): voi
 
 // A partial sampled-texture write: `data` starts at the rectangle's first texel and holds rows
 // `bytesPerRow` apart, the last one only as far as the rectangle's width.
-@exportName("doorUpdateTextureRect")
 export function doorUpdateTextureRect(
 	id: uint32,
 	x: int32,
@@ -1375,14 +1346,12 @@ export function doorTextureHeight(id: uint32): int32 {
 	return texture.height();
 }
 
-@exportName("doorViewImage")
 export function doorViewImage(view: uint32): uint32 {
 	const textureView: GPUTextureView = { id: view };
 	return textureView.isAlive() ? textureView.texture().id : 0;
 }
 
 // sokol's sg_query_image_usage(sg_query_view_image(view)).color_attachment.
-@exportName("doorViewIsColorAttachment")
 export function doorViewIsColorAttachment(view: uint32): int32 {
 	const image = doorViewImage(view);
 	if (image == 0) { return 0; }
@@ -1394,7 +1363,6 @@ export function doorViewIsColorAttachment(view: uint32): int32 {
 
 // ---- draw ----
 
-@exportName("doorApplyPipeline")
 export function doorApplyPipeline(pipeline: uint32): void {
 	stopInComputePass("applyPipeline");
 	frameStats[DOOR_STAT_PIPELINES]++;
@@ -1521,7 +1489,6 @@ export function doorStorageGroup(
 }
 
 // `vertexOffsets` are sokol's vertex_buffer_offsets, in bytes.
-@exportName("doorApplyBindings")
 export function doorApplyBindings(
 	bindings: Readonly<Span<uint32>>,
 	vertexOffsets: Readonly<Span<int32>>,
@@ -1553,11 +1520,6 @@ export function doorApplyBindings(
 		key.samplers[i] = bindings[DOOR_BINDING_SAMPLER + i];
 	}
 	pass.setBindGroup(GPU_RESOURCE_GROUP, resourceGroup(key), []);
-}
-
-@exportName("doorApplyUniforms")
-export function doorApplyUniforms(slot: int32, data: Readonly<Span<uint8>>): void {
-	doorApplyUniformsOf(slot, data);
 }
 
 export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): void {
@@ -1595,7 +1557,6 @@ function requireAppliedBlocks(): void {
 	}
 }
 
-@exportName("doorDraw")
 export function doorDraw(base: int32, count: int32, instances: int32): void {
 	stopInComputePass("draw");
 	frameStats[DOOR_STAT_DRAWS]++;
@@ -1616,7 +1577,6 @@ export function doorDrawIndirect(buffer: uint32, offset: int64, drawCount: int32
 	pass.multiDrawIndexedIndirect({ id: buffer }, offset, drawCount);
 }
 
-@exportName("doorApplyScissor")
 export function doorApplyScissor(x: int32, y: int32, width: int32, height: int32): void {
 	stopInComputePass("applyScissor");
 	const left = Math.min(Math.max(x, 0), passWidth);
@@ -1685,7 +1645,6 @@ function readTexture(
 	return 1;
 }
 
-@exportName("doorReadTexture")
 export function doorReadTexture(
 	image: uint32,
 	x: int32,
@@ -1713,7 +1672,6 @@ function swapchainTexture(): GPUTexture {
 }
 
 // The screen pass's color target as of the last frame that drew it: the whole swapchain buffer.
-@exportName("doorReadScreen")
 export function doorReadScreen(out: Span<uint8>): int32 {
 	return readTexture(
 		swapchainTexture(),
@@ -1906,7 +1864,6 @@ export function doorBeginPass(
 	current = -1;
 }
 
-@exportName("doorBeginColorPass")
 export function doorBeginColorPass(
 	view: uint32,
 	red: float32,
@@ -1936,7 +1893,6 @@ export function doorBeginColorPass(
 	current = -1;
 }
 
-@exportName("doorBeginScreenPass")
 export function doorBeginScreenPass(
 	red: float32,
 	green: float32,
@@ -1972,7 +1928,6 @@ export function doorBeginScreenPass(
 	current = -1;
 }
 
-@exportName("doorEndPass")
 export function doorEndPass(): void {
 	if (openPass == PassState.None) { stop("endPass with no pass open"); }
 	stopInComputePass("endPass");
@@ -1982,18 +1937,14 @@ export function doorEndPass(): void {
 	current = -1;
 }
 
-@include("./bridgeCommit.h");
-extern function voidCommit(): void;
+import { frameEnd } from "./frameCommit";
 
-// The frame's end as the door's contract has it: the bridge's voidCommit submits through
-// doorSubmitFrame, then runs the commit hook and presents.
-@exportName("doorCommit")
+// The frame's end as the door's contract has it: submit, then the registered hooks and the present.
 export function doorCommit(): void {
-	stopOnOpenPass("commit");
-	voidCommit();
+	doorSubmitFrame();
+	frameEnd();
 }
 
-@exportName("doorSubmitFrame")
 export function doorSubmitFrame(): void {
 	stopOnOpenPass("commit");
 	if (timerState() == GPU_TIMER_ON) { timerFrameEnd(frameEncoder()); }
@@ -2004,7 +1955,6 @@ export function doorSubmitFrame(): void {
 	endFrameStats();
 }
 
-@exportName("doorPassState")
 export function doorPassState(): int32 { return openPass as int32; }
 
 export function doorPassAttachesView(view: uint32): boolean {
@@ -2067,7 +2017,6 @@ export function doorLiveSamplers(): int32 { return device.liveCounts().samplers;
 export function doorLiveShaders(): int32 { return device.liveCounts().shaderModules; }
 export function doorLivePipelines(): int32 { return device.liveCounts().pipelines; }
 
-@exportName("doorOriginTopLeft")
 export function doorOriginTopLeft(): int32 { return device.getAdapterInfo().originTopLeft ? 1 : 0; }
 export function doorDepthZeroToOne(): boolean { return device.getAdapterInfo().depthZeroToOne; }
 
@@ -2083,7 +2032,7 @@ test "door tables hold one entry per member of the enum that indexes them" {
 	assert STORE_OPS.length as int32 == (StoreAction.DontCare as int32) + 1;
 }
 
-test "the binding words of door.h agree with the slot counts" {
+test "the binding words of doorWords.ms agree with the slot counts" {
 	assert VIEW_SLOTS == DOOR_BINDING_SAMPLER - DOOR_BINDING_VIEW;
 	assert SAMPLER_SLOTS == DOOR_BINDING_LENGTH - DOOR_BINDING_SAMPLER;
 	assert DOOR_BINDING_INDEX_BUFFER == GPU_MAX_VERTEX_BUFFERS;
@@ -2104,7 +2053,7 @@ test "doorFrameStat answers each stat from its own slot of the previous frame" {
 	resetStats();
 }
 
-test "the door's ordinals stay the numbers door.h gives the C layers" {
+test "the door ordinals stay the numbers the C layers use" {
 	assert (PixelFormat.None as int32) == 0;
 	assert (PixelFormat.Rgba8 as int32) == 2;
 	assert (PixelFormat.Depth as int32) == 3;

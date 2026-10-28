@@ -72,7 +72,7 @@ python tests/fonts/colourEmoji.py NotoColorEmoji.ttf   # rewrites the faces abov
 The generator pins `head.created` and `head.modified`, so a re-run is byte-identical.
 
 `cmap/*.ttf` and `cmap/*.ttc` are byte-built sfnt files with a hand-assembled `cmap` and
-placeholder tables, for the sfnt peek (`src/void2d/sfnt.c`): a control per format, cmaps whose
+placeholder tables, for the sfnt peek (`src/void2d/sfnt.ms`): a control per format, cmaps whose
 offsets, counts or length run outside their table, truncated cmaps, and a directory entry or
 collection offset that wraps 32 bits (`src/test/sfntBoundsCheck.ms`); one font per cmap format
 (0, 4, 6, 12, 13 and two it does not read), per record order that decides which subtable is

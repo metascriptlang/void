@@ -15,7 +15,7 @@ import {
 	NO_GLYPH_PAGE,
 	beginUploadFrame,
 } from "../void2d/glyphAtlas";
-import { void2dGlyphPageCreate, void2dGlyphPageRelease } from "../void2d/glyph.h";
+import { void2dGlyphPageCreate, void2dGlyphPageRelease } from "../void2d/glyph";
 
 let loadedFace: int32 = -1;
 

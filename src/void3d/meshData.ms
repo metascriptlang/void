@@ -13,29 +13,13 @@
 // arrays**. Reach one through its table by index (`context.meshData[i].bounds`) or take it by
 // `ref`; never `const data: MeshData = table[i]` (CODE-STYLE §5, the copy trap).
 
-@include("mikkTangents.h");
-@compile("./mikkTangents.c");
-
-extern function void3dMikkTangents(
-	vertices: Readonly<Span<float32>>,
-	stride: int32,
-	indices: Readonly<Span<uint16>>,
-	corners: Span<float32>,
-): int32;
-
-extern function void3dMikkTangents32(
-	vertices: Readonly<Span<float32>>,
-	stride: int32,
-	indices: Readonly<Span<uint32>>,
-	corners: Span<float32>,
-): int32;
-
 import { Vec3, vec3 } from "../math/math3d";
 import { sinf, cosf } from "../math/mat4";
 import { Bounds3D, addPoint } from "./bounds";
 import { Ray } from "./ray";
 import { Face } from "../gpu/state";
 import { MAX_SKIN_PALETTE_JOINTS } from "./skinPalette";
+import { mikkTangents, mikkTangents32 } from "./mikkTangents";
 
 // position(3) + normal(3) + rgba(4), the `Lit` vertex layout in vertexLayouts.ms.
 export const LIT_VERTEX_STRIDE: int32 = 10;
@@ -417,10 +401,7 @@ export function addTangentsWithSources(
 		}
 	}
 	let corners: Vec<float32> = new Array(cornerCount * 4);
-	if (data.mikkCorners(corners) == 0) {
-		console.log("void3d: addTangents: MikkTSpace could not allocate its working arrays");
-		unreachable;
-	}
+	data.mikkCorners(corners);
 	const indexed: boolean = data.isIndexed();
 	let tangents: Vec<float32> = new Array(count * 4);
 	let filled: Vec<uint8> = new Array(count);
@@ -477,13 +458,12 @@ export function addTangentsWithSources(
 	return Result.ok(total);
 }
 
-function mikkCorners(this data: Readonly<MeshData>, corners: Span<float32>): int32 {
+function mikkCorners(this data: Readonly<MeshData>, corners: Span<float32>): void {
 	if (data.wideIndices !== null) {
-		return void3dMikkTangents32(
-			data.vertices, LIT_TEXTURED_VERTEX_STRIDE, data.wideIndices, corners,
-		);
+		mikkTangents32(data.vertices, LIT_TEXTURED_VERTEX_STRIDE, data.wideIndices, corners);
+		return;
 	}
-	return void3dMikkTangents(data.vertices, LIT_TEXTURED_VERTEX_STRIDE, data.indices, corners);
+	mikkTangents(data.vertices, LIT_TEXTURED_VERTEX_STRIDE, data.indices, corners);
 }
 
 function sameTangent(
