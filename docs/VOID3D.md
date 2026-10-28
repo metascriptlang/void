@@ -6878,7 +6878,8 @@ transform is refused.
 Pinned on the CPU in `litShaderCheck.ms` (frame walk, wrap, hold, start frame and time, blend)
 and `rendererCheck.ms` (wake). Making a non-looping flipbook loop turns the hold test red.
 
-Next: a GPU readback of a two-frame flipbook, which waits on its own GO.
+`tests/integration/movingMaterial.ms` reads back a two-frame flipbook with and without the
+blend in both presets, GPU-green on D3D11; the featureless control fails on each.
 
 ### Distance fade: Heaps' DistanceFade, as built (2026-10-28)
 
@@ -6898,7 +6899,8 @@ carries it beside the flipbook, in the moving block of a UV-transform key (`gpu3
 - The fade shows only through blending, as in Heaps: draw the material in the alpha phase.
 
 Pinned in `litShaderCheck.ms` (both sides, empty pairs) and `programKeyCheck.ms` (the refusal,
-and no refusal for an empty pair).
+and no refusal for an empty pair). `movingMaterial.ms` reads back a quad inside a near fade at
+about half alpha in both presets, GPU-green on D3D11; the featureless control draws it opaque.
 
 ### Trail: CPU history and ribbon checkpoint
 
