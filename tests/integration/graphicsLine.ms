@@ -1,8 +1,7 @@
 import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
 import { Vec4, vec3, identity } from "../../src/math/math3d";
-import { RenderState } from "../../src/gpu/state";
 import { Rgba } from "../../src/void3d/meshData";
-import { Material, Phase, UniformBlock } from "../../src/void3d/material";
+import { Material, MaterialKind, UniformBlock } from "../../src/void3d/material";
 import {
 	Program, MATERIAL_UNIFORM_SLOT, LINE_UNIFORM_LENGTH, VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
@@ -109,7 +108,7 @@ function lineMaterial(graphics: Graphics3D): MaterialId {
 	let values: Vec<float32> = new Array(LINE_UNIFORM_LENGTH);
 	writeLineBlock(graphics, camera(), viewOf(), WHITE, values);
 	const id: Result<MaterialId, MaterialError> = addMaterial(context, {
-		...Material.plain(Program.Line, RenderState.defaults(), Phase.Opaque),
+		...Material.ofKind(Program.Line, MaterialKind.Opaque),
 		uniforms: reserved(values),
 	});
 	if (id.ok) { return id.value; }
