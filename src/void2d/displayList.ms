@@ -319,6 +319,8 @@ export interface DrawContext2D {
 	dirtyUi: Vec<int32>;
 	dirtyUiTotal: int32;
 	uiSkipped: int32;
+	segmented: boolean;
+	segmentStart: int32;
 	limited: boolean;
 	limit: PaintIndex;
 	spill: PaintIndex;
@@ -435,6 +437,8 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		dirtyUi: new Array(2),
 		dirtyUiTotal: 0,
 		uiSkipped: 0,
+		segmented: false,
+		segmentStart: 0,
 		limited: false,
 		limit: NO_PAINT,
 		spill: NO_PAINT,
@@ -707,6 +711,20 @@ function addDirtyUi(from: int32, to: int32): void {
 
 const NOTE_FLOAT_INDEX_MAX: int64 = 2147483647;
 
+export function beginSegments(a: PaintIndex): void {
+	activeContext.segmented = true;
+	activeContext.segmentStart = a.uiInstances;
+}
+
+export function endSegments(a: PaintIndex, b: PaintIndex): void {
+	activeContext.segmented = false;
+	if (b.uiInstances > activeContext.segmentStart) {
+		addDirtyUi(activeContext.segmentStart, b.uiInstances);
+	}
+	if (b.spriteInstances > a.spriteInstances) { activeContext.dirtySprites = true; }
+	if (b.vertices > a.vertices) { activeContext.dirtyVertices = true; }
+}
+
 export function noteRange(a: PaintIndex, b: PaintIndex): void {
 	if (b.uiInstances > a.uiInstances) {
 		const uiEnd: int64 = (b.uiInstances as int64) * REC_UI_FLOATS;
@@ -839,8 +857,12 @@ export function skipUiInstances(count: int32): void {
 		console.log("void2d: UI records skipped outside a node's own range");
 		unreachable;
 	}
+	if (activeContext.segmented && activeContext.uiInstanceTotal > activeContext.segmentStart) {
+		addDirtyUi(activeContext.segmentStart, activeContext.uiInstanceTotal);
+	}
 	activeContext.uiInstanceTotal = to;
 	activeContext.uiSkipped = activeContext.uiSkipped + count;
+	activeContext.segmentStart = to;
 }
 
 function vertexSlot(): int32 {
