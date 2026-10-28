@@ -223,6 +223,8 @@ export struct DrawItem {
 	instances: InstanceRun | null;
 	lod: MeshLodPick | null;
 	lodCulled: boolean;
+	lodSource: int32 | null;
+	lodRatio: float64;
 }
 
 // The instance rows a mesh item draws its mesh once each for, in place of the one row its world

@@ -279,6 +279,7 @@ export interface Scene3D {
 	// h3d.scene.Scene lighting.ambient, fwd.LightSystem's default grey.
 	ambientLight: Vec3;
 	stack: Vec<int32>;
+	stackSources: Vec<int32>;
 	root: int32;
 	structureChanged: boolean;
 	posChanged: boolean;
@@ -371,6 +372,7 @@ function newSlot(scene: Scene3D, node: Object3D): NodeId3D {
 	if (index == (scene.nodes.length as int32)) {
 		scene.nodes.push(node);
 		scene.stack.push(NO_NODE_3D);
+		scene.stackSources.push(NO_RATIO_SOURCE);
 	} else {
 		scene.nodes[index] = node;
 	}
@@ -403,6 +405,7 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 		lightOrder: [],
 		ambientLight: vec3(0.5, 0.5, 0.5),
 		stack: [],
+		stackSources: [],
 		root: NO_NODE_3D,
 		structureChanged: true,
 		posChanged: true,
@@ -677,6 +680,7 @@ function lodPickOf(
 		material: slot,
 		localOriginRadius: context.meshData[mesh.index].bounds.boundingRadius(),
 		forcedLod: -1,
+		inheritLod: false,
 	});
 }
 
@@ -686,6 +690,29 @@ export function setForcedLod(scene: Scene3D, id: NodeId3D, level: int32): Result
 	if (lod === null || level < -1) { return Result.err(SceneError.MeshLod); }
 	lod.forcedLod = level;
 	return Result.ok(null);
+}
+
+export function setInheritLod(
+	scene: Scene3D, id: NodeId3D, inherit: boolean,
+): Result<void, SceneError> {
+	const node: int32 = scene.kindRow(id, NodeKind.Mesh, "setInheritLod");
+	const lod = scene.meshes[scene.nodes[node].payload].lod;
+	if (lod === null) { return Result.err(SceneError.MeshLod); }
+	lod.inheritLod = inherit;
+	return Result.ok(null);
+}
+
+const NO_RATIO_SOURCE: int32 = -1;
+
+function lodSourceOf(scene: Scene3D, payload: int32, inherited: int32): int32 | null {
+	if (inherited == NO_RATIO_SOURCE || scene.meshes[payload].lod === null) { return null; }
+	return inherited;
+}
+
+function ratioSourceBelow(scene: Scene3D, payload: int32, item: int32, inherited: int32): int32 {
+	if (inherited != NO_RATIO_SOURCE) { return inherited; }
+	const lod = scene.meshes[payload].lod;
+	return lod !== null && lod.passesRatioDown() ? item : NO_RATIO_SOURCE;
 }
 
 export function addSkinMeshNode(
@@ -1480,14 +1507,17 @@ function fillDrawList(scene: Scene3D, layers: uint32, ref items: Vec<DrawItem>):
 	if (scene.root == NO_NODE_3D) { return 0; }
 	let top: int32 = 0;
 	scene.stack[top] = scene.root;
+	scene.stackSources[top] = NO_RATIO_SOURCE;
 	top = top + 1;
 	while (top > 0) {
 		top = top - 1;
 		const index: int32 = scene.stack[top];
+		let source: int32 = scene.stackSources[top];
 		if (!scene.nodes[index].isVisible()) { continue; }
 		const shown: boolean = layersTest(scene.nodes[index].layers, layers);
 		if (shown && scene.nodes[index].kind == NodeKind.Mesh) {
 			const payload: int32 = scene.nodes[index].payload;
+			const at: int32 = items.length as int32;
 			items.push({
 				mesh: scene.meshes[payload].mesh,
 				material: scene.meshes[payload].material,
@@ -1495,8 +1525,9 @@ function fillDrawList(scene: Scene3D, layers: uint32, ref items: Vec<DrawItem>):
 				order: scene.nodes[index].renderOrder,
 				skin: null, skinGeometry: scene.meshes[payload].skinGeometry,
 				skinPalette: scene.meshes[payload].skinPalette, range: scene.meshes[payload].range,
-				lod: scene.meshes[payload].lod,
+				lod: scene.meshes[payload].lod, lodSource: lodSourceOf(scene, payload, source),
 			});
+			source = ratioSourceBelow(scene, payload, at, source);
 		}
 		// Children are pushed in reverse so the stack pops them in declaration order: sibling
 		// order is draw order, and the draw list is what decides overdraw.
@@ -1504,6 +1535,7 @@ function fillDrawList(scene: Scene3D, layers: uint32, ref items: Vec<DrawItem>):
 		const count: int32 = scene.nodes[index].children.length as int32;
 		for (let i = count - 1; i >= 0; i--) {
 			scene.stack[top] = scene.nodes[index].children[i];
+			scene.stackSources[top] = source;
 			top = top + 1;
 		}
 	}
@@ -1626,10 +1658,12 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 		let at: int32 = 0;
 		let top: int32 = 0;
 		scene.stack[top] = scene.root;
+		scene.stackSources[top] = NO_RATIO_SOURCE;
 		top = top + 1;
 		while (top > 0) {
 			top = top - 1;
 			const index: int32 = scene.stack[top];
+			let source: int32 = scene.stackSources[top];
 			if (!scene.nodes[index].isVisible()) { continue; }
 			const shown: boolean = layersTest(scene.nodes[index].layers, layers);
 			if (shown && scene.nodes[index].kind == NodeKind.Mesh) {
@@ -1653,6 +1687,7 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 						items[at].lod = scene.meshes[payload].lod;
 					}
 					items[at].lodCulled = false;
+					items[at].lodSource = lodSourceOf(scene, payload, source);
 				} else {
 					items.push({
 						mesh: scene.meshes[payload].mesh,
@@ -1662,8 +1697,10 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 						skin: null, skinGeometry: scene.meshes[payload].skinGeometry,
 						skinPalette: scene.meshes[payload].skinPalette,
 						range: scene.meshes[payload].range, lod: scene.meshes[payload].lod,
+						lodSource: lodSourceOf(scene, payload, source),
 					});
 				}
+				source = ratioSourceBelow(scene, payload, at, source);
 				at = at + 1;
 			}
 			// Indexed through the field rather than bound to a local. `const children:
@@ -1676,6 +1713,7 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 			const count: int32 = scene.nodes[index].children.length as int32;
 			for (let i = count - 1; i >= 0; i--) {
 				scene.stack[top] = scene.nodes[index].children[i];
+				scene.stackSources[top] = source;
 				top = top + 1;
 			}
 		}

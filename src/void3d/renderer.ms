@@ -140,7 +140,7 @@ import { CubeShadowError, cubeCaster, cubeShadowViews } from "./cubeShadow";
 import {
 	CameraView, CAMERA_EYE, CAMERA_NEAR, CAMERA_PROJECTION_X, CAMERA_PROJECTION_Y,
 } from "./camera";
-import { pickFor } from "./meshLod";
+import { screenRatioFor, rangeFor } from "./meshLod";
 import { ClusterAssignment, ClusterConfig } from "./clusters";
 import {
 	ClusterFrame,
@@ -629,8 +629,17 @@ export function pickMeshLods(
 	for (let i = 0; i < (items.length as int32); i++) {
 		const pick = items[i].lod;
 		if (pick === null) { continue; }
-		const picked = pick.pickFor(items[i].world, eye, camera[CAMERA_PROJECTION_X],
-			camera[CAMERA_PROJECTION_Y], camera[CAMERA_NEAR], renderer.meshLodScale);
+		const source = items[i].lodSource;
+		if (source !== null) {
+			if (source >= i || items[source].lod === null) { return Result.err(RendererError.MeshLod); }
+			items[i].lodRatio = items[source].lodRatio;
+		} else {
+			const own = pick.screenRatioFor(items[i].world, eye, camera[CAMERA_PROJECTION_X],
+				camera[CAMERA_PROJECTION_Y], camera[CAMERA_NEAR], renderer.meshLodScale);
+			if (!own.ok) { return Result.err(RendererError.MeshLod); }
+			items[i].lodRatio = own.value;
+		}
+		const picked = pick.rangeFor(items[i].lodRatio);
 		if (!picked.ok) { return Result.err(RendererError.MeshLod); }
 		const range = picked.value;
 		items[i].lodCulled = range === null;
