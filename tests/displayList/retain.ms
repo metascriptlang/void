@@ -614,6 +614,24 @@ test "an edit inside one line of a label writes that line and skips the lines it
 	assert same(edited, fullFrame(s));
 }
 
+test "a label carried into the spare context by a splice writes its lines again" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const title = s.label("ab", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 4.0);
+	const editor = s.label("alpha\nbeta\ngamma", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 20.0);
+	editor.setCursorIndex(2, rgba(1.0, 0.8, 0.3, 1.0));
+	editor.setCursorBlinkTime(0.0);
+	s.add(title);
+	s.add(editor);
+	frame(s);
+	frame(s);
+	const splices: int32 = s.splices;
+	title.setText("abc");
+	frame(s);
+	assert s.splices == splices + 1;
+	editor.setText("alph\nbeta\ngammax");
+	assert check(s, "lines shifted back by the title's growth", "patch");
+}
+
 test "a styled label's run colour change writes every line again" {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const editor = s.label("alpha\nbeta", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 4.0);

@@ -115,6 +115,7 @@ export struct LineEmitKey {
 	shiftX: float32;
 	shiftY: float32;
 	context: int32;
+	serial: int32;
 }
 
 export const NO_LINE_EMIT_KEY: LineEmitKey = {
@@ -124,6 +125,7 @@ export const NO_LINE_EMIT_KEY: LineEmitKey = {
 	shiftX: 0.0,
 	shiftY: 0.0,
 	context: -1,
+	serial: -1,
 };
 
 struct PlacementKey {

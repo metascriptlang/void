@@ -319,6 +319,7 @@ export interface DrawContext2D {
 	dirtyUi: Vec<int32>;
 	dirtyUiTotal: int32;
 	uiSkipped: int32;
+	resetSerial: int32;
 	segmented: boolean;
 	segmentStart: int32;
 	limited: boolean;
@@ -437,6 +438,7 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		dirtyUi: new Array(2),
 		dirtyUiTotal: 0,
 		uiSkipped: 0,
+		resetSerial: 0,
 		segmented: false,
 		segmentStart: 0,
 		limited: false,
@@ -536,6 +538,7 @@ export function resetContext(): void {
 	activeContext.dirtySprites = false;
 	activeContext.dirtyUiTotal = 0;
 	serials[activeContext.id] = serials[activeContext.id] + 1;
+	activeContext.resetSerial = serials[activeContext.id];
 }
 
 export function contextSerial(id: int32): int32 { return serials[id]; }
