@@ -1,17 +1,27 @@
 import { Offsets, shiftExpr, shiftStmts, shiftType } from "./descriptor";
 import {
+	AssignOp,
+	Builtin,
 	DeclarationKind,
 	ExprKind,
+	IoDirection,
 	ShaderExpr,
 	ShaderFunction,
+	ShaderIo,
 	ShaderModule,
+	ShaderStage,
 	ShaderStmt,
+	ShaderType,
 	ShaderTypeKind,
 	StmtKind,
 	exprOf,
+	literal,
+	rootOf,
 	sameShaderType,
+	scalarType,
 	stmtOf,
 } from "./ir";
+import { functionOrder, hasEffect, stmtExprs } from "./irWalk";
 import { irFromText, irText } from "./irText";
 import { suffixed } from "./names";
 
@@ -142,5 +152,254 @@ export function link(base: ShaderModule, effects: ShaderModule[]): Result<Shader
 	for (let k = 0; k < sites.length; k++) {
 		m.functions[sites[k]].body = [stmtOf(StmtKind.Return, chains[k], [])];
 	}
+	for (const f of m.functions) { pruneDeadFields(m, f); }
+	return withoutUnreadVaryings(m);
+}
+
+class Liveness {
+	module: ShaderModule = new ShaderModule();
+	live: boolean[][] = [];
+	effects: int32[] = [];
+	changed: boolean = false;
+}
+
+function isIdentity(m: ShaderModule, index: int32): boolean {
+	const f = m.functions[index];
+	return f.params.length == 1 && f.body.length == 1 && f.body[0].kind == StmtKind.Return &&
+		f.body[0].expr.kind == ExprKind.Param && f.body[0].expr.index == 0;
+}
+
+function localOf(m: ShaderModule, e: ShaderExpr): int32 {
+	if (e.kind == ExprKind.Local) { return e.index; }
+	if (e.kind == ExprKind.Call && isIdentity(m, e.index)) { return localOf(m, e.operands[0]); }
+	return -1;
+}
+
+function setLive(l: Liveness, local: int32, field: int32): void {
+	if (!l.live[local][field]) {
+		l.live[local][field] = true;
+		l.changed = true;
+	}
+}
+
+function markRead(l: Liveness, e: ShaderExpr): void {
+	if (e.kind == ExprKind.Field) {
+		const held = localOf(l.module, e.operands[0]);
+		if (held >= 0 && l.live[held].length > 0) {
+			setLive(l, held, e.index);
+			return;
+		}
+	}
+	const whole = localOf(l.module, e);
+	if (whole >= 0) {
+		for (let k = 0; k < l.live[whole].length; k++) { setLive(l, whole, k as int32); }
+		return;
+	}
+	for (const o of e.operands) { markRead(l, o); }
+}
+
+function isStructValue(e: ShaderExpr): boolean {
+	return e.kind == ExprKind.Construct && e.type.kind == ShaderTypeKind.Struct;
+}
+
+function flowInto(l: Liveness, local: int32, value: ShaderExpr): void {
+	if (l.live[local].length == 0) {
+		markRead(l, value);
+		return;
+	}
+	if (isStructValue(value)) {
+		for (let i = 0; i < value.operands.length; i++) {
+			const o = value.operands[i];
+			if (l.live[local][i] || hasEffect(l.module, l.effects, o)) { markRead(l, o); }
+		}
+		return;
+	}
+	const from = localOf(l.module, value);
+	if (from < 0) {
+		markRead(l, value);
+		return;
+	}
+	for (let k = 0; k < l.live[local].length; k++) {
+		if (l.live[local][k]) { setLive(l, from, k as int32); }
+	}
+}
+
+function storedField(target: ShaderExpr): int32 {
+	let e = target;
+	while (e.operands.length > 0) {
+		if (e.kind == ExprKind.Field && e.operands[0].kind == ExprKind.Local) { return e.index; }
+		e = e.operands[0];
+	}
+	return -1;
+}
+
+function isDeadStore(l: Liveness, s: ShaderStmt): boolean {
+	const root = rootOf(s.target);
+	if (s.kind != StmtKind.Assign || root.kind != ExprKind.Local) { return false; }
+	const field = storedField(s.target);
+	return field >= 0 && l.live[root.index].length > 0 && !l.live[root.index][field] &&
+		!hasEffect(l.module, l.effects, s.expr) && !hasEffect(l.module, l.effects, s.target);
+}
+
+function isWholeSet(s: ShaderStmt): boolean {
+	return s.kind == StmtKind.Assign && s.assign == AssignOp.Set &&
+		s.target.kind == ExprKind.Local;
+}
+
+function liveStmts(l: Liveness, stmts: ShaderStmt[]): void {
+	for (const s of stmts) {
+		if (s.kind == StmtKind.Let && s.local >= 0) {
+			flowInto(l, s.local, s.expr);
+		} else if (isWholeSet(s)) {
+			flowInto(l, s.target.index, s.expr);
+		} else if (!isDeadStore(l, s)) {
+			markRead(l, s.expr);
+			markRead(l, s.target);
+		}
+		for (const list of [s.init, s.update, s.body, s.otherwise]) { liveStmts(l, list); }
+		for (const arm of s.cases) {
+			for (const label of arm.labels) { markRead(l, label); }
+			liveStmts(l, arm.body);
+		}
+	}
+}
+
+function isZeroable(t: ShaderType): boolean {
+	return t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector;
+}
+
+function zeroOf(t: ShaderType): ShaderExpr {
+	if (t.kind == ShaderTypeKind.Scalar) { return literal(t, 0.0); }
+	return exprOf(ExprKind.Construct, t, -1, [literal(scalarType(t.scalar), 0.0)]);
+}
+
+function pruneValue(l: Liveness, local: int32, value: ShaderExpr): void {
+	if (l.live[local].length == 0 || !isStructValue(value)) { return; }
+	for (let i = 0; i < value.operands.length; i++) {
+		const o = value.operands[i];
+		if (!l.live[local][i] && isZeroable(o.type) && !hasEffect(l.module, l.effects, o)) {
+			value.operands[i] = zeroOf(o.type);
+		}
+	}
+}
+
+function pruneStmts(l: Liveness, stmts: ShaderStmt[]): ShaderStmt[] {
+	let out: ShaderStmt[] = [];
+	for (const s of stmts) {
+		if (s.kind == StmtKind.Let && s.local >= 0) {
+			pruneValue(l, s.local, s.expr);
+		} else if (isWholeSet(s)) {
+			pruneValue(l, s.target.index, s.expr);
+		} else if (isDeadStore(l, s)) {
+			continue;
+		}
+		s.init = pruneStmts(l, s.init);
+		s.update = pruneStmts(l, s.update);
+		s.body = pruneStmts(l, s.body);
+		s.otherwise = pruneStmts(l, s.otherwise);
+		for (const arm of s.cases) { arm.body = pruneStmts(l, arm.body); }
+		out.push(s);
+	}
+	return out;
+}
+
+function pruneDeadFields(m: ShaderModule, f: ShaderFunction): void {
+	let l = new Liveness();
+	l.module = m;
+	l.effects = m.functions.map((_) => 0 as int32);
+	l.live = f.locals.map((v) => v.type.kind == ShaderTypeKind.Struct ?
+		m.structs[v.type.structIndex].members.map((_) => false) : []);
+	l.changed = true;
+	while (l.changed) {
+		l.changed = false;
+		liveStmts(l, f.body);
+	}
+	f.body = pruneStmts(l, f.body);
+}
+
+function ioReads(e: ShaderExpr, out: int32[]): void {
+	if (e.kind == ExprKind.Io && !out.includes(e.index)) { out.push(e.index); }
+	for (const o of e.operands) { ioReads(o, out); }
+}
+
+function varyingsOf(m: ShaderModule, stage: ShaderStage, direction: IoDirection): int32[] {
+	let out: int32[] = [];
+	for (let i = 0; i < m.ios.length; i++) {
+		const io = m.ios[i];
+		if (io.stage == stage && io.direction == direction && io.builtin == Builtin.None) {
+			out.push(i as int32);
+		}
+	}
+	return out;
+}
+
+function withoutStores(m: ShaderModule, stmts: ShaderStmt[], dropped: int32[],
+	effects: int32[], stray: string[]): ShaderStmt[] {
+	let out: ShaderStmt[] = [];
+	for (const s of stmts) {
+		const root = rootOf(s.target);
+		if (s.kind == StmtKind.Assign && root.kind == ExprKind.Io && dropped.includes(root.index)) {
+			if (hasEffect(m, effects, s.expr) || hasEffect(m, effects, s.target)) {
+				stray.push(m.ios[root.index].name);
+			}
+			continue;
+		}
+		s.init = withoutStores(m, s.init, dropped, effects, stray);
+		s.update = withoutStores(m, s.update, dropped, effects, stray);
+		s.body = withoutStores(m, s.body, dropped, effects, stray);
+		s.otherwise = withoutStores(m, s.otherwise, dropped, effects, stray);
+		for (const arm of s.cases) { arm.body = withoutStores(m, arm.body, dropped, effects, stray); }
+		out.push(s);
+	}
+	return out;
+}
+
+function renumberIos(e: ShaderExpr, map: int32[], stray: string[], names: string[]): void {
+	if (e.kind == ExprKind.Io) {
+		if (map[e.index] < 0) { stray.push(names[e.index]); }
+		e.index = map[e.index];
+	}
+	for (const o of e.operands) { renumberIos(o, map, stray, names); }
+}
+
+function withoutUnreadVaryings(m: ShaderModule): Result<ShaderModule, string> {
+	const vertex = m.entries.filter((e) => e.stage == ShaderStage.Vertex);
+	const fragment = m.entries.filter((e) => e.stage == ShaderStage.Fragment);
+	if (vertex.length != 1 || fragment.length != 1) { return Result.ok(m); }
+	let reachable: int32[] = [];
+	functionOrder(m, fragment[0].functionIndex, [], reachable);
+	let read: int32[] = [];
+	for (const f of reachable) { stmtExprs(m.functions[f].body, (e) => ioReads(e, read)); }
+	const outs = varyingsOf(m, ShaderStage.Vertex, IoDirection.Out);
+	const ins = varyingsOf(m, ShaderStage.Fragment, IoDirection.In);
+	let dropped: int32[] = [];
+	for (let k = 0; k < outs.length && k < ins.length; k++) {
+		if (!read.includes(ins[k])) {
+			dropped.push(outs[k]);
+			dropped.push(ins[k]);
+		}
+	}
+	if (dropped.length == 0) { return Result.ok(m); }
+	const effects = m.functions.map((_) => 0 as int32);
+	let stray: string[] = [];
+	for (const f of m.functions) { f.body = withoutStores(m, f.body, dropped, effects, stray); }
+	if (stray.length > 0) {
+		return Result.err("link: varying '" + stray[0] + "' is read by no fragment, and the " +
+			"value its vertex stores has an effect");
+	}
+	let map: int32[] = [];
+	let ios: ShaderIo[] = [];
+	for (let i = 0; i < m.ios.length; i++) {
+		map.push(dropped.includes(i as int32) ? -1 : ios.length as int32);
+		if (map[i] >= 0) { ios.push(m.ios[i]); }
+	}
+	const names = m.ios.map((io) => io.name);
+	for (const f of m.functions) {
+		stmtExprs(f.body, (e) => renumberIos(e, map, stray, names));
+	}
+	if (stray.length > 0) {
+		return Result.err("link: varying '" + stray[0] + "' is dropped and still read");
+	}
+	m.ios = ios;
 	return Result.ok(m);
 }

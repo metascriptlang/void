@@ -3,10 +3,12 @@ import { programModule, stageSource } from "../shader/descriptor";
 import { glslIr, glslLinkedIr, glslSegmentIr } from "../shader/emit";
 import {
 	ExprKind,
+	IoDirection,
 	ResourceKind,
 	ShaderExpr,
 	ShaderModule,
 	ShaderResource,
+	ShaderStage,
 	StmtKind,
 } from "../shader/ir";
 import { irFromText, irText } from "../shader/irText";
@@ -99,6 +101,41 @@ function baseFs(input: Pixel, b: BaseBindings): Vec4f {
 
 function plainFs(input: Pixel, b: BaseBindings): Vec4f {
 	return vec4f(input.uv.x, input.uv.y, b.frame.time, 1.0);
+}
+
+struct Surface {
+	base: Vec2f;
+	detail: Vec2f;
+}
+
+struct SplitPlaced {
+	@builtin(position) clip: Vec4f;
+	a: Vec2f;
+	b: Vec2f;
+}
+
+struct SplitPixel {
+	@builtin(position) position: Vec4f;
+	a: Vec2f;
+	b: Vec2f;
+}
+
+function splitVs(input: Corner): SplitPlaced {
+	return {
+		clip: vec4f(input.position.x, input.position.y, 0.0, 1.0),
+		a: input.position,
+		b: vec2f(input.position.y, input.position.x),
+	};
+}
+
+function splitFs(input: SplitPixel): Vec4f {
+	const start: Surface = { base: input.a, detail: input.b };
+	const surface = hook(start);
+	return vec4f(surface.base.x, surface.base.y, 0.0, 1.0);
+}
+
+function addDetail(surface: Surface): Surface {
+	return { base: surface.base + surface.detail, detail: surface.detail };
 }
 
 function chainedFs(input: Pixel, b: BaseBindings, tint: TintBindings): Vec4f {
@@ -385,6 +422,150 @@ const CHAIN_HLSL =
 	"    return stage_output;\n" +
 	"}\n";
 
+const SPLIT_VS_WGSL =
+	"var<private> position : vec2f;\n" +
+	"\n" +
+	"var<private> clip : vec4f;\n" +
+	"\n" +
+	"var<private> a : vec2f;\n" +
+	"\n" +
+	"fn splitVs() {\n" +
+	"  clip = vec4f(position.x, position.y, 0f, 1f);\n" +
+	"  a = position;\n" +
+	"  return;\n" +
+	"}\n" +
+	"\n" +
+	"struct main_out {\n" +
+	"  @builtin(position) clip : vec4f,\n" +
+	"  @location(0) a : vec2f,\n" +
+	"}\n" +
+	"\n" +
+	"@vertex\n" +
+	"fn main(@location(0) position_param : vec2f) -> main_out {\n" +
+	"  position = position_param;\n" +
+	"  splitVs();\n" +
+	"  return main_out(clip, a);\n" +
+	"}\n";
+const SPLIT_FS_WGSL =
+	"struct Surface {\n" +
+	"  base : vec2f,\n" +
+	"  detail : vec2f,\n" +
+	"}\n" +
+	"\n" +
+	"var<private> position : vec4f;\n" +
+	"\n" +
+	"var<private> a : vec2f;\n" +
+	"\n" +
+	"var<private> fragColor : vec4f;\n" +
+	"\n" +
+	"fn splitFs() {\n" +
+	"  var start : Surface = Surface(a, vec2f(0f));\n" +
+	"  var surface : Surface = Surface_1(start);\n" +
+	"  fragColor = vec4f(surface.base.x, surface.base.y, 0f, 1f);\n" +
+	"  return;\n" +
+	"}\n" +
+	"\n" +
+	"fn Surface_1(phase : Surface) -> Surface {\n" +
+	"  return phase;\n" +
+	"}\n" +
+	"\n" +
+	"struct main_out {\n" +
+	"  @location(0) fragColor : vec4f,\n" +
+	"}\n" +
+	"\n" +
+	"@fragment\n" +
+	"fn main(@builtin(position) position_param : vec4f, @location(0) a_param : vec2f) -> main_out {\n" +
+	"  position = position_param;\n" +
+	"  a = a_param;\n" +
+	"  splitFs();\n" +
+	"  return main_out(fragColor);\n" +
+	"}\n";
+const SPLIT_VS_HLSL =
+	"static float2 position;\n" +
+	"static float4 clip_1;\n" +
+	"static float2 a;\n" +
+	"\n" +
+	"void splitVs()\n" +
+	"{\n" +
+	"    clip_1 = float4(position.x, position.y, 0.0, 1.0);\n" +
+	"    a = position;\n" +
+	"    return;\n" +
+	"}\n" +
+	"\n" +
+	"struct StageInput\n" +
+	"{\n" +
+	"    float2 position : TEXCOORD0;\n" +
+	"};\n" +
+	"\n" +
+	"struct StageOutput\n" +
+	"{\n" +
+	"    float2 a : TEXCOORD0;\n" +
+	"    float4 clip_1 : SV_Position;\n" +
+	"};\n" +
+	"\n" +
+	"StageOutput main(StageInput stage_input)\n" +
+	"{\n" +
+	"    position = stage_input.position;\n" +
+	"    splitVs();\n" +
+	"    StageOutput stage_output;\n" +
+	"    stage_output.a = a;\n" +
+	"    stage_output.clip_1 = clip_1;\n" +
+	"    return stage_output;\n" +
+	"}\n";
+const SPLIT_FS_HLSL =
+	"struct Surface\n" +
+	"{\n" +
+	"    float2 base;\n" +
+	"    float2 detail;\n" +
+	"};\n" +
+	"\n" +
+	"static float4 position;\n" +
+	"static float2 a;\n" +
+	"static float4 fragColor;\n" +
+	"\n" +
+	"Surface makeSurface(float2 v0, float2 v1)\n" +
+	"{\n" +
+	"    Surface r = (Surface)0;\n" +
+	"    r.base = v0;\n" +
+	"    r.detail = v1;\n" +
+	"    return r;\n" +
+	"}\n" +
+	"\n" +
+	"Surface Surface_1(Surface phase)\n" +
+	"{\n" +
+	"    return phase;\n" +
+	"}\n" +
+	"\n" +
+	"void splitFs()\n" +
+	"{\n" +
+	"    Surface start = makeSurface(a, ((float2)0.0));\n" +
+	"    Surface surface = Surface_1(start);\n" +
+	"    fragColor = float4(surface.base.x, surface.base.y, 0.0, 1.0);\n" +
+	"    return;\n" +
+	"}\n" +
+	"\n" +
+	"struct StageInput\n" +
+	"{\n" +
+	"    float2 a : TEXCOORD0;\n" +
+	"    float4 position : SV_Position;\n" +
+	"};\n" +
+	"\n" +
+	"struct StageOutput\n" +
+	"{\n" +
+	"    float4 fragColor : SV_Target0;\n" +
+	"};\n" +
+	"\n" +
+	"StageOutput main(StageInput stage_input)\n" +
+	"{\n" +
+	"    a = stage_input.a;\n" +
+	"    position = stage_input.position;\n" +
+	"    position.w = 1.0 / position.w;\n" +
+	"    splitFs();\n" +
+	"    StageOutput stage_output;\n" +
+	"    stage_output.fragColor = fragColor;\n" +
+	"    return stage_output;\n" +
+	"}\n";
+
 function moduleOf(text: string): ShaderModule {
 	const m = irFromText(text);
 	return m.ok ? m.value : new ShaderModule();
@@ -424,8 +605,8 @@ function numberedForTest(m: ShaderModule): ShaderModule {
 	return m;
 }
 
-function printed(m: ShaderModule, target: ShaderTarget, path: string): string {
-	const text = stageSource(m, 1, target);
+function printed(m: ShaderModule, target: ShaderTarget, path: string, entry: int32): string {
+	const text = stageSource(m, entry, target);
 	if (!text.ok) { return text.error; }
 	const _out = mkdir("out");
 	const _folder = mkdir("out/linkCheck");
@@ -489,8 +670,8 @@ test "the linked chain folds on the CPU to the chained base" {
 
 test "the linked fragment prints for WGSL and HLSL once its effect bindings are numbered" {
 	const m = numberedForTest(linkedModule([UV_SCROLL, COLOUR_ADD, KILL_ALPHA]));
-	assert printed(m, ShaderTarget.Wgsl, "chainFs.wgsl") == CHAIN_WGSL;
-	assert printed(m, ShaderTarget.Hlsl5, "chainFs.ps.hlsl") == CHAIN_HLSL;
+	assert printed(m, ShaderTarget.Wgsl, "chainFs.wgsl", 1) == CHAIN_WGSL;
+	assert printed(m, ShaderTarget.Hlsl5, "chainFs.ps.hlsl", 1) == CHAIN_HLSL;
 }
 
 test "two effects on one phase chain in the order given" {
@@ -519,4 +700,43 @@ test "a resource named as the base's with another type is refused" {
 	assert refusal(baseOf(), [effect]) ==
 		"link: effect 'colourAdd' declares resource 'frame' with another kind or type than " +
 		"the linked module's 'frame'";
+}
+
+const ADD_DETAIL = glslSegmentIr(addDetail);
+
+function splitLinked(effects: string[]): ShaderModule {
+	const base = programModule(glslIr(splitVs), glslLinkedIr(splitFs, splitVs), []);
+	if (!base.ok) { return new ShaderModule(); }
+	const m = link(base.value, effects.map((t) => moduleOf(t)));
+	return m.ok ? m.value : new ShaderModule();
+}
+
+function iosOf(m: ShaderModule): string {
+	return m.ios.map((io) => (io.stage == ShaderStage.Vertex ? "vs " : "fs ") +
+		(io.direction == IoDirection.In ? "in " : "out ") + io.name).join(",");
+}
+
+test "a varying the linked fragment never reads is dropped from both stages" {
+	assert iosOf(splitLinked([ADD_DETAIL])) ==
+		"vs in position,vs out clip,vs out a,vs out b,fs in position,fs in a,fs in b,fs out fragColor";
+	assert iosOf(splitLinked([])) ==
+		"vs in position,vs out clip,vs out a,fs in position,fs in a,fs out fragColor";
+}
+
+test "the linked stages print without the dropped varying" {
+	const full = splitLinked([ADD_DETAIL]);
+	const detail = [
+		printed(full, ShaderTarget.Wgsl, "splitDetailVs.wgsl", 0),
+		printed(full, ShaderTarget.Wgsl, "splitDetailFs.wgsl", 1),
+		printed(full, ShaderTarget.Hlsl5, "splitDetailVs.vs.hlsl", 0),
+		printed(full, ShaderTarget.Hlsl5, "splitDetailFs.ps.hlsl", 1),
+	];
+	const m = splitLinked([]);
+	const vsWgsl = printed(m, ShaderTarget.Wgsl, "splitVs.wgsl", 0);
+	const fsWgsl = printed(m, ShaderTarget.Wgsl, "splitFs.wgsl", 1);
+	const vsHlsl = printed(m, ShaderTarget.Hlsl5, "splitVs.vs.hlsl", 0);
+	const fsHlsl = printed(m, ShaderTarget.Hlsl5, "splitFs.ps.hlsl", 1);
+	assert detail.every((t) => t.includes(" main("));
+	assert vsWgsl == SPLIT_VS_WGSL && fsWgsl == SPLIT_FS_WGSL;
+	assert vsHlsl == SPLIT_VS_HLSL && fsHlsl == SPLIT_FS_HLSL;
 }
