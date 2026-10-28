@@ -2,6 +2,7 @@ import {
 	Builtin,
 	ConditionKind,
 	ExprKind,
+	ResourceKind,
 	ScalarKind,
 	ShaderExpr,
 	ShaderIo,
@@ -119,7 +120,7 @@ export function structOrder(m: ShaderModule, t: ShaderType, out: int32[]): void 
 	out.push(t.structIndex);
 }
 
-export function exprStructs(
+function exprStructs(
 	m: ShaderModule,
 	e: ShaderExpr,
 	skipBlockMembers: boolean,
@@ -129,7 +130,7 @@ export function exprStructs(
 	for (const o of e.operands) { exprStructs(m, o, skipBlockMembers, out); }
 }
 
-export function stmtStructs(
+function stmtStructs(
 	m: ShaderModule,
 	stmts: ShaderStmt[],
 	skipBlockMembers: boolean,
@@ -138,12 +139,60 @@ export function stmtStructs(
 	stmtExprs(stmts, (e) => exprStructs(m, e, skipBlockMembers, out));
 }
 
-export function constantOrder(m: ShaderModule, e: ShaderExpr, out: int32[]): void {
+function constantOrder(m: ShaderModule, e: ShaderExpr, out: int32[]): void {
 	for (const o of e.operands) { constantOrder(m, o, out); }
 	if (e.kind == ExprKind.Constant && !out.includes(e.index)) {
 		constantOrder(m, m.constants[e.index].value, out);
 		out.push(e.index);
 	}
+}
+
+export function constantsInOrder(m: ShaderModule, roots: int32[]): int32[] {
+	let out: int32[] = [];
+	for (const c of roots) {
+		if (out.includes(c)) { continue; }
+		constantOrder(m, m.constants[c].value, out);
+		out.push(c);
+	}
+	return out;
+}
+
+export function ofKinds(m: ShaderModule, resources: int32[], kinds: ResourceKind[]): int32[] {
+	let out: int32[] = [];
+	for (const kind of kinds) {
+		for (const r of resources) {
+			if (m.resources[r].kind == kind) { out.push(r); }
+		}
+	}
+	return out;
+}
+
+export function entryStructs(
+	m: ShaderModule,
+	functions: int32[],
+	resources: int32[],
+	constants: int32[],
+	stage: ShaderStage,
+	skipBlockMembers: boolean,
+): int32[] {
+	let out: int32[] = [];
+	for (const f of functions) {
+		const callee = m.functions[f];
+		for (const v of callee.params) { structOrder(m, v.type, out); }
+		for (const v of callee.locals) { structOrder(m, v.type, out); }
+		structOrder(m, callee.result, out);
+		stmtStructs(m, callee.body, skipBlockMembers, out);
+	}
+	for (const r of resources) {
+		if (m.resources[r].kind == ResourceKind.StorageBuffer) {
+			structOrder(m, m.resources[r].type, out);
+		}
+	}
+	for (const c of constants) { exprStructs(m, m.constants[c].value, skipBlockMembers, out); }
+	for (const io of m.ios) {
+		if (io.stage == stage) { structOrder(m, io.type, out); }
+	}
+	return out;
 }
 
 export function unspecialized(

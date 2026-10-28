@@ -35,15 +35,14 @@ import {
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import {
-	constantOrder,
-	exprStructs,
+	constantsInOrder,
+	entryStructs,
 	functionOrder,
 	hasEffect,
 	innermost,
 	ioLocation,
+	ofKinds,
 	splitResults,
-	stmtStructs,
-	structOrder,
 } from "./irWalk";
 import {
 	binaryOperator,
@@ -1157,38 +1156,10 @@ export function printGlsl(
 
 	let functions: int32[] = [];
 	functionOrder(m, entry.functionIndex, [], functions);
-	let structs: int32[] = [];
-	for (const f of functions) {
-		const callee = m.functions[f];
-		for (const v of callee.params) { structOrder(m, v.type, structs); }
-		for (const v of callee.locals) { structOrder(m, v.type, structs); }
-		structOrder(m, callee.result, structs);
-		stmtStructs(m, callee.body, true, structs);
-	}
-	for (const r of reads.resources) {
-		if (m.resources[r].kind == ResourceKind.StorageBuffer) {
-			structOrder(m, m.resources[r].type, structs);
-		}
-	}
-	for (const c of reads.constants) { exprStructs(m, m.constants[c].value, true, structs); }
-	for (const io of m.ios) {
-		if (io.stage == entry.stage) { structOrder(m, io.type, structs); }
-	}
-	let constants: int32[] = [];
-	for (const c of reads.constants) {
-		let read = new ShaderExpr();
-		read.kind = ExprKind.Constant;
-		read.index = c;
-		constantOrder(m, read, constants);
-	}
-	const kinds = [ResourceKind.UniformBlock, ResourceKind.StorageBuffer,
-		ResourceKind.StorageTexture];
-	let resources: int32[] = [];
-	for (const kind of kinds) {
-		for (const r of reads.resources) {
-			if (m.resources[r].kind == kind) { resources.push(r); }
-		}
-	}
+	const structs = entryStructs(m, functions, reads.resources, reads.constants, entry.stage, true);
+	const constants = constantsInOrder(m, reads.constants);
+	const resources = ofKinds(m, reads.resources, [ResourceKind.UniformBlock,
+		ResourceKind.StorageBuffer, ResourceKind.StorageTexture]);
 
 	claimFixed(p, "main", "entry");
 	let units: string[] = [];

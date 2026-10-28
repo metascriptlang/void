@@ -33,14 +33,13 @@ import {
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import {
-	constantOrder,
-	exprStructs,
+	constantsInOrder,
+	entryStructs,
 	functionOrder,
 	hasEffect,
 	innermost,
 	ioLocation,
-	stmtStructs,
-	structOrder,
+	ofKinds,
 } from "./irWalk";
 import {
 	binaryOperator,
@@ -1405,38 +1404,11 @@ export function printHlsl(
 
 	let functions: int32[] = [];
 	functionOrder(m, entry.functionIndex, [], functions);
-	let structs: int32[] = [];
-	for (const f of functions) {
-		const shaderFunction = m.functions[f];
-		for (const v of shaderFunction.params) { structOrder(m, v.type, structs); }
-		for (const v of shaderFunction.locals) { structOrder(m, v.type, structs); }
-		structOrder(m, shaderFunction.result, structs);
-		stmtStructs(m, shaderFunction.body, false, structs);
-	}
-	for (const r of reads.resources) {
-		if (m.resources[r].kind == ResourceKind.StorageBuffer) {
-			structOrder(m, m.resources[r].type, structs);
-		}
-	}
-	for (const c of reads.constants) { exprStructs(m, m.constants[c].value, false, structs); }
-	for (const io of m.ios) {
-		if (io.stage == entry.stage) { structOrder(m, io.type, structs); }
-	}
-	let constants: int32[] = [];
-	for (const c of reads.constants) {
-		let read = new ShaderExpr();
-		read.kind = ExprKind.Constant;
-		read.index = c;
-		constantOrder(m, read, constants);
-	}
-	const kinds = [ResourceKind.UniformBlock, ResourceKind.Texture, ResourceKind.Sampler,
-		ResourceKind.StorageBuffer, ResourceKind.StorageTexture];
-	let resources: int32[] = [];
-	for (const kind of kinds) {
-		for (const r of reads.resources) {
-			if (m.resources[r].kind == kind) { resources.push(r); }
-		}
-	}
+	const structs = entryStructs(m, functions, reads.resources, reads.constants, entry.stage, false);
+	const constants = constantsInOrder(m, reads.constants);
+	const resources = ofKinds(m, reads.resources, [ResourceKind.UniformBlock,
+		ResourceKind.Texture, ResourceKind.Sampler, ResourceKind.StorageBuffer,
+		ResourceKind.StorageTexture]);
 
 	for (const r of resources) {
 		if (m.resources[r].kind != ResourceKind.UniformBlock) { continue; }
