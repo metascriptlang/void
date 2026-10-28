@@ -57,16 +57,22 @@ export function printedSpirv(m: ShaderModule, entry: int32, name: string): strin
 	return "";
 }
 
-// On a host with fxc the descriptor carries DXBC and no text: the text is then the one this binary
-// prints, and "" unless the descriptor's blob is the cache file that text keys.
+// On a host with fxc or xcrun the descriptor carries DXBC or a metallib and no text: the text is then
+// the one this binary prints, and "" unless the descriptor's blob is the cache file that text keys.
 export function fragmentText(module: GPUShaderModuleDescriptor, vs: string, fs: string): string {
 	if (module.fragmentCode != "") { return module.fragmentCode; }
 	const m = programModule(vs, fs, []);
 	if (!m.ok) { return ""; }
-	const source = programSource(m.value, ShaderTarget.Hlsl5);
+	let language = "hlsl5";
+	let target = ShaderTarget.Hlsl5;
+	when (macos) {
+		language = "metal_macos";
+		target = ShaderTarget.Msl;
+	}
+	const source = programSource(m.value, target);
 	if (!source.ok) { return ""; }
 	const s = source.value;
-	const file = readFile(stageBlob("hlsl5", "fragment", s.fragmentCode, s.entryPoint, "").path);
+	const file = readFile(stageBlob(language, "fragment", s.fragmentCode, s.entryPoint, "").path);
 	if (!file.ok || file.value.byteLength() != module.fragmentBytecode.length) { return ""; }
 	for (let i = 0; i < module.fragmentBytecode.length; i++) {
 		if (module.fragmentBytecode[i] as int32 != file.value.byteAt(i) as int32) { return ""; }
