@@ -314,6 +314,7 @@ export interface DrawContext2D {
 	dirtyUi: Vec<int32>;
 	dirtyUiTotal: int32;
 	uiSkipped: int32;
+	uiCopied: int32;
 	resetSerial: int32;
 	segmented: boolean;
 	segmentStart: int32;
@@ -432,6 +433,7 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		dirtyUi: new Array(2),
 		dirtyUiTotal: 0,
 		uiSkipped: 0,
+		uiCopied: 0,
 		resetSerial: 0,
 		segmented: false,
 		segmentStart: 0,
@@ -807,15 +809,24 @@ export function vertexField(index: int32, field: int32): float32 {
 }
 
 // Grown in place and never shrunk, so a frame that peaked once does not reallocate again.
+let spliceSource: DrawContext2D | null = null;
+
+export function setSpliceSource(old: DrawContext2D | null): void { spliceSource = old; }
+
+export function currentSpliceSource(): DrawContext2D | null { return spliceSource; }
+
+export function copyUiInstances(old: DrawContext2D, first: int32, count: int32): void {
+	if (count <= 0) { return; }
+	const to: int32 = activeContext.uiInstanceTotal * REC_UI_FLOATS;
+	growTo(activeContext.uiInstances, to + count * REC_UI_FLOATS);
+	copyFloats(activeContext.uiInstances, to, old.uiInstances, first * REC_UI_FLOATS,
+		count * REC_UI_FLOATS);
+	activeContext.uiInstanceTotal = activeContext.uiInstanceTotal + count;
+	activeContext.uiCopied = activeContext.uiCopied + count;
+}
+
 export function copyPainted(old: DrawContext2D, a: PaintIndex, b: PaintIndex): void {
-	const ui: int32 = b.uiInstances - a.uiInstances;
-	if (ui > 0) {
-		const to: int32 = activeContext.uiInstanceTotal * REC_UI_FLOATS;
-		const from: int32 = a.uiInstances * REC_UI_FLOATS;
-		growTo(activeContext.uiInstances, to + ui * REC_UI_FLOATS);
-		copyFloats(activeContext.uiInstances, to, old.uiInstances, from, ui * REC_UI_FLOATS);
-		activeContext.uiInstanceTotal = activeContext.uiInstanceTotal + ui;
-	}
+	copyUiInstances(old, a.uiInstances, b.uiInstances - a.uiInstances);
 	const sprites: int32 = b.spriteInstances - a.spriteInstances;
 	if (sprites > 0) {
 		const to: int32 = activeContext.spriteInstanceTotal * REC_SPRITE_FLOATS;
@@ -844,6 +855,10 @@ export function limitWrites(end: PaintIndex): void {
 export function unlimitWrites(): void { activeContext.limited = false; }
 
 export function writesLimited(): boolean { return activeContext.limited; }
+
+export function uiWritesSpilled(): boolean {
+	return activeContext.limited && activeContext.uiInstanceTotal > activeContext.limit.uiInstances;
+}
 
 export function skipUiInstances(count: int32): void {
 	const to: int32 = activeContext.uiInstanceTotal + count;
