@@ -118,7 +118,7 @@ extern function integers(a: int32): Js from "new Int32Array([#])";
 extern function drawTargets(count: int32, colorMask: int32): Js from "((n,m)=>{const a=[];for(let i=0;i<n;i++)a.push((m&(1<<i))?0x8CE0+i:0);return a;})(#,#)";
 extern function parameter(context: Js, name: int32): int32 from "((g,n)=>{if(n===0x821B)return 3;if(n===0x821C)return 0;const v=g.getParameter(n);return typeof v==='number'?v|0:0;})(#,#)";
 extern function parameterBig(context: Js, name: int32): int64 from "BigInt(Math.trunc(#.getParameter(#)))";
-extern function boundObject(context: Js, table: Js, name: int32): int32 from "#.indexOf(#.getParameter(#))";
+extern function boundObject(context: Js, table: Js, name: int32): int32 from "((g,t,n)=>t.indexOf(g.getParameter(n)))(#,#,#)";
 extern function parameterObject(context: Js, name: int32): Js from "#.getParameter(#)";
 extern function queryNumber(value: Js): uint64 from "BigInt(#)";
 extern function num(value: int64): number from "Number(#)";
