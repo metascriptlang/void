@@ -7,7 +7,7 @@ const minifyAfterPatch = process.argv.includes("--minify");
 
 const [bundlePath, backend, driver] = process.argv.slice(2).filter((a) => a !== "--minify");
 if (!bundlePath || (backend !== "gl" && backend !== "gpu") || (driver !== "views" && driver !== "window")) {
-	throw new Error("usage: node tests/js/gpuLostHarness.mjs <bundle> gl|gpu views|window [--minify]   (msc build src/examples/viewsJsEntry.jms|windowJsEntry.jms --target=js [-d:webgl2] --output=<bundle>)");
+	throw new Error("usage: node tests/js/gpuLostHarness.mjs <bundle> gl|gpu views|window [--minify]   (msc build src/examples/viewsJsEntry.jms|windowJsEntry.jms --target=js -d:webgpu|-d:webgl2 --output=<bundle>)");
 }
 const windowMode = driver === "window";
 

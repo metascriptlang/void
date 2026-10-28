@@ -4,6 +4,7 @@
 // cursor, Q asks to quit and the first ask is cancelled. Drop files or touch to see their events.
 
 import "../host/gpu";
+import "../host/gpuWindow";
 import { beginScreenPassWith, endPass, commit } from "../gpu/door";
 import {
 	AppEvent, AppEventType, MouseCursor, onAppEvent, requestQuit, cancelQuit, frameDuration,
