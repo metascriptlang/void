@@ -74,7 +74,9 @@ later replaces the hand-written GLSL source of each base.
 - **A base hooks each phase struct once, and `link` chains segments there.** `hook(phase)`
   (`std.ms`) is the identity on the CPU, so a base without effects runs unchanged. The emitter
   lowers it to a call of a placeholder function named after the phase struct, whose body
-  returns its argument; a second `hook` on one struct is refused at the call. `link` in
+  returns its argument; a second `hook` on one struct, a `hook` in a segment and an author
+  function named as a struct it reaches are refused (`tests/refusals/hookTwice.ms`,
+  `segmentHook.ms`, `functionNamedAsStruct.ms`), so a struct's name is its site's alone. `link` in
   `link.ms` replaces each placeholder's body with `return e2(e1(phase))` over the effects on
   that phase, in the order given, and merges as Heaps' `hxsl/Linker.hx` `allocVar` does: structs
   and resources by name, refused when a struct's members or a resource's kind or type differ;
