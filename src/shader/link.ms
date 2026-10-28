@@ -5,6 +5,7 @@ import {
 	ShaderExpr,
 	ShaderFunction,
 	ShaderModule,
+	ShaderStmt,
 	ShaderTypeKind,
 	StmtKind,
 	exprOf,
@@ -23,7 +24,14 @@ function phaseOf(m: ShaderModule, f: ShaderFunction): string {
 }
 
 function isHookSite(m: ShaderModule, f: ShaderFunction): boolean {
-	return phaseOf(m, f) == f.name;
+	if (!m.structs.some((s) => s.name == f.name)) { return false; }
+	const body = f.body.length == 1 ? f.body[0] : new ShaderStmt();
+	if (phaseOf(m, f) != f.name || f.locals.length > 0 || body.kind != StmtKind.Return ||
+		body.expr.kind != ExprKind.Param || body.expr.index != 0) {
+		throw new Error("link: function '" + f.name + "' is named as a struct and is no hook " +
+			"site, whose body returns its phase");
+	}
+	return true;
 }
 
 function sameMembers(into: ShaderModule, held: int32, from: ShaderModule, s: int32): boolean {
