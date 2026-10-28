@@ -20,6 +20,9 @@ import {
 	saveRange,
 	noteRange,
 	copyPainted,
+	copyUiInstances,
+	currentSpliceSource,
+	setSpliceSource,
 	limitWrites,
 	unlimitWrites,
 	layLanes,
@@ -47,6 +50,7 @@ import {
 	uiInstanceCount,
 	writesLimited,
 	skipUiInstances,
+	uiWritesSpilled,
 	beginSegments,
 	endSegments,
 } from "./displayList";
@@ -806,13 +810,20 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 	emitOutline(space, blend, text, na);
 	const passes: int32 = text.colourGlyphs > 0 ? 2 : 1;
 	const scaled: boolean = !translationOnly(world);
-	const lineEmits: boolean = instanced && passes == 1;
+	const lineEmits: boolean = instanced && passes == 1 && (s.lanes.length as int32) == 0;
 	const key: LineEmitKey = {
 		world: world, col: col, scale: scale, shiftX: space.shiftX, shiftY: space.shiftY,
 		context: currentContext().id,
 		serial: currentContext().resetSerial,
 	};
 	const skips: boolean = lineEmits && writesLimited() && text.emitKey == key &&
+		sameRunColours(text);
+	const source: DrawContext2D | null = currentSpliceSource();
+	const sourceKey: LineEmitKey = {
+		world: world, col: col, scale: scale, shiftX: space.shiftX, shiftY: space.shiftY,
+		context: key.context, serial: source !== null ? (source as DrawContext2D).resetSerial : -1,
+	};
+	const copies: boolean = lineEmits && source !== null && text.emitKey == sourceKey &&
 		sameRunColours(text);
 	const lineCount: int32 = text.placedLines.length as int32;
 	const placedEnd: int32 = lineCount > 0
@@ -830,8 +841,10 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 		let view: uint32 = 0;
 		for (let li: int32 = 0; li < lineCount; li++) {
 			const line: PlacedLine = text.placedLines[li];
-			if (skips && line.emitAt == uiInstanceCount() &&
-				(line.emitCount == 0 || line.emitPage != NO_GLYPH_PAGE)) {
+			const kept: boolean = line.emitAt != NOT_EMITTED &&
+				(line.emitCount == 0 || line.emitPage != NO_GLYPH_PAGE);
+			const skipped: boolean = kept && skips && line.emitAt == uiInstanceCount();
+			if (skipped || (kept && copies)) {
 				if (line.emitCount > 0 && line.emitPage != viewPage) {
 					kind = glyphPageKind(line.emitPage);
 					seenPage = line.emitPage;
@@ -840,7 +853,13 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 					markGlyphPageDrawn(line.emitPage);
 					useGlyphRun(view, blend);
 				}
-				skipUiInstances(line.emitCount);
+				if (skipped) {
+					skipUiInstances(line.emitCount);
+				} else {
+					const at: int32 = uiInstanceCount();
+					copyUiInstances(source as DrawContext2D, line.emitAt, line.emitCount);
+					text.placedLines[li].emitAt = at;
+				}
 				continue;
 			}
 			const at: int32 = uiInstanceCount();
@@ -866,7 +885,7 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 				const fill: Color = kind == PageKind.Rgba ? rgba(1.0, 1.0, 1.0, run.a) : run;
 				emitGlyph(space, blend, view, p, kind, fill);
 			}
-			text.placedLines[li].emitAt = lineEmits ? at : NOT_EMITTED;
+			text.placedLines[li].emitAt = lineEmits && !uiWritesSpilled() ? at : NOT_EMITTED;
 			text.placedLines[li].emitCount = uiInstanceCount() - at;
 			text.placedLines[li].emitPage = mixed ? NO_GLYPH_PAGE : linePage;
 		}
@@ -1729,6 +1748,7 @@ function remapLaneRows(s: Scene2D, parent: int32, c0: int32, c1: int32): void {
 }
 
 function scanOrder(s: Scene2D, vw: float32, vh: float32, old: DrawContext2D | null): void {
+	setSpliceSource(old);
 	s.reused = 0;
 	const n: int32 = s.order.length as int32;
 	let p: int32 = 0;
@@ -1808,6 +1828,7 @@ function scanOrder(s: Scene2D, vw: float32, vh: float32, old: DrawContext2D | nu
 		}
 	}
 	while ((s.maskEnds.length as int32) > 0) { closeEnclosure(s); }
+	setSpliceSource(null);
 }
 
 function joins(s: Scene2D, source: DrawContext2D, q: int32, last: PaintIndex): boolean {
