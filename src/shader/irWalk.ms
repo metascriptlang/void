@@ -70,21 +70,27 @@ export function hasEffect(m: ShaderModule, effects: int32[], e: ShaderExpr): boo
 	return e.operands.some((o) => hasEffect(m, effects, o));
 }
 
+// Calls visit on the expressions every statement of stmts holds, nested statements and case
+// labels included, in source order.
+export function stmtExprs(stmts: ShaderStmt[], visit: (e: ShaderExpr) => void): void {
+	for (const s of stmts) {
+		visit(s.expr);
+		visit(s.target);
+		for (const list of [s.init, s.update, s.body, s.otherwise]) { stmtExprs(list, visit); }
+		for (const arm of s.cases) {
+			for (const label of arm.labels) { visit(label); }
+			stmtExprs(arm.body, visit);
+		}
+	}
+}
+
 function exprCalls(e: ShaderExpr, out: int32[]): void {
 	if (e.kind == ExprKind.Call && !out.includes(e.index)) { out.push(e.index); }
 	for (const o of e.operands) { exprCalls(o, out); }
 }
 
 function calls(stmts: ShaderStmt[], out: int32[]): void {
-	for (const s of stmts) {
-		exprCalls(s.expr, out);
-		exprCalls(s.target, out);
-		for (const list of [s.init, s.update, s.body, s.otherwise]) { calls(list, out); }
-		for (const arm of s.cases) {
-			for (const label of arm.labels) { exprCalls(label, out); }
-			calls(arm.body, out);
-		}
-	}
+	stmtExprs(stmts, (e) => exprCalls(e, out));
 }
 
 export function functionOrder(m: ShaderModule, index: int32, path: int32[], out: int32[]): void {
@@ -120,17 +126,7 @@ export function stmtStructs(
 	skipBlockMembers: boolean,
 	out: int32[],
 ): void {
-	for (const s of stmts) {
-		exprStructs(m, s.expr, skipBlockMembers, out);
-		exprStructs(m, s.target, skipBlockMembers, out);
-		for (const list of [s.init, s.update, s.body, s.otherwise]) {
-			stmtStructs(m, list, skipBlockMembers, out);
-		}
-		for (const arm of s.cases) {
-			for (const label of arm.labels) { exprStructs(m, label, skipBlockMembers, out); }
-			stmtStructs(m, arm.body, skipBlockMembers, out);
-		}
-	}
+	stmtExprs(stmts, (e) => exprStructs(m, e, skipBlockMembers, out));
 }
 
 export function constantOrder(m: ShaderModule, e: ShaderExpr, out: int32[]): void {
@@ -171,15 +167,7 @@ function exprSplits(e: ShaderExpr, out: ShaderType[]): void {
 }
 
 function stmtSplits(stmts: ShaderStmt[], out: ShaderType[]): void {
-	for (const s of stmts) {
-		exprSplits(s.expr, out);
-		exprSplits(s.target, out);
-		for (const list of [s.init, s.update, s.body, s.otherwise]) { stmtSplits(list, out); }
-		for (const arm of s.cases) {
-			for (const label of arm.labels) { exprSplits(label, out); }
-			stmtSplits(arm.body, out);
-		}
-	}
+	stmtExprs(stmts, (e) => exprSplits(e, out));
 }
 
 // The modf and frexp result types the functions use, in first-use order: a printer declares each
