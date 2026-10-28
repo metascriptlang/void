@@ -11,7 +11,7 @@ import {
 } from "../void3d/worldLabel";
 import { approx, sameLanes } from "./helpers";
 import { Rgba } from "../void3d/meshData";
-import { MATERIAL_UNIFORM_SLOT } from "../void3d/gpu3d";
+import { MATERIAL_UNIFORM_SLOT, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH } from "../void3d/gpu3d";
 import { RenderState, BlendMode } from "../gpu/state";
 import { Material, Phase, TypedBlock } from "../void3d/material";
 import {
@@ -160,8 +160,8 @@ test "the moved quad shows the target's top rows and left columns and no others"
 }
 
 function labelLanes(uv: LabelUv, tint: Rgba): Vec<float32> {
-	let pool: UniformPool = UniformPool.withCapacity(32);
-	for (let i = 0; i < 32; i++) { pool.values[i] = -7.0; }
+	let pool: UniformPool = UniformPool.withCapacity(MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
+	for (let i = 0; i < MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH; i++) { pool.values[i] = -7.0; }
 	const reserved = reserveBlock<MovingUnlitMaterialParams>(pool, MATERIAL_UNIFORM_SLOT);
 	if (!reserved.ok) { unreachable; }
 	if (!writeBlock(pool, reserved.value, labelParams(uv, tint)).ok) { unreachable; }
@@ -175,11 +175,11 @@ test "a label's block holds the tint, the sub-rect's uv and the identity back uv
 	const used: LabelUv = LabelUv.uvOfSubRect(20, 10, 40, 40, false);
 	assert sameLanes(labelLanes(still, white), [
 		0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	]);
 	assert sameLanes(labelLanes(used, tint), [
 		0, 0, 0, 0, 0.2, 0.4, 0.6, 0.8, 0.5, 0, 0, 0.25, 0, 0.75, 0, 0, 1, 0, 0, 1,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	]);
 }
 
@@ -198,7 +198,7 @@ function labelBlock(context: DrawContext): TypedBlock<MovingUnlitMaterialParams>
 }
 
 test "a label's material releases the block it took, so the label's own release is refused" {
-	let context: DrawContext = DrawContext.withUniformCapacity(32);
+	let context: DrawContext = DrawContext.withUniformCapacity(MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
 	const block: TypedBlock<MovingUnlitMaterialParams> = labelBlock(context);
 	const pass: RenderState = RenderState.defaults().withBlendMode(BlendMode.AlphaAdd);
 	const added: Result<MaterialId, MaterialError> =
@@ -215,7 +215,7 @@ test "a label's material releases the block it took, so the label's own release 
 }
 
 test "a block whose material was refused is still the label's to release" {
-	let context: DrawContext = DrawContext.withUniformCapacity(32);
+	let context: DrawContext = DrawContext.withUniformCapacity(MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
 	const block: TypedBlock<MovingUnlitMaterialParams> = labelBlock(context);
 	const refused: Result<MaterialId, MaterialError> =
 		addMaterial(context, labelMaterial(block, RenderState.defaults()));
