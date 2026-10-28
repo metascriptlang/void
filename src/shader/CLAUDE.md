@@ -71,6 +71,16 @@ later replaces the hand-written GLSL source of each base.
   `irText` record stays the entry's. Refused at the declaration: a return other than `P`, a first
   parameter that is no author struct, a `@binding` on a bindings field
   (`tests/refusals/segment*.ms`). Pinned in `src/test/shaderSegmentCheck.ms`.
+- **A base hooks each phase struct once, and `link` chains segments there.** `hook(phase)`
+  (`std.ms`) is the identity on the CPU, so a base without effects runs unchanged. The emitter
+  lowers it to a call of a placeholder function named after the phase struct, whose body
+  returns its argument; a second `hook` on one struct is refused at the call. `link` in
+  `link.ms` replaces each placeholder's body with `return e2(e1(phase))` over the effects on
+  that phase, in the order given, and merges as Heaps' `hxsl/Linker.hx` `allocVar` does: structs
+  and resources by name, refused when a struct's members or a resource's kind or type differ;
+  functions and constants renamed on a clash. An effect on a phase with no hook site is
+  refused. Effect resources keep binding -1 until numbering, so a linked module prints only
+  after its bindings are numbered (`numberedForTest` in `src/test/shaderLinkCheck.ms`).
 - **Each declaration sits under the conditions its reads run under, and an unread one is left
   out.** A uniform or texture a variant does not read is still one its draw would have to bind, and
   shdc would reflect it. The condition is the `||` of every distinct context a read runs in,
