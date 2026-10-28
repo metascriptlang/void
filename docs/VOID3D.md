@@ -6172,8 +6172,18 @@ The port, in steps:
    texture, into an occlusion target. It is the seventeenth program, and the program key holds
    sixteen in four bits (`gpu3d.ms` `ProgramKey`), so the key's program field widens first, as
    `ProgramMap` widened to 5-bit entries. SAO's noise is `Texture.genNoise(128)`, random per
-   run; a fixed texture here keeps the golden stable.
+   run; a fixed texture here keeps the golden stable. **Built (2026-10-28).** `Program.Sao`
+   (index 16) and `sao.ms` `ScalableAoPass`, whose block `saoCheck.ms` holds to
+   `ScalableAO.apply`'s; the noise is a fixed 128² grey texture from a hash.
 3. The blur and the `Multiply` copy onto the frame, then a GPU golden of the composed frame.
+   **Built, not yet run on the GPU (2026-10-28).** `blur.ms` ports `h3d.pass.Blur`: its kernel
+   is `calcValues` in float64, held to real Heaps by `tests/oracle/blur3d.cases` (41 cases,
+   radius 0 to 31). As in Heaps, a trimmed kernel keeps the offsets of the weights it dropped,
+   and the shader reads only the weights. `Program.Blur` (index 17) draws one direction per
+   draw, at most 16 taps a side, so `BlurPass.draw` blurs across into a temporary and down back
+   into the target. As in `samples/Sao.hx`, the composition is the caller's, not a renderer's:
+   `tests/integration/sao.ms` draws a box on a floor, runs the pass, the blur and the
+   `Multiply` copy, and reads back the open floor, the box top and the foot of the box.
 
 ### Cascaded sun shadows, as built so far (2026-10-24)
 
