@@ -1,4 +1,9 @@
+import { elementKind } from "../js/elementKind";
+
 extern class Js {
+	extern bufferSubData(target: number, offset: number, data: Js): void;
+	extern getBufferSubData(target: number, offset: number, destination: Js): void;
+	extern uniform4fv(location: Js, data: Js): void;
 	extern createVertexArray(): Js;
 	extern bindVertexArray(vertexArray: Js): void;
 	extern deleteVertexArray(vertexArray: Js): void;
@@ -169,8 +174,35 @@ function unavailable(what: string): never {
 	return stop(`${what} is not built into this GL target; the backend checks oglCapabilities before it calls`);
 }
 
-function parked(what: string): never {
-	return stop(`${what} takes the address of an array element as a pointer, which --target=js cannot pass (~/metascript/.inbox/compiler/2026-10-27-js-element-address-as-pointer-argument.md)`);
+const KIND_SIZES: int32[] = [4, 8, 1, 1, 2, 2, 4, 4, 8, 8];
+
+extern function typedOf(items: Js, kind: int32): Js from "((a,k)=>{switch(k){case 0:return Float32Array.from(a);case 1:return Float64Array.from(a);case 2:return Int8Array.from(a);case 3:return Uint8Array.from(a);case 4:return Int16Array.from(a);case 5:return Uint16Array.from(a);case 6:return Int32Array.from(a);case 7:return Uint32Array.from(a);case 8:return BigInt64Array.from(a,(v)=>BigInt.asIntN(64,BigInt(v)));default:return BigUint64Array.from(a,(v)=>BigInt.asUintN(64,BigInt(v)));}})(#,#)";
+extern function typedOver(bytes: Js, kind: int32): Js from "((b,k)=>{const C=[Float32Array,Float64Array,Int8Array,Uint8Array,Int16Array,Uint16Array,Int32Array,Uint32Array,BigInt64Array,BigUint64Array][k];return new C(b.buffer,b.byteOffset,b.byteLength/C.BYTES_PER_ELEMENT);})(#,#)";
+extern function asBytes(typed: Js): Js from "((t)=>new Uint8Array(t.buffer,t.byteOffset,t.byteLength))(#)";
+extern function newBytes(count: int64): Js from "new Uint8Array(Number(#))";
+extern function elementsAt<T>(location: Borrow<T>, first: int64, count: int64): Js from "((l,f,n)=>{const i=l[1]+Number(f);return l[0].slice(i,i+Number(n));})(#,#,#)";
+extern function tailAt<T>(location: Borrow<T>): Js from "((l)=>l[0].slice(l[1]))(#)";
+extern function elementAt<T>(location: Borrow<T>, at: int32): number from "((l,i)=>l[0][l[1]+i])(#,#)";
+extern function storeAt<T>(location: Borrow<T>, first: int64, items: Js): void from "((l,f,t)=>{const a=l[0],i=l[1]+Number(f);for(let j=0;j<t.length;j++)a[i+j]=t[j];})(#,#,#)";
+extern function texSubImageView(context: Js, target: int32, level: int32, x: int32, y: int32, z: int32, width: int32, height: int32, depth: int32, format: int32, type: int32, view: Js, offset: int64): void
+	from "((g,t,l,x,y,z,w,h,d,f,p,v,o)=>{if(t===0x806F||t===0x8C1A)g.texSubImage3D(t,l,x,y,z,w,h,d,f,p,v,Number(o));else g.texSubImage2D(t,l,x,y,w,h,f,p,v,Number(o));})(#,#,#,#,#,#,#,#,#,#,#,#,#)";
+
+function checkAligned(call: string, kind: int32, byteOffset: int64, bytes: int64): int64 {
+	const size = KIND_SIZES[kind] as int64;
+	if (byteOffset % size != 0 || bytes % size != 0) {
+		stop(`${call}: byte offset ${byteOffset} and size ${bytes} must be multiples of the ${size}-byte element`);
+	}
+	return size;
+}
+
+function bytesOf<T>(location: Borrow<T>, kind: int32, byteOffset: int64, bytes: int64, call: string): Js {
+	const size = checkAligned(call, kind, byteOffset, bytes);
+	return asBytes(typedOf(elementsAt(location, byteOffset / size, bytes / size), kind));
+}
+
+function writeBytes<T>(location: Borrow<T>, kind: int32, byteOffset: int64, bytes: Js, count: int64, call: string): void {
+	const size = checkAligned(call, kind, byteOffset, count);
+	storeAt(location, byteOffset / size, typedOver(bytes, kind));
 }
 
 function handle(id: uint32): Js { return lookup(objects, id as int32); }
@@ -210,11 +242,59 @@ export function oglPixelStore(name: int32, value: int32): void { context.pixelSt
 export function oglHasExtension(name: string): int32 { return isNone(context.getExtension(name)) ? 0 : 1; }
 export function oglTextureNative(texture: uint32): Ptr<void> { return nativeHandle(handle(texture)); }
 
-export function oglConstantsDisagreement(values: Borrow<int32>, count: int32): string { return parked("oglConstantsDisagreement"); }
-export function oglCopyBytes<D, S>(destination: Borrow<D>, destinationOffset: int64, source: Borrow<S>, bytes: int64): void { parked("oglCopyBytes"); }
-export function oglBufferSubData<T>(target: int32, offset: int64, data: Borrow<T>, bytes: int64): void { parked("oglBufferSubData"); }
-export function oglGetBufferDataUncached<T>(buffer: uint32, offset: int64, destination: Borrow<T>, bytes: int64): int32 { return parked("oglGetBufferDataUncached"); }
-export function oglUniform4fv<T>(location: int32, count: int32, data: Borrow<T>, offset: int64): void { parked("oglUniform4fv"); }
+const GL_UNPACK_ROW_LENGTH = 0x0CF2;
+const GL_UNPACK_IMAGE_HEIGHT = 0x806E;
+const GL_DRAW_FRAMEBUFFER = 0x8CA9;
+
+const DRIVER_NAMES: string[] = [
+	"OGL_CAPABILITY_COMPUTE", "OGL_CAPABILITY_DEBUG", "OGL_CAPABILITY_TIMER", "OGL_CAPABILITY_EXACT_SAMPLES",
+	"GL_TEXTURE_3D", "GL_TEXTURE_2D_ARRAY", "GL_TEXTURE_CUBE_MAP", "GL_TEXTURE_CUBE_MAP_POSITIVE_X", "GL_BACK",
+	"GL_TEXTURE_2D", "GL_RENDERBUFFER", "GL_DEPTH_COMPONENT", "GL_DEPTH_STENCIL", "GL_UNPACK_ROW_LENGTH",
+	"GL_UNPACK_IMAGE_HEIGHT", "GL_NEAREST", "GL_FRAMEBUFFER", "GL_READ_FRAMEBUFFER", "GL_DRAW_FRAMEBUFFER",
+	"GL_COLOR_ATTACHMENT0", "GL_DEPTH_ATTACHMENT", "GL_FRAMEBUFFER_COMPLETE",
+];
+const DRIVER_VALUES: int32[] = [
+	1, 2, 4, 8,
+	GL_TEXTURE_3D, GL_TEXTURE_2D_ARRAY, GL_TEXTURE_CUBE_MAP, GL_TEXTURE_CUBE_MAP_POSITIVE_X, GL_BACK,
+	GL_TEXTURE_2D, GL_RENDERBUFFER, GL_DEPTH_COMPONENT, GL_DEPTH_STENCIL, GL_UNPACK_ROW_LENGTH,
+	GL_UNPACK_IMAGE_HEIGHT, GL_NEAREST, GL_FRAMEBUFFER, GL_READ_FRAMEBUFFER, GL_DRAW_FRAMEBUFFER,
+	GL_COLOR_ATTACHMENT0, GL_DEPTH_ATTACHMENT, GL_FRAMEBUFFER_COMPLETE,
+];
+
+export function oglConstantsDisagreement(values: Borrow<int32>, count: int32): string {
+	const known = DRIVER_VALUES.length as int32;
+	if (count != known) { return `backend.ms lists ${count} constants and glCalls.jms checks ${known}`; }
+	for (let i = 0; i < known; i++) {
+		const mine = DRIVER_VALUES[i];
+		const theirs = elementAt(values, i) as int32;
+		if (mine != theirs) { return `entry ${i}: ${DRIVER_NAMES[i]} is ${mine} in glCalls.jms and ${theirs} in backend.ms`; }
+	}
+	return "";
+}
+
+export function oglCopyBytes<D, S>(destination: Borrow<D>, destinationOffset: int64, source: Borrow<S>, bytes: int64): void {
+	const copy = bytesOf(source, elementKind(source), 0, bytes, "oglCopyBytes");
+	writeBytes(destination, elementKind(destination), destinationOffset, copy, bytes, "oglCopyBytes");
+}
+
+export function oglBufferSubData<T>(target: int32, offset: int64, data: Borrow<T>, bytes: int64): void {
+	context.bufferSubData(target, num(offset), bytesOf(data, elementKind(data), 0, bytes, "oglBufferSubData"));
+}
+
+export function oglGetBufferDataUncached<T>(buffer: uint32, offset: int64, destination: Borrow<T>, bytes: int64): int32 {
+	const read = newBytes(bytes);
+	context.bindBuffer(GL_COPY_READ_BUFFER, handle(buffer));
+	context.getBufferSubData(GL_COPY_READ_BUFFER, num(offset), read);
+	context.bindBuffer(GL_COPY_READ_BUFFER, NONE);
+	writeBytes(destination, elementKind(destination), 0, read, bytes, "oglGetBufferDataUncached");
+	return 1;
+}
+
+export function oglUniform4fv<T>(location: int32, count: int32, data: Borrow<T>, offset: int64): void {
+	const bytes = bytesOf(data, elementKind(data), offset, (count as int64) * 16, "oglUniform4fv");
+	context.uniform4fv(lookup(locations, location), typedOver(bytes, 0));
+}
+
 export function oglTexSubImage<T>(
 	target: int32,
 	level: int32,
@@ -228,7 +308,13 @@ export function oglTexSubImage<T>(
 	type: int32,
 	data: Borrow<T>,
 	offset: int64,
-): void { parked("oglTexSubImage"); }
+): void {
+	const kind = elementKind(data);
+	const size = KIND_SIZES[kind] as int64;
+	if (offset % size != 0) { stop(`oglTexSubImage: byte offset ${offset} must be a multiple of the ${size}-byte element`); }
+	const pixels = asBytes(typedOf(tailAt(data), kind));
+	texSubImageView(context, target, level, x, y, z, width, height, depth, format, type, pixels, offset);
+}
 
 export function oglCreateVertexArray(): uint32 { return register(objects, context.createVertexArray()); }
 export function oglBindVertexArray(vertexArray: uint32): void { context.bindVertexArray(handle(vertexArray)); }
