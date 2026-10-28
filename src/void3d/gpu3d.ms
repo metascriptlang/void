@@ -65,6 +65,8 @@ export enum Program {
 	Decal,
 	// Heaps' ScalableAO over a caller's depth and normal targets (SAO_*).
 	Sao,
+	// Heaps' Blur, one direction per draw (blur.ms BLUR_*).
+	Blur,
 }
 
 // Heaps adds a pass's output shaders to a material's (h3d.pass.Output); sokol-shdc programs
@@ -323,6 +325,7 @@ export function isScreenProgram(program: Program): boolean {
 		Program.OutlineWidth => true,
 		Program.Decal => false,
 		Program.Sao => true,
+		Program.Blur => true,
 	};
 }
 

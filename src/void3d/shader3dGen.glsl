@@ -437,6 +437,29 @@ void main() {
 }
 @end
 
+@fs blurFs
+layout(binding=0) uniform texture2D blurSource;
+layout(binding=0) uniform sampler blurSampler;
+layout(binding=0) uniform blurParams {
+    vec4 blurPixel;
+    vec4 blurTaps[16];
+};
+layout(location=0) out vec4 fragColor;
+void main() {
+    ivec2 size = textureSize(sampler2D(blurSource, blurSampler), 0);
+    vec2 uv = gl_FragCoord.xy / vec2(float(size.x), float(size.y));
+    int count = int(blurPixel.z);
+    vec4 color = vec4(0.0, 0.0, 0.0, 0.0);
+    for (int i = 1 - count; i < count; i++) {
+        vec4 tap = blurTaps[(i < 0) ? (-i) : i];
+        vec2 at = uv + (blurPixel.xy * (tap.y * float(i)));
+        color = color + (texture(sampler2D(blurSource, blurSampler), at) * tap.x);
+    }
+    fragColor = color;
+    return;
+}
+@end
+
 @vs particleVisualVs
 layout(binding=0) uniform vertexParams {
     mat4 viewProj;

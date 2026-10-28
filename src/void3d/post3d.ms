@@ -91,10 +91,10 @@ export function saoFaded(
 	return mix(started, 1.0, saturate((distance - fadeStart) / (fadeEnd - fadeStart)));
 }
 
-// gpu3d.ms SAO_* offsets: the inverse viewProj; the camera row whose dot with a world point is its view
-// depth; sampleRadius, intensity, bias and fovTan (1 / ortho height when ORTHO); numSamples,
-// numSpiralTurns, ORTHO and USE_SCALABLE_BIAS; noiseScale and the door's depthZeroToOne; the
-// camera position; startFadeStart, startFadeEnd, fadeStart and fadeEnd.
+// gpu3d.ms SAO_* offsets: the inverse viewProj; the camera row whose dot with a world point is
+// its view depth; sampleRadius, intensity, bias and fovTan (1 / ortho height when ORTHO);
+// numSamples, numSpiralTurns, ORTHO and USE_SCALABLE_BIAS; noiseScale and the door's
+// depthZeroToOne; the camera position; startFadeStart, startFadeEnd, fadeStart and fadeEnd.
 export struct SaoParams {
 	saoInverseViewProj: Mat4x4f;
 	saoViewDepth: Vec4f;
@@ -160,6 +160,34 @@ export function saoFs(input: SaoInput, b: SaoBindings): Vec4f {
 	const occlusion = saoFaded(saoOcclusion(sum, samples, radius.y),
 		distance(origin, b.saoParams.saoEye.xyz), fade.x, fade.y, fade.z, fade.w);
 	return vec4f(occlusion, occlusion, occlusion, 1.0);
+}
+
+// blur.ms BLUR_*: the step between taps in UV with the weight count; per tap, its weight and its
+// offset in steps per tap index.
+export struct BlurParams {
+	blurPixel: Vec4f;
+	blurTaps: Vec4f[16];
+}
+
+export struct BlurBindings {
+	@binding(0) blurSource: Texture2d;
+	@binding(0) blurSampler: Sampler;
+	@binding(0) blurParams: BlurParams;
+}
+
+// h3d.shader.Blur's plain branch: one direction of the separable blur over a source the target's
+// size, each tap weighted and placed by Blur.calcValues.
+export function blurFs(input: PostInput, b: BlurBindings): Vec4f {
+	const size = textureDimensions(b.blurSource, b.blurSampler, 0);
+	const uv = input.position.xy / vec2f(size.x as float32, size.y as float32);
+	const count = b.blurParams.blurPixel.z as int32;
+	let color = vec4f(0.0, 0.0, 0.0, 0.0);
+	for (let i = 1 - count; i < count; i++) {
+		const tap = b.blurParams.blurTaps[i < 0 ? -i : i];
+		const at = uv + b.blurParams.blurPixel.xy * (tap.y * (i as float32));
+		color = color + textureSample(b.blurSource, b.blurSampler, at) * tap.x;
+	}
+	return color;
 }
 
 export struct FullscreenAttributes {

@@ -92,6 +92,7 @@ import {
 	SAO_POINT_SAMPLER_SLOT,
 	SAO_NOISE_SAMPLER_SLOT,
 } from "../void3d/gpu3d";
+import { BLUR_UNIFORM_SLOT, BLUR_UNIFORM_LENGTH } from "../void3d/blur";
 import { UNIFORM_SLOTS } from "../gpu/door";
 import { GPU3D_BINDING_VIEWS, GPU3D_BINDING_SAMPLERS } from "../void3d/gpu3d.h";
 import { RenderState, Blend, BlendMode, Face } from "../gpu/state";
@@ -205,7 +206,7 @@ const EVERY_PROGRAM: Vec<Program> = [
 	Program.Lit, Program.Particle, Program.Billboard, Program.Copy, Program.Post, Program.Blit,
 	Program.LitTextured, Program.UnlitTextured, Program.BloomDownsampleFirst,
 	Program.BloomDownsample, Program.BloomUpsample, Program.OutlineMask, Program.OutlineMix,
-	Program.OutlineWidth, Program.ParticleVisual, Program.Decal, Program.Sao,
+	Program.OutlineWidth, Program.ParticleVisual, Program.Decal, Program.Sao, Program.Blur,
 ];
 
 const SCENE_PROGRAMS: Vec<Program> = [
@@ -235,6 +236,7 @@ function layoutFor(key: ProgramKey): VertexLayout {
 		Program.OutlineMix => VertexLayout.Fullscreen,
 		Program.OutlineWidth => VertexLayout.Fullscreen,
 		Program.Sao => VertexLayout.Fullscreen,
+		Program.Blur => VertexLayout.Fullscreen,
 		Program.LitTextured => VertexLayout.LitTextured,
 		Program.UnlitTextured => VertexLayout.LitTextured,
 	};
@@ -278,10 +280,19 @@ test "every key packs to bits of its own, and each declared one reads its progra
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 174 + 6 + 1 + 1;
+	assert declared == 174 + 6 + 1 + 1 + 1;
 }
 
-test "the SAO program is a screen program of the core, with its block, three views and two samplers" {
+test "the blur program is a screen program of the core, with its block, a view and a sampler" {
+	const key: ProgramKey = ProgramKey.of(Program.Blur);
+	assert (Program.Blur as int32) == 17 && declares(key) && isScreenProgram(Program.Blur);
+	assert !declares(key.withPreset(Preset.PixelArt)) && !declares(key.withPreset(Preset.Shadow));
+	assert vertexLayoutOf(key) == VertexLayout.Fullscreen;
+	assert uniformBlockLength(key, BLUR_UNIFORM_SLOT) == BLUR_UNIFORM_LENGTH;
+	assert textureSlotMask(key) == 1 && samplerSlotMask(key) == 1;
+}
+
+test "the SAO program is a core screen program with its block, three views and two samplers" {
 	const key: ProgramKey = ProgramKey.of(Program.Sao);
 	assert (Program.Sao as int32) == 16 && declares(key) && isScreenProgram(Program.Sao);
 	assert !declares(key.withPreset(Preset.PixelArt)) && !declares(key.withPreset(Preset.Shadow));

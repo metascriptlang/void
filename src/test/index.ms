@@ -124,6 +124,7 @@ import "./spotShadowCheck";
 import "./spotCookieCheck";
 import "./decalCheck";
 import "./saoCheck";
+import "./blurCheck";
 import "./cubeShadowCheck";
 import "./morphSkinSceneCheck";
 import "./lightShapeCheck";
