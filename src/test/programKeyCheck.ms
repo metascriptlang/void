@@ -48,7 +48,6 @@ import {
 	DECAL_UNIFORM_LENGTH,
 	LINE_UNIFORM_LENGTH,
 	SCENE_DEPTH_VIEW_SLOT,
-	SCENE_DEPTH_SAMPLER_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
 	PBR_MATERIAL_UNIFORM_LENGTH,
 	BILLBOARD_UNIFORM_SLOT,
@@ -90,7 +89,6 @@ import {
 	SAO_DEPTH_VIEW_SLOT,
 	SAO_NORMAL_VIEW_SLOT,
 	SAO_NOISE_VIEW_SLOT,
-	SAO_POINT_SAMPLER_SLOT,
 	SAO_NOISE_SAMPLER_SLOT,
 } from "../void3d/gpu3d";
 import { BLUR_UNIFORM_SLOT, BLUR_UNIFORM_LENGTH } from "../void3d/blur";
@@ -295,7 +293,7 @@ test "the blur program is a screen program of the core, with its block, a view a
 	assert textureSlotMask(key) == 1 && samplerSlotMask(key) == 1;
 }
 
-test "the SAO program is a core screen program with its block, three views and two samplers" {
+test "the SAO program is a core screen program with its block, three views and the noise sampler" {
 	const key: ProgramKey = ProgramKey.of(Program.Sao);
 	assert (Program.Sao as int32) == 16 && declares(key) && isScreenProgram(Program.Sao);
 	assert !declares(key.withPreset(Preset.PixelArt)) && !declares(key.withPreset(Preset.Shadow));
@@ -303,8 +301,7 @@ test "the SAO program is a core screen program with its block, three views and t
 	assert uniformBlockLength(key, SAO_UNIFORM_SLOT) == SAO_UNIFORM_LENGTH;
 	assert textureSlotMask(key) == (1 << (SAO_DEPTH_VIEW_SLOT as uint32)) +
 		(1 << (SAO_NORMAL_VIEW_SLOT as uint32)) + (1 << (SAO_NOISE_VIEW_SLOT as uint32));
-	assert samplerSlotMask(key) == (1 << (SAO_POINT_SAMPLER_SLOT as uint32)) +
-		(1 << (SAO_NOISE_SAMPLER_SLOT as uint32));
+	assert samplerSlotMask(key) == 1 << (SAO_NOISE_SAMPLER_SLOT as uint32);
 }
 
 test "the decal program is the core's alone, on the Lit layout, and reads the scene depth" {
@@ -315,7 +312,7 @@ test "the decal program is the core's alone, on the Lit layout, and reads the sc
 	assert uniformBlockLength(key, MATERIAL_UNIFORM_SLOT) == DECAL_UNIFORM_LENGTH;
 	assert uniformBlockLength(key, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
 	assert textureSlotMask(key) == 1 + (1 << (SCENE_DEPTH_VIEW_SLOT as uint32));
-	assert samplerSlotMask(key) == 1 + (1 << (SCENE_DEPTH_SAMPLER_SLOT as uint32));
+	assert samplerSlotMask(key) == 1;
 }
 
 test "the line program is the core's alone, on the lit-textured layout, with its own block" {
@@ -1307,7 +1304,7 @@ test "a pbr-maps key sets bit 18, is declared in all four variants and binds slo
 		}
 	}
 	assert textureSlotMask(base) == 7 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
-	assert samplerSlotMask(base) == 1 + ENV_SCENE_SAMPLERS;
+	assert samplerSlotMask(base) == 1 + ENV_SCENE_SAMPLERS + (1 << (COOKIE_SAMPLER_SLOT as uint32));
 	assert textureSlotMask(base.withShadowed()) ==
 		23 + 64 + 4096 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
 	assert textureSlotMask(tangent) == 39 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
