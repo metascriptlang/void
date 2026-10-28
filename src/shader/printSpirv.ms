@@ -1173,60 +1173,62 @@ function converted(p: Spirv, from: ShaderType, t: ShaderType, x: int32): int32 {
 }
 
 function glslNumber(op: Intrinsic): int32 {
-	if (op == Intrinsic.Round) { return 2; }
-	if (op == Intrinsic.Trunc) { return 3; }
-	if (op == Intrinsic.Floor) { return 8; }
-	if (op == Intrinsic.Ceil) { return 9; }
-	if (op == Intrinsic.Fract) { return 10; }
-	if (op == Intrinsic.Radians) { return 11; }
-	if (op == Intrinsic.Degrees) { return 12; }
-	if (op == Intrinsic.Sin) { return 13; }
-	if (op == Intrinsic.Cos) { return 14; }
-	if (op == Intrinsic.Tan) { return 15; }
-	if (op == Intrinsic.Asin) { return 16; }
-	if (op == Intrinsic.Acos) { return 17; }
-	if (op == Intrinsic.Atan) { return 18; }
-	if (op == Intrinsic.Sinh) { return 19; }
-	if (op == Intrinsic.Cosh) { return 20; }
-	if (op == Intrinsic.Tanh) { return 21; }
-	if (op == Intrinsic.Asinh) { return 22; }
-	if (op == Intrinsic.Acosh) { return 23; }
-	if (op == Intrinsic.Atanh) { return 24; }
-	if (op == Intrinsic.Atan2) { return 25; }
-	if (op == Intrinsic.Pow) { return 26; }
-	if (op == Intrinsic.Exp) { return 27; }
-	if (op == Intrinsic.Log) { return 28; }
-	if (op == Intrinsic.Exp2) { return 29; }
-	if (op == Intrinsic.Log2) { return 30; }
-	if (op == Intrinsic.Sqrt) { return 31; }
-	if (op == Intrinsic.InverseSqrt) { return 32; }
-	if (op == Intrinsic.Determinant) { return 33; }
-	if (op == Intrinsic.Mix) { return 46; }
-	if (op == Intrinsic.Step) { return 48; }
-	if (op == Intrinsic.Smoothstep) { return 49; }
-	if (op == Intrinsic.Fma) { return 50; }
-	if (op == Intrinsic.Ldexp) { return 53; }
-	if (op == Intrinsic.Modf) { return 36; }
-	if (op == Intrinsic.Frexp) { return 52; }
-	if (op == Intrinsic.Pack4x8Snorm) { return 54; }
-	if (op == Intrinsic.Pack4x8Unorm) { return 55; }
-	if (op == Intrinsic.Pack2x16Snorm) { return 56; }
-	if (op == Intrinsic.Pack2x16Unorm) { return 57; }
-	if (op == Intrinsic.Pack2x16Float) { return 58; }
-	if (op == Intrinsic.Unpack2x16Snorm) { return 60; }
-	if (op == Intrinsic.Unpack2x16Unorm) { return 61; }
-	if (op == Intrinsic.Unpack2x16Float) { return 62; }
-	if (op == Intrinsic.Unpack4x8Snorm) { return 63; }
-	if (op == Intrinsic.Unpack4x8Unorm) { return 64; }
-	if (op == Intrinsic.Length) { return 66; }
-	if (op == Intrinsic.Distance) { return 67; }
-	if (op == Intrinsic.Cross) { return 68; }
-	if (op == Intrinsic.Normalize) { return 69; }
-	if (op == Intrinsic.FaceForward) { return 70; }
-	if (op == Intrinsic.Reflect) { return 71; }
-	if (op == Intrinsic.Refract) { return 72; }
-	if (op == Intrinsic.FirstTrailingBit) { return GLSL_FIND_I_LSB; }
-	return 0;
+	return match (op) {
+		Intrinsic.Round => 2,
+		Intrinsic.Trunc => 3,
+		Intrinsic.Floor => 8,
+		Intrinsic.Ceil => 9,
+		Intrinsic.Fract => 10,
+		Intrinsic.Radians => 11,
+		Intrinsic.Degrees => 12,
+		Intrinsic.Sin => 13,
+		Intrinsic.Cos => 14,
+		Intrinsic.Tan => 15,
+		Intrinsic.Asin => 16,
+		Intrinsic.Acos => 17,
+		Intrinsic.Atan => 18,
+		Intrinsic.Sinh => 19,
+		Intrinsic.Cosh => 20,
+		Intrinsic.Tanh => 21,
+		Intrinsic.Asinh => 22,
+		Intrinsic.Acosh => 23,
+		Intrinsic.Atanh => 24,
+		Intrinsic.Atan2 => 25,
+		Intrinsic.Pow => 26,
+		Intrinsic.Exp => 27,
+		Intrinsic.Log => 28,
+		Intrinsic.Exp2 => 29,
+		Intrinsic.Log2 => 30,
+		Intrinsic.Sqrt => 31,
+		Intrinsic.InverseSqrt => 32,
+		Intrinsic.Determinant => 33,
+		Intrinsic.Mix => 46,
+		Intrinsic.Step => 48,
+		Intrinsic.Smoothstep => 49,
+		Intrinsic.Fma => 50,
+		Intrinsic.Ldexp => 53,
+		Intrinsic.Modf => 36,
+		Intrinsic.Frexp => 52,
+		Intrinsic.Pack4x8Snorm => 54,
+		Intrinsic.Pack4x8Unorm => 55,
+		Intrinsic.Pack2x16Snorm => 56,
+		Intrinsic.Pack2x16Unorm => 57,
+		Intrinsic.Pack2x16Float => 58,
+		Intrinsic.Unpack2x16Snorm => 60,
+		Intrinsic.Unpack2x16Unorm => 61,
+		Intrinsic.Unpack2x16Float => 62,
+		Intrinsic.Unpack4x8Snorm => 63,
+		Intrinsic.Unpack4x8Unorm => 64,
+		Intrinsic.Length => 66,
+		Intrinsic.Distance => 67,
+		Intrinsic.Cross => 68,
+		Intrinsic.Normalize => 69,
+		Intrinsic.FaceForward => 70,
+		Intrinsic.Reflect => 71,
+		Intrinsic.Refract => 72,
+		Intrinsic.FirstTrailingBit => GLSL_FIND_I_LSB,
+		_ => 0,
+	};
 }
 
 function controlledDerivative(p: Spirv, op: Intrinsic): int32 {
@@ -1372,15 +1374,17 @@ function imageBarrier(p: Spirv): int32 {
 
 function atomicOpcode(op: Intrinsic, s: ScalarKind): int32 {
 	const signed = s == ScalarKind.I32;
-	if (op == Intrinsic.AtomicAdd) { return OP_ATOMIC_I_ADD; }
-	if (op == Intrinsic.AtomicSub) { return OP_ATOMIC_I_SUB; }
-	if (op == Intrinsic.AtomicMax) { return signed ? OP_ATOMIC_S_MAX : OP_ATOMIC_U_MAX; }
-	if (op == Intrinsic.AtomicMin) { return signed ? OP_ATOMIC_S_MIN : OP_ATOMIC_U_MIN; }
-	if (op == Intrinsic.AtomicAnd) { return OP_ATOMIC_AND; }
-	if (op == Intrinsic.AtomicOr) { return OP_ATOMIC_OR; }
-	if (op == Intrinsic.AtomicXor) { return OP_ATOMIC_XOR; }
-	if (op == Intrinsic.AtomicExchange) { return OP_ATOMIC_EXCHANGE; }
-	return 0;
+	return match (op) {
+		Intrinsic.AtomicAdd => OP_ATOMIC_I_ADD,
+		Intrinsic.AtomicSub => OP_ATOMIC_I_SUB,
+		Intrinsic.AtomicMax => signed ? OP_ATOMIC_S_MAX : OP_ATOMIC_U_MAX,
+		Intrinsic.AtomicMin => signed ? OP_ATOMIC_S_MIN : OP_ATOMIC_U_MIN,
+		Intrinsic.AtomicAnd => OP_ATOMIC_AND,
+		Intrinsic.AtomicOr => OP_ATOMIC_OR,
+		Intrinsic.AtomicXor => OP_ATOMIC_XOR,
+		Intrinsic.AtomicExchange => OP_ATOMIC_EXCHANGE,
+		_ => 0,
+	};
 }
 
 function atomic(p: Spirv, e: ShaderExpr): int32 {
