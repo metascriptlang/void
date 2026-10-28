@@ -51,7 +51,7 @@ export function init2d(): void {
 	const img = loadImageFile("assets/test.png");
 	const iw: int32 = img.width;
 	const ih: int32 = img.height;
-	const logoImage: uint32 = makeImage(img.pixels as Span<uint32> as Ptr<void>, iw, ih);
+	const logoImage: uint32 = makeImage(img.pixels as Span<uint32>, iw, ih);
 	const logoView: Texture = Texture.adopt(logoImage, makeView(logoImage), iw, ih);
 	const logoH: float32 = 180.0;
 	const logoW: float32 = logoH * (iw as float32) / (ih as float32);

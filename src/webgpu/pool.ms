@@ -75,14 +75,18 @@ export function put<T>(ref natives: Vec<T>, id: uint32, native: T): void {
 
 export function vacate<T>(ref natives: Vec<T>, id: uint32): void { natives[slotOf(id)] = natives[0]; }
 
+@noinline function refreshFree(ref core: PoolCore): void {
+	core.free = [];
+	for (let index = core.generations.length as int32 - 1; index >= 1; index--) {
+		if (core.generations[index] < SLOT_MASK) { core.free.push(index); }
+	}
+}
+
 export function reset<T>(ref pool: Pool<T>): void {
 	const zero = pool.slots[0];
 	while (pool.slots.length > 1) { pool.slots.pop(); }
-	pool.core.free = [];
-	for (let index = pool.core.generations.length as int32 - 1; index >= 1; index--) {
-		pool.slots.push(zero);
-		if (pool.core.generations[index] < SLOT_MASK) { pool.core.free.push(index); }
-	}
+	while (pool.slots.length < pool.core.generations.length) { pool.slots.push(zero); }
+	refreshFree(pool.core);
 }
 
 export function alive<T>(this pool: Pool<T>, id: uint32): boolean {

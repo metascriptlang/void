@@ -14,6 +14,7 @@ import {
 	holdFaceBytes,
 } from "./face";
 import { graphemeProperty } from "./grapheme";
+import { fontBytesFind } from "./fontBytes";
 
 when (voidSprites) {
 	import { spriteFace, spriteCell, SpriteCell } from "./face";
@@ -66,7 +67,6 @@ export enum FontError {
 	NeedsShaper,
 	NotLoaded,
 	BadFeatureTag,
-	NoRasterizerOnJs,
 	NameHeld,
 }
 
@@ -285,6 +285,16 @@ function ensureDefaultFont(): void {
 }
 
 function defaultFace(): int32 {
+	when (js) {
+		if (fontBytesFind(DEFAULT_PATH) < 0) {
+			defaultLoads = defaultLoads + 1;
+			console.log(
+				`void2d: js has no font file for the default font ${DEFAULT_PATH}; ` +
+				`supply its bytes with defaultFontBytes before any text reads it`,
+			);
+			return LOAD_FAILED;
+		}
+	}
 	const loaded = faceAtPath(DEFAULT_PATH);
 	defaultLoads = defaultLoads + 1;
 	if (!loaded.ok) {
@@ -309,20 +319,16 @@ function pathRead(path: string): boolean {
 }
 
 function holdBytes(name: string, bytes: uint8[]): Result<void, FontError> {
-	when (js) {
-		return Result.err(FontError.NoRasterizerOnJs);
-	} else {
-		let known: boolean = false;
-		for (const held of heldNames) { known = known || held.equals(name); }
-		if (!known && pathRead(name)) { return Result.err(FontError.NameHeld); }
-		const held = holdFaceBytes(name, bytes);
-		if (held.ok) {
-			if (!known) { heldNames.push(name); }
-			return Result.ok(null);
-		}
-		if (held.error == FaceBytesError.NameHeld) { return Result.err(FontError.NameHeld); }
-		return Result.err(FontError.NotLoaded);
+	let known: boolean = false;
+	for (const held of heldNames) { known = known || held.equals(name); }
+	if (!known && pathRead(name)) { return Result.err(FontError.NameHeld); }
+	const held = holdFaceBytes(name, bytes);
+	if (held.ok) {
+		if (!known) { heldNames.push(name); }
+		return Result.ok(null);
 	}
+	if (held.error == FaceBytesError.NameHeld) { return Result.err(FontError.NameHeld); }
+	return Result.err(FontError.NotLoaded);
 }
 
 // registerFace for a face given as bytes (an asset read from an APK); `name` stands for its path.
@@ -349,7 +355,6 @@ export function addFont(path: string): Result<FontId, FontError> {
 	ensureDefaultFont();
 	const face = faceAtPath(path);
 	if (!face.ok) {
-		if (face.error == FaceError.NoRasterizerOnJs) { return Result.err(FontError.NoRasterizerOnJs); }
 		return Result.err(FontError.NotLoaded);
 	}
 	fonts.push(plainFont(face.value, path));

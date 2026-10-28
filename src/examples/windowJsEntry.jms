@@ -2,6 +2,7 @@ import { doorBeginScreenPass, doorCommit } from "../gpu/doorGpu";
 import { AppWindow } from "../host/appWindow";
 import { appWindow } from "../host/appWindowBrowser";
 import { fbHeight, fbWidth, gfxSetup } from "../host/gpu";
+import "../host/gpuWindow";
 
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 extern function publishAppWindow(window: AppWindow): void from "(globalThis.voidAppWindow=#)";

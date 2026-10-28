@@ -1,0 +1,16 @@
+import { holdFaceBytes } from "../void2d/face";
+
+@import("node:fs", { readFileSync });
+
+extern function readFileSync(path: string): unknown;
+extern function bytesOf(buffer: unknown): uint8[] from "Array.from(#)";
+
+export function fontFileBytes(path: string): uint8[] {
+	return bytesOf(readFileSync(path));
+}
+
+// js has no font file to open: a test holds a fixture's bytes under its path first.
+export function holdFontFile(path: string): void {
+	const held = holdFaceBytes(path, fontFileBytes(path));
+	if (!held.ok) { throw new Error(`fontFile: ${path} not held: ${held.error.toString()}`); }
+}

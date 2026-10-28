@@ -1,27 +1,26 @@
 profile scripts/build-web.sh --os=emcc no --release
-measured BUILD 4fe2a5eec emscripten 5.0.5 tree 89a52cba3ab971ce56c8ccfc0daf57bc7a97a85c
-modulesWeb-shaper wgpu off 440879 on 981537
-modulesWeb-shaper gl off 329558 on 870234
-modulesWeb-sdf wgpu off 440879 on 459244
-modulesWeb-sdf gl off 329558 on 347907
-modulesWeb-bidi wgpu off 440879 on 467813
-modulesWeb-bidi gl off 329558 on 356492
-measured additional BUILD 4fe2a5eec emscripten 5.0.5 tree 20ad6d286fcf45c668c55600c05a909a13d5081c
-modulesWeb-colour wgpu off 440879 on 489069
-modulesWeb-colour gl off 329558 on 381996
-modulesWeb-sprites wgpu off 440879 on 479839
-modulesWeb-sprites gl off 329558 on 371985
-modulesWeb-outline wgpu off 440879 on 461126
-modulesWeb-outline gl off 329558 on 349773
-main2d-shaper wgpu off 974297 on 1514985
-main2d-shaper gl off 869347 on 1410043
-main2d-sdf wgpu off 974297 on 984405
-main2d-sdf gl off 869347 on 879456
-main2d-bidi wgpu off 974297 on 1005722
-main2d-bidi gl off 869347 on 900772
-main2d-colour wgpu off 974297 on 1021556
-main2d-colour gl off 869347 on 916591
-main2d-sprites wgpu off 974297 on 1013273
-main2d-sprites gl off 869347 on 908314
-main2d-outline wgpu off 974297 on 988656
-main2d-outline gl off 869347 on 883708
+measured BUILD c85d84fb8 emscripten 5.0.5 tree 2e0f2c1be0482f6345bb732b9f82f61e01ec1c3d
+modulesWeb-shaper wgpu off 545726 on 1496053
+modulesWeb-shaper gl off 517939 on 1469747
+modulesWeb-sdf wgpu off 545726 on 559814
+modulesWeb-sdf gl off 517939 on 532042
+modulesWeb-bidi wgpu off 545726 on 578449
+modulesWeb-bidi gl off 517939 on 550726
+modulesWeb-colour wgpu off 545726 on 700268
+modulesWeb-colour gl off 517939 on 672735
+modulesWeb-sprites wgpu off 545726 on 594986
+modulesWeb-sprites gl off 517939 on 567247
+modulesWeb-outline wgpu off 545726 on 561870
+modulesWeb-outline gl off 517939 on 534093
+main2d-shaper wgpu off 1253125 on 2202853
+main2d-shaper gl off 1246440 on 2198366
+main2d-sdf wgpu off 1253125 on 1266850
+main2d-sdf gl off 1246440 on 1260234
+main2d-bidi wgpu off 1253125 on 1289486
+main2d-bidi gl off 1246440 on 1283053
+main2d-colour wgpu off 1253125 on 1346738
+main2d-colour gl off 1246440 on 1340446
+main2d-sprites wgpu off 1253125 on 1301990
+main2d-sprites gl off 1246440 on 1295559
+main2d-outline wgpu off 1253125 on 1271052
+main2d-outline gl off 1246440 on 1264458

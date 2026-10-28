@@ -1,0 +1,140 @@
+// The views driver on the browser's JS target, as bridgeWeb.c's voidWebInstallStart drives it: a
+// root per canvas over views.ms, no AppWindow. An entry that embeds Void views imports this
+// module; gpu.jms holds the device and the door it shares with the window driver.
+
+import { CanvasSize, CanvasView, enter, installStart, leave } from "../platform/web/window";
+import { Views, ViewsPlatform } from "./views";
+import {
+	Driver,
+	GpuSurface,
+	HostDriver,
+	Start,
+	acquire,
+	claimDriver,
+	doorDrop,
+	doorEnsure,
+	fail,
+	gpuState,
+	restoreStale,
+	starts,
+	surfaceBind,
+	surfaceClose,
+	surfaceOpen,
+	surfaceReconfigure,
+	useViewsDriver,
+} from "./gpu";
+
+export type ViewId = int32;
+export const ViewInvalid: ViewId = 0 as int32;
+
+class ViewStart extends Start {
+	view: ViewId = ViewInvalid;
+
+	release(): void {
+		if (this.view != ViewInvalid) {
+			leave(this.canvas);
+			views.destroy(this.view);
+		}
+	}
+}
+
+class BrowserPlatform extends ViewsPlatform {
+	surfaces: (GpuSurface | null)[] = [];
+
+	fail(message: string): never { return fail(message); }
+	deviceEnsure(): void { doorEnsure(); }
+	runInit(init: () => void): void { init(); }
+
+	surfaceCreate(slot: int32, native: int64, width: int32, height: int32): boolean {
+		while (this.surfaces.length <= slot) { this.surfaces.push(null); }
+		this.surfaces[slot] = surfaceOpen(startFor(native).canvas.selector);
+		return true;
+	}
+
+	surfaceResize(slot: int32, width: int32, height: int32): void { surfaceReconfigure(this.surfaceAt(slot)); }
+
+	surfaceReady(slot: int32): boolean {
+		if (gpuState.lost) { return false; }
+		restoreStale();
+		return true;
+	}
+
+	surfaceAcquire(slot: int32): boolean {
+		surfaceBind(this.surfaceAt(slot));
+		return true;
+	}
+
+	surfacePresent(slot: int32): void {}
+
+	surfaceDestroy(slot: int32): void {
+		surfaceClose(this.surfaceAt(slot));
+		this.surfaces[slot] = null;
+		doorDrop();
+	}
+
+	surfaceNative(slot: int32): int64 { return 0; }
+
+	surfaceAt(slot: int32): GpuSurface {
+		const surface = slot < this.surfaces.length ? this.surfaces[slot] : null;
+		if (surface === null) { return fail(`view slot ${slot} has no surface`); }
+		return surface;
+	}
+}
+
+const views = new Views(new BrowserPlatform());
+
+class ViewsDriver extends HostDriver {
+	live(): boolean { return views.deviceMade; }
+	sampleCount(): int32 { return views.sampleCount(); }
+	fbWidth(): int32 { return views.fbWidth(); }
+	fbHeight(): int32 { return views.fbHeight(); }
+	dpiScale(): float32 { return views.dpiScale(); }
+	present(): void { views.present(); }
+}
+
+useViewsDriver(new ViewsDriver("views driver"));
+
+function startFor(native: int64): Start {
+	const id = native as int32;
+	for (const start of starts) {
+		if (start.canvas.id == id) { return start; }
+	}
+	return fail(`voidViewCreate: no live start for canvas ${id}`);
+}
+
+async function beginViews(canvas: CanvasView, start: ViewStart): Promise<void> {
+	if (!(await acquire(canvas, start))) { return; }
+	const size = canvas.size;
+	const view = views.create(canvas.id as int64, size.width, size.height, size.scale);
+	start.view = view;
+	enter(
+		canvas,
+		(resized: CanvasSize): void => { views.resize(view, resized.width, resized.height, resized.scale); },
+		(time: float64): void => { views.frame(view); },
+	);
+}
+
+function open(canvas: CanvasView, onError: (message: string) => void): () => void {
+	claimDriver(Driver.Views);
+	if (starts.length > 0) {
+		when (webgl2) {
+			fail(`voidViewCreate: WebGL2 runs one view at a time; stop view ${starts[0].canvas.id} first`);
+		}
+	}
+	if (starts.length == 0) {
+		gpuState.runEpoch++;
+		gpuState.lost = false;
+	}
+	const start = new ViewStart(canvas, onError);
+	starts.push(start);
+	beginViews(canvas, start);
+	return (): void => { start.stop(); };
+}
+
+export function embedRegister(init: () => void, frame: () => void): void {
+	views.register(init, frame);
+	installStart(open);
+}
+
+export function setViewSampleCount(count: int32): void { views.setSampleCount(count); }
+export function currentView(): ViewId { return views.currentView; }
