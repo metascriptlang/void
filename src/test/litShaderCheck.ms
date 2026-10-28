@@ -23,6 +23,7 @@ import {
 	litFs,
 	litTexturedFs,
 	litTexturedVs,
+	colorKeyed,
 	distanceFade,
 	flipbookBlend,
 	flipbookUvs,
@@ -270,6 +271,15 @@ test "a distance fade rises over its near pair, falls over its far pair, and an 
 	assert within(distanceFade(25.0, range), 0.0);
 	assert distanceFade(0.0, vec4f(0.0)) == 1.0 && distanceFade(100.0, vec4f(0.0)) == 1.0;
 	assert distanceFade(100.0, vec4f(2.0, 4.0, 0.0, 0.0)) == 1.0;
+}
+
+test "a colour key discards only its own texel, and a key with no alpha keys nothing" {
+	const magenta = vec4f(1.0, 0.0, 1.0, 1.0);
+	assert colorKeyed(vec4f(1.0, 0.0, 1.0, 1.0), magenta);
+	assert colorKeyed(vec4f(1.0, 0.001, 1.0, 1.0), magenta);
+	assert !colorKeyed(vec4f(1.0, 0.01, 1.0, 1.0), magenta);
+	assert !colorKeyed(vec4f(1.0, 0.0, 1.0, 0.5), magenta);
+	assert !colorKeyed(vec4f(0.0), vec4f(0.0));
 }
 
 test "a straight texel divides the colour by its alpha, and a clear texel stays clear" {
