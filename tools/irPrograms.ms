@@ -11,7 +11,6 @@ import {
 	armCondition,
 	descriptorSource,
 	isComputeSource,
-	programModule,
 	programSource,
 	quotedSource,
 	targetArms,
@@ -20,6 +19,7 @@ import {
 import { dxbcStage } from "../src/shader/dxbcCache";
 import { metalFlags, metallibStage } from "../src/shader/metallibCache";
 import { irFromText } from "../src/shader/irText";
+import { linkedProgram } from "../src/shader/link";
 import { ResourceKind, ShaderModule, ShaderStage } from "../src/shader/ir";
 import { ShaderTarget, uniformBlockLayout } from "../src/shader/layout";
 import { printGlsl450 } from "../src/shader/printGlsl450";
@@ -142,6 +142,8 @@ const STAGES: string[][] = [
 	["GPU_COPY", "gpuCopyFs", glslIr(gpuCopyFs)],
 ];
 
+const EFFECTS: string[][] = [];
+
 const ARMS = targetArms();
 
 function stageFiles(language: string): string[] {
@@ -242,11 +244,17 @@ function shdcText(source: string, programs: Program[]): string {
 	return out;
 }
 
+function effectsOf(program: Program): string[] {
+	return EFFECTS.filter((effect) => program.features.includes(effect[0]))
+		.map((effect) => effect[1]);
+}
+
 function linkedModule(program: Program): ShaderModule {
-	const result = programModule(
+	const result = linkedProgram(
 		stageText(program.source, program.vertex),
 		stageText(program.source, program.fragment),
 		program.features,
+		effectsOf(program),
 	);
 	if (!result.ok) { fail(program.name + ": " + result.error); }
 	return result.value;
