@@ -557,6 +557,32 @@ export function needsFrame(this renderer: Renderer): boolean {
 	return renderer.changed || moving || renderer.generation != contextGeneration();
 }
 
+// Gives each item that carries a LOD pick the range of the level `camera` sees it at, or marks it
+// culled when it is smaller on screen than the pick's floor. Runs before beginFrame, which then
+// checks the picked range as it checks any other.
+export function pickMeshLods(
+	renderer: Renderer,
+	items: Span<DrawItem>,
+	camera: Readonly<Span<float32>>,
+): Result<void, RendererError> {
+	if (renderer.closed) { stopOnClosed("pickMeshLods"); }
+	if ((camera.length as int32) != renderer.cameraBlock.length) {
+		return Result.err(RendererError.CameraBlockLength);
+	}
+	const eye: Vec3 = vec3(camera[CAMERA_EYE], camera[CAMERA_EYE + 1], camera[CAMERA_EYE + 2]);
+	for (let i = 0; i < (items.length as int32); i++) {
+		const pick = items[i].lod;
+		if (pick === null) { continue; }
+		const picked = pick.pickFor(items[i].world, eye, camera[CAMERA_PROJECTION_X],
+			camera[CAMERA_PROJECTION_Y], camera[CAMERA_NEAR], renderer.meshLodScale);
+		if (!picked.ok) { return Result.err(RendererError.MeshLod); }
+		const range = picked.value;
+		items[i].lodCulled = range === null;
+		if (range !== null) { items[i].range = { base: range.base, count: range.count }; }
+	}
+	return Result.ok(null);
+}
+
 // Starts a frame: uploads the camera and lights, adopts a new GPU context if there is one and fills
 // the pass lists from `items`. A camera or light span that is not its block's length, an item whose
 // material names a program this renderer does not draw, a material whose block is not the one that
@@ -641,15 +667,6 @@ export function beginFrame(
 	}
 	if ((camera.length as int32) != renderer.cameraBlock.length) {
 		return Result.err(RendererError.CameraBlockLength);
-	}
-	const lodEye: Vec3 = vec3(camera[CAMERA_EYE], camera[CAMERA_EYE + 1], camera[CAMERA_EYE + 2]);
-	for (let i = 0; i < (items.length as int32); i++) {
-		const pick = items[i].lod;
-		if (pick === null) { continue; }
-		if (!pick.pickFor(items[i].world, lodEye, camera[CAMERA_PROJECTION_X],
-			camera[CAMERA_PROJECTION_Y], camera[CAMERA_NEAR], renderer.meshLodScale).ok) {
-			return Result.err(RendererError.MeshLod);
-		}
 	}
 	const counted: Result<int32, ClusterFrameError> = recordCountOf(lights);
 	if (!counted.ok) { return Result.err(RendererError.LightBlockLength); }

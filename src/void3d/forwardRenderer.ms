@@ -72,6 +72,7 @@ import {
 	closeRenderer,
 	drawShadowPass,
 	exposureMultiplier,
+	pickMeshLods,
 } from "./renderer";
 import { CameraView } from "./camera";
 
@@ -342,7 +343,7 @@ function screenMaterialError(renderer: ForwardRenderer, material: MaterialId): F
 // anything changes.
 export function prepareFrame(
 	renderer: ForwardRenderer,
-	items: Readonly<Span<DrawItem>>,
+	items: Span<DrawItem>,
 	camera: Readonly<Span<float32>>,
 	lights: Readonly<Span<float32>>,
 	width: int32,
@@ -400,6 +401,8 @@ export function prepareFrame(
 		(clusterView.texelWidth != width || clusterView.texelHeight != height)) {
 		return Result.err(ForwardError.ClusterViewSize);
 	}
+	const picked: Result<void, RendererError> = pickMeshLods(renderer.core, items, camera);
+	if (!picked.ok) { return Result.err(fromCore(picked.error)); }
 	const began: Result<boolean, RendererError> =
 		beginFrame(renderer.core, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }
@@ -478,7 +481,7 @@ export function endPrepared(renderer: ForwardRenderer): void {
 
 export function renderFrame(
 	renderer: ForwardRenderer,
-	items: Readonly<Span<DrawItem>>,
+	items: Span<DrawItem>,
 	camera: Readonly<Span<float32>>,
 	lights: Readonly<Span<float32>>,
 	width: int32,

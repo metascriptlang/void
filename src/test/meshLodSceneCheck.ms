@@ -1,7 +1,9 @@
 import { Mat4, vec3, identity, scaling, translation } from "../math/math3d";
 import { Camera3D, CameraView, CameraError, ProjectionKind, CAMERA_BLOCK_LENGTH,
 	CAMERA_PROJECTION_X, CAMERA_PROJECTION_Y, CAMERA_EYE, CAMERA_NEAR } from "../void3d/camera";
-import { MeshLod, MeshLodRanges, MeshLodPick, MeshLodError, pickFor } from "../void3d/meshLod";
+import {
+	MeshLod, MeshLodRange, MeshLodRanges, MeshLodPick, MeshLodError, pickFor,
+} from "../void3d/meshLod";
 import { Bounds3D } from "../void3d/bounds";
 import { Frustum3D } from "../void3d/frustum";
 import {
@@ -10,10 +12,10 @@ import {
 import { Material, Phase, ShadowCasting } from "../void3d/material";
 import { RenderState } from "../gpu/state";
 import {
-	Program, VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH, MATERIAL_UNIFORM_SLOT,
+	Program, VERTEX_UNIFORM_LENGTH, MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
-import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame } from "../void3d/renderer";
+import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, pickMeshLods } from "../void3d/renderer";
 import {
 	Scene3D, NodeId3D, SceneError, Transform3D, addMeshNode, addLodMeshNode, setForcedLod,
 	setMeshOf, refresh,
@@ -38,36 +40,34 @@ function nineElements(lodCount: int32, elementCount: int64): MeshLodRanges {
 function pickOf(forcedLod: int32): MeshLodPick {
 	return {
 		config: twoLevels(), ranges: nineElements(2, 9), material: 0, localOriginRadius: 1.0,
-		forcedLod: forcedLod, range: { base: 0, count: 6 }, culled: false,
+		forcedLod: forcedLod,
 	};
 }
 
-function pickedAt(pick: MeshLodPick, world: Mat4): Result<void, MeshLodError> {
+function pickedAt(pick: MeshLodPick, world: Mat4): Result<MeshLodRange | null, MeshLodError> {
 	return pick.pickFor(world, vec3(0.0, 0.0, 0.0), 1.0, 1.0, 0.1, 1.0);
 }
 
+function rangeAt(forcedLod: int32, world: Mat4): MeshLodRange | null {
+	const picked = pickedAt(pickOf(forcedLod), world);
+	if (!picked.ok) { unreachable; }
+	return picked.value;
+}
+
 test "a pick chooses the level by screen ratio, scaled by the world, and culls below the floor" {
-	const near = pickOf(-1);
-	assert pickedAt(near, translation(0.0, 0.0, -1.0)).ok;
-	assert !near.culled && near.range.base == 0 && near.range.count == 6;
-	const far = pickOf(-1);
-	assert pickedAt(far, translation(0.0, 0.0, -3.0)).ok;
-	assert !far.culled && far.range.base == 6 && far.range.count == 3;
-	const scaled = pickOf(-1);
-	assert pickedAt(scaled, { ...scaling(2.0, 2.0, 2.0), m43: -3.0 }).ok;
-	assert !scaled.culled && scaled.range.base == 0;
-	const tiny = pickOf(-1);
-	assert pickedAt(tiny, translation(0.0, 0.0, -20.0)).ok;
-	assert tiny.culled;
+	const near = rangeAt(-1, translation(0.0, 0.0, -1.0));
+	assert near !== null && near.base == 0 && near.count == 6;
+	const far = rangeAt(-1, translation(0.0, 0.0, -3.0));
+	assert far !== null && far.base == 6 && far.count == 3;
+	const scaled = rangeAt(-1, { ...scaling(2.0, 2.0, 2.0), m43: -3.0 });
+	assert scaled !== null && scaled.base == 0;
+	assert rangeAt(-1, translation(0.0, 0.0, -20.0)) === null;
 }
 
 test "a forced level overrides the distance and a level past the count hides the mesh" {
-	const forced = pickOf(1);
-	assert pickedAt(forced, translation(0.0, 0.0, -1.0)).ok;
-	assert !forced.culled && forced.range.base == 6;
-	const past = pickOf(2);
-	assert pickedAt(past, translation(0.0, 0.0, -1.0)).ok;
-	assert past.culled;
+	const forced = rangeAt(1, translation(0.0, 0.0, -1.0));
+	assert forced !== null && forced.base == 6;
+	assert rangeAt(2, translation(0.0, 0.0, -1.0)) === null;
 }
 
 test "a mirrored world is refused by the pick" {
@@ -100,7 +100,7 @@ test "the camera block carries the projection diagonal, the eye and the near pla
 }
 
 function shadowedContext(): DrawContext {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
 	const mesh: MeshId = added(context, GpuMesh.fullscreen(0, 9));
 	context.meshData[mesh.index] = {
 		...context.meshData[mesh.index],
@@ -121,19 +121,31 @@ function lodNode(scene: Scene3D, depth: float32): NodeId3D {
 	return node.value;
 }
 
-test "a LOD node's item carries its pick and draws level zero until picked" {
+function pickerOf(context: DrawContext): Renderer {
+	const made = Renderer.create(context);
+	if (!made.ok) { unreachable; }
+	return made.value;
+}
+
+function pickedFrom(renderer: Renderer, items: Span<DrawItem>): Result<void, RendererError> {
+	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	viewOf({ ...perspective(), position: vec3(0.0, 0.0, 0.0) }).writeCameraBlock(camera);
+	return pickMeshLods(renderer, items, camera);
+}
+
+test "a LOD node's item draws level zero until a frame picks its level" {
 	const scene = Scene3D.create(shadowedContext());
 	const _node = lodNode(scene, -3.0);
 	let items: Vec<DrawItem> = [];
 	const _count = refresh(scene, items);
 	assert items.length == 1;
+	const before = items[0].range;
+	assert before !== null && before.base == 0 && before.count == 6;
+	assert pickedFrom(pickerOf(scene.context), items).ok;
+	const after = items[0].range;
+	assert after !== null && after.base == 6 && after.count == 3 && !items[0].lodCulled;
 	const pick = items[0].lod;
 	assert pick !== null && approx(pick.localOriginRadius as float32, 1.0);
-	const before = items[0].drawnRange();
-	assert before !== null && before.base == 0 && before.count == 6;
-	assert pickedAt(pick, items[0].world).ok;
-	const after = items[0].drawnRange();
-	assert after !== null && after.base == 6 && after.count == 3;
 }
 
 test "a LOD node refuses a table that does not fit its mesh" {
@@ -182,11 +194,11 @@ test "a culled pick leaves both the colour and the shadow pass lists" {
 	const node = lodNode(scene, -3.0);
 	let items: Vec<DrawItem> = [];
 	const _count = refresh(scene, items);
-	const pick = items[0].lod;
-	assert pick !== null;
+	const renderer: Renderer = pickerOf(scene.context);
 	for (const level of [-1, 2]) {
 		assert setForcedLod(scene, node, level).ok;
-		assert pickedAt(pick, items[0].world).ok;
+		assert pickedFrom(renderer, items).ok;
+		assert items[0].lodCulled == (level == 2);
 		let colour: PassList = PassList.forPhase(Phase.Opaque);
 		collect(colour, items, scene.context.materials);
 		let casters: PassList = PassList.forPhase(Phase.Opaque);
@@ -199,7 +211,7 @@ test "a culled pick leaves both the colour and the shadow pass lists" {
 }
 
 struct LitFrame {
-	began: Result<boolean, RendererError>;
+	began: Result<void, RendererError>;
 	published: boolean;
 }
 
@@ -221,14 +233,14 @@ function litFrame(world: Mat4): LitFrame {
 	if (!ranges.ok) { unreachable; }
 	const pick: MeshLodPick = {
 		config: twoLevels(), ranges: ranges.value, material: 0, localOriginRadius: 1.0,
-		forcedLod: -1, range: { base: 0, count: 0 }, culled: false,
+		forcedLod: -1,
 	};
 	const item: DrawItem = { mesh: mesh.value, material: material.value, world: world, lod: pick };
 	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	viewOf(perspective()).writeCameraBlock(camera);
-	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	const before: int32 = renderer.generation;
-	const began = beginFrame(renderer, [item], camera, lights);
+	let items: Vec<DrawItem> = [item];
+	const began = pickMeshLods(renderer, items, camera);
 	return { began: began, published: renderer.generation != before };
 }
 

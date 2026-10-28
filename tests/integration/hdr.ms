@@ -293,7 +293,7 @@ function checkEdge(multiplier: float32, mode: ToneMode): void {
 function draw(
 	art: PixelArtRenderer | null,
 	fwd: ForwardRenderer | null,
-	drawn: Vec<DrawItem>,
+	drawn: Span<DrawItem>,
 	multiplier: float32,
 	mode: ToneMode,
 ): void {

@@ -213,6 +213,7 @@ export struct DrawItem {
 	range: DrawRange | null;
 	instances: InstanceRun | null;
 	lod: MeshLodPick | null;
+	lodCulled: boolean;
 }
 
 // The instance rows a mesh item draws its mesh once each for, in place of the one row its world
@@ -224,14 +225,8 @@ export struct InstanceRun {
 	count: int32;
 }
 
-export function drawnRange(this item: Readonly<DrawItem>): DrawRange | null {
-	const pick = item.lod;
-	if (pick === null) { return item.range; }
-	return { base: pick.range.base, count: pick.range.count };
-}
-
 export function validRange(this item: Readonly<DrawItem>, total: int32): boolean {
-	const range = item.drawnRange();
+	const range = item.range;
 	return range === null || (range.base >= 0 && range.count >= 0 &&
 		range.base <= total && range.count <= total - range.base);
 }
@@ -1949,8 +1944,8 @@ export function drawBatchWith(
 // Whether `item` can share an instanced draw with `first`: the same mesh, material and range,
 // and nothing but a world matrix of its own.
 export function sameBatch(this first: Readonly<DrawItem>, item: Readonly<DrawItem>): boolean {
-	const range = item.drawnRange();
-	const firstRange = first.drawnRange();
+	const range = item.range;
+	const firstRange = first.range;
 	const sameRange: boolean = range === null ? firstRange === null :
 		firstRange !== null && range.base == firstRange.base && range.count == firstRange.count;
 	return item.mesh.index == first.mesh.index && item.mesh.generation == first.mesh.generation &&
@@ -2115,7 +2110,7 @@ function drawStaged(
 		const declared: int32 = uniformBlockLength(program, material.uniforms.slot);
 		context.applyBlockHead(material.uniforms, program, declared);
 	}
-	const range = item.drawnRange();
+	const range = item.range;
 	if (range === null) {
 		draw(0, mesh.elementCount(), instanceCount);
 	} else {

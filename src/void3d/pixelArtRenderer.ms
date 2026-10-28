@@ -93,6 +93,7 @@ import {
 	closeRenderer,
 	drawShadowPass,
 	exposureMultiplier,
+	pickMeshLods,
 } from "./renderer";
 import { CameraView } from "./camera";
 
@@ -793,7 +794,7 @@ function rampsHaveLevels(
 // has no levels, refuses the frame before anything changes.
 export function prepareFrame(
 	renderer: PixelArtRenderer,
-	items: Readonly<Span<DrawItem>>,
+	items: Span<DrawItem>,
 	camera: Readonly<Span<float32>>,
 	lights: Readonly<Span<float32>>,
 	view: LowResView,
@@ -838,6 +839,8 @@ export function prepareFrame(
 		(clusterView.texelWidth != view.width || clusterView.texelHeight != view.height)) {
 		return Result.err(PixelArtError.ClusterViewSize);
 	}
+	const picked: Result<void, RendererError> = pickMeshLods(renderer.core, items, camera);
+	if (!picked.ok) { return Result.err(fromCore(picked.error)); }
 	const began: Result<boolean, RendererError> =
 		beginFrame(renderer.core, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }
@@ -912,7 +915,7 @@ export function endPrepared(renderer: PixelArtRenderer): void {
 
 export function renderFrame(
 	renderer: PixelArtRenderer,
-	items: Readonly<Span<DrawItem>>,
+	items: Span<DrawItem>,
 	camera: Readonly<Span<float32>>,
 	lights: Readonly<Span<float32>>,
 	view: LowResView,

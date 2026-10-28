@@ -205,7 +205,7 @@ function phaseRefusal(pass: RenderState, phase: Phase): ForwardError | null {
 	const added: Result<MaterialId, MaterialError> =
 		addMaterial(context, Material.plain(Program.Lit, pass, phase));
 	if (!added.ok) { unreachable; }
-	const items: Vec<DrawItem> = [{
+	let items: Vec<DrawItem> = [{
 		mesh: { store: 0, index: 0, generation: 0 }, material: added.value,
 		world: identity(),
 	}];

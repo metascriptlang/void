@@ -396,7 +396,7 @@ test "the forward preset takes the core's blocks and a copy material and draws c
 		assert overPass.blendAlphaDestination == Blend.OneMinusSourceAlpha;
 		assert !overPass.depthWrite && overPass.culling == Face.None;
 		assert forward.core.preset == Preset.Core;
-		const items: Vec<DrawItem> = [itemOf(context, firstMaterial(context))];
+		let items: Vec<DrawItem> = [itemOf(context, firstMaterial(context))];
 		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 		const unsized: Result<int32, ForwardError> =
@@ -694,7 +694,7 @@ test "the forward preset refuses a lit material without its block" {
 	assert created.ok;
 	if (created.ok) {
 		let forward: ForwardRenderer = created.value;
-		const items: Vec<DrawItem> = [itemOf(context, firstMaterial(context))];
+		let items: Vec<DrawItem> = [itemOf(context, firstMaterial(context))];
 		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 		const refused: Result<int32, ForwardError> =
@@ -712,7 +712,7 @@ test "the forward preset refuses a frame once its own copy material or screen me
 	let forward: ForwardRenderer = created.value;
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-	const none: Vec<DrawItem> = [];
+	let none: Vec<DrawItem> = [];
 	assert releaseMesh(context, forward.core.screenMesh).ok;
 	const noScreen: Result<int32, ForwardError> =
 		renderFrame(forward, none, camera, lights, 64, 64);
