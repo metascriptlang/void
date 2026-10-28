@@ -6929,6 +6929,20 @@ Pinned in `litShaderCheck.ms` (the threshold, alpha, the zero key). `movingMater
 red half of a red and green texture away in both presets, GPU-green on D3D11; the featureless
 control draws the red half.
 
+### Sine wave: Heaps' SinusDeform, as built (2026-10-29)
+
+Heaps' `SinusDeform` (`h3d/shader/SinusDeform.hx`) moves u by `amplitude * sin(v * frequency +
+time * speed)`. void3d carries speed, frequency and amplitude as one more vec4 in the moving block
+of a UV-transform key (`gpu3d.ms` `MOVING_SINUS_*`), applied by `shader3d.ms` `sinusUv` to the
+moved UV in the lit, unlit and pixel-art programs, so the flipbook, normal and emissive maps read
+the waved UV as Heaps' textures read `calculatedUV`. An amplitude of 0 leaves u alone, and a
+material with an amplitude and a speed wakes the core while time passes (`renderer.ms`
+`readsFrameTime`).
+
+Pinned in `litShaderCheck.ms` (along v, along the time, no amplitude) and `rendererCheck.ms` (the
+wake). `movingMaterial.ms` reads the wave's crest at 1 s and its rest at 2 s in both presets,
+GPU-green on D3D11; the featureless control never moves u.
+
 ### Trail: CPU history and ribbon checkpoint
 
 Apps sample a world pose/time into standalone `Trail` state and obtain `MeshData` through
