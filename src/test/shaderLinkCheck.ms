@@ -1201,6 +1201,27 @@ test "two effect blocks at numbered bindings that share a member name are refuse
 		"link: effect 'bothAdd': 'tint' names two things in one stage";
 }
 
+struct TintedBindings {
+	@binding(2) vertexTint: Tint;
+}
+
+function tintedVs(input: Corner, b: TintedBindings): Placed {
+	return {
+		clip: vec4f(input.position.x, input.position.y, 0.0, 1.0) + b.vertexTint.tint,
+		uv: input.position,
+	};
+}
+
+test "a vertex block and an effect's fragment block may share a member name" {
+	const base = programModule(glslIr(tintedVs), glslLinkedIr(baseFs, tintedVs), []);
+	assert base.ok;
+	const m = link(base.value, [moduleOf(COLOUR_ADD)]);
+	assert m.ok;
+	assert m.value.resources.map((r) => r.name + "@" + String(r.binding)).join(",") ==
+		"vertexTint@2,frame@0,tintParams@3";
+	assert reflected(m.value).split("\n").length == TARGETS.length;
+}
+
 function brighten(c: Vec4f): Vec4f {
 	return c * 2.0;
 }
