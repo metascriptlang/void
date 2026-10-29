@@ -716,8 +716,9 @@ export function beginSegments(a: PaintIndex): void {
 
 export function endSegments(a: PaintIndex, b: PaintIndex): void {
 	activeContext.segmented = false;
-	if (b.uiInstances > activeContext.segmentStart) {
-		addDirtyUi(activeContext.segmentStart, b.uiInstances);
+	const written: int32 = Math.min(activeContext.uiInstanceTotal, b.uiInstances);
+	if (written > activeContext.segmentStart) {
+		addDirtyUi(activeContext.segmentStart, written);
 	}
 	if (b.spriteInstances > a.spriteInstances) { activeContext.dirtySprites = true; }
 	if (b.vertices > a.vertices) { activeContext.dirtyVertices = true; }
