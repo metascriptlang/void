@@ -1084,9 +1084,8 @@ human has seen it as app code; the phase measurement comes last.
      (Yoga's child removal scans the owner's children), of 20 000 rows with no layout 3.7 to
      4.5 ms. Pinned by `src/test/layoutCheck.ms` and, counting the process heap on macOS,
      `tests/isolated/yogaLeak.ms`.
-   - `==` on `NodeRef` fails to build on C and JS in a module that does not import `NodeId`
-     (`~/metascript/.inbox/compiler/2026-09-28-struct-eq-nested-type-not-imported.md`);
-     `src/test/nodeCheck.ms` names `NodeId` for it and is the parked site.
+   - `==` on `NodeRef` failed to build on C and JS in a module that does not import `NodeId`;
+     fixed in msc c85d84fb8, and `src/test/nodeCheck.ms` imports no `NodeId`.
    - The allocation stage lists the new frame path (`drawRow`, `syncRow`, `meshBounds`,
      `clearChanges`, `refOf`, `liveRow`, `imageStyleOf`). On BUILD `3f6873ee` it also found
      `faceAtPath` copying each `LoadedPath` in a `for..of` on the rebuild path, already so on

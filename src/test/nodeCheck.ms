@@ -1,4 +1,4 @@
-import { DrawKind, Changed, NodeRef, NodeId2D, Scene2D, NO_COLOR_MATRIX_ROW, NO_FRAME } from "../void2d/node";
+import { DrawKind, Changed, NodeRef, Scene2D, NO_COLOR_MATRIX_ROW, NO_FRAME } from "../void2d/node";
 import "../void2d/scene";
 import { sync, getBounds, hitTest } from "../void2d/render";
 import {
@@ -842,7 +842,7 @@ test "a background promotes a group in place, keeping row, children and local" {
 	const n = s.group().at(3.0, 4.0);
 	const child = s.rect(1.0, 1.0, white);
 	n.addChild(child);
-	const id: NodeId2D = n.id;
+	const id = n.id;
 	s.clearChanges();
 	n.setBackground(rgba(0.2, 0.4, 0.8, 1.0));
 	assert n.kind() === DrawKind.Rect;
