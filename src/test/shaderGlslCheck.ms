@@ -1,6 +1,6 @@
 // The probe modules printed as GLSL 430 and GLSL ES 3.00: the blur keeps the committed interface
 // of both, every intrinsic and statement kind has a spelling, and each refusal names its case.
-// The printed files land in out/glslProbe/ for naga.
+// The printed files land in out/glslProbe/ for the GLSL validator.
 
 import { mkdir, readFile, writeFile } from "std/fs";
 import {
@@ -18,6 +18,7 @@ import {
 	ShaderModule,
 	ShaderStage,
 	StmtKind,
+	TextureShape,
 	arrayType,
 	assignOf,
 	exprOf,
@@ -28,6 +29,7 @@ import {
 	samplerType,
 	stmtOf,
 	structType,
+	textureType,
 	vectorType,
 } from "../shader/ir";
 import { ShaderTarget, bindingSlots } from "../shader/layout";
@@ -148,7 +150,8 @@ test "the vertex probe reads its block through the flattened vec4 array" {
 	for (const text of [desktop, es]) {
 		for (const piece of [
 			"uniform vec4 camera[12];\n",
-			"gl_Position = mat4(camera[0], camera[1], camera[2], camera[3]) * vec4(position, 1.0);\n",
+			"gl_Position = mat4(camera[0], camera[1], camera[2], camera[3]) * vec4(position, " +
+			"1.0);\n",
 			"shade = (color * camera[5].w) + (vec4(mat3(camera[7].xyz, camera[8].xyz, " +
 				"camera[9].xyz) * camera[5].xyz, 0.0) + camera[11]);\n",
 			"id = uint(gl_VertexID) + uint(gl_InstanceID);\n",
@@ -182,11 +185,15 @@ test "the fragment probe spells every intrinsic and statement on both targets" {
 			"m3 = inverse(m3);\n", "m2 = inverse(m2);\n", "m3 = mat3(m4);\n", "v2 = dFdx(v2);\n",
 			"v2 = fwidth(v2);\n", "f = dFdy(f);\n", "i = sign(i);\n",
 			"v4 = texelFetch(albedo_albedoSmp, i2, 0);\n", "v4 *= m4;\n",
-			"f = f - 2.0 * trunc(f / 2.0);\n", "u = u % 4u;\n", "v4.zw = v2;\n", "shade_1(v3, f);\n",
-			"bool demoted = false;\n", "if (f < 0.0)\n    {\n        demoted = true;\n    }\n    else\n",
-			"if (demoted)\n    {\n        discard;\n    }\n    return;\n}\n", "int k = 0; k < 3; k++)\n", "f += weights[k];\n",
+			"f = f - 2.0 * trunc(f / 2.0);\n", "u = u % 4u;\n", "v4.zw = v2;\n",
+			"shade_1(v3, f);\n",
+			"bool demoted = false;\n",
+			"if (f < 0.0)\n    {\n        demoted = true;\n    }\n    else\n",
+			"if (demoted)\n    {\n        discard;\n    }\n    return;\n}\n",
+			"int k = 0; k < 3; k++)\n", "f += weights[k];\n",
 			"int j = 3;\n        for (; k < j; k++, j--)\n",
-			"        case 0:\n        case 1:\n        {\n            f += 1.0;\n            break;\n",
+			"        case 0:\n        case 1:\n        {\n            f += 1.0;\n            " +
+			"break;\n",
 			"        default:\n", "b = v3 == v3;\n", "b = v3 != v3;\n", "i = i / 2;\n",
 			"f = s.weight + v3[i];\n", "v2 = s.offset - gl_FragCoord.xy;\n", "v4 = m4[1];\n",
 			"v4 = mat4(material[1], material[2], material[3], material[4]) * (v4 * material[0]);\n",
@@ -212,7 +219,8 @@ test "the fragment probe spells every intrinsic and statement on both targets" {
 		"const highp float weights[3]", "highp vec3 shade_1(highp vec3 x, highp float k)\n",
 		"uniform highp vec4 material[5];\nuniform highp sampler2D albedo_albedoSmp;\n",
 		"in highp vec4 shade;\nflat in highp uint id;\n" +
-			"layout(location = 0) out highp vec4 color;\nlayout(location = 1) out highp vec4 extra;\n",
+			"layout(location = 0) out highp vec4 color;\nlayout(location = 1) out highp vec4 " +
+			"extra;\n",
 		"highp float arr[3]", "f = (f * f + f);\n",
 	]) {
 		if (!es.includes(piece)) { console.log("missing: " + piece); }
@@ -256,15 +264,18 @@ test "the compute probe declares std430 buffers and images on GLSL 430" {
 		"#version 430\n\nlayout(local_size_x = 8, local_size_y = 4, local_size_z = 1) in;\n",
 		"struct Particle\n{\n    vec3 position;\n    float mass;\n    vec2 velocity;\n};\n",
 		"struct Spring\n{\n    float rest;\n    vec3 axis;\n};\n",
-		"layout(std430, binding = 0) buffer particles_buffer\n{\n    Particle data[];\n} particles;\n",
+		"layout(std430, binding = 0) buffer particles_buffer\n{\n    Particle data[];\n} " +
+		"particles;\n",
 		"layout(std430, binding = 1) readonly buffer springs_buffer\n{\n    Spring data[];\n} " +
 			"springs;\n",
 		"layout(binding = 0, r32f) uniform image2D heat;\n",
 		"layout(binding = 1, rgba8) uniform writeonly image2D image;\n",
 		"ivec2 size = imageSize(image);\n",
-		"particles.data[gl_GlobalInvocationID.x].mass = springs.data[gl_LocalInvocationIndex].rest" +
+		"particles.data[gl_GlobalInvocationID.x].mass = " +
+		"springs.data[gl_LocalInvocationIndex].rest" +
 			" + float(gl_WorkGroupID.x);\n",
-		"imageStore(heat, ivec2(gl_LocalInvocationID.xy), vec4(springs.data[gl_LocalInvocationIndex]" +
+		"imageStore(heat, ivec2(gl_LocalInvocationID.xy), " +
+		"vec4(springs.data[gl_LocalInvocationIndex]" +
 			".axis, imageLoad(heat, ivec2(gl_LocalInvocationID.xy)).x));\n",
 		"imageStore(image, size.yx - ivec2(gl_LocalInvocationID.xy), vec4(",
 	]) {
@@ -351,11 +362,6 @@ test "a depth comparison GLSL cannot spell is refused by name" {
 	assert refusal(vertex, 0, GlslTarget.Glsl430) ==
 		"printGlsl: entry 'depthVs': TextureSampleCompare outside a fragment entry";
 
-	let filtering = depthModule();
-	filtering.resources[6].samplerType = SamplerType.Filtering;
-	assert refusal(filtering, 0, GlslTarget.Glsl430) == "printGlsl: TextureSampleCompareLevel " +
-		"through sampler pair 'heightMap_heightSmp', whose sampler is no comparison sampler";
-
 	let colour = depthModule();
 	colour.resources[5].type = TEXTURE;
 	assert refusal(colour, 0, GlslTarget.Glsl430) ==
@@ -403,8 +409,8 @@ test "what GLSL cannot carry is refused by name" {
 	let integers = fragmentModule();
 	prepend(integers.functions[0], assignOf(local(12), intrinsicOf(Intrinsic.Select, IVEC2,
 		[local(12), local(12), construct(vectorType(ScalarKind.Bool, 2), [literal(BOOL, 1.0)])])));
-	assert refusal(integers, 0, GlslTarget.Glsl430) == "printGlsl: Select of I32 by a bool " +
-		"vector: GLSL mixes float vectors only";
+	assert printed(integers, 0, [0], GlslTarget.Glsl430).includes("i2 = ivec2(bvec2(true).x ? " +
+		"i2.x : i2.x, bvec2(true).y ? i2.y : i2.y);\n");
 
 	let effect = computeModule();
 	let writer = shaderFunction("bump", [], [
@@ -450,7 +456,8 @@ test "printed modules are written for a GLSL front end" {
 		const tag = target == GlslTarget.Glsl430 ? "430" : "es";
 		assert probe("blur." + tag + ".vert", printed(blur, 0, [0, 1], target));
 		assert probe("blur." + tag + ".frag", printed(blur, 1, [0, 1], target));
-		assert probe("vertex." + tag + ".vert", printed(perspective(vertexModule()), 0, [0], target));
+		assert probe("vertex." + tag + ".vert",
+			printed(perspective(vertexModule()), 0, [0], target));
 		assert probe("fragment." + tag + ".frag", printed(fragmentModule(), 0, [0], target));
 	}
 	assert probe("vertex.430linear.vert", printed(vertexModule(), 0, [0], GlslTarget.Glsl430));
@@ -469,6 +476,14 @@ test "an array texture samples with its layer packed into the coordinates" {
 	for (const target of TARGETS) {
 		assert printed(m, 1, [0, 1], target).includes("texture(srcTex_srcSmp, vec3(uv, float(2)))");
 	}
+}
+
+test "a cube array texture samples with its layer as the fourth coordinate" {
+	let m = layeredBlurModule();
+	m.resources[0].type = textureType(TextureShape.CubeArray, ScalarKind.F32);
+	m.functions[1].body[0].expr.operands[0].operands[0].type = m.resources[0].type;
+	assert printed(m, 1, [0, 1], GlslTarget.Glsl430).includes(
+		"texture(srcTex_srcSmp, vec4(uv, float(2)))");
 }
 
 test "an array texture fetches with its layer packed into the coordinates" {

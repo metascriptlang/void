@@ -3421,7 +3421,7 @@ NEW MECHANISM, its own commit). The scene programs stay one set: the frame block
 skipping M45's per-fragment exposure, so no key bit was added; `Renderer.linearOutput` writes it,
 set by the preset. The tone map is the core's `(Post, Core)` key (`programKeys.txt` row `toneMap`,
 `toneMapFs` in `shader3d.glsl`), drawn by `drawScreen` like the pixel-art Post stage, with its own
-4-float block (`TONE_MAP_UNIFORM_SLOT`, the exposure multiplier at `TONE_MAP_EXPOSURE`) and the hdr
+4-float block (`TONE_MAP_UNIFORM_SLOT`, the exposure multiplier in `ToneMapParams.toneMap.x`) and the hdr
 target bound as its texture. The HDR target clears to the background decoded
 (`linearBackground`). The encode is ColorSpaces' exact sRGB pair, as everywhere in void3d, not
 Heaps' `pow(1/gamma)`, so at exposure 0 an opaque scene reads as the LDR preset does, within the
@@ -3472,7 +3472,7 @@ a..e = 2.51, 0.03, 2.43, 0.59, 0.14 (its constructor), 3 Khronos PBR Neutral (st
 **As built.** One `toneCurve` block (`shader3dBlocks.glsl`) holds the switch, shared by the
 per-fragment `toneMap` block and `toneMapFs`. The core's `toneMode` reaches the scene programs at
 `FRAME_TONE_MODE` (`frame.w`, the frame block's free lane, no length change) and the tone map pass at
-`TONE_MAP_MODE` in its own block. `ToneMode`'s members are ToneMapping's mode numbers, pinned by
+`ToneMapParams.toneMap.y` in its own block. `ToneMode`'s members are ToneMapping's mode numbers, pinned by
 `programKeyCheck.ms`. The per-fragment fast path returns the colour untouched only at exposure 0 and
 the linear curve, so every capture is expected byte-identical.
 
@@ -3556,7 +3556,7 @@ one texture per mip on WebGL :286-312, the mip count and size :326-340, `compute
 alpha :86); `settings.rs` (`NATURAL` :132-145, the threshold precomputations :243-251).
 
 **As built.** `src/void3d/bloom.ms` holds `BloomSettings`, the CPU halves (`bloomMipCount`,
-`bloomMipWidth`, `bloomBlendFactor`, `writeThreshold`, `upsampleState`) and `BloomPass`, which
+`bloomMipWidth`, `bloomBlendFactor`, `thresholdOf`, `upsampleState`) and `BloomPass`, which
 `ToneMapPass` owns, so both presets have it from one place and it runs in `ToneMapPass.draw`
 before the tone map. Three screen programs (`BloomDownsampleFirst`, `BloomDownsample`,
 `BloomUpsample`, core preset, fullscreen layout; `shader3d.glsl`) each read one 12-float block:
@@ -3780,11 +3780,43 @@ filter on the same items, so a shadow follows the main camera's level as Heaps' 
 `boundingRadius`, Heaps' `getBoundingRadius`; a mirrored world is refused
 (`RendererError.MeshLod`), as the caller-owned path already refused it.
 
-Not offered: `inheritLod` (no consumer), a pick per instance row of an `InstanceRun`, and LOD
-on skinned or morphed nodes. Proved on CPU by `src/test/meshLodSceneCheck.ms`, and on D3D11 by
+Not offered: a pick per instance row of an `InstanceRun`, and LOD
+on morphed nodes. Proved on CPU by `src/test/meshLodSceneCheck.ms`, and on D3D11 by
 `tests/integration/meshLod.ms` with `VOID_MESH_LOD_SCENE=1`: the same five stages the hand pick
 draws (near, far, reupload, one consumer, culled) come out of the Scene3D pick, with and without
 the outline pass and on 32-bit indices; control 8 forces level 0 and fails at the far stage.
+
+### A LOD mesh hands its screen ratio down (2026-10-26)
+
+`setInheritLod(scene, node, true)` is Heaps' `Mesh.inheritLod`: the LOD meshes below that node
+pick their level from its screen ratio instead of their own, so a model's parts change level
+together (`Mesh.hx:85-106` sets `ctx.forcedScreenRatio`, `Object.hx:884-898` restores it after
+the children). As in Heaps the topmost inheriting mesh wins, the inheriting mesh keeps its own
+ratio, a forced level on it still hands its ratio down, and a mesh with one level and no
+culling ratio hands nothing down. A parent hidden by the walk's layers hands nothing down, as a
+culled parent emits nothing in Heaps. The draw-list walk links each pick to its source; the
+renderer picks in draw-list order, which is tree order, and refuses a pick whose source was not
+picked in the same pass (`MeshLodError.InheritedBeforeSource`, `RendererError.MeshLod`), so a
+reordered or partial list cannot read last frame's ratio.
+
+Pinned by `src/test/meshLodSceneCheck.ms`: a near child draws level 0 alone and level 1 under a
+far inheriting parent, forced or not; a middle inheriting mesh and its child take the top one's
+ratio; a pick before its source and a frame whose source is missing are refused; a plain node
+refuses `setInheritLod`.
+
+### A skinned mesh picks its LOD level (2026-10-26)
+
+`addLodSkinMeshNode` gives a skinned node the same pick as `addLodMeshNode`: Heaps' `Skin`
+draws each material at `getLodIndex()` (`h3d/scene/Skin.hx:606`), as a plain mesh does. The
+node takes the skin's arguments and a LOD table instead of a draw range, draws level 0 until
+the renderer picks, and checks the skin of every level's elements when it is made and when
+its mesh or material changes, since a level the first range leaves out can still name a joint
+the palette lacks. The radius is the bind-pose mesh data's, as Heaps reads the primitive's
+bounds. Picking with a ray still reads level 0's elements, as on a plain LOD node.
+
+Pinned by `src/test/skinSceneCheck.ms`: a skinned LOD node draws level 0, then level 1 once
+forced, with a valid skin; a skin whose weights disagree only in level 1's triangle is
+accepted by a plain node drawing level 0 alone and refused by the LOD node.
 
 ### glTF output/topology/mode stack land acceptance
 
@@ -5946,6 +5978,50 @@ Pinned by `gltfCheck.ms`: both media types load the same vertices as the bytes s
 wrong type, missing `;base64`, a malformed payload or bytes alongside are refused; a short
 payload is out of range.
 
+### glTF files with several buffers, as built (2026-10-26)
+
+A `.gltf` or `.glb` may declare more than one buffer, and each buffer view reads the buffer it
+names, as Bevy's `load_buffers` builds one byte vector per buffer
+(`bevy_gltf/src/loader/mod.rs:2094-2134`) and every accessor reads through its view's buffer.
+The first buffer is the GLB `BIN` chunk or the caller's bytes, or a `data:` URI; every buffer
+after it must be a `data:` URI, or a file URI the caller's `GltfFileSystem` reads (next
+section); without one, a file URI past the first is refused as `BufferByUri` at
+`$.buffers[i].uri`. Every view
+is checked when the file loads, not on first use: a view naming a missing buffer is
+`BadReference` and one past its buffer's end is `OutOfRange`, both at `$.bufferViews`. Embedded
+images read their view's buffer the same way.
+
+Pinned by `gltfCheck.ms`: positions in buffer 0 and normals in buffer 1 load the same vertices
+whether buffer 0 is supplied or embedded; a second buffer given by file name, a view naming a
+buffer that does not exist, and a second buffer shorter than its view are refused.
+
+### glTF files that name other files, as built (2026-10-26)
+
+A `.gltf` exported beside its `.bin` and `.png` files loads when the caller passes a
+`GltfFileSystem` (the last argument of `loadGltf`, `loadGltfDetailed`, `loadGlb` and
+`loadGlbDetailed`). It is the part of Heaps' `hxd.fs.FileSystem` that a loader reads, `exists`
+and `get(path).getBytes()` (`hxd/fs/FileSystem.hx:5-6`, `hxd/fs/FileEntry.hx:13`), handed in by
+the app as `hxd.res.Loader` takes its file system (`hxd/res/Loader.hx:14,31-36`), so Void reads
+no disk or network itself. The path asked for is the URI as written, relative to the `.gltf`;
+where it resolves is the file system's business.
+
+- A buffer with a file URI is read from the file system: any buffer past the first, and the
+  first when no bytes are supplied. Supplied bytes still win for the first buffer.
+- An image with a file URI is read from it, its type sniffed from the bytes and checked against
+  `mimeType` when declared (`BadImage` on a mismatch or bytes that are no PNG or JPEG).
+- A path the file system does not hold is `FileNotFound`, at `$.buffers[i].uri` or
+  `$.images[i]`, naming the URI.
+- A URI with a `%` is refused as `Unsupported` ("a percent-encoded URI is not decoded"): std has
+  no percent decoder yet, and handing the file system an encoded name would miss the file
+  silently. The trigger to lift it is a percent decoder in std.
+- Without a file system nothing changes: `BufferByUri` and `ImageByUri` as before.
+
+Pinned by `gltfCheck.ms` (a second buffer read from the file system loads the same vertices as
+the supplied one; the first buffer read from it when none is supplied; missing, encoded and
+short files refused) and `gltfEmbeddedImageCheck.ms` (an image read from it decodes to the
+expected pixels with and without `mimeType`; a declared type that disagrees, a missing file, an
+encoded name and bytes that are no image refused).
+
 ### A second uv set for the occlusion map, as built (2026-10-24)
 
 A glTF occlusion map at `texCoord` 1 is read at the primitive's `TEXCOORD_1`, as Bevy reads it:
@@ -5984,10 +6060,18 @@ hands the shader its props texture as the height map, read in alpha. Here:
 - The height is the pbr-maps texture's alpha, as Heaps reads its props texture's; glTF's packing
   leaves that alpha free. The amount is `MATERIAL_PARALLAX` (x of the block's first vec4, which
   the core read nowhere), so no view, sampler or block member is added.
-- The steps are Heaps' defaults, 6 face-on to 24 at grazing (`MIN_LAYERS`, `MAX_LAYERS`, the
-  count `PbrMaterial` uses when `parallaxSteps` is 0 or unset). A material's own step count and
-  the single-offset path of `maxLayers == 0` are not offered; a material that needs either is
-  the trigger to add a step count to the block.
+- The layers run from the material's step count at a grazing view down to `MIN_LAYERS` 6
+  face-on (`Parallax.hx:40`, `shader3d.ms` `parallaxLayers`). The count is
+  `PBR_PARALLAX_STEPS`, a float in the pbr block after the UV transform, `PbrMaterial`'s
+  `parallaxSteps` (`PbrMaterial.hx:84,361`): 0 means `MAX_LAYERS` 24, so a zero-filled block
+  keeps the default (added 2026-10-26). Heaps sets it as `maxLayers`, a shader constant, so it
+  compiles one program per count; a block float gives the same layers with one program per
+  key. A constant bound may let the compiler unroll the loop where a uniform one does not; that
+  cost is measured with the perf work, not assumed. `addMaterial` refuses a count that is not a
+  whole number from 0 to 255, the range Heaps' editor offers (`PbrMaterial.hx:570`), as
+  `BadParallaxSteps`, because a fraction is no count Heaps can hold and a large one stalls the
+  GPU in the step loop. The single-offset path of `maxLayers == 0` is not offered: `PbrMaterial`
+  never reaches it, as it turns 0 into 24.
 - Heaps' Parallax takes the bitangent as n x t where its NormalMap takes n x t * -w, so on an
   unmirrored island the steps run along the mapped normal's bitangent negated, and `invertBasis`
   flips it by hand. Here it is `mappedNormal`'s bitangent negated, so the tangent's w turns it on
@@ -6000,11 +6084,120 @@ hands the shader its props texture as the height map, read in alpha. Here:
 - Cost: the key index (`indexPrograms`) doubles to 2^20 entries, 4 MB, built once at start.
 
 Pinned by `pbrMapsCheck.ms` (over a flat depth the UV lands where one ray meets it, the tangent's
-w turns the bitangent, and the colour pass samples at the moved UV), `programKeyCheck.ms`
-(bit 19, declared in every normal-mapped pbr-maps variant with the same layout, slots and block,
-the cutout caster refused), and on the GPU by `tests/integration/parallaxFrame.ms` (gate3d
+w turns the bitangent, the colour pass samples at the moved UV, the layers per step count and
+view, the count read from either pbr block), `programKeyCheck.ms` (bit 19, declared in every
+normal-mapped pbr-maps variant with the same layout, slots and block, the cutout caster refused,
+a count off the whole numbers 0 to 255 refused), and on the GPU by `tests/integration/parallaxFrame.ms` (gate3d
 `parallax`: a base texture's edge moves away from the eye by the height's depth, and the amount-0
 control leaves it).
+
+### Decals: what ports, traced (2026-10-26)
+
+Heaps has two decals, both a box mesh (`h3d/scene/pbr/Decal.hx`, a `Mesh` that hands its axes to
+the shader) whose material projects a texture onto whatever the scene drew inside the box. Each
+pixel of the box reads the scene depth, rebuilds the world position, moves it into the box's own
+space, and discards it outside the unit cube (`h3d/shader/pbr/VolumeDecal.hx` `BaseDecal`).
+
+| Heaps part | What it does | Here |
+|---|---|---|
+| `DecalOverlay` (`VolumeDecal.hx:68-128`) | colour times the texture, alpha from the texel or from the brightest channel (`AUTO_ALPHA`), faded along the box's depth, blended onto the lit colour | **Port.** Forward-compatible: Heaps draws it in the `beforeTonemappingDecal` and `afterTonemappingDecal` passes, onto the HDR and the LDR target after the forward lighting (`scene/pbr/Renderer.hx:864,873`). |
+| Scene depth as a texture (`@global depthMap`) | the depth of what was drawn, read per decal pixel | **Port, needs a step.** The forward renderer's depth target is store-don't-care and unsampled today (`forwardRenderer.ms`); the door already allocates a sampled depth target (`RenderTarget.unallocated(Depth, true)`) and the shadow maps sample theirs. Its rows follow the backend's render-target orientation, as the shadow `mapMatrix` does. |
+| Normal fade (`USE_NORMAL_FADE`, `BaseDecal.normalFade`, `getWorldNormal`) | fades where the surface turns from the box's z, the normal rebuilt from three depth reads | **Port**, after the overlay. |
+| `DecalPBR` (`VolumeDecal.hx:130-219`) | writes albedo, normal and pbr into the G-buffer with per-channel strengths (`decalsOutput`, `Renderer.hx:131-148,791-804`) | **Not a port.** It needs a deferred G-buffer; the forward path has none, and building one is a renderer of its own, not a decal. |
+
+Bevy confirms the shape: its `ForwardDecal` (`bevy_pbr/src/decal/forward.rs`, `forward.wesl`)
+is a mesh that reads the depth prepass, which every camera drawing one must have. Its clustered
+decals (`decal/clustered.rs`) need bindless textures and run on neither WebGL2 nor WebGPU, so they
+are not a target here.
+
+The overlay ports in steps, each with its own check:
+
+1. The decal's fragment math on the CPU (`shader3d.ms` `decalLocalAt`, `outsideDecal`,
+   `decalFade`, `decalOverlayColor`), held to Heaps' formulas. **Built (2026-10-26)**, pinned by
+   `decalCheck.ms`.
+2. A sampled, stored scene depth in the forward renderer, bound at a scene slot. **Built
+   (2026-10-27).** `Phase.Decal` is a fourth pass list, culled and
+   sorted by layer as Heaps' `draw` does; the forward preset stores its depth when the frame has
+   a decal and draws the list after the translucents, before the tone map, into the lit colour
+   with no depth attachment (`drawDecals`), the depth bound at view 14 and sampler 7
+   (`SCENE_DEPTH_VIEW_SLOT`). Because that pass has no depth, a Decal-phase material that writes
+   or tests depth is refused when it is added (`MaterialError.DecalDepth`), and the pixel-art
+   preset, which has no decal pass, refuses a decal item (`RendererError.DecalPreset`). The
+   forward readback checks (hdr, exposure, spot cookie, card table, bloom), the mixed goldens and
+   web3d (WebGPU and WebGL2) stay green with the depth target sampled.
+3. A decal program and its pass after the translucents, before the tone map, with the box drawn
+   from inside as from outside; a GPU golden. **Built (2026-10-27).** `tests/integration/decal.ms`
+   reads it back on D3D11, GL core and WebGL2 (gate3d `decal`, gl-core, web3d): the box tints the
+   backdrop with the camera outside it and inside it, and a backdrop off the box's centre fades by
+   the depth it reads (217 against Heaps' 216.75).
+   `Program.Decal` draws a Lit-layout box in the core preset only. Its vertex stage makes Heaps'
+   `matrix` (the box's inverse world after the inverse viewProj) per vertex, so the camera block
+   is unchanged. Its fragment stage reads the stored depth at the pixel and takes it to NDC by
+   the backend's range (`FRAME_DEPTH_ZERO_TO_ONE`, the w of the camera position). It then runs
+   step 1's math and tone maps the result like the lit colour. `decal.ms` writes
+   `DecalOverlay`'s params and constants into the material block, refuses an empty fade range,
+   and gives the pass: alpha blend, no depth, back faces drawn. The program outside the Decal
+   phase is refused (`MaterialError.DecalPhase`).
+4. The after-tone-map pass, then the normal fade. **Built (2026-10-27), GPU readback not yet
+   run.** `Phase.DecalAfterToneMap` is a fifth pass list, Heaps' `afterTonemappingDecal`
+   (`Renderer.hx:873`), drawn by `drawDecals` onto the tone-mapped colour: in the forward preset
+   after the Decal list for LDR, and after the tone map for HDR and the outline path. A decal
+   names its pass with `DecalPass`, as PbrMaterial's BeforeTonemappingDecal and
+   AfterTonemappingDecal modes do (`PbrMaterial.hx:245-256`). The pass sets both the material's
+   phase (`Material.decal(pass)`) and the block's tone-map flag (`decalBlock(overlay, pass)`), so
+   only the decal drawn before the tone map goes through it. The normal fade is `BaseDecal`'s
+   `normalFade` and `getWorldNormal` (`VolumeDecal.hx:39-58`): the surface normal from the depth
+   at the pixel and one pixel along each screen axis, and a fade by its angle to the box's z.
+   The neighbours' NDC come from `dpdx`/`dpdy` of the fragment's NDC, which follow the
+   backend's row order, so no pixel size is bound. The normal is turned to face the camera, as
+   Heaps' screen axes turn it, and an empty normal-fade range is refused
+   (`DecalError.NormalFadeRange`). `decalCheck.ms` pins the normal and the fade on the CPU.
+   `tests/integration/decal.ms` adds stages for the tone map (an exposure of two: about 175
+   before, 127.5 after, LDR and HDR) and for the normal fade (full along the box's z, half
+   across it).
+
+### Ambient occlusion: what ports, traced (2026-10-27)
+
+Heaps' `ScalableAO` (`h3d/pass/ScalableAO.hx`, shader `h3d/shader/SAO.hx`, McGuire's Scalable
+Ambient Obscurance) is a screen pass the caller runs; the pbr `Renderer` never calls it. Its
+sample (`samples/Sao.hx:24-52`) writes colour, depth and a packed normal as MRT, runs the pass
+into a target of its own, blurs it (`h3d.pass.Blur`) and copies it onto the frame with
+`Multiply`. Each pixel rebuilds its world position from the depth, takes `numSamples` taps on a
+spiral turned by a noise texel, and sums how far each tapped point rises above the pixel's
+normal within `sampleRadius`.
+
+Both inputs exist here: the stored, sampled scene depth of the decal pass (step 2 above) and the
+world normal the outline MRT writes as `n * 0.5 + 0.5` (`shader3d.ms` `litFs`). Bevy's
+`ScreenSpaceAmbientOcclusion` is no reference for the pass: it runs as compute and "is not
+supported on WebGL2, and is not currently supported on WebGPU" (`bevy_pbr/src/ssao/mod.rs:110`
+at `84e2d2c`). SAO is one fragment shader and runs on every backend here.
+
+The port, in steps:
+
+1. The fragment math on the CPU (`post3d.ms` `saoTap`, `saoTapOffset`, `saoScreenRadius`,
+   `saoScalableRadius`, `saoOcclusion`, `saoFaded`), held to SAO's formulas, its `6.28` turn
+   included, by `post3dCheck.ms`. **Built (2026-10-27).** One difference: SAO raises
+   `1 - mean` to `1 + intensity` and saturates after, which leaves a mean above 1 undefined;
+   `saoOcclusion` clamps the base first, which gives the same result wherever SAO's is defined.
+2. The pass: a fullscreen program reading the stored depth and the normal target, with a noise
+   texture, into an occlusion target. It is the seventeenth program, and the program key holds
+   sixteen in four bits (`gpu3d.ms` `ProgramKey`), so the key's program field widens first, as
+   `ProgramMap` widened to 5-bit entries. SAO's noise is `Texture.genNoise(128)`, random per
+   run; a fixed texture here keeps the golden stable. **Built (2026-10-28).** `Program.Sao`
+   (index 16) and `sao.ms` `ScalableAoPass`, whose block `saoCheck.ms` holds to
+   `ScalableAO.apply`'s; the noise is a fixed 128² grey texture from a hash.
+3. The blur and the `Multiply` copy onto the frame, then a GPU golden of the composed frame.
+   **Built and GPU-green on D3D11 (2026-10-28).** `blur.ms` ports `h3d.pass.Blur`: its kernel
+   is `calcValues` in float64, held to real Heaps by `tests/oracle/blur3d.cases` (41 cases,
+   radius 0 to 31). As in Heaps, a trimmed kernel keeps the offsets of the weights it dropped,
+   and the shader reads only the weights. `Program.Blur` (index 17) draws one direction per
+   draw, at most 16 taps a side, so `BlurPass.draw` blurs across into a temporary and down back
+   into the target. As in `samples/Sao.hx`, the composition is the caller's, not a renderer's:
+   `tests/integration/sao.ms` draws a box on a floor, runs the pass, the blur and the
+   `Multiply` copy, and reads back the open floor, the box top and the foot of the box. On
+   D3D11 their green bytes are 153, 153 and 99. Without the `Multiply` copy the foot reads 153
+   and the check fails. GL core and WebGL2 run it in the gate (gl-core, web3d) and have not run
+   it yet.
 
 ### Cascaded sun shadows, as built so far (2026-10-24)
 
@@ -6093,6 +6286,57 @@ Pinned by `cubeShadowCheck.ms` (the six faces, the rectangle's and capsule's nea
 header and the refusals, a packed block read back by `cubeShadowAt` per face, the world-unit bias
 around the receiver's distance, the named record of each kind, the carried block) and on the GPU
 by `tests/integration/lightShadows.ms` (gate3d `light-shadows`).
+
+### Spot cookies, as built (2026-10-26)
+
+A spot light can carry a cookie: a texture its light passes through, as a slide in a projector.
+`setLightCookie(scene, id, cookie)` puts it on the light, where Heaps keeps `SpotLight.cookie`
+(`h3d/scene/pbr/SpotLight.hx:10,119-126`) and Bevy its `SpotLightTexture`; the scene holds the
+texture's id, not the texture.
+
+- The cookie is projected through the spot's own camera, the one its shadow draws with
+  (`spotShadowView`): square, the full cone angle as its field of view, far at the range, as
+  Heaps builds `lightProj` (`SpotLight.hx:19,41,48,89-94`). The map into the texture is Heaps'
+  `screenToUv` (`renderer.ms` `cookieMapOf`) and is the same on every backend, because an
+  uploaded image's first row is its top everywhere; the shadow's `mapMatrix` flips per backend,
+  the cookie's does not.
+- Inside the texture's window the cookie's `rgb * a` replaces the cone's angular falloff, and the
+  distance window stays, as in `h3d/shader/pbr/Light.hx:147-162`. Outside it the light lights
+  nothing: Heaps discards that light-pass fragment, the clustered loop adds no light for it
+  (`shader3d.ms` `cookieAt`, `recordCookieAt`, in both the lit and the pbr loop).
+- Billboards and particles do not read the cookie: Heaps applies it in its deferred light pass
+  only, and its forward lighting, which lights what is drawn with alpha, evaluates a spot
+  without it (`h3d/shader/pbr/DefaultForward.hx:194-211,303-311`).
+- The window is a square pyramid, as Heaps' `spotLightPrim` (`SpotLight.hx:52-86`), so its
+  corners lie outside the cone. The clusters take the cone around the pyramid, half angle
+  `atan(sqrt(2) * tan(angle / 2))` (`clusterFrame.ms` `clusterLightsOf`), or a cluster in a corner
+  would miss the light.
+- The texture is read at level 0 (`textureSampleLevel`): the clustered loop runs in non-uniform
+  control flow, where WGSL refuses a sample that takes its level from derivatives. A mipmapped
+  cookie therefore reads its top level only, where Heaps' deferred pass would filter by distance.
+- One spot per frame carries a cookie, as one spot casts the spot shadow; `collectLights` refuses
+  a second (`TooManyCookieSpots`) and a cookie on any other kind (`UncookableLight`). The light
+  block's header names it as the casters are named: `LIGHT_COOKIE` holds its record + 1 and the
+  texture id's store, index and generation as floats, exact below 2^24, so a larger id is refused
+  (`CookieIdPastFloat`). The renderer writes the map (`LIGHT_COOKIE_MATRIX`) and refuses a header
+  that names no spot (`BadCookieSpot`) or a released texture (`StaleCookie`).
+- The texture binds at view 13 with sampler 6, in the clustered lights' group
+  (`CLUSTER_SCENE_VIEWS`), so it never counts against a material's slots. With no cookie, or a
+  cookie whose texture is not drawable yet, a 1x1 clear texel binds and the spot lights nothing
+  there, as a material whose texture is not ready draws nothing. The worst program reads 14
+  texture-sampler pairs, under WebGL2's floor of 16. The pixel-art preset refuses spots, cookie
+  or not (`PixelArtError.ShapedLight`).
+
+Pinned on the CPU by `spotCookieCheck.ms` (the header and its refusals, the cluster cone, the map
+sending the axis to the centre and the edges to the border, the texture read per quadrant and
+nothing outside it or behind the light, the named record only, the lit and pbr loops tinted by
+the cookie and lighting a corner the plain cone does not, the renderer's refusals) and
+`programKeyCheck.ms` (every core mesh program reading the light records reads the cookie, no
+billboard or particle does), and on the GPU by `tests/integration/spotCookie.ms` (gate3d
+`spot-cookie`: each quadrant of a 2x2 cookie lands on the ground where the CPU map places it,
+the pyramid's corner past the cone is lit and the ground past the window is not; the cookieless
+control is white and leaves the corner dark). Measured on D3D11 only; the web backends are not
+run.
 
 ### Shadow filtering: PCF, as built so far (2026-10-25)
 
@@ -6240,7 +6484,7 @@ stream is refused on a skinned or non-mesh program, `sameBatch`), `programKeyChe
 programs and their casters carry the row, bit 18) and `litShaderCheck.ms` (a translated, mirrored
 row with a colour, and skinned vertices that ignore the row).
 
-### Bevy comparison bench, scope (prepared 2026-10-24, not run)
+### Bevy comparison bench, scope (prepared 2026-10-24, void3d side first run 2026-10-26)
 
 "Performance of Bevy" is measured, not argued: the same workload as a Bevy stress test, both
 engines in release on this machine (Windows 11, Ryzen 9950X, RTX 5090; void3d on D3D11, Bevy on its
@@ -6277,6 +6521,28 @@ the full tree at the same commit and the three assets (`models/animated/Fox.glb`
 `models/animated/MorphStressTest.gltf`, `branding/icon.png`); a fat-LTO Bevy build and every bench
 run are heavy jobs and take a void-manager slot. Step 1 is measuring void3d's `many_cubes` as it is,
 since the batching milestone is sized by that gap.
+
+**First run, void3d alone (2026-10-26).** `many_cubes` sphere layout at the default 1.6M cubes,
+D3D11, interleaved 20 s runs on `5b903719` (before the instance row and the clusters) and
+`f455eb30`: medians of the per-second averages 292.7, 317.5, 303.5, 314.1, 302.4 and 295.7 ms
+before against 291.4, 272.6, 267.3, 267.3, 254.0 and 259.6 ms after, a median ratio of 0.87 over
+six clean pairs (a seventh was NOISY). Batching cut the draws, yet the frame stays near 270 ms,
+so per-item CPU work dominates at this count; per-flow timers on one frame are the next
+measurement. Bevy has not been run here yet.
+
+**Second run, the per-item worklist (2026-10-27).** The same layout and count, `24eee3f4`
+against `b002410e`, which carries the per-item fixes (a mesh and material pair checked once per
+run of items, no copy of each instance while the draw list is written, no world sync when no
+setter moved a node, the LOD pick loop skipped when no item has a LOD, only the phases the
+frame's materials draw in collected). Both arms were built by msc `c85d84fb8`, each with the
+same type-only patch that `114a60cf` makes (the frame's items a writable `Span`), which that
+msc needs to build either tree. Medians of the per-second averages, six interleaved pairs:
+448.9, 463.6, 447.3, 462.1, 646.8 and 471.7 ms before against 121.8, 118.0, 119.4, 175.1, 120.4
+and 124.4 ms after, a median ratio of 0.265. The box idled at 15-46% CPU, so no pair is clean
+by the 25% rule; leaving out pairs 4 and 5, whose load reached 49% and 99%, keeps the ratio at
+0.265. `24eee3f4` took 455 ms here against about 270 ms on 2026-10-26, and the machine, not the
+compiler, moved: built by the msc of that run (`f2debffda`) and by `c85d84fb8`, interleaved
+from the same tree, it took 484.2, 500.8 and 498.7 ms against 477.1, 468.3 and 458.8 ms.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
@@ -6510,6 +6776,158 @@ intercepted. Three reference files byte-equal between inspected/executed checkou
 errors are retained, corrected to existing `Result.ok(null)` idiom. Retry2 adds only shape
 unit coverage; production/oracle inputs and prior 13-case evidence are unchanged.
 No shader/program/ABI, whole-index, gate3d, GPU, web or land acceptance for this CPU stage.
+
+### Graphics3D screen lines: what ports, traced (2026-10-28)
+
+Heaps draws default `h3d.scene.Graphics` (`is3D=false`) with `h3d.shader.LineShader` beside
+`VertexColorAlpha`, lights and shadows off and culling `None` (`h3d/scene/Graphics.hx:42-56`,
+Heaps at `b9aa6dcb`). The vertex stage takes the four roots `graphics3d.ms` writes:
+
+- it moves the end corners (uv.x 1) along the world delta, times `lengthScale` (1 by default);
+- it projects the delta's view-space direction as if it were a point and keeps its unit xy;
+- it adds the perpendicular of that to clip xy, times `uv.y - 0.5`, `width`, the target's
+  `pixelSize` (2 / width, 2 / height) and `linearize(z / w)`, the view depth from `zNear` and
+  `zFar`. The clip divide takes the depth off again, so the line is `width` pixels wide at any
+  distance.
+
+Bevy was not read for this: the local checkout (`84e2d2c`) holds no `bevy_gizmos`. The port
+follows Heaps.
+
+What carries over as it is:
+
+- void3d's projections put nothing into clip x or y from depth or translation, so the
+  projected direction is `projectionX` and `projectionY` (the camera block's right and up w)
+  times the direction along right and up;
+- `linearize` takes a depth in [0, 1], which every void3d projection writes on every backend.
+
+Three of Heaps' results follow from the reference and are kept; `graphicsLineCheck.ms` pins them:
+
+1. The corners are `width` pixels apart on any target. They sit square to the line only when
+   the target is square; on a 400 by 200 target a diagonal leans by about 0.3 in cosine.
+2. The direction is projected at the screen's centre, so a line far off-centre that runs in
+   depth is offset slightly off its own perpendicular.
+3. An orthographic camera's depth is linear, so `linearize` maps it to `near * far /
+   (far + near - depth)`. The width then runs from `near` times at the near plane to `far` times
+   at the far one, rather than staying constant.
+
+The port, in steps:
+
+1. The math on the CPU, as shared shader functions (`shader3d.ms` `lineScreenDirection`,
+   `lineViewDepth`, `lineClipOffset`). **Built (2026-10-28).** `graphicsLineCheck.ms`: the view
+   depth comes back from near to far; 3 pixels apart at depths 1.5, 4 and 10, square to the
+   line; the wide-target lean; the orthographic factor. Dropping the depth factor turns two of
+   the four tests red.
+2. The program: `Program.Line` (index 18), an unlit vertex-colour program over the
+   lit-textured layout. Its block holds `width`, `lengthScale`, `pixelSize`, `near` and `far`,
+   written from the camera and its view (`graphics3d.ms` `writeLineBlock`), then the colour
+   the vertex colours multiply. **Built (2026-10-28).** `programKeyCheck.ms` pins its row and
+   block; `graphicsLineCheck.ms` the block's packing. Draw it with
+   `Material.ofKind(Program.Line, …)`, which turns culling off as Heaps' Graphics does:
+   `Material.plain` keeps back-face culling and drops one triangle of each line's quad.
+3. A GPU readback (`tests/integration/graphicsLine.ms`, in gate3d, gl-core and web3d).
+   **Built (2026-10-28).** A line 2.5 and one 10 units ahead each cover 6 rows at width 6 and
+   2 at width 2, in lineStyle's red, and stop at their ends. D3D11 passes. With the depth
+   factor dropped it fails: 3 rows near and 1 far. gl-core and WebGL2 have not run yet.
+
+### Graphics3D world lines: Graphics' is3D, as built (2026-10-28)
+
+With `is3D` set, Heaps' `Graphics` drops `LineShader` and draws a white texture
+(`h3d/scene/Graphics.hx:63-76`). `lineTo` gathers points, and `flushLine` (`:78-187`) turns them
+into a strip `lineSize` wide. The strip lies in the XY plane with a Z-up normal and is mitred at
+every joint. It is closed when the last point equals the first, and its v alternates 0 and 1.
+`graphics3d.ms` ports this:
+
+- `setIs3D` and the `points` field;
+- `flushGraphics`, which Heaps runs from `sync` and `draw`; void3d has neither, so the app calls
+  it before it uploads `data`;
+- the flushes on `moveTo`, `lineStyle` and `clear`.
+
+Draw the strip with `Material.ofKind(Program.UnlitTextured, …)` and a white texture,
+its pass `withCulling(Face.None)`, no shadows.
+
+Kept from the reference and pinned in `graphics3dCheck.ms`:
+
+- `lineSize` starts at 0, apart from the screen width's 1.5, and `lineStyle` sets the screen
+  width only while not in 3D and only when `lineSize` changes. So `lineStyle(4)`, then
+  `lineStyle(2)` in 3D, then `lineStyle(2)` back on screen leaves the screen width at 4.
+- A 3D `lineTo` adds the cursor to the bounds, and a 3D `moveTo` never moves the cursor. The
+  bounds therefore hold the origin, or the last screen-mode point, and leave out the half
+  width.
+
+One divergence: a joint with no miter direction (a lone point, a repeated point, a turn back
+on itself) makes `flushLine` write NaN vertices, which draw nothing. `flushGraphics` refuses it
+with `GraphicsError.Degenerate` from the call that flushed it and drops those points, because
+geometry that silently vanishes is lost data.
+
+Dropping the miter's `1 / (n · n1)` turns the open-polyline and closed-loop tests red.
+
+Next: a GPU readback of a strip's width and colour, queued with the line golden's kind.
+
+### Flipbooks: Heaps' AnimatedTexture, as built (2026-10-28)
+
+Heaps' `AnimatedTexture` (`h3d/shader/AnimatedTexture.hx`) reads a mesh's texture as a grid
+of frames, played `speed` frames a second from `startTime`. It loops over `totalFrames` or
+holds the last frame, and by default mixes the next frame in by the fraction elapsed. void3d
+carries it in the moving block of a UV-transform key (`gpu3d.ms` `MOVING_FLIPBOOK_*`), so it
+needs no new program key:
+
+- `shader3d.ms` `flipbookUvs` and `flipbookBlend` hold the vertex function's frame math. The
+  base texture is read at that frame, and a second time at the next frame when the blend is
+  above 0, in the lit, unlit and pixel-art programs.
+- The frame count 0 is the off state, so a zero-filled moving block (glTF, world labels) reads
+  its texture as before.
+- `renderer.ms` `readsFrameTime` wakes the core while a flipbook has frames and a speed.
+- Heaps' `loop` and `blendBetweenFrames` are compile-time constants; here they are floats in the
+  block, which gives the same result.
+- `useSourceUVs` has no slot. The flipbook reads the moved UV, which is the source UV while the
+  transform is the identity.
+- Normal and emissive maps keep the moved UV, as Heaps' other shaders keep `calculatedUV`.
+
+A pbr key has no flipbook: its block carries its own UV transform, and a pbr material with a UV
+transform is refused.
+
+Pinned on the CPU in `litShaderCheck.ms` (frame walk, wrap, hold, start frame and time, blend)
+and `rendererCheck.ms` (wake). Making a non-looping flipbook loop turns the hold test red.
+
+`tests/integration/movingMaterial.ms` reads back a two-frame flipbook with and without the
+blend in both presets, GPU-green on D3D11; the featureless control fails on each.
+
+### Distance fade: Heaps' DistanceFade, as built (2026-10-28)
+
+Heaps' `DistanceFade` (`h3d/shader/DistanceFade.hx`) scales a pixel's alpha by its distance
+to the camera. The alpha rises from 0 to 1 between `nearMinFade` and `nearMaxFade`, falls back
+to 0 between `farMinFade` and `farMaxFade`, and the smaller of the two sides wins. void3d
+carries it beside the flipbook, in the moving block of a UV-transform key (`gpu3d.ms`
+`MOVING_FADE_*`):
+
+- `shader3d.ms` `distanceFade` runs after the cutout test in the lit, unlit and pixel-art
+  programs, so a cut material discards on its unfaded alpha. Unlit textured UV-transform
+  programs carry a world-position varying for it.
+- Heaps' `nearFadeEnabled` and `farFadeEnabled` are a side whose end lies past its start.
+  Heaps divides by zero on an enabled side with equal ends; void3d reads that side as off.
+- The distance is measured from `setCameraPosition`, and `beginFrame` refuses a fading
+  material with `RendererError.CameraPosition` until it is set, as it refuses a pbr key.
+- The fade shows only through blending, as in Heaps: draw the material in the alpha phase.
+
+Pinned in `litShaderCheck.ms` (both sides, empty pairs) and `programKeyCheck.ms` (the refusal,
+and no refusal for an empty pair). `movingMaterial.ms` reads back a quad inside a near fade at
+about half alpha in both presets, GPU-green on D3D11; the featureless control draws it opaque.
+
+### Colour key: Heaps' ColorKey, as built (2026-10-29)
+
+Heaps' `ColorKey` (`h3d/shader/ColorKey.hx`) discards a pixel whose texture colour lies within
+1e-5 (squared rgba distance) of the key. void3d carries the key as one more vec4 in the moving
+block of a UV-transform key (`gpu3d.ms` `MOVING_COLOR_KEY`), read by `shader3d.ms` `colorKeyed`
+in the lit, unlit and pixel-art programs:
+
+- The test reads the texel the surface shows: after the flipbook and the back texture, before
+  the premultiplied texel is straightened, as Heaps reads `textureColor`.
+- A key whose alpha is 0 keys nothing, so the zeroed block stays off. Heaps keys transparent
+  black by default, but its one consumer, `h2d.Drawable.colorKey`, keys only opaque colours.
+
+Pinned in `litShaderCheck.ms` (the threshold, alpha, the zero key). `movingMaterial.ms` keys the
+red half of a red and green texture away in both presets, GPU-green on D3D11; the featureless
+control draws the red half.
 
 ### Trail: CPU history and ribbon checkpoint
 

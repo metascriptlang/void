@@ -1,0 +1,10 @@
+export function elementKind(sample: float32): int32 { return 0; }
+export function elementKind(sample: float64): int32 { return 1; }
+export function elementKind(sample: int8): int32 { return 2; }
+export function elementKind(sample: uint8): int32 { return 3; }
+export function elementKind(sample: int16): int32 { return 4; }
+export function elementKind(sample: uint16): int32 { return 5; }
+export function elementKind(sample: int32): int32 { return 6; }
+export function elementKind(sample: uint32): int32 { return 7; }
+export function elementKind(sample: int64): int32 { return 8; }
+export function elementKind(sample: uint64): int32 { return 9; }

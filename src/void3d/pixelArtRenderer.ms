@@ -204,6 +204,8 @@ export enum PixelArtError {
 	CameraPosition,
 	MeshWrite,
 	ShapedLight,
+	// RendererError.DecalPreset.
+	Decal,
 	RampLevels,
 	BlendedOpaque,
 	TranslucentDepthWrite,
@@ -702,10 +704,13 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.CameraPosition => PixelArtError.CameraPosition,
 		RendererError.MeshWrite => PixelArtError.MeshWrite,
 		RendererError.ShapedLightPreset => PixelArtError.ShapedLight,
+		RendererError.DecalPreset => PixelArtError.Decal,
 		RendererError.BadShadowSpot => PixelArtError.ShapedLight,
 		RendererError.SpotShadowUnattached => PixelArtError.ShapedLight,
 		RendererError.BadCubeShadow => PixelArtError.ShapedLight,
 		RendererError.CubeShadowUnattached => PixelArtError.ShapedLight,
+		RendererError.BadCookieSpot => PixelArtError.ShapedLight,
+		RendererError.StaleCookie => PixelArtError.ShapedLight,
 		RendererError.ClusterViewUnset => PixelArtError.ClusterViewUnset,
 		RendererError.ClusterViewStale => PixelArtError.ClusterViewStale,
 		RendererError.ClusterAssign => PixelArtError.ClusterAssign,
@@ -781,6 +786,10 @@ function rampsHaveLevels(
 			Program.OutlineMask => true,
 			Program.OutlineMix => true,
 			Program.OutlineWidth => true,
+			Program.Decal => true,
+			Program.Sao => true,
+			Program.Blur => true,
+			Program.Line => true,
 		};
 		if (!held) { return false; }
 	}

@@ -6,7 +6,9 @@ import {
 	NodeKind,
 	StringLiteralData,
 	SymbolKind,
+	TypeArrayData,
 	TypeKind,
+	TypeObjectData,
 	bindSym,
 	childAt,
 	childCount,
@@ -24,23 +26,51 @@ import {
 	AtomicExchangeU32,
 	AtomicI32,
 	AtomicU32,
+	FrexpResultF32,
+	FrexpResultVec2f,
+	FrexpResultVec3f,
+	FrexpResultVec4f,
 	Mat2x2f,
+	Mat2x3f,
+	Mat2x4f,
 	Mat3x3f,
 	Mat4x4f,
+	Mat3x2f,
+	Mat3x4f,
+	Mat4x2f,
+	Mat4x3f,
+	ModfResultF32,
+	ModfResultVec2f,
+	ModfResultVec3f,
+	ModfResultVec4f,
 	Sampler,
 	SamplerComparison,
+	StorageTexture1d,
 	StorageTexture2d,
 	StorageTexture2dArray,
+	StorageTexture2dArrayI32,
+	StorageTexture2dArrayU32,
+	StorageTexture2dI32,
+	StorageTexture2dU32,
 	StorageTexture3d,
+	StorageTexture3dI32,
+	StorageTexture3dU32,
+	Texture1d,
 	Texture2d,
 	Texture2dArray,
+	Texture2dArrayI32,
+	Texture2dArrayU32,
 	Texture2dI32,
 	Texture2dU32,
 	Texture3d,
+	Texture3dI32,
+	Texture3dU32,
 	TextureCube,
 	TextureDepth2d,
 	TextureDepth2dArray,
 	TextureDepthCube,
+	TextureMultisampled2d,
+	Vec2b,
 	Vec2f,
 	Vec2i,
 	Vec2u,
@@ -48,10 +78,10 @@ import {
 	Vec3f,
 	Vec3i,
 	Vec3u,
+	Vec4b,
 	Vec4f,
 	Vec4i,
 	Vec4u,
-	textureLoad,
 } from "./std";
 
 import {
@@ -66,6 +96,8 @@ import {
 	Interpolation,
 	Intrinsic,
 	IoDirection,
+	OFFSET_MAX,
+	OFFSET_MIN,
 	ResourceKind,
 	SampleType,
 	Sampling,
@@ -98,17 +130,25 @@ import {
 	exchangeResultType,
 	exprOf,
 	featureOn,
+	frexpResultType,
+	hasOffset,
 	holds,
 	intrinsicOf,
 	irErrors,
+	isSampling,
 	literal,
 	matrixType,
+	modfResultType,
+	offsetRows,
+	predeclaredMemberType,
 	sameCondition,
+	sampleBase,
 	samplerType,
 	scalarType,
 	stmtOf,
 	storageTextureType,
 	structType,
+	texelScalar,
 	textureType,
 	vectorType,
 } from "./ir";
@@ -507,100 +547,283 @@ function declarationCondition(contexts: FeatureCondition[][]): FeatureCondition 
 	return conditionOf(ConditionKind.Any, products.map((p) => productCondition(p)));
 }
 
+function notAShaderValue(): string {
+	return "a shader value is float32, int32, uint32, boolean, a ./std vector or matrix, " +
+		"or a struct of those";
+}
+
+export class ShaderTypeNodes {
+	stdModule: string = "";
+	atomics: Node[] = [];
+	exchanges: Node[] = [];
+	modfs: Node[] = [];
+	frexps: Node[] = [];
+	vectors: Node[] = [];
+	vectorNames: string[] = [];
+	firstMatrix: int32 = 0;
+}
+
+// One field per std type the lowering recognises, in the order shaderTypeNodes reads them. A macro
+// reads a std type's node only from its own body, so the macros that need them hand this struct's.
+export struct ShaderTypeRegistry {
+	atomicI32: AtomicI32;
+	atomicU32: AtomicU32;
+	exchangeI32: AtomicExchangeI32;
+	exchangeU32: AtomicExchangeU32;
+	modfF32: ModfResultF32;
+	modfVec2f: ModfResultVec2f;
+	modfVec3f: ModfResultVec3f;
+	modfVec4f: ModfResultVec4f;
+	frexpF32: FrexpResultF32;
+	frexpVec2f: FrexpResultVec2f;
+	frexpVec3f: FrexpResultVec3f;
+	frexpVec4f: FrexpResultVec4f;
+	vec2f: Vec2f;
+	vec3f: Vec3f;
+	vec4f: Vec4f;
+	vec2i: Vec2i;
+	vec3i: Vec3i;
+	vec4i: Vec4i;
+	vec2u: Vec2u;
+	vec3u: Vec3u;
+	vec4u: Vec4u;
+	vec2b: Vec2b;
+	vec3b: Vec3b;
+	vec4b: Vec4b;
+	mat2x2f: Mat2x2f;
+	mat3x3f: Mat3x3f;
+	mat4x4f: Mat4x4f;
+	mat2x3f: Mat2x3f;
+	mat2x4f: Mat2x4f;
+	mat3x2f: Mat3x2f;
+	mat3x4f: Mat3x4f;
+	mat4x2f: Mat4x2f;
+	mat4x3f: Mat4x3f;
+}
+
+function typesFrom(types: Node[], first: int32, count: int32): Node[] {
+	let out: Node[] = [];
+	for (let i = first; i < first + count; i++) { out.push(types[i]); }
+	return out;
+}
+
+function groupStart(names: string[], first: string): int32 {
+	const at = names.indexOf(first);
+	if (at < 0) { throw new Error("ShaderTypeRegistry has no field " + first); }
+	return at as int32;
+}
+
+export function shaderTypeNodes(registry: Node): ShaderTypeNodes {
+	const fields = objectFields(registry)!;
+	const types = fields.typExprFieldTypes;
+	const names = fields.typExprFieldNames;
+	const atomics = groupStart(names, "atomicI32");
+	const exchanges = groupStart(names, "exchangeI32");
+	const modfs = groupStart(names, "modfF32");
+	const frexps = groupStart(names, "frexpF32");
+	const vectors = groupStart(names, "vec2f");
+	const matrices = groupStart(names, "mat2x2f");
+	if (!(atomics < exchanges && exchanges < modfs && modfs < frexps && frexps < vectors &&
+		vectors <= matrices)) {
+		throw new Error("internal: ShaderTypeRegistry groups are out of order");
+	}
+	let nodes = new ShaderTypeNodes();
+	nodes.stdModule = types[0].resolvedSym!.modulePath;
+	nodes.atomics = typesFrom(types, atomics, exchanges - atomics);
+	nodes.exchanges = typesFrom(types, exchanges, modfs - exchanges);
+	nodes.modfs = typesFrom(types, modfs, frexps - modfs);
+	nodes.frexps = typesFrom(types, frexps, vectors - frexps);
+	nodes.vectors = typesFrom(types, vectors, (types.length - vectors) as int32);
+	nodes.vectorNames = names.slice(vectors);
+	nodes.firstMatrix = matrices - vectors;
+	return nodes;
+}
+
+function scalarOfLetter(name: string, letter: string): ScalarKind {
+	if (letter == "f") { return ScalarKind.F32; }
+	if (letter == "i") { return ScalarKind.I32; }
+	if (letter == "u") { return ScalarKind.U32; }
+	if (letter == "b") { return ScalarKind.Bool; }
+	throw new Error("internal: ShaderTypeRegistry field " + name + " has no scalar letter f, i, u or b");
+}
+
+function dimensionAt(name: string, at: int32): int32 {
+	const digit = "234".indexOf(name.slice(at, at + 1));
+	if (digit < 0) {
+		throw new Error("internal: ShaderTypeRegistry field " + name + " has no dimension 2, 3 or 4 at " + at);
+	}
+	return (digit + 2) as int32;
+}
+
+function vectorAt(nodes: ShaderTypeNodes, i: number): ShaderType {
+	const name = nodes.vectorNames[i];
+	const leading = dimensionAt(name, 3);
+	if (i >= nodes.firstMatrix) { return matrixType(leading, dimensionAt(name, 5)); }
+	return vectorType(scalarOfLetter(name, name.slice(4, 5)), leading);
+}
+
+function predeclaredTypeOf(nodes: ShaderTypeNodes, t: Node): ShaderType | null {
+	for (let i = 0; i < nodes.atomics.length; i++) {
+		// card: 2026-10-28-macro-vm-enum-array-element-value
+		const scalar: ScalarKind = i == 0 ? ScalarKind.I32 : ScalarKind.U32;
+		if (sameType(t, nodes.atomics[i])) { return atomicType(scalar); }
+		if (sameType(t, nodes.exchanges[i])) { return exchangeResultType(scalar); }
+	}
+	for (let i = 0; i < nodes.modfs.length; i++) {
+		if (sameType(t, nodes.modfs[i])) { return modfResultType((i + 1) as int32); }
+		if (sameType(t, nodes.frexps[i])) { return frexpResultType((i + 1) as int32); }
+	}
+	return null;
+}
+
+// Null when the type is no shader value.
+export function shaderTypeOf(nodes: ShaderTypeNodes, t: Node): ShaderType | null {
+	const predeclared = predeclaredTypeOf(nodes, t);
+	if (predeclared != null) { return predeclared; }
+	match (typeKind(t)) {
+		TypeKind.Float32 => { return scalarType(ScalarKind.F32); },
+		TypeKind.Int32 => { return scalarType(ScalarKind.I32); },
+		TypeKind.Uint32 => { return scalarType(ScalarKind.U32); },
+		TypeKind.Boolean => { return scalarType(ScalarKind.Bool); },
+		TypeKind.SizedArray => {
+			const array = getTypeImpl(t) as TypeArrayData;
+			const element = shaderTypeOf(nodes, array.typExprElement);
+			return element == null ? null : arrayType(element, array.typExprSize as int32);
+		},
+		_ => {},
+	}
+	for (let i = 0; i < nodes.vectors.length; i++) {
+		if (sameType(t, nodes.vectors[i])) { return vectorAt(nodes, i); }
+	}
+	return null;
+}
+
+function objectFields(t: Node | null): TypeObjectData | null {
+	if (t == null) { return null; }
+	const fields = getTypeImpl(t);
+	return fields != null && fields.kind == NodeKind.TypeObject ? fields as TypeObjectData : null;
+}
+
+function isAuthorStructOf(stdModule: string, t: Node | null): boolean {
+	if (t == null || objectFields(t) == null) { return false; }
+	return t.resolvedSym != null && t.resolvedSym.modulePath != stdModule;
+}
+
+// The type of a field of an interface struct: a uniform block member, attribute, varying or output.
+export function interfaceMemberType(nodes: ShaderTypeNodes, t: Node, name: string):
+	Result<ShaderType, string> {
+	const array = t.kind == NodeKind.TypeArray ? t as TypeArrayData : null;
+	if (isAuthorStructOf(nodes.stdModule, array == null ? t : array.typExprElement)) {
+		return Result.err("interface field '" + name + "' is a struct: a uniform block member, " +
+			"attribute, varying or output is a scalar, vector or matrix");
+	}
+	const sized = array != null && array.typExprSize > 0;
+	const own = shaderTypeOf(nodes, sized ? array.typExprElement : t);
+	if (own == null) { return Result.err(notAShaderValue()); }
+	return Result.ok(sized ? arrayType(own, array.typExprSize as int32) : own);
+}
+
+function blockMemberOf(nodes: ShaderTypeNodes, fields: TypeObjectData, k: int32):
+	Result<ShaderField, string> {
+	const name = fields.typExprFieldNames[k];
+	const own = interfaceMemberType(nodes, fields.typExprFieldTypes[k], name);
+	if (!own.ok) { return Result.err(own.error); }
+	return Result.ok(shaderField(name, own.value));
+}
+
+// The struct a shader declares as a uniform block, built as the lowering of a binding field builds
+// it: one struct and one UniformBlock resource at index 0, ready for uniformBlockLayout.
+export function uniformBlockOf(registry: Node, block: Node): Result<ShaderModule, string> {
+	const nodes = shaderTypeNodes(registry);
+	const fields = objectFields(block);
+	if (fields == null) { return Result.err("a uniform block is a struct"); }
+	let layout = new ShaderStruct();
+	layout.name = fields.typExprTypeName;
+	for (let k = 0; k < fields.typExprFieldNames.length; k++) {
+		const member = blockMemberOf(nodes, fields, k as int32);
+		if (!member.ok) {
+			return Result.err("uniform member '" + fields.typExprFieldNames[k] + "': " +
+				member.error);
+		}
+		layout.members.push(member.value);
+	}
+	let m = new ShaderModule();
+	m.structs.push(layout);
+	let r = new ShaderResource();
+	r.kind = ResourceKind.UniformBlock;
+	r.name = layout.name;
+	r.type = structType(0);
+	m.resources.push(r);
+	return Result.ok(m);
+}
+
 export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Node): Node {
 	function fail(n: Node, msg: string): never {
 		error("glsl: " + msg, n);
 	}
 
-	const stdSymbol = bindSym("textureLoad");
-	if (stdSymbol == null || stdSymbol.resolvedSym == null) {
-		fail(entry, "./std did not resolve");
-	}
-	const stdModule = stdSymbol.resolvedSym.modulePath;
+	const typeNodes = shaderTypeNodes(getTypeImpl(ShaderTypeRegistry)!);
+	const stdModule = typeNodes.stdModule;
 	const textureNode = getTypeImpl(Texture2d);
 	const samplerNode = getTypeImpl(Sampler);
 	const storageTextureNodes = [getTypeImpl(StorageTexture2d),
-		getTypeImpl(StorageTexture2dArray), getTypeImpl(StorageTexture3d)];
-	const storageShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.D3];
+		getTypeImpl(StorageTexture2dArray), getTypeImpl(StorageTexture3d),
+		getTypeImpl(StorageTexture2dU32), getTypeImpl(StorageTexture2dArrayU32),
+		getTypeImpl(StorageTexture3dU32), getTypeImpl(StorageTexture2dI32),
+		getTypeImpl(StorageTexture2dArrayI32), getTypeImpl(StorageTexture3dI32),
+		getTypeImpl(StorageTexture1d)];
+	const storageShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.D3,
+		TextureShape.D2, TextureShape.D2Array, TextureShape.D3,
+		TextureShape.D2, TextureShape.D2Array, TextureShape.D3, TextureShape.D1];
+	const storageChannels = [ScalarKind.F32, ScalarKind.F32, ScalarKind.F32,
+		ScalarKind.U32, ScalarKind.U32, ScalarKind.U32,
+		ScalarKind.I32, ScalarKind.I32, ScalarKind.I32, ScalarKind.F32];
+	function channelName(s: ScalarKind): string {
+		return s == ScalarKind.F32 ? "f32" : s == ScalarKind.U32 ? "u32" : "i32";
+	}
 	const viewNodes = [getTypeImpl(Texture2dU32), getTypeImpl(Texture2dArray),
 		getTypeImpl(TextureCube), getTypeImpl(Texture2dI32), getTypeImpl(Texture3d),
 		getTypeImpl(TextureDepth2d), getTypeImpl(TextureDepth2dArray),
-		getTypeImpl(TextureDepthCube)];
+		getTypeImpl(TextureDepthCube), getTypeImpl(TextureMultisampled2d),
+		getTypeImpl(Texture2dArrayU32), getTypeImpl(Texture2dArrayI32),
+		getTypeImpl(Texture3dU32), getTypeImpl(Texture3dI32), getTypeImpl(Texture1d)];
 	const viewShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.Cube, TextureShape.D2,
-		TextureShape.D3, TextureShape.Depth2d, TextureShape.Depth2dArray, TextureShape.DepthCube];
+		TextureShape.D3, TextureShape.Depth2d, TextureShape.Depth2dArray, TextureShape.DepthCube,
+		TextureShape.Multisampled2d, TextureShape.D2Array, TextureShape.D2Array, TextureShape.D3,
+		TextureShape.D3, TextureShape.D1];
 	const viewTexels = [ScalarKind.U32, ScalarKind.F32, ScalarKind.F32, ScalarKind.I32,
-		ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32];
+		ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32,
+		ScalarKind.U32, ScalarKind.I32, ScalarKind.U32, ScalarKind.I32, ScalarKind.F32];
 	const viewSamples = [SampleType.Uint, SampleType.Float, SampleType.Float, SampleType.Sint,
-		SampleType.Float, SampleType.Depth, SampleType.Depth, SampleType.Depth];
+		SampleType.Float, SampleType.Depth, SampleType.Depth, SampleType.Depth,
+		SampleType.UnfilterableFloat, SampleType.Uint, SampleType.Sint, SampleType.Uint,
+		SampleType.Sint, SampleType.Float];
 	const comparisonNode = getTypeImpl(SamplerComparison);
-	const atomicNodes = [getTypeImpl(AtomicI32), getTypeImpl(AtomicU32)];
-	const exchangeNodes = [getTypeImpl(AtomicExchangeI32), getTypeImpl(AtomicExchangeU32)];
-	const atomicScalars = [ScalarKind.I32, ScalarKind.U32];
-	const vectorTypes = [
-		getTypeImpl(Vec2f),
-		getTypeImpl(Vec3f),
-		getTypeImpl(Vec4f),
-		getTypeImpl(Vec2i),
-		getTypeImpl(Vec3i),
-		getTypeImpl(Vec4i),
-		getTypeImpl(Vec2u),
-		getTypeImpl(Vec3u),
-		getTypeImpl(Vec4u),
-		getTypeImpl(Vec3b),
-		getTypeImpl(Mat2x2f),
-		getTypeImpl(Mat3x3f),
-		getTypeImpl(Mat4x4f),
-	];
+	const vectorTypes = typeNodes.vectors;
 	const constructors = [
-		"vec2f", "vec3f", "vec4f", "vec2i", "vec3i", "vec4i", "vec2u", "vec3u", "vec4u", "",
+		"vec2f", "vec3f", "vec4f", "vec2i", "vec3i", "vec4i", "vec2u", "vec3u", "vec4u",
+		"vec2b", "vec3b", "vec4b",
 		"mat2x2f", "mat3x3f", "mat4x4f",
+		"mat2x3f", "mat2x4f", "mat3x2f", "mat3x4f", "mat4x2f", "mat4x3f",
 	];
-	const firstMatrix = 10;
-
-	function vectorAt(i: number): ShaderType {
-		if (i < 3) { return vectorType(ScalarKind.F32, (i + 2) as int32); }
-		if (i < 6) { return vectorType(ScalarKind.I32, (i - 1) as int32); }
-		if (i < 9) { return vectorType(ScalarKind.U32, (i - 4) as int32); }
-		if (i == 9) { return vectorType(ScalarKind.Bool, 3); }
-		return matrixType((i - 8) as int32, (i - 8) as int32);
-	}
-
 	function matrixColumns(n: Node): boolean {
 		if (n.kind != NodeKind.MemberExpr || n.property != "columns") { return false; }
 		const t = getType(n.object);
-		for (let i = firstMatrix; i < vectorTypes.length; i++) {
+		for (let i = typeNodes.firstMatrix; i < vectorTypes.length; i++) {
 			if (t != null && sameType(t, vectorTypes[i])) { return true; }
 		}
 		return false;
 	}
 
-	function atomicOrExchange(t: Node): ShaderType | null {
-		for (let i = 0; i < atomicNodes.length; i++) {
-			if (sameType(t, atomicNodes[i])) { return atomicType(atomicScalars[i]); }
-			if (sameType(t, exchangeNodes[i])) { return exchangeResultType(atomicScalars[i]); }
-		}
-		return null;
+	function predeclaredType(t: Node): ShaderType | null {
+		return predeclaredTypeOf(typeNodes, t);
 	}
 
 	function glslType(t: Node | null, at: Node): ShaderType {
 		if (t == null) { fail(at, "the expression has no type"); }
-		const atomic = atomicOrExchange(t);
-		if (atomic != null) { return atomic; }
-		match (typeKind(t)) {
-			TypeKind.Float32 => { return scalarType(ScalarKind.F32); },
-			TypeKind.Int32 => { return scalarType(ScalarKind.I32); },
-			TypeKind.Uint32 => { return scalarType(ScalarKind.U32); },
-			TypeKind.Boolean => { return scalarType(ScalarKind.Bool); },
-			TypeKind.SizedArray => {
-				return arrayType(glslType(t.typExprElement, at), t.typExprSize as int32);
-			},
-			_ => {},
-		}
-		for (let i = 0; i < vectorTypes.length; i++) {
-			if (sameType(t, vectorTypes[i])) { return vectorAt(i); }
-		}
-		fail(at, "a shader value is float32, int32, uint32, boolean, a ./std vector or matrix, " +
-			"or a struct of those");
+		const found = shaderTypeOf(typeNodes, t);
+		if (found == null) { fail(at, notAShaderValue()); }
+		return found;
 	}
 
 	function decorator(decorators: Node[], name: string): Node | null {
@@ -656,8 +879,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	}
 
 	function isAuthorStruct(t: Node | null): boolean {
-		if (t == null || fieldsOf(t) == null) { return false; }
-		return t.resolvedSym != null && t.resolvedSym.modulePath != stdModule;
+		return isAuthorStructOf(stdModule, t);
 	}
 
 	const fn = getImpl(entry);
@@ -685,6 +907,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 
 	let inputType: Node | null = null;
 	let bindingsType: Node | null = null;
+	let uniformLoadSite: Node | null = null;
 	let keyType: Node | null = null;
 	for (let i = 0; i < signature.typExprParams.length; i++) {
 		const name = signature.typExprParamNames[i];
@@ -798,7 +1021,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		if (d == null) { return integral ? Interpolation.Flat : Interpolation.Perspective; }
 		const kind = interpolateWord(d, 0);
 		if (kind == "flat") {
-			if (d.macroArgs.length > 1) { fail(d, "@interpolate(flat) takes no sampling, as WGSL's"); }
+			if (d.macroArgs.length > 1) {
+				fail(d, "@interpolate(flat) takes no sampling, as WGSL's");
+			}
 			return Interpolation.Flat;
 		}
 		if (integral) { fail(d, "an integer varying is @interpolate(flat), as WGSL's"); }
@@ -837,14 +1062,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	}
 
 	function member(t: Node, name: string, at: Node): ShaderType {
-		if (isAuthorStruct(t.kind == NodeKind.TypeArray ? t.typExprElement : t)) {
-			fail(at, "interface field '" + name + "' is a struct: a uniform block member, " +
-				"attribute, varying or output is a scalar, vector or matrix");
-		}
-		if (t.kind == NodeKind.TypeArray && t.typExprSize > 0) {
-			return arrayType(glslType(t.typExprElement, at), t.typExprSize as int32);
-		}
-		return glslType(t, at);
+		const own = interfaceMemberType(typeNodes, t, name);
+		if (!own.ok) { fail(at, own.error); }
+		return own.value;
 	}
 
 	function sampleTypeOf(d: Node): SampleType {
@@ -887,6 +1107,11 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			}
 			const shape = getTypeImpl(t);
 			if (shape != null && shape.kind == NodeKind.TypeArray && shape.typExprSize < 0) {
+				if (access != null && argumentName(access) == "write") {
+					fail(access, "storage buffer '" + name + "' cannot be @access(write): WGSL's " +
+						"storage buffers are read or read_write, and write is a storage " +
+						"texture's mode");
+				}
 				if (writes && !compute) {
 					fail(access, "storage buffer '" + name +
 						"' is written only in a compute entry");
@@ -909,14 +1134,26 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 					fail(binding, "storage texture '" + name + "' has no @format(texel format)");
 				}
 				const texel = argumentName(format);
-				const formats = ["rgba8unorm", "rgba8snorm", "rgba8uint", "rgba16float",
-					"rgba32float", "r32float", "r32uint", "rg32float"];
+				const formats = ["rgba8unorm", "rgba8snorm", "rgba8uint", "rgba8sint",
+					"rgba16uint", "rgba16sint", "rgba16float", "r32uint", "r32sint", "r32float",
+					"rg32uint", "rg32sint", "rg32float", "rgba32uint", "rgba32sint", "rgba32float",
+					"bgra8unorm"];
 				const texels = [TexelFormat.Rgba8unorm, TexelFormat.Rgba8snorm,
-					TexelFormat.Rgba8uint, TexelFormat.Rgba16float, TexelFormat.Rgba32float,
-					TexelFormat.R32float, TexelFormat.R32uint, TexelFormat.Rg32float];
+					TexelFormat.Rgba8uint, TexelFormat.Rgba8sint, TexelFormat.Rgba16uint,
+					TexelFormat.Rgba16sint, TexelFormat.Rgba16float, TexelFormat.R32uint,
+					TexelFormat.R32sint, TexelFormat.R32float, TexelFormat.Rg32uint,
+					TexelFormat.Rg32sint, TexelFormat.Rg32float, TexelFormat.Rgba32uint,
+					TexelFormat.Rgba32sint, TexelFormat.Rgba32float, TexelFormat.Bgra8unorm];
 				const at = formats.indexOf(texel);
 				if (at < 0) {
-					fail(format, "storage texture format '" + texel + "' has no GLSL form yet");
+					fail(format, "storage texture format '" + texel + "' is none of WGSL's core " +
+						"storage texel formats: " + formats.join(", "));
+				}
+				if (texelScalar(texels[at]) != storageChannels[storageShape]) {
+					fail(format, "storage texture '" + name + "' holds " +
+						channelName(storageChannels[storageShape]) + " texels, and @format(" +
+						texel + ") gives " + channelName(texelScalar(texels[at])) +
+						": its type is the StorageTexture of that channel type");
 				}
 				const writeOnly = access == null || argumentName(access) == "write";
 				const mode = writeOnly ? Access.Write : writes ? Access.ReadWrite : Access.Read;
@@ -955,8 +1192,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				for (let k = 0; k < block.typExprFieldNames.length; k++) {
 					const memberName = block.typExprFieldNames[k];
 					claimMember(memberName, slot, binding);
-					layout.members.push(shaderField(memberName,
-						member(block.typExprFieldTypes[k], memberName, binding)));
+					const own = blockMemberOf(typeNodes, block as TypeObjectData, k as int32);
+					if (!own.ok) { fail(binding, own.error); }
+					layout.members.push(own.value);
 				}
 				m.structs.push(layout);
 				addResource(ResourceKind.UniformBlock, name, slot,
@@ -998,6 +1236,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	let paramNames: string[] = [];
 	let localKeys: string[] = [];
 	let localIndices: int32[] = [];
+	let constLocalIndices: int32[] = [];
+	let constLocalValues: ShaderExpr[] = [];
 	let inHelper = false;
 	let breakOwners: string[] = [];
 	let locals: string[] = [];
@@ -1016,13 +1256,17 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		"max", "min", "clamp", "mix", "step", "smoothstep", "fma", "pow", "dot", "cross", "length",
 		"distance", "normalize", "reflect", "refract", "transpose", "determinant", "inverse",
 		"round", "inverseSqrt", "atan2", "faceForward", "saturate", "upperLeft3x3", "select", "le",
+		"lt", "gt", "ge", "eq", "ne", "any", "all",
 		"textureDimensions", "textureStore", "textureLoad", "atomicLoad", "atomicStore",
 		"atomicAdd", "atomicSub", "atomicMax", "atomicMin", "atomicAnd", "atomicOr", "atomicXor",
 		"atomicExchange", "atomicCompareExchangeWeak",
 		"countOneBits", "reverseBits", "firstLeadingBit", "firstTrailingBit", "extractBits",
 		"insertBits", "pack4x8unorm", "pack4x8snorm", "pack2x16unorm", "pack2x16snorm",
 		"pack2x16float", "unpack4x8unorm", "unpack4x8snorm", "unpack2x16unorm", "unpack2x16snorm",
-		"unpack2x16float",
+		"unpack2x16float", "asinh", "acosh", "atanh", "ldexp", "countLeadingZeros",
+		"countTrailingZeros", "bitcastF32toU32", "bitcastF32toI32", "bitcastI32toF32",
+		"bitcastI32toU32", "bitcastU32toF32", "bitcastU32toI32", "modf", "frexp",
+		"textureNumSamples",
 	];
 	const intrinsics = [
 		Intrinsic.Abs, Intrinsic.Sign, Intrinsic.Floor, Intrinsic.Ceil, Intrinsic.Trunc,
@@ -1035,7 +1279,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		Intrinsic.Reflect, Intrinsic.Refract, Intrinsic.Transpose, Intrinsic.Determinant,
 		Intrinsic.Inverse, Intrinsic.Round, Intrinsic.InverseSqrt, Intrinsic.Atan2,
 		Intrinsic.FaceForward, Intrinsic.Saturate, Intrinsic.UpperLeft3x3, Intrinsic.Select,
-		Intrinsic.LessThanEqual, Intrinsic.TextureDimensions, Intrinsic.TextureStore,
+		Intrinsic.LessThanEqual, Intrinsic.LessThan, Intrinsic.GreaterThan,
+		Intrinsic.GreaterThanEqual, Intrinsic.Equal, Intrinsic.NotEqual, Intrinsic.Any,
+		Intrinsic.All, Intrinsic.TextureDimensions, Intrinsic.TextureStore,
 		Intrinsic.TextureLoad, Intrinsic.AtomicLoad, Intrinsic.AtomicStore, Intrinsic.AtomicAdd,
 		Intrinsic.AtomicSub, Intrinsic.AtomicMax, Intrinsic.AtomicMin, Intrinsic.AtomicAnd,
 		Intrinsic.AtomicOr, Intrinsic.AtomicXor, Intrinsic.AtomicExchange,
@@ -1044,8 +1290,17 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		Intrinsic.InsertBits, Intrinsic.Pack4x8Unorm, Intrinsic.Pack4x8Snorm,
 		Intrinsic.Pack2x16Unorm, Intrinsic.Pack2x16Snorm, Intrinsic.Pack2x16Float,
 		Intrinsic.Unpack4x8Unorm, Intrinsic.Unpack4x8Snorm, Intrinsic.Unpack2x16Unorm,
-		Intrinsic.Unpack2x16Snorm, Intrinsic.Unpack2x16Float,
+		Intrinsic.Unpack2x16Snorm, Intrinsic.Unpack2x16Float, Intrinsic.Asinh, Intrinsic.Acosh,
+		Intrinsic.Atanh, Intrinsic.Ldexp, Intrinsic.CountLeadingZeros, Intrinsic.CountTrailingZeros,
+		Intrinsic.Bitcast, Intrinsic.Bitcast, Intrinsic.Bitcast, Intrinsic.Bitcast,
+		Intrinsic.Bitcast, Intrinsic.Bitcast, Intrinsic.Modf, Intrinsic.Frexp,
+		Intrinsic.TextureNumSamples,
 	];
+	const derivativeNames = ["dpdx", "dpdy", "fwidth", "dpdxCoarse", "dpdxFine", "dpdyCoarse",
+		"dpdyFine", "fwidthCoarse", "fwidthFine"];
+	const derivatives = [Intrinsic.Dpdx, Intrinsic.Dpdy, Intrinsic.Fwidth, Intrinsic.DpdxCoarse,
+		Intrinsic.DpdxFine, Intrinsic.DpdyCoarse, Intrinsic.DpdyFine, Intrinsic.FwidthCoarse,
+		Intrinsic.FwidthFine];
 
 	function looseType(t: Node | null): ShaderType {
 		if (t == null) { return new ShaderType(); }
@@ -1060,14 +1315,14 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			_ => {},
 		}
 		for (let i = 0; i < vectorTypes.length; i++) {
-			if (sameType(t, vectorTypes[i])) { return vectorAt(i); }
+			if (sameType(t, vectorTypes[i])) { return vectorAt(typeNodes, i); }
 		}
 		if (sameType(t, textureNode)) { return textureType(TextureShape.D2, ScalarKind.F32); }
 		const view = viewNodes.findIndex((n) => sameType(t, n));
 		if (view >= 0) { return textureType(viewShapes[view], viewTexels[view]); }
 		if (sameType(t, samplerNode) || sameType(t, comparisonNode)) { return samplerType(); }
-		const atomic = atomicOrExchange(t);
-		if (atomic != null) { return atomic; }
+		const predeclared = predeclaredType(t);
+		if (predeclared != null) { return predeclared; }
 		if (isAuthorStruct(t)) { return structType(knownStruct(t)); }
 		return new ShaderType();
 	}
@@ -1174,14 +1429,19 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 
 	function memberOf(object: ShaderExpr, n: Node): ShaderExpr {
 		const t = getType(n.object);
-		const atomic = t == null ? null : atomicOrExchange(t);
-		if (atomic != null && atomic.kind == ShaderTypeKind.Atomic) {
+		const predeclared = t == null ? null : predeclaredType(t);
+		if (predeclared != null && predeclared.kind == ShaderTypeKind.Atomic) {
 			fail(n, "an atomic is read through atomicLoad and written through atomicStore, " +
 				"as WGSL's");
 		}
-		if (atomic != null) {
+		if (predeclared != null && predeclared.kind != ShaderTypeKind.ExchangeResult) {
+			const member = n.property == "fract" ? 0 : 1;
+			return exprOf(ExprKind.Field, predeclaredMemberType(predeclared, member), member,
+				[object]);
+		}
+		if (predeclared != null) {
 			const old = n.property == "oldValue";
-			return exprOf(ExprKind.Field, old ? scalarType(atomic.scalar) :
+			return exprOf(ExprKind.Field, old ? scalarType(predeclared.scalar) :
 				scalarType(ScalarKind.Bool), old ? 0 : 1, [object]);
 		}
 		if (t == null || !isAuthorStruct(t)) {
@@ -1351,8 +1611,6 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			[literal(scalarType(t.scalar), 0.0)]));
 	}
 
-	// One invocation zeroes every workgroup variable before any reads it, as naga's
-	// zero_initialize_workgroup_memory does, so every target starts where WGSL starts.
 	function zeroedWorkgroups(f: ShaderFunction): ShaderStmt[] {
 		const u32 = scalarType(ScalarKind.U32);
 		let index = m.ios.findIndex((io) => io.stage == stage &&
@@ -1396,6 +1654,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		paramNames = [];
 		localKeys = [];
 		localIndices = [];
+		constLocalIndices = [];
+		constLocalValues = [];
 	}
 
 	function defineFunction(callee: Node): void {
@@ -1443,12 +1703,16 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		f.result = valueType(helperType.typExprReturn, callee);
 	}
 
-	function local(n: Node, type: ShaderType): int32 {
+	function local(n: Node, type: ShaderType, value: ShaderExpr): int32 {
 		checkName(n.declName, n);
 		const index = current.locals.length as int32;
 		current.locals.push(shaderField(n.declName, type));
 		localKeys.push(declKey(scopeModule, n));
 		localIndices.push(index);
+		if (n.declKind == DeclKind.Const) {
+			constLocalIndices.push(index);
+			constLocalValues.push(value);
+		}
 		return index;
 	}
 
@@ -1604,7 +1868,15 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		}
 		const left = lower(n.left);
 		const right = op == "<<" || op == ">>" ? shiftAmount(n.right) : lower(n.right);
-		return binaryOf(binaryOps[binaryTexts.indexOf(op)], looseType(getType(n)), left, right);
+		const type = looseType(getType(n));
+		if ((op == "/" || op == "%") &&
+			(type.scalar == ScalarKind.I32 || type.scalar == ScalarKind.U32) &&
+			constantExpr(left) && constantExpr(right) && zeroComponent(right)) {
+			fail(n, "'" + op + "' by a constant zero: an integer " +
+				(op == "/" ? "division" : "remainder") +
+				" of const-expressions by zero is a shader-creation error in WGSL");
+		}
+		return binaryOf(binaryOps[binaryTexts.indexOf(op)], type, left, right);
 	}
 
 	function builtinCall(n: Node, name: string): ShaderExpr {
@@ -1613,33 +1885,144 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		const type = looseType(getType(n));
 		const made = constructors.indexOf(name);
 		if (name != "" && made >= 0) {
-			return exprOf(ExprKind.Construct, vectorAt(made), -1, args);
+			return exprOf(ExprKind.Construct, vectorAt(typeNodes, made), -1, args);
 		}
 		const direct = intrinsicNames.indexOf(name);
 		if (direct >= 0) { return intrinsicOf(intrinsics[direct], type, args); }
-		const fragmentOnly = vertex || compute;
-		return match (name) {
-			"dpdx" | "dpdy" | "fwidth" => fragmentOnly ?
+		if (name == "not") {
+			let negated = exprOf(ExprKind.Unary, type, -1, args);
+			negated.unary = UnaryOp.Not;
+			return negated;
+		}
+		const outsideFragment = vertex || compute;
+		const derivative = derivativeNames.indexOf(name);
+		if (derivative >= 0) {
+			return outsideFragment ?
 				fail(n, name + " exists only in a fragment entry, as WGSL's does") :
-				intrinsicOf(name == "dpdx" ? Intrinsic.Dpdx : name == "dpdy" ? Intrinsic.Dpdy :
-					Intrinsic.Fwidth, type, args),
-			"workgroupBarrier" | "storageBarrier" => !compute ?
-				fail(n, name + " exists only in a compute entry, as WGSL's does") :
+				intrinsicOf(derivatives[derivative], type, args);
+		}
+		const computeOnly = ["workgroupBarrier", "storageBarrier", "textureBarrier",
+			"workgroupUniformLoad"];
+		if (!compute && computeOnly.includes(name)) {
+			fail(n, name + " exists only in a compute entry, as WGSL's does");
+		}
+		const fragmentSamples = ["textureSample", "textureSampleBias", "textureSampleCompare"];
+		if (outsideFragment && fragmentSamples.includes(name)) {
+			fail(n, name + " samples only in a fragment entry, as WGSL's does");
+		}
+		return withConstantOffset(n, name, match (name) {
+			"workgroupBarrier" | "storageBarrier" =>
 				intrinsicOf(name == "workgroupBarrier" ? Intrinsic.WorkgroupBarrier :
 					Intrinsic.StorageBarrier, type, args),
-			"textureSample" | "textureSampleBias" => fragmentOnly ?
-				fail(n, name + " samples only in a fragment entry, as WGSL's does") :
+			"textureBarrier" => intrinsicOf(Intrinsic.TextureBarrier, type, args),
+			"workgroupUniformLoad" => n != uniformLoadSite ?
+				fail(n, name + " is the initializer of a const or let of its own, because the " +
+					"barriers around it sit between two statements") :
+				intrinsicOf(Intrinsic.WorkgroupUniformLoad, type, args),
+			"textureSample" | "textureSampleBias" =>
 				intrinsicOf(name == "textureSample" ? Intrinsic.TextureSample :
 					Intrinsic.TextureSampleBias, type, args),
-			"textureSampleCompare" => fragmentOnly ?
-				fail(n, name + " samples only in a fragment entry, as WGSL's does") :
+			"textureSampleCompare" =>
 				intrinsicOf(Intrinsic.TextureSampleCompare, type, args),
 			"textureSampleCompareLevel" =>
 				intrinsicOf(Intrinsic.TextureSampleCompareLevel, type, args),
 			"textureSampleLevel" => intrinsicOf(Intrinsic.TextureSampleLevel, type, args),
 			"textureSampleGrad" => intrinsicOf(Intrinsic.TextureSampleGrad, type, args),
-			_ => fail(n, "./std's '" + name + "' has no GLSL spelling"),
-		};
+			_ => { fail(n, "./std's '" + name + "' has no GLSL spelling"); },
+		});
+	}
+
+	function folded(e: ShaderExpr): ShaderExpr {
+		if (e.kind == ExprKind.Constant) { return folded(m.constants[e.index].value); }
+		if (e.kind == ExprKind.Local && constLocalIndices.includes(e.index)) {
+			return folded(constLocalValues[constLocalIndices.indexOf(e.index)]);
+		}
+		return e;
+	}
+
+	function integerConstant(e: ShaderExpr): ShaderExpr | null {
+		e = folded(e);
+		if (e.kind == ExprKind.Literal && e.type.scalar == ScalarKind.I32) { return e; }
+		if (e.kind == ExprKind.Unary && e.unary == UnaryOp.Negate) {
+			const inner = integerConstant(e.operands[0]);
+			return inner == null ? null : literal(inner.type, -inner.value);
+		}
+		return null;
+	}
+
+	function constantExpr(e: ShaderExpr): boolean {
+		e = folded(e);
+		if (e.kind == ExprKind.Literal) { return true; }
+		if (e.kind != ExprKind.Unary && e.kind != ExprKind.Binary && e.kind != ExprKind.Construct &&
+			e.kind != ExprKind.Convert && e.kind != ExprKind.Conditional) {
+			return false;
+		}
+		for (const o of e.operands) {
+			if (!constantExpr(o)) { return false; }
+		}
+		return true;
+	}
+
+	function zeroComponent(e: ShaderExpr): boolean {
+		e = folded(e);
+		if (e.kind == ExprKind.Literal) { return e.value == 0.0; }
+		if (e.kind == ExprKind.Unary && e.unary == UnaryOp.Negate) {
+			return zeroComponent(e.operands[0]);
+		}
+		if (e.kind == ExprKind.Convert && e.operands[0].type.scalar != ScalarKind.F32) {
+			return zeroComponent(e.operands[0]);
+		}
+		if (e.kind == ExprKind.Construct) {
+			for (const o of e.operands) {
+				if (zeroComponent(o)) { return true; }
+			}
+		}
+		return false;
+	}
+
+	function constantParts(e: ShaderExpr): ShaderExpr[] {
+		let parts: ShaderExpr[] = [];
+		e = folded(e);
+		if (e.kind != ExprKind.Construct || e.type.kind != ShaderTypeKind.Vector ||
+			e.type.scalar != ScalarKind.I32) {
+			return parts;
+		}
+		for (const o of e.operands) {
+			const part = integerConstant(o);
+			if (part == null) { return []; }
+			parts.push(part);
+		}
+		return parts;
+	}
+
+	function withConstantOffset(n: Node, name: string, call: ShaderExpr): ShaderExpr {
+		if (call.kind != ExprKind.Intrinsic || !isSampling(call.intrinsic) || !hasOffset(call)) {
+			return call;
+		}
+		const at = sampleBase(call);
+		const rows = offsetRows(call.operands[0].type.shape);
+		if (rows == 0) {
+			fail(n, name + " takes no offset on this texture, as WGSL's");
+		}
+		let parts = constantParts(call.operands[at]);
+		if (parts.length == 1) {
+			const only = parts[0];
+			parts = [];
+			for (let i = 0; i < rows; i++) { parts.push(literal(only.type, only.value)); }
+		}
+		if (parts.length != rows) {
+			fail(n, name + " takes a constant offset: a vec" + String(rows) +
+				"i of integer literals, or a const of one (a let, or a const of runtime values, " +
+				"is not a const-expression), as WGSL's");
+		}
+		for (const part of parts) {
+			if (part.value < OFFSET_MIN || part.value > OFFSET_MAX) {
+				fail(n, name + " takes a constant offset in [-8, 7], as WGSL's, not " +
+					String(part.value));
+			}
+		}
+		call.operands[at] = exprOf(ExprKind.Construct, vectorType(ScalarKind.I32, rows), -1, parts);
+		return call;
 	}
 
 	function lower(n: Node): ShaderExpr {
@@ -1722,6 +2105,11 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				if (object.kind == NodeKind.MemberExpr && isType(object.object, bindingsType)) {
 					const r = resourceNamed(object.property);
 					use(resourceRead, r, n);
+					if (m.resources[r].kind == ResourceKind.StorageBuffer &&
+						n.property == "length") {
+						return intrinsicOf(Intrinsic.ArrayLength, looseType(getType(n)),
+							[exprOf(ExprKind.Resource, m.resources[r].type, r, [])]);
+					}
 					if (m.resources[r].kind != ResourceKind.UniformBlock) {
 						fail(n, "'" + n.property + "' has no GLSL form yet");
 					}
@@ -1785,7 +2173,23 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return featureIf(gate, [write]);
 	}
 
+	function writableStorage(target: Node): ShaderExpr | null {
+		if (target.kind != NodeKind.MemberExpr || !isType(target.object, bindingsType)) {
+			return null;
+		}
+		const r = resourceNamed(target.property);
+		if (r < 0 || m.resources[r].kind != ResourceKind.StorageBuffer) { return null; }
+		if (m.resources[r].access != Access.ReadWrite) {
+			fail(target, "storage buffer '" + target.property + "' is read-only: declare it " +
+				"@access(read_write) to write it, as WGSL's");
+		}
+		use(resourceRead, r, target);
+		return exprOf(ExprKind.Resource, m.resources[r].type, r, []);
+	}
+
 	function assignee(target: Node, n: Node): ShaderExpr {
+		const storage = writableStorage(target);
+		if (storage != null) { return storage; }
 		if (target.kind == NodeKind.Identifier &&
 			(locals.includes(target.name) || workgroupOf(target) >= 0)) {
 			return identifier(target);
@@ -1835,7 +2239,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return inStd && impl != null ? impl.fnName : "";
 	}
 
-	function simple(n: Node): ShaderStmt {
+	function simple(n: Node, alone: boolean): ShaderStmt {
 		if (n.kind == NodeKind.ExprStmt) {
 			const e = n.expr;
 			if (e.kind == NodeKind.CallExpr && stdFunctionName(e.callee) == "discard") {
@@ -1856,9 +2260,11 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		}
 		if (n.initializer == null) { fail(n, "a shader local is declared with its value"); }
 		const type = valueType(getType(n.initializer), n);
-		let s = stmtOf(StmtKind.Let, lower(n.initializer), []);
+		uniformLoadSite = alone ? n.initializer : null;
+		const value = lower(n.initializer);
+		let s = stmtOf(StmtKind.Let, value, []);
 		locals.push(n.declName);
-		s.local = local(n, type);
+		s.local = local(n, type, value);
 		return s;
 	}
 
@@ -2004,7 +2410,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			NodeKind.ForStmt => {
 				if (n.forLabel != "") { fail(n, "GLSL has no labelled loops"); }
 				const outer = locals.length;
-				const init = simple(n.forInit);
+				const init = simple(n.forInit, false);
 				const test = condition(n.forCondition);
 				const update = assignment(n.forUpdate);
 				let s = stmtOf(StmtKind.For, test, loopBody(n.forBody));
@@ -2031,7 +2437,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			NodeKind.ReturnStmt => { return returned(n); },
 			_ => {},
 		}
-		return [simple(n)];
+		return [simple(n, true)];
 	}
 
 	if (feederType != null && feederType.kind == NodeKind.TypeFunction) {
@@ -2063,7 +2469,6 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			const site = fieldSite(inputs.typExprFieldDecorators[f]);
 			const builtin = decorator(inputs.typExprFieldDecorators[f], "builtin");
 			if (builtin == null) {
-				// Every input is declared, read or not: shdc numbers them in declaration order.
 				if (t.kind == NodeKind.TypeArray) {
 					fail(site, vertex ? "attribute '" + name + "' is an array, which neither " +
 						"WGSL nor GLSL ES 3.00 takes as a vertex input: " +
@@ -2072,7 +2477,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				const spelled = vertex ? name : varyingName(name);
 				const type = member(t, spelled, site);
 				const gate = featureCondition(inputs.typExprFieldDecorators[f]);
-				if (vertex) { noInterpolate(inputs.typExprFieldDecorators[f], "a vertex attribute"); }
+				if (vertex) {
+					noInterpolate(inputs.typExprFieldDecorators[f], "a vertex attribute");
+				}
 				const interpolation = vertex ? Interpolation.Perspective :
 					interpolationOf(t, site, inputs.typExprFieldDecorators[f]);
 				claim(spelled, site);
@@ -2091,10 +2498,12 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				vertex ? (which == "vertexIndex" ? Builtin.VertexIndex :
 					which == "instanceIndex" ? Builtin.InstanceIndex : Builtin.None) :
 				which == "position" ? Builtin.Position :
-				which == "frontFacing" ? Builtin.FrontFacing : Builtin.None;
+				which == "frontFacing" ? Builtin.FrontFacing :
+				which == "primitiveIndex" ? Builtin.PrimitiveIndex : Builtin.None;
 			if (kind == Builtin.None) {
-				fail(builtin, "input field '" + name + "': @builtin(" + which +
-					") has no GLSL form yet");
+				fail(builtin, "input field '" + name + "': @builtin(" + which + ") " +
+					(which == "primitiveIndex" ? "is read in a fragment entry, as WGSL's is" :
+					"has no GLSL form yet"));
 			}
 			builtinInputNames.push(name);
 			builtinInputIos.push(addIo(stage, name, IoDirection.In, looseType(t), kind,
@@ -2173,7 +2582,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		const element = storageElements[s];
 		if (!isAuthorStruct(element)) {
 			fail(storageSites[s], "storage buffer '" + m.resources[storageResources[s]].name +
-				"' holds no author struct: shdc takes one flexible array of structs per buffer");
+				"' holds no author struct: a storage buffer is one flexible array of structs");
 		}
 		m.resources[storageResources[s]].type.element[0].structIndex =
 			structIndex(element, storageSites[s]);

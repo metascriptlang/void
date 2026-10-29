@@ -7,9 +7,19 @@ import {
 } from "../void3d/billboard";
 import { MeshData, MeshError, LIT_TEXTURED_VERTEX_STRIDE } from "../void3d/meshData";
 import {
-	LabelUv, facingRotation, labelQuad, localFor, grown, uvOfSubRect,
+	LabelUv, labelKey, labelParams, facingRotation, labelQuad, localFor, grown, uvOfSubRect,
 } from "../void3d/worldLabel";
-import { approx } from "./helpers";
+import { approx, sameLanes } from "./helpers";
+import { Rgba } from "../void3d/meshData";
+import { MATERIAL_UNIFORM_SLOT, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH } from "../void3d/gpu3d";
+import { RenderState, BlendMode } from "../gpu/state";
+import { Material, Phase, TypedBlock } from "../void3d/material";
+import {
+	DrawContext, MaterialId, MaterialError, HandleError, addMaterial, releaseMaterial,
+	reserveBlock as reserveContextBlock, writeBlock as writeContextBlock, releaseBlock,
+} from "../void3d/draw";
+import { MovingUnlitMaterialParams } from "../void3d/shader3d";
+import { UniformPool, UniformError, reserveBlock, writeBlock } from "../void3d/uniformPool";
 
 function near(a: Vec3, b: Vec3): boolean {
 	return approx(a.x, b.x) && approx(a.y, b.y) && approx(a.z, b.z);
@@ -147,4 +157,69 @@ test "the moved quad shows the target's top rows and left columns and no others"
 			assert top == 1.0 && bottom == 0.75;
 		}
 	}
+}
+
+function labelLanes(uv: LabelUv, tint: Rgba): Vec<float32> {
+	let pool: UniformPool = UniformPool.withCapacity(MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
+	for (let i = 0; i < MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH; i++) { pool.values[i] = -7.0; }
+	const reserved = reserveBlock<MovingUnlitMaterialParams>(pool, MATERIAL_UNIFORM_SLOT);
+	if (!reserved.ok) { unreachable; }
+	if (!writeBlock(pool, reserved.value, labelParams(uv, tint)).ok) { unreachable; }
+	return pool.values;
+}
+
+test "a label's block holds the tint, the sub-rect's uv and the identity back uv, the rest zero" {
+	const white: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
+	const tint: Rgba = { red: 0.2, green: 0.4, blue: 0.6, alpha: 0.8 };
+	const still: LabelUv = { scaleU: 1.0, scaleV: 1.0, offsetV: 0.0 };
+	const used: LabelUv = LabelUv.uvOfSubRect(20, 10, 40, 40, false);
+	assert sameLanes(labelLanes(still, white), [
+		0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	]);
+	assert sameLanes(labelLanes(used, tint), [
+		0, 0, 0, 0, 0.2, 0.4, 0.6, 0.8, 0.5, 0, 0, 0.25, 0, 0.75, 0, 0, 1, 0, 0, 1,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	]);
+}
+
+function labelMaterial(block: TypedBlock<MovingUnlitMaterialParams>, pass: RenderState): Material {
+	return { ...Material.keyed(labelKey(), pass, Phase.Alpha), uniforms: block.block };
+}
+
+function labelBlock(context: DrawContext): TypedBlock<MovingUnlitMaterialParams> {
+	const uv: LabelUv = { scaleU: 1.0, scaleV: 1.0, offsetV: 0.0 };
+	const reserved: Result<TypedBlock<MovingUnlitMaterialParams>, UniformError> =
+		reserveContextBlock<MovingUnlitMaterialParams>(context, MATERIAL_UNIFORM_SLOT);
+	if (!reserved.ok) { unreachable; }
+	const white: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
+	if (!writeContextBlock(context, reserved.value, labelParams(uv, white)).ok) { unreachable; }
+	return reserved.value;
+}
+
+test "a label's material releases the block it took, so the label's own release is refused" {
+	let context: DrawContext = DrawContext.withUniformCapacity(MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
+	const block: TypedBlock<MovingUnlitMaterialParams> = labelBlock(context);
+	const pass: RenderState = RenderState.defaults().withBlendMode(BlendMode.AlphaAdd);
+	const added: Result<MaterialId, MaterialError> =
+		addMaterial(context, labelMaterial(block, pass));
+	assert added.ok;
+	if (!added.ok) { return; }
+	assert context.uniforms.isOwned(block.block) && context.uniforms.freeRanges() == 0;
+	const released: Result<int32, HandleError> = releaseMaterial(context, added.value);
+	assert released.ok;
+	assert context.uniforms.freeRanges() == 1 && !context.uniforms.holds(block.block);
+	const again: Result<int32, UniformError> = releaseBlock(context, block);
+	assert !again.ok && again.error == UniformError.Released;
+	assert context.uniforms.freeRanges() == 1 && context.uniforms.liveRanges() == 0;
+}
+
+test "a block whose material was refused is still the label's to release" {
+	let context: DrawContext = DrawContext.withUniformCapacity(MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
+	const block: TypedBlock<MovingUnlitMaterialParams> = labelBlock(context);
+	const refused: Result<MaterialId, MaterialError> =
+		addMaterial(context, labelMaterial(block, RenderState.defaults()));
+	assert !refused.ok && !context.uniforms.isOwned(block.block);
+	assert releaseBlock(context, block).ok;
+	assert context.uniforms.freeRanges() == 1 && context.uniforms.liveRanges() == 0;
 }

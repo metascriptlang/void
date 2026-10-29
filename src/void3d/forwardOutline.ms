@@ -9,14 +9,15 @@ import {
 	RenderTarget, Sampler, ColorAttachment, DepthAttachment, TargetLayout, NO_DEPTH, beginPass,
 } from "../gpu/target";
 import { Program } from "./gpu3d";
-import { Material, Phase, UniformBlock } from "./material";
+import { TypedBlock } from "./material";
 import {
-	DrawContext, MaterialId, MaterialError, HandleError, addMaterial, releaseMaterial,
-	reserveUniforms, writeUniforms,
+	DrawContext, MaterialId, HandleError, releaseMaterial, writeBlock,
 } from "./draw";
-import { UniformError } from "./uniformPool";
+import { OutlineMaskParams, OutlineMixParams, OutlineWidthParams } from "./post3d";
+import { stopOnFailedWrite } from "./uniformPool";
+import { uniformSize } from "../shader/uniform";
 import { Renderer, RendererError, drawScreen } from "./renderer";
-import { screenState } from "./screenFx";
+import { screenState, reserveScreenBlock, addScreenMaterial } from "./screenFx";
 
 export struct ForwardOutlineSettings {
 	// Straight RGBA in [0,1]; premultiplied once after the coverage filter.
@@ -120,8 +121,13 @@ export function outlineWidthCoverage(
 	return complement ? 1.0 - maximum : maximum;
 }
 
-export const FORWARD_OUTLINE_PASS_UNIFORM_LENGTH: int32 = 20;
-export const FORWARD_OUTLINE_BLOCKS: Vec<int32> = [8, 8, 4];
+export const FORWARD_OUTLINE_BLOCKS: Vec<int32> = [
+	uniformSize<OutlineMaskParams>() / 4,
+	uniformSize<OutlineMixParams>() / 4,
+	uniformSize<OutlineWidthParams>() / 4,
+];
+export const FORWARD_OUTLINE_PASS_UNIFORM_LENGTH: int32 =
+	FORWARD_OUTLINE_BLOCKS[0] + FORWARD_OUTLINE_BLOCKS[1] + FORWARD_OUTLINE_BLOCKS[2];
 export const OUTLINE_WIDTH_SAMPLES: int32 = 48;
 export const OUTLINE_SCENE_LAYOUT: TargetLayout = {
 	color0: PixelFormat.Rgba8, color1: PixelFormat.Rgba8,
@@ -146,12 +152,9 @@ export interface ForwardOutlinePass {
 	maskMaterial: MaterialId;
 	mixMaterial: MaterialId;
 	widthMaterial: MaterialId;
-	maskBlock: UniformBlock;
-	mixBlock: UniformBlock;
-	widthBlock: UniformBlock;
-	maskValues: Vec<float32>;
-	mixValues: Vec<float32>;
-	widthValues: Vec<float32>;
+	maskBlock: TypedBlock<OutlineMaskParams>;
+	mixBlock: TypedBlock<OutlineMixParams>;
+	widthBlock: TypedBlock<OutlineWidthParams>;
 	sceneColors: Vec<ColorAttachment>;
 	translucentColors: Vec<ColorAttachment>;
 	maskColors: Vec<ColorAttachment>;
@@ -161,20 +164,13 @@ export interface ForwardOutlinePass {
 }
 
 export function reserve(this typeof ForwardOutlinePass, context: DrawContext): ForwardOutlinePass {
-	const mask: Result<UniformBlock, UniformError> = reserveUniforms(context, 0, 8);
-	const mix: Result<UniformBlock, UniformError> = reserveUniforms(context, 0, 8);
-	const width: Result<UniformBlock, UniformError> = reserveUniforms(context, 0, 4);
-	if (!mask.ok || !mix.ok || !width.ok) { unreachable; }
-	const maskAdded: Result<MaterialId, MaterialError> = addMaterial(context, {
-		...Material.plain(Program.OutlineMask, screenState(), Phase.Opaque), uniforms: mask.value,
-	});
-	const mixAdded: Result<MaterialId, MaterialError> = addMaterial(context, {
-		...Material.plain(Program.OutlineMix, screenState(), Phase.Opaque), uniforms: mix.value,
-	});
-	const widthAdded: Result<MaterialId, MaterialError> = addMaterial(context, {
-		...Material.plain(Program.OutlineWidth, screenState(), Phase.Opaque), uniforms: width.value,
-	});
-	if (!maskAdded.ok || !mixAdded.ok || !widthAdded.ok) { unreachable; }
+	const call: string = "ForwardOutlinePass.reserve";
+	const mask: TypedBlock<OutlineMaskParams> =
+		reserveScreenBlock<OutlineMaskParams>(context, 0, call);
+	const mix: TypedBlock<OutlineMixParams> =
+		reserveScreenBlock<OutlineMixParams>(context, 0, call);
+	const width: TypedBlock<OutlineWidthParams> =
+		reserveScreenBlock<OutlineWidthParams>(context, 0, call);
 	return {
 		lit: RenderTarget.unallocated(PixelFormat.Rgba8, true),
 		normal: RenderTarget.unallocated(PixelFormat.Rgba8, true),
@@ -182,9 +178,13 @@ export function reserve(this typeof ForwardOutlinePass, context: DrawContext): F
 		mask: RenderTarget.unallocated(PixelFormat.Rgba8, true),
 		width: RenderTarget.unallocated(PixelFormat.Rgba8, true),
 		linearSampler: { filter: FilterMode.Linear, wrap: Wrap.Clamp, handle: 0 },
-		maskMaterial: maskAdded.value, mixMaterial: mixAdded.value, widthMaterial: widthAdded.value,
-		maskBlock: mask.value, mixBlock: mix.value, widthBlock: width.value,
-		maskValues: new Array(8), mixValues: new Array(8), widthValues: new Array(4),
+		maskMaterial:
+			addScreenMaterial(context, Program.OutlineMask, screenState(), mask.block, call),
+		mixMaterial:
+			addScreenMaterial(context, Program.OutlineMix, screenState(), mix.block, call),
+		widthMaterial:
+			addScreenMaterial(context, Program.OutlineWidth, screenState(), width.block, call),
+		maskBlock: mask, mixBlock: mix, widthBlock: width,
 		sceneColors: new Array(2), translucentColors: new Array(1), maskColors: new Array(1),
 		widthColors: new Array(1),
 		sceneDepth: NO_DEPTH, translucentDepth: NO_DEPTH,
@@ -217,6 +217,46 @@ export function resize(
 	pass.translucentDepth = pass.depth.asDepth(LoadAction.Load, 1.0, StoreAction.Store);
 }
 
+export function writeSettings(
+	this pass: ForwardOutlinePass,
+	context: DrawContext,
+	settings: ForwardOutlineSettings,
+	blend: float32,
+	zeroToOne: boolean,
+): void {
+	const color: Vec4 = settings.color;
+	const masked = writeBlock(context, pass.maskBlock, {
+		outlineEdge: {
+			x: 2.0,
+			y: settings.depthThreshold,
+			z: settings.normalThreshold,
+			w: zeroToOne ? 1.0 : 2.0,
+		},
+		outlineDepthMap: { x: zeroToOne ? 0.0 : -1.0, y: blend, z: 0.0, w: 0.0 },
+	});
+	const mixed = writeBlock(context, pass.mixBlock, {
+		outlineColor: {
+			x: color.x * color.w,
+			y: color.y * color.w,
+			z: color.z * color.w,
+			w: color.w,
+		},
+		outlineMix: { x: blend, y: 0.0, z: 0.0, w: 0.0 },
+	});
+	const widened = writeBlock(context, pass.widthBlock, {
+		outlineWidth: {
+			x: (Math.abs(settings.pixelWidth - 2.0) * 0.5) as float32,
+			y: settings.pixelWidth < 2.0 ? 1.0 : 0.0,
+			z: 0.0,
+			w: 0.0,
+		},
+	});
+	const call: string = "ForwardOutlinePass.writeSettings";
+	if (!masked.ok) { stopOnFailedWrite(call, masked.error); }
+	if (!mixed.ok) { stopOnFailedWrite(call, mixed.error); }
+	if (!widened.ok) { stopOnFailedWrite(call, widened.error); }
+}
+
 export function prepare(
 	this pass: ForwardOutlinePass,
 	context: DrawContext,
@@ -225,29 +265,7 @@ export function prepare(
 	zeroToOne: boolean,
 	pointSampler: uint32,
 ): void {
-	pass.maskValues[0] = 2.0;
-	pass.maskValues[1] = settings.depthThreshold;
-	pass.maskValues[2] = settings.normalThreshold;
-	pass.maskValues[3] = zeroToOne ? 1.0 : 2.0;
-	pass.maskValues[4] = zeroToOne ? 0.0 : -1.0;
-	pass.maskValues[5] = blend;
-	pass.maskValues[6] = 0.0;
-	pass.maskValues[7] = 0.0;
-	pass.mixValues[0] = settings.color.x * settings.color.w;
-	pass.mixValues[1] = settings.color.y * settings.color.w;
-	pass.mixValues[2] = settings.color.z * settings.color.w;
-	pass.mixValues[3] = settings.color.w;
-	pass.mixValues[4] = blend;
-	pass.mixValues[5] = 0.0;
-	pass.mixValues[6] = 0.0;
-	pass.mixValues[7] = 0.0;
-	pass.widthValues[0] = (Math.abs(settings.pixelWidth - 2.0) * 0.5) as float32;
-	pass.widthValues[1] = settings.pixelWidth < 2.0 ? 1.0 : 0.0;
-	pass.widthValues[2] = 0.0;
-	pass.widthValues[3] = 0.0;
-	if (!writeUniforms(context, pass.maskBlock, pass.maskValues).ok ||
-		!writeUniforms(context, pass.mixBlock, pass.mixValues).ok ||
-		!writeUniforms(context, pass.widthBlock, pass.widthValues).ok) { unreachable; }
+	pass.writeSettings(context, settings, blend, zeroToOne);
 	context.materials[pass.maskMaterial.index].texture0 = pass.normal.asTexture();
 	context.materials[pass.maskMaterial.index].texture1 = pass.depth.asTexture();
 	context.materials[pass.maskMaterial.index].sampler0 = pointSampler;

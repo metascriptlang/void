@@ -246,6 +246,7 @@ function spotLights(values: Vec<float32>): LitBindings {
 		shadowMap: oneLayer(depthTexture(1.0)),
 		spotShadowMap: oneLayer(depthTexture(1.0)),
 		cubeShadowMap: oneLayer(depthTexture(1.0)),
+		cookieTexture: { width: 0, height: 0, texels: [] },
 		baseTexture: depthTexture(1.0),
 		baseSampler: { nearest: true },
 		backTexture: depthTexture(1.0),

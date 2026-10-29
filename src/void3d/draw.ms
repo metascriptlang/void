@@ -39,6 +39,7 @@ import {
 	Preset,
 	declares,
 	MATERIAL_ALPHA_KILL,
+	PBR_PARALLAX_STEPS,
 	SHADOW_VIEW_SLOT,
 	SHADOW_SAMPLER_SLOT,
 	SPOT_SHADOW_VIEW_SLOT,
@@ -51,6 +52,10 @@ import {
 	CLUSTER_RECORDS_VIEW_SLOT,
 	CLUSTER_INDICES_VIEW_SLOT,
 	CLUSTER_SAMPLER_SLOT,
+	COOKIE_VIEW_SLOT,
+	COOKIE_SAMPLER_SLOT,
+	SCENE_DEPTH_VIEW_SLOT,
+	SCENE_DEPTH_SAMPLER_SLOT,
 	NORMAL_VIEW_SLOT,
 } from "./gpu3d";
 import {
@@ -65,7 +70,7 @@ import {
 	passState,
 	UNIFORM_SLOTS,
 } from "../gpu/door";
-import { FilterMode, Wrap, BlendMode, RenderState } from "../gpu/state";
+import { FilterMode, Wrap, BlendMode, RenderState, Compare } from "../gpu/state";
 import { Texture, TextureError, DetachedHandles } from "../gpu/texture";
 import {
 	TextureMipData,
@@ -107,7 +112,9 @@ import {
 } from "../gpu/draw";
 import {
 	Material,
+	isDecalPhase,
 	UniformBlock,
+	TypedBlock,
 	NO_UNIFORMS,
 	MATERIAL_TEXTURE_ROLES,
 	viewSlotOf,
@@ -128,6 +135,8 @@ import {
 	disownRange,
 	writeRange,
 	uniformWrites,
+	reserveBlock as reserveTypedBlock,
+	writeBlock as writeTypedBlock,
 } from "./uniformPool";
 import { Slots, LAST_GENERATION, claim, vacate } from "./slots";
 
@@ -214,6 +223,8 @@ export struct DrawItem {
 	instances: InstanceRun | null;
 	lod: MeshLodPick | null;
 	lodCulled: boolean;
+	lodSource: int32 | null;
+	lodRatio: float64;
 }
 
 // The instance rows a mesh item draws its mesh once each for, in place of the one row its world
@@ -374,7 +385,13 @@ export enum MaterialError {
 	StraightTexture,
 	StraightBlend,
 	NoAlphaKill,
+	BadParallaxSteps,
 	UndeclaredProgram,
+	// A Decal-phase pass writes or tests depth; the decal pass has no depth attachment, the scene
+	// depth being the texture it reads.
+	DecalDepth,
+	// The decal program outside the decal phases, the passes that bind the depth it reads.
+	DecalPhase,
 }
 
 let contextSerials: int32 = 0;
@@ -1084,6 +1101,14 @@ function cutsAbove(this context: DrawContext, block: UniformBlock): boolean {
 	return context.uniforms.values[block.offset + MATERIAL_ALPHA_KILL] > 0.0;
 }
 
+// A step count past 255, below 0 or between whole numbers is no count PbrMaterial can hold, and
+// a large one stalls the GPU in the step loop.
+function stepsFit(this context: DrawContext, block: UniformBlock): boolean {
+	if (block.length <= PBR_PARALLAX_STEPS || !context.uniforms.holds(block)) { return true; }
+	const steps: float32 = context.uniforms.values[block.offset + PBR_PARALLAX_STEPS];
+	return steps >= 0.0 && steps <= 255.0 && Math.floor(steps) == steps;
+}
+
 const PREMULTIPLIED_OVER: RenderState = RenderState.defaults().withBlendMode(BlendMode.AlphaAdd);
 
 function blendsPremultiplied(pass: RenderState): boolean {
@@ -1154,6 +1179,16 @@ export function addMaterial(
 		material.program.program == Program.ParticleVisual;
 	if (material.program.cutout && !fixedCut && !context.cutsAbove(material.uniforms)) {
 		return Result.err(MaterialError.NoAlphaKill);
+	}
+	if (material.program.parallax && !context.stepsFit(material.uniforms)) {
+		return Result.err(MaterialError.BadParallaxSteps);
+	}
+	if (isDecalPhase(material.phase) &&
+		(material.pass.depthWrite || material.pass.depthTest != Compare.Always)) {
+		return Result.err(MaterialError.DecalDepth);
+	}
+	if (material.program.program == Program.Decal && !isDecalPhase(material.phase)) {
+		return Result.err(MaterialError.DecalPhase);
 	}
 	const owned: Result<int32, UniformError> = ownRange(context.uniforms, material.uniforms);
 	if (!owned.ok) {
@@ -1681,6 +1716,31 @@ export function writeUniforms(
 	return writeRange(context.uniforms, block, values);
 }
 
+export function reserveBlock<T>(
+	context: DrawContext,
+	slot: int32,
+): Result<TypedBlock<T>, UniformError> {
+	if (context.closed) { stopOnClosedContext("reserveBlock"); }
+	return reserveTypedBlock<T>(context.uniforms, slot);
+}
+
+export function releaseBlock<T>(
+	context: DrawContext,
+	handle: TypedBlock<T>,
+): Result<int32, UniformError> {
+	if (context.closed) { stopOnClosedContext("releaseBlock"); }
+	return releaseRange(context.uniforms, handle.block);
+}
+
+export function writeBlock<T>(
+	context: DrawContext,
+	handle: TypedBlock<T>,
+	value: T,
+): Result<int32, UniformError> {
+	if (context.closed) { stopOnClosedContext("writeBlock"); }
+	return writeTypedBlock<T>(context.uniforms, handle, value);
+}
+
 function applyBlock(this context: DrawContext, block: UniformBlock): void {
 	applyUniforms(block.slot, context.uniforms.values[block.offset..block.offset + block.length]);
 }
@@ -1744,8 +1804,8 @@ function stopOnLongBlock(program: ProgramKey, block: UniformBlock, declared: int
 }
 
 // An hxsl global texture (Heaps' `shadow.map`) of the sun, the shadowing spot and point, the
-// environment's cubes (pbrIndirect's irrDiffuse and irrSpecular) and the frame's clustered
-// lights (clusterFrame.ms), bound past a material's slots.
+// environment's cubes (pbrIndirect's irrDiffuse and irrSpecular), the frame's clustered
+// lights (clusterFrame.ms) and, for the decals, the scene depth, bound past a material's slots.
 export struct SceneTexture {
 	view: uint32;
 	sampler: uint32;
@@ -1759,11 +1819,16 @@ export struct SceneTexture {
 	clusterRecords: uint32;
 	clusterIndices: uint32;
 	clusterSampler: uint32;
+	cookieView: uint32;
+	cookieSampler: uint32;
+	depthView: uint32;
+	depthSampler: uint32;
 }
 
 export const NO_SCENE_TEXTURE: SceneTexture = {
 	view: 0, sampler: 0, spotView: 0, spotSampler: 0, cubeView: 0, envDiffuse: 0, envSpecular: 0,
 	envSampler: 0, lightRecords: 0, clusterRecords: 0, clusterIndices: 0, clusterSampler: 0,
+	cookieView: 0, cookieSampler: 0, depthView: 0, depthSampler: 0,
 };
 
 // `rows` and `rowOffset` are slot 1's buffer and byte offset, 0 for a layout that reads none.
@@ -1809,7 +1874,20 @@ function bindItem(
 	context.bindings[GPU3D_BINDING_VIEW + CLUSTER_RECORDS_VIEW_SLOT] = scene.clusterRecords;
 	context.bindings[GPU3D_BINDING_VIEW + CLUSTER_INDICES_VIEW_SLOT] = scene.clusterIndices;
 	context.bindings[GPU3D_BINDING_SAMPLER + CLUSTER_SAMPLER_SLOT] = scene.clusterSampler;
+	context.bindings[GPU3D_BINDING_VIEW + COOKIE_VIEW_SLOT] = scene.cookieView;
+	context.bindings[GPU3D_BINDING_SAMPLER + COOKIE_SAMPLER_SLOT] = scene.cookieSampler;
+	context.bindings[GPU3D_BINDING_VIEW + SCENE_DEPTH_VIEW_SLOT] = scene.depthView;
+	context.bindings[GPU3D_BINDING_SAMPLER + SCENE_DEPTH_SAMPLER_SLOT] = scene.depthSampler;
 	applyBindings(context.bindings);
+}
+
+// The view and sampler a context texture binds at, for a slot past a material's (the cookie's).
+export function viewOf(this context: DrawContext, id: TextureId): uint32 {
+	return context.viewAt(id.index);
+}
+
+export function samplerOf(this context: DrawContext, id: TextureId): uint32 {
+	return context.textures[id.index].sampler;
 }
 
 // viewAt and textureReady read `owner.view` because `asView` stops on a stale texture.

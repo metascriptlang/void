@@ -36,7 +36,7 @@ ordinal() {
 	tr -d "\r" < src/void3d/gpu3d.ms | awk -v head="export enum $1 {" '
 		$0 == head { open = 1; next }
 		open && /^}/ { exit }
-		open { gsub(/[\t ,]/, ""); print }
+		open { sub(/\/\/.*/, ""); gsub(/[\t ,]/, ""); if ($0 != "") print }
 	' | sed -E 's/([a-z0-9])([A-Z])/\1_\2/g' | tr a-z A-Z |
 		awk -v name="$2" '$0 == name { print NR - 1; found = 1 } END { exit !found }' ||
 		{ echo "src/void3d/gpu3d.ms enum $1 has no $2" >&2; return 1; }
@@ -63,6 +63,9 @@ programTable() {
 	: > "$work/dataLayouts"
 	: > "$work/dataKeys"
 	count=0
+	presetShift=$(tr -d "\r" < src/void3d/gpu3d.ms |
+		grep -oE 'key\.preset as int32\) << [0-9]+' | grep -oE '[0-9]+$') ||
+		{ echo "src/void3d/gpu3d.ms ProgramKey.bits has no preset shift"; exit 1; }
 	while read -r module program preset features vs fs layout extra; do
 		case "$module" in ''|'#'*) continue ;; esac
 		if [ -z "$layout" ] || [ -n "$extra" ]; then
@@ -72,7 +75,7 @@ programTable() {
 		echo "	$(ordinal VertexLayout "$layout")," >> "$work/dataLayouts"
 		programOrdinal=$(ordinal Program "$program")
 		presetOrdinal=$(ordinal Preset "$preset")
-		echo "	$(( programOrdinal | presetOrdinal << 4 | bits ))," >> "$work/dataKeys"
+		echo "	$(( programOrdinal | presetOrdinal << presetShift | bits ))," >> "$work/dataKeys"
 		count=$((count + 1))
 	done < <(tr -d "\r" < "$KEYS")
 

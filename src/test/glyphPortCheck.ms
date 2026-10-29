@@ -29,7 +29,9 @@ import {
 	void2dGlyphRasterize,
 	void2dGlyphScale,
 } from "../void2d/glyph";
+import { holdFontFile } from "./fontFile";
 
+const CFF_FIXTURE: string = "tests/fonts/cffSynthetic.otf";
 const PINNED: string[] = [
 	"2818068566", // assets/font.ttf
 	"3426308802", // tests/fonts/NotoSansSC-subset.ttf
@@ -83,7 +85,10 @@ const PATHS: string[] = [
 	"tests/fonts/zeroedDecorations.ttf",
 ];
 
-function aLoad(path: string, index: int32): int32 { return void2dGlyphFaceLoad(path, index); }
+function aLoad(path: string, index: int32): int32 {
+	holdFontFile(path);
+	return void2dGlyphFaceLoad(path, index);
+}
 function aSynthetic(face: int32, bold: int32, italic: int32): int32 { return void2dGlyphFaceSynthetic(face, bold, italic); }
 function aScale(face: int32, size: float32): float32 { return void2dGlyphScale(face, size); }
 function aIndex(face: int32, cp: int32): int32 { return void2dGlyphIndex(face, cp); }
@@ -255,6 +260,10 @@ function digestOf(path: string): string {
 test "the glyph port over the repo fonts keeps the digest recorded from glyph.c" {
 	assert PATHS.length == PINNED.length;
 	for (let f: int32 = 0; f < PATHS.length; f++) {
+		when (voidCff) {
+		} else {
+			if (PATHS[f] == CFF_FIXTURE) { continue; }
+		}
 		const got = digestOf(PATHS[f]);
 		if (got != PINNED[f]) { console.error(`glyph port digest moved for ${PATHS[f]}: ${got} != ${PINNED[f]}`); }
 		assert got == PINNED[f];

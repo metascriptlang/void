@@ -7,8 +7,6 @@ import {
 	DeclarationKind,
 	ExprKind,
 	FeatureCondition,
-	Interpolation,
-	Sampling,
 	Intrinsic,
 	IoDirection,
 	ResourceKind,
@@ -17,6 +15,7 @@ import {
 	ScalarKind,
 	ShaderEntry,
 	ShaderExpr,
+	ShaderField,
 	ShaderIo,
 	ShaderModule,
 	ShaderResource,
@@ -29,8 +28,16 @@ import {
 	TextureShape,
 	UnaryOp,
 	isAtomic,
+	hasOffset,
+	sampleBase,
 	isShift,
+	isUniformLoad,
+	sameShaderType,
+	texelScalar,
+	isDepthShape,
+	isArrayTexture,
 } from "./ir";
+import { splitResults } from "./irWalk";
 import {
 	Names,
 	fieldNames,
@@ -45,53 +52,30 @@ import {
 	binaryOperator,
 	exchangeSlot,
 	glslAtomicName,
+	glslBitcast,
+	glslAccessWord,
 	glslBits,
-	mathName,
+	glslFunctions,
+	glslImageFormat,
+	glslInterpolation,
+	glslKeywords,
+	glslMathName,
+	glslSampling,
+	glslSplitTypes,
 	repeatedBitsOperand,
+	splitHelperName,
+	splitMember,
+	splitStructName,
+	scalarName,
+	vectorPrefix,
 } from "./spelling";
 
 function glslReservedWords(): string[] {
-	let words = [
-		"attribute", "const", "uniform", "varying", "buffer", "shared", "coherent", "volatile",
-		"restrict", "readonly", "writeonly", "atomic_uint", "layout", "centroid", "flat", "smooth",
-		"noperspective", "patch", "sample", "invariant", "precise", "break", "continue", "do",
-		"for", "while", "switch", "case", "default", "if", "else", "subroutine", "in", "out",
-		"inout", "float", "double", "int", "uint", "void", "bool", "true", "false", "discard",
-		"return", "lowp", "mediump", "highp", "precision", "struct", "sampler", "common",
-		"partition", "active", "asm", "class", "union", "enum", "typedef", "template", "this",
-		"resource", "goto", "inline", "noinline", "public", "static", "extern", "external",
-		"interface", "long", "short", "half", "fixed", "unsigned", "superp", "input", "output",
-		"hvec2", "hvec3", "hvec4", "fvec2", "fvec3", "fvec4", "sampler3DRect", "filter", "sizeof",
-		"cast", "namespace", "using",
-		"radians", "degrees", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh",
-		"asinh", "acosh", "atanh", "pow", "exp", "log", "exp2", "log2", "sqrt", "inversesqrt",
-		"abs", "sign", "floor", "trunc", "round", "roundEven", "ceil", "fract", "mod", "modf",
-		"min", "max", "clamp", "mix", "step", "smoothstep", "isnan", "isinf", "floatBitsToInt",
-		"floatBitsToUint", "intBitsToFloat", "uintBitsToFloat", "fma", "frexp", "ldexp",
-		"packUnorm2x16", "packSnorm2x16", "packUnorm4x8", "packSnorm4x8", "unpackUnorm2x16",
-		"unpackSnorm2x16", "unpackUnorm4x8", "unpackSnorm4x8", "packHalf2x16", "unpackHalf2x16",
-		"packDouble2x32", "unpackDouble2x32", "length", "distance", "dot", "cross", "normalize",
-		"ftransform", "faceforward", "reflect", "refract", "matrixCompMult", "outerProduct",
-		"transpose", "determinant", "inverse", "lessThan", "lessThanEqual", "greaterThan",
-		"greaterThanEqual", "equal", "notEqual", "any", "all", "not", "uaddCarry", "usubBorrow",
-		"umulExtended", "imulExtended", "bitfieldExtract", "bitfieldInsert", "bitfieldReverse",
-		"bitCount", "findLSB", "findMSB", "textureSize", "textureQueryLod", "textureQueryLevels",
-		"textureSamples", "texture", "textureProj", "textureLod", "textureOffset", "texelFetch",
-		"texelFetchOffset", "textureProjOffset", "textureLodOffset", "textureProjLod",
-		"textureProjLodOffset", "textureGrad", "textureGradOffset", "textureProjGrad",
-		"textureProjGradOffset", "textureGather", "textureGatherOffset", "textureGatherOffsets",
-		"atomicCounterIncrement", "atomicCounterDecrement", "atomicCounter", "atomicAdd",
-		"atomicMin", "atomicMax", "atomicAnd", "atomicOr", "atomicXor", "atomicExchange",
-		"atomicCompSwap", "imageSize", "imageSamples", "imageLoad", "imageStore",
-		"imageAtomicAdd", "imageAtomicMin", "imageAtomicMax", "imageAtomicAnd", "imageAtomicOr",
-		"imageAtomicXor", "imageAtomicExchange", "imageAtomicCompSwap", "EmitStreamVertex",
-		"EndStreamPrimitive", "EmitVertex", "EndPrimitive", "dFdx", "dFdy", "dFdxFine",
-		"dFdyFine", "dFdxCoarse", "dFdyCoarse", "fwidth", "fwidthFine", "fwidthCoarse",
-		"interpolateAtCentroid", "interpolateAtSample", "interpolateAtOffset", "noise1",
-		"noise2", "noise3", "noise4", "barrier", "memoryBarrier", "memoryBarrierAtomicCounter",
-		"memoryBarrierBuffer", "memoryBarrierShared", "memoryBarrierImage",
-		"groupMemoryBarrier", "subpassLoad",
-	];
+	let words = glslKeywords().concat(glslFunctions());
+	for (const word of ["sampler", "sampler3DRect", "subpassLoad"]) { words.push(word); }
+	for (const prefix of ["h", "f"]) {
+		for (let n = 2; n <= 4; n++) { words.push(prefix + "vec" + String(n)); }
+	}
 	for (const prefix of ["", "b", "i", "u", "d"]) {
 		for (let n = 2; n <= 4; n++) { words.push(prefix + "vec" + String(n)); }
 	}
@@ -133,6 +117,9 @@ class Glsl {
 	workgroupNames: string[] = [];
 	exchangeNames: string[] = ["", ""];
 	exchangeMakers: string[] = ["", ""];
+	splits: ShaderType[] = [];
+	splitStructs: string[] = [];
+	splitHelpers: string[] = [];
 	fn: int32 = -1;
 	samplerless: boolean = false;
 }
@@ -170,39 +157,60 @@ function gated(c: FeatureCondition, text: string): string {
 	return opening(c) + "\n" + text + "#endif\n";
 }
 
-function scalarName(s: ScalarKind): string {
-	return match (s) {
-		ScalarKind.F32 => "float",
-		ScalarKind.I32 => "int",
-		ScalarKind.U32 => "uint",
-		ScalarKind.Bool => "bool",
-	};
-}
-
 function broken(message: string): never {
 	throw new Error("printGlsl450: " + message);
 }
 
-function vectorPrefix(s: ScalarKind): string {
-	return match (s) {
-		ScalarKind.F32 => "",
-		ScalarKind.I32 => "i",
-		ScalarKind.U32 => "u",
-		ScalarKind.Bool => "b",
-	};
+function splitAt(p: Glsl, t: ShaderType): int32 {
+	const at = p.splits.findIndex((s) => sameShaderType(s, t)) as int32;
+	if (at < 0) { broken("no struct is declared for a " + t.kind.toString()); }
+	return at;
 }
 
 function typeName(p: Glsl, t: ShaderType): string {
 	return match (t.kind) {
 		ShaderTypeKind.Scalar => scalarName(t.scalar),
 		ShaderTypeKind.Vector => vectorPrefix(t.scalar) + "vec" + String(t.rows),
-		ShaderTypeKind.Matrix => "mat" + String(t.columns),
+		ShaderTypeKind.Matrix => t.columns == t.rows ? "mat" + String(t.columns) :
+			"mat" + String(t.columns) + "x" + String(t.rows),
 		ShaderTypeKind.Array => typeName(p, t.element[0]) + "[" + String(t.length) + "]",
 		ShaderTypeKind.Struct => p.structNames[t.structIndex],
 		ShaderTypeKind.Atomic => scalarName(t.scalar),
 		ShaderTypeKind.ExchangeResult => p.exchangeNames[exchangeSlot(t.scalar)],
+		ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult => p.splitStructs[splitAt(p, t)],
 		_ => { broken("a " + t.kind.toString() + " is no GLSL value type"); },
 	};
+}
+
+function isTwoRowMatrix(t: ShaderType): boolean {
+	return t.kind == ShaderTypeKind.Matrix && t.rows == 2;
+}
+
+function columnName(member: string, column: int32): string {
+	return member + "_col" + String(column);
+}
+
+function blockMemberText(p: Glsl, e: ShaderExpr): string {
+	const owner = p.module.structs[p.module.resources[e.index].type.structIndex];
+	const name = owner.members[e.member].name;
+	if (!isTwoRowMatrix(e.type)) { return name; }
+	let columns: string[] = [];
+	for (let c: int32 = 0; c < e.type.columns; c++) { columns.push(columnName(name, c)); }
+	return typeName(p, e.type) + "(" + columns.join(", ") + ")";
+}
+
+function blockMemberDeclarations(p: Glsl, f: ShaderField): string {
+	if (!isTwoRowMatrix(f.type)) { return "    " + declared(p, f.type, f.name) + ";\n"; }
+	let text = "";
+	for (let c: int32 = 0; c < f.type.columns; c++) {
+		text += "    vec2 " + columnName(f.name, c) + ";\n";
+	}
+	return text;
+}
+
+function splitField(e: ShaderExpr): boolean {
+	const kind = e.operands[0].type.kind;
+	return kind == ShaderTypeKind.ModfResult || kind == ShaderTypeKind.FrexpResult;
 }
 
 function atomicText(e: ShaderExpr, args: string[]): string {
@@ -254,6 +262,7 @@ function builtinName(io: ShaderIo): string {
 		Builtin.InstanceIndex => "uint(gl_InstanceIndex)",
 		Builtin.Position => "gl_FragCoord",
 		Builtin.FrontFacing => "gl_FrontFacing",
+		Builtin.PrimitiveIndex => "uint(gl_PrimitiveID)",
 		Builtin.GlobalInvocationId => "gl_GlobalInvocationID",
 		Builtin.LocalInvocationId => "gl_LocalInvocationID",
 		Builtin.LocalInvocationIndex => "gl_LocalInvocationIndex",
@@ -300,6 +309,10 @@ function value(p: Glsl, e: ShaderExpr): string {
 	}
 	if (e.kind == ExprKind.Unary) {
 		const operand = e.operands[0];
+		if (e.unary == UnaryOp.Not && operand.type.kind == ShaderTypeKind.Vector &&
+			operand.type.scalar == ScalarKind.Bool) {
+			return "not(" + expr(p, operand) + ")";
+		}
 		const op = e.unary == UnaryOp.Negate ? "-" :
 			operand.type.scalar == ScalarKind.Bool ? "!" : "~";
 		return op +
@@ -342,8 +355,7 @@ function expr(p: Glsl, e: ShaderExpr): string {
 		ExprKind.Private => {
 			broken("private variable '" + m.privates[e.index].name + "' has no GLSL 450 form");
 		},
-		ExprKind.BlockMember =>
-			m.structs[m.resources[e.index].type.structIndex].members[e.member].name,
+		ExprKind.BlockMember => blockMemberText(p, e),
 		ExprKind.Call => p.functionNames[e.index] + listed(p, e.operands),
 		ExprKind.Intrinsic => intrinsic(p, e),
 		ExprKind.Construct => typeName(p, e.type) + listed(p, e.operands),
@@ -351,7 +363,9 @@ function expr(p: Glsl, e: ShaderExpr): string {
 			e.type.scalar == ScalarKind.U32 && e.operands[0].kind == ExprKind.Literal ?
 			integerText(e.operands[0].value) + "u" :
 			typeName(p, e.type) + "(" + value(p, e.operands[0]) + ")",
-		ExprKind.Field => e.operands[0].type.kind == ShaderTypeKind.ExchangeResult ?
+		ExprKind.Field => splitField(e) ?
+			expr(p, e.operands[0]) + "." + splitMember(e.operands[0].type, e.index) :
+			e.operands[0].type.kind == ShaderTypeKind.ExchangeResult ?
 			expr(p, e.operands[0]) + (e.index == 0 ? ".old_value" : ".exchanged") :
 			expr(p, e.operands[0]) + "." + p.structFields[e.operands[0].type.structIndex][e.index],
 		ExprKind.Swizzle => expr(p, e.operands[0]) + "." + swizzle(e),
@@ -361,17 +375,15 @@ function expr(p: Glsl, e: ShaderExpr): string {
 
 function intrinsicName(op: Intrinsic): string {
 	return match (op) {
-		Intrinsic.Round => "roundEven",
-		Intrinsic.Atan2 => "atan",
 		Intrinsic.Saturate => "clamp",
 		Intrinsic.Inverse => "inverse",
 		Intrinsic.UpperLeft3x3 => "mat3",
 		Intrinsic.Select => "mix",
-		Intrinsic.LessThanEqual => "lessThanEqual",
 		Intrinsic.TextureSample => "texture",
 		Intrinsic.TextureLoad => "texelFetch",
 		Intrinsic.TextureStore => "imageStore",
 		Intrinsic.TextureDimensions => "textureSize",
+		Intrinsic.TextureNumSamples => "textureSamples",
 		Intrinsic.TextureSampleCompare => "texture",
 		Intrinsic.TextureSampleCompareLevel | Intrinsic.TextureSampleLevel => "textureLod",
 		Intrinsic.TextureSampleBias => "texture",
@@ -381,7 +393,7 @@ function intrinsicName(op: Intrinsic): string {
 			Intrinsic.AtomicMax | Intrinsic.AtomicMin | Intrinsic.AtomicAnd | Intrinsic.AtomicOr |
 			Intrinsic.AtomicXor | Intrinsic.AtomicExchange |
 			Intrinsic.AtomicCompareExchangeWeak => glslAtomicName(op),
-		_ => mathName(op),
+		_ => glslMathName(op),
 	};
 }
 
@@ -392,7 +404,8 @@ function callsFunction(e: ShaderExpr): boolean {
 function bitsText(p: Glsl, e: ShaderExpr, args: string[]): string {
 	const at = repeatedBitsOperand(e.intrinsic);
 	if (at >= 0 && callsFunction(e.operands[at])) {
-		broken(e.intrinsic.toString() + " prints its offset twice, and the offset calls a function");
+		broken(e.intrinsic.toString() +
+			" prints its offset twice, and the offset calls a function");
 	}
 	return glslBits(e.intrinsic, args, typeName(p, e.type), e.type.scalar == ScalarKind.U32);
 }
@@ -401,41 +414,74 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 	const args = e.operands.map((a) => expr(p, a));
 	const all = "(" + args.join(", ") + ")";
 	const texture = e.operands.length > 0 ? e.operands[0].type : new ShaderType();
-	const layered = texture.kind == ShaderTypeKind.Texture && texture.shape == TextureShape.D2Array;
-	const cube = texture.kind == ShaderTypeKind.Texture && texture.shape == TextureShape.Cube;
+	const layered = texture.kind == ShaderTypeKind.Texture && isArrayTexture(texture);
+	const cube = texture.kind == ShaderTypeKind.Texture &&
+		(texture.shape == TextureShape.Cube || texture.shape == TextureShape.DepthCube);
 	const isTexture = texture.kind == ShaderTypeKind.Texture;
 	const shape = isTexture && texture.scalar == ScalarKind.U32 ? "usampler2D(" :
 		isTexture && texture.scalar == ScalarKind.I32 ? "isampler2D(" :
 		isTexture && texture.shape == TextureShape.D3 ? "sampler3D(" :
+		isTexture && texture.shape == TextureShape.D1 ? "sampler1D(" :
 		layered ? "sampler2DArray(" : cube ? "samplerCube(" : "sampler2D(";
 	const sampled = args.length >= 2 ? shape + args[0] + ", " + args[1] + ")" : "";
 	return match (e.intrinsic) {
 		Intrinsic.CountOneBits | Intrinsic.FirstLeadingBit | Intrinsic.FirstTrailingBit |
-			Intrinsic.ExtractBits | Intrinsic.InsertBits => bitsText(p, e, args),
+			Intrinsic.CountLeadingZeros | Intrinsic.CountTrailingZeros | Intrinsic.ExtractBits |
+			Intrinsic.InsertBits => bitsText(p, e, args),
+		Intrinsic.Bitcast => glslBitcast(e.operands[0].type.scalar, e.type.scalar,
+			typeName(p, e.type), args[0]),
 		Intrinsic.Saturate => "clamp(" + args[0] + ", 0.0, 1.0)",
+		Intrinsic.Modf | Intrinsic.Frexp => p.splitHelpers[splitAt(p, e.type)] + all,
 		Intrinsic.Select => e.operands[2].type.kind == ShaderTypeKind.Vector ? "mix" + all :
 			"(" + args[2] + " ? " + args[1] + " : " + args[0] + ")",
-		Intrinsic.TextureDimensions | Intrinsic.TextureLoad => fetched(p, e, args),
+		Intrinsic.TextureDimensions | Intrinsic.TextureLoad | Intrinsic.TextureNumSamples =>
+			fetched(p, e, args),
 		Intrinsic.TextureStore => "imageStore(" + args[0] + ", " + imageAt(e, args) + ", " +
 			args[args.length - 1] + ")",
-		Intrinsic.TextureSample => layered ?
-			"texture(" + sampled + ", vec3(" + args[2] + ", float(" + args[3] + ")))" :
-			"texture(" + sampled + ", " + args[2] + ")",
+		Intrinsic.TextureSample => "texture" + offsetSuffix(e) + "(" + sampled + ", " +
+			(layered ? "vec3(" + args[2] + ", float(" + args[3] + "))" : args[2]) +
+			offsetTail(e, args) + ")",
 		Intrinsic.TextureSampleCompare | Intrinsic.TextureSampleCompareLevel => compared(e, args),
 		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>
-			intrinsicName(e.intrinsic) + "(" + sampled + ", " + (layered ? "vec3(" + args[2] +
-				", float(" + args[3] + "))" : args[2]) + ", " +
-				args.slice(layered ? 4 : 3).join(", ") + ")",
-		// glslang gives a compute barrier() workgroup-memory semantics, while the OpMemoryBarrier
-		// of memoryBarrierShared() is refused by sokol-shdc's WGSL reader (measured, shdc win32).
+			intrinsicName(e.intrinsic) + offsetSuffix(e) + "(" + sampled + ", " + (layered ?
+				"vec3(" + args[2] + ", float(" + args[3] + "))" : args[2]) + ", " +
+				explicitTail(e, args, layered ? 4 : 3) + ")" +
+				(isDepthShape(texture.shape) ? ".x" : ""),
+		// A compute barrier() carries workgroup-memory semantics, while the OpMemoryBarrier
+		// of memoryBarrierShared() is refused by a WGSL reader (measured).
 		Intrinsic.WorkgroupBarrier => "barrier()",
 		Intrinsic.StorageBarrier => "memoryBarrierBuffer(); barrier()",
+		Intrinsic.TextureBarrier => "memoryBarrierImage(); barrier()",
+		Intrinsic.WorkgroupUniformLoad => args[0],
+		Intrinsic.ArrayLength => e.type.scalar == ScalarKind.I32 ? args[0] + ".length()" :
+			typeName(p, e.type) + "(" + args[0] + ".length())",
 		Intrinsic.AtomicCompareExchangeWeak => {
 			broken("AtomicCompareExchangeWeak outside a local's initializer or a statement of " +
 				"its own: atomicCompSwap returns only the old value");
 		},
 		_ => isAtomic(e.intrinsic) ? atomicText(e, args) : intrinsicName(e.intrinsic) + all,
 	};
+}
+
+function offsetSuffix(e: ShaderExpr): string {
+	return hasOffset(e) ? "Offset" : "";
+}
+
+function offsetTail(e: ShaderExpr, args: string[]): string {
+	return hasOffset(e) ? ", " + args[sampleBase(e)] : "";
+}
+
+// A depth texture's level is an integer, and textureLod takes a float. GLSL puts the offset
+// before the bias and after the level and the derivatives.
+function explicitTail(e: ShaderExpr, args: string[], from: int32): string {
+	const rest = args.slice(from, sampleBase(e)).map((a, i) => {
+		const t = e.operands[from + i].type;
+		return t.kind == ShaderTypeKind.Scalar && t.scalar != ScalarKind.F32 ?
+			"float(" + a + ")" : a;
+	}).join(", ");
+	if (!hasOffset(e)) { return rest; }
+	const offset = args[sampleBase(e)];
+	return e.intrinsic == Intrinsic.TextureSampleBias ? offset + ", " + rest : rest + ", " + offset;
 }
 
 function fetched(p: Glsl, e: ShaderExpr, all: string[]): string {
@@ -449,8 +495,9 @@ function fetched(p: Glsl, e: ShaderExpr, all: string[]): string {
 		return texture.shape == TextureShape.D2Array ? size + ".xy" : size;
 	}
 	p.samplerless = true;
+	if (e.intrinsic == Intrinsic.TextureNumSamples) { return "textureSamples(" + args[0] + ")"; }
 	if (e.intrinsic == Intrinsic.TextureDimensions) {
-		return "textureSize(" + args[0] + ", " + args[1] + ")";
+		return "textureSize(" + args.join(", ") + ")";
 	}
 	return texture.shape == TextureShape.D2Array ?
 		"texelFetch(" + args[0] + ", ivec3(" + args[1] + ", " + args[2] + "), " + args[3] + ")" :
@@ -463,11 +510,11 @@ function imageAt(e: ShaderExpr, args: string[]): string {
 }
 
 function imageName(t: ShaderType): string {
-	const unsigned = t.format == TexelFormat.R32uint || t.format == TexelFormat.Rgba8uint;
-	return (unsigned ? "u" : "") + match (t.shape) {
+	return vectorPrefix(texelScalar(t.format)) + match (t.shape) {
 		TextureShape.D2Array => "image2DArray",
 		TextureShape.D3 => "image3D",
 		TextureShape.D2 => "image2D",
+		TextureShape.D1 => "image1D",
 		_ => { broken("a storage texture of shape " + t.shape.toString()); },
 	};
 }
@@ -476,17 +523,22 @@ function compared(e: ShaderExpr, args: string[]): string {
 	const level = e.intrinsic == Intrinsic.TextureSampleCompareLevel;
 	const layered = e.operands[0].type.shape == TextureShape.Depth2dArray;
 	const coords = args[2] + (layered ? ", float(" + args[3] + ")" : "") + ", " +
-		args[args.length - 1];
+		args[sampleBase(e) - 1];
 	const pair = "(" + args[0] + ", " + args[1] + ")";
+	const suffix = offsetSuffix(e);
+	const offset = offsetTail(e, args);
 	return match (e.operands[0].type.shape) {
-		TextureShape.Depth2dArray => level ? "textureGrad(sampler2DArrayShadow" + pair +
-			", vec4(" + coords + "), vec2(0.0), vec2(0.0))" :
-			"texture(sampler2DArrayShadow" + pair + ", vec4(" + coords + "))",
+		TextureShape.Depth2dArray => level ? "textureGrad" + suffix + "(sampler2DArrayShadow" +
+			pair + ", vec4(" + coords + "), vec2(0.0), vec2(0.0)" + offset + ")" :
+			"texture" + suffix + "(sampler2DArrayShadow" + pair + ", vec4(" + coords + ")" +
+				offset + ")",
 		TextureShape.DepthCube => level ? "textureGrad(samplerCubeShadow" + pair + ", vec4(" +
 			coords + "), vec3(0.0), vec3(0.0))" :
 			"texture(samplerCubeShadow" + pair + ", vec4(" + coords + "))",
-		TextureShape.Depth2d => level ? "textureLod(sampler2DShadow" + pair + ", vec3(" + coords +
-			"), 0.0)" : "texture(sampler2DShadow" + pair + ", vec3(" + coords + "))",
+		TextureShape.Depth2d => level ? "textureLod" + suffix + "(sampler2DShadow" + pair +
+			", vec3(" + coords + "), 0.0" + offset + ")" :
+			"texture" + suffix + "(sampler2DShadow" + pair + ", vec3(" + coords + ")" +
+				offset + ")",
 		_ => {
 			broken("a depth compare of a " + e.operands[0].type.shape.toString() + " texture");
 		},
@@ -564,6 +616,9 @@ function stmt(p: Glsl, s: ShaderStmt, indent: string): string {
 	const inner = indent + "    ";
 	const exchange = s.expr.kind == ExprKind.Intrinsic &&
 		s.expr.intrinsic == Intrinsic.AtomicCompareExchangeWeak;
+	if (s.kind == StmtKind.Let && isUniformLoad(s.expr)) {
+		return indent + "barrier();\n" + indent + simple(p, s) + ";\n" + indent + "barrier();\n";
+	}
 	if (exchange && s.kind == StmtKind.Let) { return exchangeLet(p, s, indent); }
 	if (exchange && s.kind == StmtKind.Call) {
 		return indent + atomicText(s.expr, s.expr.operands.map((a) => expr(p, a))) + ";\n";
@@ -609,24 +664,8 @@ function samplerTypeName(t: SamplerType): string {
 }
 
 function formatName(f: TexelFormat): string {
-	return match (f) {
-		TexelFormat.Rgba8unorm => "rgba8",
-		TexelFormat.Rgba8snorm => "rgba8_snorm",
-		TexelFormat.Rgba8uint => "rgba8ui",
-		TexelFormat.Rgba16float => "rgba16f",
-		TexelFormat.Rgba32float => "rgba32f",
-		TexelFormat.R32float => "r32f",
-		TexelFormat.R32uint => "r32ui",
-		TexelFormat.Rg32float => "rg32f",
-	};
-}
-
-function accessMode(a: Access): string {
-	return match (a) {
-		Access.Read => "readonly ",
-		Access.Write => "writeonly ",
-		Access.ReadWrite => "",
-	};
+	if (f == TexelFormat.Bgra8unorm) { broken("bgra8unorm has no GLSL image format"); }
+	return glslImageFormat(f);
 }
 
 function sampleTag(r: ShaderResource): string {
@@ -640,19 +679,20 @@ function resourceText(p: Glsl, r: ShaderResource): string {
 	return match (r.kind) {
 		ResourceKind.UniformBlock => slot + r.name + " {\n" +
 			p.module.structs[r.type.structIndex].members.map((f) =>
-				"    " + declared(p, f.type, f.name) + ";\n").join("") + "};\n",
+				blockMemberDeclarations(p, f)).join("") + "};\n",
 		ResourceKind.Texture => match (r.type.shape) {
-			TextureShape.D2Array => sampleTag(r) + slot + "texture2DArray " + r.name + ";\n",
+			TextureShape.D2Array => sampleTag(r) + slot + vectorPrefix(r.type.scalar) +
+				"texture2DArray " + r.name + ";\n",
 			TextureShape.Cube => sampleTag(r) + slot + "textureCube " + r.name + ";\n",
 			TextureShape.Depth2dArray | TextureShape.DepthCube =>
 				"@image_sample_type " + r.name + " depth\n" + slot + (r.type.shape ==
 					TextureShape.DepthCube ? "textureCube " : "texture2DArray ") + r.name + ";\n",
-			TextureShape.D3 => sampleTag(r) + slot + "texture3D " + r.name + ";\n",
-			TextureShape.D2 | TextureShape.Depth2d => r.type.scalar == ScalarKind.U32 ?
-				"@image_sample_type " + r.name + " uint\n" + slot + "utexture2D " + r.name + ";\n" :
-				r.type.scalar == ScalarKind.I32 ?
-				"@image_sample_type " + r.name + " sint\n" + slot + "itexture2D " + r.name + ";\n" :
-				sampleTag(r) + slot + "texture2D " + r.name + ";\n",
+			TextureShape.D3 => sampleTag(r) + slot + vectorPrefix(r.type.scalar) + "texture3D " +
+				r.name + ";\n",
+			TextureShape.D1 => sampleTag(r) + slot + "texture1D " + r.name + ";\n",
+			TextureShape.Multisampled2d => sampleTag(r) + slot + "texture2DMS " + r.name + ";\n",
+			TextureShape.D2 | TextureShape.Depth2d => sampleTag(r) + slot +
+				vectorPrefix(r.type.scalar) + "texture2D " + r.name + ";\n",
 			_ => { broken(r.name + " is a " + r.type.shape.toString() + " texture, no GLSL 450"); },
 		},
 		ResourceKind.Sampler => (r.samplerType == SamplerType.Filtering ? "" : "@sampler_type " +
@@ -662,7 +702,7 @@ function resourceText(p: Glsl, r: ShaderResource): string {
 			"buffer " + r.name + "Buffer {\n    " + typeName(p, r.type.element[0]) + " " + r.name +
 			"[];\n};\n",
 		ResourceKind.StorageTexture => "layout(binding=" + String(r.binding) + ", " +
-			formatName(r.type.format) + ") uniform " + accessMode(r.type.access) +
+			formatName(r.type.format) + ") uniform " + glslAccessWord(r.type.access) +
 			imageName(r.type) + " " + r.name + ";\n",
 	};
 }
@@ -673,17 +713,8 @@ function ioText(p: Glsl, index: int32): string {
 	if (io.direction == IoDirection.Out && io.stage == ShaderStage.Fragment) {
 		return "layout(location=" + String(io.location) + ") out " + spelled + ";\n";
 	}
-	const mode = match (io.interpolation) {
-		Interpolation.Perspective => "",
-		Interpolation.Linear => "noperspective ",
-		Interpolation.Flat => "flat ",
-	};
-	const sampling = match (io.sampling) {
-		Sampling.Center => "",
-		Sampling.Centroid => "centroid ",
-		Sampling.Sample => "sample ",
-	};
-	return mode + sampling + (io.direction == IoDirection.In ? "in " : "out ") + spelled + ";\n";
+	return glslInterpolation(io.interpolation) + glslSampling(io.sampling) +
+		(io.direction == IoDirection.In ? "in " : "out ") + spelled + ";\n";
 }
 
 function nameDeclarations(p: Glsl): void {
@@ -695,6 +726,20 @@ function nameDeclarations(p: Glsl): void {
 		names.globals.push(r.name);
 		if (r.kind == ResourceKind.UniformBlock) {
 			for (const f of m.structs[r.type.structIndex].members) { names.globals.push(f.name); }
+		}
+	}
+	for (const r of m.resources) {
+		if (r.kind != ResourceKind.UniformBlock) { continue; }
+		for (const f of m.structs[r.type.structIndex].members) {
+			if (!isTwoRowMatrix(f.type)) { continue; }
+			for (let c: int32 = 0; c < f.type.columns; c++) {
+				const column = columnName(f.name, c);
+				if (names.globals.includes(column)) {
+					broken("the column " + column + " of uniform member " + f.name +
+						" is also the name of a member or resource");
+				}
+				names.globals.push(column);
+			}
 		}
 	}
 	for (let i = 0; i < m.ios.length; i++) {
@@ -725,6 +770,12 @@ function nameDeclarations(p: Glsl): void {
 			p.exchangeMakers[slot] = nameFunction(names, "atomicExchangeResult" + suffix,
 				"(" + scalar + ", " + scalar + ")");
 		}
+	}
+	for (const t of splitResults(m, m.functions.map((f, i) => i as int32))) {
+		const argType = glslSplitTypes(t)[0];
+		p.splits.push(t);
+		p.splitStructs.push(nameStruct(names, splitStructName(t)));
+		p.splitHelpers.push(nameFunction(names, splitHelperName(t), "(" + argType + ")"));
 	}
 	for (const d of m.declarations) {
 		const i = d.index;
@@ -794,6 +845,16 @@ export function printGlsl450(m: ShaderModule): string {
 		out += "struct " + t + " {\n    " + scalar + " old_value;\n    bool exchanged;\n};\n" + t +
 			" " + p.exchangeMakers[slot] + "(" + scalar + " compare, " + scalar + " old) {\n" +
 			"    return " + t + "(old, old == compare);\n}\n";
+	}
+	for (let i = 0; i < p.splits.length; i++) {
+		const t = p.splits[i];
+		const [argType, otherType] = glslSplitTypes(t);
+		const call = t.kind == ShaderTypeKind.ModfResult ? "modf" : "frexp";
+		out += "struct " + p.splitStructs[i] + " {\n    " + argType + " " + splitMember(t, 0) +
+			";\n    " + otherType + " " + splitMember(t, 1) + ";\n};\n" + p.splitStructs[i] + " " +
+			p.splitHelpers[i] + "(" + argType + " arg) {\n    " + otherType + " other;\n    " +
+			argType + " part = " + call + "(arg, other);\n    return " + p.splitStructs[i] +
+			"(part, other);\n}\n";
 	}
 	for (const r of m.resources) { out += gated(r.condition, resourceText(p, r)); }
 	for (const direction of [IoDirection.In, IoDirection.Out]) {

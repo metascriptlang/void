@@ -1,5 +1,5 @@
 // expect: void: voidViewCreate: all 16 views are in use or retired
-@passC("-DVOID_VIEW_LAST_GENERATION=1");
+// flags: -d:voidViewLastGeneration=1
 import { viewCreate, viewDestroy, ViewId } from "../../src/host/gpu";
 
 for (let i = 0; i < 16; i++) {

@@ -799,7 +799,9 @@ function generateTSpaces(
 			} else if (tris.assigned[f * 3 + 2] == g) {
 				index = 2;
 			}
-			if (index < 0) { throw new Error("mikkTangents: a group's triangle does not belong to it"); }
+			if (index < 0) {
+				throw new Error("mikkTangents: a group's triangle does not belong to it");
+			}
 
 			const n = normalOf(attributes, triList[f * 3 + index]);
 			const vOs = projectedOff(tris.vOs[f], n);
@@ -841,7 +843,9 @@ function generateTSpaces(
 				uniCount.push(members);
 				for (let m = 0; m < members; m++) { uniMembers.push(tmpMembers[m]); }
 				subGroupTSpace.push(
-					evalTSpace(tmpMembers, members, triList, tris, attributes, groups.representative[g]),
+					evalTSpace(
+						tmpMembers, members, triList, tris, attributes, groups.representative[g],
+					),
 				);
 			}
 
@@ -988,7 +992,9 @@ export function mikkTangents(
 		if (vertex >= vertexCount) { throw new Error("mikkTangents: an index is out of range"); }
 		cornerVertex[c] = vertex;
 	}
-	generateTangentCorners(fillAttributes(vertices, stride, cornerVertex), cornerCount / 3, corners);
+	generateTangentCorners(
+		fillAttributes(vertices, stride, cornerVertex), cornerCount / 3, corners,
+	);
 }
 
 export function mikkTangents32(
@@ -1005,8 +1011,12 @@ export function mikkTangents32(
 	let cornerVertex: Vec<int32> = new Array(cornerCount);
 	for (let c = 0; c < cornerCount; c++) {
 		const index = indices.length > 0 ? indices[c] : (c as uint32);
-		if (index >= (vertexCount as uint32)) { throw new Error("mikkTangents: an index is out of range"); }
+		if (index >= (vertexCount as uint32)) {
+			throw new Error("mikkTangents: an index is out of range");
+		}
 		cornerVertex[c] = index as int32;
 	}
-	generateTangentCorners(fillAttributes(vertices, stride, cornerVertex), cornerCount / 3, corners);
+	generateTangentCorners(
+		fillAttributes(vertices, stride, cornerVertex), cornerCount / 3, corners,
+	);
 }

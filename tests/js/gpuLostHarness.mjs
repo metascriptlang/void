@@ -1,8 +1,13 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-const [bundlePath, backend, driver] = process.argv.slice(2);
+const minifyAfterPatch = process.argv.includes("--minify");
+
+const [bundlePath, backend, driver] = process.argv.slice(2).filter((a) => a !== "--minify");
 if (!bundlePath || (backend !== "gl" && backend !== "gpu") || (driver !== "views" && driver !== "window")) {
-	throw new Error("usage: node tests/js/gpuLostHarness.mjs <bundle> gl|gpu views|window   (msc build src/examples/viewsJsEntry.jms|windowJsEntry.jms --target=js [-d:webgl2] --output=<bundle>)");
+	throw new Error("usage: node tests/js/gpuLostHarness.mjs <bundle> gl|gpu views|window [--minify]   (msc build src/examples/viewsJsEntry.jms|windowJsEntry.jms --target=js -d:webgpu|-d:webgl2 --output=<bundle>)");
 }
 const windowMode = driver === "window";
 
@@ -13,6 +18,13 @@ for (const name of doorStubs) {
 	if (!found) throw new Error(`stub target ${name} is not in the bundle`);
 	const present = name === "doorCommit" ? `${source.match(/function (viewsPresent__\w+)\(/)[1]}();` : "";
 	source = source.replace(`function ${found[1]}(`, `function ${found[1]}() { globalThis.__door.push("${name}"); ${present} } function ${found[1]}Unused(`);
+}
+if (minifyAfterPatch) {
+	const dir = mkdtempSync(join(tmpdir(), "voidMin-"));
+	writeFileSync(join(dir, "patched.js"), source);
+	execFileSync("sh", ["scripts/jsMinify.sh", join(dir, "patched.js"), join(dir, "patched.min.js")], { stdio: "inherit" });
+	source = readFileSync(join(dir, "patched.min.js"), "utf8");
+	rmSync(dir, { recursive: true });
 }
 globalThis.__door = [];
 
@@ -47,7 +59,7 @@ function fire(t, type, event = {}) {
 }
 
 let deviceCount = 0;
-let nextDeviceFails = false;
+let nextDeviceFails = null;
 let deviceGate = Promise.resolve();
 let releaseDevices;
 const devices = [];
@@ -70,7 +82,7 @@ if (backend === "gpu") {
 		requestDevice: async () => {
 			deviceCount++;
 			await deviceGate;
-			if (nextDeviceFails) throw new Error("no adapter left");
+			if (nextDeviceFails !== null) throw nextDeviceFails;
 			return fakeDevice();
 		},
 	};
@@ -226,12 +238,22 @@ check("no error after the restart", errors.length, 0);
 
 if (backend === "gpu") {
 	const seen = appEvents.length;
-	nextDeviceFails = true;
+	nextDeviceFails = new Error("no adapter left");
 	devices[devices.length - 1].loseWith("unknown", "second loss");
 	await settle();
-	check("a device that cannot be replaced reaches onError, naming the case", /^void: the WebGPU device was lost and a new one could not be made: .*no adapter left/.test(errors.join("|")), true);
+	check("a device that cannot be replaced reaches onError, naming the case", /^void: the WebGPU device was lost and a new one could not be made: no adapter left$/.test(errors.join("|")), true);
 	if (windowMode) check("and the app stays suspended", appEvents.slice(seen).join(","), `${SUSPENDED}`);
-	nextDeviceFails = false;
+	nextDeviceFails = null;
+	stop();
+	stop = startRun();
+	await settle();
+	step();
+	const errorsBefore = errors.length;
+	nextDeviceFails = "a bare reason";
+	devices[devices.length - 1].loseWith("unknown", "third loss");
+	await settle();
+	check("a thrown non-Error reaches onError as its value, as the C", errors.slice(errorsBefore).join("|"), "void: the WebGPU device was lost and a new one could not be made: a bare reason");
+	nextDeviceFails = null;
 	stop();
 
 	stop = startRun();

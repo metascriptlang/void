@@ -28,6 +28,12 @@
 // expect renderer.coreClosed.drawToScreen: void3d: drawToScreen on a renderer that was closed
 // expect renderer.linear.intoEncoded: void3d: drawPhase writes linear colour into a Default target
 // expect renderer.encoded.intoLinear: void3d: drawPhase writes encoded colour into a Rgba16f target
+// expect renderer.closed.drawDecals: void3d: drawDecals on a renderer that was closed
+// expect renderer.decal.drawPhase: void3d: drawPhase(Decal) has no scene depth to bind
+// expect renderer.decal.withDepth: void3d: drawDecals into a pass with a depth attachment
+// expect renderer.decalAfter.drawPhase: void3d: drawPhase(DecalAfterToneMap) has no scene depth to bind
+// expect renderer.opaque.drawDecals: void3d: drawDecals(Opaque); drawPhase draws that list
+// expect renderer.decalAfter.intoLinear: void3d: drawDecals(DecalAfterToneMap) into a Rgba16f target
 // expect shadow.foreign: void3d: attachShadow with a shadow map of another draw context
 // expect shadow.closedAttach: void3d: attachShadow with a shadow map that was closed
 // expect shadow.closedFrame: void3d: beginFrame with a shadow map that was closed
@@ -102,6 +108,7 @@ import {
 	beginFrame,
 	drawPassLists,
 	drawPhase,
+	drawDecals,
 	drawScreen,
 	closeRenderer,
 	attachShadow,
@@ -359,6 +366,19 @@ function rendererCase(name: string): boolean {
 	} else if (name == "renderer.encoded.intoLinear") {
 		drawPhase(openCore(false), Phase.Opaque, items,
 			{ ...SWAPCHAIN_LAYOUT, color0: PixelFormat.Rgba16f });
+	} else if (name == "renderer.closed.drawDecals") {
+		drawDecals(closedCore(), Phase.Decal, items, SWAPCHAIN_LAYOUT, 0, 0);
+	} else if (name == "renderer.decal.drawPhase") {
+		drawPhase(openCore(false), Phase.Decal, items, SWAPCHAIN_LAYOUT);
+	} else if (name == "renderer.decal.withDepth") {
+		drawDecals(openCore(false), Phase.Decal, items, SWAPCHAIN_LAYOUT, 0, 0);
+	} else if (name == "renderer.decalAfter.drawPhase") {
+		drawPhase(openCore(false), Phase.DecalAfterToneMap, items, SWAPCHAIN_LAYOUT);
+	} else if (name == "renderer.opaque.drawDecals") {
+		drawDecals(openCore(false), Phase.Opaque, items, SWAPCHAIN_LAYOUT, 0, 0);
+	} else if (name == "renderer.decalAfter.intoLinear") {
+		drawDecals(openCore(true), Phase.DecalAfterToneMap, items,
+			{ ...SWAPCHAIN_LAYOUT, color0: PixelFormat.Rgba16f }, 0, 0);
 	} else {
 		return false;
 	}

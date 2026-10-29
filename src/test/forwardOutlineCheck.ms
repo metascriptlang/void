@@ -30,7 +30,8 @@ function reference(
 	const hi: float32 = Math.max(lm, Math.max(Math.max(lnw, lne), Math.max(lsw, lse)));
 	const dx: float32 = -((lnw + lne) - (lsw + lse));
 	const dy: float32 = (lnw + lsw) - (lne + lse);
-	const reduction: float32 = Math.max((lnw + lne + lsw + lse) * (0.25 / 128.0), (1.0 / 8.0) as float32);
+	const reduction: float32 =
+		Math.max((lnw + lne + lsw + lse) * (0.25 / 128.0), (1.0 / 8.0) as float32);
 	const r: float32 = (1.0 / (Math.min(Math.abs(dx), Math.abs(dy)) + reduction)) as float32;
 	const ux: float32 = Math.min(8.0, Math.max(-8.0, dx * r));
 	const uy: float32 = Math.min(8.0, Math.max(-8.0, dy * r));
@@ -109,11 +110,11 @@ test "forwardOutline settings reject nonfinite and contract violations" {
 	assert !valid({ ...settings, color: { x: 0.0, y: 0.0, z: 0.0, w: -1.0 } });
 }
 
-test "forwardOutline normal MRT occupies bit15 never skin bit14" {
+test "forwardOutline normal MRT occupies bit16 never skin bit15" {
 	const normal: ProgramKey = ProgramKey.of(Program.Lit).withNormalMrt();
-	assert normal.bits() == 32768;
-	assert (normal.bits() & 16384) == 0;
-	assert normal.withCutout().bits() == 32896;
+	assert normal.bits() == 65536;
+	assert (normal.bits() & 32768) == 0;
+	assert normal.withCutout().bits() == 65792;
 	assert ProgramKey.of(Program.Lit).bits() == 0;
 }
 
@@ -121,7 +122,9 @@ import {
 	ForwardRenderer, ForwardError, FORWARD_UNIFORM_LENGTH, FORWARD_OUTLINE_UNIFORM_LENGTH,
 	setOutlineBlend, setOutlineSettings, closeForward, prepareFrame,
 } from "../void3d/forwardRenderer";
-import { DrawContext, DrawItem, MaterialId, MaterialError, addMaterial, releaseMaterial, closeContext } from "../void3d/draw";
+import {
+	DrawContext, DrawItem, MaterialId, MaterialError, addMaterial, releaseMaterial, closeContext,
+} from "../void3d/draw";
 import { Material, Phase } from "../void3d/material";
 import { RenderState, BlendMode, Compare } from "../gpu/state";
 import { VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH, drawnIn, Preset, declares } from
@@ -160,7 +163,8 @@ test "forwardOutline lazy holders reuse ranges and settings snapshot marks chang
 			setOutlineBlend(renderer, 0.0);
 			setOutlineBlend(renderer, 1.0);
 			assert context.uniforms.used == used && context.liveMaterials() == 5;
-			let settings: ForwardOutlineSettings = { ...ForwardOutlineSettings.defaults(), color: LINE };
+			let settings: ForwardOutlineSettings =
+				{ ...ForwardOutlineSettings.defaults(), color: LINE };
 			renderer.core.changed = false;
 			setOutlineSettings(renderer, settings);
 			settings.color.w = 0.0;
@@ -282,4 +286,45 @@ test "forwardOutline RGBA8 partial coverage interval rejects old four-pixel widt
 	assert 508 > high;
 	assert 380 >= low && 380 <= high;
 	assert fullLow == 127 && fullHigh == 128;
+}
+
+import { ForwardOutlinePass, FORWARD_OUTLINE_PASS_UNIFORM_LENGTH } from "../void3d/forwardOutline";
+import { sameLanes } from "./helpers";
+
+const UNWRITTEN: float32 = -7.0;
+
+function outlineLanes(
+	settings: ForwardOutlineSettings,
+	blend: float32,
+	zeroToOne: boolean,
+): Vec<float32> {
+	const context: DrawContext =
+		DrawContext.withUniformCapacity(FORWARD_OUTLINE_PASS_UNIFORM_LENGTH);
+	for (let i = 0; i < FORWARD_OUTLINE_PASS_UNIFORM_LENGTH; i++) {
+		context.uniforms.values[i] = UNWRITTEN;
+	}
+	const pass: ForwardOutlinePass = ForwardOutlinePass.reserve(context);
+	pass.writeSettings(context, settings, blend, zeroToOne);
+	return context.uniforms.values;
+}
+
+test "forwardOutline writes the mask, mix and width blocks lane for lane, every lane written" {
+	const color: Vec4 = { x: 0.3, y: 0.6, z: 0.9, w: 0.5 };
+	const narrow: ForwardOutlineSettings =
+		{ color: color, pixelWidth: 1.0, depthThreshold: 0.002, normalThreshold: 0.8 };
+	assert sameLanes(outlineLanes(narrow, 0.75, true), [
+		2, 0.002, 0.8, 1, 0, 0.75, 0, 0,
+		0.15, 0.3, 0.45, 0.5, 0.75, 0, 0, 0,
+		0.5, 1, 0, 0,
+	]);
+	assert sameLanes(outlineLanes({ ...narrow, pixelWidth: 2.0 }, 0.75, false), [
+		2, 0.002, 0.8, 2, -1, 0.75, 0, 0,
+		0.15, 0.3, 0.45, 0.5, 0.75, 0, 0, 0,
+		0, 0, 0, 0,
+	]);
+	assert sameLanes(outlineLanes({ ...narrow, pixelWidth: 3.5 }, 0.0, true), [
+		2, 0.002, 0.8, 1, 0, 0, 0, 0,
+		0.15, 0.3, 0.45, 0.5, 0, 0, 0, 0,
+		0.75, 0, 0, 0,
+	]);
 }

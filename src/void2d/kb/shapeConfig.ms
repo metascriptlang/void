@@ -127,6 +127,7 @@ import {
 	KbScratch,
 	kbBeginLookupApplication,
 	kbEndLookupApplication,
+	kbUnbucketGlyph,
 } from "./scratch";
 import { kbDoSubstitution } from "./gsub";
 
@@ -500,6 +501,11 @@ export function kbSubstitute1(
 
 	kbPopGlyphList(storage, list);
 	const out = storage.glyphs[result];
+	// The C works on a stack copy; an entry it bucketed afresh points at that stack and nothing reads it
+	// again, so the slot must not leave one live. The copied entry of the original is left alone.
+	if (storage.glyphs[result].bucketedPlusOne != glyph.bucketedPlusOne) {
+		kbUnbucketGlyph(s, result);
+	}
 	releaseGlyphSlot(storage, result);
 	releaseGlyphSlot(storage, tempSentinel);
 	return out;

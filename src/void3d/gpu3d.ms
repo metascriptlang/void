@@ -67,11 +67,16 @@ export enum Program {
 	OutlineMix,
 	OutlineWidth,
 	ParticleVisual,
+	// Heaps' DecalOverlay: a box's Lit-layout mesh, drawn in the Decal phase only (DECAL_*).
+	Decal,
+	// Heaps' ScalableAO over a caller's depth and normal targets (SAO_*).
+	Sao,
+	// Heaps' Blur, one direction per draw (blur.ms BLUR_*).
+	Blur,
+	// h3d.scene.Graphics' screen-space lines over graphics3d.ms' roots (LINE_*).
+	Line,
 }
 
-// Heaps adds a pass's output shaders to a material's (h3d.pass.Output); sokol-shdc programs
-// cannot compose, so a preset is the key's: the pixel-art preset's own source (pixelArt3d.ms),
-// and Shadow, the depth h3d.pass.Shadows writes (dirShadowMap.ms).
 export enum Preset {
 	Core,
 	PixelArt,
@@ -111,7 +116,7 @@ export struct ProgramKey {
 	parallax: boolean;
 }
 
-const KEY_LIMIT: int32 = 1048576;
+const KEY_LIMIT: int32 = 2097152;
 
 export function of(this typeof ProgramKey, program: Program): ProgramKey {
 	return {
@@ -233,14 +238,14 @@ export function withPreset(this key: ProgramKey, preset: Preset): ProgramKey {
 
 // programTableData.ms's PROGRAM_KEYS are packed with the same bits.
 export function bits(this key: ProgramKey): int32 {
-	return (key.program as int32) | ((key.preset as int32) << 4) |
-		((key.premultiplied ? 1 : 0) << 6) | ((key.cutout ? 1 : 0) << 7) |
-		((key.shadowed ? 1 : 0) << 8) | ((key.uvTransform ? 1 : 0) << 9) |
-		((key.backTexture ? 1 : 0) << 10) | ((key.dissolve ? 1 : 0) << 11) |
-		((key.emissive ? 1 : 0) << 12) | ((key.normalMap ? 1 : 0) << 13) |
-		((key.skinned ? 1 : 0) << 14) | ((key.normalMrt ? 1 : 0) << 15) |
-		((key.pbr ? 1 : 0) << 16) | ((key.pbrMaps ? 1 : 0) << 17) |
-		((key.occlusionUvB ? 1 : 0) << 18) | ((key.parallax ? 1 : 0) << 19);
+	return (key.program as int32) | ((key.preset as int32) << 5) |
+		((key.premultiplied ? 1 : 0) << 7) | ((key.cutout ? 1 : 0) << 8) |
+		((key.shadowed ? 1 : 0) << 9) | ((key.uvTransform ? 1 : 0) << 10) |
+		((key.backTexture ? 1 : 0) << 11) | ((key.dissolve ? 1 : 0) << 12) |
+		((key.emissive ? 1 : 0) << 13) | ((key.normalMap ? 1 : 0) << 14) |
+		((key.skinned ? 1 : 0) << 15) | ((key.normalMrt ? 1 : 0) << 16) |
+		((key.pbr ? 1 : 0) << 17) | ((key.pbrMaps ? 1 : 0) << 18) |
+		((key.occlusionUvB ? 1 : 0) << 19) | ((key.parallax ? 1 : 0) << 20);
 }
 
 export function describe(this key: ProgramKey): string {
@@ -323,6 +328,10 @@ export function isScreenProgram(program: Program): boolean {
 		Program.OutlineMask => true,
 		Program.OutlineMix => true,
 		Program.OutlineWidth => true,
+		Program.Decal => false,
+		Program.Sao => true,
+		Program.Blur => true,
+		Program.Line => false,
 	};
 }
 
@@ -424,15 +433,19 @@ export const SKIN_UNIFORM_LENGTH: int32 = 768;
 export const VERTEX_UNIFORM_SLOT: int32 = 0;
 export const VERTEX_UNIFORM_LENGTH: int32 = 28;
 export const LIGHT_UNIFORM_SLOT: int32 = 1;
-// Laid out as shader3d.ms LightParams: ambient, dirLight, dirColor, then the clusters. ambient.w
-// and dirColor.w name the records that cast the spot map and the cube map, as record + 1 (0 none).
+// Laid out as shader3d.ms LightParams: ambient, dirLight, dirColor, then the clusters, then the
+// cookie spot. ambient.w and dirColor.w name the records that cast the spot map and the cube map,
+// as record + 1 (0 none); LIGHT_COOKIE names the cookie spot the same way, followed by its
+// texture's id (store, index, generation), and the renderer writes LIGHT_COOKIE_MATRIX.
 export const LIGHT_SPOT_CASTER: int32 = 3;
 export const LIGHT_CUBE_CASTER: int32 = 11;
 export const LIGHT_CLUSTER_GRID: int32 = 12;
 export const LIGHT_CLUSTER_FACTORS: int32 = 16;
 export const LIGHT_CLUSTER_VIEW: int32 = 20;
 export const LIGHT_CLUSTER_SCREEN: int32 = 24;
-export const LIGHT_UNIFORM_LENGTH: int32 = 28;
+export const LIGHT_COOKIE: int32 = 28;
+export const LIGHT_COOKIE_MATRIX: int32 = 32;
+export const LIGHT_UNIFORM_LENGTH: int32 = 48;
 // A positioned light's record, following the block in collectLights' span: position and power,
 // colour and range, then shapeA..shapeD (kind in shapeA.w; a point light reads no shape).
 export const LIGHT_RECORD_TEXELS: int32 = 6;
@@ -493,9 +506,65 @@ export const LIGHT_RECORDS_VIEW_SLOT: int32 = 9;
 export const CLUSTER_RECORDS_VIEW_SLOT: int32 = 10;
 export const CLUSTER_INDICES_VIEW_SLOT: int32 = 11;
 export const CLUSTER_SAMPLER_SLOT: int32 = 5;
+// The cookie spot's texture (shader3d.ms cookieAt), read wherever the clustered lights are: the
+// light's own, or a clear texel when no spot has one.
+export const COOKIE_VIEW_SLOT: int32 = 13;
+export const COOKIE_SAMPLER_SLOT: int32 = 6;
 export const CLUSTER_SCENE_VIEWS: uint32 = (1 << (LIGHT_RECORDS_VIEW_SLOT as uint32)) |
-	(1 << (CLUSTER_RECORDS_VIEW_SLOT as uint32)) | (1 << (CLUSTER_INDICES_VIEW_SLOT as uint32));
-export const CLUSTER_SCENE_SAMPLERS: uint32 = 1 << (CLUSTER_SAMPLER_SLOT as uint32);
+	(1 << (CLUSTER_RECORDS_VIEW_SLOT as uint32)) | (1 << (CLUSTER_INDICES_VIEW_SLOT as uint32)) |
+	(1 << (COOKIE_VIEW_SLOT as uint32));
+export const CLUSTER_SCENE_SAMPLERS: uint32 =
+	(1 << (CLUSTER_SAMPLER_SLOT as uint32)) | (1 << (COOKIE_SAMPLER_SLOT as uint32));
+// The scene's depth as a texture (Heaps' `depthMap` global), bound only while the decals draw.
+export const SCENE_DEPTH_VIEW_SLOT: int32 = 14;
+export const SCENE_DEPTH_SAMPLER_SLOT: int32 = 7;
+export const SCENE_DEPTH_SCENE_VIEWS: uint32 = 1 << (SCENE_DEPTH_VIEW_SLOT as uint32);
+export const SCENE_DEPTH_SCENE_SAMPLERS: uint32 = 1 << (SCENE_DEPTH_SAMPLER_SLOT as uint32);
+// A decal's block (decalParams in shader3d.ms): the tint (gamma-encoded rgba), then
+// DecalOverlay's fadeStart, fadeEnd, fadePower and emissive, then its CENTERED, GAMMA_CORRECT
+// and AUTO_ALPHA constants as 1 or 0 (h3d/shader/pbr/VolumeDecal.hx:68-128), then 1 where the
+// decal draws before the tone map and goes through it as the lit colour does (the GammaCorrect
+// shader PbrMaterial adds to a BeforeTonemappingDecal, PbrMaterial.hx:245-256), then
+// BaseDecal's normalFadeStart and normalFadeEnd and its USE_NORMAL_FADE as 1 or 0.
+export const DECAL_UNIFORM_LENGTH: int32 = 16;
+export const DECAL_COLOR: int32 = 0;
+export const DECAL_FADE_START: int32 = 4;
+export const DECAL_FADE_END: int32 = 5;
+export const DECAL_FADE_POWER: int32 = 6;
+export const DECAL_EMISSIVE: int32 = 7;
+export const DECAL_CENTERED: int32 = 8;
+export const DECAL_GAMMA_CORRECT: int32 = 9;
+export const DECAL_AUTO_ALPHA: int32 = 10;
+export const DECAL_TONE_MAPPED: int32 = 11;
+export const DECAL_NORMAL_FADE_START: int32 = 12;
+export const DECAL_NORMAL_FADE_END: int32 = 13;
+export const DECAL_NORMAL_FADE: int32 = 14;
+// The line program's block (shader3d.ms LineParams), read by its vertex stage: LineShader's
+// width and lengthScale and the target's pixelSize, then the camera's zNear and zFar, then the
+// material colour.
+export const LINE_UNIFORM_LENGTH: int32 = 12;
+export const LINE_WIDTH: int32 = 0;
+export const LINE_LENGTH_SCALE: int32 = 1;
+export const LINE_PIXEL_SIZE: int32 = 2;
+export const LINE_NEAR: int32 = 4;
+export const LINE_FAR: int32 = 5;
+export const LINE_COLOR: int32 = 8;
+// The SAO program's block (post3d.ms SaoParams) at the screen slot, then its views: the depth and
+// the normal target read through the point sampler, the noise through its own.
+export const SAO_UNIFORM_SLOT: int32 = 0;
+export const SAO_UNIFORM_LENGTH: int32 = 40;
+export const SAO_INVERSE_VIEW_PROJ: int32 = 0;
+export const SAO_VIEW_DEPTH: int32 = 16;
+export const SAO_RADIUS: int32 = 20;
+export const SAO_TAPS: int32 = 24;
+export const SAO_NOISE: int32 = 28;
+export const SAO_EYE: int32 = 32;
+export const SAO_FADE: int32 = 36;
+export const SAO_DEPTH_VIEW_SLOT: int32 = 0;
+export const SAO_NORMAL_VIEW_SLOT: int32 = 1;
+export const SAO_NOISE_VIEW_SLOT: int32 = 2;
+export const SAO_POINT_SAMPLER_SLOT: int32 = 0;
+export const SAO_NOISE_SAMPLER_SLOT: int32 = 1;
 // A lit material's own block (binding=3). The core reads the saturation it applies to the
 // material's colour before lighting (0 leaves it alone, -1 is grey) and, at 1 in
 // MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal, and discards a pixel
@@ -514,8 +583,8 @@ export const MATERIAL_COLOR: int32 = 4;
 export const UNLIT_MATERIAL_UNIFORM_LENGTH: int32 = 8;
 export const UNLIT_MATERIAL_COLOR: int32 = 4;
 // A moving key's block (movingMaterialParams / movingUnlitMaterialParams in shader3d.ms):
-// its program's block, then six vec4 at movingBase(key) plus these offsets, whichever of the
-// three features the key reads. UV transform: Bevy's Affine2, the 2x2 matrix by columns, then
+// its program's block, then ten vec4 at movingBase(key) plus these offsets, whichever of the
+// features the key reads. UV transform: Bevy's Affine2, the 2x2 matrix by columns, then
 // the translation and Heaps' UVScroll speed in UV units per second of the frame's time.
 export const MOVING_UV_MATRIX: int32 = 0;
 export const MOVING_UV_OFFSET: int32 = 4;
@@ -528,7 +597,29 @@ export const MOVING_BACK_UV_OFFSET: int32 = 12;
 export const MOVING_DISSOLVE_THRESHOLD: int32 = 16;
 export const MOVING_DISSOLVE_EDGE_WIDTH: int32 = 17;
 export const MOVING_DISSOLVE_EDGE_COLOR: int32 = 20;
-export const MOVING_LENGTH: int32 = 24;
+// A UV-transform key's flipbook, Heaps' AnimatedTexture over the moved UV: the grid's columns and
+// rows, the frame count (0 leaves the base texture unanimated) and frames per second, then the
+// start time in the frame's seconds, the start frame, 1 to loop (else hold the last frame) and 1
+// to mix the next frame in by the fraction elapsed.
+export const MOVING_FLIPBOOK_COLUMNS: int32 = 24;
+export const MOVING_FLIPBOOK_ROWS: int32 = 25;
+export const MOVING_FLIPBOOK_FRAMES: int32 = 26;
+export const MOVING_FLIPBOOK_SPEED: int32 = 27;
+export const MOVING_FLIPBOOK_START_TIME: int32 = 28;
+export const MOVING_FLIPBOOK_START_FRAME: int32 = 29;
+export const MOVING_FLIPBOOK_LOOP: int32 = 30;
+export const MOVING_FLIPBOOK_BLEND: int32 = 31;
+// A UV-transform key's distance fade, Heaps' DistanceFade on the distance to the camera: alpha
+// rises from 0 to 1 between the near start and end and falls back to 0 between the far start and
+// end. A side whose end is not past its start is unfaded.
+export const MOVING_FADE_NEAR_START: int32 = 32;
+export const MOVING_FADE_NEAR_END: int32 = 33;
+export const MOVING_FADE_FAR_START: int32 = 34;
+export const MOVING_FADE_FAR_END: int32 = 35;
+// A UV-transform key's colour key, Heaps' ColorKey: a texel within 1e-5 of this rgba (squared)
+// is discarded. An alpha of 0 leaves the texture unkeyed.
+export const MOVING_COLOR_KEY: int32 = 36;
+export const MOVING_LENGTH: int32 = 40;
 export const MOVING_MATERIAL_UNIFORM_LENGTH: int32 = MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH;
 export const MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH: int32 =
 	UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH;
@@ -546,19 +637,22 @@ export const EMISSIVE_COLOR: int32 = 0;
 export const EMISSIVE_STRENGTH: int32 = 3;
 export const EMISSIVE_LENGTH: int32 = 4;
 // The scene's frame block (binding=6, shader3d.ms FrameParams): Heaps' `global.time`
-// in seconds at FRAME_TIME, read by a key with a UV transform, and at FRAME_EXPOSURE the linear
-// multiplier every scene program's colour is exposed by (toneMap); at FRAME_LINEAR 1 when the pass
-// draws into an HDR target, where every scene program writes its colour linear and unexposed; at
-// FRAME_TONE_MODE the curve (renderer.ms ToneMode) the exposed colour goes through.
+// in seconds at FRAME_TIME, read by a key with a UV transform or a flipbook, and at
+// FRAME_EXPOSURE the linear multiplier every scene program's colour is exposed by (toneMap); at
+// FRAME_LINEAR 1 when the pass draws into an HDR target, where every scene program writes its
+// colour linear and unexposed; at FRAME_TONE_MODE the curve (renderer.ms ToneMode) the exposed
+// colour goes through.
 export const FRAME_UNIFORM_SLOT: int32 = 6;
 export const FRAME_UNIFORM_LENGTH: int32 = 12;
 export const FRAME_TIME: int32 = 0;
 export const FRAME_EXPOSURE: int32 = 1;
 export const FRAME_LINEAR: int32 = 2;
 export const FRAME_TONE_MODE: int32 = 3;
-// The camera's world position at FRAME_CAMERA_POSITION (xyz; w unread): the view vector of a pbr
-// key, as Heaps' PropsDefinition `cameraPosition`.
+// The camera's world position at FRAME_CAMERA_POSITION (xyz): the view vector of a pbr key, as
+// Heaps' PropsDefinition `cameraPosition`; in its w, 1 where the backend stores clip depth 0..1 and
+// 0 where it maps -1..1 into the depth buffer (the door's depthZeroToOne), read by a decal.
 export const FRAME_CAMERA_POSITION: int32 = 4;
+export const FRAME_DEPTH_ZERO_TO_ONE: int32 = 7;
 // The attached environment (renderer.ms attachEnvironment), as Heaps' Renderer.hx:715-723 loads
 // pbrIndirect: irrPower (the power squared), irrSpecularLevels, and the cosine and sine of its
 // rotation; a power of 0 lights a pbr key by the flat ambient instead.
@@ -570,7 +664,8 @@ export const FRAME_ENV_SIN: int32 = 11;
 // A pbr key's block (pbrMaterialParams in shader3d.ms): the lit block, then one vec4 holding
 // metalness, roughness and occlusion, all in 0..1, at PBR_VALUES = MATERIAL_UNIFORM_LENGTH for
 // every pbr key, then the UV transform laid out as MOVING_UV_*, which every pbr key reads as
-// Bevy's StandardMaterial reads its uv_transform. It is part of the key's own block, so
+// Bevy's StandardMaterial reads its uv_transform, then a parallax key's step count at
+// PBR_PARALLAX_STEPS. It is part of the key's own block, so
 // emissiveBase starts after it: an emitting key adds the emissive vec4 at emissiveBase
 // (pbrEmissiveMaterialParams).
 // Heaps' defaults (PbrMaterial props): 0, 1 and 1; a block is zero-filled,
@@ -583,7 +678,11 @@ export const PBR_OCCLUSION_STRENGTH: int32 = PBR_VALUES + 3;
 export const PBR_UV_MATRIX: int32 = PBR_VALUES + 4;
 export const PBR_UV_OFFSET: int32 = PBR_VALUES + 8;
 export const PBR_UV_SCROLL: int32 = PBR_VALUES + 10;
-export const PBR_MATERIAL_UNIFORM_LENGTH: int32 = MATERIAL_UNIFORM_LENGTH + 12;
+// PbrMaterial.parallaxSteps (PbrMaterial.hx:84,361): the layers at a grazing view, 0 for Heaps'
+// 24, a whole number up to the 255 its editor offers (PbrMaterial.hx:570). Heaps compiles a
+// program per count; a block float keeps one per key.
+export const PBR_PARALLAX_STEPS: int32 = PBR_VALUES + 12;
+export const PBR_MATERIAL_UNIFORM_LENGTH: int32 = MATERIAL_UNIFORM_LENGTH + 16;
 
 // Where a moving key's own floats start in its material block.
 export function movingBase(key: ProgramKey): int32 {

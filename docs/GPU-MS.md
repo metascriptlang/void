@@ -785,7 +785,10 @@ sh scripts/abBench.sh clean                                                     
   turning and particles on. Every draw item applies its pipeline and uniform blocks again, so its
   `present.ms` prices the door's per-draw uniform path: it is the d3d11 uniform-ring bench. Main
   has no such entry, so `build` copies B's into the A worktree (it imports only the campfire API,
-  the same on both sides) and says `ENTRY Campfire: A runs B's ...`.
+  the same on both sides; `src/host/` is read as `src/sokol/` while main has no `src/host`) and says
+  `ENTRY Campfire: A runs B's ...`. Side A builds void3d only with its generated shader headers
+  (`scripts/ensureShaders.sh` in `../void-ab-main`, a regen; or the main checkout's headers when its
+  `out/shaderHeaders.cksum` matches A's inputs).
 - **Flows**: each row of the table carries its flow (`scripts/benchFlow.awk`): `submit` is
   `present.ms`, the CPU time of recording and submitting a frame; `frame` is `frame.ms`, the wall
   time between frames, vsync-bound on both sides (Present interval 1, sokol_app's default
@@ -1214,3 +1217,55 @@ verdict holds for the land. A change to shared `.ms` after `3c289539` needs a Ma
    the moment Void `main` has the rename.
 4. After the land: retire the lanes `void-wt-gpu-ms-core` and `void-wt-gpu-ms-2d`, close the card
    `~/metascript/.wt/gpu-ms.md`, then start D3D12 as its own arc from `main`.
+
+### 2026-10-28, Windows: GO for the land from the GPU side; what the Mac reruns
+
+**Verdict on Windows: GO.** Goldens at `2a48a971`: D3D11 123 pass of 123, GL 4.3 core 96 pass and
+27 within the cross-backend bound of 123, Vulkan 119 pass and 4 pending of 123, 0 fail on all three.
+`msc test src/test/index.ms` at `9c93af0c`: 299/299 files, 3301/3301 tests. `msc check` is clean on
+the 11 `main2d` targets, emcc included (yoga's `6a1cc06` closes the wasm32 child index here).
+The rows of `docs/TESTING.md` count 123.
+
+**Shared `.ms` changed after `3c289539`**, so the Mac reruns `msc test src/test/index.ms` and
+`sh scripts/golden.sh --backend metal` on this tip:
+- main merged again at `d036d675` (SAO, blur, decal, line and spot cookie programs), DXBC
+  regenerated; the door grows to fifteen views and eight samplers (`21e9b67c`).
+- main's LOD inheritance ported onto the read-only pick (`2a48a971`): `setInheritLod`, the topmost
+  inheriting ancestor hands its screen ratio down through the frame's items, `pickMeshLods` refuses
+  a source that is not an earlier LOD item.
+- test fixes only (`f95406bc`, `1f92f731`, `eb88ac9b`, `9c93af0c`): main's checks without the
+  dropped load samplers, the stencil check sized from the door's word count, the fake texture and
+  the renderer checks follow the live GPU context.
+
+**Metal needs the Mac:** the metallib predates the programs main added, so they cannot draw on
+Metal until the Mac regenerates it. That run waits on nothing else here.
+
+Next on Windows: the per-backend A/B against main in a quiet window, then the land chain.
+
+### 2026-10-28, Windows: the A/B before the land, a baseline for the perf work after it
+
+**The person's call: land first, deep performance after, then D3D12.** This A/B is the record that
+work starts from; it does not hold the land.
+
+Side A `d036d675` (main, sokol), side B `f504fab6`, `run 5` from 23:00:54 to 23:18:45. It ran beside
+void3d-m5's land gate (gate3d), so `bench-ab.sh` kept too few clean pairs for a verdict on every
+d3d11 and gl scene. The medians below are from all five pairs per side, so they are indicative only.
+In every scene, B's `present.ms` (the CPU time to record and submit a frame) is higher than A's
+in nearly every pair. Campfire's A side includes `src/sokol/bridge.h` and B's includes
+`src/host/bridge.h`, with the same scene code.
+
+| scene | d3d11 A | d3d11 B | gl A | gl B |
+|---|---|---|---|---|
+| Ui | 0.023 | 0.040 | 0.019 | 0.058 |
+| Sprites | 0.020 | 0.040 | 0.030 | 0.078 |
+| Text | 0.019 | 0.042 | 0.023 | 0.037 |
+| Editor | 0.019 | 0.033 | 0.015 | 0.035 |
+| Scroll | 0.047 | 0.062 | 0.041 | 0.053 |
+| Campfire | 0.332 | 0.385 | 6.022 | 6.026 |
+
+(ms, `present.ms` median.) GL Campfire's 6 ms is a blocking swap on both sides. Vulkan on B alone:
+present 0.12-0.16 ms on the 2D scenes, 0.44 ms on Campfire; first paint 50 ms on Ui and 6-14 ms elsewhere.
+
+Next, after the land: rerun the A/B in a quiet window for a verdict, then split `submit` per flow
+(the door's per-draw path, the uniform ring, the 2D batch upload) to find where the 0.01-0.04 ms
+per frame goes, before any fix.

@@ -11,9 +11,7 @@ import {
 	GPUQuerySetDescriptor,
 	GPURenderPipelineDescriptor,
 	GPUSamplerDescriptor,
-	GPUShaderBinding,
 	GPUShaderModuleDescriptor,
-	GPUShaderStage,
 	GPUSupportedFeatures,
 	GPUSupportedLimits,
 	GPUExtent3D,
@@ -29,7 +27,6 @@ import {
 	GPU_MAX_ANISOTROPY,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
-	GPU_MAX_UNIFORM_BLOCKS,
 	GPU_MAX_VERTEX_ATTRIBUTES,
 	GPU_MAX_VERTEX_BUFFERS,
 	GPU_RESOURCE_GROUP,
@@ -50,6 +47,7 @@ import {
 	resolveTargetRefusal,
 	singleSubresourceRefusal,
 	samplerMaxLod,
+	shaderBindingsRefusal,
 	stop,
 	vertexFormatSize,
 	vertexOffsetRefusal,
@@ -360,12 +358,11 @@ export function checkedDrawRange(call: string, indexed: boolean, count: int32, i
 	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
 	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
 		if ((pipelineRecords.slots[p].vertexSlots & (1 << slot)) == 0) { continue; }
-		const layout = pipelineRecords.slots[p].vertexBuffers[slot];
-		if (indexed && !layout.instance) { continue; }
+		const instance = pipelineRecords.slots[p].vertexBuffers[slot].instance;
+		if (indexed && !instance) { continue; }
 		const size = boundSize(boundFacts.vertexBuffers[slot], boundFacts.vertexOffsets[slot]);
-		refuse(layout.instance
-			? vertexRangeRefusal(call, slot, layout, size, firstInstance, instanceCount)
-			: vertexRangeRefusal(call, slot, layout, size, first, count));
+		refuse(vertexRangeRefusal(call, slot, pipelineRecords.slots[p].vertexBuffers[slot], size,
+			instance ? firstInstance : first, instance ? instanceCount : count));
 	}
 }
 
@@ -563,6 +560,7 @@ export function textureRecordOf(id: uint32, descriptor: GPUTextureDescriptor): T
 		layers: layers,
 		volume: volume,
 		cube: cubeCapable(volume, layers, width, height, descriptor.usage, sampleCount),
+		arrayBinding: descriptor.textureBindingViewDimension == "2d-array",
 		swapchainView: 0,
 	};
 }
@@ -593,35 +591,6 @@ export function markBufferWritten(index: int32, offset: int64, bytes: int64): vo
 }
 export function checkedTexture(descriptor: GPUTextureDescriptor, limits: GPUSupportedLimits): void { refuse(textureRefusal(descriptor, limits)); }
 
-function visibilityRefusal(binding: GPUShaderBinding, compute: boolean): string {
-	const render = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
-	const allowed = compute ? GPUShaderStage.COMPUTE as int32 : render;
-	if (binding.visibility == 0 || (binding.visibility & ~allowed) != 0) {
-		return `shader binding ${binding.binding} has visibility ${binding.visibility}, but a ${compute ? "compute" : "vertex and fragment"} module allows only ${allowed}`;
-	}
-	return "";
-}
-
-// A uint or sint texture cannot be filtered (WebGPU's bind group layout rule, sokol's
-// VALIDATE_SHADERDESC_NONFILTERING_SAMPLER_REQUIRED), so a sampler paired with one must be non-filtering.
-function integerTexturePairRefusal(descriptor: GPUShaderModuleDescriptor): string {
-	for (let i = 0; i < descriptor.bindings.length; i++) {
-		const sampler = descriptor.bindings[i];
-		const kind: string = sampler.kind;
-		const samplerType: string = sampler.samplerType;
-		if (kind != "sampler" || sampler.textureBinding < 0 || samplerType == "non-filtering") { continue; }
-		for (let j = 0; j < descriptor.bindings.length; j++) {
-			const texture = descriptor.bindings[j];
-			const textureKind: string = texture.kind;
-			const sampleType: string = texture.sampleType;
-			if (textureKind == "texture" && texture.binding == sampler.textureBinding && (sampleType == "uint" || sampleType == "sint")) {
-				return `sampler binding ${sampler.binding} is '${samplerType == "" ? "filtering" : samplerType}' but pairs with the ${sampleType} texture binding ${texture.binding}; an integer texture needs a non-filtering sampler`;
-			}
-		}
-	}
-	return "";
-}
-
 // The descriptor-only rules of a shader module: one kind of code, each binding's stages and group,
 // the binding counts a bind group holds, a uniform block's size against the uniform limit, the
 // integer textures' samplers, and the workgroup against the compute limits.
@@ -630,36 +599,14 @@ export function shaderModuleRefusal(descriptor: GPUShaderModuleDescriptor, limit
 	if (compute && (descriptor.vertexCode != "" || descriptor.fragmentCode != "" || descriptor.vertexBytecode.length > 0 || descriptor.fragmentBytecode.length > 0)) {
 		return "a GPUShaderModule is either a compute module or a vertex and fragment module";
 	}
-	let uniforms = 0;
-	let resources = 0;
-	for (let i = 0; i < descriptor.bindings.length; i++) {
-		const kind: string = descriptor.bindings[i].kind;
-		if (kind == "") { continue; }
-		const visibility = visibilityRefusal(descriptor.bindings[i], compute);
-		if (visibility != "") { return visibility; }
-		const binding = descriptor.bindings[i].binding;
-		const group = descriptor.bindings[i].group;
-		const expected = kind == "uniform" ? GPU_UNIFORM_GROUP : GPU_RESOURCE_GROUP;
-		if (group != expected) { return `shader binding ${binding} (${kind}) belongs in group ${expected}, not ${group}`; }
-		if (kind == "uniform") {
-			const size = descriptor.bindings[i].size;
-			if (size <= 0) { return `uniform binding ${binding} needs its block size`; }
-			if ((size as int64) > limits.maxUniformBufferBindingSize) {
-				return `uniform binding ${binding} of ${size} bytes is over the limit of ${limits.maxUniformBufferBindingSize}`;
-			}
-			uniforms += 1;
-			if (uniforms > GPU_MAX_UNIFORM_BLOCKS) { return `a shader module has over ${GPU_MAX_UNIFORM_BLOCKS} uniform blocks`; }
-		} else {
-			resources += 1;
-			if (resources > GPU_MAX_BIND_GROUP_ENTRIES) { return `a shader module has over ${GPU_MAX_BIND_GROUP_ENTRIES} resources`; }
-		}
-	}
-	const pairs = integerTexturePairRefusal(descriptor);
-	if (pairs != "") { return pairs; }
-	const size: int32[3] = descriptor.workgroupSize;
-	if (compute && (size[0] > limits.maxComputeWorkgroupSizeX || size[1] > limits.maxComputeWorkgroupSizeY
-		|| size[2] > limits.maxComputeWorkgroupSizeZ || size[0] * size[1] * size[2] > limits.maxComputeInvocationsPerWorkgroup)) {
-		return `workgroupSize ${size[0]}x${size[1]}x${size[2]} is over the limits ${limits.maxComputeWorkgroupSizeX}x${limits.maxComputeWorkgroupSizeY}x${limits.maxComputeWorkgroupSizeZ} and ${limits.maxComputeInvocationsPerWorkgroup} invocations`;
+	const bindings = shaderBindingsRefusal(descriptor.bindings, compute, limits.maxUniformBufferBindingSize);
+	if (bindings != "") { return bindings; }
+	const x = descriptor.workgroupSize[0];
+	const y = descriptor.workgroupSize[1];
+	const z = descriptor.workgroupSize[2];
+	if (compute && (x > limits.maxComputeWorkgroupSizeX || y > limits.maxComputeWorkgroupSizeY
+		|| z > limits.maxComputeWorkgroupSizeZ || x * y * z > limits.maxComputeInvocationsPerWorkgroup)) {
+		return `workgroupSize ${x}x${y}x${z} is over the limits ${limits.maxComputeWorkgroupSizeX}x${limits.maxComputeWorkgroupSizeY}x${limits.maxComputeWorkgroupSizeZ} and ${limits.maxComputeInvocationsPerWorkgroup} invocations`;
 	}
 	return "";
 }
@@ -979,9 +926,9 @@ export function dynamicIndexOf(descriptor: GPUBindGroupDescriptor): int32[GPU_MA
 	let ranks: int32[GPU_MAX_BIND_GROUP_ENTRIES] = [0];
 	let stored = 0;
 	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
-		const entry = descriptor.entries[i];
-		if (entry.buffer.id == 0 && entry.textureView.id == 0 && entry.sampler.id == 0) { continue; }
-		if (entry.buffer.id != 0) { ranks[stored] = dynamicRankOf(descriptor, entry.binding); }
+		const buffer = descriptor.entries[i].buffer.id;
+		if (buffer == 0 && descriptor.entries[i].textureView.id == 0 && descriptor.entries[i].sampler.id == 0) { continue; }
+		if (buffer != 0) { ranks[stored] = dynamicRankOf(descriptor, descriptor.entries[i].binding); }
 		stored += 1;
 	}
 	return ranks;
@@ -1000,11 +947,12 @@ function dynamicRankOf(descriptor: GPUBindGroupDescriptor, binding: int32): int3
 export function dynamicRoomOf(descriptor: GPUBindGroupDescriptor, shader: ShaderRecord): int64[GPU_MAX_BIND_GROUP_ENTRIES] {
 	let room: int64[GPU_MAX_BIND_GROUP_ENTRIES] = [0];
 	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
-		const entry = descriptor.entries[i];
-		if (entry.buffer.id == 0) { continue; }
-		const u = shaderBindingAt(shader, GPU_UNIFORM_GROUP, entry.binding, BindingKind.Uniform);
+		const buffer = descriptor.entries[i].buffer.id;
+		if (buffer == 0) { continue; }
+		const binding = descriptor.entries[i].binding;
+		const u = shaderBindingAt(shader, GPU_UNIFORM_GROUP, binding, BindingKind.Uniform);
 		if (u < 0) { continue; }
-		room[dynamicRankOf(descriptor, entry.binding)] = bufferRecords.record(entry.buffer.id).size - entry.offset - (shader.bindings[u].size as int64);
+		room[dynamicRankOf(descriptor, binding)] = bufferRecords.record(buffer).size - descriptor.entries[i].offset - (shader.bindings[u].size as int64);
 	}
 	return room;
 }

@@ -31,6 +31,9 @@ import {
 	LIGHT_RECORD_LENGTH,
 	LIGHT_RECORD_SHAPE,
 	LIGHT_CLUSTER_GRID,
+	LIGHT_COOKIE,
+	LIGHT_COOKIE_MATRIX,
+	LIGHT_KIND_SPOT,
 	CLUSTER_SCENE_VIEWS,
 	CLUSTER_SCENE_SAMPLERS,
 	SHADOW_UNIFORM_SLOT,
@@ -42,6 +45,7 @@ import {
 	FRAME_LINEAR,
 	FRAME_TONE_MODE,
 	FRAME_CAMERA_POSITION,
+	FRAME_DEPTH_ZERO_TO_ONE,
 	FRAME_ENV_POWER,
 	FRAME_ENV_LEVELS,
 	FRAME_ENV_COS,
@@ -49,11 +53,19 @@ import {
 	ENV_SCENE_VIEWS,
 	ENV_SCENE_SAMPLERS,
 	MOVING_UV_SCROLL,
+	MOVING_FLIPBOOK_FRAMES,
+	MOVING_FADE_NEAR_START,
+	MOVING_FADE_NEAR_END,
+	MOVING_FADE_FAR_START,
+	MOVING_FADE_FAR_END,
+	MOVING_FLIPBOOK_SPEED,
 	PBR_UV_SCROLL,
 	movingBase,
 	SHADOW_SAMPLER_SLOT,
 	SHADOW_SCENE_VIEWS,
 	SHADOW_SCENE_SAMPLERS,
+	SCENE_DEPTH_SCENE_VIEWS,
+	SCENE_DEPTH_SCENE_SAMPLERS,
 	uniformBlockLength,
 	textureSlotMask,
 	samplerSlotMask,
@@ -62,13 +74,14 @@ import {
 import {
 	Material,
 	Phase,
+	isDecalPhase,
 	UniformBlock,
 	NO_UNIFORMS,
 	MATERIAL_TEXTURE_ROLES,
 	viewSlotOf,
 	samplerSlotOf,
 } from "./material";
-import { TextureId } from "./texture";
+import { TextureId, NO_TEXTURE } from "./texture";
 import { Vec3, vec3 } from "../math/math3d";
 import { TargetLayout } from "../gpu/target";
 import {
@@ -79,12 +92,14 @@ import {
 	frameIndex,
 	PixelFormat,
 	makeCubeImage,
+	makeImage,
 	makeTextureView,
 	makeSampler,
 	destroyImage,
 	destroyView,
 	destroySampler,
 	originTopLeft,
+	depthZeroToOne,
 } from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
 import { Environment, compute, isCurrent, specLevels } from "./environment";
@@ -94,6 +109,8 @@ import {
 	DrawItem,
 	MeshId,
 	MaterialId,
+	NO_MESH,
+	NO_MATERIAL,
 	MeshUploadError,
 	addMesh,
 	releaseMesh,
@@ -122,12 +139,14 @@ import { Frustum3D } from "./frustum";
 import {
 	DirShadowMap, ShadowKind, castsAll, drawShadows, carryShadows, sceneTexture,
 } from "./dirShadowMap";
-import { SpotShadowError, spotCaster, spotShadowView } from "./spotShadow";
+import {
+	SpotShadowError, NOT_A_RECORD, spotCaster, spotShadowView, casterRecord, recordKind,
+} from "./spotShadow";
 import { CubeShadowError, cubeCaster, cubeShadowViews } from "./cubeShadow";
 import {
 	CameraView, CAMERA_EYE, CAMERA_NEAR, CAMERA_PROJECTION_X, CAMERA_PROJECTION_Y,
 } from "./camera";
-import { pickFor } from "./meshLod";
+import { screenRatioFor, rangeFor } from "./meshLod";
 import { ClusterAssignment, ClusterConfig } from "./clusters";
 import {
 	ClusterFrame,
@@ -147,6 +166,8 @@ export interface Renderer {
 	opaque: PassList;
 	alpha: PassList;
 	additive: PassList;
+	decal: PassList;
+	decalAfterToneMap: PassList;
 	cameraBlock: UniformBlock;
 	lightBlock: UniformBlock;
 	frameBlock: UniformBlock;
@@ -170,20 +191,25 @@ export interface Renderer {
 	// Forward's enabled outline draws opaque meshes with their normal MRT variants.
 	normalMrt: boolean;
 	frameValues: Vec<float32>;
-	// The eye a pbr key's view vector starts from (setCameraPosition); a frame drawing a pbr key
-	// without one is refused.
+	// The eye a pbr key's view vector and a distance fade start from (setCameraPosition); a frame
+	// drawing either without one is refused.
 	cameraPosition: Vec3 | null;
 	// The view the camera block was resolved from (setCameraView), which the frame's lights are
 	// clustered in; a frame with a positioned light and no view is refused.
 	cameraView: CameraView | null;
 	clusters: ClusterFrame;
-	// The light block as written: the caller's ambient and sun, then the clusters' fields.
+	// The light block as written: the caller's ambient and sun, then the clusters' fields, then
+	// the cookie spot's record and the matrix to its map.
 	lightValues: Vec<float32>;
+	// The frame's cookie texture (the light block's LIGHT_COOKIE id), NO_TEXTURE without one.
+	cookie: TextureId;
 	// The last frame drew a material whose UV transform scrolls.
 	readsTime: boolean;
 	preset: Preset;
-	// Per item of the frame, the key drawn for its material's.
+	// Per material, the key the last accepted frame draws it with, indexed like the context's.
 	drawn: Vec<ProgramKey>;
+	// The keys beginFrame's checks resolve, kept apart from `drawn` until the frame is accepted.
+	pairs: Vec<ProgramKey>;
 	shadow: DirShadowMap | null;
 	spotShadow: DirShadowMap | null;
 	cubeShadow: DirShadowMap | null;
@@ -193,6 +219,10 @@ export interface Renderer {
 	blackCube: uint32;
 	blackCubeView: uint32;
 	blackCubeSampler: uint32;
+	// The cookie slot's texel when no spot has a cookie or its texture is not drawable this
+	// frame: clear, so a cookie that failed to upload lights nothing, as a material draws nothing.
+	clearTexel: uint32;
+	clearTexelView: uint32;
 	screenMesh: MeshId;
 	// The GPU context the handles in play belong to; 0 before the first frame.
 	generation: int32;
@@ -232,6 +262,8 @@ export enum RendererError {
 	// The pixel-art preset's toon lights are points: a spot, rectangle or capsule slot has no
 	// toon term there, and drawing it as a point would light the wrong place.
 	ShapedLightPreset,
+	// The pixel-art preset has no decal pass, so a Decal-phase item would not be drawn.
+	DecalPreset,
 	// The light block's spot caster is no spot record of it, or makes no camera
 	// (lightShape.ms perspectiveCamera).
 	BadShadowSpot,
@@ -249,6 +281,10 @@ export enum RendererError {
 	// clusters.ms refused the view or a light (a zero-sized target, a light out of range).
 	ClusterAssign,
 	ClusterUpload,
+	// The light block's cookie spot is no spot record of it, or makes no camera.
+	BadCookieSpot,
+	// The cookie spot's texture is not a live one of this context: released, or another's.
+	StaleCookie,
 }
 
 // Floats of the uniform pool the core reserves: camera, lights and the frame block.
@@ -308,6 +344,8 @@ export function createDrawing(
 		opaque: PassList.forPhase(Phase.Opaque),
 		alpha: PassList.forPhase(Phase.Alpha),
 		additive: PassList.forPhase(Phase.Additive),
+		decal: PassList.forPhase(Phase.Decal),
+		decalAfterToneMap: PassList.forPhase(Phase.DecalAfterToneMap),
 		cameraBlock: cameraBlock,
 		lightBlock: lightBlock,
 		frameBlock: frameBlock,
@@ -324,9 +362,11 @@ export function createDrawing(
 		cameraView: null,
 		clusters: ClusterFrame.create(ClusterConfig.defaults()),
 		lightValues: new Array(LIGHT_UNIFORM_LENGTH),
+		cookie: NO_TEXTURE,
 		readsTime: false,
 		preset: preset,
 		drawn: [],
+		pairs: [],
 		shadow: null,
 		spotShadow: null,
 		cubeShadow: null,
@@ -334,6 +374,8 @@ export function createDrawing(
 		blackCube: 0,
 		blackCubeView: 0,
 		blackCubeSampler: 0,
+		clearTexel: 0,
+		clearTexelView: 0,
 		screenMesh: screen.value,
 		generation: 0,
 		changed: true,
@@ -409,7 +451,7 @@ export function attachEnvironment(renderer: Renderer, environment: Environment |
 	renderer.changed = true;
 }
 
-function makeBlackCube(renderer: Renderer): void {
+function makeStandIns(renderer: Renderer): void {
 	const black: uint32[] = [0, 0, 0, 0, 0, 0];
 	renderer.blackCube = makeCubeImage(black, 1);
 	renderer.blackCubeView = makeTextureView(renderer.blackCube);
@@ -420,6 +462,26 @@ function makeBlackCube(renderer: Renderer): void {
 		);
 		unreachable;
 	}
+	const clear: uint32[] = [0];
+	renderer.clearTexel = makeImage(clear, 1, 1);
+	renderer.clearTexelView = makeTextureView(renderer.clearTexel);
+	if (renderer.clearTexel == 0 || renderer.clearTexelView == 0) {
+		console.log("void3d: the GPU refused the 1x1 clear texel a lit key reads without a cookie");
+		unreachable;
+	}
+}
+
+// pbr/SpotLight.hx generateLightProj and Light.hx screenToUv (157): the cookie spot's camera,
+// which is the spot map's (spotShadowView), then NDC to the texture's uv, row 0 at the top as
+// an uploaded image's is on every backend.
+export function cookieMapOf(view: CameraView): Mat4 {
+	const uv: Mat4 = {
+		m11: 0.5, m12: 0.0, m13: 0.0, m14: 0.0,
+		m21: 0.0, m22: -0.5, m23: 0.0, m24: 0.0,
+		m31: 0.0, m32: 0.0, m33: 1.0, m34: 0.0,
+		m41: 0.5, m42: 0.5, m43: 0.0, m44: 1.0,
+	};
+	return view.viewProj * uv;
 }
 
 function writeEnvironment(renderer: Renderer): void {
@@ -573,8 +635,19 @@ export function pickMeshLods(
 	for (let i = 0; i < (items.length as int32); i++) {
 		const pick = items[i].lod;
 		if (pick === null) { continue; }
-		const picked = pick.pickFor(items[i].world, eye, camera[CAMERA_PROJECTION_X],
-			camera[CAMERA_PROJECTION_Y], camera[CAMERA_NEAR], renderer.meshLodScale);
+		const source = items[i].lodSource;
+		if (source !== null) {
+			if (source >= i || items[source].lod === null) {
+				return Result.err(RendererError.MeshLod);
+			}
+			items[i].lodRatio = items[source].lodRatio;
+		} else {
+			const own = pick.screenRatioFor(items[i].world, eye, camera[CAMERA_PROJECTION_X],
+				camera[CAMERA_PROJECTION_Y], camera[CAMERA_NEAR], renderer.meshLodScale);
+			if (!own.ok) { return Result.err(RendererError.MeshLod); }
+			items[i].lodRatio = own.value;
+		}
+		const picked = pick.rangeFor(items[i].lodRatio);
 		if (!picked.ok) { return Result.err(RendererError.MeshLod); }
 		const range = picked.value;
 		items[i].lodCulled = range === null;
@@ -589,12 +662,12 @@ export function pickMeshLods(
 // program reads or has been released, or that lacks a texture or sampler it samples, names a
 // texture it does not sample or another than it was added with, or a mesh whose vertex layout it
 // does not read, or a quad-layout mesh with a vertex buffer or with instances and no instance
-// buffer, is refused before anything changes. Answers true when the context is new: every handle
-// the caller made before is stale then (it may name an object of the new context), so the caller
-// drops its own without destroying them and makes them again before drawing. The core has already
-// dropped the pipelines, remade the screen triangle, and remade every mesh and texture that
-// carries its CPU data (draw.ms rebuildMeshes, rebuildTextures); what is left is whatever the
-// caller uploaded from buffers only it keeps.
+// buffer, or a Decal-phase item under the pixel-art preset, is refused before anything changes.
+// Answers true when the context is new: every handle the caller made before is stale then (it may
+// name an object of the new context), so the caller drops its own without destroying them and makes
+// them again before drawing. The core has already dropped the pipelines, remade the screen
+// triangle, and remade every mesh and texture that carries its CPU data (draw.ms rebuildMeshes,
+// rebuildTextures); what is left is whatever the caller uploaded from buffers only it keeps.
 export function beginFrame(
 	renderer: Renderer,
 	items: Readonly<Span<DrawItem>>,
@@ -613,45 +686,51 @@ export function beginFrame(
 	if (spotShadow !== null && spotShadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
 	if (cubeShadow !== null && cubeShadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
 	const shadowed: boolean = shadow !== null || spotShadow !== null || cubeShadow !== null;
-	for (const item of items) {
-		if (!context.hasMesh(item.mesh)) { return Result.err(meshError(context, item.mesh)); }
-		if (!item.validRange(context.logicalElementCount(item.mesh.index))) {
-			return Result.err(RendererError.DrawRange);
+	let checkedMesh: MeshId = NO_MESH;
+	let checkedMaterial: MaterialId = NO_MATERIAL;
+	let checked: ProgramKey = ProgramKey.of(Program.Lit);
+	let checkedTotal: int32 = 0;
+	let readsTime: boolean = false;
+	let opaque: boolean = false;
+	let alpha: boolean = false;
+	let additive: boolean = false;
+	let decal: boolean = false;
+	let decalAfterToneMap: boolean = false;
+	while ((renderer.pairs.length as int32) < (context.materials.length as int32)) {
+		renderer.pairs.push(ProgramKey.of(Program.Lit));
+	}
+	for (let i = 0; i < (items.length as int32); i++) {
+		const mesh: MeshId = items[i].mesh;
+		const material: MaterialId = items[i].material;
+		const known: boolean = mesh == checkedMesh && material == checkedMaterial;
+		if (!known) {
+			if (!context.hasMesh(mesh)) { return Result.err(meshError(context, mesh)); }
+			checkedTotal = context.logicalElementCount(mesh.index);
 		}
-		if (!context.hasMaterial(item.material)) {
-			return Result.err(materialError(context, item.material));
+		if (!items[i].validRange(checkedTotal)) { return Result.err(RendererError.DrawRange); }
+		if (!known) {
+			const pair: Result<ProgramKey, RendererError> =
+				pairProgram(renderer, mesh, material, shadowed);
+			if (!pair.ok) { return Result.err(pair.error); }
+			checked = pair.value;
+			checkedMesh = mesh;
+			checkedMaterial = material;
+			renderer.pairs[material.index] = checked;
+			readsTime = readsTime || readsFrameTime(context, material.index, checked);
+			const phase: Phase = context.materials[material.index].phase;
+			opaque = opaque || phase == Phase.Opaque;
+			alpha = alpha || phase == Phase.Alpha;
+			additive = additive || phase == Phase.Additive;
+			decal = decal || phase == Phase.Decal;
+			decalAfterToneMap = decalAfterToneMap || phase == Phase.DecalAfterToneMap;
 		}
-		const material: int32 = item.material.index;
-		const drawn: Result<ProgramKey, ProgramError> =
-			drawnIn(context.materials[material].program, renderer.preset, shadowed,
-				renderer.normalMrt && context.materials[material].phase == Phase.Opaque);
-		if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
-		if (drawn.value.pbr && renderer.cameraPosition === null) {
-			return Result.err(RendererError.CameraPosition);
-		}
-		if (!item.validSkin(drawn.value)) { return Result.err(RendererError.SkinPose); }
-		if (!item.validInstances(context, drawn.value)) {
+		if (!items[i].validSkin(checked)) { return Result.err(RendererError.SkinPose); }
+		if (!items[i].validInstances(context, checked)) {
 			return Result.err(RendererError.Instances);
 		}
-		if (!context.keepsItsUniforms(item.material)) {
-			return Result.err(RendererError.UniformsReplaced);
-		}
-		if (!context.keepsItsTexture(item.material)) {
-			return Result.err(RendererError.TextureReplaced);
-		}
-		if (!blockFits(drawn.value, context.materials[material].uniforms)) {
-			return Result.err(RendererError.MaterialBlock);
-		}
-		const layout: VertexLayout = context.meshes[item.mesh.index].layout;
-		if (layout != vertexLayoutOf(drawn.value)) {
-			return Result.err(RendererError.VertexLayout);
-		}
-		if (drawsQuads(layout) && !context.meshes[item.mesh.index].isQuadShaped()) {
-			return Result.err(RendererError.QuadMesh);
-		}
-		if (!texturesFit(drawn.value, context.materials[material])) {
-			return Result.err(RendererError.MaterialTexture);
-		}
+	}
+	if ((decal || decalAfterToneMap) && renderer.preset == Preset.PixelArt) {
+		return Result.err(RendererError.DecalPreset);
 	}
 	if (shadow !== null) {
 		const cast: Result<int32, ProgramError> = shadow.castsAll(items);
@@ -696,6 +775,24 @@ export function beginFrame(
 	if (shadowedCube >= 0 && cubeShadow === null) {
 		return Result.err(RendererError.CubeShadowUnattached);
 	}
+	const cookieSpot: int32 = casterRecord(lights, LIGHT_COOKIE);
+	if (cookieSpot == NOT_A_RECORD ||
+		(cookieSpot >= 0 && recordKind(lights, cookieSpot) != LIGHT_KIND_SPOT)) {
+		return Result.err(RendererError.BadCookieSpot);
+	}
+	let cookie: TextureId = NO_TEXTURE;
+	let cookieMatrix: Mat4 | null = null;
+	if (cookieSpot >= 0) {
+		const placed: Result<CameraView, SpotShadowError> = spotShadowView(lights, cookieSpot);
+		if (!placed.ok) { return Result.err(RendererError.BadCookieSpot); }
+		cookieMatrix = cookieMapOf(placed.value);
+		cookie = {
+			store: lights[LIGHT_COOKIE + 1] as int32,
+			index: lights[LIGHT_COOKIE + 2] as int32,
+			generation: lights[LIGHT_COOKIE + 3] as int32,
+		};
+		if (!context.hasTexture(cookie)) { return Result.err(RendererError.StaleCookie); }
+	}
 	const view: CameraView | null = renderer.cameraView;
 	if (records > 0 && view === null) { return Result.err(RendererError.ClusterViewUnset); }
 	if (records > 0 && view !== null && !viewMatches(view, camera)) {
@@ -705,6 +802,17 @@ export function beginFrame(
 		writeUniforms(context, renderer.cameraBlock, camera);
 	if (!cameraWritten.ok) { return Result.err(RendererError.CameraBlockLength); }
 	for (let i = 0; i < LIGHT_CLUSTER_GRID; i++) { renderer.lightValues[i] = lights[i]; }
+	for (let i = LIGHT_COOKIE; i < LIGHT_COOKIE_MATRIX; i++) {
+		renderer.lightValues[i] = lights[i];
+	}
+	const matrixPart: Span<float32> =
+		renderer.lightValues[LIGHT_COOKIE_MATRIX..LIGHT_COOKIE_MATRIX + 16];
+	if (cookieMatrix !== null) {
+		cookieMatrix.writeTo(matrixPart, 0);
+	} else {
+		for (let i = 0; i < 16; i++) { matrixPart[i] = 0.0; }
+	}
+	renderer.cookie = cookie;
 	const assigned: Result<ClusterAssignment, ClusterFrameError> = renderer.clusters.assignFrame(
 		lights, view, !originTopLeft(), renderer.lightValues);
 	if (!assigned.ok) { return Result.err(RendererError.ClusterAssign); }
@@ -716,6 +824,7 @@ export function beginFrame(
 	renderer.frameValues[FRAME_EXPOSURE] = exposureMultiplier(renderer.exposure);
 	renderer.frameValues[FRAME_LINEAR] = renderer.linearOutput ? 1.0 : 0.0;
 	renderer.frameValues[FRAME_TONE_MODE] = renderer.toneMode as float32;
+	renderer.frameValues[FRAME_DEPTH_ZERO_TO_ONE] = depthZeroToOne() ? 1.0 : 0.0;
 	const eye: Vec3 | null = renderer.cameraPosition;
 	if (eye !== null) {
 		renderer.frameValues[FRAME_CAMERA_POSITION] = eye.x;
@@ -724,18 +833,11 @@ export function beginFrame(
 	}
 	writeEnvironment(renderer);
 	if (!writeUniforms(context, renderer.frameBlock, renderer.frameValues).ok) { unreachable; }
-	while ((renderer.drawn.length as int32) < (items.length as int32)) {
+	while ((renderer.drawn.length as int32) < (renderer.pairs.length as int32)) {
 		renderer.drawn.push(ProgramKey.of(Program.Lit));
 	}
-	let readsTime: boolean = false;
-	for (let i = 0; i < (items.length as int32); i++) {
-		const resolved: Result<ProgramKey, ProgramError> =
-			drawnIn(context.materials[items[i].material.index].program, renderer.preset, shadowed,
-				renderer.normalMrt &&
-					context.materials[items[i].material.index].phase == Phase.Opaque);
-		if (!resolved.ok) { unreachable; }
-		renderer.drawn[i] = resolved.value;
-		readsTime = readsTime || scrolls(context, items[i].material.index, resolved.value);
+	for (let i = 0; i < (renderer.pairs.length as int32); i++) {
+		renderer.drawn[i] = renderer.pairs[i];
 	}
 	renderer.readsTime = readsTime;
 	const generation: int32 = contextGeneration();
@@ -745,7 +847,7 @@ export function beginFrame(
 		rebuildMeshes(context);
 		rebuildTextures(context);
 		context.meshes[renderer.screenMesh.index].vertexBuffer = makeScreenTriangle();
-		makeBlackCube(renderer);
+		makeStandIns(renderer);
 		renderer.generation = generation;
 		renderer.changed = true;
 	}
@@ -755,9 +857,11 @@ export function beginFrame(
 	}
 	const environment: Environment | null = renderer.environment;
 	if (environment !== null && !environment.isCurrent()) { environment.compute(); }
-	collect(renderer.opaque, items, context.materials);
-	collect(renderer.alpha, items, context.materials);
-	collect(renderer.additive, items, context.materials);
+	collectSeen(renderer.opaque, opaque, items, context.materials);
+	collectSeen(renderer.alpha, alpha, items, context.materials);
+	collectSeen(renderer.additive, additive, items, context.materials);
+	collectSeen(renderer.decal, decal, items, context.materials);
+	collectSeen(renderer.decalAfterToneMap, decalAfterToneMap, items, context.materials);
 	let viewProj: Mat4 = {
 		m11: camera[0], m12: camera[1], m13: camera[2], m14: camera[3],
 		m21: camera[4], m22: camera[5], m23: camera[6], m24: camera[7],
@@ -768,10 +872,14 @@ export function beginFrame(
 	renderer.culledCount =
 		filterFrustum(renderer.opaque, items, context.meshData, frustum) +
 		filterFrustum(renderer.alpha, items, context.meshData, frustum) +
-		filterFrustum(renderer.additive, items, context.meshData, frustum);
+		filterFrustum(renderer.additive, items, context.meshData, frustum) +
+		filterFrustum(renderer.decal, items, context.meshData, frustum) +
+		filterFrustum(renderer.decalAfterToneMap, items, context.meshData, frustum);
 	sortByMaterial(renderer.opaque, items, renderer.drawn, context.materials);
 	sortBackToFront(renderer.alpha, items, camera);
 	sortByLayer(renderer.additive);
+	sortByLayer(renderer.decal);
+	sortByLayer(renderer.decalAfterToneMap);
 	return Result.ok(fresh);
 }
 
@@ -799,6 +907,7 @@ export function drawShadowPass(
 // A frame without one of the maps binds another in its slot: the absent light's part of the
 // block is zero, so its lookup answers lit before it reads the map.
 function sceneTextureOf(renderer: Renderer): SceneTexture {
+	const context: DrawContext = renderer.context;
 	const clusters: ClusterFrame = renderer.clusters;
 	const shadows: SceneTexture = {
 		...shadowTextureOf(renderer),
@@ -807,17 +916,25 @@ function sceneTextureOf(renderer: Renderer): SceneTexture {
 		clusterIndices: clusters.indicesView(),
 		clusterSampler: clusters.clusterSampler(),
 	};
+	const cookie: TextureId = renderer.cookie;
+	const drawable: boolean = cookie.isTexture() && context.hasTexture(cookie) &&
+		context.textureReady(cookie.index);
+	const lit: SceneTexture = {
+		...shadows,
+		cookieView: drawable ? context.viewOf(cookie) : renderer.clearTexelView,
+		cookieSampler: drawable ? context.samplerOf(cookie) : renderer.blackCubeSampler,
+	};
 	const environment: Environment | null = renderer.environment;
 	if (environment === null) {
 		return {
-			...shadows,
+			...lit,
 			envDiffuse: renderer.blackCubeView,
 			envSpecular: renderer.blackCubeView,
 			envSampler: renderer.blackCubeSampler,
 		};
 	}
 	return {
-		...shadows,
+		...lit,
 		envDiffuse: environment.diffuse.asTexture(),
 		envSpecular: environment.specular.asTexture(),
 		envSampler: environment.sampler,
@@ -880,23 +997,70 @@ export function drawPhase(
 	match (phase) {
 		Phase.Opaque => {
 			drawPassList(
-				context, renderer.opaque, items, renderer.drawn, targets, renderer.sceneGlobals,
-				scene,
+				context, renderer.opaque.indices[0..renderer.opaque.count], items, renderer.drawn,
+				targets, renderer.sceneGlobals, scene,
 			);
 		},
 		Phase.Alpha => {
 			drawPassList(
-				context, renderer.alpha, items, renderer.drawn, targets, renderer.sceneGlobals,
-				scene,
+				context, renderer.alpha.indices[0..renderer.alpha.count], items, renderer.drawn,
+				targets, renderer.sceneGlobals, scene,
 			);
 		},
 		Phase.Additive => {
 			drawPassList(
-				context, renderer.additive, items, renderer.drawn, targets, renderer.sceneGlobals,
-				scene,
+				context, renderer.additive.indices[0..renderer.additive.count], items, renderer.drawn,
+				targets, renderer.sceneGlobals, scene,
 			);
 		},
+		Phase.Decal => stopOnDecalPhase(phase),
+		Phase.DecalAfterToneMap => stopOnDecalPhase(phase),
 	};
+}
+
+function stopOnDecalPhase(phase: Phase): void {
+	console.log(`void3d: drawPhase(${phase.toString()}) has no scene depth to bind; drawDecals ` +
+		"draws the decal lists");
+	unreachable;
+}
+
+// h3d.scene.pbr.Renderer's draw("beforeTonemappingDecal") and draw("afterTonemappingDecal")
+// (Renderer.hx:864,873): the list of `phase` into the current pass, which has no depth
+// attachment, with `depthView` (the depth target the scene was drawn into) and `depthSampler`
+// bound at SCENE_DEPTH_VIEW_SLOT. The tone-mapped colour is encoded, never Rgba16f.
+export function drawDecals(
+	renderer: Renderer,
+	phase: Phase,
+	items: Readonly<Span<DrawItem>>,
+	targets: TargetLayout,
+	depthView: uint32,
+	depthSampler: uint32,
+): void {
+	if (renderer.closed) { stopOnClosed("drawDecals"); }
+	if (!isDecalPhase(phase)) {
+		console.log(`void3d: drawDecals(${phase.toString()}); drawPhase draws that list`);
+		unreachable;
+	}
+	const linear: boolean = phase == Phase.Decal && renderer.linearOutput;
+	if ((targets.color0 == PixelFormat.Rgba16f) != linear) {
+		if (phase == Phase.Decal) { stopOnColourSpace(renderer, targets); }
+		console.log(`void3d: drawDecals(DecalAfterToneMap) into a ${targets.color0.toString()} ` +
+			"target; the tone-mapped colour is encoded");
+		unreachable;
+	}
+	if (targets.depth != PixelFormat.None) {
+		console.log("void3d: drawDecals into a pass with a depth attachment; the scene depth is " +
+			"the texture the decals read");
+		unreachable;
+	}
+	const scene: SceneTexture = {
+		...sceneTextureOf(renderer), depthView: depthView, depthSampler: depthSampler,
+	};
+	const list: PassList = phase == Phase.Decal ? renderer.decal : renderer.decalAfterToneMap;
+	drawPassList(
+		renderer.context, list.indices[0..list.count], items, renderer.drawn, targets,
+		renderer.sceneGlobals, scene,
+	);
 }
 
 // How many items of `phase` the frame beginFrame accepted draws, after culling.
@@ -906,6 +1070,8 @@ export function phaseCount(this renderer: Renderer, phase: Phase): int32 {
 		Phase.Opaque => renderer.opaque.count,
 		Phase.Alpha => renderer.alpha.count,
 		Phase.Additive => renderer.additive.count,
+		Phase.Decal => renderer.decal.count,
+		Phase.DecalAfterToneMap => renderer.decalAfterToneMap.count,
 	};
 }
 
@@ -932,12 +1098,70 @@ export function drawScreen(
 }
 
 // Whether material `index`, drawn as `key`, scrolls its UV with the frame's time.
-function scrolls(context: DrawContext, index: int32, key: ProgramKey): boolean {
+// The program `material` draws `mesh` with this frame, once the pair passes every check
+// beginFrame makes of a mesh and a material together.
+function pairProgram(
+	renderer: Renderer,
+	mesh: MeshId,
+	id: MaterialId,
+	shadowed: boolean,
+): Result<ProgramKey, RendererError> {
+	const context: DrawContext = renderer.context;
+	if (!context.hasMaterial(id)) { return Result.err(materialError(context, id)); }
+	const material: Material = context.materials[id.index];
+	const drawn: Result<ProgramKey, ProgramError> = drawnIn(material.program, renderer.preset,
+		shadowed, renderer.normalMrt && material.phase == Phase.Opaque);
+	if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
+	if (drawn.value.pbr && renderer.cameraPosition === null) {
+		return Result.err(RendererError.CameraPosition);
+	}
+	if (!context.keepsItsUniforms(id)) { return Result.err(RendererError.UniformsReplaced); }
+	if (!context.keepsItsTexture(id)) { return Result.err(RendererError.TextureReplaced); }
+	if (!blockFits(drawn.value, material.uniforms)) {
+		return Result.err(RendererError.MaterialBlock);
+	}
+	if (renderer.cameraPosition === null && fadesWithDistance(context, id.index, drawn.value)) {
+		return Result.err(RendererError.CameraPosition);
+	}
+	const layout: VertexLayout = context.meshes[mesh.index].layout;
+	if (layout != vertexLayoutOf(drawn.value)) { return Result.err(RendererError.VertexLayout); }
+	if (drawsQuads(layout) && !context.meshes[mesh.index].isQuadShaped()) {
+		return Result.err(RendererError.QuadMesh);
+	}
+	if (!texturesFit(drawn.value, material)) { return Result.err(RendererError.MaterialTexture); }
+	return Result.ok(drawn.value);
+}
+
+function collectSeen(
+	ref list: PassList,
+	seen: boolean,
+	items: Readonly<Span<DrawItem>>,
+	materials: Readonly<Span<Material>>,
+): void {
+	if (seen) { collect(list, items, materials); } else { list.count = 0; }
+}
+
+export function fadesWithDistance(context: DrawContext, index: int32, key: ProgramKey): boolean {
+	if (!key.uvTransform) { return false; }
+	const at: int32 = context.materials[index].uniforms.offset + movingBase(key);
+	const near: boolean = context.uniforms.values[at + MOVING_FADE_NEAR_END] >
+		context.uniforms.values[at + MOVING_FADE_NEAR_START];
+	return near || context.uniforms.values[at + MOVING_FADE_FAR_END] >
+		context.uniforms.values[at + MOVING_FADE_FAR_START];
+}
+
+export function readsFrameTime(context: DrawContext, index: int32, key: ProgramKey): boolean {
 	if (!key.uvTransform && !key.pbr) { return false; }
 	const block: UniformBlock = context.materials[index].uniforms;
 	const scroll: int32 = key.pbr ? PBR_UV_SCROLL : movingBase(key) + MOVING_UV_SCROLL;
 	const at: int32 = block.offset + scroll;
-	return context.uniforms.values[at] != 0.0 || context.uniforms.values[at + 1] != 0.0;
+	if (context.uniforms.values[at] != 0.0 || context.uniforms.values[at + 1] != 0.0) {
+		return true;
+	}
+	if (key.pbr) { return false; }
+	const flipbook: int32 = block.offset + movingBase(key);
+	return context.uniforms.values[flipbook + MOVING_FLIPBOOK_FRAMES] > 0.0 &&
+		context.uniforms.values[flipbook + MOVING_FLIPBOOK_SPEED] != 0.0;
 }
 
 // The one block a material brings for `program`: the slot it declares that is neither pass-wide
@@ -960,11 +1184,13 @@ function blockFits(program: ProgramKey, block: UniformBlock): boolean {
 
 // Every texture view and sampler `program` declares is bound on `material`, each by one field: a
 // raw view or sampler, or a context texture's role. The shadow map's are the scene's to bind for
-// a shadowed program, and the clustered lights' for every program.
+// a shadowed program, the clustered lights' for every program and the scene depth for a decal.
 function texturesFit(program: ProgramKey, material: Material): boolean {
-	const sceneViews: uint32 = CLUSTER_SCENE_VIEWS |
+	const decal: boolean = program.program == Program.Decal;
+	const sceneViews: uint32 = CLUSTER_SCENE_VIEWS | (decal ? SCENE_DEPTH_SCENE_VIEWS : 0) |
 		(program.shadowed ? SHADOW_SCENE_VIEWS : 0) | (program.pbr ? ENV_SCENE_VIEWS : 0);
 	const sceneSamplers: uint32 = CLUSTER_SCENE_SAMPLERS |
+		(decal ? SCENE_DEPTH_SCENE_SAMPLERS : 0) |
 		(program.shadowed ? SHADOW_SCENE_SAMPLERS : 0) | (program.pbr ? ENV_SCENE_SAMPLERS : 0);
 	const views: uint32 = textureSlotMask(program) & ~sceneViews;
 	const samplers: uint32 = samplerSlotMask(program) & ~sceneSamplers;
@@ -1060,9 +1286,15 @@ export function closeRenderer(renderer: Renderer): void {
 		destroyImage(renderer.blackCube);
 		destroySampler(renderer.blackCubeSampler);
 	}
+	if (renderer.clearTexel != 0 && renderer.generation == contextGeneration()) {
+		destroyView(renderer.clearTexelView);
+		destroyImage(renderer.clearTexel);
+	}
 	renderer.blackCube = 0;
 	renderer.blackCubeView = 0;
 	renderer.blackCubeSampler = 0;
+	renderer.clearTexel = 0;
+	renderer.clearTexelView = 0;
 	closeClusterFrame(renderer.clusters);
 	context.meshes[screen].vertexBuffer = 0;
 	const released: Result<int32, HandleError> = releaseMesh(context, renderer.screenMesh);

@@ -17,9 +17,10 @@ import {
 	isEffect,
 	literal,
 	scalarType,
+	rootOf,
 	stmtOf,
 } from "./ir";
-import { functionOrder, rootOf } from "./irWalk";
+import { functionOrder } from "./irWalk";
 
 // WGSL's discard demotes the invocation to a helper: it runs on, so the derivatives its quad
 // takes stay defined, and only its writes are dropped. A target whose discard ends the

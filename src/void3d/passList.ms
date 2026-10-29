@@ -268,7 +268,7 @@ export function sortByLayer(ref list: PassList): void {
 // material's), then the items of one pipeline (its program and render state), then those of
 // one texture. Pipelines and textures are numbered by first appearance in the list, as
 // SortByMaterial numbers its shaders and textures, so a group sits where its first item was.
-// `drawn` is indexed like `items`.
+// `drawn` is indexed like `materials`.
 export function sortByMaterial(
 	ref list: PassList,
 	items: Readonly<Span<DrawItem>>,
@@ -283,7 +283,8 @@ export function sortByMaterial(
 		const state: RenderState = { ...materials[items[index].material.index].pass };
 		const image: TextureId = materials[items[index].material.index].texture;
 		const pipeline: uint64 =
-			(((drawn[index].bits() as uint32) as uint64) << 32) | (state.bits() as uint64);
+			(((drawn[items[index].material.index].bits() as uint32) as uint64) << 32) |
+			(state.bits() as uint64);
 		const texture: uint64 = image.isTexture() ? ((image.index as uint32) as uint64) + 1 : 0;
 		list.highs[i] = layerOrderKey(list.layers[i], list.orders[i]);
 		list.lows[i] = (((rankOf(list.pipelines, pipeline) as uint32) as uint64) << 32) |
@@ -293,30 +294,32 @@ export function sortByMaterial(
 }
 
 // Output.draw: the collected items, in the list's order, into the current pass, each with its
-// program in `drawn`, which is indexed like `items`, and its material's pass. Neighbours that
-// differ only in their world matrices draw as one batch, whose instances keep the list's order.
+// material's program in `drawn`, which is indexed like the context's materials, and its pass.
+// Neighbours that differ only in their world matrices draw as one batch, whose instances keep the
+// list's order.
 export function drawPassList(
 	context: DrawContext,
-	list: PassList,
+	order: Readonly<Span<int32>>,
 	items: Readonly<Span<DrawItem>>,
 	drawn: Readonly<Span<ProgramKey>>,
 	targets: TargetLayout,
 	globals: Readonly<Span<UniformBlock>>,
 	scene: SceneTexture,
 ): void {
+	const count: int32 = order.length as int32;
 	let i: int32 = 0;
-	while (i < list.count) {
-		const index: int32 = list.indices[i];
+	while (i < count) {
+		const index: int32 = order[i];
+		const program: ProgramKey = drawn[items[index].material.index];
 		const material: Material = context.materials[items[index].material.index];
 		let end: int32 = i + 1;
-		while (end < list.count && items[index].sameBatch(items[list.indices[end]])) {
+		while (end < count && items[index].sameBatch(items[order[end]])) {
 			end = end + 1;
 		}
 		if (end - i == 1) {
-			drawItemWith(context, items[index], drawn[index], material.pass, targets, globals,
-				scene);
+			drawItemWith(context, items[index], program, material.pass, targets, globals, scene);
 		} else {
-			drawBatchWith(context, items, list.indices[i..end], drawn[index], material.pass,
+			drawBatchWith(context, items, order[i..end], program, material.pass,
 				targets, globals, scene);
 		}
 		i = end;

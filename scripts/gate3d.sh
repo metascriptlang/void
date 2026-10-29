@@ -939,7 +939,8 @@ STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms
 	tests/integration/reparentFrame.ms tests/integration/dirShadow.ms src/test/dirShadowCheck.ms
 	src/test/programKeyCheck.ms tests/integration/movingMaterial.ms
 	tests/integration/mapMaterial.ms tests/integration/billboardBlend.ms
-	tests/integration/lightShadows.ms tests/integration/parallaxFrame.ms"
+	tests/integration/lightShadows.ms tests/integration/parallaxFrame.ms
+	tests/integration/spotCookie.ms"
 
 run_style() {
 	long=$(
@@ -1364,6 +1365,78 @@ run_hdr() {
 	pass "hdr: an Rgba16f scene target in both presets blends in linear light, keeps sums above 1, and tone maps by Heaps' four curves"
 }
 
+run_decal() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "decal: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	exe="$WORK/decal.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/decal.ms --output="$exe" > "$WORK/decal.build.log" 2>&1; then
+		fail "decal: tests/integration/decal.ms does not build — see $WORK/decal.build.log"
+		return
+	fi
+	status=0
+	"$exe" > "$WORK/decal.log" 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "decal: no native readback backend"
+		return
+	fi
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS decal: ' "$WORK/decal.log"; then
+		fail "decal: the check failed (exit $status) — see $WORK/decal.log"
+		return
+	fi
+	pass "decal: Heaps' DecalOverlay tints the scene depth inside its box from outside and inside, faded along the box"
+}
+
+run_sao() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "sao: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	exe="$WORK/sao.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/sao.ms --output="$exe" > "$WORK/sao.build.log" 2>&1; then
+		fail "sao: tests/integration/sao.ms does not build — see $WORK/sao.build.log"
+		return
+	fi
+	status=0
+	"$exe" > "$WORK/sao.log" 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "sao: no native readback backend"
+		return
+	fi
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS sao: ' "$WORK/sao.log"; then
+		fail "sao: the check failed (exit $status) — see $WORK/sao.log"
+		return
+	fi
+	pass "sao: Heaps' ScalableAO over the scene depth and normals, blurred and multiplied, darkens the foot of a box only"
+}
+
+run_graphics_line() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "graphicsLine: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	exe="$WORK/graphicsLine.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/graphicsLine.ms --output="$exe" > "$WORK/graphicsLine.build.log" 2>&1; then
+		fail "graphicsLine: tests/integration/graphicsLine.ms does not build — see $WORK/graphicsLine.build.log"
+		return
+	fi
+	status=0
+	"$exe" > "$WORK/graphicsLine.log" 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "graphicsLine: no native readback backend"
+		return
+	fi
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS graphicsLine: ' "$WORK/graphicsLine.log"; then
+		fail "graphicsLine: the check failed (exit $status) — see $WORK/graphicsLine.log"
+		return
+	fi
+	pass "graphicsLine: Heaps' LineShader keeps Graphics3D's lines their width in pixels near and far"
+}
+
 # ---- gl core -------------------------------------------------------------------------------
 
 # The readback checks, each judged by its own thresholds rather than D3D11's bytes, built for
@@ -1373,7 +1446,8 @@ GL_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_B
 	cardTable:- dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1 mapMaterial:VOID_MAP_PIXEL_ART=1
 	movingMaterial:VOID_MOVING_PIXEL_ART=1 mrtBlend:- renderOrder:VOID_RENDER_ORDER_PIXEL_ART=1
 	sortLayer:VOID_SORT_LAYER_PIXEL_ART=1 targetTexture:VOID_TARGET_TEXTURE_PRESET=pixelArt
-	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1 hdr:VOID_HDR_PIXEL_ART=1 bloom:VOID_BLOOM_PIXEL_ART=1"
+	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1 hdr:VOID_HDR_PIXEL_ART=1 bloom:VOID_BLOOM_PIXEL_ART=1 decal:- sao:-
+	graphicsLine:-"
 
 run_gl_core() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
@@ -2417,14 +2491,15 @@ run_moving_material() {
 			> "$WORK/movingMaterial.control.$preset.log" 2>&1 || status=$?
 		for message in 'did not map the quad' 'did not move with the time' \
 			'not its mirrored back texture' \
-			'the dissolved half drew' 'not its edge colour' 'the lit dissolved half drew'; do
+			'the dissolved half drew' 'not its edge colour' 'the lit dissolved half drew' 			'not one frame over the quad' 'not a quarter of the way' 'the faded quad drew' \
+			'the keyed texel drew'; do
 			if [ "$status" -eq 0 ] || ! grep -q "$message" "$WORK/movingMaterial.control.$preset.log"; then
 				fail "moving-material: the featureless control in preset $preset did not fail on '$message' (exit $status)"
 				return
 			fi
 		done
 	done
-	pass "moving-material: an affine UV transform, UV scroll on the frame time, a mirrored back texture and a dissolve with its edge band in both presets; the featureless control fails on each"
+	pass "moving-material: an affine UV transform, UV scroll on the frame time, a mirrored back texture, a dissolve with its edge band, a flipbook with and without its frame blend a distance fade and a colour key in both presets; the featureless control fails on each"
 }
 
 run_map_material() {
@@ -2525,6 +2600,33 @@ run_parallax() {
 		fi
 	done
 	pass "parallax: the pbr-maps height moves a base texture's edge along the view, and the amount-0 control leaves it in place"
+}
+
+run_spot_cookie() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "spot-cookie: GATE_SKIP_CAPTURE=1 — no cookie was read back"
+		return
+	fi
+	exe="$WORK/spotCookie.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/spotCookie.ms --output="$exe" > "$WORK/spotCookie.build.log" 2>&1; then
+		fail "spot-cookie: tests/integration/spotCookie.ms does not build — see $WORK/spotCookie.build.log"
+		return
+	fi
+	for control in 0 1; do
+		log="$WORK/spotCookie.$control.log"
+		status=0
+		VOID_SPOT_COOKIE_CONTROL=$control "$exe" > "$log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "spot-cookie: no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS spot cookie' "$log"; then
+			fail "spot-cookie: control $control (exit $status) — see $log"
+			return
+		fi
+	done
+	pass "spot-cookie: a spot's 2x2 cookie tints each quadrant of its window as the CPU map places it, lights the pyramid's corner past the cone and nothing outside; the cookieless control is white and leaves the corner dark"
 }
 
 # Cases are tests/integration/dirShadow.ms `Case` ordinals; 1 (Detached) is the control, and
@@ -2810,15 +2912,16 @@ run_both_layers() {
 }
 
 # The tests/aborts protocol of void2d's gate: the first line names what the program must say as it
-# stops, and a program that runs to the end fails.
+# stops, and a program that runs to the end fails. A `// flags:` line adds msc build flags.
 run_aborts() {
 	for program in tests/aborts3d/*.ms; do
 		name=$(basename "$program" .ms)
 		expected=$(sed -n '1s#^// expect: ##p' "$program" | tr -d '\r')
+		flags=$(sed -n 's#^// flags: ##p' "$program" | tr -d '\r')
 		log="$WORK/abort-$name.log"
 		status=0
 		rm -f "out/tmp/abort-$name.exe"
-		if ! msc build "$program" --output="out/tmp/abort-$name.exe" > "$WORK/abort-$name.build.log" 2>&1; then
+		if ! msc build "$program" $flags --output="out/tmp/abort-$name.exe" > "$WORK/abort-$name.build.log" 2>&1; then
 			fail "aborts: $name does not build — see $WORK/abort-$name.build.log"
 			continue
 		fi
@@ -2958,6 +3061,7 @@ stage run_moving_material
 stage run_map_material
 stage run_light_shadows
 stage run_parallax
+stage run_spot_cookie
 stage run_camera_rig
 stage run_reparent
 stage run_gltf
@@ -2968,6 +3072,9 @@ stage run_exposure
 stage run_environment_light
 stage run_hdr
 stage run_bloom
+stage run_decal
+stage run_sao
+stage run_graphics_line
 stage run_particle_fade
 stage run_particle_mesh
 stage run_mesh_lod

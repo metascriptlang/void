@@ -1,5 +1,0 @@
-{
-  "tool": "clang 23.1.0 -O2, wasm32 against scripts/wasmShim, x86-64 -DVOID_D3D11; re-measured 2026-10-27 on the void-js tree by sh scripts/wasmModuleDelta.sh --print, after glyph.c, sfnt.c, grapheme.c, bidiClass.c, colourFace.c and spriteGlyph.c became MetaScript, and batcher.c left the record when it did",
-  "meaning": "code plus data bytes of the C objects that remain under src/void2d, before any link or garbage collection. shaper: shaper.c with kbts, the shaper module. The colour, SDF, text outline, BiDi and sprite modules are MetaScript and have no object; their linked, garbage-collected wasm per module is tests/bench/wasmBudget.txt",
-  "shaper": { "native": 536517, "wasm32": 520544 }
-}

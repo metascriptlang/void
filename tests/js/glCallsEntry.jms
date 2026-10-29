@@ -1,0 +1,67 @@
+import {
+	acquireContext,
+	oglBufferSubData,
+	oglConstantsDisagreement,
+	oglCopyBytes,
+	oglCreateBuffer,
+	oglGetBufferDataUncached,
+	oglTexSubImage,
+	oglUniform4fv,
+	oglUniformLocation,
+} from "../../src/webgpu/gl/glCalls";
+
+function expect(what: string, got: float64, want: float64): void {
+	if (got != want) { throw new Error(`glCallsEntry: ${what}: got ${got}, wanted ${want}`); }
+}
+
+function main(): void {
+	acquireContext("canvas", 1, (): void => {}, (): void => {});
+	const buffer = oglCreateBuffer();
+
+	const floats: Vec<float32> = [0, 0, 1.5, 2.5, 3.5, 0];
+	oglBufferSubData(0x8892, 8, floats[2], 12);
+
+	const bytes: Vec<uint8> = [9, 9, 1, 2, 3, 4, 5, 6, 7, 8];
+	oglBufferSubData(0x8892, 0, bytes[3], 4);
+
+	const wide: Vec<uint64> = [0, 4294967296 as uint64, 7];
+	oglBufferSubData(0x8892, 16, wide[1], 16);
+
+	const shadow: Vec<float32> = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+	const location = oglUniformLocation(0, "u");
+	oglUniform4fv(location, 2, shadow[0], 16);
+
+	const destination: Vec<uint8> = new Array(8);
+	oglCopyBytes(destination[2], 1, bytes[4], 3);
+	expect("copy lands after the destination index", destination[3] as float64, 3);
+	expect("copy lands all bytes", destination[5] as float64, 5);
+	expect("copy leaves the destination head", destination[2] as float64, 0);
+
+	const asFloats: Vec<float32> = new Array(4);
+	oglCopyBytes(asFloats[1], 0, floats[2], 8);
+	expect("float copy element 1", asFloats[1] as float64, 1.5);
+	expect("float copy element 2", asFloats[2] as float64, 2.5);
+
+	const read: Vec<uint8> = new Array(6);
+	const readOk = oglGetBufferDataUncached(buffer, 2, read[2], 4);
+	expect("readback status", readOk as float64, 1);
+	expect("readback written through at the index", read[2] as float64, 11);
+	expect("readback last byte", read[5] as float64, 14);
+	expect("readback leaves the head", read[1] as float64, 0);
+
+	const pixels: Vec<uint8> = [0, 0, 5, 6, 7, 8];
+	oglTexSubImage(0x0DE1, 0, 1, 2, 0, 1, 1, 1, 0x1908, 0x1401, pixels[2], 1);
+	oglTexSubImage(0x806F, 0, 0, 0, 3, 1, 1, 1, 0x1908, 0x1401, pixels[0], 2);
+
+	const constants: int32[] = [
+		1, 2, 4, 8, 0x806F, 0x8C1A, 0x8513, 0x8515, 0x0405, 0x0DE1, 0x8D41, 0x1902, 0x84F9, 0x0CF2, 0x806E,
+		0x2600, 0x8D40, 0x8CA8, 0x8CA9, 0x8CE0, 0x8D00, 0x8CD5,
+	];
+	expect("agreeing constants", (oglConstantsDisagreement(constants[0], 22) == "") ? 1 : 0, 1);
+	constants[9] = 5;
+	console.log(`constants: ${oglConstantsDisagreement(constants[0], 22)}`);
+	console.log(`constants: ${oglConstantsDisagreement(constants[0], 21)}`);
+	console.log("glCallsEntry done");
+}
+
+main();

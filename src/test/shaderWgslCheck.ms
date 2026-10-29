@@ -1,5 +1,5 @@
 // Hand-built IR modules print as WGSL, one module per entry. Each printed module is written to
-// out/wgslProbe/, which scripts/validateWgsl.sh hands to naga.
+// out/wgslProbe/, which scripts/validateWgsl.sh validates.
 
 import { mkdir, writeFile } from "std/fs";
 import {
@@ -160,10 +160,12 @@ test "compute prints storage resources, builtins and its workgroup size" {
 	assert writeProbe("total", cs);
 	assert cs.includes("@binding(0) @group(1) var<storage, read> commands : array<Command>;\n");
 	assert cs.includes("@binding(1) @group(1) var<storage, read_write> results : array<Total>;\n");
-	assert cs.includes("@binding(2) @group(1) var image : texture_storage_2d<rgba8unorm, write>;\n");
+	assert cs.includes(
+		"@binding(2) @group(1) var image : texture_storage_2d<rgba8unorm, write>;\n");
 	assert cs.includes("@binding(3) @group(1) var lut : texture_2d<f32>;\n");
 	assert !cs.includes("lutSmp");
-	assert cs.includes("@compute @workgroup_size(32, 1, 1)\nfn main(@builtin(global_invocation_id)" +
+	assert cs.includes(
+		"@compute @workgroup_size(32, 1, 1)\nfn main(@builtin(global_invocation_id)" +
 		" id_param : vec3u, @builtin(local_invocation_id) local_param : vec3u, " +
 		"@builtin(local_invocation_index) index_param : u32, @builtin(workgroup_id) group_param :" +
 		" vec3u, @builtin(num_workgroups) groups_param : vec3u) {\n");
@@ -253,7 +255,8 @@ test "what WGSL cannot say is refused by name" {
 		"printWgsl: function 'tinyEntry': a literal that is not finite";
 	assert refusalOf(tiny(fragment, column(model())), 0, []) ==
 		"printWgsl: resource 'params' has no binding slot";
-	assert refusalOf(tiny(fragment, column(model())), 1, []) == "printWgsl: entry 1 is out of range";
+	assert refusalOf(tiny(fragment, column(model())), 1,
+		[]) == "printWgsl: entry 1 is out of range";
 
 	let unlevelled = tiny(fragment, intrinsicOf(Intrinsic.TextureLoad, VEC4, [
 		exprOf(ExprKind.Resource, TEXTURE, 1, []),
@@ -335,10 +338,17 @@ test "depth comparison is refused by name where it cannot print" {
 	assert refused(compared(ShaderStage.Fragment, COMPARE, D2, true)) == "printed";
 	assert refused(compared(ShaderStage.Vertex, COMPARE, D2, true)) ==
 		"printWgsl: entry 'tinyEntry': TextureSampleCompare outside a fragment entry";
-	assert refused(compared(ShaderStage.Fragment, LEVEL, D2, false)) ==
-		"printWgsl: TextureSampleCompareLevel through a sampler that is no comparison sampler binding";
-	assert refused(compared(ShaderStage.Fragment, COMPARE, TextureShape.D2, true)) ==
-		"printWgsl: TextureSampleCompare of a D2 texture, which holds no depth";
+}
+
+test "a depth comparison through a plain sampler, or of a colour texture, is refused everywhere" {
+	const COMPARE = Intrinsic.TextureSampleCompare;
+	const LEVEL = Intrinsic.TextureSampleCompareLevel;
+	const plain = irErrors(compared(ShaderStage.Fragment, LEVEL, TextureShape.Depth2d,
+		false)).join("\n");
+	assert plain.includes("TextureSampleCompareLevel through a sampler that is no comparison " +
+		"sampler binding");
+	const colour = irErrors(compared(ShaderStage.Fragment, COMPARE, TextureShape.D2, true)).join("\n");
+	assert colour.includes("TextureSampleCompare of a D2 texture, which holds no depth");
 }
 
 function helperCall(): ShaderExpr { return exprOf(ExprKind.Call, VEC4, 1, []); }

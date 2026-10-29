@@ -18,7 +18,7 @@ import {
 import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, pickMeshLods } from "../void3d/renderer";
 import {
 	Scene3D, NodeId3D, SceneError, Transform3D, addMeshNode, addLodMeshNode, setForcedLod,
-	setMeshOf, refresh,
+	setInheritLod, setMeshOf, refresh,
 } from "../void3d/scene";
 import { PassList, collect, collectCasters, filterFrustum } from "../void3d/passList";
 import { added, litShape } from "./drawHelpers";
@@ -113,8 +113,8 @@ function shadowedContext(): DrawContext {
 	return context;
 }
 
-function lodNode(scene: Scene3D, depth: float32): NodeId3D {
-	const node = addLodMeshNode(scene, scene.rootId(), Transform3D.fromTranslation(
+function lodNode(scene: Scene3D, depth: float32, parent: NodeId3D | null = null): NodeId3D {
+	const node = addLodMeshNode(scene, parent ?? scene.rootId(), Transform3D.fromTranslation(
 		vec3(0.0, 0.0, depth)), scene.context.meshAt(0), scene.context.materialAt(0),
 		twoLevels(), nineElements(2, 9), 0);
 	if (!node.ok) { unreachable; }
@@ -176,10 +176,68 @@ test "a forced level is refused on a plain node and below minus one" {
 	assert plain.ok;
 	const unpicked = setForcedLod(scene, plain.value, 0);
 	assert !unpicked.ok && unpicked.error == SceneError.MeshLod;
+	const uninherited = setInheritLod(scene, plain.value, true);
+	assert !uninherited.ok && uninherited.error == SceneError.MeshLod;
 	const node = lodNode(scene, -3.0);
 	const below = setForcedLod(scene, node, -2);
 	assert !below.ok && below.error == SceneError.MeshLod;
 	assert setForcedLod(scene, node, 1).ok;
+}
+
+function nearChildBase(inherit: boolean, forcedParent: boolean, steady: boolean): int32 {
+	const scene = Scene3D.create(shadowedContext());
+	const parent = lodNode(scene, -3.0);
+	const child = lodNode(scene, 2.0, parent);
+	const grandchild = addMeshNode(scene, child, Transform3D.identity(),
+		scene.context.meshAt(0), scene.context.materialAt(0));
+	if (!grandchild.ok || !setInheritLod(scene, parent, inherit).ok) { unreachable; }
+	if (forcedParent && !setForcedLod(scene, parent, 1).ok) { unreachable; }
+	let items: Vec<DrawItem> = [];
+	const _count = refresh(scene, items);
+	if (steady) { const _again = refresh(scene, items); }
+	if (items.length != 3 || items[2].lod !== null || items[2].lodSource !== null) { return -1; }
+	if (!pickedFrom(pickerOf(scene.context), items).ok) { return -1; }
+	const range = items[1].range;
+	return items[1].lodCulled || range === null ? -1 : range.base;
+}
+
+test "a mesh that inherits its LOD hands its screen ratio to the LOD meshes below it" {
+	assert nearChildBase(false, false, false) == 0;
+	assert nearChildBase(true, false, false) == 6;
+	assert nearChildBase(true, true, false) == 6;
+	assert nearChildBase(true, false, true) == 6;
+}
+
+test "an inheriting mesh keeps its own ratio and the topmost inheriting mesh wins" {
+	const scene = Scene3D.create(shadowedContext());
+	const top = lodNode(scene, -3.0);
+	const middle = lodNode(scene, 2.0, top);
+	const _bottom = lodNode(scene, 0.0, middle);
+	assert setInheritLod(scene, top, true).ok && setInheritLod(scene, middle, true).ok;
+	let items: Vec<DrawItem> = [];
+	const _count = refresh(scene, items);
+	assert items[0].lodSource === null && items[1].lodSource == 0 && items[2].lodSource == 0;
+	assert pickedFrom(pickerOf(scene.context), items).ok;
+	assert items[1].lodRatio == items[0].lodRatio && items[2].lodRatio == items[0].lodRatio;
+	const bottom = items[2].range;
+	assert bottom !== null && bottom.base == 6;
+}
+
+test "a pick whose source is not picked before it in the same list is refused" {
+	const scene = Scene3D.create(shadowedContext());
+	const parent = lodNode(scene, -3.0);
+	const _child = lodNode(scene, 2.0, parent);
+	assert setInheritLod(scene, parent, true).ok;
+	let items: Vec<DrawItem> = [];
+	const _count = refresh(scene, items);
+	assert items[1].lodSource == 0;
+	const renderer = pickerOf(scene.context);
+	let reordered: Vec<DrawItem> = [items[1], items[0]];
+	const early = pickedFrom(renderer, reordered);
+	assert !early.ok && early.error == RendererError.MeshLod;
+	let orphan: Vec<DrawItem> = [items[1]];
+	const missing = pickedFrom(renderer, orphan);
+	assert !missing.ok && missing.error == RendererError.MeshLod;
 }
 
 function excludedBy(list: PassList, items: Vec<DrawItem>, context: DrawContext): int32 {

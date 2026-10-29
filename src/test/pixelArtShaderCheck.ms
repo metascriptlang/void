@@ -69,6 +69,7 @@ function plainLit(): LitBindings {
 		shadowMap: oneLayer(white),
 		spotShadowMap: oneLayer(white),
 		cubeShadowMap: oneLayer(white),
+		cookieTexture: { width: 0, height: 0, texels: [] },
 		baseTexture: white, baseSampler: { nearest: true },
 		backTexture: white, dissolveTexture: white, dissolveSampler: { nearest: true },
 		emissiveTexture: white, normalTexture: white,

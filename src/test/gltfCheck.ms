@@ -2,7 +2,7 @@ import { approx } from "./helpers";
 import { contextOf } from "./drawHelpers";
 import { DrawContext, MeshId, releaseMesh } from "../void3d/draw";
 import { Mat4, composeTransform, writeTo } from "../math/math3d";
-import { loadGltf, GltfError } from "../void3d/gltf";
+import { loadGltf, GltfError, GltfFileSystem, GltfMaterialImport } from "../void3d/gltf";
 import { addGltfNodes, GltfMeshBinding, GltfSceneError } from "../void3d/gltfScene";
 import { Scene3D, SceneError, syncWorld, findByName, worldOf, rootId } from "../void3d/scene";
 import { MeshData, vertexCount, triangleCount, indexCount } from "../void3d/meshData";
@@ -453,6 +453,85 @@ test "a buffer embedded as a base64 data: URI loads as the same bytes supplied w
 		assert !refused.ok && refused.error == GltfError.Unsupported;
 	}
 	const short = loadGltf(embedded("data:application/gltf-buffer;base64,AAAA"), []);
+	assert !short.ok && short.error == GltfError.OutOfRange;
+}
+
+function twoBuffers(first: string, second: string, normals: int32, secondLength: int32): string {
+	return "{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":[{\"mesh\":0}],"
+		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1},"
+		+ "\"indices\":2}]}],"
+		+ "\"accessors\":["
+		+ "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+		+ "\"bufferViews\":["
+		+ "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+		+ `{"buffer":${normals},"byteOffset":36,"byteLength":36},`
+		+ "{\"buffer\":0,\"byteOffset\":108,\"byteLength\":6}],"
+		+ "\"buffers\":[{\"byteLength\":114,\"uri\":\"" + first + "\"},"
+		+ `{"byteLength":${secondLength},"uri":"${second}"}]}`;
+}
+
+test "a view reads the buffer it names, the first supplied or embedded and the rest embedded" {
+	const one = loadGltf(embedded("triangle.bin"), triangleBuffer());
+	assert one.ok;
+	if (!one.ok) { return; }
+	const inline: string = `data:application/octet-stream;base64,${TRIANGLE_BASE64}`;
+	for (const first of ["triangle.bin", inline]) {
+		const supplied: Vec<uint8> = first == inline ? [] : triangleBuffer();
+		const split = loadGltf(twoBuffers(first, inline, 1, 114), supplied);
+		assert split.ok;
+		if (!split.ok) { continue; }
+		const mesh: MeshData = split.value.meshes[0];
+		assert mesh.vertexCount() == 3 && mesh.indexCount() == 3;
+		for (let i = 0; i < mesh.vertices.length; i++) {
+			assert mesh.vertices[i] == one.value.meshes[0].vertices[i];
+		}
+	}
+	const external = loadGltf(twoBuffers("triangle.bin", "second.bin", 1, 114), triangleBuffer());
+	assert !external.ok && external.error == GltfError.BufferByUri;
+	const missing = loadGltf(twoBuffers("triangle.bin", inline, 2, 114), triangleBuffer());
+	assert !missing.ok && missing.error == GltfError.BadReference;
+	const short = loadGltf(twoBuffers("triangle.bin", inline, 1, 60), triangleBuffer());
+	assert !short.ok && short.error == GltfError.OutOfRange;
+}
+
+function filesHolding(path: string, bytes: Vec<uint8>): GltfFileSystem {
+	return {
+		exists: (name: string): boolean => name == path,
+		getBytes: (name: string): Vec<uint8> => bytes,
+	};
+}
+
+test "a buffer named by URI reads from the caller's file system, refused by name without the file" {
+	const one = loadGltf(embedded("triangle.bin"), triangleBuffer());
+	assert one.ok;
+	if (!one.ok) { return; }
+	const legacy: GltfMaterialImport = GltfMaterialImport.Legacy;
+	const files: GltfFileSystem = filesHolding("parts/second.bin", triangleBuffer());
+	const split = loadGltf(twoBuffers("triangle.bin", "parts/second.bin", 1, 114),
+		triangleBuffer(), legacy, files);
+	assert split.ok;
+	if (split.ok) {
+		const mesh: MeshData = split.value.meshes[0];
+		assert mesh.vertexCount() == 3 && mesh.indexCount() == 3;
+		for (let i = 0; i < mesh.vertices.length; i++) {
+			assert mesh.vertices[i] == one.value.meshes[0].vertices[i];
+		}
+	}
+	const first = loadGltf(embedded("triangle.bin"), [], legacy,
+		filesHolding("triangle.bin", triangleBuffer()));
+	assert first.ok;
+	if (first.ok) { assert first.value.meshes[0].vertexCount() == 3; }
+	const absent = loadGltf(twoBuffers("triangle.bin", "parts/other.bin", 1, 114),
+		triangleBuffer(), legacy, files);
+	assert !absent.ok && absent.error == GltfError.FileNotFound;
+	const encoded = loadGltf(twoBuffers("triangle.bin", "parts/a%20b.bin", 1, 114),
+		triangleBuffer(), legacy, filesHolding("parts/a%20b.bin", triangleBuffer()));
+	assert !encoded.ok && encoded.error == GltfError.Unsupported;
+	const short = loadGltf(twoBuffers("triangle.bin", "parts/second.bin", 1, 200),
+		triangleBuffer(), legacy, files);
 	assert !short.ok && short.error == GltfError.OutOfRange;
 }
 

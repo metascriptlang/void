@@ -4,11 +4,14 @@
 // last onto the HDR target, blended by mod.rs compute_blend_factor. Heaps has no 3D bloom (only
 // h2d.filter.Bloom): docs/VOID3D.md "Bloom, as built".
 
-import { Program, ProgramKey } from "./gpu3d";
+import { Program } from "./gpu3d";
 import { PixelFormat, LoadAction, endPass } from "../gpu/door";
 import { Blend, FilterMode, RenderState, Wrap } from "../gpu/state";
-import { Material, Phase, UniformBlock } from "./material";
+import { TypedBlock } from "./material";
 import { Vec4 } from "../math/math3d";
+import { Vec4f } from "../shader/std";
+import { BloomParams } from "./post3d";
+import { uniformSize } from "../shader/uniform";
 import {
 	RenderTarget,
 	ColorAttachment,
@@ -20,15 +23,12 @@ import {
 import {
 	DrawContext,
 	MaterialId,
-	MaterialError,
 	HandleError,
-	addMaterial,
 	releaseMaterial,
-	reserveUniforms,
-	writeUniforms,
+	writeBlock,
 } from "./draw";
-import { UniformError } from "./uniformPool";
-import { screenState } from "./screenFx";
+import { UniformError, stopOnFailedWrite } from "./uniformPool";
+import { screenState, reserveScreenBlock, addScreenMaterial } from "./screenFx";
 import { Renderer, RendererError, drawScreen } from "./renderer";
 
 // settings.rs BloomCompositeMode.
@@ -66,11 +66,7 @@ export function natural(this typeof BloomSettings): BloomSettings {
 // post3d.ms bloomParams: one texel of the source, then of the target; the upsample's blend
 // factor; the soft threshold's precomputations.
 export const BLOOM_UNIFORM_SLOT: int32 = 0;
-export const BLOOM_UNIFORM_LENGTH: int32 = 12;
-export const BLOOM_SOURCE_TEXEL: int32 = 0;
-export const BLOOM_TARGET_TEXEL: int32 = 2;
-export const BLOOM_BLEND: int32 = 4;
-export const BLOOM_THRESHOLD: int32 = 8;
+export const BLOOM_UNIFORM_LENGTH: int32 = uniformSize<BloomParams>() / 4;
 
 // The pool floats a BloomPass reserves: one block for each of its three programs.
 export const BLOOM_PASS_UNIFORM_LENGTH: int32 = 3 * BLOOM_UNIFORM_LENGTH;
@@ -117,16 +113,38 @@ export function bloomBlendFactor(settings: BloomSettings, mip: float32, maxMip: 
 	return (settings.intensity + lowFrequencyBoost) * (1.0 - highPass);
 }
 
-// settings.rs:243-251, the soft threshold's precomputations into `out` at `at`.
-export function writeThreshold(settings: BloomSettings, out: Span<float32>, at: int32): void {
+// settings.rs:243-251, the soft threshold's precomputations.
+export function thresholdOf(settings: BloomSettings): Vec4f {
 	let softness: float32 = settings.thresholdSoftness;
 	if (softness < 0.0) { softness = 0.0; }
 	if (softness > 1.0) { softness = 1.0; }
 	const knee: float32 = settings.threshold * softness;
-	out[at] = settings.threshold;
-	out[at + 1] = settings.threshold - knee;
-	out[at + 2] = 2.0 * knee;
-	out[at + 3] = 0.25 / (knee + 0.00001);
+	return {
+		x: settings.threshold,
+		y: settings.threshold - knee,
+		z: 2.0 * knee,
+		w: 0.25 / (knee + 0.00001),
+	};
+}
+
+export function paramsOf(
+	sourceWidth: int32,
+	sourceHeight: int32,
+	targetWidth: int32,
+	targetHeight: int32,
+	blend: float32,
+	threshold: Vec4f,
+): BloomParams {
+	return {
+		bloomTexel: {
+			x: 1.0 / (sourceWidth as float32),
+			y: 1.0 / (sourceHeight as float32),
+			z: 1.0 / (targetWidth as float32),
+			w: 1.0 / (targetHeight as float32),
+		},
+		bloomBlend: { x: blend, y: 0.0, z: 0.0, w: 0.0 },
+		bloomThreshold: threshold,
+	};
 }
 
 // upsampling_pipeline.rs:74-121 with the factor in alpha (its TODO at :86): colour One /
@@ -146,45 +164,33 @@ export interface BloomPass {
 	mips: Vec<RenderTarget>;
 	colors: Vec<ColorAttachment>;
 	sampler: Sampler;
-	firstBlock: UniformBlock;
-	downBlock: UniformBlock;
-	upBlock: UniformBlock;
+	firstBlock: TypedBlock<BloomParams>;
+	downBlock: TypedBlock<BloomParams>;
+	upBlock: TypedBlock<BloomParams>;
 	first: MaterialId;
 	down: MaterialId;
 	up: MaterialId;
-	values: Vec<float32>;
 }
 
-function reserveBlock(context: DrawContext): UniformBlock {
-	const reserved: Result<UniformBlock, UniformError> =
-		reserveUniforms(context, BLOOM_UNIFORM_SLOT, BLOOM_UNIFORM_LENGTH);
-	if (!reserved.ok) {
-		console.log("void3d: BloomPass.reserve found no room for a block it was checked to fit");
-		unreachable;
-	}
-	return reserved.value;
+function reserveParams(context: DrawContext): TypedBlock<BloomParams> {
+	return reserveScreenBlock<BloomParams>(context, BLOOM_UNIFORM_SLOT, "BloomPass.reserve");
 }
 
 function addScreen(
 	context: DrawContext,
 	program: Program,
 	state: RenderState,
-	block: UniformBlock,
+	block: TypedBlock<BloomParams>,
 ): MaterialId {
-	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
-		...Material.keyed(ProgramKey.of(program), state, Phase.Opaque),
-		uniforms: block,
-	});
-	if (!added.ok) { unreachable; }
-	return added.value;
+	return addScreenMaterial(context, program, state, block.block, "BloomPass.reserve");
 }
 
 // Reserves the three blocks and adds the three materials to `context`, whose pool the caller
 // checked fits BLOOM_PASS_UNIFORM_LENGTH. Off until setSettings; no GPU object is made here.
 export function reserve(this typeof BloomPass, context: DrawContext): BloomPass {
-	const firstBlock: UniformBlock = reserveBlock(context);
-	const downBlock: UniformBlock = reserveBlock(context);
-	const upBlock: UniformBlock = reserveBlock(context);
+	const firstBlock: TypedBlock<BloomParams> = reserveParams(context);
+	const downBlock: TypedBlock<BloomParams> = reserveParams(context);
+	const upBlock: TypedBlock<BloomParams> = reserveParams(context);
 	const upState: RenderState = upsampleState(BloomCompositeMode.EnergyConserving);
 	return {
 		settings: null,
@@ -197,7 +203,6 @@ export function reserve(this typeof BloomPass, context: DrawContext): BloomPass 
 		first: addScreen(context, Program.BloomDownsampleFirst, screenState(), firstBlock),
 		down: addScreen(context, Program.BloomDownsample, screenState(), downBlock),
 		up: addScreen(context, Program.BloomUpsample, upState, upBlock),
-		values: new Array(BLOOM_UNIFORM_LENGTH),
 	};
 }
 
@@ -261,30 +266,24 @@ export function resize(this pass: BloomPass, width: int32, height: int32): void 
 	}
 }
 
-function texelOf(target: RenderTarget, out: Span<float32>, at: int32): void {
-	out[at] = 1.0 / (target.width as float32);
-	out[at + 1] = 1.0 / (target.height as float32);
-}
-
 // One fullscreen pass of `material` from `source` into `target`.
 function drawMip(
 	pass: BloomPass,
 	core: Renderer,
 	material: MaterialId,
-	block: UniformBlock,
+	block: TypedBlock<BloomParams>,
 	source: RenderTarget,
 	target: RenderTarget,
 	load: LoadAction,
 	blend: float32,
+	threshold: Vec4f,
 ): void {
 	const context: DrawContext = core.context;
 	context.materials[material.index].texture0 = source.asTexture();
 	context.materials[material.index].sampler0 = pass.sampler.asHandle();
-	texelOf(source, pass.values, BLOOM_SOURCE_TEXEL);
-	texelOf(target, pass.values, BLOOM_TARGET_TEXEL);
-	pass.values[BLOOM_BLEND] = blend;
-	const written: Result<int32, UniformError> = writeUniforms(context, block, pass.values);
-	if (!written.ok) { unreachable; }
+	const written: Result<int32, UniformError> = writeBlock(context, block,
+		paramsOf(source.width, source.height, target.width, target.height, blend, threshold));
+	if (!written.ok) { stopOnFailedWrite("BloomPass.draw", written.error); }
 	pass.colors[0] = target.asColor(load, NO_CLEAR);
 	beginPass(pass.colors, NO_DEPTH);
 	const drawn: Result<int32, RendererError> = drawScreen(core, material, BLOOM_LAYOUT);
@@ -299,19 +298,20 @@ export function draw(this pass: BloomPass, core: Renderer, hdr: RenderTarget): v
 	if (settings === null) { return; }
 	const count: int32 = pass.mips.length as int32;
 	const maxMip: float32 = (count - 1) as float32;
-	writeThreshold(settings, pass.values, BLOOM_THRESHOLD);
-	drawMip(pass, core, pass.first, pass.firstBlock, hdr, pass.mips[0], LoadAction.DontCare, 0.0);
+	const threshold: Vec4f = thresholdOf(settings);
+	drawMip(pass, core, pass.first, pass.firstBlock, hdr, pass.mips[0], LoadAction.DontCare, 0.0,
+		threshold);
 	for (let i = 1; i < count; i++) {
 		drawMip(pass, core, pass.down, pass.downBlock, pass.mips[i - 1], pass.mips[i],
-			LoadAction.DontCare, 0.0);
+			LoadAction.DontCare, 0.0, threshold);
 	}
 	for (let i = count - 1; i >= 1; i--) {
 		const factor: float32 = bloomBlendFactor(settings, i as float32, maxMip);
 		drawMip(pass, core, pass.up, pass.upBlock, pass.mips[i], pass.mips[i - 1], LoadAction.Load,
-			factor);
+			factor, threshold);
 	}
 	const last: float32 = bloomBlendFactor(settings, 0.0, maxMip);
-	drawMip(pass, core, pass.up, pass.upBlock, pass.mips[0], hdr, LoadAction.Load, last);
+	drawMip(pass, core, pass.up, pass.upBlock, pass.mips[0], hdr, LoadAction.Load, last, threshold);
 }
 
 export function close(this pass: BloomPass, context: DrawContext, call: string): void {

@@ -9,10 +9,12 @@ import {
 	Texture2dU32,
 	TextureCube,
 	Vec2f,
+	Vec2i,
 	Vec3f,
 	Vec4f,
 	Vec4i,
 	abs,
+	acos,
 	atan2,
 	binding,
 	builtin,
@@ -22,8 +24,13 @@ import {
 	determinant,
 	discard,
 	dot,
+	dpdx,
+	dpdy,
 	exp2,
 	feature,
+	floor,
+	fract,
+	inverse,
 	length,
 	location,
 	mat2x2f,
@@ -41,6 +48,7 @@ import {
 	textureSample,
 	textureSampleLevel,
 	transpose,
+	trunc,
 	upperLeft3x3,
 	vec2f,
 	vec2i,
@@ -186,6 +194,7 @@ export struct LitTexturedFragmentInput {
 
 export struct UnlitTexturedVaryings {
 	@feature(NORMAL_MRT) worldNormal: Vec3f;
+	@feature(UV_TRANSFORM) worldPosition: Vec3f;
 	surfaceUv: Vec2f;
 	baseColor: Vec4f;
 	@builtin(position) clip: Vec4f;
@@ -193,6 +202,7 @@ export struct UnlitTexturedVaryings {
 
 export struct UnlitTexturedFragmentInput {
 	@feature(NORMAL_MRT) worldNormal: Vec3f;
+	@feature(UV_TRANSFORM) worldPosition: Vec3f;
 	surfaceUv: Vec2f;
 	baseColor: Vec4f;
 	@builtin(frontFacing) frontFacing: boolean;
@@ -210,8 +220,8 @@ export struct MaterialParams {
 	materialColor: Vec4f;
 }
 
-// gpu3d.ms MOVING_*: materialParams, then what a key with a UV transform, a back texture or a
-// dissolve reads; the emissive blocks add the emissive vec4 (gpu3d.ms emissiveBase).
+// gpu3d.ms MOVING_*: materialParams, then what a key with a UV transform, a back texture, a
+// dissolve or a flipbook reads; the emissive blocks add the emissive vec4 (gpu3d.ms emissiveBase).
 export struct MovingMaterialParams {
 	material: Vec4f;
 	materialColor: Vec4f;
@@ -221,16 +231,21 @@ export struct MovingMaterialParams {
 	backUvOffset: Vec4f;
 	dissolve: Vec4f;
 	dissolveEdge: Vec4f;
+	flipbookGrid: Vec4f;
+	flipbookPlay: Vec4f;
+	distanceFade: Vec4f;
+	colorKey: Vec4f;
 }
 
 // gpu3d.ms PBR_*: materialParams, then metalness, roughness and occlusion in x, y and z, then the
-// UV transform every pbr key reads.
+// UV transform every pbr key reads, then a parallax key's step count in x.
 export struct PbrMaterialParams {
 	material: Vec4f;
 	materialColor: Vec4f;
 	pbr: Vec4f;
 	uvMatrix: Vec4f;
 	uvMotion: Vec4f;
+	parallax: Vec4f;
 }
 
 // gpu3d.ms PBR_* then EMISSIVE_*: a pbr key that emits holds the emissive vec4 after the pbr one.
@@ -240,6 +255,7 @@ export struct PbrEmissiveMaterialParams {
 	pbr: Vec4f;
 	uvMatrix: Vec4f;
 	uvMotion: Vec4f;
+	parallax: Vec4f;
 	emissive: Vec4f;
 }
 
@@ -258,6 +274,10 @@ export struct MovingEmissiveMaterialParams {
 	backUvOffset: Vec4f;
 	dissolve: Vec4f;
 	dissolveEdge: Vec4f;
+	flipbookGrid: Vec4f;
+	flipbookPlay: Vec4f;
+	distanceFade: Vec4f;
+	colorKey: Vec4f;
 	emissive: Vec4f;
 }
 
@@ -275,6 +295,10 @@ export struct MovingUnlitMaterialParams {
 	backUvOffset: Vec4f;
 	dissolve: Vec4f;
 	dissolveEdge: Vec4f;
+	flipbookGrid: Vec4f;
+	flipbookPlay: Vec4f;
+	distanceFade: Vec4f;
+	colorKey: Vec4f;
 }
 
 export struct LightParams {
@@ -285,6 +309,8 @@ export struct LightParams {
 	clusterFactors: Vec4f;
 	clusterView: Vec4f;
 	clusterScreen: Vec4f;
+	cookie: Vec4f;
+	cookieMatrix: Mat4x4f;
 }
 
 export struct FrameParams {
@@ -331,6 +357,8 @@ export struct LitBindings {
 	@binding(4) @sampleType(unfilterable_float) shadowMap: Texture2dArray;
 	@binding(6) @sampleType(unfilterable_float) spotShadowMap: Texture2dArray;
 	@binding(12) @sampleType(unfilterable_float) cubeShadowMap: Texture2dArray;
+	@binding(13) cookieTexture: Texture2d;
+	@binding(6) cookieSampler: Sampler;
 	@binding(0) baseTexture: Texture2d;
 	@binding(0) baseSampler: Sampler;
 	@binding(1) backTexture: Texture2d;
@@ -784,21 +812,99 @@ export function unlitTexturedVs(
 ): UnlitTexturedVaryings {
 	if (key.skinned) {
 		const matrix = skinWorld(b, input.skinJoints, input.skinWeights);
+		const world = matrix * vec4f(input.position, 1.0);
 		return {
-			clip: b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0),
+			clip: b.vertexParams.viewProj * world,
 			worldNormal: skinNormal(matrix, input.normal),
+			worldPosition: world.xyz,
 			surfaceUv: input.uv,
 			baseColor: input.color,
 		};
 	} else {
 		const matrix = instanceWorld(input.instanceRow0, input.instanceRow1, input.instanceRow2);
+		const world = matrix * vec4f(input.position, 1.0);
 		return {
-			clip: b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0),
+			clip: b.vertexParams.viewProj * world,
 			worldNormal: skinNormal(matrix, input.normal),
+			worldPosition: world.xyz,
 			surfaceUv: input.uv,
 			baseColor: input.color * input.instanceColor,
 		};
 	}
+}
+
+// h3d.shader.LineShader, the screen-space line of h3d.scene.Graphics: the unit direction a world
+// direction runs on screen. LineShader projects the view-space direction as if it were a point;
+// void3d's projections add nothing to x or y from depth or translation, so that is the direction
+// along the camera's right and up times projectionX and projectionY (their w).
+export function lineScreenDirection(direction: Vec3f, right: Vec4f, up: Vec4f): Vec2f {
+	const projected = vec2f(dot(direction, right.xyz) * right.w, dot(direction, up.xyz) * up.w);
+	return projected * (1.0 / length(projected));
+}
+
+// LineShader.linearize with reverseDepth off: the view depth of a projected depth in [0, 1].
+export function lineViewDepth(depth: float32, zNear: float32, zFar: float32): float32 {
+	return (2.0 * zNear * zFar) / (zFar + zNear - (2.0 * depth - 1.0) * (zFar - zNear));
+}
+
+// LineShader.vertex: what a corner on `side` (its uv.y, 0 or 1) adds to its clip xy, across the
+// screen direction by half `width` pixels, scaled by the view depth the clip divide takes off.
+export function lineClipOffset(
+	screenDirection: Vec2f, side: float32, viewDepth: float32, pixelSize: Vec2f, width: float32,
+): Vec2f {
+	return vec2f(screenDirection.y, -screenDirection.x) * pixelSize *
+		((side - 0.5) * viewDepth * width);
+}
+
+// gpu3d.ms LINE_*: width, lengthScale and pixelSize, then the camera's near and far, then the
+// material colour. The vertex stage reads the whole block.
+export struct LineParams {
+	lineShape: Vec4f;
+	lineDepth: Vec4f;
+	lineColor: Vec4f;
+}
+
+export struct LineVertexBindings {
+	@binding(0) vertexParams: VertexParams;
+	@binding(3) lineParams: LineParams;
+}
+
+export struct LineBindings {
+	@binding(6) frameParams: FrameParams;
+}
+
+export struct LineVaryings {
+	baseColor: Vec4f;
+	@builtin(position) clip: Vec4f;
+}
+
+export struct LineFragmentInput {
+	baseColor: Vec4f;
+}
+
+// LineShader over the roots graphics3d.ms writes: the delta in the normal, uv.x 1 at the end and
+// uv.y the side. VertexColorAlpha's colour is shaded as unlitShade shades an untextured one.
+export function lineVs(input: TexturedAttributes, b: LineVertexBindings): LineVaryings {
+	const matrix = instanceWorld(input.instanceRow0, input.instanceRow1, input.instanceRow2);
+	const shape = b.lineParams.lineShape;
+	const depthRange = b.lineParams.lineDepth;
+	const direction = upperLeft3x3(matrix) * input.normal;
+	const root = matrix * vec4f(input.position, 1.0);
+	const world = root.xyz + direction * (input.uv.x * shape.y);
+	const clip = b.vertexParams.viewProj * vec4f(world, 1.0);
+	const across = lineScreenDirection(direction, b.vertexParams.cameraRight,
+		b.vertexParams.cameraUp);
+	const depth = lineViewDepth(clip.z / clip.w, depthRange.x, depthRange.y);
+	const offset = lineClipOffset(across, input.uv.y, depth, shape.zw, shape.x);
+	const color = input.color * input.instanceColor;
+	return {
+		baseColor: unlitShade(vec4f(1.0, 1.0, 1.0, 1.0), color, b.lineParams.lineColor),
+		clip: vec4f(clip.xy + offset, clip.z, clip.w),
+	};
+}
+
+export function lineFs(input: LineFragmentInput, b: LineBindings): Vec4f {
+	return vec4f(toneMapped(input.baseColor.rgb, b.frameParams.frame), input.baseColor.a);
 }
 
 // h3d.shader.ColorSpaces' exact pair (ColorSpaces.hx:56-76); bevy_color's gamma_function carries
@@ -902,6 +1008,18 @@ export function spotSample(position: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b:
 	const toLight = delta / distance;
 	const cone = clamp((dot(toLight, -a.xyz) - b.x) / (b.y - b.x), 0.0, 1.0);
 	return vec4f(toLight, lightWindow(distance, tint.a) * cone);
+}
+
+// The cookie spot's sample: pbr/Light.hx multiplies the cookie in where a spot without one takes
+// its angular falloff (153-161), so only the window is left here, and the light reaches the whole
+// square pyramid SpotLight draws (spotLightPrim, SpotLight.hx:52-86), past the cone's angle.
+export function cookieSpotSample(position: Vec3f, at: Vec4f, tint: Vec4f): Vec4f {
+	const delta = at.xyz - position;
+	const distance = length(delta);
+	if (distance < 0.0001) {
+		return vec4f(0.0);
+	}
+	return vec4f(delta / distance, lightWindow(distance, tint.a));
 }
 
 // pbr/Light.hx rectangleLightIntensity (67-84), one axis: the delta and the inverse light
@@ -1023,6 +1141,33 @@ export function shapedSpecularDir(
 	return diffuse;
 }
 
+// pbr/Light.hx SpotLight with useCookie (153-159): the position through lightProj
+// (cookieMatrix, which the renderer writes with screenToUv folded in), nothing outside the map,
+// else the texel's colour times its alpha. The level is 0 because the clustered loop around it is
+// not uniform control flow, where WGSL samples without derivatives only.
+export function cookieAt(position: Vec3f, b: LitBindings): Vec3f {
+	const q = b.lightParams.cookieMatrix * vec4f(position, 1.0);
+	if (q.w <= 0.0) {
+		return vec3f(0.0);
+	}
+	const uv = q.xy / q.w;
+	if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+		return vec3f(0.0);
+	}
+	const texel = textureSampleLevel(b.cookieTexture, b.cookieSampler, uv, 0.0);
+	return texel.rgb * texel.a;
+}
+
+// The cookie's colour for record `i` and 1 in w when the light block names it as the cookie spot
+// (gpu3d.ms LIGHT_COOKIE), else white and 0.
+export function recordCookieAt(position: Vec3f, b: LitBindings, i: int32): Vec4f {
+	const named = (i + 1) as float32;
+	if (b.lightParams.cookie.x == named) {
+		return vec4f(cookieAt(position, b), 1.0);
+	}
+	return vec4f(1.0, 1.0, 1.0, 0.0);
+}
+
 // PENDING3D: light-shape-range-window
 // PENDING3D: light-shape-degenerate-black
 // pointLightAt for a slot of any shape: a point light is pointLightAt untouched.
@@ -1067,6 +1212,48 @@ export function straightTexel(texel: Vec4f): Vec4f {
 // `uvSpeed * global.time`.
 export function movedUv(uv: Vec2f, matrix: Vec4f, motion: Vec4f, time: float32): Vec2f {
 	return mat2x2f(matrix.xy, matrix.zw) * uv + motion.xy + motion.zw * time;
+}
+
+// h3d.shader.AnimatedTexture over `uv`: the frame `grid.w` frames a second after `play.x`, from
+// frame `play.y`, looped over `grid.z` frames when `play.z` is 1, else held on the last, read
+// from a `grid.x` by `grid.y` grid; xy is that frame's UV and zw the next frame's.
+export function flipbookUvs(uv: Vec2f, grid: Vec4f, play: Vec4f, time: float32): Vec4f {
+	const frame = floor((time - play.x) * grid.w + trunc(play.y));
+	const looped = frame - grid.z * floor(frame / grid.z);
+	const nextLooped = (looped + 1.0) - grid.z * floor((looped + 1.0) / grid.z);
+	const at = play.z == 1.0 ? looped : min(frame, grid.z - 1.0);
+	const next = play.z == 1.0 ? nextLooped : min(frame + 1.0, grid.z - 1.0);
+	const cell = uv / grid.xy;
+	const atCell = vec2f(at - grid.x * floor(at / grid.x), trunc(at / grid.x)) / grid.xy;
+	const nextCell = vec2f(next - grid.x * floor(next / grid.x), trunc(next / grid.x)) / grid.xy;
+	return vec4f(cell + atCell, cell + nextCell);
+}
+
+// How far AnimatedTexture's blendBetweenFrames mixes the next frame in: the elapsed fraction of
+// the current frame when `play.w` is 1, else 0.
+export function flipbookBlend(grid: Vec4f, play: Vec4f, time: float32): float32 {
+	return play.w == 1.0 ? fract((time - play.x) * grid.w + trunc(play.y)) : 0.0;
+}
+
+// h3d.shader.DistanceFade: Heaps' nearFadeEnabled and farFadeEnabled are each side's end lying
+// past its start (gpu3d.ms MOVING_FADE_*).
+export function distanceFade(distance: float32, range: Vec4f): float32 {
+	let near: float32 = 1.0;
+	let far: float32 = 1.0;
+	if (range.y > range.x) {
+		near = clamp((distance - range.x) / (range.y - range.x), 0.0, 1.0);
+	}
+	if (range.w > range.z) {
+		far = 1.0 - clamp((distance - range.z) / (range.w - range.z), 0.0, 1.0);
+	}
+	return min(near, far);
+}
+
+// h3d.shader.ColorKey on the texture's texel; its consumer, h2d.Drawable.colorKey, keys only
+// opaque colours, so a key whose alpha is 0 keys nothing (gpu3d.ms MOVING_COLOR_KEY).
+export function colorKeyed(texel: Vec4f, colorKey: Vec4f): boolean {
+	const difference = texel - colorKey;
+	return colorKey.w > 0.0 && dot(difference, difference) < 0.00001;
 }
 
 // The back texture is read on back faces through its own transform.
@@ -1186,6 +1373,14 @@ export function pbrOf(b: LitBindings, key: LitKey): Vec4f {
 	}
 }
 
+export function parallaxStepsOf(b: LitBindings, key: LitKey): float32 {
+	if (key.emissive) {
+		return b.pbrEmissiveMaterialParams.parallax.x;
+	} else {
+		return b.pbrMaterialParams.parallax.x;
+	}
+}
+
 export function uvMatrixOf(b: LitBindings, key: LitKey): Vec4f {
 	if (key.pbr) {
 		if (key.emissive) {
@@ -1239,6 +1434,38 @@ export function dissolveOf(b: LitBindings, key: LitKey): Vec4f {
 		return b.movingEmissiveMaterialParams.dissolve;
 	} else {
 		return b.movingMaterialParams.dissolve;
+	}
+}
+
+export function flipbookGridOf(b: LitBindings, key: LitKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.flipbookGrid;
+	} else {
+		return b.movingMaterialParams.flipbookGrid;
+	}
+}
+
+export function flipbookPlayOf(b: LitBindings, key: LitKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.flipbookPlay;
+	} else {
+		return b.movingMaterialParams.flipbookPlay;
+	}
+}
+
+export function distanceFadeOf(b: LitBindings, key: LitKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.distanceFade;
+	} else {
+		return b.movingMaterialParams.distanceFade;
+	}
+}
+
+export function colorKeyOf(b: LitBindings, key: LitKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.colorKey;
+	} else {
+		return b.movingMaterialParams.colorKey;
 	}
 }
 
@@ -1560,7 +1787,14 @@ export function pbrEnvironmentLight(
 		(turn.x * occlusion);
 }
 
-// Heaps' Parallax (h3d/shader/Parallax.hx) at PbrMaterial's steps, 6 to 24, reading the height
+// Heaps' Parallax layer count (Parallax.hx:40): `steps` at a grazing view down to MIN_LAYERS 6
+// head-on, where PbrMaterial turns a step count of 0 into MAX_LAYERS 24 (PbrMaterial.hx:361).
+export function parallaxLayers(viewZ: float32, steps: float32): float32 {
+	const most: float32 = steps > 0.0 ? steps : 24.0;
+	return mix(most, 6.0, clamp(abs(viewZ), 0.0, 1.0));
+}
+
+// Heaps' Parallax (h3d/shader/Parallax.hx) at the material's step count, reading the height
 // from the pbr-maps texture's alpha as PbrMaterial hands it its props texture. Its bitangent is
 // n x t where NormalMap's is n x t * -w, so it is mappedNormal's negated: the tangent's w still
 // turns it on a mirrored island, where Heaps leaves that to invertBasis.
@@ -1571,12 +1805,13 @@ export function parallaxUv(
 	normal: Vec3f,
 	tangent: Vec4f,
 	amount: float32,
+	steps: float32,
 ): Vec2f {
 	const t = normalize(tangent.xyz);
 	const sign: float32 = tangent.w < 0.0 ? -1.0 : 1.0;
 	const bitangent = normalize(cross(normal, t)) * -sign;
 	const viewNs = normalize(vec3f(dot(view, t), dot(view, bitangent), dot(view, normal)));
-	const layers = mix(24.0, 6.0, clamp(abs(viewNs.z), 0.0, 1.0));
+	const layers = parallaxLayers(viewNs.z, steps);
 	const layerDepth = 1.0 / layers;
 	const delta = viewNs.xy * (-amount / (viewNs.z * layers));
 	let at = uv;
@@ -1647,7 +1882,14 @@ export function pbrShade(
 		const tint = litTexelOf(b, i, 1);
 		const a = litTexelOf(b, i, 2);
 		const bb = litTexelOf(b, i, 3);
-		if (a.w < 0.5) {
+		const cookie = recordCookieAt(position, b, i);
+		if (cookie.w > 0.5) {
+			const sample = cookieSpotSample(position, at, tint);
+			const radiance = srgbToLinear(tint.rgb) * cookie.rgb * (sample.w * at.w);
+			light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample.xyz,
+				sample.xyz, radiance, recordShadowAt(position, surfaceNormal, b, key, i), 0.0,
+				values.z);
+		} else if (a.w < 0.5) {
 			const toLight = at.xyz - position;
 			const falloff = clamp(1.0 - length(toLight) / tint.a, 0.0, 1.0);
 			const radiance = srgbToLinear(tint.rgb) * (falloff * falloff * at.w);
@@ -1687,9 +1929,19 @@ export function litShade(
 	const cluster = litClusterOf(frag, position, b);
 	for (let k = 0; k < cluster.y + cluster.z; k++) {
 		const i = litLightOf(b, cluster, k);
-		light = light + lightAt(position, n, litTexelOf(b, i, 0), litTexelOf(b, i, 1),
-			litTexelOf(b, i, 2), litTexelOf(b, i, 3), litTexelOf(b, i, 4), litTexelOf(b, i, 5)) *
-			recordShadowAt(position, surfaceNormal, b, key, i);
+		const at = litTexelOf(b, i, 0);
+		const tint = litTexelOf(b, i, 1);
+		const cookie = recordCookieAt(position, b, i);
+		let lit = vec3f(0.0);
+		if (cookie.w > 0.5) {
+			const sample = cookieSpotSample(position, at, tint);
+			lit = srgbToLinear(tint.rgb) * cookie.rgb *
+				(sample.w * max(dot(n, sample.xyz), 0.0) * at.w);
+		} else {
+			lit = lightAt(position, n, at, tint, litTexelOf(b, i, 2), litTexelOf(b, i, 3),
+				litTexelOf(b, i, 4), litTexelOf(b, i, 5));
+		}
+		light = light + lit * recordShadowAt(position, surfaceNormal, b, key, i);
 	}
 	const surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf(b, key).y));
 	return vec4f(linearToSrgb(surface * light), surfaceColor.a);
@@ -1744,13 +1996,35 @@ export function litTexturedFs(
 	if (key.normalMap && key.parallax) {
 		const view = normalize(b.frameParams.cameraPosition.xyz - input.worldPosition);
 		uv = parallaxUv(b, uv, view, normalize(input.worldNormal), input.worldTangent,
-			materialOf(b, key).x);
+			materialOf(b, key).x, parallaxStepsOf(b, key));
 	}
-	let texel = textureSample(b.baseTexture, b.baseSampler, uv);
+	let baseUv = uv;
+	let nextUv = uv;
+	let blend: float32 = 0.0;
+	if (key.uvTransform) {
+		const grid = flipbookGridOf(b, key);
+		const play = flipbookPlayOf(b, key);
+		if (grid.z > 0.0) {
+			const time = b.frameParams.frame.x;
+			const frames = flipbookUvs(uv, grid, play, time);
+			baseUv = frames.xy;
+			nextUv = frames.zw;
+			blend = flipbookBlend(grid, play, time);
+		}
+	}
+	let texel = textureSample(b.baseTexture, b.baseSampler, baseUv);
+	if (blend > 0.0) {
+		texel = mix(texel, textureSample(b.baseTexture, b.baseSampler, nextUv), blend);
+	}
 	if (key.backTexture) {
 		const backAt = backUv(input.surfaceUv, backUvMatrixOf(b, key), backUvOffsetOf(b, key));
 		const backTexel = textureSample(b.backTexture, b.baseSampler, backAt);
 		texel = input.frontFacing ? texel : backTexel;
+	}
+	if (key.uvTransform) {
+		if (colorKeyed(texel, colorKeyOf(b, key))) {
+			discard();
+		}
 	}
 	let noise: float32 = 0.0;
 	if (key.dissolve) {
@@ -1800,6 +2074,11 @@ export function litTexturedFs(
 		if (shaded.a < params.w) {
 			discard();
 		}
+	}
+	if (key.uvTransform) {
+		const eye = b.frameParams.cameraPosition.xyz;
+		const fade = distanceFade(length(input.worldPosition - eye), distanceFadeOf(b, key));
+		shaded = vec4f(shaded.rgb, shaded.a * fade);
 	}
 	let color = vec4f(toneMapped(shaded.rgb, b.frameParams.frame), shaded.a);
 	if (key.premultiplied) {
@@ -1868,13 +2147,35 @@ export function unlitTexturedFs(
 		const motion = b.movingUnlitMaterialParams.uvMotion;
 		uv = movedUv(input.surfaceUv, matrix, motion, b.frameParams.frame.x);
 	}
-	let texel = textureSample(b.baseTexture, b.baseSampler, uv);
+	let baseUv = uv;
+	let nextUv = uv;
+	let blend: float32 = 0.0;
+	if (key.uvTransform) {
+		const grid = b.movingUnlitMaterialParams.flipbookGrid;
+		const play = b.movingUnlitMaterialParams.flipbookPlay;
+		if (grid.z > 0.0) {
+			const time = b.frameParams.frame.x;
+			const frames = flipbookUvs(uv, grid, play, time);
+			baseUv = frames.xy;
+			nextUv = frames.zw;
+			blend = flipbookBlend(grid, play, time);
+		}
+	}
+	let texel = textureSample(b.baseTexture, b.baseSampler, baseUv);
+	if (blend > 0.0) {
+		texel = mix(texel, textureSample(b.baseTexture, b.baseSampler, nextUv), blend);
+	}
 	if (key.backTexture) {
 		const backMatrix = b.movingUnlitMaterialParams.backUvMatrix;
 		const backOffset = b.movingUnlitMaterialParams.backUvOffset;
 		const backAt = backUv(input.surfaceUv, backMatrix, backOffset);
 		const backTexel = textureSample(b.backTexture, b.baseSampler, backAt);
 		texel = input.frontFacing ? texel : backTexel;
+	}
+	if (key.uvTransform) {
+		if (colorKeyed(texel, b.movingUnlitMaterialParams.colorKey)) {
+			discard();
+		}
 	}
 	let noise: float32 = 0.0;
 	if (key.dissolve) {
@@ -1895,6 +2196,12 @@ export function unlitTexturedFs(
 		if (shaded.a < params.w) {
 			discard();
 		}
+	}
+	if (key.uvTransform) {
+		const eye = b.frameParams.cameraPosition.xyz;
+		const range = b.movingUnlitMaterialParams.distanceFade;
+		const fade = distanceFade(length(input.worldPosition - eye), range);
+		shaded = vec4f(shaded.rgb, shaded.a * fade);
 	}
 	let color = vec4f(toneMapped(shaded.rgb, b.frameParams.frame), shaded.a);
 	if (key.premultiplied) {
@@ -1924,4 +2231,173 @@ export function shadowUnlitTexturedFs(
 			discard();
 		}
 	}
+}
+
+// Heaps' DecalOverlay (h3d/shader/pbr/VolumeDecal.hx:86-106): the scene depth under a fragment
+// back through the camera into the decal's own box, which spans -0.5..0.5 on each axis.
+// `screenToLocal` is Heaps' `matrix`, the box's inverse world after the inverse viewProj.
+export function decalLocalAt(screen: Vec2f, depth: float32, screenToLocal: Mat4x4f): Vec3f {
+	const local = screenToLocal * vec4f(screen.x, screen.y, depth, 1.0);
+	return local.xyz / local.w;
+}
+
+export function outsideDecal(local: Vec3f): boolean {
+	return abs(local.x) > 0.5 || abs(local.y) > 0.5 || abs(local.z) > 0.5;
+}
+
+export function decalFade(z: float32, start: float32, end: float32, power: float32): float32 {
+	return 1.0 - clamp(pow(max(0.0, abs(z * 2.0) - start) / (end - start), power), 0.0, 1.0);
+}
+
+// BaseDecal.getWorldNormal (VolumeDecal.hx:52-58): the surface under the pixel from the world
+// points rebuilt at it and one pixel along each screen axis, turned to face `eye`, as Heaps'
+// screen axes turn it.
+export function decalSurfaceNormal(at: Vec3f, alongX: Vec3f, alongY: Vec3f, eye: Vec3f): Vec3f {
+	const n = normalize(cross(alongY - at, alongX - at));
+	return dot(n, eye - at) < 0.0 ? n * -1.0 : n;
+}
+
+// BaseDecal.normalFade (VolumeDecal.hx:39-44): 1 where the surface faces along the box's z, 0.5
+// across it, 0 against it, mapped from normalFadeStart..normalFadeEnd onto 0..1.
+export function decalNormalFade(boxZ: Vec3f, normal: Vec3f, start: float32, end: float32): float32 {
+	const angle = 1.0 - abs(acos(clamp(dot(boxZ, normal), -1.0, 1.0))) / 3.14159265358979;
+	return clamp((angle - start) / (end - start), 0.0, 1.0);
+}
+
+// DecalOverlay.fragment (VolumeDecal.hx:108-123): the tint times the texel, squared under
+// GAMMA_CORRECT, lifted by the emissive; AUTO_ALPHA takes the alpha from the brightest channel.
+export function decalOverlayColor(
+	tint: Vec4f,
+	texel: Vec4f,
+	emissive: float32,
+	gammaCorrect: boolean,
+	autoAlpha: boolean,
+	fade: float32,
+): Vec4f {
+	let rgb = tint.rgb * texel.rgb;
+	if (gammaCorrect) {
+		rgb = rgb * rgb;
+	}
+	rgb = rgb + rgb * emissive;
+	const alpha: float32 = autoAlpha ? clamp(max(max(rgb.r, rgb.g), rgb.b), 0.0, 1.0) : texel.a;
+	return vec4f(rgb, alpha * fade);
+}
+
+// A decal draws its box (a Lit-layout mesh) and reads the scene through it: the box's matrix
+// back from the screen is made per vertex, the same at every vertex of the box.
+export struct DecalVaryings {
+	screenToLocal0: Vec4f;
+	screenToLocal1: Vec4f;
+	screenToLocal2: Vec4f;
+	screenToLocal3: Vec4f;
+	boxWorld0: Vec4f;
+	boxWorld1: Vec4f;
+	boxWorld2: Vec4f;
+	boxWorld3: Vec4f;
+	baseColor: Vec4f;
+	screen: Vec4f;
+	@builtin(position) clip: Vec4f;
+}
+
+export struct DecalFragmentInput {
+	screenToLocal0: Vec4f;
+	screenToLocal1: Vec4f;
+	screenToLocal2: Vec4f;
+	screenToLocal3: Vec4f;
+	boxWorld0: Vec4f;
+	boxWorld1: Vec4f;
+	boxWorld2: Vec4f;
+	boxWorld3: Vec4f;
+	baseColor: Vec4f;
+	screen: Vec4f;
+	@builtin(position) fragCoord: Vec4f;
+}
+
+// gpu3d.ms DECAL_*: the tint, then fadeStart, fadeEnd, fadePower and emissive, then CENTERED,
+// GAMMA_CORRECT, AUTO_ALPHA and the tone map as 1 or 0, then normalFadeStart, normalFadeEnd and
+// USE_NORMAL_FADE.
+export struct DecalParams {
+	decalColor: Vec4f;
+	decalFade: Vec4f;
+	decalMode: Vec4f;
+	decalNormalFade: Vec4f;
+}
+
+export struct DecalBindings {
+	@binding(3) decalParams: DecalParams;
+	@binding(6) frameParams: FrameParams;
+	@binding(0) decalTexture: Texture2d;
+	@binding(0) decalSampler: Sampler;
+	@binding(14) @sampleType(unfilterable_float) sceneDepth: Texture2d;
+}
+
+export function decalVs(input: LitAttributes, b: VertexBindings): DecalVaryings {
+	const world = instanceWorld(input.instanceRow0, input.instanceRow1, input.instanceRow2);
+	const clip = b.vertexParams.viewProj * world * vec4f(input.position, 1.0);
+	const toLocal = inverse(world) * inverse(b.vertexParams.viewProj);
+	return {
+		screenToLocal0: toLocal.columns[0],
+		screenToLocal1: toLocal.columns[1],
+		screenToLocal2: toLocal.columns[2],
+		screenToLocal3: toLocal.columns[3],
+		boxWorld0: world.columns[0],
+		boxWorld1: world.columns[1],
+		boxWorld2: world.columns[2],
+		boxWorld3: world.columns[3],
+		baseColor: input.color * input.instanceColor,
+		screen: clip,
+		clip: clip,
+	};
+}
+
+// The depth the door's backend stores, in NDC: as is where clip depth spans 0..1, else from -1..1
+// (FrameParams.cameraPosition.w, gpu3d.ms FRAME_DEPTH_ZERO_TO_ONE).
+export function ndcDepthOf(stored: float32, zeroToOne: float32): float32 {
+	return zeroToOne == 1.0 ? stored : stored * 2.0 - 1.0;
+}
+
+function decalLocalAtPixel(b: DecalBindings, pixel: Vec2i, ndc: Vec2f, toLocal: Mat4x4f): Vec3f {
+	const stored = textureLoad(b.sceneDepth, pixel, 0).x;
+	return decalLocalAt(ndc, ndcDepthOf(stored, b.frameParams.cameraPosition.w), toLocal);
+}
+
+// The fragment's NDC moves by dpdx and dpdy per pixel on every backend, whichever way its rows
+// run, so the neighbours' NDC needs no pixel size.
+export function decalFs(input: DecalFragmentInput, b: DecalBindings): Vec4f {
+	const ndc = input.screen.xy / input.screen.w;
+	const ndcDx = dpdx(ndc);
+	const ndcDy = dpdy(ndc);
+	const pixel = vec2i(input.fragCoord.xy);
+	const toLocal = mat4x4f(
+		input.screenToLocal0, input.screenToLocal1, input.screenToLocal2, input.screenToLocal3,
+	);
+	const local = decalLocalAtPixel(b, pixel, ndc, toLocal);
+	if (outsideDecal(local)) {
+		discard();
+	}
+	const fade = b.decalParams.decalFade;
+	const mode = b.decalParams.decalMode;
+	let faded = decalFade(local.z, fade.x, fade.y, fade.z);
+	const normalFade = b.decalParams.decalNormalFade;
+	if (normalFade.z == 1.0) {
+		const world = mat4x4f(input.boxWorld0, input.boxWorld1, input.boxWorld2, input.boxWorld3);
+		const last = textureDimensions(b.sceneDepth, 0) - vec2i(1, 1);
+		const right = clamp(pixel + vec2i(1, 0), vec2i(0, 0), last);
+		const below = clamp(pixel + vec2i(0, 1), vec2i(0, 0), last);
+		const alongX = decalLocalAtPixel(b, right, ndc + ndcDx, toLocal);
+		const alongY = decalLocalAtPixel(b, below, ndc + ndcDy, toLocal);
+		const normal = decalSurfaceNormal(
+			(world * vec4f(local, 1.0)).xyz, (world * vec4f(alongX, 1.0)).xyz,
+			(world * vec4f(alongY, 1.0)).xyz, b.frameParams.cameraPosition.xyz,
+		);
+		faded = faded * decalNormalFade(
+			normalize(world.columns[2].xyz), normal, normalFade.x, normalFade.y,
+		);
+	}
+	const uv = mode.x == 1.0 ? local.xy + vec2f(0.5, 0.5) : local.xy;
+	const texel = textureSample(b.decalTexture, b.decalSampler, uv);
+	const tint = b.decalParams.decalColor * input.baseColor;
+	const shaded = decalOverlayColor(tint, texel, fade.w, mode.y == 1.0, mode.z == 1.0, faded);
+	const rgb = mode.w == 1.0 ? toneMapped(shaded.rgb, b.frameParams.frame) : shaded.rgb;
+	return vec4f(rgb, shaded.a);
 }

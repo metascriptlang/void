@@ -17,7 +17,9 @@ import {
 	sameShaderType,
 	stmtOf,
 } from "./ir";
+import { byteAt, byteLength } from "std/core/string/bytes";
 import { irFromText } from "./irText";
+import { GPUShaderBinding } from "../webgpu/types.ms";
 import { ShaderTarget, bindingSlots } from "./layout";
 import { GlslTarget, printGlsl } from "./printGlsl";
 import { printHlsl } from "./printHlsl";
@@ -27,13 +29,13 @@ import { printWgsl } from "./printWgsl";
 import { Reflection, reflectCompute, reflectProgram } from "./reflect";
 import { specialize } from "./specialize";
 
-class Offsets {
-	structs: int32 = 0;
-	constants: int32 = 0;
-	resources: int32[] = [];
-	ios: int32[] = [];
-	functions: int32 = 0;
-	workgroups: int32 = 0;
+struct Offsets {
+	structs: int32;
+	constants: int32;
+	resources: int32[];
+	ios: int32[];
+	functions: int32;
+	workgroups: int32;
 }
 
 function shiftType(o: Offsets, t: ShaderType): void {
@@ -84,16 +86,20 @@ function sameResourceType(m: ShaderModule, a: ShaderType, b: ShaderType): boolea
 
 function append(into: ShaderModule, from: ShaderModule): void {
 	const stage = from.entries[0].stage;
-	let o = new Offsets();
-	o.structs = into.structs.length as int32;
-	o.constants = into.constants.length as int32;
 	let next = into.ios.length as int32;
+	let ios: int32[] = [];
 	for (const io of from.ios) {
-		o.ios.push(io.stage == stage ? next : -1);
+		ios.push(io.stage == stage ? next : -1);
 		if (io.stage == stage) { next++; }
 	}
-	o.functions = into.functions.length as int32;
-	o.workgroups = into.workgroups.length as int32;
+	let o: Offsets = {
+		structs: into.structs.length as int32,
+		constants: into.constants.length as int32,
+		resources: [],
+		ios,
+		functions: into.functions.length as int32,
+		workgroups: into.workgroups.length as int32,
+	};
 	for (const s of from.structs) {
 		for (const f of s.members) { shiftType(o, f.type); }
 		into.structs.push(s);
@@ -228,29 +234,25 @@ export function targetName(target: ShaderTarget): string {
 	};
 }
 
-class TargetArm {
-	language: string = "";
-	target: ShaderTarget = ShaderTarget.Wgsl;
-	anyOfAll: string[][] = [];
-}
-
-function arm(language: string, target: ShaderTarget, anyOfAll: string[][]): TargetArm {
-	let out = new TargetArm();
-	out.language = language;
-	out.target = target;
-	out.anyOfAll = anyOfAll;
-	return out;
+struct TargetArm {
+	language: string;
+	target: ShaderTarget;
+	anyOfAll: string[][];
 }
 
 export function targetArms(): TargetArm[] {
 	return [
-		arm("spirv", ShaderTarget.Spirv, [["voidVulkan"]]),
-		arm("wgsl", ShaderTarget.Wgsl, [["webgpu"]]),
-		arm("glsl300es", ShaderTarget.Glsl300es, [["webgl2"], ["android"], ["linux", "voidGles3"]]),
-		arm("metal_ios", ShaderTarget.Msl, [["ios"]]),
-		arm("metal_macos", ShaderTarget.Msl, [["macos"]]),
-		arm("glsl430", ShaderTarget.Glsl430, [["voidGlCore"], ["linux"]]),
-		arm("hlsl5", ShaderTarget.Hlsl5, [["windows"]]),
+		{ language: "spirv", target: ShaderTarget.Spirv, anyOfAll: [["voidVulkan"]] },
+		{ language: "wgsl", target: ShaderTarget.Wgsl, anyOfAll: [["webgpu"]] },
+		{
+			language: "glsl300es",
+			target: ShaderTarget.Glsl300es,
+			anyOfAll: [["webgl2"], ["android"], ["linux", "voidGles3"]],
+		},
+		{ language: "metal_ios", target: ShaderTarget.Msl, anyOfAll: [["ios"]] },
+		{ language: "metal_macos", target: ShaderTarget.Msl, anyOfAll: [["macos"]] },
+		{ language: "glsl430", target: ShaderTarget.Glsl430, anyOfAll: [["voidGlCore"], ["linux"]] },
+		{ language: "hlsl5", target: ShaderTarget.Hlsl5, anyOfAll: [["windows"]] },
 	];
 }
 
@@ -289,14 +291,7 @@ export function stageWords(m: ShaderModule, entry: int32): Result<uint32[], stri
 
 const BASE64_DIGITS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-export function wordsBase64(words: uint32[]): string {
-	let bytes: int32[] = [];
-	for (const w of words) {
-		bytes.push((w & 255) as int32);
-		bytes.push(((w >> 8) & 255) as int32);
-		bytes.push(((w >> 16) & 255) as int32);
-		bytes.push(((w >> 24) & 255) as int32);
-	}
+function base64Of(bytes: int32[]): string {
 	let out: string[] = [];
 	for (let i = 0; i < bytes.length; i += 3) {
 		const left = bytes.length - i;
@@ -311,61 +306,83 @@ export function wordsBase64(words: uint32[]): string {
 	return out.join("");
 }
 
-export class ProgramSource {
-	reflection: Reflection = new Reflection();
-	vertexCode: string = "";
-	fragmentCode: string = "";
-	computeCode: string = "";
-	vertexWords: uint32[] = [];
-	fragmentWords: uint32[] = [];
-	computeWords: uint32[] = [];
-	entryPoint: string = "main";
-	refusal: string = "";
+export function wordsBase64(words: uint32[]): string {
+	let bytes: int32[] = [];
+	for (const w of words) {
+		bytes.push((w & 255) as int32);
+		bytes.push(((w >> 8) & 255) as int32);
+		bytes.push(((w >> 16) & 255) as int32);
+		bytes.push(((w >> 24) & 255) as int32);
+	}
+	return base64Of(bytes);
 }
 
-function spirvSource(m: ShaderModule, out: ProgramSource): Result<ProgramSource, string> {
-	if (m.entries.length == 1) {
-		out.reflection = try reflectCompute(m, 0, ShaderTarget.Spirv);
-		const words = stageWords(m, 0);
-		if (words.ok) { out.computeWords = words.value; } else { out.refusal = words.error; }
-		return Result.ok(out);
+// A binary file as std/meta readFile returns it: one char per byte through byteAt, never s[i].
+export function bytesBase64(blob: string): string {
+	let bytes: int32[] = [];
+	const n = blob.byteLength();
+	for (let i = 0; i < n; i++) { bytes.push(blob.byteAt(i) as int32); }
+	return base64Of(bytes);
+}
+
+export struct ProgramSource {
+	reflection: Reflection;
+	vertexCode: string;
+	fragmentCode: string;
+	computeCode: string;
+	vertexWords: uint32[];
+	fragmentWords: uint32[];
+	computeWords: uint32[];
+	entryPoint: string;
+	refusal: string;
+}
+
+struct ProgramStage {
+	code: string;
+	words: uint32[];
+}
+
+function programStage(m: ShaderModule, entry: int32, target: ShaderTarget):
+	Result<ProgramStage, string> {
+	if (target == ShaderTarget.Spirv) {
+		const words = stageWords(m, entry);
+		if (!words.ok) { return Result.err(words.error); }
+		return Result.ok({ code: "", words: words.value });
 	}
-	out.reflection = try reflectProgram(m, 0, 1, ShaderTarget.Spirv);
-	const vertex = stageWords(m, 0);
-	const fragment = stageWords(m, 1);
-	if (!vertex.ok) {
-		out.refusal = vertex.error;
-	} else if (!fragment.ok) {
-		out.refusal = fragment.error;
-	} else {
-		out.vertexWords = vertex.value;
-		out.fragmentWords = fragment.value;
-	}
-	return Result.ok(out);
+	const code = stageSource(m, entry, target);
+	if (!code.ok) { return Result.err(code.error); }
+	return Result.ok({ code: code.value, words: [] });
+}
+
+function stageAt(stages: ProgramStage[], i: int32): ProgramStage {
+	return i < stages.length ? stages[i] : { code: "", words: [] };
 }
 
 export function programSource(m: ShaderModule, target: ShaderTarget):
 	Result<ProgramSource, string> {
-	let out = new ProgramSource();
-	out.entryPoint = entryPointOf(target);
-	if (target == ShaderTarget.Spirv) { return spirvSource(m, out); }
-	if (m.entries.length == 1) {
-		out.reflection = try reflectCompute(m, 0, target);
-		const code = stageSource(m, 0, target);
-		if (code.ok) { out.computeCode = code.value; } else { out.refusal = code.error; }
-		return Result.ok(out);
+	const compute = m.entries.length == 1;
+	const reflection = compute ? try reflectCompute(m, 0, target) :
+		try reflectProgram(m, 0, 1, target);
+	let stages: ProgramStage[] = [];
+	let refusal = "";
+	for (let i = 0; i < (compute ? 1 : 2) && refusal == ""; i++) {
+		const stage = programStage(m, i, target);
+		if (stage.ok) { stages.push(stage.value); } else { refusal = stage.error; }
 	}
-	out.reflection = try reflectProgram(m, 0, 1, target);
-	const vertex = stageSource(m, 0, target);
-	const fragment = stageSource(m, 1, target);
-	if (!vertex.ok) {
-		out.refusal = vertex.error;
-	} else if (!fragment.ok) {
-		out.refusal = fragment.error;
-	} else {
-		out.vertexCode = vertex.value;
-		out.fragmentCode = fragment.value;
-	}
+	if (refusal != "") { stages = []; }
+	const first = stageAt(stages, 0);
+	const second = stageAt(stages, 1);
+	const out: ProgramSource = {
+		reflection: reflection,
+		vertexCode: compute ? "" : first.code,
+		fragmentCode: second.code,
+		computeCode: compute ? first.code : "",
+		vertexWords: compute ? [] : first.words,
+		fragmentWords: second.words,
+		computeWords: compute ? first.words : [],
+		entryPoint: entryPointOf(target),
+		refusal: refusal,
+	};
 	return Result.ok(out);
 }
 
@@ -384,31 +401,54 @@ export function quotedSource(text: string): string {
 	return out + "\"";
 }
 
-function optional(name: string, value: string): string {
-	return value != "" ? ", " + name + ": \"" + value + "\"" : "";
+export struct BindingField {
+	key: string;
+	form: string;
+	text: string;
+	number: int32;
+}
+
+function numberField(key: string, value: int32): BindingField {
+	return { key: key, form: "number", text: String(value), number: value };
+}
+
+function textField(key: string, value: string): BindingField {
+	return { key: key, form: "text", text: value, number: 0 };
+}
+
+export function bindingFields(b: GPUShaderBinding): BindingField[] {
+	const kind: string = b.kind;
+	const sampleType: string = b.sampleType;
+	const samplerType: string = b.samplerType;
+	const bufferType: string = b.bufferType;
+	const viewDimension: string = b.viewDimension;
+	const storageAccess: string = b.storageAccess;
+	const storageFormat: string = b.storageFormat;
+	const name = b.nativeName;
+	let out: BindingField[] = [
+		numberField("group", b.group),
+		numberField("binding", b.binding),
+		textField("kind", kind),
+		numberField("visibility", b.visibility),
+		numberField("size", b.size),
+	];
+	if (sampleType != "") { out.push(textField("sampleType", sampleType)); }
+	if (samplerType != "") { out.push(textField("samplerType", samplerType)); }
+	out.push(numberField("nativeSlot", b.nativeSlot));
+	if (name !== null) { out.push(textField("nativeName", name)); }
+	out.push(numberField("textureBinding", b.textureBinding));
+	if (bufferType != "") { out.push(textField("bufferType", bufferType)); }
+	if (viewDimension != "") { out.push(textField("viewDimension", viewDimension)); }
+	if (b.multisampled) { out.push({ key: "multisampled", form: "flag", text: "true", number: 0 }); }
+	if (storageAccess != "") { out.push(textField("storageAccess", storageAccess)); }
+	if (storageFormat != "") { out.push(textField("storageFormat", storageFormat)); }
+	return out;
 }
 
 function bindingSource(r: Reflection): string[] {
-	return r.bindings.map((b) => {
-		const kind: string = b.kind;
-		const sampleType: string = b.sampleType;
-		const samplerType: string = b.samplerType;
-		const bufferType: string = b.bufferType;
-		const viewDimension: string = b.viewDimension;
-		const storageAccess: string = b.storageAccess;
-		const storageFormat: string = b.storageFormat;
-		const name = b.nativeName;
-		return "{ group: " + String(b.group) + ", binding: " + String(b.binding) + ", kind: \"" +
-			kind + "\", visibility: " + String(b.visibility) + ", size: " + String(b.size) +
-			optional("sampleType", sampleType) + optional("samplerType", samplerType) +
-			", nativeSlot: " + String(b.nativeSlot) +
-			(name !== null ? ", nativeName: " + quotedSource(name) : "") +
-			", textureBinding: " + String(b.textureBinding) +
-			optional("bufferType", bufferType) + optional("viewDimension", viewDimension) +
-			(b.multisampled ? ", multisampled: true" : "") +
-			optional("storageAccess", storageAccess) + optional("storageFormat", storageFormat) +
-			" }";
-	});
+	return r.bindings.map((b) =>
+		"{ " + bindingFields(b).map((f) =>
+			f.key + ": " + (f.form == "text" ? quotedSource(f.text) : f.text)).join(", ") + " }");
 }
 
 function attributeSource(r: Reflection): string[] {

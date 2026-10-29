@@ -23,6 +23,10 @@ import {
 	litFs,
 	litTexturedFs,
 	litTexturedVs,
+	colorKeyed,
+	distanceFade,
+	flipbookBlend,
+	flipbookUvs,
 	litVs,
 	movedUv,
 	saturated,
@@ -81,6 +85,7 @@ function plainBindings(): LitBindings {
 		shadowMap: oneLayer(white()),
 		spotShadowMap: oneLayer(white()),
 		cubeShadowMap: oneLayer(white()),
+		cookieTexture: { width: 0, height: 0, texels: [] },
 		baseTexture: white(),
 		baseSampler: { nearest: true },
 		backTexture: white(),
@@ -233,6 +238,45 @@ test "a moved uv is the matrix times the uv, then the offset and the motion over
 	const scroll = vec4f(0.0, 0.0, 0.25, 0.0);
 	const identityUv = vec4f(1.0, 0.0, 0.0, 1.0);
 	assert nearUv(movedUv(vec2f(0.0, 0.0), identityUv, scroll, 2.0), vec2f(0.5, 0.0));
+}
+
+test "a flipbook reads the frame its speed reached, row by row, and mixes in the next one" {
+	const grid = vec4f(2.0, 2.0, 4.0, 2.0);
+	const uv = vec2f(0.5, 0.5);
+	const looping = vec4f(0.0, 0.0, 1.0, 1.0);
+	const second = flipbookUvs(uv, grid, looping, 0.75);
+	assert nearUv(second.xy, vec2f(0.75, 0.25)) && nearUv(second.zw, vec2f(0.25, 0.75));
+	assert within(flipbookBlend(grid, looping, 0.75), 0.5);
+	const wrapped = flipbookUvs(uv, grid, looping, 2.25);
+	assert nearUv(wrapped.xy, vec2f(0.25, 0.25)) && nearUv(wrapped.zw, vec2f(0.75, 0.25));
+}
+
+test "a flipbook that does not loop holds its last frame, and starts at its start frame and time" {
+	const grid = vec4f(2.0, 2.0, 4.0, 2.0);
+	const uv = vec2f(0.5, 0.5);
+	const held = flipbookUvs(uv, grid, vec4f(0.0, 0.0, 0.0, 1.0), 2.25);
+	assert nearUv(held.xy, vec2f(0.75, 0.75)) && nearUv(held.zw, vec2f(0.75, 0.75));
+	const late = vec4f(1.0, 2.7, 1.0, 0.0);
+	assert nearUv(flipbookUvs(uv, grid, late, 1.25).xy, vec2f(0.25, 0.75));
+	assert flipbookBlend(grid, late, 1.25) == 0.0;
+}
+
+test "a distance fade rises over its near pair, falls over its far pair, and an empty pair is off" {
+	const range = vec4f(2.0, 4.0, 10.0, 20.0);
+	assert within(distanceFade(1.0, range), 0.0) && within(distanceFade(3.0, range), 0.5);
+	assert within(distanceFade(5.0, range), 1.0) && within(distanceFade(15.0, range), 0.5);
+	assert within(distanceFade(25.0, range), 0.0);
+	assert distanceFade(0.0, vec4f(0.0)) == 1.0 && distanceFade(100.0, vec4f(0.0)) == 1.0;
+	assert distanceFade(100.0, vec4f(2.0, 4.0, 0.0, 0.0)) == 1.0;
+}
+
+test "a colour key discards only its own texel, and a key with no alpha keys nothing" {
+	const magenta = vec4f(1.0, 0.0, 1.0, 1.0);
+	assert colorKeyed(vec4f(1.0, 0.0, 1.0, 1.0), magenta);
+	assert colorKeyed(vec4f(1.0, 0.001, 1.0, 1.0), magenta);
+	assert !colorKeyed(vec4f(1.0, 0.01, 1.0, 1.0), magenta);
+	assert !colorKeyed(vec4f(1.0, 0.0, 1.0, 0.5), magenta);
+	assert !colorKeyed(vec4f(0.0), vec4f(0.0));
 }
 
 test "a straight texel divides the colour by its alpha, and a clear texel stays clear" {

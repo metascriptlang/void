@@ -9,7 +9,11 @@ import {
 	BILLBOARD_UNIFORM_LENGTH,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
+	MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
+	MOVING_FLIPBOOK_FRAMES,
+	MOVING_FLIPBOOK_SPEED,
 	ProgramKey,
+	movingBase,
 } from "../void3d/gpu3d";
 import { RenderState, BlendMode, Compare, Face } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
@@ -61,7 +65,10 @@ import {
 	setPalette,
 	renderFrame,
 } from "../void3d/pixelArtRenderer";
-import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, markChanged } from "../void3d/renderer";
+import {
+	Renderer, RendererError, RENDERER_UNIFORM_LENGTH, markChanged, readsFrameTime,
+} from "../void3d/renderer";
+import { contextGeneration } from "../gpu/door";
 
 function look(): PixelArtLook {
 	return {
@@ -466,7 +473,7 @@ test "a renderer needs a frame until one is drawn, then only when something chan
 		// What prepareFrame records once it has taken `drawn`.
 		renderer.view = drawn;
 		renderer.core.changed = false;
-		renderer.core.generation = 1;
+		renderer.core.generation = contextGeneration();
 		assert !renderer.needsFrame(drawn);
 		assert renderer.needsFrame(drawn.withRemainder(0.5, 0.0, true));
 		markChanged(renderer.core);
@@ -522,7 +529,7 @@ test "the core reserves the camera, light and frame blocks and one screen mesh, 
 		assert core.sceneGlobals.length == 3;
 		assert core.needsFrame();
 		core.changed = false;
-		core.generation = 1;
+		core.generation = contextGeneration();
 		assert !core.needsFrame();
 		markChanged(core);
 		assert core.needsFrame();
@@ -547,6 +554,33 @@ function presetOver(context: DrawContext, program: Program, levels: float32): Pi
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, material);
 	if (!added.ok) { unreachable; }
 	return created.value;
+}
+
+// Whether the core wakes for a moving unlit material whose flipbook has `frames` at `speed`.
+function flipbookReadsTime(frames: float32, speed: float32): boolean {
+	let context: DrawContext =
+		DrawContext.withUniformCapacity(MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
+	const key: ProgramKey = ProgramKey.of(Program.UnlitTextured).withUvTransform();
+	const block: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
+	if (!block.ok) { unreachable; }
+	let values: Vec<float32> = new Array(MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
+	values[movingBase(key) + MOVING_FLIPBOOK_FRAMES] = frames;
+	values[movingBase(key) + MOVING_FLIPBOOK_SPEED] = speed;
+	if (!writeUniforms(context, block.value, values).ok) { unreachable; }
+	const material: Material = {
+		...Material.plain(Program.UnlitTextured, RenderState.defaults(), Phase.Opaque),
+		uniforms: block.value,
+	};
+	const added: Result<MaterialId, MaterialError> = addMaterial(context, material);
+	if (!added.ok) { unreachable; }
+	return readsFrameTime(context, added.value.index, key);
+}
+
+test "a flipbook wakes the core only while it has frames and a speed to play them at" {
+	assert flipbookReadsTime(4.0, 2.0);
+	assert !flipbookReadsTime(4.0, 0.0);
+	assert !flipbookReadsTime(0.0, 2.0);
 }
 
 test "a material kind derives Heaps' blend, depth write, list and alpha kill" {
@@ -620,6 +654,36 @@ test "the pixel-art preset refuses a blended material in the opaque phase" {
 	const refused: Result<int32, PixelArtError> =
 		renderFrame(renderer, items, camera, lights, view(1080, 2400, 360, 1, 0));
 	assert !refused.ok && refused.error == PixelArtError.BlendedOpaque;
+	assert renderer.core.generation == 0 && renderer.view.width == 0;
+}
+
+test "a decal pass neither writes nor tests depth, and the pixel-art preset draws no decal" {
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	const unwritten: RenderState = RenderState.defaults().withDepth(false, Compare.Always);
+	const states: Vec<RenderState> = [
+		RenderState.defaults(), RenderState.defaults().withDepth(true, Compare.Always),
+		RenderState.defaults().withDepth(false, Compare.LessEqual),
+	];
+	for (const state of states) {
+		for (const phase of [Phase.Decal, Phase.DecalAfterToneMap]) {
+			const refused: Result<MaterialId, MaterialError> =
+				addMaterial(context, Material.plain(Program.Particle, state, phase));
+			assert !refused.ok && refused.error == MaterialError.DecalDepth;
+		}
+	}
+	const created: Result<PixelArtRenderer, PixelArtError> =
+		PixelArtRenderer.create(context, PixelArtSettings.full(), look());
+	if (!created.ok) { unreachable; }
+	let renderer: PixelArtRenderer = created.value;
+	const made: Result<MaterialId, MaterialError> =
+		addMaterial(context, Material.plain(Program.Particle, unwritten, Phase.Decal));
+	if (!made.ok) { unreachable; }
+	let items: Vec<DrawItem> = [itemOnItsLayout(context, made.value)];
+	const refused: Result<int32, PixelArtError> =
+		renderFrame(renderer, items, camera, lights, view(1080, 2400, 360, 1, 0));
+	assert !refused.ok && refused.error == PixelArtError.Decal;
 	assert renderer.core.generation == 0 && renderer.view.width == 0;
 }
 

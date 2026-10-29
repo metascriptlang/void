@@ -3,31 +3,30 @@
 // through the core's curve and encodes it into the preset's Rgba8 colour target.
 
 import { Vec4, srgbToLinear, linearToSrgb } from "../math/math3d";
-import { Program, ProgramKey } from "./gpu3d";
+import { Program } from "./gpu3d";
 import { PixelFormat, endPass } from "../gpu/door";
-import { Material, Phase, UniformBlock } from "./material";
+import { TypedBlock } from "./material";
+import { ToneMapParams } from "./post3d";
+import { uniformSize } from "../shader/uniform";
 import { RenderTarget, ColorAttachment, TargetLayout, NO_DEPTH, beginPass } from "../gpu/target";
 import {
 	DrawContext,
 	MaterialId,
-	MaterialError,
 	HandleError,
-	addMaterial,
 	releaseMaterial,
-	reserveUniforms,
-	writeUniforms,
+	writeBlock,
 } from "./draw";
-import { UniformError } from "./uniformPool";
+import { UniformError, stopOnFailedWrite } from "./uniformPool";
 import { BloomPass, BLOOM_UNIFORM_LENGTH, BLOOM_PASS_UNIFORM_LENGTH } from "./bloom";
-import { screenState } from "./screenFx";
+import { screenState, reserveScreenBlock, addScreenMaterial } from "./screenFx";
 import { Renderer, RendererError, ToneMode, drawScreen, exposureMultiplier } from "./renderer";
 
-// The tone map's block (post3d.ms toneMapFs `toneMapParams`): the exposure multiplier, then
-// the curve.
 export const TONE_MAP_UNIFORM_SLOT: int32 = 0;
-export const TONE_MAP_UNIFORM_LENGTH: int32 = 4;
-export const TONE_MAP_EXPOSURE: int32 = 0;
-export const TONE_MAP_MODE: int32 = 1;
+export const TONE_MAP_UNIFORM_LENGTH: int32 = uniformSize<ToneMapParams>() / 4;
+
+export function toneParamsOf(multiplier: float32, mode: ToneMode): ToneMapParams {
+	return { toneMap: { x: multiplier, y: mode as float32, z: 0.0, w: 0.0 } };
+}
 
 // The blocks a ToneMapPass reserves, its own and its bloom's, and their floats.
 export const TONE_MAP_PASS_BLOCKS: Vec<int32> = [
@@ -144,9 +143,8 @@ function neutral(color: Vec4): Vec4 {
 
 export interface ToneMapPass {
 	target: RenderTarget;
-	block: UniformBlock;
+	block: TypedBlock<ToneMapParams>;
 	material: MaterialId;
-	values: Vec<float32>;
 	// Off until the preset's setBloom; runs on `target` before the tone map.
 	bloom: BloomPass;
 }
@@ -154,23 +152,15 @@ export interface ToneMapPass {
 // Reserves the blocks and adds the materials to `context`, whose pool the caller checked fits
 // TONE_MAP_PASS_BLOCKS. No GPU object is made here: `target` is allocated by its owner's resize.
 export function reserve(this typeof ToneMapPass, context: DrawContext): ToneMapPass {
-	const reserved: Result<UniformBlock, UniformError> =
-		reserveUniforms(context, TONE_MAP_UNIFORM_SLOT, TONE_MAP_UNIFORM_LENGTH);
-	if (!reserved.ok) {
-		console.log("void3d: ToneMapPass.reserve found no room for its checked block");
-		unreachable;
-	}
-	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
-		...Material.keyed(ProgramKey.of(Program.Post), screenState(), Phase.Opaque),
-		uniforms: reserved.value,
-	});
-	if (!added.ok) { unreachable; }
+	const block: TypedBlock<ToneMapParams> =
+		reserveScreenBlock<ToneMapParams>(context, TONE_MAP_UNIFORM_SLOT, "ToneMapPass.reserve");
+	const material: MaterialId =
+		addScreenMaterial(context, Program.Post, screenState(), block.block, "ToneMapPass.reserve");
 	return {
 		target: RenderTarget.unallocated(PixelFormat.Rgba16f, true),
 		bloom: BloomPass.reserve(context),
-		block: reserved.value,
-		material: added.value,
-		values: new Array(TONE_MAP_UNIFORM_LENGTH),
+		block: block,
+		material: material,
 	};
 }
 
@@ -180,16 +170,19 @@ export function prepare(this pass: ToneMapPass, core: Renderer, sampler: uint32)
 	const context: DrawContext = core.context;
 	context.materials[pass.material.index].texture0 = pass.target.asTexture();
 	context.materials[pass.material.index].sampler0 = sampler;
-	pass.values[TONE_MAP_EXPOSURE] = exposureMultiplier(core.exposure);
-	pass.values[TONE_MAP_MODE] = core.toneMode as float32;
-	const written: Result<int32, UniformError> = writeUniforms(context, pass.block, pass.values);
-	if (!written.ok) { unreachable; }
+	const params: ToneMapParams = toneParamsOf(exposureMultiplier(core.exposure), core.toneMode);
+	const written: Result<int32, UniformError> = writeBlock(context, pass.block, params);
+	if (!written.ok) { stopOnFailedWrite("ToneMapPass.prepare", written.error); }
 	pass.bloom.resize(pass.target.width, pass.target.height);
 }
 
 // The bloom chain on `target` when it is on, then one pass over `colors`, an Rgba8 target of
 // `target`'s size.
-export function draw(this pass: ToneMapPass, core: Renderer, colors: Vec<ColorAttachment>): void {
+export function draw(
+	this pass: ToneMapPass,
+	core: Renderer,
+	colors: Readonly<Span<ColorAttachment>>,
+): void {
 	pass.bloom.draw(core, pass.target);
 	beginPass(colors, NO_DEPTH);
 	const drawn: Result<int32, RendererError> = drawScreen(core, pass.material, TONE_MAP_LAYOUT);

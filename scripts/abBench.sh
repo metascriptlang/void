@@ -59,7 +59,7 @@ provision() {
 	for scene in $SCENES; do
 		entry="tests/bench/bench$scene.ms"
 		if ! git -C "$A" cat-file -e "HEAD:$entry" 2>/dev/null; then
-			cp "$B/$entry" "$A/$entry"
+			if [ -d "$A/src/host" ]; then cp "$B/$entry" "$A/$entry"; else sed 's#src/host/#src/sokol/#' "$B/$entry" > "$A/$entry"; fi
 			echo "ENTRY $scene: A runs B's $entry"
 		fi
 	done

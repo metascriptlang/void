@@ -10,19 +10,17 @@ import { textWidth, textHeight } from "../void2d/render";
 import { Color } from "../void2d/types";
 import { Anchor, ANCHOR_CENTER } from "./billboard";
 import { CameraBasis, rotationOfBasis } from "./camera";
-import {
-	Program, ProgramKey, MATERIAL_UNIFORM_SLOT, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
-	UNLIT_MATERIAL_COLOR, UNLIT_MATERIAL_UNIFORM_LENGTH, MOVING_UV_MATRIX, MOVING_UV_OFFSET,
-} from "./gpu3d";
-import { Material, Phase, UniformBlock, movingDefaults } from "./material";
+import { Program, ProgramKey, MATERIAL_UNIFORM_SLOT } from "./gpu3d";
+import { Material, Phase, TypedBlock } from "./material";
+import { MovingUnlitMaterialParams } from "./shader3d";
 import { MeshData, MeshError, Rgba, addTexturedVertex, addTriangle } from "./meshData";
 import { TextureId, TextureUploadError, TextureAlpha } from "./texture";
 import {
 	MeshId, MaterialId, MeshUploadError, MaterialError, HandleError, DrawContext,
 	addMeshData, addMaterial, addTargetTexture, releaseMesh, releaseMaterial, releaseTexture,
-	reserveUniforms, writeUniforms, releaseUniforms,
+	reserveBlock, writeBlock, releaseBlock,
 } from "./draw";
-import { UniformError } from "./uniformPool";
+import { UniformError, stopOnFailedWrite } from "./uniformPool";
 import {
 	Scene3D, Transform3D, NodeId3D, SceneError, NO_NODE_3D, addMeshNode, setLocal, remove,
 	syncWorld,
@@ -58,7 +56,7 @@ export interface WorldLabel {
 	texture: TextureId;
 	mesh: MeshId;
 	material: MaterialId;
-	uniforms: UniformBlock;
+	uniforms: TypedBlock<MovingUnlitMaterialParams>;
 	node: NodeId3D;
 	pixelsPerUnit: float32;
 	width: int32;
@@ -66,7 +64,8 @@ export interface WorldLabel {
 	position: Vec3;
 	rotation: Quat;
 	posed: boolean;
-	block: Vec<float32>;
+	tint: Rgba;
+	uv: LabelUv;
 	stale: boolean;
 	closed: boolean;
 	outline: float32;
@@ -109,6 +108,19 @@ export function uvOfSubRect(
 	return {
 		scaleU: (width as float32) / (capacityWidth as float32), scaleV: scaleV,
 		offsetV: topLeft ? 0.0 : 1.0 - scaleV,
+	};
+}
+
+export function labelParams(uv: LabelUv, tint: Rgba): MovingUnlitMaterialParams {
+	return {
+		material: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 },
+		materialColor: { x: tint.red, y: tint.green, z: tint.blue, w: tint.alpha },
+		uvMatrix: { x: uv.scaleU, y: 0.0, z: 0.0, w: uv.scaleV },
+		uvMotion: { x: 0.0, y: uv.offsetV, z: 0.0, w: 0.0 },
+		backUvMatrix: { x: 1.0, y: 0.0, z: 0.0, w: 1.0 },
+		backUvOffset: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 },
+		dissolve: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 },
+		dissolveEdge: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 },
 	};
 }
 
@@ -202,20 +214,22 @@ export function create(
 		dropTarget(context, ui, target, shown.value);
 		return Result.err(WorldLabelError.Mesh);
 	}
-	const reserved: Result<UniformBlock, UniformError> =
-		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
+	const reserved: Result<TypedBlock<MovingUnlitMaterialParams>, UniformError> =
+		reserveBlock<MovingUnlitMaterialParams>(context, MATERIAL_UNIFORM_SLOT);
 	if (!reserved.ok) {
 		dropMesh(context, ui, target, shown.value, uploaded.value);
 		return Result.err(WorldLabelError.Uniforms);
 	}
-	const block: Vec<float32> = movingDefaults(labelKey());
-	if (!writeUniforms(context, reserved.value, block).ok) { unreachable; }
+	const uv: LabelUv = { scaleU: 1.0, scaleV: 1.0, offsetV: 0.0 };
+	const written: Result<int32, UniformError> =
+		writeBlock(context, reserved.value, labelParams(uv, WHITE));
+	if (!written.ok) { stopOnFailedWrite("WorldLabel.create", written.error); }
 	const material: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.keyed(labelKey(), premultipliedPass(), Phase.Alpha),
-		texture: shown.value, uniforms: reserved.value,
+		texture: shown.value, uniforms: reserved.value.block,
 	});
 	if (!material.ok) {
-		const _block: Result<int32, UniformError> = releaseUniforms(context, reserved.value);
+		const _block: Result<int32, UniformError> = releaseBlock(context, reserved.value);
 		dropMesh(context, ui, target, shown.value, uploaded.value);
 		return Result.err(WorldLabelError.Material);
 	}
@@ -227,7 +241,6 @@ export function create(
 	);
 	if (!placed.ok) {
 		const _material: Result<int32, HandleError> = releaseMaterial(context, material.value);
-		const _block: Result<int32, UniformError> = releaseUniforms(context, reserved.value);
 		dropMesh(context, ui, target, shown.value, uploaded.value);
 		return Result.err(WorldLabelError.Node);
 	}
@@ -235,21 +248,16 @@ export function create(
 		scene: scene, ui: ui, text: words, target: target, texture: shown.value,
 		mesh: uploaded.value, material: material.value, uniforms: reserved.value,
 		node: placed.value, pixelsPerUnit: style.pixelsPerUnit, width: width, height: height,
-		position: vec3(0.0, 0.0, 0.0), rotation: identityQuat(), posed: false, block: block,
+		position: vec3(0.0, 0.0, 0.0), rotation: identityQuat(), posed: false, tint: WHITE, uv: uv,
 		stale: true, closed: false, outline: 0.0,
 	};
 	return Result.ok(label);
 }
 
-function writeBlock(this label: WorldLabel): void {
-	const uv: LabelUv = LabelUv.uvOfSubRect(
-		label.width, label.height, label.target.width, label.target.height, originTopLeft(),
-	);
-	const base: int32 = UNLIT_MATERIAL_UNIFORM_LENGTH;
-	label.block[base + MOVING_UV_MATRIX] = uv.scaleU;
-	label.block[base + MOVING_UV_MATRIX + 3] = uv.scaleV;
-	label.block[base + MOVING_UV_OFFSET + 1] = uv.offsetV;
-	if (!writeUniforms(label.scene.context, label.uniforms, label.block).ok) { unreachable; }
+function writeParams(this label: WorldLabel): void {
+	const written: Result<int32, UniformError> =
+		writeBlock(label.scene.context, label.uniforms, labelParams(label.uv, label.tint));
+	if (!written.ok) { stopOnFailedWrite("WorldLabel.writeParams", written.error); }
 }
 
 export function redraw(this label: WorldLabel): void {
@@ -261,7 +269,10 @@ export function redraw(this label: WorldLabel): void {
 	label.ui.prepare(capacityWidth as float32, capacityHeight as float32, 1.0);
 	label.ui.drawTarget(label.target);
 	label.stale = false;
-	label.writeBlock();
+	label.uv = LabelUv.uvOfSubRect(
+		label.width, label.height, label.target.width, label.target.height, originTopLeft(),
+	);
+	label.writeParams();
 	if (label.posed) { label.place(); }
 }
 
@@ -288,11 +299,8 @@ export function setLabelOutline(label: WorldLabel, width: float32, color: Color)
 }
 
 export function setLabelTint(label: WorldLabel, tint: Rgba): void {
-	label.block[UNLIT_MATERIAL_COLOR] = tint.red;
-	label.block[UNLIT_MATERIAL_COLOR + 1] = tint.green;
-	label.block[UNLIT_MATERIAL_COLOR + 2] = tint.blue;
-	label.block[UNLIT_MATERIAL_COLOR + 3] = tint.alpha;
-	if (!writeUniforms(label.scene.context, label.uniforms, label.block).ok) { unreachable; }
+	label.tint = tint;
+	label.writeParams();
 }
 
 function transformOf(m: Mat4): Transform3D {
@@ -353,7 +361,6 @@ export function closeLabel(label: WorldLabel): void {
 	const context: DrawContext = label.scene.context;
 	if (!label.scene.isClosed()) { const _nodes: int32 = remove(label.scene, label.node); }
 	const _material: Result<int32, HandleError> = releaseMaterial(context, label.material);
-	const _block: Result<int32, UniformError> = releaseUniforms(context, label.uniforms);
 	dropMesh(context, label.ui, label.target, label.texture, label.mesh);
 	label.closed = true;
 }

@@ -40,9 +40,9 @@ function materials(): Vec<Material> {
 	];
 }
 
-function programsOf(list: Readonly<Span<Material>>, items: Readonly<Span<DrawItem>>): Vec<ProgramKey> {
+function programsOf(list: Readonly<Span<Material>>): Vec<ProgramKey> {
 	let drawn: Vec<ProgramKey> = [];
-	for (const item of items) { drawn.push(list[item.material.index].program); }
+	for (const material of list) { drawn.push(material.program); }
 	return drawn;
 }
 
@@ -50,7 +50,7 @@ function sorted(items: Vec<DrawItem>): PassList {
 	const table: Vec<Material> = materials();
 	let list: PassList = PassList.forPhase(Phase.Opaque);
 	collect(list, items, table);
-	sortByMaterial(list, items, programsOf(table, items), table);
+	sortByMaterial(list, items, programsOf(table), table);
 	return list;
 }
 

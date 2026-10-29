@@ -29,11 +29,11 @@ export enum ShaderTarget {
 	Spirv,
 }
 
-export class StructLayout {
-	name: string = "";
-	offsets: int32[] = [];
-	size: int32 = 0;
-	align: int32 = 1;
+export struct StructLayout {
+	name: string;
+	offsets: int32[];
+	size: int32;
+	align: int32;
 }
 
 const MAX_UNIFORM_SLOTS = 8;
@@ -44,19 +44,35 @@ function roundUp(n: int32, to: int32): int32 {
 	return (n + to - 1) / to * to;
 }
 
+// The bytes a column of this many rows takes in a matrix, and the alignment of a vector of them.
+export function columnStride(rows: int32): int32 {
+	return rows == 2 ? 8 : 16;
+}
+
+function arrayAlign(m: ShaderModule, t: ShaderType, rule: LayoutRule): int32 {
+	const [elementAlign, _elementSize] = extentOf(m, t.element[0], rule);
+	return rule == LayoutRule.Std140 ? roundUp(elementAlign, 16) : elementAlign;
+}
+
+function arrayStride(m: ShaderModule, t: ShaderType, rule: LayoutRule): int32 {
+	const [_elementAlign, elementSize] = extentOf(m, t.element[0], rule);
+	return roundUp(elementSize, arrayAlign(m, t, rule));
+}
+
+export function uniformArrayStride(m: ShaderModule, t: ShaderType): int32 {
+	return arrayStride(m, t, LayoutRule.Std140);
+}
+
 function extentOf(m: ShaderModule, t: ShaderType, rule: LayoutRule): [int32, int32] {
-	const std140 = rule == LayoutRule.Std140;
 	match (t.kind) {
 		ShaderTypeKind.Scalar | ShaderTypeKind.Atomic => { return [4, 4]; },
-		ShaderTypeKind.Vector => { return [t.rows == 2 ? 8 : 16, 4 * t.rows]; },
+		ShaderTypeKind.Vector => { return [columnStride(t.rows), 4 * t.rows]; },
 		ShaderTypeKind.Matrix => {
-			const column = t.rows == 2 && !std140 ? 8 : 16;
+			const column = columnStride(t.rows);
 			return [column, column * t.columns];
 		},
 		ShaderTypeKind.Array => {
-			const [elementAlign, elementSize] = extentOf(m, t.element[0], rule);
-			const align = std140 ? roundUp(elementAlign, 16) : elementAlign;
-			return [align, roundUp(elementSize, align) * t.length];
+			return [arrayAlign(m, t, rule), arrayStride(m, t, rule) * t.length];
 		},
 		_ => {},
 	}
@@ -66,19 +82,18 @@ function extentOf(m: ShaderModule, t: ShaderType, rule: LayoutRule): [int32, int
 
 function structLayoutOf(m: ShaderModule, structIndex: int32, rule: LayoutRule): StructLayout {
 	const s = m.structs[structIndex];
-	let layout = new StructLayout();
-	layout.name = s.name;
+	let offsets: int32[] = [];
+	let align = 1;
 	let end = 0;
 	for (const f of s.members) {
-		const [align, size] = extentOf(m, f.type, rule);
-		const offset = roundUp(end, align);
-		layout.offsets.push(offset);
-		end = offset + size;
-		layout.align = align > layout.align ? align : layout.align;
+		const [memberAlign, memberSize] = extentOf(m, f.type, rule);
+		const offset = roundUp(end, memberAlign);
+		offsets.push(offset);
+		end = offset + memberSize;
+		align = memberAlign > align ? memberAlign : align;
 	}
-	if (rule == LayoutRule.Std140) { layout.align = roundUp(layout.align, 16); }
-	layout.size = roundUp(end, layout.align);
-	return layout;
+	if (rule == LayoutRule.Std140) { align = roundUp(align, 16); }
+	return { name: s.name, offsets, size: roundUp(end, align), align };
 }
 
 function typeName(t: ShaderType): string {
@@ -95,8 +110,8 @@ function isVec4OrMat4(t: ShaderType): boolean {
 		t.kind == ShaderTypeKind.Matrix && t.columns == 4 && t.rows == 4;
 }
 
-// A uniform block reaches GL as one `vec4 <block>[size / 16]` (sokol-shdc's flattening), so a
-// member that is not float has no place in it.
+// A uniform block reaches GL as one `vec4 <block>[size / 16]`, so a member that is not float has no
+// place in it.
 export function uniformBlockLayout(m: ShaderModule, resourceIndex: int32):
 	Result<StructLayout, string> {
 	const r = m.resources[resourceIndex];
@@ -157,29 +172,27 @@ export function storageElementLayout(m: ShaderModule, resourceIndex: int32):
 	return Result.ok(structLayoutOf(m, element.structIndex, LayoutRule.Std430));
 }
 
-// SPIRV-Cross build_dummy_sampler_for_combined_images names the sampler a texel fetch or size
-// query pairs with on GL; sokol-shdc names each combined sampler <texture>_<sampler>.
 export const DUMMY_SAMPLER = "SPIRV_Cross_DummySampler";
 
-export class BindingSlot {
-	resource: int32 = -1;
-	texture: int32 = -1;
-	stage: ShaderStage = ShaderStage.Vertex;
-	group: int32 = 0;
-	binding: int32 = 0;
-	nativeSlot: int32 = -1;
-	nativeName: string = "";
-	textureBinding: int32 = -1;
+export struct BindingSlot {
+	resource: int32;
+	texture: int32;
+	stage: ShaderStage;
+	group: int32;
+	binding: int32;
+	nativeSlot: int32;
+	nativeName: string;
+	textureBinding: int32;
 }
 
-class Used {
-	resource: int32 = -1;
-	stage: ShaderStage = ShaderStage.Vertex;
+struct Used {
+	resource: int32;
+	stage: ShaderStage;
 }
 
-class PairUse {
-	pair: TexturePair = new TexturePair();
-	stage: ShaderStage = ShaderStage.Vertex;
+struct PairUse {
+	pair: TexturePair;
+	stage: ShaderStage;
 }
 
 const UNPLACED = -2;
@@ -217,23 +230,25 @@ function sameSpace(a: ShaderResource, b: ShaderResource): boolean {
 
 function slotOf(m: ShaderModule, u: Used, target: ShaderTarget): BindingSlot {
 	const r = m.resources[u.resource];
-	let s = new BindingSlot();
-	s.resource = u.resource;
-	s.stage = u.stage;
-	s.group = r.kind == ResourceKind.UniformBlock ? 0 : 1;
-	s.binding = r.kind == ResourceKind.Sampler ? MAX_VIEW_SLOTS + r.binding : r.binding;
 	const native = target == ShaderTarget.Hlsl5 || target == ShaderTarget.Msl;
-	if (native && (r.kind == ResourceKind.UniformBlock || r.kind == ResourceKind.Sampler)) {
-		s.nativeSlot = r.binding;
-	}
 	const gl = target == ShaderTarget.Glsl430 || target == ShaderTarget.Glsl300es;
-	if (gl && r.kind == ResourceKind.UniformBlock) { s.nativeName = r.name; }
-	return s;
+	const uniform = r.kind == ResourceKind.UniformBlock;
+	return {
+		resource: u.resource,
+		texture: -1,
+		stage: u.stage,
+		group: uniform ? 0 : 1,
+		binding: r.kind == ResourceKind.Sampler ? MAX_VIEW_SLOTS + r.binding : r.binding,
+		nativeSlot: native && (uniform || r.kind == ResourceKind.Sampler) ? r.binding : -1,
+		nativeName: gl && uniform ? r.name : "",
+		textureBinding: -1,
+	};
 }
 
 function samplerlessReads(e: ShaderExpr, out: int32[]): void {
 	const fetch = e.kind == ExprKind.Intrinsic && (e.intrinsic == Intrinsic.TextureLoad ||
-		e.intrinsic == Intrinsic.TextureDimensions);
+		e.intrinsic == Intrinsic.TextureDimensions ||
+		e.intrinsic == Intrinsic.TextureNumSamples);
 	if (fetch && e.operands.length > 0 && e.operands[0].kind == ExprKind.Resource &&
 		e.operands[0].type.kind == ShaderTypeKind.Texture &&
 		!e.operands.some((o) => o.type.kind == ShaderTypeKind.Sampler) &&
@@ -262,9 +277,6 @@ function pairSamplerBinding(m: ShaderModule, pair: TexturePair): int32 {
 	return pair.sampler < 0 ? -1 : m.resources[pair.sampler].binding;
 }
 
-// Uniform block slot n is b<n> and buffer(n); views (textures, storage buffers and storage
-// textures, one slot space) and samplers follow sokol-shdc's
-// src/shdc/types/bind_slot_map.h allocate_backend_slots, per stage.
 export function bindingSlots(m: ShaderModule, entries: int32[], target: ShaderTarget):
 	Result<BindingSlot[], string> {
 	let used: Used[] = [];
@@ -278,10 +290,7 @@ export function bindingSlots(m: ShaderModule, entries: int32[], target: ShaderTa
 			const seen = used.filter((u) => u.resource == index);
 			if (seen.some((u) => u.stage == entry.stage)) { continue; }
 			if (seen.length > 0) {
-				let shared = new Used();
-				shared.resource = index;
-				shared.stage = entry.stage;
-				used.push(shared);
+				used.push({ resource: index, stage: entry.stage });
 				continue;
 			}
 			if (r.binding < 0 || r.binding >= slotLimit(r.kind)) {
@@ -299,25 +308,14 @@ export function bindingSlots(m: ShaderModule, entries: int32[], target: ShaderTa
 				r.kind == ResourceKind.StorageTexture)) {
 				return Result.err(owner + ": GLSL ES 3.0 has no storage resources");
 			}
-			let u = new Used();
-			u.resource = index;
-			u.stage = entry.stage;
-			used.push(u);
+			used.push({ resource: index, stage: entry.stage });
 		}
-		for (const p of reads.pairs) {
-			let use = new PairUse();
-			use.pair = p;
-			use.stage = entry.stage;
-			pairs.push(use);
-		}
+		for (const p of reads.pairs) { pairs.push({ pair: p, stage: entry.stage }); }
 		let samplerless: int32[] = [];
 		for (const f of reads.functions) { samplerlessStmts(m.functions[f].body, samplerless); }
 		for (const texture of samplerless) {
 			if (pairs.some((u) => fetchesThrough(m, u, texture, entry.stage))) { continue; }
-			let use = new PairUse();
-			use.pair.texture = texture;
-			use.stage = entry.stage;
-			pairs.push(use);
+			pairs.push({ pair: { texture, sampler: -1 }, stage: entry.stage });
 		}
 	}
 	used.sort((a, b) => m.resources[a.resource].binding - m.resources[b.resource].binding);
@@ -387,16 +385,18 @@ export function bindingSlots(m: ShaderModule, entries: int32[], target: ShaderTa
 	});
 	for (const p of pairs) {
 		const texture = m.resources[p.pair.texture];
-		let s = new BindingSlot();
+		let s: BindingSlot = {
+			resource: -1,
+			texture: -1,
+			stage: p.stage,
+			group: 1,
+			binding: -1,
+			nativeSlot: -1,
+			nativeName: "",
+			textureBinding: -1,
+		};
 		if (p.pair.sampler >= 0) {
-			let u = new Used();
-			u.resource = p.pair.sampler;
-			u.stage = p.stage;
-			s = slotOf(m, u, target);
-		} else {
-			s.stage = p.stage;
-			s.group = 1;
-			s.binding = -1;
+			s = slotOf(m, { resource: p.pair.sampler, stage: p.stage }, target);
 		}
 		s.texture = p.pair.texture;
 		s.nativeName = texture.name + "_" +

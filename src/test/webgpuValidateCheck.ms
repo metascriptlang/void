@@ -541,6 +541,21 @@ test "a compute workgroup is refused past any one axis or the invocation total o
 	assert shaderModuleRefusal(render, limits) == "";
 }
 
+test "a GL module's combined pairs count each sampler binding once and its dummy sampler not at all" {
+	const limits = computeLimits();
+	let pairs: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };
+	for (let i = 0; i < 15; i++) {
+		pairs.bindings[2 * i] = { binding: i, kind: "texture", group: 1, visibility: RENDER_STAGES };
+		pairs.bindings[2 * i + 1] = {
+			binding: i % 2 == 0 ? 32 : -1, kind: "sampler", group: 1, visibility: RENDER_STAGES,
+			textureBinding: i,
+		};
+	}
+	assert shaderModuleRefusal(pairs, limits) == "";
+	pairs.bindings[30] = { binding: 15, kind: "texture", group: 1, visibility: RENDER_STAGES };
+	assert shaderModuleRefusal(pairs, limits) == "a shader module has over 16 resources";
+}
+
 test "a shader module holds at most 8 uniform blocks and 16 resources, and a block has a size inside the limit" {
 	const limits = computeLimits();
 	let blocks: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };
@@ -591,6 +606,19 @@ test "an integer texture pairs only with a non-filtering sampler" {
 	assert shaderModuleRefusal(module, limits) == "sampler binding 1 is 'filtering' but pairs with the uint texture binding 0; an integer texture needs a non-filtering sampler";
 	module.bindings[0].sampleType = "float";
 	assert shaderModuleRefusal(module, limits) == "";
+}
+
+test "a module with two faults is refused for its bindings' own rules first, then its sampler pairs, then its workgroup" {
+	const limits = computeLimits();
+	let module: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };
+	module.bindings[0] = { binding: 0, kind: "texture", sampleType: "uint", group: 1, visibility: RENDER_STAGES };
+	module.bindings[1] = { binding: 1, kind: "sampler", textureBinding: 0, samplerType: "filtering", group: 1, visibility: RENDER_STAGES };
+	module.bindings[2] = { binding: 2, kind: "uniform", size: 65552, visibility: RENDER_STAGES };
+	assert shaderModuleRefusal(module, limits) == "uniform binding 2 of 65552 bytes is over the limit of 65536";
+	let kernel = computeModule(1025, 1, 1);
+	kernel.bindings[0] = { binding: 0, kind: "texture", sampleType: "uint", group: 1, visibility: GPUShaderStage.COMPUTE as int32 };
+	kernel.bindings[1] = { binding: 1, kind: "sampler", textureBinding: 0, group: 1, visibility: GPUShaderStage.COMPUTE as int32 };
+	assert shaderModuleRefusal(kernel, limits) == "sampler binding 1 is 'filtering' but pairs with the uint texture binding 0; an integer texture needs a non-filtering sampler";
 }
 
 test "a sampler's anisotropy defaults to 1 and is clamped to 16 on every backend" {

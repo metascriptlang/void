@@ -228,7 +228,8 @@ test "glsl spells a cube texture and textureSampleLevel in their GLSL form" {
 // One texel per face, the red channel of each its face index.
 function faces(): TextureCube {
 	let texels: float32[] = [];
-	for (let face = 0; face < 6; face++) { texels.push(face as float32); texels.push(0.0); texels.push(0.0); texels.push(1.0); }
+	for (let face = 0; face < 6; face++) { texels.push(face as float32); texels.push(
+		0.0); texels.push(0.0); texels.push(1.0); }
 	return { size: 1, texels };
 }
 
@@ -562,7 +563,7 @@ test "a scalar operand of a vector operator applies to every component, on eithe
 	assert (frame * frame) * vec3f(0.0, 0.0, 1.0) == vec3f(4.0, 6.0, 1.0);
 }
 
-test "shady's mandelbrot step and mathFrag colour compute on the CPU" {
+test "the mandelbrot step and mathFrag colour compute on the CPU" {
 	const o = vec2f(0.25, 0.5);
 	const v = 0.55 - mat2x2f(-o.y, o.x, o.x, o.y) * vec2f(o.y, o.x) + vec2f(0.1, 0.2);
 	assert near(v.x, 0.8375) && near(v.y, 0.5);

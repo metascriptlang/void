@@ -52,8 +52,16 @@ import {
 	backUvMatrixOf,
 	backUvOffsetOf,
 	billboardPoint,
+	colorKeyOf,
+	colorKeyed,
 	dirShadowAt,
 	dissolveEdgeOf,
+	distanceFade,
+	distanceFadeOf,
+	flipbookBlend,
+	flipbookGridOf,
+	flipbookPlayOf,
+	flipbookUvs,
 	dissolveEdgeOver,
 	dissolveOf,
 	emissiveOf,
@@ -124,6 +132,7 @@ export struct PixelArtLitTexturedFragmentInput {
 
 export struct PixelArtUnlitTexturedVaryings {
 	worldNormal: Vec3f;
+	@feature(UV_TRANSFORM) worldPosition: Vec3f;
 	surfaceUv: Vec2f;
 	baseColor: Vec4f;
 	depth01: float32;
@@ -132,6 +141,7 @@ export struct PixelArtUnlitTexturedVaryings {
 
 export struct PixelArtUnlitTexturedFragmentInput {
 	worldNormal: Vec3f;
+	@feature(UV_TRANSFORM) worldPosition: Vec3f;
 	surfaceUv: Vec2f;
 	baseColor: Vec4f;
 	depth01: float32;
@@ -335,11 +345,33 @@ export function pixelArtLitTexturedFs(
 		const time = b.frameParams.frame.x;
 		uv = movedUv(input.surfaceUv, uvMatrixOf(b, key), uvMotionOf(b, key), time);
 	}
-	let texel = textureSample(b.baseTexture, b.baseSampler, uv);
+	let baseUv = uv;
+	let nextUv = uv;
+	let blend: float32 = 0.0;
+	if (key.uvTransform) {
+		const grid = flipbookGridOf(b, key);
+		const play = flipbookPlayOf(b, key);
+		if (grid.z > 0.0) {
+			const time = b.frameParams.frame.x;
+			const frames = flipbookUvs(uv, grid, play, time);
+			baseUv = frames.xy;
+			nextUv = frames.zw;
+			blend = flipbookBlend(grid, play, time);
+		}
+	}
+	let texel = textureSample(b.baseTexture, b.baseSampler, baseUv);
+	if (blend > 0.0) {
+		texel = mix(texel, textureSample(b.baseTexture, b.baseSampler, nextUv), blend);
+	}
 	if (key.backTexture) {
 		const backAt = backUv(input.surfaceUv, backUvMatrixOf(b, key), backUvOffsetOf(b, key));
 		const backTexel = textureSample(b.backTexture, b.baseSampler, backAt);
 		texel = input.frontFacing ? texel : backTexel;
+	}
+	if (key.uvTransform) {
+		if (colorKeyed(texel, colorKeyOf(b, key))) {
+			discard();
+		}
 	}
 	let noise: float32 = 0.0;
 	if (key.dissolve) {
@@ -375,6 +407,11 @@ export function pixelArtLitTexturedFs(
 			discard();
 		}
 	}
+	if (key.uvTransform) {
+		const eye = b.frameParams.cameraPosition.xyz;
+		const fade = distanceFade(length(input.worldPosition - eye), distanceFadeOf(b, key));
+		shaded = vec4f(shaded.rgb, shaded.a * fade);
+	}
 	let color = vec4f(toneMapped(shaded.rgb, b.frameParams.frame), shaded.a);
 	if (key.premultiplied) {
 		color = vec4f(color.rgb * color.a, color.a);
@@ -389,9 +426,11 @@ export function pixelArtUnlitTexturedVs(
 ): PixelArtUnlitTexturedVaryings {
 	if (key.skinned) {
 		const matrix = skinWorld(b, input.skinJoints, input.skinWeights);
-		const clip = b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0);
+		const world = matrix * vec4f(input.position, 1.0);
+		const clip = b.vertexParams.viewProj * world;
 		return {
 			worldNormal: skinNormal(matrix, input.normal),
+			worldPosition: world.xyz,
 			surfaceUv: input.uv,
 			baseColor: input.color,
 			depth01: clip.z,
@@ -399,9 +438,11 @@ export function pixelArtUnlitTexturedVs(
 		};
 	} else {
 		const matrix = instanceWorld(input.instanceRow0, input.instanceRow1, input.instanceRow2);
-		const clip = b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0);
+		const world = matrix * vec4f(input.position, 1.0);
+		const clip = b.vertexParams.viewProj * world;
 		return {
 			worldNormal: skinNormal(matrix, input.normal),
+			worldPosition: world.xyz,
 			surfaceUv: input.uv,
 			baseColor: input.color * input.instanceColor,
 			depth01: clip.z,
@@ -422,13 +463,35 @@ export function pixelArtUnlitTexturedFs(
 		const motion = b.movingUnlitMaterialParams.uvMotion;
 		uv = movedUv(input.surfaceUv, matrix, motion, b.frameParams.frame.x);
 	}
-	let texel = textureSample(b.baseTexture, b.baseSampler, uv);
+	let baseUv = uv;
+	let nextUv = uv;
+	let blend: float32 = 0.0;
+	if (key.uvTransform) {
+		const grid = b.movingUnlitMaterialParams.flipbookGrid;
+		const play = b.movingUnlitMaterialParams.flipbookPlay;
+		if (grid.z > 0.0) {
+			const time = b.frameParams.frame.x;
+			const frames = flipbookUvs(uv, grid, play, time);
+			baseUv = frames.xy;
+			nextUv = frames.zw;
+			blend = flipbookBlend(grid, play, time);
+		}
+	}
+	let texel = textureSample(b.baseTexture, b.baseSampler, baseUv);
+	if (blend > 0.0) {
+		texel = mix(texel, textureSample(b.baseTexture, b.baseSampler, nextUv), blend);
+	}
 	if (key.backTexture) {
 		const backMatrix = b.movingUnlitMaterialParams.backUvMatrix;
 		const backOffset = b.movingUnlitMaterialParams.backUvOffset;
 		const backAt = backUv(input.surfaceUv, backMatrix, backOffset);
 		const backTexel = textureSample(b.backTexture, b.baseSampler, backAt);
 		texel = input.frontFacing ? texel : backTexel;
+	}
+	if (key.uvTransform) {
+		if (colorKeyed(texel, b.movingUnlitMaterialParams.colorKey)) {
+			discard();
+		}
 	}
 	let noise: float32 = 0.0;
 	if (key.dissolve) {
@@ -450,6 +513,12 @@ export function pixelArtUnlitTexturedFs(
 		if (shaded.a < params.w) {
 			discard();
 		}
+	}
+	if (key.uvTransform) {
+		const eye = b.frameParams.cameraPosition.xyz;
+		const range = b.movingUnlitMaterialParams.distanceFade;
+		const fade = distanceFade(length(input.worldPosition - eye), range);
+		shaded = vec4f(shaded.rgb, shaded.a * fade);
 	}
 	let color = vec4f(toneMapped(shaded.rgb, b.frameParams.frame), shaded.a);
 	if (key.premultiplied) {

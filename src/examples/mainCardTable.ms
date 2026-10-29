@@ -1,5 +1,6 @@
 import { fbWidth, fbHeight } from "../host/gpu";
 import { setupCardTable, frameCardTable } from "./cardTableScene";
+import "../host/gpuWindow";
 
 @include("../host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;

@@ -59,6 +59,7 @@ export const NO_DEPTH: DepthAttachment = {
 	load: LoadAction.DontCare,
 	store: StoreAction.DontCare,
 	clear: 1.0,
+	stencilClear: null,
 	generation: 0,
 };
 
@@ -220,6 +221,7 @@ export function asDepth(
 	load: LoadAction,
 	clear: float32,
 	store: StoreAction,
+	stencilClear: uint8 | null = null,
 ): DepthAttachment {
 	target.requireLive("asDepth", target.attachment);
 	return {
@@ -228,6 +230,7 @@ export function asDepth(
 		load: load,
 		store: store,
 		clear: clear,
+		stencilClear: stencilClear,
 		generation: target.generation,
 	};
 }

@@ -217,6 +217,12 @@ export interface MeshLodPick {
 	material: int32;
 	localOriginRadius: float64;
 	forcedLod: int32;
+	inheritLod: boolean;
+}
+
+export function passesRatioDown(this pick: Readonly<MeshLodPick>): boolean {
+	return pick.inheritLod &&
+		(pick.config.lodCount > 1 || pick.config.cullingScreenRatio != 0.0);
 }
 
 function rowLength(x: float32, y: float32, z: float32): float64 {
@@ -232,6 +238,20 @@ export function pickFor(
 	nearPlane: float32,
 	meshLodScale: float64,
 ): Result<MeshLodRange | null, MeshLodError> {
+	const ratio: float64 =
+		try pick.screenRatioFor(world, eye, projectionX, projectionY, nearPlane, meshLodScale);
+	return pick.rangeFor(ratio);
+}
+
+export function screenRatioFor(
+	this pick: Readonly<MeshLodPick>,
+	world: Mat4,
+	eye: Vec3,
+	projectionX: float32,
+	projectionY: float32,
+	nearPlane: float32,
+	meshLodScale: float64,
+): Result<float64, MeshLodError> {
 	const dx: float64 = (world.m41 - eye.x) as float64;
 	const dy: float64 = (world.m42 - eye.y) as float64;
 	const dz: float64 = (world.m43 - eye.z) as float64;
@@ -247,7 +267,12 @@ export function pickFor(
 		nearPlane: nearPlane as float64,
 		meshLodScale: meshLodScale,
 	};
-	const ratio: float64 = try size.referenceScreenRatioHeuristic();
+	return size.referenceScreenRatioHeuristic();
+}
+
+export function rangeFor(
+	this pick: Readonly<MeshLodPick>, ratio: float64,
+): Result<MeshLodRange | null, MeshLodError> {
 	const chosen = try pick.config.select(ratio, pick.forcedLod);
 	if (chosen.culled) { return Result.ok(null); }
 	const range: MeshLodRange | null = try pick.ranges.rangeAt(pick.material, chosen.lod);

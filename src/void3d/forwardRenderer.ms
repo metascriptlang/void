@@ -65,6 +65,7 @@ import {
 	beginFrame,
 	drawPassLists,
 	drawPhase,
+	drawDecals,
 	drawScreen,
 	closePrepare,
 	openScreen,
@@ -84,6 +85,8 @@ export interface ForwardRenderer {
 	sampler: Sampler;
 	sceneColors: Vec<ColorAttachment>;
 	sceneDepth: DepthAttachment;
+	decalColors: Vec<ColorAttachment>;
+	toneMappedColors: Vec<ColorAttachment>;
 	copyMaterial: MaterialId;
 	overMaterial: MaterialId;
 	outlineBlend: float32;
@@ -129,6 +132,9 @@ export enum ForwardError {
 	SpotShadowUnattached,
 	BadCubeShadow,
 	CubeShadowUnattached,
+	// RendererError.BadCookieSpot and StaleCookie.
+	BadCookieSpot,
+	StaleCookie,
 	TargetSize,
 	// The device cannot render into an Rgba16f target (GLES3 and WebGL2 without a
 	// color-buffer-float extension); there is no LDR fallback.
@@ -167,6 +173,10 @@ export const FORWARD_LAYOUT: TargetLayout = {
 
 // An HDR preset's scene pass.
 export const FORWARD_HDR_LAYOUT: TargetLayout = { ...FORWARD_LAYOUT, color0: PixelFormat.Rgba16f };
+
+// The decal pass's: the scene's colour, kept, and no depth, which the decals read as a texture.
+const FORWARD_DECAL_LAYOUT: TargetLayout = { ...FORWARD_LAYOUT, depth: PixelFormat.None };
+const FORWARD_HDR_DECAL_LAYOUT: TargetLayout = { ...FORWARD_HDR_LAYOUT, depth: PixelFormat.None };
 
 const FAR_DEPTH: float32 = 1.0;
 const SCREEN_CLEAR: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
@@ -237,10 +247,12 @@ function make(
 		core: core.value,
 		background: background,
 		colorTarget: RenderTarget.unallocated(PixelFormat.Rgba8, true),
-		depthTarget: RenderTarget.unallocated(PixelFormat.Depth, false),
+		depthTarget: RenderTarget.unallocated(PixelFormat.Depth, true),
 		sampler: { filter: FilterMode.Nearest, wrap: Wrap.Clamp, handle: 0 },
 		sceneColors: new Array(1),
 		sceneDepth: NO_DEPTH,
+		decalColors: new Array(1),
+		toneMappedColors: new Array(1),
 		copyMaterial: copy.value,
 		overMaterial: over.value,
 		outlineBlend: 0.0,
@@ -282,10 +294,13 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.CameraPosition => ForwardError.CameraPosition,
 		RendererError.MeshWrite => ForwardError.MeshWrite,
 		RendererError.ShapedLightPreset => { unreachable; },
+		RendererError.DecalPreset => { unreachable; },
 		RendererError.BadShadowSpot => ForwardError.BadShadowSpot,
 		RendererError.SpotShadowUnattached => ForwardError.SpotShadowUnattached,
 		RendererError.BadCubeShadow => ForwardError.BadCubeShadow,
 		RendererError.CubeShadowUnattached => ForwardError.CubeShadowUnattached,
+		RendererError.BadCookieSpot => ForwardError.BadCookieSpot,
+		RendererError.StaleCookie => ForwardError.StaleCookie,
 		RendererError.ClusterViewUnset => ForwardError.ClusterViewUnset,
 		RendererError.ClusterViewStale => ForwardError.ClusterViewStale,
 		RendererError.ClusterAssign => ForwardError.ClusterAssign,
@@ -313,9 +328,12 @@ function resizeTargets(renderer: ForwardRenderer, width: int32, height: int32): 
 	renderer.sceneColors[0] = renderer.colorTarget.asColor(LoadAction.Clear, renderer.background);
 	renderer.sceneDepth =
 		renderer.depthTarget.asDepth(LoadAction.Clear, FAR_DEPTH, StoreAction.DontCare);
+	renderer.decalColors[0] = renderer.colorTarget.asColor(LoadAction.Load, SCREEN_CLEAR);
+	renderer.toneMappedColors[0] = renderer.colorTarget.asColor(LoadAction.Load, SCREEN_CLEAR);
 	const toneMap: ToneMapPass | null = renderer.toneMap;
 	if (toneMap === null) { return; }
 	toneMap.target.resize(width, height);
+	renderer.decalColors[0] = toneMap.target.asColor(LoadAction.Load, SCREEN_CLEAR);
 	renderer.hdrColors[0] =
 		toneMap.target.asColor(LoadAction.Clear, linearBackground(renderer.background));
 	renderer.toneMapColors[0] = renderer.colorTarget.asColor(LoadAction.DontCare, SCREEN_CLEAR);
@@ -425,17 +443,28 @@ export function prepareFrame(
 	}
 
 	const _casters: int32 = drawShadowPass(renderer.core, items, camera, lights);
+	const decals: boolean = renderer.core.phaseCount(Phase.Decal) +
+		renderer.core.phaseCount(Phase.DecalAfterToneMap) > 0;
+	renderer.sceneDepth.store = decals ? StoreAction.Store : StoreAction.DontCare;
 	if (outlined && outline !== null) {
 		drawOutlined(renderer, outline, items, width, height);
 	} else if (toneMap !== null) {
 		beginPass(renderer.hdrColors, renderer.sceneDepth);
 		drawPassLists(renderer.core, items, FORWARD_HDR_LAYOUT);
 		endPass();
+		drawSceneDecals(renderer, Phase.Decal, items, renderer.decalColors,
+			renderer.depthTarget.asTexture());
 		toneMap.draw(renderer.core, renderer.toneMapColors);
+		drawSceneDecals(renderer, Phase.DecalAfterToneMap, items, renderer.toneMappedColors,
+			renderer.depthTarget.asTexture());
 	} else {
 		beginPass(renderer.sceneColors, renderer.sceneDepth);
 		drawPassLists(renderer.core, items, FORWARD_LAYOUT);
 		endPass();
+		drawSceneDecals(renderer, Phase.Decal, items, renderer.decalColors,
+			renderer.depthTarget.asTexture());
+		drawSceneDecals(renderer, Phase.DecalAfterToneMap, items, renderer.toneMappedColors,
+			renderer.depthTarget.asTexture());
 	}
 	closePrepare(renderer.core);
 	return Result.ok((items.length as int32) - renderer.core.culledCount);
@@ -605,6 +634,24 @@ function outlinePhases(
 	return null;
 }
 
+// The decal pass of `phase` over the colour `colors` keeps, reading the scene's depth at
+// `depthView`: the lit colour for Decal, the tone-mapped one for DecalAfterToneMap.
+function drawSceneDecals(
+	renderer: ForwardRenderer,
+	phase: Phase,
+	items: Readonly<Span<DrawItem>>,
+	colors: Readonly<Span<ColorAttachment>>,
+	depthView: uint32,
+): void {
+	const core: Renderer = renderer.core;
+	if (core.phaseCount(phase) == 0) { return; }
+	const layout: TargetLayout = phase == Phase.Decal && core.linearOutput ?
+		FORWARD_HDR_DECAL_LAYOUT : FORWARD_DECAL_LAYOUT;
+	beginPass(colors, NO_DEPTH);
+	drawDecals(core, phase, items, layout, depthView, renderer.sampler.asHandle());
+	endPass();
+}
+
 function drawOutlined(
 	renderer: ForwardRenderer,
 	outline: ForwardOutlinePass,
@@ -636,10 +683,15 @@ function drawOutlined(
 		drawPhase(core, Phase.Additive, items, layout);
 		endPass();
 	}
+	drawSceneDecals(renderer, Phase.Decal, items, outline.translucentColors,
+		outline.depth.asTexture());
 	if (toneMap !== null) {
 		outline.translucentColors[0] = outline.lit.asColor(LoadAction.DontCare, SCREEN_CLEAR);
 		toneMap.draw(core, outline.translucentColors);
+		outline.translucentColors[0] = outline.lit.asColor(LoadAction.Load, SCREEN_CLEAR);
 	}
+	drawSceneDecals(renderer, Phase.DecalAfterToneMap, items, outline.translucentColors,
+		outline.depth.asTexture());
 	outline.prepare(core.context, renderer.outlineSettings, renderer.outlineBlend,
 		depthZeroToOne(), renderer.sampler.asHandle());
 	outline.drawMask(core);

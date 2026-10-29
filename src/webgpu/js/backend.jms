@@ -1,5 +1,6 @@
 import { DeviceLoss } from "../types.ms";
 import { lostAction } from "../wgpu/lost.ms";
+import { elementKind } from "./elementKind";
 import {
 	BindingKind,
 	GPU_MAX_BIND_GROUP_ENTRIES,
@@ -196,17 +197,6 @@ extern function featuresOf(device: Js): Js from "#.features";
 extern function commandList(commands: Js): Js from "[#]";
 extern function padded(data: Js): Js from "((t)=>{const b=t.byteLength;if(!(b&3))return t;const u=new Uint8Array((b+3)&~3);u.set(new Uint8Array(t.buffer,t.byteOffset,b));return u;})(#)";
 extern function typedElements<T>(data: Readonly<Span<T>>, kind: int32): Js from "((d,k)=>{const a=d.base.slice(d.off,d.off+d.len);switch(k){case 0:return Float32Array.from(a);case 1:return Float64Array.from(a);case 2:return Int8Array.from(a);case 3:return Uint8Array.from(a);case 4:return Int16Array.from(a);case 5:return Uint16Array.from(a);case 6:return Int32Array.from(a);case 7:return Uint32Array.from(a);case 8:return BigInt64Array.from(a,(v)=>BigInt.asIntN(64,BigInt(v)));default:return BigUint64Array.from(a,(v)=>BigInt.asUintN(64,BigInt(v)));}})(#,#)";
-
-function elementKind(sample: float32): int32 { return 0; }
-function elementKind(sample: float64): int32 { return 1; }
-function elementKind(sample: int8): int32 { return 2; }
-function elementKind(sample: uint8): int32 { return 3; }
-function elementKind(sample: int16): int32 { return 4; }
-function elementKind(sample: uint16): int32 { return 5; }
-function elementKind(sample: int32): int32 { return 6; }
-function elementKind(sample: uint32): int32 { return 7; }
-function elementKind(sample: int64): int32 { return 8; }
-function elementKind(sample: uint64): int32 { return 9; }
 
 const NONE: Js = jsNull();
 

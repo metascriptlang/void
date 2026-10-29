@@ -27,9 +27,11 @@ import {
 	LIGHT_KIND_SPOT,
 	LIGHT_KIND_RECTANGLE,
 	LIGHT_KIND_CAPSULE,
+	LIGHT_COOKIE,
 	declares,
 	vertexLayoutOf,
 } from "./gpu3d";
+import { TextureId, NO_TEXTURE } from "./texture";
 import {
 	SpotLightShape,
 	RectangleLightShape,
@@ -142,6 +144,11 @@ export struct LightInstance {
 	// A directional with it set is LightError.UnshadowableLight, and a second caster of one map
 	// LightError.TooManyShadowedSpots or TooManyCubeCasters.
 	shadows: boolean;
+	// SpotLight.cookie (SpotLight.hx:10, 119-126): a texture whose colour times its alpha the spot
+	// projects in place of its cone's falloff (shader3d.ms cookieAt). One spot of a frame has one;
+	// a cookie on another kind is LightError.UncookableLight. The scene does not hold the texture:
+	// a frame whose cookie was released is RendererError.StaleCookie.
+	cookie: TextureId;
 }
 
 export enum SceneError {
@@ -183,6 +190,10 @@ export enum LightError {
 	TooManyShadowedSpots,
 	UnshadowableLight,
 	TooManyCubeCasters,
+	UncookableLight,
+	TooManyCookieSpots,
+	// The light block carries the cookie's id as floats, exact below 2^24.
+	CookieIdPastFloat,
 }
 
 // h3d.scene.Object's position/rotation/scale, kept as one value struct because every pass that
@@ -268,8 +279,10 @@ export interface Scene3D {
 	// h3d.scene.Scene lighting.ambient, fwd.LightSystem's default grey.
 	ambientLight: Vec3;
 	stack: Vec<int32>;
+	stackSources: Vec<int32>;
 	root: int32;
 	structureChanged: boolean;
+	posChanged: boolean;
 	closed: boolean;
 }
 
@@ -359,9 +372,11 @@ function newSlot(scene: Scene3D, node: Object3D): NodeId3D {
 	if (index == (scene.nodes.length as int32)) {
 		scene.nodes.push(node);
 		scene.stack.push(NO_NODE_3D);
+		scene.stackSources.push(NO_RATIO_SOURCE);
 	} else {
 		scene.nodes[index] = node;
 	}
+	scene.posChanged = true;
 	return scene.nodeIdAt(index);
 }
 
@@ -390,8 +405,10 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 		lightOrder: [],
 		ambientLight: vec3(0.5, 0.5, 0.5),
 		stack: [],
+		stackSources: [],
 		root: NO_NODE_3D,
 		structureChanged: true,
+		posChanged: true,
 		closed: false,
 	};
 	const root: NodeId3D = newSlot(scene, {
@@ -502,6 +519,21 @@ export function addMeshNode(
 	return Result.ok(id);
 }
 
+function validateSkinNode(
+	scene: Scene3D, mesh: MeshId, material: MaterialId, geometry: Readonly<SkinGeometry>,
+	palette: int32, range: DrawRange | null, lod: Readonly<MeshLodPick> | null,
+): Result<int32, SceneError> {
+	if (lod === null) { return validateSkinMesh(scene, mesh, material, geometry, palette, range); }
+	let total: int32 = 0;
+	for (let level = 0; level < lod.ranges.lodCount; level++) {
+		const levelRange = lod.ranges.rangeAt(lod.material, level);
+		if (!levelRange.ok) { return Result.err(SceneError.MeshLod); }
+		total = try validateSkinMesh(scene, mesh, material, geometry, palette,
+			{ base: levelRange.value.base, count: levelRange.value.count });
+	}
+	return Result.ok(total);
+}
+
 function validateSkinMesh(
 	scene: Scene3D, mesh: MeshId, material: MaterialId,
 	geometry: Readonly<SkinGeometry>, palette: int32, range: DrawRange | null,
@@ -587,8 +619,43 @@ export function addLodMeshNode(
 	slot: int32,
 ): Result<NodeId3D, SceneError> {
 	scene.requireOpen("addLodMeshNode");
-	const context: DrawContext = scene.context;
-	context.requireOpen("addLodMeshNode");
+	scene.context.requireOpen("addLodMeshNode");
+	const pick: MeshLodPick = try lodPickOf(scene.context, mesh, config, ranges, slot);
+	const first = try firstRange(pick);
+	const node: NodeId3D = try addMeshNode(scene, parent, local, mesh, material);
+	const row: int32 = scene.nodes[node.index].payload;
+	scene.meshes[row].range = first;
+	scene.meshes[row].lod = pick;
+	return Result.ok(node);
+}
+
+export function addLodSkinMeshNode(
+	scene: Scene3D, parent: NodeId3D | null, local: Transform3D,
+	mesh: MeshId, material: MaterialId, geometry: SkinGeometry, palette: int32,
+	config: Readonly<MeshLod>, ranges: Readonly<MeshLodRanges>, slot: int32,
+): Result<NodeId3D, SceneError> {
+	scene.requireOpen("addLodSkinMeshNode");
+	scene.context.requireOpen("addLodSkinMeshNode");
+	const pick: MeshLodPick = try lodPickOf(scene.context, mesh, config, ranges, slot);
+	const _valid: int32 =
+		try validateSkinNode(scene, mesh, material, geometry, palette, null, pick);
+	const first = try firstRange(pick);
+	const node: NodeId3D =
+		try addSkinMeshNode(scene, parent, local, mesh, material, geometry, palette, first);
+	scene.meshes[scene.nodes[node.index].payload].lod = pick;
+	return Result.ok(node);
+}
+
+function firstRange(pick: Readonly<MeshLodPick>): Result<DrawRange, SceneError> {
+	const first = pick.ranges.rangeAt(pick.material, 0);
+	if (!first.ok) { return Result.err(SceneError.MeshLod); }
+	return Result.ok({ base: first.value.base, count: first.value.count });
+}
+
+function lodPickOf(
+	context: DrawContext, mesh: MeshId, config: Readonly<MeshLod>,
+	ranges: Readonly<MeshLodRanges>, slot: int32,
+): Result<MeshLodPick, SceneError> {
 	if (!context.hasMesh(mesh)) { return Result.err(meshError(context, mesh)); }
 	if (config.lodCount != ranges.lodCount ||
 		context.meshes[mesh.index].elementCount() != ranges.elementCount) {
@@ -597,14 +664,11 @@ export function addLodMeshNode(
 	const first = ranges.rangeAt(slot, 0);
 	if (!first.ok) { return Result.err(SceneError.MeshLod); }
 	if (!config.select(0.0).ok) { return Result.err(SceneError.MeshLod); }
-	const node: NodeId3D = try addMeshNode(scene, parent, local, mesh, material);
-	const row: int32 = scene.nodes[node.index].payload;
 	let thresholds: Vec<float64> = [];
 	for (const threshold of config.thresholds) { thresholds.push(threshold); }
 	let levels: Vec<MeshLodRange> = [];
 	for (const range of ranges.ranges) { levels.push(range); }
-	scene.meshes[row].range = { base: first.value.base, count: first.value.count };
-	scene.meshes[row].lod = {
+	return Result.ok({
 		config: {
 			lodCount: config.lodCount, thresholds: move thresholds,
 			cullingScreenRatio: config.cullingScreenRatio,
@@ -616,8 +680,8 @@ export function addLodMeshNode(
 		material: slot,
 		localOriginRadius: context.meshData[mesh.index].bounds.boundingRadius(),
 		forcedLod: -1,
-	};
-	return Result.ok(node);
+		inheritLod: false,
+	});
 }
 
 export function setForcedLod(scene: Scene3D, id: NodeId3D, level: int32): Result<void, SceneError> {
@@ -626,6 +690,29 @@ export function setForcedLod(scene: Scene3D, id: NodeId3D, level: int32): Result
 	if (lod === null || level < -1) { return Result.err(SceneError.MeshLod); }
 	lod.forcedLod = level;
 	return Result.ok(null);
+}
+
+export function setInheritLod(
+	scene: Scene3D, id: NodeId3D, inherit: boolean,
+): Result<void, SceneError> {
+	const node: int32 = scene.kindRow(id, NodeKind.Mesh, "setInheritLod");
+	const lod = scene.meshes[scene.nodes[node].payload].lod;
+	if (lod === null) { return Result.err(SceneError.MeshLod); }
+	lod.inheritLod = inherit;
+	return Result.ok(null);
+}
+
+const NO_RATIO_SOURCE: int32 = -1;
+
+function lodSourceOf(scene: Scene3D, payload: int32, inherited: int32): int32 | null {
+	if (inherited == NO_RATIO_SOURCE || scene.meshes[payload].lod === null) { return null; }
+	return inherited;
+}
+
+function ratioSourceBelow(scene: Scene3D, payload: int32, item: int32, inherited: int32): int32 {
+	if (inherited != NO_RATIO_SOURCE) { return inherited; }
+	const lod = scene.meshes[payload].lod;
+	return lod !== null && lod.passesRatioDown() ? item : NO_RATIO_SOURCE;
 }
 
 export function addSkinMeshNode(
@@ -940,6 +1027,7 @@ function placeNode(
 	scene.nodes[under].children[position] = row;
 	scene.nodes[row].parent = under;
 	scene.nodes[row].flags = scene.nodes[row].flags.incl(NodeFlag.PosChanged);
+	scene.posChanged = true;
 	if (!connectedRow(scene, under)) {
 		const count: int32 = collectSubtree(scene, row);
 		for (let i = 0; i < count; i++) {
@@ -1093,6 +1181,7 @@ export function setLocal(scene: Scene3D, id: NodeId3D, local: Transform3D): void
 	const row: int32 = scene.liveRow(id, "setLocal");
 	scene.nodes[row].local = local;
 	scene.nodes[row].flags = scene.nodes[row].flags.incl(NodeFlag.PosChanged);
+	scene.posChanged = true;
 }
 
 export function setVisible(scene: Scene3D, id: NodeId3D, visible: boolean): void {
@@ -1166,15 +1255,15 @@ export function setMeshOf(scene: Scene3D, id: NodeId3D, mesh: MeshId): Result<in
 		);
 		unreachable;
 	}
-	const geometry = scene.meshes[row].skinGeometry;
-	if (geometry !== null) {
-		const _valid: int32 = try validateSkinMesh(scene, mesh, scene.meshes[row].material,
-			geometry, scene.meshes[row].skinPalette, scene.meshes[row].range);
-	}
 	const lod = scene.meshes[row].lod;
 	if (lod !== null && (!context.hasMesh(mesh) ||
 		context.meshes[mesh.index].elementCount() != lod.ranges.elementCount)) {
 		return Result.err(SceneError.MeshLod);
+	}
+	const geometry = scene.meshes[row].skinGeometry;
+	if (geometry !== null) {
+		const _valid: int32 = try validateSkinNode(scene, mesh, scene.meshes[row].material,
+			geometry, scene.meshes[row].skinPalette, scene.meshes[row].range, lod);
 	}
 	const holds: boolean = context.hasMesh(shown);
 	if (holds && context.meshPinned(shown) < 1) { stopOnPinTaken("setMeshOf"); }
@@ -1198,8 +1287,9 @@ export function setMaterialOf(
 	}
 	const geometry = scene.meshes[row].skinGeometry;
 	if (geometry !== null) {
-		const _valid: int32 = try validateSkinMesh(scene, scene.meshes[row].mesh, material,
-			geometry, scene.meshes[row].skinPalette, scene.meshes[row].range);
+		const _valid: int32 = try validateSkinNode(scene, scene.meshes[row].mesh, material,
+			geometry, scene.meshes[row].skinPalette, scene.meshes[row].range,
+			scene.meshes[row].lod);
 	}
 	const holds: boolean = context.hasMaterial(shown);
 	if (holds && context.materialPinned(shown) < 1) { stopOnPinTaken("setMaterialOf"); }
@@ -1229,6 +1319,12 @@ export function setLightRadius(scene: Scene3D, id: NodeId3D, radius: float32): v
 export function setLightPriority(scene: Scene3D, id: NodeId3D, priority: int32): void {
 	const node: int32 = scene.kindRow(id, NodeKind.Light, "setLightPriority");
 	scene.lights[scene.nodes[node].payload].priority = priority;
+}
+
+// SpotLight.cookie's setter; NO_TEXTURE takes it off.
+export function setLightCookie(scene: Scene3D, id: NodeId3D, cookie: TextureId): void {
+	const node: int32 = scene.kindRow(id, NodeKind.Light, "setLightCookie");
+	scene.lights[scene.nodes[node].payload].cookie = cookie;
 }
 
 export function setAmbient(scene: Scene3D, ambient: Vec3): void {
@@ -1353,7 +1449,8 @@ export function worldOf(this scene: Scene3D, id: NodeId3D): Result<Mat4, SceneEr
 // Allocates nothing: the descent stack is `scene.stack`, sized when nodes were added.
 export function syncWorld(scene: Scene3D): int32 {
 	if (scene.closed) { stopOnClosed("syncWorld"); }
-	if (scene.root == NO_NODE_3D) { return 0; }
+	if (scene.root == NO_NODE_3D || !scene.posChanged) { return 0; }
+	scene.posChanged = false;
 	let synced: int32 = 0;
 	let top: int32 = 0;
 	scene.stack[top] = scene.root;
@@ -1410,22 +1507,27 @@ function fillDrawList(scene: Scene3D, layers: uint32, ref items: Vec<DrawItem>):
 	if (scene.root == NO_NODE_3D) { return 0; }
 	let top: int32 = 0;
 	scene.stack[top] = scene.root;
+	scene.stackSources[top] = NO_RATIO_SOURCE;
 	top = top + 1;
 	while (top > 0) {
 		top = top - 1;
 		const index: int32 = scene.stack[top];
+		let source: int32 = scene.stackSources[top];
 		if (!scene.nodes[index].isVisible()) { continue; }
 		const shown: boolean = layersTest(scene.nodes[index].layers, layers);
 		if (shown && scene.nodes[index].kind == NodeKind.Mesh) {
-			const instance: MeshInstance = scene.meshes[scene.nodes[index].payload];
+			const payload: int32 = scene.nodes[index].payload;
+			const at: int32 = items.length as int32;
 			items.push({
-				mesh: instance.mesh,
-				material: instance.material,
+				mesh: scene.meshes[payload].mesh,
+				material: scene.meshes[payload].material,
 				world: scene.nodes[index].world,
 				order: scene.nodes[index].renderOrder,
-				skin: null, skinGeometry: instance.skinGeometry,
-				skinPalette: instance.skinPalette, range: instance.range, lod: instance.lod,
+				skin: null, skinGeometry: scene.meshes[payload].skinGeometry,
+				skinPalette: scene.meshes[payload].skinPalette, range: scene.meshes[payload].range,
+				lod: scene.meshes[payload].lod, lodSource: lodSourceOf(scene, payload, source),
 			});
+			source = ratioSourceBelow(scene, payload, at, source);
 		}
 		// Children are pushed in reverse so the stack pops them in declaration order: sibling
 		// order is draw order, and the draw list is what decides overdraw.
@@ -1433,6 +1535,7 @@ function fillDrawList(scene: Scene3D, layers: uint32, ref items: Vec<DrawItem>):
 		const count: int32 = scene.nodes[index].children.length as int32;
 		for (let i = count - 1; i >= 0; i--) {
 			scene.stack[top] = scene.nodes[index].children[i];
+			scene.stackSources[top] = source;
 			top = top + 1;
 		}
 	}
@@ -1555,39 +1658,49 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 		let at: int32 = 0;
 		let top: int32 = 0;
 		scene.stack[top] = scene.root;
+		scene.stackSources[top] = NO_RATIO_SOURCE;
 		top = top + 1;
 		while (top > 0) {
 			top = top - 1;
 			const index: int32 = scene.stack[top];
+			let source: int32 = scene.stackSources[top];
 			if (!scene.nodes[index].isVisible()) { continue; }
 			const shown: boolean = layersTest(scene.nodes[index].layers, layers);
 			if (shown && scene.nodes[index].kind == NodeKind.Mesh) {
-				const instance: MeshInstance = scene.meshes[scene.nodes[index].payload];
+				const payload: int32 = scene.nodes[index].payload;
 				// The walk can produce more items than the list holds as well as fewer: a node
 				// culled since the last collect drops out, and un-culling it puts it back.
 				// Writing `items[at]` unconditionally would store past the end in that second
 				// case, which is a fault, not a wrong pixel.
 				if (at < (items.length as int32)) {
 					items[at].world = scene.nodes[index].world;
-					items[at].mesh = instance.mesh;
-					items[at].material = instance.material;
+					items[at].mesh = scene.meshes[payload].mesh;
+					items[at].material = scene.meshes[payload].material;
 					items[at].order = scene.nodes[index].renderOrder;
-					items[at].skin = null;
-					items[at].skinGeometry = instance.skinGeometry;
-					items[at].skinPalette = instance.skinPalette;
-					items[at].range = instance.range;
-					items[at].lod = instance.lod;
+					if (items[at].skin !== null) { items[at].skin = null; }
+					if (items[at].skinGeometry !== scene.meshes[payload].skinGeometry) {
+						items[at].skinGeometry = scene.meshes[payload].skinGeometry;
+					}
+					items[at].skinPalette = scene.meshes[payload].skinPalette;
+					items[at].range = scene.meshes[payload].range;
+					if (items[at].lod !== scene.meshes[payload].lod) {
+						items[at].lod = scene.meshes[payload].lod;
+					}
 					items[at].lodCulled = false;
+					items[at].lodSource = lodSourceOf(scene, payload, source);
 				} else {
 					items.push({
-						mesh: instance.mesh,
-						material: instance.material,
+						mesh: scene.meshes[payload].mesh,
+						material: scene.meshes[payload].material,
 						world: scene.nodes[index].world,
 						order: scene.nodes[index].renderOrder,
-						skin: null, skinGeometry: instance.skinGeometry,
-						skinPalette: instance.skinPalette, range: instance.range, lod: instance.lod,
+						skin: null, skinGeometry: scene.meshes[payload].skinGeometry,
+						skinPalette: scene.meshes[payload].skinPalette,
+						range: scene.meshes[payload].range, lod: scene.meshes[payload].lod,
+						lodSource: lodSourceOf(scene, payload, source),
 					});
 				}
+				source = ratioSourceBelow(scene, payload, at, source);
 				at = at + 1;
 			}
 			// Indexed through the field rather than bound to a local. `const children:
@@ -1600,6 +1713,7 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 			const count: int32 = scene.nodes[index].children.length as int32;
 			for (let i = count - 1; i >= 0; i--) {
 				scene.stack[top] = scene.nodes[index].children[i];
+				scene.stackSources[top] = source;
 				top = top + 1;
 			}
 		}
@@ -1653,6 +1767,7 @@ export function collectLightsFor(
 				const light: LightInstance = scene.lights[scene.nodes[index].payload];
 				if (light.kind == LightKind.Directional) {
 					if (light.shadows) { return Result.err(LightError.UnshadowableLight); }
+					if (light.cookie.isTexture()) { return Result.err(LightError.UncookableLight); }
 					if (seenDirectional) { return Result.err(LightError.TooManyDirectionalLights); }
 					seenDirectional = true;
 					// fwd.DirLight.emit reads absPos.front() normalized; the shader wants the
@@ -1676,8 +1791,20 @@ export function collectLightsFor(
 	const found: int32 = scene.lightOrder.length as int32;
 	let spotCaster: int32 = -1;
 	let cubeCaster: int32 = -1;
+	let cookieSpot: int32 = -1;
+	let cookie: TextureId = NO_TEXTURE;
 	for (let i = 0; i < found; i++) {
 		const light: LightInstance = scene.lights[scene.nodes[scene.lightOrder[i]].payload];
+		if (light.cookie.isTexture()) {
+			if (light.kind != LightKind.Spot) { return Result.err(LightError.UncookableLight); }
+			if (cookieSpot >= 0) { return Result.err(LightError.TooManyCookieSpots); }
+			if (!floatExact(light.cookie.store) || !floatExact(light.cookie.index) ||
+				!floatExact(light.cookie.generation)) {
+				return Result.err(LightError.CookieIdPastFloat);
+			}
+			cookieSpot = i;
+			cookie = light.cookie;
+		}
 		if (!light.shadows) { continue; }
 		if (light.kind == LightKind.Spot) {
 			if (spotCaster >= 0) { return Result.err(LightError.TooManyShadowedSpots); }
@@ -1692,6 +1819,10 @@ export function collectLightsFor(
 	pushQuad(out, vec4(toward.x, toward.y, toward.z, sunPower));
 	pushQuad(out, vec4(sunColor.x, sunColor.y, sunColor.z, (cubeCaster + 1) as float32));
 	while ((out.length as int32) < LIGHT_UNIFORM_LENGTH) { out.push(0.0); }
+	out[LIGHT_COOKIE] = (cookieSpot + 1) as float32;
+	out[LIGHT_COOKIE + 1] = cookie.store as float32;
+	out[LIGHT_COOKIE + 2] = cookie.index as float32;
+	out[LIGHT_COOKIE + 3] = cookie.generation as float32;
 	for (let i = 0; i < found; i++) {
 		const index: int32 = scene.lightOrder[i];
 		const light: LightInstance = scene.lights[scene.nodes[index].payload];
@@ -1706,6 +1837,10 @@ export function collectLightsFor(
 		}
 	}
 	return Result.ok(found);
+}
+
+function floatExact(value: int32): boolean {
+	return value >= 0 && value <= 16777216;
 }
 
 function pushQuad(ref out: Vec<float32>, v: Vec4): void {

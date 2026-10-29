@@ -185,6 +185,7 @@ function bindingsAt(
 		shadowMap: oneLayer(texture(depth)),
 		spotShadowMap: oneLayer(texture(depth)),
 		cubeShadowMap: oneLayer(texture(depth)),
+		cookieTexture: { width: 0, height: 0, texels: [] },
 		baseTexture: texture(1.0),
 		baseSampler: { nearest: true },
 		backTexture: texture(1.0),
@@ -287,11 +288,11 @@ test "a pbr key's material colour lights as the vertex colour times it would" {
 	assert near(out.color.a, BASE.a * tint.a);
 }
 
-test "ProgramKey.withPbr sets bit 16 and names itself, for the lit programs only" {
+test "ProgramKey.withPbr sets bit 17 and names itself, for the lit programs only" {
 	const lit: ProgramKey = ProgramKey.of(Program.Lit);
 	const pbr: ProgramKey = lit.withPbr();
 	assert pbr.pbr && !lit.pbr;
-	assert pbr.bits() == (lit.bits() | 65536);
+	assert pbr.bits() == (lit.bits() | 131072);
 	assert pbr.describe().includes("pbr");
 	assert ProgramKey.of(Program.LitTextured).withPbr().pbr;
 }

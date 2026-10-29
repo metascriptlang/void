@@ -23,6 +23,9 @@
 // expect reserveUniforms: void3d: reserveUniforms on a draw context that was closed
 // expect releaseUniforms: void3d: releaseUniforms on a draw context that was closed
 // expect writeUniforms: void3d: writeUniforms on a draw context that was closed
+// expect reserveBlock: void3d: reserveBlock on a draw context that was closed
+// expect releaseBlock: void3d: releaseBlock on a draw context that was closed
+// expect writeBlock: void3d: writeBlock on a draw context that was closed
 // expect drawItem: void3d: drawItem on a draw context that was closed
 // expect closeContext: void3d: closeContext on a draw context that was closed
 // expect forMeshes: void3d: forMeshes on a draw context that was closed
@@ -32,6 +35,8 @@
 // expect disownRange: void3d: disownRange on a uniform pool that was closed
 // expect releaseRange: void3d: releaseRange on a uniform pool that was closed
 // expect writeRange: void3d: writeRange on a uniform pool that was closed
+// expect poolReserveBlock: void3d: reserveBlock on a uniform pool that was closed
+// expect poolWriteBlock: void3d: writeBlock on a uniform pool that was closed
 // expect closeUniformPool: void3d: closeUniformPool on a uniform pool that was closed
 // expect closed.fill: void3d: fill on a palette table that was closed
 // expect closed.releaseGpu: void3d: releaseGpu on a palette table that was closed
@@ -76,9 +81,11 @@ import {
 	MaterialKind,
 	Phase,
 	NO_UNIFORMS,
+	TypedBlock,
 	UniformBlock,
 	movingDefaults,
 } from "../../../src/void3d/material";
+import { OutlineWidthParams } from "../../../src/void3d/post3d";
 import { Camera3D, ProjectionKind } from "../../../src/void3d/camera";
 import { MeshData } from "../../../src/void3d/meshData";
 import {
@@ -96,6 +103,8 @@ import {
 	disownRange,
 	releaseRange,
 	writeRange,
+	reserveBlock as reserveBlockOn,
+	writeBlock as writeBlockOn,
 	closeUniformPool,
 } from "../../../src/void3d/uniformPool";
 import {
@@ -145,6 +154,9 @@ import {
 	reserveUniforms,
 	releaseUniforms,
 	writeUniforms,
+	reserveBlock,
+	releaseBlock,
+	writeBlock,
 	drawItem,
 	closeContext,
 } from "../../../src/void3d/draw";
@@ -249,6 +261,16 @@ function drawCase(name: string, context: DrawContext): boolean {
 		const _r: Result<int32, UniformError> = releaseUniforms(context, NO_UNIFORMS);
 	} else if (name == "writeUniforms") {
 		const _r: Result<int32, UniformError> = writeUniforms(context, NO_UNIFORMS, values);
+	} else if (name == "reserveBlock") {
+		const _r: Result<TypedBlock<OutlineWidthParams>, UniformError> =
+			reserveBlock<OutlineWidthParams>(context, 2);
+	} else if (name == "releaseBlock") {
+		const _r: Result<int32, UniformError> =
+			releaseBlock<OutlineWidthParams>(context, { block: NO_UNIFORMS });
+	} else if (name == "writeBlock") {
+		const width: OutlineWidthParams = { outlineWidth: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 } };
+		const _r: Result<int32, UniformError> =
+			writeBlock<OutlineWidthParams>(context, { block: NO_UNIFORMS }, width);
 	} else if (name == "drawItem") {
 		const item: DrawItem = { mesh: NO_MESH, material: NO_MATERIAL, world: identity() };
 		drawItem(context, item, ProgramKey.of(Program.Lit), SWAPCHAIN_LAYOUT, globals);
@@ -299,6 +321,13 @@ function poolCase(name: string): boolean {
 		const _r: Result<int32, UniformError> = releaseRange(pool, NO_UNIFORMS);
 	} else if (name == "writeRange") {
 		const _r: Result<int32, UniformError> = writeRange(pool, NO_UNIFORMS, values);
+	} else if (name == "poolReserveBlock") {
+		const _r: Result<TypedBlock<OutlineWidthParams>, UniformError> =
+			reserveBlockOn<OutlineWidthParams>(pool, 2);
+	} else if (name == "poolWriteBlock") {
+		const width: OutlineWidthParams = { outlineWidth: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 } };
+		const _r: Result<int32, UniformError> =
+			writeBlockOn<OutlineWidthParams>(pool, { block: NO_UNIFORMS }, width);
 	} else if (name == "closeUniformPool") {
 		closeUniformPool(pool);
 	} else {

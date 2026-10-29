@@ -9,7 +9,6 @@ import {
 	IoDirection,
 	ResourceKind,
 	Sampling,
-	SamplerType,
 	ScalarKind,
 	ShaderEntry,
 	ShaderExpr,
@@ -21,20 +20,27 @@ import {
 	ShaderTypeKind,
 	StmtKind,
 	TexelFormat,
+	texelScalar,
 	TextureShape,
 	UnaryOp,
 	isArrayTexture,
+	hasOffset,
+	offsetOf,
 	isAtomic,
-	isEffect,
+	isUniformLoad,
+	isDerivative,
+	rootOf,
 	sameShaderType,
 	scalarType,
 	vectorType,
+	predeclaredMemberType,
+	isDepthShape,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
-import { builtinType, ioLocation, rootOf } from "./irWalk";
+import { builtinType, hasCallOrEffect, ioLocation, withoutSamplers } from "./irWalk";
 import { demotedDiscards } from "./demote";
 import { Reads, printableEntry } from "./specialize";
-import { isMath } from "./spelling";
+import { componentCompare, isComponentCompare, isMath } from "./spelling";
 
 const OP_NAME = 5;
 const OP_MEMBER_NAME = 6;
@@ -71,6 +77,7 @@ const OP_VARIABLE = 59;
 const OP_LOAD = 61;
 const OP_STORE = 62;
 const OP_ACCESS_CHAIN = 65;
+const OP_ARRAY_LENGTH = 68;
 const OP_DECORATE = 71;
 const OP_MEMBER_DECORATE = 72;
 const OP_VECTOR_EXTRACT_DYNAMIC = 77;
@@ -89,6 +96,7 @@ const OP_IMAGE_READ = 98;
 const OP_IMAGE_WRITE = 99;
 const OP_IMAGE_QUERY_SIZE_LOD = 103;
 const OP_IMAGE_QUERY_SIZE = 104;
+const OP_IMAGE_QUERY_SAMPLES = 107;
 const OP_CONVERT_F_TO_U = 109;
 const OP_CONVERT_F_TO_S = 110;
 const OP_CONVERT_S_TO_F = 111;
@@ -153,6 +161,12 @@ const OP_BIT_COUNT = 205;
 const OP_DPDX = 207;
 const OP_DPDY = 208;
 const OP_FWIDTH = 209;
+const OP_DPDX_FINE = 210;
+const OP_DPDY_FINE = 211;
+const OP_FWIDTH_FINE = 212;
+const OP_DPDX_COARSE = 213;
+const OP_DPDY_COARSE = 214;
+const OP_FWIDTH_COARSE = 215;
 const OP_CONTROL_BARRIER = 224;
 const OP_ATOMIC_LOAD = 227;
 const OP_ATOMIC_STORE = 228;
@@ -179,10 +193,16 @@ const OP_RETURN = 253;
 const OP_RETURN_VALUE = 254;
 
 const CAP_SHADER = 1;
+const CAP_GEOMETRY = 2;
 const CAP_SAMPLE_RATE_SHADING = 35;
+const CAP_SAMPLED_1D = 43;
+const CAP_IMAGE_1D = 44;
 const CAP_SAMPLED_CUBE_ARRAY = 45;
 const CAP_STORAGE_IMAGE_EXTENDED_FORMATS = 49;
 const CAP_IMAGE_QUERY = 50;
+const CAP_DERIVATIVE_CONTROL = 51;
+const CAP_STORAGE_IMAGE_READ_WITHOUT_FORMAT = 55;
+const CAP_STORAGE_IMAGE_WRITE_WITHOUT_FORMAT = 56;
 
 const DECORATION_BLOCK = 2;
 const DECORATION_COL_MAJOR = 5;
@@ -212,6 +232,7 @@ const STORAGE_BUFFER = 12;
 const IMAGE_BIAS = 1;
 const IMAGE_LOD = 2;
 const IMAGE_GRAD = 4;
+const IMAGE_CONST_OFFSET = 8;
 const IMAGE_SAMPLE = 64;
 
 const GLSL_F_ABS = 4;
@@ -226,6 +247,7 @@ const GLSL_F_MAX = 40;
 const GLSL_U_MAX = 41;
 const GLSL_S_MAX = 42;
 const GLSL_F_CLAMP = 43;
+const GLSL_FIND_I_LSB = 73;
 const GLSL_FIND_S_MSB = 74;
 const GLSL_FIND_U_MSB = 75;
 
@@ -252,6 +274,7 @@ class Spirv {
 	structRules: int32[] = [];
 	structOffsets: int32[][] = [];
 	structSizes: int32[] = [];
+	structSlots: int32[][] = [];
 	resourceVars: int32[] = [];
 	ioVars: int32[] = [];
 	workgroupVars: int32[] = [];
@@ -353,7 +376,8 @@ function f32Bits(v: float64): float64 {
 		a = a * 2.0;
 		e--;
 	}
-	const field = e >= -126 ? ((e + 127) as float64) * 8388608.0 + roundEven((a - 1.0) * 8388608.0) :
+	const field = e >= -126 ?
+		((e + 127) as float64) * 8388608.0 + roundEven((a - 1.0) * 8388608.0) :
 		roundEven(a * powerOfTwo(e + 149));
 	return field >= 2139095040.0 ? -1.0 : sign + field;
 }
@@ -420,12 +444,13 @@ function strideOf(p: Spirv, t: ShaderType): int32 {
 		ShaderTypeKind.Struct => p.structSizes[t.structIndex],
 		ShaderTypeKind.Void | ShaderTypeKind.Array | ShaderTypeKind.RuntimeArray |
 			ShaderTypeKind.Texture | ShaderTypeKind.Sampler | ShaderTypeKind.StorageTexture |
-			ShaderTypeKind.ExchangeResult => 0,
+			ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult |
+			ShaderTypeKind.FrexpResult => 0,
 	};
 }
 
 function arrayTypeId(p: Spirv, element: int32, length: int32, stride: int32): int32 {
-	const count = wordConstant(p, scalarTypeId(p, ScalarKind.U32), length);
+	const count = intConstant(p, ScalarKind.U32, length);
 	const key = "a" + String(element) + ":" + String(count) + ":" + String(stride);
 	const held = cached(p, key);
 	if (held != 0) { return held; }
@@ -445,33 +470,70 @@ function runtimeArrayTypeId(p: Spirv, element: ShaderType): int32 {
 	return id;
 }
 
+function isHoisted(p: Spirv, structIndex: int32, t: ShaderType): boolean {
+	return p.structRules[structIndex] == STD140 && t.kind == ShaderTypeKind.Matrix && t.rows == 2;
+}
+
 function structTypeId(p: Spirv, index: int32): int32 {
 	const key = "s" + String(index);
 	const held = cached(p, key);
 	if (held != 0) { return held; }
 	const s = p.module.structs[index];
-	const members = s.members.map((f) => typeId(p, f.type));
+	const rule = p.structRules[index];
+	let members: int32[] = [];
+	let slots: int32[] = [];
+	for (const f of s.members) {
+		slots.push(members.length as int32);
+		if (isHoisted(p, index, f.type)) {
+			const column = typeId(p, vectorType(ScalarKind.F32, 2));
+			for (let c: int32 = 0; c < f.type.columns; c++) { members.push(column); }
+		} else {
+			members.push(typeId(p, f.type));
+		}
+	}
+	p.structSlots[index] = slots;
 	const id = declared(p, key, OP_TYPE_STRUCT, members);
 	name(p, id, s.name);
-	const rule = p.structRules[index];
 	for (let k: int32 = 0; k < s.members.length; k++) {
-		inst(p.names, OP_MEMBER_NAME, [id, k].concat(stringWords(s.members[k].name)));
-		if (rule == 0) { continue; }
-		memberDecorate(p, id, k, DECORATION_OFFSET, [p.structOffsets[index][k]]);
 		const t = s.members[k].type;
+		const at = slots[k];
+		if (isHoisted(p, index, t)) {
+			for (let c: int32 = 0; c < t.columns; c++) {
+				const columnName = s.members[k].name + "_col" + String(c);
+				inst(p.names, OP_MEMBER_NAME, [id, at + c].concat(stringWords(columnName)));
+				memberDecorate(p, id, at + c, DECORATION_OFFSET,
+					[p.structOffsets[index][k] + 8 * c]);
+			}
+			continue;
+		}
+		inst(p.names, OP_MEMBER_NAME, [id, at].concat(stringWords(s.members[k].name)));
+		if (rule == 0) { continue; }
+		memberDecorate(p, id, at, DECORATION_OFFSET, [p.structOffsets[index][k]]);
 		const own = t.kind == ShaderTypeKind.Array ? t.element[0] : t;
 		if (own.kind == ShaderTypeKind.Matrix) {
-			memberDecorate(p, id, k, DECORATION_COL_MAJOR, []);
-			memberDecorate(p, id, k, DECORATION_MATRIX_STRIDE,
-				[rule == STD140 || own.rows != 2 ? 16 : 8]);
+			memberDecorate(p, id, at, DECORATION_COL_MAJOR, []);
+			memberDecorate(p, id, at, DECORATION_MATRIX_STRIDE, [own.rows == 2 ? 8 : 16]);
 		}
 	}
 	return id;
 }
 
-function isDepthShape(shape: TextureShape): boolean {
-	return shape == TextureShape.Depth2d || shape == TextureShape.Depth2dArray ||
-		shape == TextureShape.DepthCube;
+function hoistedMember(p: Spirv, e: ShaderExpr): boolean {
+	return e.kind == ExprKind.BlockMember && e.type.kind == ShaderTypeKind.Matrix &&
+		e.type.rows == 2;
+}
+
+function loadHoisted(p: Spirv, e: ShaderExpr): int32 {
+	const structIndex = p.module.resources[e.index].type.structIndex;
+	const at = p.structSlots[structIndex][e.member];
+	const column = vectorType(ScalarKind.F32, 2);
+	let columns: int32[] = [];
+	for (let c: int32 = 0; c < e.type.columns; c++) {
+		const place = typed(p, OP_ACCESS_CHAIN, pointerTypeId(p, UNIFORM, typeId(p, column)),
+			[p.resourceVars[e.index], intConstant(p, ScalarKind.I32, at + c)]);
+		columns.push(typed(p, OP_LOAD, typeId(p, column), [place]));
+	}
+	return typed(p, OP_COMPOSITE_CONSTRUCT, typeId(p, e.type), columns);
 }
 
 function imageTypeId(p: Spirv, operands: int32[]): int32 {
@@ -481,12 +543,14 @@ function imageTypeId(p: Spirv, operands: int32[]): int32 {
 function textureTypeId(p: Spirv, t: ShaderType): int32 {
 	if (t.scalar == ScalarKind.Bool) { return refusal(p, "a texture of bool texels"); }
 	const dim = match (t.shape) {
+		TextureShape.D1 => 0,
 		TextureShape.D2 | TextureShape.D2Array | TextureShape.Depth2d | TextureShape.Depth2dArray |
 			TextureShape.Multisampled2d => 1,
 		TextureShape.D3 => 2,
 		TextureShape.Cube | TextureShape.CubeArray | TextureShape.DepthCube => 3,
 	};
 	if (t.shape == TextureShape.CubeArray) { need(p, CAP_SAMPLED_CUBE_ARRAY); }
+	if (t.shape == TextureShape.D1) { need(p, CAP_SAMPLED_1D); }
 	return imageTypeId(p, [
 		scalarTypeId(p, t.scalar),
 		dim,
@@ -503,23 +567,36 @@ function storageTextureTypeId(p: Spirv, t: ShaderType): int32 {
 		TexelFormat.Rgba8unorm => 4,
 		TexelFormat.Rgba8snorm => 5,
 		TexelFormat.Rgba8uint => 32,
+		TexelFormat.Rgba8sint => 23,
+		TexelFormat.Rgba16uint => 31,
+		TexelFormat.Rgba16sint => 22,
 		TexelFormat.Rgba16float => 2,
+		TexelFormat.Rgba32uint => 30,
+		TexelFormat.Rgba32sint => 21,
 		TexelFormat.Rgba32float => 1,
 		TexelFormat.R32float => 3,
 		TexelFormat.R32uint => 33,
+		TexelFormat.R32sint => 24,
 		TexelFormat.Rg32float => 6,
+		TexelFormat.Rg32uint => 35,
+		TexelFormat.Rg32sint => 25,
+		TexelFormat.Bgra8unorm => 0,
 	};
-	if (t.format == TexelFormat.Rg32float) { need(p, CAP_STORAGE_IMAGE_EXTENDED_FORMATS); }
+	if (t.format == TexelFormat.Rg32float || t.format == TexelFormat.Rg32uint ||
+		t.format == TexelFormat.Rg32sint) {
+		need(p, CAP_STORAGE_IMAGE_EXTENDED_FORMATS);
+	}
 	const dim = match (t.shape) {
+		TextureShape.D1 => 0,
 		TextureShape.D2 | TextureShape.D2Array => 1,
 		TextureShape.D3 => 2,
 		TextureShape.Cube | TextureShape.CubeArray | TextureShape.Depth2d |
-			TextureShape.Depth2dArray | TextureShape.DepthCube | TextureShape.Multisampled2d => 0,
+			TextureShape.Depth2dArray | TextureShape.DepthCube | TextureShape.Multisampled2d => -1,
 	};
-	if (dim == 0) { return refusal(p, "a storage texture of shape " + t.shape.toString()); }
-	const uint = t.format == TexelFormat.Rgba8uint || t.format == TexelFormat.R32uint;
+	if (dim < 0) { return refusal(p, "a storage texture of shape " + t.shape.toString()); }
+	if (t.shape == TextureShape.D1) { need(p, CAP_IMAGE_1D); }
 	return imageTypeId(p, [
-		scalarTypeId(p, uint ? ScalarKind.U32 : ScalarKind.F32),
+		scalarTypeId(p, texelScalar(t.format)),
 		dim,
 		0,
 		isArrayTexture(t) ? 1 : 0,
@@ -532,6 +609,13 @@ function storageTextureTypeId(p: Spirv, t: ShaderType): int32 {
 function exchangeTypeId(p: Spirv, s: ScalarKind): int32 {
 	const members = [scalarTypeId(p, s), scalarTypeId(p, ScalarKind.Bool)];
 	return declared(p, "x" + String(members[0]), OP_TYPE_STRUCT, members);
+}
+
+function splitTypeId(p: Spirv, t: ShaderType): int32 {
+	const members = [typeId(p, predeclaredMemberType(t, 0)),
+		typeId(p, predeclaredMemberType(t, 1))];
+	return declared(p, "r" + String(members[0]) + ":" + String(members[1]), OP_TYPE_STRUCT,
+		members);
 }
 
 function typeId(p: Spirv, t: ShaderType): int32 {
@@ -548,6 +632,7 @@ function typeId(p: Spirv, t: ShaderType): int32 {
 		ShaderTypeKind.Sampler => declared(p, "sampler", OP_TYPE_SAMPLER, []),
 		ShaderTypeKind.StorageTexture => storageTextureTypeId(p, t),
 		ShaderTypeKind.ExchangeResult => exchangeTypeId(p, t.scalar),
+		ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult => splitTypeId(p, t),
 	};
 }
 
@@ -691,18 +776,15 @@ function localVariable(p: Spirv, t: ShaderType): int32 {
 	return id;
 }
 
-function effectful(e: ShaderExpr): boolean {
-	return e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic) ||
-		e.operands.some((o) => effectful(o));
-}
-
 function isPlace(p: Spirv, e: ShaderExpr): boolean {
 	return match (e.kind) {
 		ExprKind.Local | ExprKind.Param | ExprKind.Io | ExprKind.Workgroup | ExprKind.Private |
 			ExprKind.BlockMember => true,
 		ExprKind.Resource => p.module.resources[e.index].kind == ResourceKind.StorageBuffer,
-		ExprKind.Field | ExprKind.Index => isPlace(p, e.operands[0]),
-		ExprKind.Swizzle => e.components.length == 1 && isPlace(p, e.operands[0]),
+		ExprKind.Field | ExprKind.Index => isPlace(p, e.operands[0]) &&
+			!hoistedMember(p, e.operands[0]),
+		ExprKind.Swizzle => e.components.length == 1 && isPlace(p, e.operands[0]) &&
+			!hoistedMember(p, e.operands[0]),
 		ExprKind.Literal | ExprKind.Constant | ExprKind.Unary | ExprKind.Binary |
 			ExprKind.Conditional | ExprKind.Call | ExprKind.Intrinsic | ExprKind.Construct |
 			ExprKind.Convert => false,
@@ -742,7 +824,8 @@ function placeOf(p: Spirv, e: ShaderExpr): Place {
 		ExprKind.BlockMember => {
 			place.base = p.resourceVars[e.index];
 			place.storage = UNIFORM;
-			place.indices.push(intConstant(p, ScalarKind.I32, e.member));
+			place.indices.push(intConstant(p, ScalarKind.I32,
+				p.structSlots[p.module.resources[e.index].type.structIndex][e.member]));
 		},
 		ExprKind.Resource => {
 			place.base = p.resourceVars[e.index];
@@ -776,6 +859,7 @@ function pointer(p: Spirv, e: ShaderExpr): Place {
 }
 
 function load(p: Spirv, e: ShaderExpr): int32 {
+	if (hoistedMember(p, e)) { return loadHoisted(p, e); }
 	const place = pointer(p, e);
 	return typed(p, OP_LOAD, typeId(p, e.type), [place.id]);
 }
@@ -812,7 +896,8 @@ function literalId(p: Spirv, t: ShaderType, v: float64): int32 {
 		ShaderTypeKind.Void | ShaderTypeKind.Matrix | ShaderTypeKind.Array |
 			ShaderTypeKind.RuntimeArray | ShaderTypeKind.Struct | ShaderTypeKind.Texture |
 			ShaderTypeKind.Sampler | ShaderTypeKind.StorageTexture | ShaderTypeKind.Atomic |
-			ShaderTypeKind.ExchangeResult => refusal(p, "a literal of a " + t.kind.toString()),
+			ShaderTypeKind.ExchangeResult | ShaderTypeKind.ModfResult |
+			ShaderTypeKind.FrexpResult => refusal(p, "a literal of a " + t.kind.toString()),
 	};
 }
 
@@ -910,11 +995,21 @@ function arithmetic(p: Spirv, op: BinaryOp, t: ShaderType, lt: ShaderType, l: in
 	const VEC = ShaderTypeKind.Vector;
 	const SCA = ShaderTypeKind.Scalar;
 	if (op == BinaryOp.Mul && (lt.kind == MAT || rt.kind == MAT)) {
-		if (lt.kind == MAT && rt.kind == MAT) { return typed(p, OP_MATRIX_TIMES_MATRIX, type, [l, r]); }
-		if (lt.kind == MAT && rt.kind == VEC) { return typed(p, OP_MATRIX_TIMES_VECTOR, type, [l, r]); }
-		if (lt.kind == VEC && rt.kind == MAT) { return typed(p, OP_VECTOR_TIMES_MATRIX, type, [l, r]); }
-		if (lt.kind == MAT && rt.kind == SCA) { return typed(p, OP_MATRIX_TIMES_SCALAR, type, [l, r]); }
-		if (lt.kind == SCA && rt.kind == MAT) { return typed(p, OP_MATRIX_TIMES_SCALAR, type, [r, l]); }
+		if (lt.kind == MAT && rt.kind == MAT) {
+			return typed(p, OP_MATRIX_TIMES_MATRIX, type, [l, r]);
+		}
+		if (lt.kind == MAT && rt.kind == VEC) {
+			return typed(p, OP_MATRIX_TIMES_VECTOR, type, [l, r]);
+		}
+		if (lt.kind == VEC && rt.kind == MAT) {
+			return typed(p, OP_VECTOR_TIMES_MATRIX, type, [l, r]);
+		}
+		if (lt.kind == MAT && rt.kind == SCA) {
+			return typed(p, OP_MATRIX_TIMES_SCALAR, type, [l, r]);
+		}
+		if (lt.kind == SCA && rt.kind == MAT) {
+			return typed(p, OP_MATRIX_TIMES_SCALAR, type, [r, l]);
+		}
 	}
 	if ((op == BinaryOp.Add || op == BinaryOp.Sub) && lt.kind == MAT && rt.kind == MAT) {
 		return columnwise(p, op, t, l, r);
@@ -965,7 +1060,7 @@ function shortCircuit(p: Spirv, e: ShaderExpr): int32 {
 	const and = e.binary == BinaryOp.LogicalAnd;
 	const type = typeId(p, e.type);
 	const l = value(p, e.operands[0]);
-	if (!effectful(e.operands[1])) {
+	if (!hasCallOrEffect(e.operands[1])) {
 		const r = value(p, e.operands[1]);
 		return typed(p, and ? OP_LOGICAL_AND : OP_LOGICAL_OR, type, [l, r]);
 	}
@@ -995,7 +1090,7 @@ function conditional(p: Spirv, e: ShaderExpr): int32 {
 	const type = typeId(p, t);
 	const c = value(p, o[0]);
 	const plain = t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector;
-	if (plain && !effectful(o[1]) && !effectful(o[2])) {
+	if (plain && !hasCallOrEffect(o[1]) && !hasCallOrEffect(o[2])) {
 		const yes = value(p, o[1]);
 		const no = value(p, o[2]);
 		return typed(p, OP_SELECT, type, [conditionFor(p, t, o[0].type, c), yes, no]);
@@ -1030,15 +1125,17 @@ function construct(p: Spirv, e: ShaderExpr): int32 {
 	const parts = o.map((a) => value(p, a));
 	if (o.length == 1 && sameShaderType(o[0].type, t)) { return parts[0]; }
 	if (t.kind == ShaderTypeKind.Vector) {
-		if (o.length == 1 && o[0].type.kind == ShaderTypeKind.Scalar) { return splat(p, t, parts[0]); }
+		if (o.length == 1 && o[0].type.kind == ShaderTypeKind.Scalar) {
+			return splat(p, t, parts[0]);
+		}
 		if (o.length == 1 && o[0].type.kind == ShaderTypeKind.Vector && o[0].type.rows == t.rows) {
 			return converted(p, o[0].type, t, parts[0]);
 		}
 		let components: int32 = 0;
 		for (const a of o) { components += rowsOf(a.type); }
 		if (components != t.rows) {
-			return refusal(p, "a vector of " + String(t.rows) + " built from " + String(components) +
-				" components");
+			return refusal(p, "a vector of " + String(t.rows) + " built from " +
+				String(components) + " components");
 		}
 		return composite(p, t, parts);
 	}
@@ -1046,7 +1143,8 @@ function construct(p: Spirv, e: ShaderExpr): int32 {
 		if (o.length == t.columns && !o.some((a) => a.type.kind != ShaderTypeKind.Vector)) {
 			return composite(p, t, parts);
 		}
-		if (o.length == t.columns * t.rows && !o.some((a) => a.type.kind != ShaderTypeKind.Scalar)) {
+		if (o.length == t.columns * t.rows &&
+			!o.some((a) => a.type.kind != ShaderTypeKind.Scalar)) {
 			const column = vectorType(ScalarKind.F32, t.rows);
 			let columns: int32[] = [];
 			for (let c: int32 = 0; c < t.columns; c++) {
@@ -1079,7 +1177,8 @@ function converted(p: Spirv, from: ShaderType, t: ShaderType, x: int32): int32 {
 	if (s == d) { return x; }
 	if (d == ScalarKind.Bool) {
 		const zero = splat(p, from, scalarConstant(p, s, 0.0));
-		return typed(p, s == ScalarKind.F32 ? OP_F_UNORD_NOT_EQUAL : OP_I_NOT_EQUAL, type, [x, zero]);
+		return typed(p, s == ScalarKind.F32 ? OP_F_UNORD_NOT_EQUAL : OP_I_NOT_EQUAL, type,
+			[x, zero]);
 	}
 	if (s == ScalarKind.Bool) {
 		const one = splat(p, t, scalarConstant(p, d, 1.0));
@@ -1101,54 +1200,74 @@ function converted(p: Spirv, from: ShaderType, t: ShaderType, x: int32): int32 {
 }
 
 function glslNumber(op: Intrinsic): int32 {
-	if (op == Intrinsic.Round) { return 2; }
-	if (op == Intrinsic.Trunc) { return 3; }
-	if (op == Intrinsic.Floor) { return 8; }
-	if (op == Intrinsic.Ceil) { return 9; }
-	if (op == Intrinsic.Fract) { return 10; }
-	if (op == Intrinsic.Radians) { return 11; }
-	if (op == Intrinsic.Degrees) { return 12; }
-	if (op == Intrinsic.Sin) { return 13; }
-	if (op == Intrinsic.Cos) { return 14; }
-	if (op == Intrinsic.Tan) { return 15; }
-	if (op == Intrinsic.Asin) { return 16; }
-	if (op == Intrinsic.Acos) { return 17; }
-	if (op == Intrinsic.Atan) { return 18; }
-	if (op == Intrinsic.Sinh) { return 19; }
-	if (op == Intrinsic.Cosh) { return 20; }
-	if (op == Intrinsic.Tanh) { return 21; }
-	if (op == Intrinsic.Atan2) { return 25; }
-	if (op == Intrinsic.Pow) { return 26; }
-	if (op == Intrinsic.Exp) { return 27; }
-	if (op == Intrinsic.Log) { return 28; }
-	if (op == Intrinsic.Exp2) { return 29; }
-	if (op == Intrinsic.Log2) { return 30; }
-	if (op == Intrinsic.Sqrt) { return 31; }
-	if (op == Intrinsic.InverseSqrt) { return 32; }
-	if (op == Intrinsic.Determinant) { return 33; }
-	if (op == Intrinsic.Mix) { return 46; }
-	if (op == Intrinsic.Step) { return 48; }
-	if (op == Intrinsic.Smoothstep) { return 49; }
-	if (op == Intrinsic.Fma) { return 50; }
-	if (op == Intrinsic.Pack4x8Snorm) { return 54; }
-	if (op == Intrinsic.Pack4x8Unorm) { return 55; }
-	if (op == Intrinsic.Pack2x16Snorm) { return 56; }
-	if (op == Intrinsic.Pack2x16Unorm) { return 57; }
-	if (op == Intrinsic.Pack2x16Float) { return 58; }
-	if (op == Intrinsic.Unpack2x16Snorm) { return 60; }
-	if (op == Intrinsic.Unpack2x16Unorm) { return 61; }
-	if (op == Intrinsic.Unpack2x16Float) { return 62; }
-	if (op == Intrinsic.Unpack4x8Snorm) { return 63; }
-	if (op == Intrinsic.Unpack4x8Unorm) { return 64; }
-	if (op == Intrinsic.Length) { return 66; }
-	if (op == Intrinsic.Distance) { return 67; }
-	if (op == Intrinsic.Cross) { return 68; }
-	if (op == Intrinsic.Normalize) { return 69; }
-	if (op == Intrinsic.FaceForward) { return 70; }
-	if (op == Intrinsic.Reflect) { return 71; }
-	if (op == Intrinsic.Refract) { return 72; }
-	if (op == Intrinsic.FirstTrailingBit) { return 73; }
-	return 0;
+	return match (op) {
+		Intrinsic.Round => 2,
+		Intrinsic.Trunc => 3,
+		Intrinsic.Floor => 8,
+		Intrinsic.Ceil => 9,
+		Intrinsic.Fract => 10,
+		Intrinsic.Radians => 11,
+		Intrinsic.Degrees => 12,
+		Intrinsic.Sin => 13,
+		Intrinsic.Cos => 14,
+		Intrinsic.Tan => 15,
+		Intrinsic.Asin => 16,
+		Intrinsic.Acos => 17,
+		Intrinsic.Atan => 18,
+		Intrinsic.Sinh => 19,
+		Intrinsic.Cosh => 20,
+		Intrinsic.Tanh => 21,
+		Intrinsic.Asinh => 22,
+		Intrinsic.Acosh => 23,
+		Intrinsic.Atanh => 24,
+		Intrinsic.Atan2 => 25,
+		Intrinsic.Pow => 26,
+		Intrinsic.Exp => 27,
+		Intrinsic.Log => 28,
+		Intrinsic.Exp2 => 29,
+		Intrinsic.Log2 => 30,
+		Intrinsic.Sqrt => 31,
+		Intrinsic.InverseSqrt => 32,
+		Intrinsic.Determinant => 33,
+		Intrinsic.Mix => 46,
+		Intrinsic.Step => 48,
+		Intrinsic.Smoothstep => 49,
+		Intrinsic.Fma => 50,
+		Intrinsic.Ldexp => 53,
+		Intrinsic.Modf => 36,
+		Intrinsic.Frexp => 52,
+		Intrinsic.Pack4x8Snorm => 54,
+		Intrinsic.Pack4x8Unorm => 55,
+		Intrinsic.Pack2x16Snorm => 56,
+		Intrinsic.Pack2x16Unorm => 57,
+		Intrinsic.Pack2x16Float => 58,
+		Intrinsic.Unpack2x16Snorm => 60,
+		Intrinsic.Unpack2x16Unorm => 61,
+		Intrinsic.Unpack2x16Float => 62,
+		Intrinsic.Unpack4x8Snorm => 63,
+		Intrinsic.Unpack4x8Unorm => 64,
+		Intrinsic.Length => 66,
+		Intrinsic.Distance => 67,
+		Intrinsic.Cross => 68,
+		Intrinsic.Normalize => 69,
+		Intrinsic.FaceForward => 70,
+		Intrinsic.Reflect => 71,
+		Intrinsic.Refract => 72,
+		Intrinsic.FirstTrailingBit => GLSL_FIND_I_LSB,
+		_ => 0,
+	};
+}
+
+function controlledDerivative(p: Spirv, op: Intrinsic): int32 {
+	return match (op) {
+		Intrinsic.DpdxCoarse => OP_DPDX_COARSE,
+		Intrinsic.DpdxFine => OP_DPDX_FINE,
+		Intrinsic.DpdyCoarse => OP_DPDY_COARSE,
+		Intrinsic.DpdyFine => OP_DPDY_FINE,
+		Intrinsic.FwidthCoarse => OP_FWIDTH_COARSE,
+		Intrinsic.FwidthFine => OP_FWIDTH_FINE,
+		_ => refusal(p, op.toString() + " is no coarse or fine derivative"),
+	};
 }
 
 function spreads(op: Intrinsic): boolean {
@@ -1193,8 +1312,12 @@ function math(p: Spirv, e: ShaderExpr): int32 {
 		return f ? ext(p, t, GLSL_F_SIGN, args) : i ? ext(p, t, GLSL_S_SIGN, args) :
 			refusal(p, "Sign of a u32");
 	}
-	if (op == Intrinsic.Min) { return ext(p, t, f ? GLSL_F_MIN : i ? GLSL_S_MIN : GLSL_U_MIN, args); }
-	if (op == Intrinsic.Max) { return ext(p, t, f ? GLSL_F_MAX : i ? GLSL_S_MAX : GLSL_U_MAX, args); }
+	if (op == Intrinsic.Min) {
+		return ext(p, t, f ? GLSL_F_MIN : i ? GLSL_S_MIN : GLSL_U_MIN, args);
+	}
+	if (op == Intrinsic.Max) {
+		return ext(p, t, f ? GLSL_F_MAX : i ? GLSL_S_MAX : GLSL_U_MAX, args);
+	}
 	if (op == Intrinsic.Clamp) {
 		if (f) { return ext(p, t, GLSL_F_CLAMP, args); }
 		const raised = ext(p, t, i ? GLSL_S_MAX : GLSL_U_MAX, [args[0], args[1]]);
@@ -1213,6 +1336,19 @@ function math(p: Spirv, e: ShaderExpr): int32 {
 	if (op == Intrinsic.Dpdx) { return typed(p, OP_DPDX, type, args); }
 	if (op == Intrinsic.Dpdy) { return typed(p, OP_DPDY, type, args); }
 	if (op == Intrinsic.Fwidth) { return typed(p, OP_FWIDTH, type, args); }
+	if (isDerivative(op)) {
+		need(p, CAP_DERIVATIVE_CONTROL);
+		return typed(p, controlledDerivative(p, op), type, args);
+	}
+	if (op == Intrinsic.Bitcast) { return typed(p, OP_BITCAST, type, args); }
+	if (op == Intrinsic.CountLeadingZeros) {
+		const highest = ext(p, t, GLSL_FIND_U_MSB, args);
+		return typed(p, OP_I_SUB, type, [splat(p, t, intConstant(p, t.scalar, 31)), highest]);
+	}
+	if (op == Intrinsic.CountTrailingZeros) {
+		const lowest = ext(p, t, GLSL_FIND_I_LSB, args);
+		return ext(p, t, GLSL_U_MIN, [splat(p, t, intConstant(p, t.scalar, 32)), lowest]);
+	}
 	if (op == Intrinsic.CountOneBits) { return typed(p, OP_BIT_COUNT, type, args); }
 	if (op == Intrinsic.ReverseBits) { return typed(p, OP_BIT_REVERSE, type, args); }
 	if (op == Intrinsic.FirstLeadingBit) {
@@ -1249,32 +1385,44 @@ function upperLeft(p: Spirv, e: ShaderExpr): int32 {
 	return typed(p, OP_COMPOSITE_CONSTRUCT, typeId(p, e.type), columns);
 }
 
-function barrier(p: Spirv, storage: boolean): int32 {
+function controlBarrier(p: Spirv, execution: int32, memory: int32, semantics: int32): int32 {
 	emit(p, OP_CONTROL_BARRIER, [
-		intConstant(p, ScalarKind.U32, 2),
-		intConstant(p, ScalarKind.U32, storage ? 1 : 2),
-		intConstant(p, ScalarKind.U32, storage ? 72 : 264),
+		intConstant(p, ScalarKind.U32, execution),
+		intConstant(p, ScalarKind.U32, memory),
+		intConstant(p, ScalarKind.U32, semantics),
 	]);
 	return 0;
 }
 
+function barrier(p: Spirv, storage: boolean): int32 {
+	return controlBarrier(p, 2, storage ? 1 : 2, storage ? 72 : 264);
+}
+
+function imageBarrier(p: Spirv): int32 {
+	return controlBarrier(p, 2, 2, 2056);
+}
+
 function atomicOpcode(op: Intrinsic, s: ScalarKind): int32 {
 	const signed = s == ScalarKind.I32;
-	if (op == Intrinsic.AtomicAdd) { return OP_ATOMIC_I_ADD; }
-	if (op == Intrinsic.AtomicSub) { return OP_ATOMIC_I_SUB; }
-	if (op == Intrinsic.AtomicMax) { return signed ? OP_ATOMIC_S_MAX : OP_ATOMIC_U_MAX; }
-	if (op == Intrinsic.AtomicMin) { return signed ? OP_ATOMIC_S_MIN : OP_ATOMIC_U_MIN; }
-	if (op == Intrinsic.AtomicAnd) { return OP_ATOMIC_AND; }
-	if (op == Intrinsic.AtomicOr) { return OP_ATOMIC_OR; }
-	if (op == Intrinsic.AtomicXor) { return OP_ATOMIC_XOR; }
-	if (op == Intrinsic.AtomicExchange) { return OP_ATOMIC_EXCHANGE; }
-	return 0;
+	return match (op) {
+		Intrinsic.AtomicAdd => OP_ATOMIC_I_ADD,
+		Intrinsic.AtomicSub => OP_ATOMIC_I_SUB,
+		Intrinsic.AtomicMax => signed ? OP_ATOMIC_S_MAX : OP_ATOMIC_U_MAX,
+		Intrinsic.AtomicMin => signed ? OP_ATOMIC_S_MIN : OP_ATOMIC_U_MIN,
+		Intrinsic.AtomicAnd => OP_ATOMIC_AND,
+		Intrinsic.AtomicOr => OP_ATOMIC_OR,
+		Intrinsic.AtomicXor => OP_ATOMIC_XOR,
+		Intrinsic.AtomicExchange => OP_ATOMIC_EXCHANGE,
+		_ => 0,
+	};
 }
 
 function atomic(p: Spirv, e: ShaderExpr): int32 {
 	const op = e.intrinsic;
 	const target = e.operands[0];
-	if (!isPlace(p, target)) { return refusal(p, op.toString() + " of a value that is no variable"); }
+	if (!isPlace(p, target)) {
+		return refusal(p, op.toString() + " of a value that is no variable");
+	}
 	const place = pointer(p, target);
 	const scope = intConstant(p, ScalarKind.U32, place.storage == WORKGROUP ? 2 : 1);
 	const relaxed = intConstant(p, ScalarKind.U32, 0);
@@ -1304,11 +1452,6 @@ function handle(p: Spirv, e: ShaderExpr): int32 {
 		return refusal(p, "a texture or sampler that is no resource binding");
 	}
 	return typed(p, OP_LOAD, typeId(p, e.type), [p.resourceVars[e.index]]);
-}
-
-function samplerKind(p: Spirv, e: ShaderExpr): SamplerType {
-	if (e.kind != ExprKind.Resource) { return SamplerType.Filtering; }
-	return p.module.resources[e.index].samplerType;
 }
 
 function sampledImage(p: Spirv, texture: ShaderExpr, sampler: ShaderExpr): int32 {
@@ -1348,21 +1491,18 @@ function floatLevel(p: Spirv, level: ShaderExpr): int32 {
 		scalarTypeId(p, ScalarKind.F32), [x]);
 }
 
+// The image operands of a sample: their mask, then one id per bit in the order of the bits, the
+// constant offset's last. The offset of a sample is a constant composite, as the image operand
+// needs.
+function imageOperands(p: Spirv, e: ShaderExpr, mask: int32, ids: int32[]): int32[] {
+	if (!hasOffset(e)) { return mask == 0 ? [] : [mask].concat(ids); }
+	return [mask | IMAGE_CONST_OFFSET].concat(ids).concat([value(p, offsetOf(e))]);
+}
+
 function sample(p: Spirv, e: ShaderExpr): int32 {
 	const op = e.intrinsic;
 	const o = e.operands;
-	const name = op.toString();
-	if (o.length < 3 || o[0].type.kind != ShaderTypeKind.Texture ||
-		o[1].type.kind != ShaderTypeKind.Sampler) {
-		return refusal(p, name + " takes a texture, a sampler and coordinates first");
-	}
 	const t = o[0].type;
-	if (t.shape == TextureShape.Multisampled2d) {
-		return refusal(p, name + " of a multisampled texture");
-	}
-	if (samplerKind(p, o[1]) == SamplerType.Comparison) {
-		return refusal(p, name + " through a comparison sampler");
-	}
 	const layered = isArrayTexture(t);
 	const next = layered ? 4 : 3;
 	const image = sampledImage(p, o[0], o[1]);
@@ -1371,53 +1511,39 @@ function sample(p: Spirv, e: ShaderExpr): int32 {
 	let fetched = 0;
 	if (op == Intrinsic.TextureSample) {
 		fetched = p.stage == ShaderStage.Fragment ?
-			typed(p, OP_IMAGE_SAMPLE_IMPLICIT_LOD, type, [image, at]) :
-			typed(p, OP_IMAGE_SAMPLE_EXPLICIT_LOD, type,
-				[image, at, IMAGE_LOD, scalarConstant(p, ScalarKind.F32, 0.0)]);
+			typed(p, OP_IMAGE_SAMPLE_IMPLICIT_LOD, type,
+				[image, at].concat(imageOperands(p, e, 0, []))) :
+			typed(p, OP_IMAGE_SAMPLE_EXPLICIT_LOD, type, [image, at].concat(
+				imageOperands(p, e, IMAGE_LOD, [scalarConstant(p, ScalarKind.F32, 0.0)])));
 	} else if (op == Intrinsic.TextureSampleLevel) {
-		fetched = typed(p, OP_IMAGE_SAMPLE_EXPLICIT_LOD, type,
-			[image, at, IMAGE_LOD, floatLevel(p, o[next])]);
+		fetched = typed(p, OP_IMAGE_SAMPLE_EXPLICIT_LOD, type, [image, at].concat(
+			imageOperands(p, e, IMAGE_LOD, [floatLevel(p, o[next])])));
 	} else if (op == Intrinsic.TextureSampleBias) {
-		fetched = typed(p, OP_IMAGE_SAMPLE_IMPLICIT_LOD, type,
-			[image, at, IMAGE_BIAS, value(p, o[next])]);
+		fetched = typed(p, OP_IMAGE_SAMPLE_IMPLICIT_LOD, type, [image, at].concat(
+			imageOperands(p, e, IMAGE_BIAS, [value(p, o[next])])));
 	} else {
 		const dx = value(p, o[next]);
 		const dy = value(p, o[next + 1]);
-		fetched = typed(p, OP_IMAGE_SAMPLE_EXPLICIT_LOD, type, [image, at, IMAGE_GRAD, dx, dy]);
+		fetched = typed(p, OP_IMAGE_SAMPLE_EXPLICIT_LOD, type, [image, at].concat(
+			imageOperands(p, e, IMAGE_GRAD, [dx, dy])));
 	}
 	return depthTexel(p, t, e, fetched);
 }
 
 function compare(p: Spirv, e: ShaderExpr): int32 {
 	const o = e.operands;
-	const name = e.intrinsic.toString();
 	const level = e.intrinsic == Intrinsic.TextureSampleCompareLevel;
-	const layered = o.length > 0 && o[0].type.shape == TextureShape.Depth2dArray;
-	if (o.length != (layered ? 5 : 4) || o[0].type.kind != ShaderTypeKind.Texture ||
-		o[1].type.kind != ShaderTypeKind.Sampler) {
-		return refusal(p, name + " takes a texture, a sampler, coordinates, for an array texture " +
-			"a layer, and a depth reference");
-	}
-	if (o[1].kind != ExprKind.Resource || samplerKind(p, o[1]) != SamplerType.Comparison) {
-		return refusal(p, name + " through a sampler that is no comparison sampler binding");
-	}
-	if (!isDepthShape(o[0].type.shape)) {
-		return refusal(p, name + " of a " + o[0].type.shape.toString() + " texture, which holds " +
-			"no depth");
-	}
+	const layered = o[0].type.shape == TextureShape.Depth2dArray;
 	const image = sampledImage(p, o[0], o[1]);
 	const at = coordinates(p, o[2], layered, o[3]);
 	const reference = value(p, o[layered ? 4 : 3]);
 	const type = scalarTypeId(p, ScalarKind.F32);
 	if (!level && p.stage == ShaderStage.Fragment) {
-		return typed(p, OP_IMAGE_SAMPLE_DREF_IMPLICIT_LOD, type, [image, at, reference]);
+		return typed(p, OP_IMAGE_SAMPLE_DREF_IMPLICIT_LOD, type,
+			[image, at, reference].concat(imageOperands(p, e, 0, [])));
 	}
-	return typed(p, OP_IMAGE_SAMPLE_DREF_EXPLICIT_LOD, type,
-		[image, at, reference, IMAGE_LOD, scalarConstant(p, ScalarKind.F32, 0.0)]);
-}
-
-function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {
-	return args.filter((a) => a.type.kind != ShaderTypeKind.Sampler);
+	return typed(p, OP_IMAGE_SAMPLE_DREF_EXPLICIT_LOD, type, [image, at, reference].concat(
+		imageOperands(p, e, IMAGE_LOD, [scalarConstant(p, ScalarKind.F32, 0.0)])));
 }
 
 function texelLoad(p: Spirv, e: ShaderExpr): int32 {
@@ -1425,11 +1551,14 @@ function texelLoad(p: Spirv, e: ShaderExpr): int32 {
 	const t = o[0].type;
 	const layered = isArrayTexture(t);
 	if (t.kind == ShaderTypeKind.StorageTexture) {
+		if (t.format == TexelFormat.Bgra8unorm) { need(p, CAP_STORAGE_IMAGE_READ_WITHOUT_FORMAT); }
 		const image = handle(p, o[0]);
 		const at = coordinates(p, o[1], layered, o[layered ? 2 : 1]);
 		return typed(p, OP_IMAGE_READ, typeId(p, e.type), [image, at]);
 	}
-	if (t.kind != ShaderTypeKind.Texture) { return refusal(p, "TextureLoad of a " + t.kind.toString()); }
+	if (t.kind != ShaderTypeKind.Texture) {
+		return refusal(p, "TextureLoad of a " + t.kind.toString());
+	}
 	if (o.length < (layered ? 4 : 3)) {
 		return refusal(p, "TextureLoad of a sampled texture takes a level");
 	}
@@ -1448,6 +1577,7 @@ function texelStore(p: Spirv, e: ShaderExpr): int32 {
 		return refusal(p, "TextureStore to a " + t.kind.toString());
 	}
 	const layered = isArrayTexture(t);
+	if (t.format == TexelFormat.Bgra8unorm) { need(p, CAP_STORAGE_IMAGE_WRITE_WITHOUT_FORMAT); }
 	const image = handle(p, o[0]);
 	const at = coordinates(p, o[1], layered, o[layered ? 2 : 1]);
 	const written = value(p, o[layered ? 3 : 2]);
@@ -1455,17 +1585,22 @@ function texelStore(p: Spirv, e: ShaderExpr): int32 {
 	return 0;
 }
 
+function unsignedAs(p: Spirv, wanted: ShaderType, x: int32): int32 {
+	return wanted.scalar == ScalarKind.U32 ? x : typed(p, OP_BITCAST, typeId(p, wanted), [x]);
+}
+
 function dimensions(p: Spirv, e: ShaderExpr): int32 {
 	const o = withoutSamplers(e.operands);
 	const t = o[0].type;
-	const dims: int32 = t.shape == TextureShape.D3 ? 3 : 2;
-	if (e.type.kind != ShaderTypeKind.Vector || e.type.rows != dims) {
+	const dims: int32 = t.shape == TextureShape.D3 ? 3 : t.shape == TextureShape.D1 ? 1 : 2;
+	if (rowsOf(e.type) != dims || (dims > 1) != (e.type.kind == ShaderTypeKind.Vector)) {
 		return refusal(p, "TextureDimensions into a " + e.type.kind.toString() + " of " +
 			String(rowsOf(e.type)));
 	}
 	need(p, CAP_IMAGE_QUERY);
 	const layered = isArrayTexture(t);
-	const queried = vectorType(ScalarKind.U32, layered ? dims + 1 : dims);
+	const queried = dims == 1 ? scalarType(ScalarKind.U32) :
+		vectorType(ScalarKind.U32, layered ? dims + 1 : dims);
 	const image = handle(p, o[0]);
 	const lod = t.kind == ShaderTypeKind.Texture && t.shape != TextureShape.Multisampled2d;
 	const size = lod ?
@@ -1475,24 +1610,41 @@ function dimensions(p: Spirv, e: ShaderExpr): int32 {
 	const unsigned = vectorType(ScalarKind.U32, dims);
 	const kept = !layered ? size : typed(p, OP_VECTOR_SHUFFLE, typeId(p, unsigned),
 		dims == 3 ? [size, size, 0, 1, 2] : [size, size, 0, 1]);
-	return e.type.scalar == ScalarKind.U32 ? kept : typed(p, OP_BITCAST, typeId(p, e.type), [kept]);
+	return unsignedAs(p, e.type, kept);
+}
+
+function sampleCount(p: Spirv, e: ShaderExpr): int32 {
+	need(p, CAP_IMAGE_QUERY);
+	const count = typed(p, OP_IMAGE_QUERY_SAMPLES, typeId(p, scalarType(ScalarKind.U32)),
+		[handle(p, e.operands[0])]);
+	return unsignedAs(p, e.type, count);
+}
+
+function arrayLength(p: Spirv, e: ShaderExpr): int32 {
+	const count = typed(p, OP_ARRAY_LENGTH, typeId(p, scalarType(ScalarKind.U32)),
+		[p.resourceVars[e.operands[0].index], 0]);
+	return unsignedAs(p, e.type, count);
 }
 
 function intrinsic(p: Spirv, e: ShaderExpr): int32 {
 	const op = e.intrinsic;
 	const o = e.operands;
+	if (op == Intrinsic.Any || op == Intrinsic.All) {
+		return typed(p, op == Intrinsic.Any ? OP_ANY : OP_ALL, typeId(p, e.type), [value(p, o[0])]);
+	}
 	if (isMath(op)) { return math(p, e); }
 	if (isAtomic(op)) { return atomic(p, e); }
 	if (op == Intrinsic.Select) { return selected(p, e); }
-	if (op == Intrinsic.LessThanEqual) {
+	if (isComponentCompare(op)) {
 		const l = value(p, o[0]);
 		const r = value(p, o[1]);
-		return arithmetic(p, BinaryOp.LessEqual, e.type, o[0].type, l, o[1].type, r);
+		return arithmetic(p, componentCompare(op), e.type, o[0].type, l, o[1].type, r);
 	}
 	if (op == Intrinsic.UpperLeft3x3) { return upperLeft(p, e); }
 	if (op == Intrinsic.Inverse) {
 		if (e.type.kind != ShaderTypeKind.Matrix || e.type.columns != e.type.rows) {
-			return refusal(p, "inverse of a " + e.type.kind.toString() + " that is no square matrix");
+			return refusal(p, "inverse of a " + e.type.kind.toString() +
+				" that is no square matrix");
 		}
 		return ext(p, e.type, GLSL_MATRIX_INVERSE, [value(p, o[0])]);
 	}
@@ -1509,6 +1661,10 @@ function intrinsic(p: Spirv, e: ShaderExpr): int32 {
 	if (op == Intrinsic.TextureLoad) { return texelLoad(p, e); }
 	if (op == Intrinsic.TextureStore) { return texelStore(p, e); }
 	if (op == Intrinsic.TextureDimensions) { return dimensions(p, e); }
+	if (op == Intrinsic.TextureNumSamples) { return sampleCount(p, e); }
+	if (op == Intrinsic.ArrayLength) { return arrayLength(p, e); }
+	if (op == Intrinsic.TextureBarrier) { return imageBarrier(p); }
+	if (op == Intrinsic.WorkgroupUniformLoad) { return value(p, o[0]); }
 	return refusal(p, op.toString() + " is not printed yet");
 }
 
@@ -1717,9 +1873,12 @@ function stmt(p: Spirv, s: ShaderStmt): void {
 		StmtKind.Block => { stmts(p, s.body); },
 		StmtKind.Let => {
 			const local = p.fn.locals[s.local];
+			const bracketed = isUniformLoad(s.expr);
+			if (bracketed) { barrier(p, false); }
 			const init = s.expr.type.kind == ShaderTypeKind.Void ?
 				nullConstant(p, typeId(p, local.type)) : value(p, s.expr);
 			emit(p, OP_STORE, [p.localVars[s.local], init]);
+			if (bracketed) { barrier(p, false); }
 		},
 		StmtKind.Assign => { assign(p, s); },
 		StmtKind.Call => {
@@ -1841,8 +2000,8 @@ function layouts(p: Spirv, reads: Reads): void {
 			for (const f of m.structs[element].members) {
 				if (f.type.kind == ShaderTypeKind.Struct || f.type.kind == ShaderTypeKind.Array) {
 					refusal(p, "storage buffer '" + r.name + "': member '" + f.name + "' is a " +
-						f.type.kind.toString() + "; a struct or array in a storage element is not " +
-						"printed yet");
+						f.type.kind.toString() + "; a struct or array in a storage element is " +
+						"not printed yet");
 					return;
 				}
 			}
@@ -1866,6 +2025,7 @@ function builtinWord(b: Builtin, stage: ShaderStage): int32 {
 		Builtin.NumWorkgroups => 24,
 		Builtin.SampleIndex => 18,
 		Builtin.SampleMask => 20,
+		Builtin.PrimitiveIndex => 7,
 	};
 }
 
@@ -1905,6 +2065,7 @@ function declareIos(p: Spirv, e: ShaderEntry): int32[] {
 		if (io.builtin != Builtin.None) {
 			decorate(p, id, DECORATION_BUILT_IN, [builtinWord(io.builtin, io.stage)]);
 			if (io.builtin == Builtin.SampleIndex) { need(p, CAP_SAMPLE_RATE_SHADING); }
+			if (io.builtin == Builtin.PrimitiveIndex) { need(p, CAP_GEOMETRY); }
 			if (io.builtin == Builtin.FragDepth) { p.depthReplacing = true; }
 			const integral = (io.type.kind == ShaderTypeKind.Scalar ||
 				io.type.kind == ShaderTypeKind.Vector) && io.type.scalar != ScalarKind.F32;
@@ -2030,6 +2191,7 @@ export function printSpirv(source: ShaderModule, entry: int32, bindings: Binding
 	p.structRules = m.structs.map((): int32 => 0);
 	p.structOffsets = m.structs.map((): int32[] => []);
 	p.structSizes = m.structs.map((): int32 => 0);
+	p.structSlots = m.structs.map((): int32[] => []);
 	p.resourceVars = m.resources.map((): int32 => 0);
 	p.ioVars = m.ios.map((): int32 => 0);
 	p.workgroupVars = m.workgroups.map((): int32 => 0);
@@ -2044,7 +2206,8 @@ export function printSpirv(source: ShaderModule, entry: int32, bindings: Binding
 	for (const w of reads.workgroups) {
 		const v = m.workgroups[w];
 		const id = fresh(p);
-		inst(p.globals, OP_VARIABLE, [pointerTypeId(p, WORKGROUP, typeId(p, v.type)), id, WORKGROUP]);
+		inst(p.globals, OP_VARIABLE,
+			[pointerTypeId(p, WORKGROUP, typeId(p, v.type)), id, WORKGROUP]);
 		name(p, id, v.name);
 		p.workgroupVars[w] = id;
 	}

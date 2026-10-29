@@ -4,7 +4,8 @@
 // has no room for; one made with `growing` appends room instead, so every offset stays, up to
 // GROWING_POOL_LIMIT floats, past which the reserve is refused the same way.
 
-import { UniformBlock, NO_UNIFORMS } from "./material";
+import { TypedBlock, UniformBlock, NO_UNIFORMS } from "./material";
+import { uniformSize, writeUniform } from "../shader/uniform";
 import { LAST_GENERATION, nextGeneration } from "./slots";
 
 export enum UniformError {
@@ -210,19 +211,47 @@ export function releaseRange(
 	return Result.ok(block.length);
 }
 
+function writable(
+	pool: UniformPool,
+	call: string,
+	block: UniformBlock,
+	length: int32,
+): Result<int32, UniformError> {
+	if (pool.closed) { stopOnClosedPool(call); }
+	if (length != block.length) { return Result.err(UniformError.WrongLength); }
+	return pool.admitted(block);
+}
+
 export function writeRange(
 	pool: UniformPool,
 	block: UniformBlock,
 	values: Readonly<Span<float32>>,
 ): Result<int32, UniformError> {
-	if (pool.closed) { stopOnClosedPool("writeRange"); }
-	if ((values.length as int32) != block.length) { return Result.err(UniformError.WrongLength); }
-	const _held: int32 = try pool.admitted(block);
+	const _held: int32 = try writable(pool, "writeRange", block, values.length as int32);
 	for (let i = 0; i < block.length; i++) {
 		pool.values[block.offset + i] = values[i];
 	}
 	writeCount = writeCount + 1;
 	return Result.ok(block.length);
+}
+
+export function reserveBlock<T>(
+	pool: UniformPool,
+	slot: int32,
+): Result<TypedBlock<T>, UniformError> {
+	if (pool.closed) { stopOnClosedPool("reserveBlock"); }
+	const block: UniformBlock = try reserveRange(pool, slot, uniformSize<T>() / 4);
+	return Result.ok({ block: block });
+}
+
+export function writeBlock<T>(
+	pool: UniformPool,
+	handle: TypedBlock<T>,
+	value: T,
+): Result<int32, UniformError> {
+	const _held: int32 = try writable(pool, "writeBlock", handle.block, uniformSize<T>() / 4);
+	writeUniform<T>(pool.values, handle.block.offset, value);
+	return Result.ok(handle.block.length);
 }
 
 export function liveRanges(this pool: UniformPool): int32 {
@@ -247,6 +276,11 @@ export function closeUniformPool(pool: UniformPool): void {
 
 export function isClosed(this pool: UniformPool): boolean {
 	return pool.closed;
+}
+
+export function stopOnFailedWrite(call: string, error: UniformError): void {
+	console.log(`void3d: ${call} could not write its uniform block: ${error.toString()}`);
+	unreachable;
 }
 
 function stopOnClosedPool(call: string): void {

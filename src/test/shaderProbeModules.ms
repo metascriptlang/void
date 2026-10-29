@@ -488,8 +488,8 @@ export function computeModule(): ShaderModule {
 	const spring = exprOf(ExprKind.Index, structType(1), -1,
 		[exprOf(ExprKind.Resource, arrayType(structType(1), -1), 1, []), ioRead(2, U32)]);
 	const at = exprOf(ExprKind.Convert, IVEC2, -1, [swizzle(ioRead(1, UVEC3), vectorType(ScalarKind.U32, 2), [0, 1])]);
-	const heatRead = intrinsicOf(Intrinsic.TextureLoad, F32,
-		[exprOf(ExprKind.Resource, red, 2, []), at]);
+	const heatRead = swizzle(intrinsicOf(Intrinsic.TextureLoad, VEC4,
+		[exprOf(ExprKind.Resource, red, 2, []), at]), F32, [0]);
 	const size = intrinsicOf(Intrinsic.TextureDimensions, IVEC2, [exprOf(ExprKind.Resource, image, 3, [])]);
 	const value = construct(VEC4, [exprOf(ExprKind.Field, VEC3, 1, [spring]), heatRead]);
 	m.functions = [shaderFunction("simulate", [field("size", IVEC2)], [

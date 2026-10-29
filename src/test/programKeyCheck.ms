@@ -25,6 +25,7 @@ import {
 	PBR_UV_MATRIX,
 	PBR_UV_OFFSET,
 	PBR_UV_SCROLL,
+	PBR_PARALLAX_STEPS,
 	MOVING_BACK_UV_MATRIX,
 	MOVING_MATERIAL_UNIFORM_LENGTH,
 	MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
@@ -39,11 +40,16 @@ import {
 	EMISSIVE_LENGTH,
 	emissiveBase,
 	MOVING_LENGTH,
+	MOVING_FADE_FAR_START,
+	MOVING_FADE_FAR_END,
 	VERTEX_UNIFORM_SLOT,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_SLOT,
 	LIGHT_UNIFORM_LENGTH,
 	MATERIAL_UNIFORM_SLOT,
+	DECAL_UNIFORM_LENGTH,
+	LINE_UNIFORM_LENGTH,
+	SCENE_DEPTH_VIEW_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
 	PBR_MATERIAL_UNIFORM_LENGTH,
 	BILLBOARD_UNIFORM_SLOT,
@@ -68,6 +74,8 @@ import {
 	CLUSTER_SCENE_VIEWS,
 	LIGHT_RECORDS_VIEW_SLOT,
 	CLUSTER_SCENE_SAMPLERS,
+	COOKIE_VIEW_SLOT,
+	COOKIE_SAMPLER_SLOT,
 	ENV_DIFFUSE_VIEW_SLOT,
 	ENV_SPECULAR_VIEW_SLOT,
 	ENV_SAMPLER_SLOT,
@@ -77,8 +85,16 @@ import {
 	withNormalMap,
 	describe,
 	bits,
+	isScreenProgram,
+	SAO_UNIFORM_SLOT,
+	SAO_UNIFORM_LENGTH,
+	SAO_DEPTH_VIEW_SLOT,
+	SAO_NORMAL_VIEW_SLOT,
+	SAO_NOISE_VIEW_SLOT,
+	SAO_NOISE_SAMPLER_SLOT,
 } from "../void3d/gpu3d";
-import { UNIFORM_SLOTS } from "../gpu/door";
+import { BLUR_UNIFORM_SLOT, BLUR_UNIFORM_LENGTH } from "../void3d/blur";
+import { UNIFORM_SLOTS, contextGeneration } from "../gpu/door";
 import { BINDING_VIEW, BINDING_SAMPLER, BINDING_VERTEX_OFFSET } from "../gpu/draw";
 import { RenderState, Blend, BlendMode, Face } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
@@ -191,7 +207,8 @@ const EVERY_PROGRAM: Vec<Program> = [
 	Program.Lit, Program.Particle, Program.Billboard, Program.Copy, Program.Post, Program.Blit,
 	Program.LitTextured, Program.UnlitTextured, Program.BloomDownsampleFirst,
 	Program.BloomDownsample, Program.BloomUpsample, Program.OutlineMask, Program.OutlineMix,
-	Program.OutlineWidth, Program.ParticleVisual,
+	Program.OutlineWidth, Program.ParticleVisual, Program.Decal, Program.Sao, Program.Blur,
+	Program.Line,
 ];
 
 const SCENE_PROGRAMS: Vec<Program> = [
@@ -210,6 +227,7 @@ function layoutFor(key: ProgramKey): VertexLayout {
 		Program.Particle => VertexLayout.Particle,
 		Program.Billboard => VertexLayout.Billboard,
 		Program.ParticleVisual => VertexLayout.ParticleVisual,
+		Program.Decal => VertexLayout.Lit,
 		Program.Copy => VertexLayout.Fullscreen,
 		Program.Post => VertexLayout.Fullscreen,
 		Program.Blit => VertexLayout.Fullscreen,
@@ -219,8 +237,11 @@ function layoutFor(key: ProgramKey): VertexLayout {
 		Program.OutlineMask => VertexLayout.Fullscreen,
 		Program.OutlineMix => VertexLayout.Fullscreen,
 		Program.OutlineWidth => VertexLayout.Fullscreen,
+		Program.Sao => VertexLayout.Fullscreen,
+		Program.Blur => VertexLayout.Fullscreen,
 		Program.LitTextured => VertexLayout.LitTextured,
 		Program.UnlitTextured => VertexLayout.LitTextured,
+		Program.Line => VertexLayout.LitTextured,
 	};
 }
 
@@ -251,24 +272,66 @@ function everyKey(): Vec<ProgramKey> {
 
 test "every key packs to bits of its own, and each declared one reads its program's layout" {
 	let seen: Vec<boolean> = [];
-	for (let bits = 0; bits < 32768; bits++) { seen.push(false); }
+	for (let bits = 0; bits < 65536; bits++) { seen.push(false); }
 	let declared: int32 = 0;
 	for (const key of everyKey()) {
 		const bits: int32 = key.bits();
-		assert bits >= 0 && bits < 32768 && !seen[bits];
+		assert bits >= 0 && bits < 65536 && !seen[bits];
 		seen[bits] = true;
 		if (declares(key)) {
 			declared = declared + 1;
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 174 + 6;
+	assert declared == 174 + 6 + 1 + 1 + 1 + 1;
+}
+
+test "the blur program is a screen program of the core, with its block, a view and a sampler" {
+	const key: ProgramKey = ProgramKey.of(Program.Blur);
+	assert (Program.Blur as int32) == 17 && declares(key) && isScreenProgram(Program.Blur);
+	assert !declares(key.withPreset(Preset.PixelArt)) && !declares(key.withPreset(Preset.Shadow));
+	assert vertexLayoutOf(key) == VertexLayout.Fullscreen;
+	assert uniformBlockLength(key, BLUR_UNIFORM_SLOT) == BLUR_UNIFORM_LENGTH;
+	assert textureSlotMask(key) == 1 && samplerSlotMask(key) == 1;
+}
+
+test "the SAO program is a core screen program with its block, three views and the noise sampler" {
+	const key: ProgramKey = ProgramKey.of(Program.Sao);
+	assert (Program.Sao as int32) == 16 && declares(key) && isScreenProgram(Program.Sao);
+	assert !declares(key.withPreset(Preset.PixelArt)) && !declares(key.withPreset(Preset.Shadow));
+	assert vertexLayoutOf(key) == VertexLayout.Fullscreen;
+	assert uniformBlockLength(key, SAO_UNIFORM_SLOT) == SAO_UNIFORM_LENGTH;
+	assert textureSlotMask(key) == (1 << (SAO_DEPTH_VIEW_SLOT as uint32)) +
+		(1 << (SAO_NORMAL_VIEW_SLOT as uint32)) + (1 << (SAO_NOISE_VIEW_SLOT as uint32));
+	assert samplerSlotMask(key) == 1 << (SAO_NOISE_SAMPLER_SLOT as uint32);
+}
+
+test "the decal program is the core's alone, on the Lit layout, and reads the scene depth" {
+	const key: ProgramKey = ProgramKey.of(Program.Decal);
+	assert (Program.Decal as int32) == 15 && declares(key);
+	assert !declares(key.withPreset(Preset.PixelArt)) && !declares(key.withPreset(Preset.Shadow));
+	assert vertexLayoutOf(key) == VertexLayout.Lit;
+	assert uniformBlockLength(key, MATERIAL_UNIFORM_SLOT) == DECAL_UNIFORM_LENGTH;
+	assert uniformBlockLength(key, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
+	assert textureSlotMask(key) == 1 + (1 << (SCENE_DEPTH_VIEW_SLOT as uint32));
+	assert samplerSlotMask(key) == 1;
+}
+
+test "the line program is the core's alone, on the lit-textured layout, with its own block" {
+	const key: ProgramKey = ProgramKey.of(Program.Line);
+	assert (Program.Line as int32) == 18 && declares(key) && !isScreenProgram(Program.Line);
+	assert !declares(key.withPreset(Preset.PixelArt)) && !declares(key.withPreset(Preset.Shadow));
+	assert vertexLayoutOf(key) == VertexLayout.LitTextured;
+	assert uniformBlockLength(key, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
+	assert uniformBlockLength(key, MATERIAL_UNIFORM_SLOT) == LINE_UNIFORM_LENGTH;
+	assert uniformBlockLength(key, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
+	assert textureSlotMask(key) == 0 && samplerSlotMask(key) == 0;
 }
 
 test "skin programs own slot7 and keep matching colour/shadow layouts" {
 	for (const program of [Program.Lit, Program.LitTextured, Program.UnlitTextured]) {
 		const key = ProgramKey.of(program).withSkin();
-		assert key.bits() == (ProgramKey.of(program).bits() | (1 << 14));
+		assert key.bits() == (ProgramKey.of(program).bits() | (1 << 15));
 		for (const preset of [Preset.Core, Preset.PixelArt]) {
 			const drawn = drawnIn(key, preset, false);
 			assert drawn.ok;
@@ -312,8 +375,8 @@ test "every core normal MRT mesh key retains its skinned palette and separate fe
 			if (!declares(key)) { continue; }
 			const skin = key.withSkin();
 			assert declares(skin) && skin.normalMrt && skin.skinned;
-			assert skin.bits() == (key.bits() | (1 << 14));
-			assert skin.bits() >= (1 << 15) && skin.bits() < 65536;
+			assert skin.bits() == (key.bits() | (1 << 15));
+			assert skin.bits() >= (1 << 16) && skin.bits() < 131072;
 			assert uniformBlockLength(skin, SKIN_UNIFORM_SLOT) == SKIN_UNIFORM_LENGTH;
 			checked++;
 		}
@@ -439,7 +502,7 @@ test "an HDR forward preset takes a tone map block and material, and its core wr
 		if (pass !== null) {
 			const toneMap: ProgramKey = context.materials[pass.material.index].program;
 			assert toneMap == ProgramKey.of(Program.Post);
-			assert pass.block.slot == TONE_MAP_UNIFORM_SLOT;
+			assert pass.block.block.slot == TONE_MAP_UNIFORM_SLOT;
 		}
 		closeForward(forward);
 		assert context.liveMaterials() == 0;
@@ -609,6 +672,9 @@ test "the core refuses a lit material without its block, or on a mesh of another
 		const began: Result<boolean, RendererError> =
 			beginFrame(core, litItems, shortCamera, lights);
 		assert !began.ok && began.error == RendererError.CameraBlockLength;
+		let mixed: Vec<DrawItem> = [litItems[0], litItems[0], heldItems[0]];
+		const late: Result<boolean, RendererError> = beginFrame(core, mixed, shortCamera, lights);
+		assert !late.ok && late.error == RendererError.VertexLayout;
 		assert core.drawn.length == 0 && held.uniforms.values[core.cameraBlock.offset] == 0.0;
 	}
 }
@@ -641,6 +707,43 @@ test "the core refuses a pbr material until the camera position is set" {
 		const placed: Result<boolean, RendererError> = beginFrame(core, items, shortCamera, lights);
 		assert !placed.ok && placed.error == RendererError.CameraBlockLength;
 	}
+}
+
+// The error beginFrame gives a moving unlit material whose far fade runs from `start` to `end`,
+// with the camera position set when `placed`; its plain lit mesh is the wrong layout.
+function fadeRefusal(start: float32, end: float32, placed: boolean): RendererError {
+	let context: DrawContext = DrawContext.withUniformCapacity(
+		RENDERER_UNIFORM_LENGTH + MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
+	);
+	const key: ProgramKey = ProgramKey.of(Program.UnlitTextured).withUvTransform();
+	const block: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
+	if (!block.ok) { unreachable; }
+	let values: Vec<float32> = new Array(MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
+	values[movingBase(key) + MOVING_FADE_FAR_START] = start;
+	values[movingBase(key) + MOVING_FADE_FAR_END] = end;
+	if (!writeUniforms(context, block.value, values).ok) { unreachable; }
+	const _faded: Result<MaterialId, MaterialError> = addMaterial(context, {
+		...Material.plain(Program.UnlitTextured, RenderState.defaults(), Phase.Alpha),
+		program: key, uniforms: block.value,
+	});
+	const created: Result<Renderer, RendererError> = Renderer.create(context);
+	if (!created.ok) { unreachable; }
+	let core: Renderer = created.value;
+	if (placed) { setCameraPosition(core, vec3(1, 2, 3)); }
+	const mesh: MeshId = added(context, litShape());
+	let items: Vec<DrawItem> = [{ ...itemOf(context, firstMaterial(context)), mesh: mesh }];
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const began: Result<boolean, RendererError> = beginFrame(core, items, camera, lights);
+	if (began.ok) { unreachable; }
+	return began.error;
+}
+
+test "the core refuses a distance fade until the camera position is set" {
+	assert fadeRefusal(10.0, 20.0, false) == RendererError.CameraPosition;
+	assert fadeRefusal(10.0, 20.0, true) == RendererError.VertexLayout;
+	assert fadeRefusal(10.0, 10.0, false) == RendererError.VertexLayout;
 }
 
 test "the core refuses a billboard without its texture and sampler, or off the quad's shape" {
@@ -919,6 +1022,23 @@ test "a shadowed key loads the sun map at view 4, a core one the spot and point 
 	assert SHADOW_SAMPLER_SLOT == 2 && SPOT_SHADOW_SAMPLER_SLOT == 3;
 }
 
+test "a core mesh key that reads the light records reads the cookie; a sprite does not" {
+	let cookied: int32 = 0;
+	for (const key of everyKey()) {
+		if (!declares(key)) { continue; }
+		const views: uint32 = textureSlotMask(key);
+		const sprite: boolean =
+			key.program == Program.Billboard || key.program == Program.ParticleVisual;
+		const lit: boolean =
+			bit(views, LIGHT_RECORDS_VIEW_SLOT) && key.preset == Preset.Core && !sprite;
+		assert lit == bit(views, COOKIE_VIEW_SLOT);
+		assert lit == bit(samplerSlotMask(key), COOKIE_SAMPLER_SLOT);
+		if (lit) { cookied = cookied + 1; }
+	}
+	assert cookied > 0;
+	assert COOKIE_VIEW_SLOT == 13 && COOKIE_SAMPLER_SLOT == 6;
+}
+
 test "an untextured shadowed key reads only the scene maps, in either preset" {
 	for (const preset of [Preset.Core, Preset.PixelArt]) {
 		const key: ProgramKey = ProgramKey.of(Program.Lit).withShadowed().withPreset(preset);
@@ -1019,7 +1139,7 @@ test "the core owns a frame block and asks for frames while time passes under a 
 	assert !released.ok && released.error == UniformError.Owned;
 	assert core.time == 0.0 && core.elapsedTime == 0.0;
 	core.changed = false;
-	core.generation = 1;
+	core.generation = contextGeneration();
 	assert !core.needsFrame();
 	setElapsedTime(core, 0.25);
 	assert core.elapsedTime == 0.25 && !core.needsFrame();
@@ -1175,7 +1295,7 @@ test "particleVisual declares additive program14 layout9 with original billboard
 		assert uniformBlockLength(key, 4) == 0 && uniformBlockLength(key, SKIN_UNIFORM_SLOT) == 0;
 		const lightViews: uint32 = preset == Preset.PixelArt
 			? 1 << (LIGHT_RECORDS_VIEW_SLOT as uint32)
-			: CLUSTER_SCENE_VIEWS;
+			: CLUSTER_SCENE_VIEWS & ~(1 << (COOKIE_VIEW_SLOT as uint32));
 		assert textureSlotMask(key) == 1 + lightViews;
 		assert samplerSlotMask(key) == 1;
 		const skin: ProgramKey = { ...key, skinned: true };
@@ -1209,9 +1329,9 @@ test "every mesh program and its shadow casters have a layout carrying the insta
 	assert !readsInstanceRows(vertexLayoutOf(ProgramKey.of(Program.Billboard)));
 }
 
-test "a pbr-maps key sets bit 17, is declared in all four variants and binds slots 0, 1 and 2" {
+test "a pbr-maps key sets bit 18, is declared in all four variants and binds slots 0, 1 and 2" {
 	const base: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps();
-	assert base.bits() == ProgramKey.of(Program.LitTextured).withPbr().bits() + 131072;
+	assert base.bits() == ProgramKey.of(Program.LitTextured).withPbr().bits() + 262144;
 	assert describe(base).includes("pbr-maps") && !describe(base.withPbr()).includes("pbr-maps-");
 	const tangent: ProgramKey = base.withNormalMap();
 	for (const key of [base, tangent]) {
@@ -1223,7 +1343,7 @@ test "a pbr-maps key sets bit 17, is declared in all four variants and binds slo
 		}
 	}
 	assert textureSlotMask(base) == 7 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
-	assert samplerSlotMask(base) == 1 + ENV_SCENE_SAMPLERS;
+	assert samplerSlotMask(base) == 1 + ENV_SCENE_SAMPLERS + (1 << (COOKIE_SAMPLER_SLOT as uint32));
 	assert textureSlotMask(base.withShadowed()) ==
 		23 + 64 + 4096 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
 	assert textureSlotMask(tangent) == 39 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
@@ -1241,9 +1361,9 @@ function uvBLayoutOf(key: ProgramKey): VertexLayout {
 	return key.normalMap ? VertexLayout.LitTexturedTangentUvB : VertexLayout.LitTexturedUvB;
 }
 
-test "an occlusion-uv-b key sets bit 18 and is declared on a uv-b layout wherever pbr-maps is" {
+test "an occlusion-uv-b key sets bit 19 and is declared on a uv-b layout wherever pbr-maps is" {
 	const maps: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps();
-	assert maps.withOcclusionUvB().bits() == maps.bits() + 262144;
+	assert maps.withOcclusionUvB().bits() == maps.bits() + 524288;
 	assert describe(maps.withOcclusionUvB()).includes(" occlusion-uv-b");
 	const emitting: ProgramKey = maps.withEmissive();
 	const variants: Vec<ProgramKey> = [
@@ -1272,10 +1392,10 @@ test "an occlusion-uv-b key sets bit 18 and is declared on a uv-b layout whereve
 	assert !declares({ ...ProgramKey.of(Program.LitTextured).withPbr(), occlusionUvB: true });
 }
 
-test "a parallax key sets bit 19 on a normal-mapped pbr-maps key and binds no view of its own" {
+test "a parallax key sets bit 20 on a normal-mapped pbr-maps key and binds no view of its own" {
 	const maps: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps()
 		.withNormalMap();
-	assert maps.withParallax().bits() == maps.bits() + 524288;
+	assert maps.withParallax().bits() == maps.bits() + 1048576;
 	assert describe(maps.withParallax()).includes(" parallax");
 	const variants: Vec<ProgramKey> = [
 		maps, maps.withSkin(), maps.withEmissive(), maps.withOcclusionUvB(),
@@ -1302,6 +1422,28 @@ test "a parallax key sets bit 19 on a normal-mapped pbr-maps key and binds no vi
 	}
 	const unmapped: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps();
 	assert !declares({ ...unmapped, parallax: true });
+}
+
+test "a parallax material refuses a step count that is not a whole number from 0 to 255" {
+	const stepped: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps()
+		.withNormalMap().withParallax();
+	const counts: Vec<float32> = [0.0, 1.0, 24.0, 255.0, -1.0, 2.5, 256.0];
+	let context: DrawContext =
+		DrawContext.withUniformCapacity((counts.length as int32) * PBR_MATERIAL_UNIFORM_LENGTH);
+	for (const count of counts) {
+		const reserved: Result<UniformBlock, UniformError> =
+			reserveUniforms(context, MATERIAL_UNIFORM_SLOT, PBR_MATERIAL_UNIFORM_LENGTH);
+		if (!reserved.ok) { unreachable; }
+		let values: Vec<float32> = new Array(PBR_MATERIAL_UNIFORM_LENGTH);
+		values[PBR_PARALLAX_STEPS] = count;
+		if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
+		const made: Result<MaterialId, MaterialError> = addMaterial(context, {
+			...Material.keyed(stepped, RenderState.defaults(), Phase.Opaque),
+			uniforms: reserved.value,
+		});
+		assert made.ok == (count >= 0.0 && count <= 255.0 && count != 2.5);
+		if (!made.ok) { assert made.error == MaterialError.BadParallaxSteps; }
+	}
 }
 
 test "a skinned pbr key is declared on the skinned layout in every variant a glTF material makes" {
@@ -1334,7 +1476,7 @@ test "a skinned pbr key is declared on the skinned layout in every variant a glT
 
 test "an emitting pbr key keeps its emissive vec4 after the pbr one and binds view slot 3" {
 	const base: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withEmissive();
-	assert base.bits() == ProgramKey.of(Program.LitTextured).bits() + 4096 + 65536;
+	assert base.bits() == ProgramKey.of(Program.LitTextured).bits() + 8192 + 131072;
 	assert movingBase(base) == PBR_MATERIAL_UNIFORM_LENGTH &&
 		emissiveBase(base) == movingBase(base);
 	assert movingBase(ProgramKey.of(Program.LitTextured)) == MATERIAL_UNIFORM_LENGTH;
@@ -1390,5 +1532,6 @@ test "every pbr block holds the UV transform, as its shader declares it" {
 		PBR_MATERIAL_UNIFORM_LENGTH + EMISSIVE_LENGTH;
 	assert PBR_UV_OFFSET - PBR_UV_MATRIX == MOVING_UV_OFFSET - MOVING_UV_MATRIX;
 	assert PBR_UV_SCROLL - PBR_UV_MATRIX == MOVING_UV_SCROLL - MOVING_UV_MATRIX;
-	assert PBR_UV_SCROLL + 2 <= PBR_MATERIAL_UNIFORM_LENGTH;
+	assert PBR_UV_SCROLL + 2 <= PBR_PARALLAX_STEPS;
+	assert PBR_PARALLAX_STEPS < PBR_MATERIAL_UNIFORM_LENGTH;
 }

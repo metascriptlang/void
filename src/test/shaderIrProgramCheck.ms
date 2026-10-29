@@ -3,7 +3,7 @@
 // for.
 
 import { glslIr, glslLinkedIr } from "../shader/emit";
-import { programModule, programSource } from "../shader/descriptor";
+import { descriptorSource, programModule, programSource } from "../shader/descriptor";
 import { irErrors } from "../shader/ir";
 import { irFromText, irText } from "../shader/irText";
 import { ShaderTarget } from "../shader/layout";
@@ -132,11 +132,11 @@ test "a lowered stage reads back as the module it was" {
 	}
 }
 
-test "the plain lit program reflects as shdc's" {
+test "the plain lit program reflects as its committed descriptor" {
 	assert matched(LIT_VS, glslLinkedIr(litFs, litVs), [], litShaderModule()) == "";
 }
 
-test "a textured key with every texture reflects as shdc's" {
+test "a textured key with every texture reflects as its committed descriptor" {
 	assert matched(LIT_TEXTURED_VS, LIT_TEXTURED_FS,
 		["EMISSIVE", "NORMAL_MAP", "SHADOWED", "NORMAL_MRT", "SKINNED"],
 		skinLitTexturedEmissiveNormalMapShadowedNormalMrtShaderModule()) == "";
@@ -144,28 +144,47 @@ test "a textured key with every texture reflects as shdc's" {
 		litTexturedDissolveEmissiveShaderModule()) == "";
 }
 
-test "a shadow caster reflects as shdc's" {
+test "a shadow caster reflects as its committed descriptor" {
 	assert matched(LIT_TEXTURED_VS, glslLinkedIr(shadowLitTexturedFs, litTexturedVs),
 		["DISSOLVE"], shadowLitTexturedDissolveShaderModule()) == "";
 }
 
-test "a pixel-art key reflects as shdc's" {
+test "a pixel-art key reflects as its committed descriptor" {
 	assert matched(glslIr(pixelArtLitTexturedVs),
 		glslLinkedIr(pixelArtLitTexturedFs, pixelArtLitTexturedVs), ["CUTOUT", "SHADOWED"],
 		pixelArtLitTexturedCutoutShadowedShaderModule()) == "";
 }
 
-test "a fragment over another vertex entry reflects as shdc's" {
+test "a fragment over another vertex entry reflects as its committed descriptor" {
 	assert matched(glslIr(particleVisualVs), glslLinkedIr(billboardFs, billboardVs), ["CUTOUT"],
 		particleVisualCutoutShaderModule()) == "";
 }
 
-test "fullscreen passes reflect as shdc's" {
+test "fullscreen passes reflect as their committed descriptors" {
 	assert matched(FULLSCREEN_VS, glslIr(copyFs), [], copyShaderModule()) == "";
 	assert matched(FULLSCREEN_VS, glslIr(outlineMixFs), [], outlineMixShaderModule()) == "";
 }
 
-test "void2d programs reflect as shdc's" {
+test "void2d programs reflect as their committed descriptors" {
 	assert matched(glslIr(uiVs), glslLinkedIr(uiFs, uiVs), [], uiShaderModule()) == "";
 	assert matched(glslIr(blurVs), glslLinkedIr(blurFs, blurVs), [], blurShaderModule()) == "";
+}
+
+test "a field of the wrong JSON kind is an error, not a zero" {
+	const m = irFromText("[[],[],[],[],[],[],[[\"main\",\"vertex\",0,[]]],[],[]]");
+	assert !m.ok;
+	if (!m.ok) { assert m.error == "irText: a field is not an integer (JSON kind 3)"; }
+}
+
+test "descriptorSource prints a binding's keys in the descriptor's order" {
+	const m = programModule(LIT_TEXTURED_VS, LIT_TEXTURED_FS, ["EMISSIVE", "NORMAL_MAP", "SHADOWED", "NORMAL_MRT", "SKINNED"]);
+	assert m.ok;
+	const s = programSource(m.value, builtTarget());
+	assert s.ok;
+	const text = descriptorSource("lit", s.value, ["c", "c"], ["[]", "[]"]);
+	assert text.includes("{ group: 1, binding: 4, kind: \"texture\", visibility: 2, size: 0, " +
+		"sampleType: \"unfilterable-float\", nativeSlot: 2, textureBinding: -1, " +
+		"viewDimension: \"2d-array\" }");
+	assert text.includes("{ group: 1, binding: 32, kind: \"sampler\", visibility: 2, size: 0, " +
+		"samplerType: \"filtering\", nativeSlot: 0, textureBinding: -1 }");
 }
