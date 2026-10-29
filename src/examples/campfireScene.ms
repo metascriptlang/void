@@ -597,8 +597,6 @@ function buildGrass(): void {
 		console.log(`campfire: the tuft atlas does not split, ${tiles.error.toString()}`);
 		return;
 	}
-	// PENDING3D: nested-loop-narrowing-bound
-	const tuftTiles: Vec<AtlasTile> = tiles.value;
 	const steps: int32 = ((GRASS_RADIUS * 2.0) / GRASS_SPACING) as int32;
 	for (let row = 0; row <= steps; row++) {
 		for (let column = 0; column <= steps; column++) {
@@ -619,7 +617,7 @@ function buildGrass(): void {
 				width: size,
 				height: size,
 				anchor: ANCHOR_BOTTOM_CENTER,
-				tile: tuftTiles[variant],
+				tile: tiles.value[variant],
 				color: { red: tint, green: tint, blue: tint, alpha: 1.0 },
 			};
 			tuft.pushTo(grassInstances);

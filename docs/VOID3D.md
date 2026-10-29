@@ -607,7 +607,7 @@ The control fails where the fire lights the ground and holds elsewhere, which is
   - It keeps the flame's instances, as it keeps its pixels, so a lost context replays them.
   - `configureCampfireForward` no longer hides the billboards: the forward preset draws them with the core billboard.
   - It is inside the gate's `style` stage now, as that stage's comment already said.
-- **A compiler bug, carded.** A `Result` narrowed by an early return or an `if (r.ok)` is not narrowed inside a loop nested in a loop, though it is one loop deep (`~/metascript/.inbox/compiler/2026-09-26-narrowing-lost-two-loops-deep.md`). The campfire's `buildGrass` binds the split tiles to a local after the check (`nested-loop-narrowing-bound`).
+- **A compiler bug, fixed.** A `Result` narrowed by an early return or an `if (r.ok)` was not narrowed inside a loop nested in a loop; fixed in msc c85d84fb8, so the campfire's `buildGrass` reads `tiles.value[variant]` in its loops.
 
 **Acceptance.** The gate at `6e1f1be`, before the rebase onto `main`'s void2d P4, is GREEN with one SKIP (`device`). The rebased tip gated the same, with the device (`docs/REVIEWS-3D.md`, M15, "Numbers"). The logs are not kept in the repository, and neither is the probe or its logs.
 - **Pixels.**
