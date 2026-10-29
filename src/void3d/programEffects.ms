@@ -3,6 +3,7 @@ import {
 	dissolveDiscard,
 	dissolveEdge,
 	emissive,
+	flipbookFrames,
 	uvColorKey,
 	uvDistanceFade,
 	uvFlipbook,
@@ -11,6 +12,7 @@ import {
 
 const EFFECTS: string[][] = [
 	["CORE", "litTexturedFs", "UV_TRANSFORM", glslSegmentIr(uvSinus)],
+	["CORE", "litTexturedFs", "UV_TRANSFORM", glslSegmentIr(flipbookFrames)],
 	["CORE", "litTexturedFs", "UV_TRANSFORM", glslSegmentIr(uvFlipbook)],
 	["CORE", "litTexturedFs", "UV_TRANSFORM", glslSegmentIr(uvColorKey)],
 	["CORE", "litTexturedFs", "DISSOLVE", glslSegmentIr(dissolveDiscard)],

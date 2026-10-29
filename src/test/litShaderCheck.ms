@@ -16,8 +16,11 @@ import {
 import {
 	LitBindings,
 	LitKey,
+	SampleUv,
 	TexturedAttributes,
 	UnlitBindings,
+	UvTransformBindings,
+	UvTransformKey,
 	VertexBindings,
 	linearToSrgb,
 	litFs,
@@ -26,6 +29,7 @@ import {
 	colorKeyed,
 	distanceFade,
 	flipbookBlend,
+	flipbookFrames,
 	flipbookUvs,
 	litVs,
 	movedUv,
@@ -36,6 +40,7 @@ import {
 	toneCurved,
 	unlitTexturedFs,
 	unlitTexturedVs,
+	uvFlipbook,
 } from "../void3d/shader3d";
 import { oneCascade, oneLayer } from "./shadowHelpers";
 import { SceneLights, sceneLights } from "./lightHelpers";
@@ -260,6 +265,46 @@ test "a flipbook that does not loop holds its last frame, and starts at its star
 	const late = vec4f(1.0, 2.7, 1.0, 0.0);
 	assert nearUv(flipbookUvs(uv, grid, late, 1.25).xy, vec2f(0.25, 0.75));
 	assert flipbookBlend(grid, late, 1.25) == 0.0;
+}
+
+function flipbookBindings(grid: Vec4f, play: Vec4f, time: float32): UvTransformBindings {
+	const z = vec4f(0.0);
+	return {
+		movingMaterialParams: {
+			material: z, materialColor: z, uvMatrix: z, uvMotion: z, backUvMatrix: z,
+			backUvOffset: z, dissolve: z, dissolveEdge: z, flipbookGrid: grid, flipbookPlay: play,
+			distanceFade: z, colorKey: z, sinusDeform: z,
+		},
+		movingEmissiveMaterialParams: {
+			material: z, materialColor: z, uvMatrix: z, uvMotion: z, backUvMatrix: z,
+			backUvOffset: z, dissolve: z, dissolveEdge: z, flipbookGrid: grid, flipbookPlay: play,
+			distanceFade: z, colorKey: z, sinusDeform: z, emissive: z,
+		},
+		frameParams: { frame: vec4f(time, 0.0, 0.0, 0.0), cameraPosition: z, envParams: z },
+	};
+}
+
+test "a lit flipbook split across the stages samples what the inline flipbook samples" {
+	const grid = vec4f(2.0, 2.0, 4.0, 2.0);
+	const uv = vec2f(0.5, 0.5);
+	const sample: SampleUv = { baseUv: uv, nextUv: uv, blend: 0.0 };
+	const plays = [vec4f(0.0, 0.0, 1.0, 1.0), vec4f(0.0, 0.0, 0.0, 1.0), vec4f(1.0, 2.7, 1.0, 0.0)];
+	const times: float32[] = [0.75, 1.25, 2.25];
+	for (const emissive of [false, true]) {
+		const key: UvTransformKey = { emissive: emissive };
+		for (const play of plays) {
+			for (const time of times) {
+				const b = flipbookBindings(grid, play, time);
+				const split = uvFlipbook(sample, b, key, flipbookFrames({ uv: uv }, b, key));
+				const inline = flipbookUvs(uv, grid, play, time);
+				assert nearUv(split.baseUv, inline.xy) && nearUv(split.nextUv, inline.zw);
+				assert within(split.blend, flipbookBlend(grid, play, time));
+			}
+		}
+		const off = flipbookBindings(vec4f(0.0), plays[0], 1.25);
+		const still = uvFlipbook(sample, off, key, flipbookFrames({ uv: uv }, off, key));
+		assert nearUv(still.baseUv, uv) && nearUv(still.nextUv, uv) && still.blend == 0.0;
+	}
 }
 
 test "a distance fade rises over its near pair, falls over its far pair, and an empty pair is off" {
