@@ -414,13 +414,13 @@ function textField(key: string, value: string): BindingField {
 }
 
 export function bindingFields(b: GPUShaderBinding): BindingField[] {
-	const kind: string = b.kind;
+	const kind: string = b.kind ?? "";
 	const sampleType: string = b.sampleType;
-	const samplerType: string = b.samplerType;
+	const samplerType: string | null = b.samplerType;
 	const bufferType: string = b.bufferType;
 	const viewDimension: string = b.viewDimension;
 	const storageAccess: string = b.storageAccess;
-	const storageFormat: string = b.storageFormat;
+	const storageFormat: string | null = b.storageFormat;
 	const name = b.nativeName;
 	let out: BindingField[] = [
 		numberField("group", b.group),
@@ -430,7 +430,7 @@ export function bindingFields(b: GPUShaderBinding): BindingField[] {
 		numberField("size", b.size),
 	];
 	if (sampleType != "") { out.push(textField("sampleType", sampleType)); }
-	if (samplerType != "") { out.push(textField("samplerType", samplerType)); }
+	if (samplerType != null) { out.push(textField("samplerType", samplerType)); }
 	out.push(numberField("nativeSlot", b.nativeSlot));
 	if (name !== null) { out.push(textField("nativeName", name)); }
 	out.push(numberField("textureBinding", b.textureBinding));
@@ -438,7 +438,7 @@ export function bindingFields(b: GPUShaderBinding): BindingField[] {
 	if (viewDimension != "") { out.push(textField("viewDimension", viewDimension)); }
 	if (b.multisampled) { out.push({ key: "multisampled", form: "flag", text: "true", number: 0 }); }
 	if (storageAccess != "") { out.push(textField("storageAccess", storageAccess)); }
-	if (storageFormat != "") { out.push(textField("storageFormat", storageFormat)); }
+	if (storageFormat != null) { out.push(textField("storageFormat", storageFormat)); }
 	return out;
 }
 

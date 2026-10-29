@@ -306,7 +306,7 @@ function reflectedFormat(format: TexelFormat): string {
 	m.resources[0].type.format = format;
 	const r = reflectCompute(m, 0, ShaderTarget.Wgsl);
 	if (!r.ok) { return r.error; }
-	const name: string = r.value.bindings[0].storageFormat;
+	const name: string = r.value.bindings[0].storageFormat ?? "";
 	return name;
 }
 

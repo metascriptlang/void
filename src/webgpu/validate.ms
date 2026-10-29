@@ -263,15 +263,15 @@ export function cacheFeatures(features: GPUSupportedFeatures): void { deviceFeat
 export function resetFrame(): void { frame = 0; }
 export function advanceFrame(): void { frame += 1; }
 
-export function canvasRefusal(color: string, depth: string, sampleCount: int32): string {
+export function canvasRefusal(color: string, depth: string | null, sampleCount: int32): string {
 	if (color == "") { return "NativeEnvironment.colorFormat is required"; }
 	if (isDepthFormat(color)) { return `NativeEnvironment.colorFormat '${color}' is not supported`; }
-	if (depth != "" && !isDepthFormat(depth)) { return `NativeEnvironment.depthFormat '${depth}' is not supported`; }
+	if (depth != null && !isDepthFormat(depth)) { return `NativeEnvironment.depthFormat '${depth}' is not supported`; }
 	if (sampleCount < 0) { return `NativeEnvironment.sampleCount ${sampleCount} is negative`; }
 	return "";
 }
 
-export function cacheCanvas(colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat, sampleCount: int32): void {
+export function cacheCanvas(colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat | null, sampleCount: int32): void {
 	refuse(canvasRefusal(colorFormat, depthFormat, sampleCount));
 	canvas = { format: colorFormat, depthFormat: depthFormat, sampleCount: sampleCount == 0 ? 1 : sampleCount };
 }
@@ -407,9 +407,9 @@ export function boundRefusal(vertexSlots: int32, groups: int32, compute: boolean
 export function vertexBufferRecordOf(layout: GPUVertexBufferLayout): VertexBufferRecord {
 	let lastStride = 0;
 	for (let a = 0; a < GPU_MAX_VERTEX_ATTRIBUTES; a++) {
-		const format: string = layout.attributes[a].format;
-		if (format == "") { continue; }
-		const end = layout.attributes[a].offset + vertexFormatSize(layout.attributes[a].format);
+		const format = layout.attributes[a].format;
+		if (format == null) { continue; }
+		const end = layout.attributes[a].offset + vertexFormatSize(format);
 		if (end > lastStride) { lastStride = end; }
 	}
 	return { stride: layout.arrayStride, lastStride: lastStride, instance: layout.stepMode == "instance" };
@@ -420,8 +420,7 @@ export function vertexSlotsOf(descriptor: GPURenderPipelineDescriptor): int32 {
 	for (let b = 0; b < GPU_MAX_VERTEX_BUFFERS; b++) {
 		if (descriptor.vertex.buffers[b].arrayStride != 0) { slots |= 1 << b; }
 		for (let a = 0; a < GPU_MAX_VERTEX_ATTRIBUTES; a++) {
-			const format: string = descriptor.vertex.buffers[b].attributes[a].format;
-			if (format != "") { slots |= 1 << b; }
+			if (descriptor.vertex.buffers[b].attributes[a].format != null) { slots |= 1 << b; }
 		}
 	}
 	return slots;
@@ -544,7 +543,7 @@ export function textureRefusal(descriptor: GPUTextureDescriptor, limits: GPUSupp
 export function textureRecordOf(id: uint32, descriptor: GPUTextureDescriptor): TextureRecord {
 	const width = descriptor.size.width;
 	const height = descriptor.size.height;
-	const dimension: string = descriptor.dimension;
+	const dimension = descriptor.dimension;
 	const volume = dimension == "3d";
 	const layers = descriptor.size.depthOrArrayLayers == 0 ? 1 : descriptor.size.depthOrArrayLayers;
 	const sampleCount = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
@@ -615,8 +614,8 @@ export function isStripTopology(topology: string): boolean {
 }
 
 export function primitiveRefusal(primitive: GPUPrimitiveState): string {
-	const format: string = primitive.stripIndexFormat;
-	if (format != "" && !isStripTopology(primitive.topology)) {
+	const format = primitive.stripIndexFormat;
+	if (format != null && !isStripTopology(primitive.topology)) {
 		return `primitive.stripIndexFormat '${format}' needs a strip topology`;
 	}
 	return "";
@@ -637,8 +636,8 @@ export function renderPipelineRefusal(descriptor: GPURenderPipelineDescriptor): 
 		return "vertex and fragment stages come from one GPUShaderModule in Void";
 	}
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
-		const format: string = descriptor.fragment.targets[i].format;
-		if (descriptor.fragment.targets[i].blendEnabled && isIntegerFormat(format)) { return `fragment.targets[${i}] blends ${format}, an integer format`; }
+		const format = descriptor.fragment.targets[i].format;
+		if (descriptor.fragment.targets[i].blendEnabled && format != null && isIntegerFormat(format)) { return `fragment.targets[${i}] blends ${format}, an integer format`; }
 	}
 	return primitiveRefusal(descriptor.primitive);
 }
@@ -996,13 +995,11 @@ export function sampledViewRefusal(binding: int32, textureIsSampled: boolean): s
 	return textureIsSampled ? "" : `bind group entry ${binding}: the view's texture lacks TEXTURE_BINDING`;
 }
 
-export function storageViewRefusal(binding: int32, textureIsStorage: boolean, mipCount: int32, declared: GPUTextureFormat, actual: GPUTextureFormat): string {
+export function storageViewRefusal(binding: int32, textureIsStorage: boolean, mipCount: int32, declared: GPUTextureFormat | null, actual: GPUTextureFormat): string {
 	if (!textureIsStorage) { return `bind group entry ${binding}: the view's texture lacks STORAGE_BINDING`; }
 	if (mipCount != 1) { return `bind group entry ${binding}: a storage texture view takes exactly one mip`; }
-	const expected: string = declared;
-	const format: string = actual;
-	if (expected != "" && expected != format) {
-		return `bind group entry ${binding}: the shader declares storage format '${expected}' and the view's texture is '${format}'`;
+	if (declared != null && declared != actual) {
+		return `bind group entry ${binding}: the shader declares storage format '${declared}' and the view's texture is '${actual}'`;
 	}
 	return "";
 }
@@ -1067,7 +1064,7 @@ export function checkedBindGroupEntry(entry: GPUBindGroupEntry, group: int32, sh
 }
 
 export function checkedSampledView(binding: int32, textureIsSampled: boolean): void { refuse(sampledViewRefusal(binding, textureIsSampled)); }
-export function checkedStorageView(binding: int32, v: int32, declared: GPUTextureFormat): void {
+export function checkedStorageView(binding: int32, v: int32, declared: GPUTextureFormat | null): void {
 	const texture = textureRecords.record(viewRecords.slots[v].texture);
 	const storage = (texture.usage & (GPUTextureUsage.STORAGE_BINDING as int32)) != 0;
 	refuse(storageViewRefusal(binding, storage, viewRecords.slots[v].mipCount, declared, texture.format));
@@ -1180,11 +1177,11 @@ function colorAttachmentRefusal(i: int32, descriptor: GPURenderPassDescriptor, v
 	return "";
 }
 
-function stencilOpsRefusal(load: string, store: string, stencil: boolean): string {
-	if (stencil && (load == "" || store == "")) {
+function stencilOpsRefusal(load: string | null, store: string, stencil: boolean): string {
+	if (stencil && (load == null || store == "")) {
 		return "depthStencilAttachment.view has a stencil aspect, so stencilLoadOp and stencilStoreOp are required";
 	}
-	if (!stencil && (load != "" || store != "")) {
+	if (!stencil && (load != null || store != "")) {
 		return "depthStencilAttachment.view has no stencil aspect, so stencilLoadOp and stencilStoreOp must be left out";
 	}
 	return "";

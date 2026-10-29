@@ -155,13 +155,13 @@ function visibilityName(mask: int32): string {
 }
 
 function describeBinding(b: GPUShaderBinding): string {
-	const kind: string = b.kind;
+	const kind: string = b.kind ?? "";
 	const sampleType: string = b.sampleType;
-	const samplerType: string = b.samplerType;
+	const samplerType: string = b.samplerType ?? "";
 	const bufferType: string = b.bufferType;
 	const viewDimension: string = b.viewDimension;
 	const storageAccess: string = b.storageAccess;
-	const storageFormat: string = b.storageFormat;
+	const storageFormat: string = b.storageFormat ?? "";
 	const name = b.nativeName;
 	return kind + " " + visibilityName(b.visibility) + " " + String(b.group) + "/" +
 		String(b.binding) + " size " +
@@ -309,8 +309,7 @@ function hostDescriptor(): string {
 	const d = blurShaderModule();
 	let bindings: GPUShaderBinding[] = [];
 	for (const b of d.bindings) {
-		const kind: string = b.kind;
-		if (kind != "") { bindings.push(b); }
+		if (b.kind != null) { bindings.push(b); }
 	}
 	let attributes: GPUShaderAttribute[] = [];
 	for (let i = 0; i < 2; i++) { attributes.push(d.attributes[i]); }

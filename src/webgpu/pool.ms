@@ -167,14 +167,14 @@ export struct PipelineRecord {
 	readsInstanceIndex: boolean;
 	readsVertexIndex: boolean;
 	strip: boolean;
-	stripIndexFormat: GPUIndexFormat;
+	stripIndexFormat: GPUIndexFormat | null;
 }
 
 export struct ShaderBindingRecord {
 	binding: int32;
 	kind: BindingKind;
 	size: int32;
-	storageFormat: GPUTextureFormat;
+	storageFormat: GPUTextureFormat | null;
 }
 
 export struct ShaderRecord {

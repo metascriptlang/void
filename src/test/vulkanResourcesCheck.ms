@@ -182,7 +182,7 @@ test "formats, rows and members map onto their Vulkan values" {
 	assert depthStencilNative(0) == 130;
 	assert rowLength(256, 4) == 64;
 	assert rowLength(52, 4) == 13;
-	assert compareOp("", "compare") == -1;
+	assert compareOp(null, "compare") == -1;
 	assert compareOp("greater-equal", "compare") == 6;
 	assert cubeCompatible(false, 64, 64, 6, 1);
 	assert !cubeCompatible(false, 64, 64, 6, 4);

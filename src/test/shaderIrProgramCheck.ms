@@ -56,8 +56,7 @@ function mismatches(reflected: Reflection, committed: GPUShaderModuleDescriptor)
 	let out: string[] = [];
 	let committedCount = 0;
 	for (let i = 0; i < 24; i++) {
-		const kind: string = committed.bindings[i].kind;
-		if (kind != "") { committedCount++; }
+		if (committed.bindings[i].kind != null) { committedCount++; }
 	}
 	if (committedCount != reflected.bindings.length) {
 		out.push(String(reflected.bindings.length) + " bindings against " + String(committedCount));
@@ -74,12 +73,12 @@ function mismatches(reflected: Reflection, committed: GPUShaderModuleDescriptor)
 			continue;
 		}
 		const c = committed.bindings[found];
-		const ckind: string = c.kind;
-		const rkind: string = r.kind;
+		const ckind: string = c.kind ?? "";
+		const rkind: string = r.kind ?? "";
 		const rsample: string = r.sampleType;
 		const csample: string = c.sampleType;
-		const rsampler: string = r.samplerType;
-		const csampler: string = c.samplerType;
+		const rsampler: string = r.samplerType ?? "";
+		const csampler: string = c.samplerType ?? "";
 		const rname = r.nativeName ?? "";
 		const cname = c.nativeName ?? "";
 		if (rkind != ckind || r.visibility != c.visibility) {

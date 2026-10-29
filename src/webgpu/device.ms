@@ -189,9 +189,9 @@ export function requestDevice(environment: GPUNativeEnvironment): GPUDevice {
 	cacheLimits(backend.limits());
 	cacheFeatures(backend.features());
 	const canvas = cachedCanvas();
-	const depthFormat: string = canvas.depthFormat;
+	const depthFormat = canvas.depthFormat;
 	swapchainColor = reserveSwapchainTexture(canvas.format, (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32));
-	swapchainDepth = depthFormat == "" ? 0 : reserveSwapchainTexture(canvas.depthFormat, GPUTextureUsage.RENDER_ATTACHMENT as int32);
+	swapchainDepth = depthFormat == null ? 0 : reserveSwapchainTexture(depthFormat, GPUTextureUsage.RENDER_ATTACHMENT as int32);
 	backend.adoptSwapchain(swapchainColor, swapchainDepth);
 	return device;
 }
@@ -264,8 +264,8 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 		readsVertexIndex: descriptor.readsVertexIndex,
 	};
 	for (let i = 0; i < descriptor.bindings.length; i++) {
-		const kind: string = descriptor.bindings[i].kind;
-		if (kind == "") { continue; }
+		const kind = descriptor.bindings[i].kind;
+		if (kind == null) { continue; }
 		record.bindings[record.bindingCount] = {
 			binding: descriptor.bindings[i].binding,
 			kind: bindingKind(kind, shaderRecords.core.backend),

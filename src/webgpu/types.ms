@@ -218,7 +218,7 @@ export struct GPUTextureDescriptor {
 	format: GPUTextureFormat;
 	usage: int32;
 	sampleCount: int32;
-	dimension: GPUTextureDimension;
+	dimension: GPUTextureDimension | null;
 	mipLevelCount: int32;
 	textureBindingViewDimension: GPUTextureViewDimension;
 }
@@ -242,7 +242,7 @@ export struct GPUSamplerDescriptor {
 	mipmapFilter: GPUMipmapFilterMode;
 	lodMinClamp: float32;
 	lodMaxClamp: float32;
-	compare: GPUCompareFunction;
+	compare: GPUCompareFunction | null;
 	maxAnisotropy: int32;
 }
 
@@ -257,16 +257,16 @@ export const DUMMY_SAMPLER_BINDING: int32 = -1;
 export struct GPUShaderBinding {
 	group: int32;
 	binding: int32;
-	kind: GPUShaderBindingKind;
+	kind: GPUShaderBindingKind | null;
 	visibility: int32;
 	size: int32;
 	sampleType: GPUTextureSampleType;
-	samplerType: GPUSamplerBindingType;
+	samplerType: GPUSamplerBindingType | null;
 	bufferType: GPUBufferBindingType;
 	viewDimension: GPUTextureViewDimension;
 	multisampled: boolean;
 	storageAccess: GPUStorageTextureAccess;
-	storageFormat: GPUTextureFormat;
+	storageFormat: GPUTextureFormat | null;
 	nativeSlot: int32;
 	nativeName: string | null;
 	textureBinding: int32;
@@ -317,14 +317,14 @@ function visibilityRefusal(binding: GPUShaderBinding, compute: boolean): string 
 // VALIDATE_SHADERDESC_NONFILTERING_SAMPLER_REQUIRED), so a sampler paired with one must be non-filtering.
 function integerTexturePairRefusal(bindings: Readonly<Span<GPUShaderBinding>>): string {
 	for (let i = 0; i < bindings.length; i++) {
-		const kind: string = bindings[i].kind;
-		const samplerType: string = bindings[i].samplerType;
+		const kind = bindings[i].kind;
+		const samplerType = bindings[i].samplerType;
 		if (kind != "sampler" || bindings[i].textureBinding < 0 || samplerType == "non-filtering") { continue; }
 		for (let j = 0; j < bindings.length; j++) {
-			const textureKind: string = bindings[j].kind;
+			const textureKind = bindings[j].kind;
 			const sampleType: string = bindings[j].sampleType;
 			if (textureKind == "texture" && bindings[j].binding == bindings[i].textureBinding && (sampleType == "uint" || sampleType == "sint")) {
-				return `sampler binding ${bindings[i].binding} is '${samplerType == "" ? "filtering" : samplerType}' but pairs with the ${sampleType} texture binding ${bindings[j].binding}; an integer texture needs a non-filtering sampler`;
+				return `sampler binding ${bindings[i].binding} is '${samplerType ?? "filtering"}' but pairs with the ${sampleType} texture binding ${bindings[j].binding}; an integer texture needs a non-filtering sampler`;
 			}
 		}
 	}
@@ -342,8 +342,8 @@ export function shaderBindingsRefusal(bindings: Readonly<Span<GPUShaderBinding>>
 	let uniforms = 0;
 	let resources = 0;
 	for (let i = 0; i < bindings.length; i++) {
-		const kind: string = bindings[i].kind;
-		if (kind == "") { continue; }
+		const kind = bindings[i].kind;
+		if (kind == null) { continue; }
 		const visibility = visibilityRefusal(bindings[i], compute);
 		if (visibility != "") { return visibility; }
 		const binding = bindings[i].binding;
@@ -367,14 +367,14 @@ export function shaderBindingsRefusal(bindings: Readonly<Span<GPUShaderBinding>>
 }
 
 export struct GPUVertexAttribute {
-	format: GPUVertexFormat;
+	format: GPUVertexFormat | null;
 	offset: int32;
 	shaderLocation: int32;
 }
 
 export struct GPUVertexBufferLayout {
 	arrayStride: int32;
-	stepMode: GPUVertexStepMode;
+	stepMode: GPUVertexStepMode | null;
 	attributes: GPUVertexAttribute[GPU_MAX_VERTEX_ATTRIBUTES];
 }
 
@@ -385,8 +385,8 @@ export struct GPUVertexState {
 
 export struct GPUBlendComponent {
 	operation: GPUBlendOperation;
-	srcFactor: GPUBlendFactor;
-	dstFactor: GPUBlendFactor;
+	srcFactor: GPUBlendFactor | null;
+	dstFactor: GPUBlendFactor | null;
 }
 
 export struct GPUBlendState {
@@ -397,7 +397,7 @@ export struct GPUBlendState {
 // `blend` absent is WebGPU's "no blending"; Void marks it with `blendEnabled`, since a
 // nullable struct field is a heap carrier.
 export struct GPUColorTargetState {
-	format: GPUTextureFormat;
+	format: GPUTextureFormat | null;
 	blendEnabled: boolean;
 	blend: GPUBlendState;
 	writeMask: int32 | null;
@@ -410,9 +410,9 @@ export struct GPUFragmentState {
 
 export struct GPUPrimitiveState {
 	topology: GPUPrimitiveTopology;
-	stripIndexFormat: GPUIndexFormat;
-	frontFace: GPUFrontFace;
-	cullMode: GPUCullMode;
+	stripIndexFormat: GPUIndexFormat | null;
+	frontFace: GPUFrontFace | null;
+	cullMode: GPUCullMode | null;
 }
 
 export struct GPUStencilFaceState {
@@ -423,7 +423,7 @@ export struct GPUStencilFaceState {
 }
 
 export struct GPUDepthStencilState {
-	format: GPUTextureFormat;
+	format: GPUTextureFormat | null;
 	depthWriteEnabled: boolean;
 	depthCompare: GPUCompareFunction;
 	stencilFront: GPUStencilFaceState;
@@ -625,10 +625,11 @@ export function compareNative<T>(table: T[], value: string, member: string, back
 	return nativeAt(table, 8, compareIndex(value, member, backend), backend, "compare function");
 }
 
-export function blendFactorIndex(value: string, member: string, backend: string): int32 {
-	return match (value) {
+export function blendFactorIndex(value: string | null, member: string, backend: string): int32 {
+	const factor = value ?? "one";
+	return match (factor) {
 		"zero" => 0,
-		"" | "one" => 1,
+		"one" => 1,
 		"src" => 2,
 		"one-minus-src" => 3,
 		"src-alpha" => 4,
@@ -640,11 +641,11 @@ export function blendFactorIndex(value: string, member: string, backend: string)
 		"src-alpha-saturated" => 10,
 		"constant" => 11,
 		"one-minus-constant" => 12,
-		_ => stopOnMember(backend, member, value),
+		_ => stopOnMember(backend, member, factor),
 	};
 }
 
-export function blendFactorNative<T>(table: T[], value: string, member: string, backend: string): T {
+export function blendFactorNative<T>(table: T[], value: string | null, member: string, backend: string): T {
 	return nativeAt(table, 13, blendFactorIndex(value, member, backend), backend, "blend factor");
 }
 
@@ -779,7 +780,7 @@ export struct GPURenderPassDepthStencilAttachment {
 	depthLoadOp: GPULoadOp;
 	depthStoreOp: GPUStoreOp;
 	stencilClearValue: uint32;
-	stencilLoadOp: GPULoadOp;
+	stencilLoadOp: GPULoadOp | null;
 	stencilStoreOp: GPUStoreOp;
 }
 
@@ -833,7 +834,7 @@ export function vertexOffsetRefusal(call: string, pipeline: string, member: stri
 		if (sampleType != "" && sampleType != "float" && sampleType != "unfilterable-float" && sampleType != "uint" && sampleType != "sint") {
 			stopOnUnported(backend, `GPUShaderBinding.sampleType '${sampleType}'`);
 		}
-		const samplerType: string = b.samplerType;
+		const samplerType = b.samplerType;
 		if (samplerType == "comparison") { stopOnUnported(backend, `GPUShaderBinding.samplerType 'comparison'`); }
 		if (b.multisampled) { stopOnUnported(backend, `GPUShaderBinding.multisampled`); }
 	}
@@ -1230,7 +1231,7 @@ export struct GPUAdapterInfo {
 // attachment and sample count Void's window adds (sokol's sg_environment defaults).
 export struct GPUCanvasConfiguration {
 	format: GPUTextureFormat;
-	depthFormat: GPUTextureFormat;
+	depthFormat: GPUTextureFormat | null;
 	sampleCount: int32;
 }
 

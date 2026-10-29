@@ -198,8 +198,8 @@ export function swapchainRest(): TextureRest {
 	return { stages: STAGE_COLOR_ATTACHMENT_OUTPUT, access: 0, layout: LAYOUT_PRESENT, aspect: ASPECT_COLOR };
 }
 
-export function loadOp(op: GPULoadOp, member: string): uint32 {
-	const value: string = op;
+export function loadOp(op: GPULoadOp | null, member: string): uint32 {
+	const value: string = op ?? "";
 	const code = match (value) {
 		"load" => LOAD_OP_LOAD as int32,
 		"clear" => LOAD_OP_CLEAR as int32,
@@ -247,8 +247,8 @@ export function addressMode(mode: string, member: string): int32 { return addres
 
 const COMPARE_OPS: int32[] = [0, 1, 2, 3, 4, 5, 6, 7];
 
-export function compareOp(compare: string, member: string): int32 {
-	if (compare == "") { return -1; }
+export function compareOp(compare: string | null, member: string): int32 {
+	if (compare == null) { return -1; }
 	return compareNative(COMPARE_OPS, compare, member, "vulkan");
 }
 
@@ -300,10 +300,10 @@ export function indexType(format: GPUIndexFormat, member: string): int32 {
 	};
 }
 
-export function cullMode(cull: GPUCullMode): uint32 {
-	const name: string = cull;
+export function cullMode(cull: GPUCullMode | null): uint32 {
+	const name: string = cull ?? "none";
 	const code = match (name) {
-		"" | "none" => 0,
+		"none" => 0,
 		"front" => 1,
 		"back" => 2,
 		_ => refuse("primitive.cullMode", name),
@@ -311,10 +311,10 @@ export function cullMode(cull: GPUCullMode): uint32 {
 	return code as uint32;
 }
 
-export function frontFace(face: GPUFrontFace): uint32 {
-	const name: string = face;
+export function frontFace(face: GPUFrontFace | null): uint32 {
+	const name: string = face ?? "ccw";
 	const code = match (name) {
-		"" | "ccw" => 0,
+		"ccw" => 0,
 		"cw" => 1,
 		_ => refuse("primitive.frontFace", name),
 	};
@@ -333,13 +333,12 @@ export function stencilOp(op: GPUStencilOperation, member: string): uint32 {
 
 const BLEND_FACTORS: int32[] = [BLEND_ZERO, BLEND_ONE, 2, 3, 6, 7, 4, 5, 8, 9, 14, 10, 11];
 
-export function sourceFactor(factor: GPUBlendFactor, member: string): uint32 {
+export function sourceFactor(factor: GPUBlendFactor | null, member: string): uint32 {
 	return blendFactorNative(BLEND_FACTORS, factor, member, "vulkan") as uint32;
 }
 
-export function destinationFactor(factor: GPUBlendFactor, member: string): uint32 {
-	const value: string = factor;
-	if (value == "") { return BLEND_ZERO as uint32; }
+export function destinationFactor(factor: GPUBlendFactor | null, member: string): uint32 {
+	if (factor == null) { return BLEND_ZERO as uint32; }
 	return sourceFactor(factor, member);
 }
 
@@ -359,10 +358,10 @@ export function vertexFormat(format: GPUVertexFormat, member: string): uint32 {
 	return vertexFormatNative(VERTEX_FORMATS, format, member, "vulkan") as uint32;
 }
 
-export function inputRate(stepMode: GPUVertexStepMode, member: string): uint32 {
-	const name: string = stepMode;
+export function inputRate(stepMode: GPUVertexStepMode | null, member: string): uint32 {
+	const name: string = stepMode ?? "vertex";
 	const code = match (name) {
-		"" | "vertex" => INPUT_RATE_VERTEX as int32,
+		"vertex" => INPUT_RATE_VERTEX as int32,
 		"instance" => INPUT_RATE_INSTANCE as int32,
 		_ => refuse(member, name),
 	};

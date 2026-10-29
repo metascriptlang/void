@@ -27,7 +27,7 @@ function feeds(buffers: GPUVertexBufferLayout[2], location: int32): boolean {
 	for (let i = 0; i < 2; i++) {
 		for (let a = 0; a < 16; a++) {
 			const attribute = buffers[i].attributes[a];
-			if ((attribute.format as string) != "" && attribute.shaderLocation == location) { return true; }
+			if (attribute.format != null && attribute.shaderLocation == location) { return true; }
 		}
 	}
 	return false;

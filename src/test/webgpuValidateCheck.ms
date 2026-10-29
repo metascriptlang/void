@@ -1033,11 +1033,11 @@ test "a resolve target is a single-sample color attachment of its multisampled v
 
 test "a canvas names a color format and, when it has one, a depth format" {
 	assert canvasRefusal("bgra8unorm", "depth32float", 4) == "";
-	assert canvasRefusal("rgba8unorm", "", 0) == "";
-	assert canvasRefusal("", "", 1) == "NativeEnvironment.colorFormat is required";
-	assert canvasRefusal("depth32float", "", 1) == "NativeEnvironment.colorFormat 'depth32float' is not supported";
+	assert canvasRefusal("rgba8unorm", null, 0) == "";
+	assert canvasRefusal("", null, 1) == "NativeEnvironment.colorFormat is required";
+	assert canvasRefusal("depth32float", null, 1) == "NativeEnvironment.colorFormat 'depth32float' is not supported";
 	assert canvasRefusal("bgra8unorm", "rgba8unorm", 1) == "NativeEnvironment.depthFormat 'rgba8unorm' is not supported";
-	assert canvasRefusal("bgra8unorm", "", -1) == "NativeEnvironment.sampleCount -1 is negative";
+	assert canvasRefusal("bgra8unorm", null, -1) == "NativeEnvironment.sampleCount -1 is negative";
 }
 
 test "an omitted color writeMask writes every channel and an explicit 0 writes none" {

@@ -187,7 +187,7 @@ export function openPipelines(): VulkanPipelines {
 }
 
 function bindingWritable(binding: GPUShaderBinding): boolean {
-	const kind: string = binding.kind;
+	const kind = binding.kind;
 	if (kind == "storage-buffer") {
 		const bufferType: string = binding.bufferType;
 		if (bufferType == "storage") { return true; }
@@ -271,8 +271,8 @@ export function createShaderModule(
 	const compute = descriptor.computeCode != "" || descriptor.computeBytecode.length > 0;
 	let shader: ShaderNative = { compute: compute };
 	for (let i = 0; i < GPU_MAX_SHADER_BINDINGS; i++) {
-		const kindName: string = descriptor.bindings[i].kind;
-		if (kindName == "") { continue; }
+		const kindName = descriptor.bindings[i].kind;
+		if (kindName == null) { continue; }
 		const binding: ShaderBinding = {
 			group: descriptor.bindings[i].group,
 			binding: descriptor.bindings[i].binding,
@@ -385,8 +385,7 @@ function vertexWords(descriptor: GPURenderPipelineDescriptor, ref bufferCount: u
 		let used = false;
 		for (let a = 0; a < GPU_MAX_VERTEX_ATTRIBUTES; a++) {
 			const attribute = layout.attributes[a];
-			const format: string = attribute.format;
-			if (format == "") { continue; }
+			if (attribute.format == null) { continue; }
 			attributes.push(attribute.shaderLocation as uint32);
 			attributes.push(b as uint32);
 			attributes.push(vertexFormat(attribute.format, `vertex.buffers[${b}].attributes[${a}].format`));
@@ -419,24 +418,23 @@ function compatiblePass(
 	let key = newPassKey();
 	let colors = 0;
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
-		const format: string = descriptor.fragment.targets[i].format;
-		if (format != "") { colors = i + 1; }
+		if (descriptor.fragment.targets[i].format != null) { colors = i + 1; }
 	}
 	for (let i = 0; i < colors; i++) {
-		const format: string = descriptor.fragment.targets[i].format;
-		if (format == "") {
+		const format = descriptor.fragment.targets[i].format;
+		if (format == null) {
 			unusedColorKeyWords(key);
 			unusedTargetWords(targets);
 			continue;
 		}
-		const info = formatInfo(descriptor.fragment.targets[i].format, r.depthStencil, `fragment.targets[${i}].format`);
+		const info = formatInfo(format, r.depthStencil, `fragment.targets[${i}].format`);
 		if (info.depth) { stop(`fragment.targets[${i}].format is a depth format`); }
 		colorKeyWords(key, info.native, samples, LOAD_OP_LOAD, STORE_OP_STORE, 0);
 		colorTargetWords(targets, descriptor, i);
 	}
-	const depthFormat: string = descriptor.depthStencil.format;
-	if (depthFormat != "") {
-		const info = formatInfo(descriptor.depthStencil.format, r.depthStencil, "depthStencil.format");
+	const depthFormat = descriptor.depthStencil.format;
+	if (depthFormat != null) {
+		const info = formatInfo(depthFormat, r.depthStencil, "depthStencil.format");
 		if (!info.depth) { stop("depthStencil.format is not a depth format"); }
 		depth = true;
 		stencil = (info.aspect & ASPECT_STENCIL) != 0;
