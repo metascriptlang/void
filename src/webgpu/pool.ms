@@ -245,4 +245,4 @@ export function resetRecords(backend: string): void {
 	resetFor(querySetRecords, backend);
 }
 
-export function record<T>(this pool: Pool<T>, id: uint32): T { return pool.slots[pool.slotIndex(id)]; }
+export function record<T>(this pool: Pool<T>, id: uint32): Borrow<T> { return pool.slots[pool.slotIndex(id)]; }
