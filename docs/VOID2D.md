@@ -1534,9 +1534,9 @@ human has seen it as app code; the phase measurement comes last.
     the human kept void2d's on 2026-09-29 (HEAPS.md "Do not copy from h2d"), so the oracle
     compares the other four. The gate now reads **15 / 15 trees and 4 / 4 scale modes**. Two compiler cards came out of it:
     `2026-09-28-narrowed-ref-union-loses-extensions` and
-    `2026-09-28-c-backend-fuses-multiply-add`. The second is why `wholeSceneUnits` keeps its
-    product in a binding of its own: C fused `window - design * zoom` into one rounding where
-    JavaScript did not.
+    `2026-09-28-c-backend-fuses-multiply-add`. The second made `wholeSceneUnits` keep its
+    product in a binding of its own, because C fused `window - design * zoom` into one rounding
+    where JavaScript did not; fixed in msc c85d84fb8, and the margin is one expression again.
 14. **The measurement** listed under "Measure", and the wasm delta against the P4 head built the
     same day on the same compiler.
 

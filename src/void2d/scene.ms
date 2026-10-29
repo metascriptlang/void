@@ -123,8 +123,7 @@ export function tick(this s: Scene2D, dt: float32): void {
 }
 
 function wholeSceneUnits(window: float32, design: float32, zoom: float64): float32 {
-	const covered: float64 = (design as float64) * zoom;
-	const margin: float64 = ((window as float64) - covered) / (2.0 * zoom);
+	const margin: float64 = ((window as float64) - (design as float64) * zoom) / (2.0 * zoom);
 	return (Math.floor(margin) * zoom) as float32;
 }
 
