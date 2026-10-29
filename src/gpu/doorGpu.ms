@@ -237,7 +237,9 @@ struct AppliedBindings {
 // its format and usage never change, and a destroy clears the entry.
 struct ViewClass { view: uint32; colorAttachment: boolean; }
 
-struct AppendCursor { buffer: uint32; frame: uint32; position: int64; }
+// By pool slot of the buffer, kept with the id it was made for and the buffer's size, which never
+// changes.
+struct AppendCursor { buffer: uint32; frame: uint32; position: int64; size: int64; }
 
 let device: GPUDevice = { id: 0, queue: { id: 0 } };
 let layouts: Vec<DoorLayout> = [];
@@ -1251,30 +1253,34 @@ export function doorUpdateBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int3
 	return 1;
 }
 
-function appendCursorOf(buffer: uint32): int32 {
-	for (let i = 0; i < appendCursors.length; i++) {
-		if (appendCursors[i].buffer == buffer) { return i as int32; }
+function appendCursorOf(id: uint32, frame: uint32): int32 {
+	const slot = slotOf(id);
+	while (appendCursors.length <= slot) {
+		appendCursors.push({ buffer: 0, frame: 0, position: 0, size: 0 });
 	}
-	return -1;
+	if (appendCursors[slot].buffer != id) {
+		const buffer: GPUBuffer = { id };
+		appendCursors[slot] = { buffer: id, frame, position: 0, size: buffer.size() };
+	}
+	return slot;
 }
 
 // sokol's sg_append_buffer: each append lands after the last one this frame, 4-byte aligned,
 // and returns its offset; the first append of a frame starts at 0. -1 when it does not fit.
 export function doorAppendBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int64 {
-	const buffer: GPUBuffer = { id };
 	const frame = device.frameIndex();
-	let at = appendCursorOf(id);
-	if (at < 0) {
-		appendCursors.push({ buffer: id, frame, position: 0 });
-		at = (appendCursors.length - 1) as int32;
-	}
+	const at = appendCursorOf(id, frame);
 	if (appendCursors[at].frame != frame) {
-		appendCursors[at] = { buffer: id, frame, position: 0 };
+		appendCursors[at].frame = frame;
+		appendCursors[at].position = 0;
 	}
 	const offset = appendCursors[at].position;
 	const bytes = (data.length as int64) * (sizeof(T) as int64);
-	if (offset + bytes > buffer.size()) { return -1; }
-	if (bytes > 0) { device.queue.writeBuffer(buffer, offset, data); }
+	if (offset + bytes > appendCursors[at].size) { return -1; }
+	if (bytes > 0) {
+		const buffer: GPUBuffer = { id };
+		device.queue.writeBuffer(buffer, offset, data);
+	}
 	frameStats[DOOR_STAT_BUFFER_BYTES] += bytes;
 	appendCursors[at].position = alignedToFour(offset + bytes);
 	return offset;
@@ -1286,8 +1292,10 @@ export function doorDestroyBuffer(id: uint32): void {
 	applied.valid = false;
 	const buffer: GPUBuffer = { id };
 	buffer.destroy();
-	const at = appendCursorOf(id);
-	if (at >= 0) { appendCursors.splice(at, 1); }
+	const slot = slotOf(id);
+	if (slot < appendCursors.length && appendCursors[slot].buffer == id) {
+		appendCursors[slot] = { buffer: 0, frame: 0, position: 0, size: 0 };
+	}
 }
 
 export function doorBufferAlive(id: uint32): int32 {
