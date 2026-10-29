@@ -3,6 +3,8 @@ import {
 	GPUBindGroupDescriptor,
 	GPUBindGroupEntry,
 	GPUBufferUsage,
+	GPUCanvasConfiguration,
+	GPUDepthStencilState,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPUMapMode,
 	GPUPrimitiveState,
@@ -18,6 +20,9 @@ import {
 	GPUTextureUsage,
 	GPUTextureViewDescriptor,
 	GPUVertexBufferLayout,
+	compareIndex,
+	blendFactorIndex,
+	topologyIndex,
 } from "../webgpu/types";
 import {
 	AttachmentFacts,
@@ -1070,4 +1075,22 @@ test "an explicit stencil mask of 0 survives, so a pipeline can test the stencil
 	const resolved = resolvedRenderPipeline(descriptor);
 	assert stencilMask(resolved.depthStencil.stencilReadMask) == 0;
 	assert stencil8Mask(resolved.depthStencil.stencilWriteMask) == 0;
+}
+test "a descriptor member an author leaves out is null and reads as the WebGPU default" {
+	const canvas: GPUCanvasConfiguration = { format: "bgra8unorm", sampleCount: 1 };
+	assert canvas.depthFormat == null;
+	const primitive: GPUPrimitiveState = {};
+	assert primitive.topology == null && primitive.stripIndexFormat == null;
+	assert primitive.cullMode == null && primitive.frontFace == null;
+	assert topologyIndex(primitive.topology, "primitive.topology", "dummy") == topologyIndex("triangle-list", "primitive.topology", "dummy");
+	const depth: GPUDepthStencilState = { depthWriteEnabled: false, depthCompare: "always" };
+	assert depth.format == null && depth.stencilFront.compare == null;
+	assert compareIndex(depth.stencilFront.compare, "stencilFront.compare", "dummy") == compareIndex("always", "stencilFront.compare", "dummy");
+	const sampler: GPUSamplerDescriptor = { label: null };
+	assert sampler.compare == null;
+	const layout: GPUVertexBufferLayout = { arrayStride: 8 };
+	assert layout.stepMode == null && layout.attributes[0].format == null;
+	const descriptor: GPURenderPipelineDescriptor = { label: null };
+	assert descriptor.fragment.targets[0].format == null;
+	assert blendFactorIndex(descriptor.fragment.targets[0].blend.color.srcFactor, "srcFactor", "dummy") == blendFactorIndex("one", "srcFactor", "dummy");
 }
