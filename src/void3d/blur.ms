@@ -7,10 +7,10 @@ import { FilterMode, Wrap } from "../gpu/state";
 import {
 	RenderTarget,
 	ColorAttachment,
-	TargetLayout,
 	Sampler,
 	NO_DEPTH,
 	beginPass,
+	layoutOf,
 } from "../gpu/target";
 import { Material, Phase, UniformBlock } from "./material";
 import { Vec4 } from "../math/math3d";
@@ -211,17 +211,6 @@ export function writeBlurBlock(
 	}
 }
 
-function layoutOf(format: PixelFormat): TargetLayout {
-	return {
-		color0: format,
-		color1: PixelFormat.None,
-		color2: PixelFormat.None,
-		color3: PixelFormat.None,
-		depth: PixelFormat.None,
-		sampleCount: 1,
-	};
-}
-
 function blurInto(
 	pass: BlurPass,
 	core: Renderer,
@@ -239,7 +228,7 @@ function blurInto(
 	pass.colors[0] = target.asColor(LoadAction.DontCare, NO_CLEAR);
 	beginPass(pass.colors, NO_DEPTH);
 	const drawn: Result<int32, RendererError> =
-		drawScreen(core, pass.material, layoutOf(target.format));
+		drawScreen(core, pass.material, layoutOf(pass.colors, NO_DEPTH));
 	if (!drawn.ok) { unreachable; }
 	endPass();
 }

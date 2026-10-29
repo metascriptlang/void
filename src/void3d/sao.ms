@@ -80,21 +80,19 @@ export function defaults(this typeof ScalableAoSettings): ScalableAoSettings {
 	};
 }
 
-function finite(value: float32): boolean {
-	return Number.isFinite(value);
-}
-
 function validFade(fade: SaoFade | null): boolean {
-	return fade === null || (finite(fade.start) && finite(fade.end) && fade.end > fade.start);
+	return fade === null ||
+		(Number.isFinite(fade.start) && Number.isFinite(fade.end) && fade.end > fade.start);
 }
 
 // SAO's @const bounds (127 samples, 15 turns) and a radius the taps can divide by.
 export function valid(this settings: ScalableAoSettings): boolean {
 	return settings.numSamples >= 1 && settings.numSamples <= 127 &&
 		settings.numSpiralTurns >= 1 && settings.numSpiralTurns <= 15 &&
-		finite(settings.sampleRadius) && settings.sampleRadius > 0.0 &&
-		finite(settings.intensity) && settings.intensity >= 0.0 && finite(settings.bias) &&
-		finite(settings.noiseScaleX) && finite(settings.noiseScaleY) &&
+		Number.isFinite(settings.sampleRadius) && settings.sampleRadius > 0.0 &&
+		Number.isFinite(settings.intensity) && settings.intensity >= 0.0 &&
+		Number.isFinite(settings.bias) &&
+		Number.isFinite(settings.noiseScaleX) && Number.isFinite(settings.noiseScaleY) &&
 		validFade(settings.startFade) && validFade(settings.fade);
 }
 

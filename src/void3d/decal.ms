@@ -82,8 +82,10 @@ export function decalBlock(
 // Blended over the colour of `pass` with no depth, its box's back faces drawn so a camera inside
 // the box still sees the decal.
 export function decal(this typeof Material, pass: DecalPass): Material {
-	const state: RenderState = RenderState.defaults().withDepth(false, Compare.Always)
-		.withBlendMode(BlendMode.Alpha).withCulling(Face.Front);
+	const state: RenderState = RenderState.defaults()
+		.withDepth(false, Compare.Always)
+		.withBlendMode(BlendMode.Alpha)
+		.withCulling(Face.Front);
 	const phase: Phase = pass == DecalPass.BeforeToneMap ? Phase.Decal : Phase.DecalAfterToneMap;
 	return Material.plain(Program.Decal, state, phase);
 }

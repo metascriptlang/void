@@ -3,15 +3,15 @@
 // is materialColorMatrixRaw's, which no program draws yet.
 
 import { Program, ProgramKey } from "./gpu3d";
-import { LoadAction, PixelFormat, endPass } from "../gpu/door";
+import { LoadAction, endPass } from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
 import {
 	RenderTarget,
 	ColorAttachment,
-	TargetLayout,
 	Sampler,
 	NO_DEPTH,
 	beginPass,
+	layoutOf,
 } from "../gpu/target";
 import { Material, Phase, UniformBlock } from "./material";
 import { Mat4, Vec3, Vec4, vec4, identity } from "../math/math3d";
@@ -94,21 +94,21 @@ export function materialColorMatrixRaw(
 // Finite matrices and mask, and a mask power above 0: the shader raises a weight a mask texel
 // can make 0, which pow leaves undefined at a power of 0 or below.
 export function validate(
-	this pass: ColorMatrixSettings,
+	this settings: ColorMatrixSettings,
 	mask: ColorMatrixMask | null,
 ): Result<void, ColorMatrixError> {
-	if (!finiteMatrix(pass.matrix)) { return Result.err(ColorMatrixError.NonFinite); }
-	const second = pass.secondMatrix;
+	if (!finiteMatrix(settings.matrix)) { return Result.err(ColorMatrixError.NonFinite); }
+	const second = settings.secondMatrix;
 	if (second !== null && !finiteMatrix(second)) {
 		return Result.err(ColorMatrixError.NonFinite);
 	}
-	if (mask === null) { return Result.ok(undefined); }
+	if (mask === null) { return Result.ok(null); }
 	if (!finiteVector(mask.matA) || !finiteVector(mask.matB) || !finiteColor(mask.channel) ||
 		!Number.isFinite(mask.power)) {
 		return Result.err(ColorMatrixError.NonFinite);
 	}
 	if (mask.power <= 0.0) { return Result.err(ColorMatrixError.UndefinedMaskPower); }
-	return Result.ok(undefined);
+	return Result.ok(null);
 }
 
 function flag(on: boolean): float32 {
@@ -116,14 +116,14 @@ function flag(on: boolean): float32 {
 }
 
 export function writeColorMatrixBlock(
-	pass: ColorMatrixSettings,
+	settings: ColorMatrixSettings,
 	mask: ColorMatrixMask | null,
 	out: Span<float32>,
 ): void {
-	pass.matrix.writeTo(out, COLOR_MATRIX);
-	const second = pass.secondMatrix;
-	(second !== null ? second : identity()).writeTo(out, COLOR_MATRIX_SECOND);
-	const shape: ColorMatrixMask = mask !== null ? mask : ColorMatrixMask.create();
+	settings.matrix.writeTo(out, COLOR_MATRIX);
+	const second = settings.secondMatrix;
+	(second ?? identity()).writeTo(out, COLOR_MATRIX_SECOND);
+	const shape: ColorMatrixMask = mask ?? ColorMatrixMask.create();
 	out[COLOR_MATRIX_MASK_A] = shape.matA.x;
 	out[COLOR_MATRIX_MASK_A + 1] = shape.matA.y;
 	out[COLOR_MATRIX_MASK_A + 2] = shape.matA.z;
@@ -136,7 +136,7 @@ export function writeColorMatrixBlock(
 	out[COLOR_MATRIX_MASK_CHANNEL + 1] = shape.channel.y;
 	out[COLOR_MATRIX_MASK_CHANNEL + 2] = shape.channel.z;
 	out[COLOR_MATRIX_MASK_CHANNEL + 3] = shape.channel.w;
-	out[COLOR_MATRIX_FLAGS] = flag(pass.useAlpha);
+	out[COLOR_MATRIX_FLAGS] = flag(settings.useAlpha);
 	out[COLOR_MATRIX_FLAGS + 1] = flag(mask !== null);
 	out[COLOR_MATRIX_FLAGS + 2] = flag(mask !== null && mask.invert);
 	out[COLOR_MATRIX_FLAGS + 3] = flag(second !== null);
@@ -199,17 +199,6 @@ export function adoptContext(this pass: ColorMatrixPass): void {
 	pass.sampler = Sampler.create(pass.sampler.filter, pass.sampler.wrap);
 }
 
-function layoutOf(format: PixelFormat): TargetLayout {
-	return {
-		color0: format,
-		color1: PixelFormat.None,
-		color2: PixelFormat.None,
-		color3: PixelFormat.None,
-		depth: PixelFormat.None,
-		sampleCount: 1,
-	};
-}
-
 function stopOnSize(source: RenderTarget, target: RenderTarget): void {
 	console.log(`void3d: a colour matrix from ${source.width}x${source.height} into ` +
 		`${target.width}x${target.height}; the source is the target's size`);
@@ -248,7 +237,7 @@ export function draw(
 	pass.colors[0] = target.asColor(LoadAction.DontCare, NO_CLEAR);
 	beginPass(pass.colors, NO_DEPTH);
 	const drawn: Result<int32, RendererError> =
-		drawScreen(core, pass.material, layoutOf(target.format));
+		drawScreen(core, pass.material, layoutOf(pass.colors, NO_DEPTH));
 	if (!drawn.ok) { unreachable; }
 	endPass();
 }
@@ -257,7 +246,8 @@ export function close(this pass: ColorMatrixPass, context: DrawContext, call: st
 	pass.sampler = pass.sampler.released();
 	const released: Result<int32, HandleError> = releaseMaterial(context, pass.material);
 	if (!released.ok) {
-		console.log(`void3d: ${call} found the colour matrix material ${released.error.toString()}`);
+		console.log(`void3d: ${call} found the colour matrix material ` +
+			released.error.toString());
 		unreachable;
 	}
 }

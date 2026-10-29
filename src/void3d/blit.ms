@@ -49,8 +49,8 @@ export function lowResView(
 	if (shortSide <= 0) { return Result.err(ViewError.BadShortSide); }
 	if (divisor <= 0) { return Result.err(ViewError.BadDivisor); }
 	if (margin < 0) { return Result.err(ViewError.BadMargin); }
-	const framebufferShort: int32 = Math.min(framebufferWidth, framebufferHeight) as int32;
-	const scale: int32 = (Math.max(1, framebufferShort / shortSide) as int32) * divisor;
+	const framebufferShort: int32 = Math.min(framebufferWidth, framebufferHeight);
+	const scale: int32 = Math.max(1, framebufferShort / shortSide) * divisor;
 	const coveredWidth: int32 = (framebufferWidth + scale - 1) / scale;
 	const coveredHeight: int32 = (framebufferHeight + scale - 1) / scale;
 	const overhangX: int32 = coveredWidth * scale - framebufferWidth;

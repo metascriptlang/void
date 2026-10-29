@@ -90,7 +90,7 @@ const NO_CLEAR: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 0.0 };
 // mod.rs:326, `max_mip_dimension.ilog2().max(2) - 1`.
 export function bloomMipCount(maxMipDimension: int32): int32 {
 	let log: int32 = 0;
-	while ((1 << (log + 1)) <= maxMipDimension) { log = log + 1; }
+	while ((1 << (log + 1)) <= maxMipDimension) { log += 1; }
 	return (log > 2 ? log : 2) - 1;
 }
 

@@ -1,15 +1,15 @@
 // Heaps' h3d.pass.FXAA: post3d.ms fxaaFs drawn from a texture into a target of its size.
 
 import { Program } from "./gpu3d";
-import { LoadAction, PixelFormat, endPass } from "../gpu/door";
+import { LoadAction, endPass } from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
 import {
 	RenderTarget,
 	ColorAttachment,
-	TargetLayout,
 	Sampler,
 	NO_DEPTH,
 	beginPass,
+	layoutOf,
 } from "../gpu/target";
 import { Material, Phase } from "./material";
 import { Vec4 } from "../math/math3d";
@@ -54,17 +54,6 @@ function stopOnSize(source: RenderTarget, target: RenderTarget): void {
 	unreachable;
 }
 
-function layoutOf(format: PixelFormat): TargetLayout {
-	return {
-		color0: format,
-		color1: PixelFormat.None,
-		color2: PixelFormat.None,
-		color3: PixelFormat.None,
-		depth: PixelFormat.None,
-		sampleCount: 1,
-	};
-}
-
 // FXAA.apply: `source` filtered into `target`, which must not be it.
 export function draw(
 	this pass: FxaaPass,
@@ -81,7 +70,7 @@ export function draw(
 	pass.colors[0] = target.asColor(LoadAction.DontCare, NO_CLEAR);
 	beginPass(pass.colors, NO_DEPTH);
 	const drawn: Result<int32, RendererError> =
-		drawScreen(core, pass.material, layoutOf(target.format));
+		drawScreen(core, pass.material, layoutOf(pass.colors, NO_DEPTH));
 	if (!drawn.ok) { unreachable; }
 	endPass();
 }
