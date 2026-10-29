@@ -4,7 +4,8 @@
 // beginFrame, which needs a device for its stand-in and cluster textures. Each prints its median
 // over FLOW_CUBES_FRAMES frames, so a change to one flow is proven by its own number before the
 // windowed A/B. The meshes are external, so no vertex buffer is made; FLOW_CUBES_COUNT sets the
-// cube count (1.6M, as benchCubes).
+// cube count (1.6M, as benchCubes). `flow.refreshMoving` times refresh on frames where ten
+// cubes move.
 
 import { env, exit } from "std/process";
 import { Mat4, vec3, identityQuat, quatBetween } from "../../src/math/math3d";
@@ -30,7 +31,7 @@ import {
 import { PassList, collectVisible } from "../../src/void3d/passList";
 import {
 	Scene3D, NodeId3D, SceneError, Transform3D, LightInstance, LightKind, LightError,
-	addMeshNode, addLightNode, refresh, collectLights,
+	addMeshNode, addLightNode, refresh, collectLights, setLocal,
 } from "../../src/void3d/scene";
 import { added, litShape } from "../../src/test/drawHelpers";
 import { positiveEnv } from "./frameTimeLog";
@@ -45,6 +46,7 @@ let context: DrawContext =
 	DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH + PBR_MATERIAL_UNIFORM_LENGTH);
 let scene: Scene3D = Scene3D.create(context);
 let items: Vec<DrawItem> = [];
+let movers: Vec<NodeId3D> = [];
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let frames: int32 = positiveEnv("FLOW_CUBES_FRAMES", 15);
@@ -93,6 +95,7 @@ function buildScene(count: int32): void {
 		const node: Result<NodeId3D, SceneError> =
 			addMeshNode(scene, scene.rootId(), local, mesh, material);
 		if (!node.ok) { unreachable; }
+		if (i < 10) { movers.push(node.value); }
 	}
 	const sun: LightInstance = {
 		kind: LightKind.Directional, color: vec3(1.0, 1.0, 1.0),
@@ -149,6 +152,17 @@ function cpuFlows(): void {
 	console.log(`flow.refresh ${median(refreshed)} ms`);
 	console.log(`flow.collectLights ${median(lit)} ms`);
 	console.log(`flow.collectVisible ${median(collected)} ms`);
+	let moved: Vec<float64> = [];
+	for (let frame = 0; frame <= frames; frame++) {
+		for (const mover of movers) {
+			setLocal(scene, mover, Transform3D.fromTranslation(vec3(0.0, frame as float32, 0.0)));
+		}
+		const t0: float64 = performance.now();
+		const _drawn: int32 = refresh(scene, items);
+		const t1: float64 = performance.now();
+		if (frame > 0) { moved.push(t1 - t0); }
+	}
+	console.log(`flow.refreshMoving ${movers.length} ${median(moved)} ms`);
 }
 
 function beginFrameFlow(): void {
