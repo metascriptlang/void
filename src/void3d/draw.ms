@@ -333,6 +333,15 @@ export interface DrawContext {
 	rowFloats: int32;
 	rowsUsed: int32;
 	rowFrame: uint32;
+	// While `listActive`, the rows of a whole pass list (stageListRows) sit at `listOffset` of
+	// `listBuffer`: `listCounts` is the row count of each draw in the list's order, `listNext`
+	// the draw to come and `listCursor` the rows the draws before it took.
+	listActive: boolean;
+	listBuffer: uint32;
+	listOffset: int32;
+	listCounts: Vec<int32>;
+	listNext: int32;
+	listCursor: int32;
 	closed: boolean;
 }
 
@@ -459,6 +468,12 @@ function contextOf(uniforms: UniformPool): DrawContext {
 		rowFloats: 0,
 		rowsUsed: 0,
 		rowFrame: 0,
+		listActive: false,
+		listBuffer: 0,
+		listOffset: 0,
+		listCounts: [],
+		listNext: 0,
+		listCursor: 0,
 		closed: false,
 	};
 }
@@ -1741,38 +1756,48 @@ export function writeBlock<T>(
 	return writeTypedBlock<T>(context.uniforms, handle, value);
 }
 
-function applyBlock(this context: DrawContext, block: UniformBlock): void {
-	applyUniforms(block.slot, context.uniforms.values[block.offset..block.offset + block.length]);
+function applyRange(this context: DrawContext, block: UniformBlock, declared: int32): void {
+	applyUniforms(block.slot, context.uniforms.values[block.offset..block.offset + declared]);
 }
 
-// What the last global apply to a slot was, as the door numbered it and as the pool stood. The
-// record is the module's, like the door's bound state: any context's apply replaces it.
-struct GlobalApply { block: UniformBlock; stamp: int32; writes: int64; }
+// What the last apply to a slot was, as the door numbered it and as the pool stood: the block,
+// the floats of it applied, and the pool's write count. The record is the module's, like the
+// door's bound state: any context's apply replaces it.
+export struct SlotApply { block: UniformBlock; declared: int32; stamp: int32; writes: int64; }
 
-let globalApplies: Vec<GlobalApply> = [];
+export function stillBound(
+	this last: SlotApply,
+	block: UniformBlock,
+	declared: int32,
+	stamp: int32,
+	writes: int64,
+): boolean {
+	return stamp != 0 && stamp == last.stamp && last.block == block && last.declared == declared &&
+		last.writes == writes;
+}
 
-// A global block is applied once for as long as the door keeps the pipeline: while the slot's
-// stamp is the one its apply got, the block is the same range and no pool write came since, it
-// is still bound.
-function applyGlobal(context: DrawContext, block: UniformBlock): void {
-	while ((globalApplies.length as int32) < UNIFORM_SLOTS) {
-		globalApplies.push({ block: NO_UNIFORMS, stamp: 0, writes: 0 });
+let slotApplies: Vec<SlotApply> = [];
+
+// A block's first `declared` floats are applied once for as long as the door keeps the pipeline:
+// while the slot's stamp is the one its apply got, the block and its length are the same and no
+// pool write came since, they are still bound. A pass-wide global applies all of its block, a
+// material's block the head its program reads.
+function applyOnce(this context: DrawContext, block: UniformBlock, declared: int32): void {
+	while ((slotApplies.length as int32) < UNIFORM_SLOTS) {
+		slotApplies.push({ block: NO_UNIFORMS, declared: 0, stamp: 0, writes: 0 });
 	}
 	const slot: int32 = block.slot;
 	if (slot < 0 || slot >= UNIFORM_SLOTS) {
-		context.applyBlock(block);
+		context.applyRange(block, declared);
 		return;
 	}
 	const stamp: int32 = uniformStamp(slot);
-	const last: GlobalApply = globalApplies[slot];
-	if (
-		stamp != 0 && stamp == last.stamp && last.block == block &&
-		last.writes == uniformWrites()
-	) {
-		return;
-	}
-	context.applyBlock(block);
-	globalApplies[slot] = { block: block, stamp: uniformStamp(slot), writes: uniformWrites() };
+	const last: SlotApply = slotApplies[slot];
+	if (last.stillBound(block, declared, stamp, uniformWrites())) { return; }
+	context.applyRange(block, declared);
+	slotApplies[slot] = {
+		block: block, declared: declared, stamp: uniformStamp(slot), writes: uniformWrites(),
+	};
 }
 
 // The first `declared` floats of a block: a program that reads less than its material's block
@@ -1788,7 +1813,7 @@ export function applyBlockHead(
 	if (program.preset != Preset.Shadow && block.length != declared) {
 		stopOnLongBlock(program, block, declared);
 	}
-	applyUniforms(block.slot, context.uniforms.values[block.offset..block.offset + declared]);
+	context.applyOnce(block, declared);
 }
 
 function stopOnShortBlock(program: ProgramKey, block: UniformBlock, declared: int32): void {
@@ -1988,9 +2013,14 @@ export function drawItemWith(
 	scene: SceneTexture,
 ): void {
 	if (context.closed) { stopOnClosedContext("drawItem"); }
-	stageRows(context, 1);
-	writeInstanceRow(context, 0, item.world);
-	drawStaged(context, item, 1, program, state, targets, globals, scene);
+	let rowOffset: int32 = NOT_STAGED;
+	if (context.listActive) {
+		rowOffset = context.takeListRows(1);
+	} else {
+		stageRows(context, 1);
+		writeInstanceRow(context, 0, item.world);
+	}
+	drawStaged(context, item, 1, rowOffset, program, state, targets, globals, scene);
 }
 
 // The items at `batch`, neighbours that differ only in their world matrices, as one instanced
@@ -2011,12 +2041,75 @@ export function drawBatchWith(
 	const count: int32 = batch.length as int32;
 	if (count == 0) { return; }
 	const first: Readonly<DrawItem> = items[batch[0]];
-	stageRows(context, count);
+	let rowOffset: int32 = NOT_STAGED;
+	if (context.listActive) {
+		rowOffset = context.takeListRows(count);
+	} else {
+		stageRows(context, count);
+	}
 	for (let i = 0; i < count; i++) {
 		if (!first.sameBatch(items[batch[i]])) { stopOnMixedBatch(i); }
-		writeInstanceRow(context, i, items[batch[i]].world);
+		if (rowOffset == NOT_STAGED) { writeInstanceRow(context, i, items[batch[i]].world); }
 	}
-	drawStaged(context, first, count, program, state, targets, globals, scene);
+	drawStaged(context, first, count, rowOffset, program, state, targets, globals, scene);
+}
+
+const NOT_STAGED: int32 = -1;
+
+// The rows of every draw drawPassList or drawCasters will make over `order`, in one append: the
+// batches are cut as those loops cut them, and each draw takes its rows by its place in the list
+// (Bevy's one MeshUniform buffer per phase, each batch reading its range). endListRows ends it.
+export function stageListRows(
+	context: DrawContext,
+	items: Readonly<Span<DrawItem>>,
+	order: Readonly<Span<int32>>,
+): void {
+	if (context.closed) { stopOnClosedContext("stageListRows"); }
+	if (context.listActive) { stopOnNestedList(); }
+	const count: int32 = order.length as int32;
+	let i: int32 = 0;
+	while (i < count) {
+		let end: int32 = i + 1;
+		while (end < count && items[order[i]].sameBatch(items[order[end]])) { end = end + 1; }
+		context.listCounts.push(end - i);
+		i = end;
+	}
+	if (count == 0) { return; }
+	stageRows(context, count);
+	for (let row = 0; row < count; row++) { writeInstanceRow(context, row, items[order[row]].world); }
+	const offset: int32 = appendRows(context, count);
+	context.listBuffer = context.rowBuffer;
+	context.listOffset = offset;
+	context.listNext = 0;
+	context.listCursor = 0;
+	context.listActive = true;
+}
+
+export function endListRows(context: DrawContext): void {
+	context.listActive = false;
+	while ((context.listCounts.length as int32) > 0) { context.listCounts.pop(); }
+}
+
+export function takeListRows(this context: DrawContext, count: int32): int32 {
+	if (context.listNext >= (context.listCounts.length as int32) ||
+		context.listCounts[context.listNext] != count) {
+		stopOnListMismatch(context.listNext, count);
+	}
+	const offset: int32 = context.listOffset + context.listCursor * MESH_INSTANCE_STRIDE * 4;
+	context.listCursor = context.listCursor + count;
+	context.listNext = context.listNext + 1;
+	return offset;
+}
+
+function stopOnNestedList(): void {
+	console.log("void3d: stageListRows with a list already staged; endListRows ends it");
+	unreachable;
+}
+
+function stopOnListMismatch(at: int32, count: int32): void {
+	console.log(`void3d: draw ${at} of a staged list takes ${count} rows and the list staged ` +
+		"another number; draw the items stageListRows was given, in its order");
+	unreachable;
 }
 
 // Whether `item` can share an instanced draw with `first`: the same mesh, material and range,
@@ -2103,12 +2196,66 @@ function appendRows(context: DrawContext, count: int32): int32 {
 	return offset;
 }
 
-// One draw of `item`'s mesh, material and range, over the `staged` rows stageRows holds, or
-// over its InstanceRun when it has one.
+// The pipeline the last draw got, and every input its key was made of, with the context and its
+// generation: a draw that repeats them takes the id again without making the key. A pipeline
+// exists only while its program's shader does, and releasePipelines drops both.
+export struct PipelineMemo {
+	serial: int32;
+	generation: int32;
+	program: int32;
+	layout: VertexLayout;
+	indexed: boolean;
+	format: IndexType;
+	state: RenderState;
+	targets: TargetLayout;
+	pipeline: uint32;
+}
+
+export function holds(
+	this memo: PipelineMemo,
+	next: PipelineMemo,
+	shaderLive: boolean,
+): boolean {
+	return shaderLive && memo.serial == next.serial && memo.generation == next.generation &&
+		memo.program == next.program && memo.layout == next.layout &&
+		memo.indexed == next.indexed && memo.format == next.format &&
+		memo.state == next.state && memo.targets == next.targets;
+}
+
+let pipelineMemo: PipelineMemo | null = null;
+
+function pipelineOf(
+	this context: DrawContext,
+	program: ProgramKey,
+	doorId: int32,
+	mesh: GpuMesh,
+	state: RenderState,
+	targets: TargetLayout,
+): uint32 {
+	const asked: PipelineMemo = {
+		serial: context.serial, generation: contextGeneration(), program: doorId,
+		layout: mesh.layout, indexed: mesh.isIndexed(), format: mesh.indexType(), state: state,
+		targets: targets.resolved(), pipeline: 0,
+	};
+	const memo = pipelineMemo;
+	const shaderLive: boolean = !context.pipelines.closed &&
+		doorId < (context.pipelines.shaders.length as int32) &&
+		context.pipelines.shaders[doorId] != 0;
+	if (memo !== null && memo.holds(asked, shaderLive)) { return memo.pipeline; }
+	const pipeline: uint32 = pipelineFor(
+		context.pipelines, program, asked.layout, asked.indexed, state, asked.targets, asked.format,
+	);
+	pipelineMemo = { ...asked, pipeline: pipeline };
+	return pipeline;
+}
+
+// One draw of `item`'s mesh, material and range, over the `staged` rows stageRows holds (or the
+// ones at `rowOffset` of the staged list), or over its InstanceRun when it has one.
 function drawStaged(
 	context: DrawContext,
 	item: Readonly<DrawItem>,
 	staged: int32,
+	rowOffset: int32,
 	program: ProgramKey,
 	state: RenderState,
 	targets: TargetLayout,
@@ -2154,32 +2301,26 @@ function drawStaged(
 		}
 		if (!context.textureReady(texture.index)) { return; }
 	}
-	const pipeline: uint32 = pipelineFor(
-		context.pipelines,
-		program,
-		mesh.layout,
-		mesh.isIndexed(),
-		state,
-		targets,
-		mesh.indexType(),
-	);
+	const globalProgram: int32 = doorProgram(program);
+	const pipeline: uint32 = context.pipelineOf(program, globalProgram, mesh, state, targets);
 	applyPipeline(pipeline);
 	if (run !== null) {
 		const stream: GpuMesh = context.meshes[run.stream.index];
 		bindItem(context, mesh, stream.instanceBuffer, run.first * MESH_INSTANCE_STRIDE * 4,
 			material, scene);
+	} else if (rowsRead && rowOffset != NOT_STAGED) {
+		bindItem(context, mesh, context.listBuffer, rowOffset, material, scene);
 	} else if (rowsRead) {
 		const offset: int32 = appendRows(context, staged);
 		bindItem(context, mesh, context.rowBuffer, offset, material, scene);
 	} else {
 		bindItem(context, mesh, 0, 0, material, scene);
 	}
-	let globalProgram: int32 = doorProgram(program);
 	const pose = item.skinPoseOf();
 	if (pose !== null) { applyUniforms(SKIN_UNIFORM_SLOT, pose.blocks[item.skinPalette]); }
 	for (const block of globals) {
 		if (context.pipelines.declaresBlock(globalProgram, block.slot)) {
-			applyGlobal(context, block);
+			context.applyOnce(block, block.length);
 		}
 	}
 	// A caster that does not cut reads none of its material's block.

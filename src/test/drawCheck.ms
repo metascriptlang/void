@@ -4,6 +4,8 @@
 // readback (docs/VOID3D.md, M5 as built).
 
 import { IndexType } from "../gpu/pipeline";
+import { RenderState, BlendMode } from "../gpu/state";
+import { SWAPCHAIN_LAYOUT } from "../gpu/target";
 import { Vec3, vec3, identity, translation } from "../math/math3d";
 import {
 	VertexLayout, layoutFloats, layoutPerInstance, drawsQuads, readsInstanceRows,
@@ -23,6 +25,7 @@ import {
 } from "../void3d/meshData";
 import { BILLBOARD_INSTANCE_STRIDE } from "../void3d/billboard";
 import { added } from "./drawHelpers";
+import { NO_UNIFORMS, UniformBlock } from "../void3d/material";
 import {
 	DrawContext,
 	GpuMesh,
@@ -38,6 +41,11 @@ import {
 	staleMeshes,
 	writeStream,
 	addStreamMesh,
+	PipelineMemo,
+	SlotApply,
+	holds,
+	stillBound,
+	takeListRows,
 } from "../void3d/draw";
 
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
@@ -311,4 +319,53 @@ test "neighbours batch when only their world matrices differ" {
 	assert !item.sameBatch({ ...item, range: { base: 0, count: 3 } });
 	const run: DrawItem = { ...item, instances: { stream: mesh, first: 0, count: 1 } };
 	assert !item.sameBatch(run) && !run.sameBatch(item);
+}
+
+function memoOf(): PipelineMemo {
+	return {
+		serial: 3, generation: 1, program: 7, layout: VertexLayout.Lit, indexed: true,
+		format: IndexType.Uint16, state: RenderState.defaults(), targets: SWAPCHAIN_LAYOUT,
+		pipeline: 42,
+	};
+}
+
+test "a draw takes the last pipeline only when every input of its key is the same" {
+	const memo: PipelineMemo = memoOf();
+	assert memo.holds({ ...memo, pipeline: 0 }, true);
+	assert !memo.holds(memo, false);
+	assert !memo.holds({ ...memo, serial: 4 }, true);
+	assert !memo.holds({ ...memo, generation: 2 }, true);
+	assert !memo.holds({ ...memo, program: 8 }, true);
+	assert !memo.holds({ ...memo, layout: VertexLayout.LitTextured }, true);
+	assert !memo.holds({ ...memo, indexed: false }, true);
+	assert !memo.holds({ ...memo, format: IndexType.Uint32 }, true);
+	assert !memo.holds({ ...memo, state: RenderState.defaults().withBlendMode(BlendMode.Alpha) }, true);
+	assert !memo.holds({ ...memo, targets: { ...SWAPCHAIN_LAYOUT, sampleCount: 4 } }, true);
+}
+
+test "a block stays bound only while its range, its floats, its stamp and the pool's writes are the same" {
+	const block: UniformBlock = { store: 1, slot: 3, offset: 8, length: 12, generation: 1 };
+	const last: SlotApply = { block: block, declared: 12, stamp: 5, writes: 9 };
+	assert last.stillBound(block, 12, 5, 9);
+	assert !last.stillBound(block, 12, 0, 9);
+	assert !last.stillBound(block, 12, 6, 9);
+	assert !last.stillBound(block, 4, 5, 9);
+	assert !last.stillBound(block, 12, 5, 10);
+	assert !last.stillBound({ ...block, offset: 20 }, 12, 5, 9);
+	assert !last.stillBound({ ...block, generation: 2 }, 12, 5, 9);
+	const none: SlotApply = { block: NO_UNIFORMS, declared: 0, stamp: 0, writes: 0 };
+	assert !none.stillBound(NO_UNIFORMS, 0, 0, 0);
+}
+
+test "each draw of a staged list takes the rows after the draws before it" {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	context.listActive = true;
+	context.listBuffer = 9;
+	context.listOffset = 256;
+	context.listCounts = [1, 3, 2];
+	const row: int32 = MESH_INSTANCE_STRIDE * 4;
+	assert context.takeListRows(1) == 256;
+	assert context.takeListRows(3) == 256 + row;
+	assert context.takeListRows(2) == 256 + 4 * row;
+	assert context.listCursor == 6 && context.listNext == 3;
 }
