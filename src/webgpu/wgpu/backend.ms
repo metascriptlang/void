@@ -552,7 +552,7 @@ function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 
 const COMPARE_FUNCTIONS: int32[] = [COMPARE_NEVER, COMPARE_LESS, COMPARE_EQUAL, COMPARE_LESS_EQUAL, COMPARE_GREATER, COMPARE_NOT_EQUAL, COMPARE_GREATER_EQUAL, COMPARE_ALWAYS];
 
-function compareFunction(compare: string, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "wgpu"); }
+function compareFunction(compare: string | null, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "wgpu"); }
 
 function cullMode(cull: string): int32 {
 	return match (cull) {
@@ -598,7 +598,7 @@ function vertexFormat(format: string): int32 { return vertexFormatNative(VERTEX_
 
 const PRIMITIVE_TOPOLOGIES: int32[] = [TOPOLOGY_POINT_LIST, TOPOLOGY_LINE_LIST, TOPOLOGY_LINE_STRIP, TOPOLOGY_TRIANGLE_LIST, TOPOLOGY_TRIANGLE_STRIP];
 
-function primitiveTopology(topology: string): int32 { return topologyNative(PRIMITIVE_TOPOLOGIES, topology, "primitive.topology", "wgpu"); }
+function primitiveTopology(topology: string | null): int32 { return topologyNative(PRIMITIVE_TOPOLOGIES, topology, "primitive.topology", "wgpu"); }
 
 const STENCIL_OPERATIONS: int32[] = [STENCIL_OP_KEEP, STENCIL_OP_ZERO, STENCIL_OP_REPLACE, STENCIL_OP_INVERT, STENCIL_OP_INCREMENT_CLAMP, STENCIL_OP_DECREMENT_CLAMP, STENCIL_OP_INCREMENT_WRAP, STENCIL_OP_DECREMENT_WRAP];
 

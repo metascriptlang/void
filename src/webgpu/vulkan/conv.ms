@@ -287,7 +287,7 @@ export function shaderStages(visibility: int32): uint32 {
 
 const TOPOLOGIES: int32[] = [0, 1, TOPOLOGY_LINE_STRIP as int32, 3, TOPOLOGY_TRIANGLE_STRIP as int32];
 
-export function topology(value: GPUPrimitiveTopology): uint32 {
+export function topology(value: GPUPrimitiveTopology | null): uint32 {
 	return topologyNative(TOPOLOGIES, value, "primitive.topology", "vulkan") as uint32;
 }
 
@@ -321,7 +321,7 @@ export function frontFace(face: GPUFrontFace | null): uint32 {
 	return code as uint32;
 }
 
-export function pipelineCompare(compare: GPUCompareFunction, member: string): uint32 {
+export function pipelineCompare(compare: GPUCompareFunction | null, member: string): uint32 {
 	return compareNative(COMPARE_OPS, compare, member, "vulkan") as uint32;
 }
 

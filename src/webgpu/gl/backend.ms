@@ -814,7 +814,7 @@ function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 
 const COMPARE_FUNCTIONS: int32[] = [GL_NEVER, GL_LESS, GL_EQUAL, GL_LEQUAL, GL_GREATER, GL_NOTEQUAL, GL_GEQUAL, GL_ALWAYS];
 
-function compareFunction(compare: string, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "gl"); }
+function compareFunction(compare: string | null, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "gl"); }
 
 function cullFace(cull: string): int32 {
 	return match (cull) {
@@ -890,7 +890,7 @@ function vertexFormatInfo(format: string): VertexFormatInfo { return vertexForma
 
 const PRIMITIVE_MODES: int32[] = [GL_POINTS, GL_LINES, GL_LINE_STRIP, GL_TRIANGLES, GL_TRIANGLE_STRIP];
 
-function primitiveMode(topology: string): int32 { return topologyNative(PRIMITIVE_MODES, topology, "primitive.topology", "gl"); }
+function primitiveMode(topology: string | null): int32 { return topologyNative(PRIMITIVE_MODES, topology, "primitive.topology", "gl"); }
 
 const STENCIL_OPERATIONS: int32[] = [GL_KEEP, GL_ZERO, GL_REPLACE, GL_INVERT, GL_INCR, GL_DECR, GL_INCR_WRAP, GL_DECR_WRAP];
 

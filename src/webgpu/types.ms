@@ -409,14 +409,14 @@ export struct GPUFragmentState {
 }
 
 export struct GPUPrimitiveState {
-	topology: GPUPrimitiveTopology;
+	topology: GPUPrimitiveTopology | null;
 	stripIndexFormat: GPUIndexFormat | null;
 	frontFace: GPUFrontFace | null;
 	cullMode: GPUCullMode | null;
 }
 
 export struct GPUStencilFaceState {
-	compare: GPUCompareFunction;
+	compare: GPUCompareFunction | null;
 	failOp: GPUStencilOperation;
 	depthFailOp: GPUStencilOperation;
 	passOp: GPUStencilOperation;
@@ -607,8 +607,9 @@ export function nativeAt<T>(table: T[], members: int32, index: int32, backend: s
 	return table[index];
 }
 
-export function compareIndex(value: string, member: string, backend: string): int32 {
-	return match (value) {
+export function compareIndex(value: string | null, member: string, backend: string): int32 {
+	const name = value ?? "";
+	return match (name) {
 		"never" => 0,
 		"less" => 1,
 		"equal" => 2,
@@ -617,11 +618,11 @@ export function compareIndex(value: string, member: string, backend: string): in
 		"not-equal" => 5,
 		"greater-equal" => 6,
 		"" | "always" => 7,
-		_ => stopOnMember(backend, member, value),
+		_ => stopOnMember(backend, member, name),
 	};
 }
 
-export function compareNative<T>(table: T[], value: string, member: string, backend: string): T {
+export function compareNative<T>(table: T[], value: string | null, member: string, backend: string): T {
 	return nativeAt(table, 8, compareIndex(value, member, backend), backend, "compare function");
 }
 
@@ -735,18 +736,19 @@ export function addressModeNative<T>(table: T[], value: string, member: string, 
 	return nativeAt(table, 3, addressModeIndex(value, member, backend), backend, "address mode");
 }
 
-export function topologyIndex(value: string, member: string, backend: string): int32 {
-	return match (value) {
+export function topologyIndex(value: string | null, member: string, backend: string): int32 {
+	const name = value ?? "";
+	return match (name) {
 		"point-list" => 0,
 		"line-list" => 1,
 		"line-strip" => 2,
 		"" | "triangle-list" => 3,
 		"triangle-strip" => 4,
-		_ => stopOnMember(backend, member, value),
+		_ => stopOnMember(backend, member, name),
 	};
 }
 
-export function topologyNative<T>(table: T[], value: string, member: string, backend: string): T {
+export function topologyNative<T>(table: T[], value: string | null, member: string, backend: string): T {
 	return nativeAt(table, 5, topologyIndex(value, member, backend), backend, "primitive topology");
 }
 

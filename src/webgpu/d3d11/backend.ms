@@ -622,7 +622,7 @@ function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 
 const COMPARE_FUNCTIONS: int32[] = [1, 2, 3, 4, 5, 6, 7, 8];
 
-function compareFunction(compare: string, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "d3d11"); }
+function compareFunction(compare: string | null, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "d3d11"); }
 
 function cullMode(cull: string): int32 {
 	return match (cull) {
@@ -673,7 +673,7 @@ function vertexFormat(format: string): int32 { return vertexFormatNative(VERTEX_
 
 const PRIMITIVE_TOPOLOGIES: int32[] = [TOPOLOGY_POINT_LIST, TOPOLOGY_LINE_LIST, TOPOLOGY_LINE_STRIP, TOPOLOGY_TRIANGLE_LIST, TOPOLOGY_TRIANGLE_STRIP];
 
-function primitiveTopology(topology: string): int32 { return topologyNative(PRIMITIVE_TOPOLOGIES, topology, "primitive.topology", "d3d11"); }
+function primitiveTopology(topology: string | null): int32 { return topologyNative(PRIMITIVE_TOPOLOGIES, topology, "primitive.topology", "d3d11"); }
 
 const STENCIL_OPERATIONS: int32[] = [1, 2, 3, 6, 4, 5, 7, 8];
 

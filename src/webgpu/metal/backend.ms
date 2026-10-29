@@ -506,7 +506,7 @@ function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 
 const COMPARE_FUNCTIONS: int32[] = [0, 1, 2, 3, 4, 5, 6, COMPARE_ALWAYS];
 
-function compareFunction(compare: string, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "metal"); }
+function compareFunction(compare: string | null, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "metal"); }
 
 function cullMode(cull: string): int32 {
 	return match (cull) {
@@ -586,7 +586,7 @@ function mipFilterMode(filter: string, member: string): int32 {
 
 const PRIMITIVE_TYPES: int32[] = [0, 1, PRIMITIVE_LINE_STRIP, PRIMITIVE_TRIANGLE, PRIMITIVE_TRIANGLE_STRIP];
 
-function primitiveType(topology: string): int32 { return topologyNative(PRIMITIVE_TYPES, topology, "primitive.topology", "metal"); }
+function primitiveType(topology: string | null): int32 { return topologyNative(PRIMITIVE_TYPES, topology, "primitive.topology", "metal"); }
 
 function indexType(format: GPUIndexFormat): int32 {
 	const value: string = format;

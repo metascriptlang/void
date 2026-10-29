@@ -589,7 +589,7 @@ const VERTEX_FORMATS: string[] = [
 	"uint32x3", "uint32x4", "sint32", "sint32x2", "sint32x3", "sint32x4",
 ];
 
-function compareFunction(compare: string, member: string): string { return compareNative(COMPARE_FUNCTIONS, compare, member, "js"); }
+function compareFunction(compare: string | null, member: string): string { return compareNative(COMPARE_FUNCTIONS, compare, member, "js"); }
 
 function blendFactor(factor: string | null, member: string): string { return blendFactorNative(BLEND_FACTORS, factor, member, "js"); }
 

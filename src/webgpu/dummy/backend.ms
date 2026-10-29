@@ -213,7 +213,7 @@ function formatInfo(format: GPUTextureFormat, member: string): TextureFormatFact
 	return textureFormatFacts(format, member, "dummy");
 }
 
-function compareFunction(compare: string, member: string): int32 { return compareIndex(compare, member, "dummy"); }
+function compareFunction(compare: string | null, member: string): int32 { return compareIndex(compare, member, "dummy"); }
 
 function blendFactor(factor: string | null, member: string): int32 { return blendFactorIndex(factor, member, "dummy"); }
 
@@ -227,7 +227,7 @@ function addressMode(mode: string, member: string): int32 { return addressModeIn
 
 const PRIMITIVE_TYPES: int32[] = [0, 1, PRIMITIVE_LINE_STRIP, 3, PRIMITIVE_TRIANGLE_STRIP];
 
-function primitiveType(topology: string): int32 { return topologyNative(PRIMITIVE_TYPES, topology, "primitive.topology", "dummy"); }
+function primitiveType(topology: string | null): int32 { return topologyNative(PRIMITIVE_TYPES, topology, "primitive.topology", "dummy"); }
 
 function indexSize(format: GPUIndexFormat): int32 {
 	const value: string = format;

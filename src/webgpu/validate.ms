@@ -609,7 +609,7 @@ export function shaderModuleRefusal(descriptor: GPUShaderModuleDescriptor, limit
 	return "";
 }
 
-export function isStripTopology(topology: string): boolean {
+export function isStripTopology(topology: string | null): boolean {
 	return topology == "line-strip" || topology == "triangle-strip";
 }
 
