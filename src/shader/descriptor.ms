@@ -429,15 +429,19 @@ export function bindingFields(b: GPUShaderBinding): BindingField[] {
 		numberField("visibility", b.visibility),
 		numberField("size", b.size),
 	];
-	if (sampleType != "") { out.push(textField("sampleType", sampleType)); }
+	const texture = kind == "texture";
+	const storageTexture = kind == "storage-texture";
+	if (texture && sampleType != "") { out.push(textField("sampleType", sampleType)); }
 	if (samplerType != null) { out.push(textField("samplerType", samplerType)); }
 	out.push(numberField("nativeSlot", b.nativeSlot));
 	if (name !== null) { out.push(textField("nativeName", name)); }
 	out.push(numberField("textureBinding", b.textureBinding));
-	if (bufferType != "") { out.push(textField("bufferType", bufferType)); }
-	if (viewDimension != "") { out.push(textField("viewDimension", viewDimension)); }
+	if (kind == "storage-buffer" && bufferType != "") { out.push(textField("bufferType", bufferType)); }
+	if ((texture || storageTexture) && viewDimension != "" && viewDimension != "2d") {
+		out.push(textField("viewDimension", viewDimension));
+	}
 	if (b.multisampled) { out.push({ key: "multisampled", form: "flag", text: "true", number: 0 }); }
-	if (storageAccess != "") { out.push(textField("storageAccess", storageAccess)); }
+	if (storageTexture && storageAccess != "") { out.push(textField("storageAccess", storageAccess)); }
 	if (storageFormat != null) { out.push(textField("storageFormat", storageFormat)); }
 	return out;
 }
