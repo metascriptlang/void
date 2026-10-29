@@ -1097,8 +1097,8 @@ else
 	grep -E '^FAIL' out/gate-bench-profiler-rows.log | sed 's/^/      /' || true
 fi
 # The counters cannot see an allocation that moves no length, so read the emitted C. It sees
-# array copies and fresh arrays; not aliases (`let b = vec` emits no copy on msc 0.2.55, card
-# 2026-09-23-vec-param-copy-corrupts-heap), not stream growth, not allocation inside C.
+# array copies and fresh arrays, and an alias `let b = vec` is a value copy now (card
+# 2026-09-23-vec-param-copy-corrupts-heap, fixed in msc c85d84fb8); not stream growth, not allocation inside C.
 FRAME_PATH="scene:tick scene:present scene:presentAt scene:prepare scene:drawScreen render:drawOrder render:drawRow
 	render:drawContent render:drawOwn render:pushMask render:syncOrder node:refreshOrder render:meshBounds render:emitNode render:emitLabel
 	render:emitStyledImage render:localBounds render:boxRenderBounds render:animFrame

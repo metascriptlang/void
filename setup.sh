@@ -6,9 +6,7 @@
 # only together with the code change it needs.
 #
 # msc caches C objects globally (~/.metascript/cache/objects) keyed by the .c
-# file, not the headers it includes, and --force does not bypass it: after a
-# pin bump, delete the cached objects that include deps/sokol, or the build
-# silently links code compiled against the old headers.
+# file and the headers it includes, so a pin bump needs no manual delete.
 #
 # The BiDi conformance files (BidiTest.txt, BidiCharacterTest.txt, Unicode 18.0.0) are fetched into
 # deps/ucd and pinned by sha256 in tests/oracle/ucd/bidiConformance.sha256, which the oracle test

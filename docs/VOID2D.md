@@ -944,8 +944,8 @@ human has seen it as app code; the phase measurement comes last.
      `sdf2.ms`). What still rules it out for writes: a write compares its key at run time, 15-19 ns
      against 13 ns for a binder (release, `kf/cost.exe`); `n.x += 1.0` and a `const` handle are
      refused; each field is named twice, in the union and in the `match`; and a second value type
-     needs overloads that differ by a literal type, which msc drops
-     (`~/metascript/.inbox/compiler/2026-09-27-overloads-by-literal-type-drop-all-but-first.md`).
+     needs overloads that differ by a literal type, which msc dropped
+     (`~/metascript/.inbox/compiler/2026-09-27-overloads-by-literal-type-drop-all-but-first.md`, fixed in msc c85d84fb8).
    - A `valueOf`-style protocol on the field's type: it sees the value, never the node holding it,
      so it cannot mark the owner.
    - `readonly` fields behind setters: `readonly` on an interface field crashed codegen until
@@ -1014,8 +1014,8 @@ human has seen it as app code; the phase measurement comes last.
      otherwise calls the scene's one `markChanged`, which sets the group's bit in the node's
      `BitSet<Changed>` and pushes the node onto the dirty list the first time. The push lives
      there and not in each binder: "set the bit, push once" has one owner, and a mutating builtin
-     through a `NodeRef` parameter is refused by the checker today
-     (`~/metascript/.inbox/compiler/2026-09-27-value-param-mutator-crosses-reference.md`;
+     through a `NodeRef` parameter was refused by the checker
+     (`~/metascript/.inbox/compiler/2026-09-27-value-param-mutator-crosses-reference.md`, fixed in msc c85d84fb8;
      `out/tmp/p5probes/noderef2.ms` is the shape, green on C and JS). A group is read whole,
      `card.local().x`. The binders that exist (`setBoxStyle`, `setTextRuns`, `setCursorIndex`,
      ...) move from `Node2D` to `NodeRef` unchanged, and `tick` sweeps the Anim and label side
@@ -1391,9 +1391,9 @@ human has seen it as app code; the phase measurement comes last.
       other kind: two `clear` extensions on `NodeRef` from two modules would collide in an
       importer that takes both.
     - **`setTile(index, cell)` overloads the Sprite's `setTile(tile)`.** An object literal as
-      its cell resolves no overload, a compiler defect
-      (`~/metascript/.inbox/compiler/2026-09-29-object-literal-argument-misses-arity-overload.md`);
-      an app binds the cell first. Nothing in void is parked on it.
+      its cell resolved no overload, a compiler defect
+      (`~/metascript/.inbox/compiler/2026-09-29-object-literal-argument-misses-arity-overload.md`,
+      fixed in msc c85d84fb8). Nothing in void is parked on it.
     - **A write that reshapes the group re-emits it**, step 7's path: `setTiles`,
       `appendTiles`, `setRange`, `clear`, and a `setTile` that moves, resizes, turns or
       re-textures its tile. The in-place attempt keeps it when the runs keep their shape and
@@ -3051,7 +3051,7 @@ This context pass did not run web; the preceding naming pass's WebGL2 measuremen
 One attempted optimisation exported the mutable selector for direct cross-module field access.
 That unnecessary exposure was reversed: a compiler-only public global alias destroys the
 still-live original reference on C, while private-global and JS controls retain it.
-Card `2026-09-30-exported-global-reference-alias-not-retained` owns that failure; no manual
+Card `2026-09-30-exported-global-reference-alias-not-retained` owned that failure (fixed in msc c85d84fb8); no manual
 retain, extra ownership holder or crash suppression was added. The private-selector contract
 provides the same selection capability and its real default-context replay is proven.
 
@@ -3455,8 +3455,8 @@ abort stage) unless named otherwise.
     samplers.
   - Unparked by void3d's M24 (`DrawContext` an interface taken by value, on main at `2c9060c`),
     which removed the one site the C backend could not compile; the compiler card
-    `.inbox/compiler/2026-10-01-ref-struct-interface-field-c-member-access.md` stays open for the
-    shape itself.
+    `.inbox/compiler/2026-10-01-ref-struct-interface-field-c-member-access.md` is fixed in msc
+    c85d84fb8 for the shape itself.
   - Acceptance is `tests/integration/pipelineCacheOwner.ms` (`gate.sh`, D3D11 readback): cache A
     held through a void3d `DrawContext` field and a struct holder, cache B a second context's
     drawing a lit box every frame. (a) a generation written through one alias reads back through

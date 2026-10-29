@@ -855,7 +855,7 @@ Follow-ups it listed, and what happened:
 - The point lights are stepped and their levels unchecked (`point-light-toon-quantized`), and the billboard adds them unmultiplied (`billboard-points-added`): the pixel-art look in the core, with "Audit before M13" findings 2–3.
 - No specular and no non-additive model.
 - The palette-on campfire takes Lambert in steps the palette never had to express: shaded stone sides fall to its blues. Content, and the caller's.
-- Whether the object cache still ignores headers, on the installed msc.
+- Whether the object cache still ignores headers, on the installed msc: closed, it no longer does (docs/TESTING.md).
 - The rest of the audit's carried list, unchanged.
 
 ### Numbers
@@ -917,7 +917,7 @@ Its follow-ups, and what happened:
 3. `renderer:blockFits` runs per item per frame; it is in the `allocation` list now.
 4. Forward pan, snap and picking are marked "read, not run".
 
-**Found along the way.** `return Result.err(…)` inside a statement `match` arm does not take the function's return type: compiler card `2026-09-26-return-in-match-arm-loses-function-type.md`. Nothing in void is parked on it now.
+**Found along the way.** `return Result.err(…)` inside a statement `match` arm did not take the function's return type: compiler card `2026-09-26-return-in-match-arm-loses-function-type.md`, fixed in msc c85d84fb8. Nothing in void is parked on it now.
 
 ### Carried into M15 and later
 
