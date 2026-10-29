@@ -178,7 +178,11 @@ export function prepare(this pass: ToneMapPass, core: Renderer, sampler: uint32)
 
 // The bloom chain on `target` when it is on, then one pass over `colors`, an Rgba8 target of
 // `target`'s size.
-export function draw(this pass: ToneMapPass, core: Renderer, colors: Vec<ColorAttachment>): void {
+export function draw(
+	this pass: ToneMapPass,
+	core: Renderer,
+	colors: Readonly<Span<ColorAttachment>>,
+): void {
 	pass.bloom.draw(core, pass.target);
 	beginPass(colors, NO_DEPTH);
 	const drawn: Result<int32, RendererError> = drawScreen(core, pass.material, TONE_MAP_LAYOUT);

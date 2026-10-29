@@ -299,26 +299,27 @@ export function sortByMaterial(
 // list's order.
 export function drawPassList(
 	context: DrawContext,
-	list: PassList,
+	order: Readonly<Span<int32>>,
 	items: Readonly<Span<DrawItem>>,
 	drawn: Readonly<Span<ProgramKey>>,
 	targets: TargetLayout,
 	globals: Readonly<Span<UniformBlock>>,
 	scene: SceneTexture,
 ): void {
+	const count: int32 = order.length as int32;
 	let i: int32 = 0;
-	while (i < list.count) {
-		const index: int32 = list.indices[i];
+	while (i < count) {
+		const index: int32 = order[i];
 		const program: ProgramKey = drawn[items[index].material.index];
 		const material: Material = context.materials[items[index].material.index];
 		let end: int32 = i + 1;
-		while (end < list.count && items[index].sameBatch(items[list.indices[end]])) {
+		while (end < count && items[index].sameBatch(items[order[end]])) {
 			end = end + 1;
 		}
 		if (end - i == 1) {
 			drawItemWith(context, items[index], program, material.pass, targets, globals, scene);
 		} else {
-			drawBatchWith(context, items, list.indices[i..end], program, material.pass,
+			drawBatchWith(context, items, order[i..end], program, material.pass,
 				targets, globals, scene);
 		}
 		i = end;

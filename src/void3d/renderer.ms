@@ -997,20 +997,20 @@ export function drawPhase(
 	match (phase) {
 		Phase.Opaque => {
 			drawPassList(
-				context, renderer.opaque, items, renderer.drawn, targets, renderer.sceneGlobals,
-				scene,
+				context, renderer.opaque.indices[0..renderer.opaque.count], items, renderer.drawn,
+				targets, renderer.sceneGlobals, scene,
 			);
 		},
 		Phase.Alpha => {
 			drawPassList(
-				context, renderer.alpha, items, renderer.drawn, targets, renderer.sceneGlobals,
-				scene,
+				context, renderer.alpha.indices[0..renderer.alpha.count], items, renderer.drawn,
+				targets, renderer.sceneGlobals, scene,
 			);
 		},
 		Phase.Additive => {
 			drawPassList(
-				context, renderer.additive, items, renderer.drawn, targets, renderer.sceneGlobals,
-				scene,
+				context, renderer.additive.indices[0..renderer.additive.count], items, renderer.drawn,
+				targets, renderer.sceneGlobals, scene,
 			);
 		},
 		Phase.Decal => stopOnDecalPhase(phase),
@@ -1058,7 +1058,8 @@ export function drawDecals(
 	};
 	const list: PassList = phase == Phase.Decal ? renderer.decal : renderer.decalAfterToneMap;
 	drawPassList(
-		renderer.context, list, items, renderer.drawn, targets, renderer.sceneGlobals, scene,
+		renderer.context, list.indices[0..list.count], items, renderer.drawn, targets,
+		renderer.sceneGlobals, scene,
 	);
 }
 

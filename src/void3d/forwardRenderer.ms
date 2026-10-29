@@ -640,7 +640,7 @@ function drawSceneDecals(
 	renderer: ForwardRenderer,
 	phase: Phase,
 	items: Readonly<Span<DrawItem>>,
-	colors: Vec<ColorAttachment>,
+	colors: Readonly<Span<ColorAttachment>>,
 	depthView: uint32,
 ): void {
 	const core: Renderer = renderer.core;
