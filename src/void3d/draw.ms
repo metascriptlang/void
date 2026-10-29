@@ -33,7 +33,6 @@ import {
 	destroyBuffer,
 	destroyImage,
 	textureSlotMask,
-	samplerSlotMask,
 	uniformBlockLength,
 	ProgramKey,
 	Preset,
@@ -1125,7 +1124,7 @@ export function slotBit(slot: int32): uint32 {
 }
 
 // A context texture the material names in `role`: not also a raw view or sampler at its slots,
-// sampled there by the program, live in this context, and, for a colour role, of the program's
+// read there by the program, live in this context, and, for a colour role, of the program's
 // alpha.
 function textureFits(
 	context: DrawContext,
@@ -1138,9 +1137,7 @@ function textureFits(
 	if (material.rawView(view) != 0 || (sampler >= 0 && material.rawSampler(sampler) != 0)) {
 		return Result.err(MaterialError.TextureNamedTwice);
 	}
-	const read: int32 = sampler >= 0 ? sampler : 0;
-	if ((textureSlotMask(material.program) & slotBit(view)) == 0 ||
-		(samplerSlotMask(material.program) & slotBit(read)) == 0) {
+	if ((textureSlotMask(material.program) & slotBit(view)) == 0) {
 		return Result.err(MaterialError.TextureNotSampled);
 	}
 	if (!context.hasTexture(texture)) {
