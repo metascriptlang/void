@@ -223,6 +223,15 @@ struct BindKey {
 
 struct BindEntry { key: BindKey; group: GPUBindGroup; }
 
+// What the open pass holds from the last applyBindings: a word equal to its slot here is bound
+// already. Anything that changes the pipeline or destroys a handle clears `valid`, so the next
+// apply sets everything again and the device checks it.
+struct AppliedBindings {
+	valid: boolean;
+	words: uint32[DOOR_BINDING_LENGTH];
+	offsets: int32[GPU_MAX_VERTEX_BUFFERS];
+}
+
 struct AppendCursor { buffer: uint32; frame: uint32; position: int64; }
 
 let device: GPUDevice = { id: 0, queue: { id: 0 } };
@@ -232,6 +241,7 @@ let shaders: Vec<ShaderRecord> = [];
 let pipelines: Vec<PipelineRecord> = [];
 let bindCache: Vec<BindEntry> = [];
 let appendCursors: Vec<AppendCursor> = [];
+let applied: AppliedBindings = { valid: false };
 let generation: int32 = 1;
 let everSetUp = false;
 let uniformRing: GPUBuffer = { id: 0 };
@@ -1139,6 +1149,7 @@ export function doorDestroyImage(image: uint32): void {
 	const data = dataImages.findIndex((d) => d.id == image);
 	if (data >= 0) { dataImages.splice(data, 1); }
 	untrackTexture(image);
+	applied.valid = false;
 	const texture: GPUTexture = { id: image };
 	texture.destroy();
 }
@@ -1146,12 +1157,14 @@ export function doorDestroyImage(image: uint32): void {
 export function doorDestroyView(view: uint32): void {
 	if (view == 0) { return; }
 	const textureView: GPUTextureView = { id: view };
+	applied.valid = false;
 	textureView.destroy();
 }
 
 export function doorDestroySampler(sampler: uint32): void {
 	if (sampler == 0) { return; }
 	const handle: GPUSampler = { id: sampler };
+	applied.valid = false;
 	handle.destroy();
 }
 
@@ -1252,6 +1265,7 @@ export function doorAppendBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int6
 export function doorDestroyBuffer(id: uint32): void {
 	if (id == 0) { return; }
 	untrackBuffer(id);
+	applied.valid = false;
 	const buffer: GPUBuffer = { id };
 	buffer.destroy();
 	const at = appendCursorOf(id);
@@ -1372,6 +1386,7 @@ export function doorApplyPipeline(pipeline: uint32): void {
 	if (index != current) {
 		frameStats[DOOR_STAT_PIPELINE_CHANGES]++;
 		current = index;
+		applied.valid = false;
 		pass.setPipeline(pipelines[current].pipeline);
 		uniformOffsets = [0, 0, 0, 0, 0, 0, 0, 0];
 		uniformStamps = [0, 0, 0, 0, 0, 0, 0, 0];
@@ -1433,7 +1448,10 @@ function cachedGroup(key: BindKey): GPUBindGroup {
 
 function cacheGroup(key: BindKey, group: GPUBindGroup): void {
 	const at = keyHash(key);
-	if (bindCache[at].group.id != 0) { bindCache[at].group.destroy(); }
+	if (bindCache[at].group.id != 0) {
+		bindCache[at].group.destroy();
+		applied.valid = false;
+	}
 	bindCache[at] = { key, group };
 }
 
@@ -1503,25 +1521,35 @@ export function doorApplyBindings(
 	if (current < 0) { stop("applyBindings before applyPipeline"); }
 	for (let i = 0; i < GPU_MAX_VERTEX_BUFFERS; i++) {
 		const buffer = bindings[DOOR_BINDING_VERTEX_BUFFER + i];
-		if (buffer != 0) {
-			pass.setVertexBuffer(
-				i as int32,
-				{ id: buffer },
-				i < vertexOffsets.length ? vertexOffsets[i] as int64 : 0,
-			);
+		const offset = i < vertexOffsets.length ? vertexOffsets[i] : 0;
+		if (buffer != 0 && (!applied.valid || buffer != applied.words[i] || offset != applied.offsets[i])) {
+			pass.setVertexBuffer(i as int32, { id: buffer }, offset as int64);
 		}
+		applied.words[i] = buffer;
+		applied.offsets[i] = offset;
 	}
-	const record = pipelines[current];
-	if (record.indexed) {
-		pass.setIndexBuffer({ id: bindings[DOOR_BINDING_INDEX_BUFFER] }, record.indexFormat, 0);
+	const indexBuffer = bindings[DOOR_BINDING_INDEX_BUFFER];
+	if (pipelines[current].indexed && (!applied.valid || indexBuffer != applied.words[DOOR_BINDING_INDEX_BUFFER])) {
+		pass.setIndexBuffer({ id: indexBuffer }, pipelines[current].indexFormat, 0);
 	}
-	if (record.textureMask == 0 && record.samplerMask == 0) { return; }
-	let key: BindKey = { pipeline: record.pipeline.id };
+	applied.words[DOOR_BINDING_INDEX_BUFFER] = indexBuffer;
+	let sameResources = applied.valid;
+	for (let i = DOOR_BINDING_VIEW; sameResources && i < DOOR_BINDING_LENGTH; i++) {
+		if (bindings[i] != applied.words[i]) { sameResources = false; }
+	}
+	if (pipelines[current].textureMask == 0 && pipelines[current].samplerMask == 0) {
+		applied.valid = true;
+		return;
+	}
+	if (sameResources) { return; }
+	let key: BindKey = { pipeline: pipelines[current].pipeline.id };
 	for (let i = 0; i < VIEW_SLOTS; i++) { key.views[i] = bindings[DOOR_BINDING_VIEW + i]; }
 	for (let i = 0; i < SAMPLER_SLOTS; i++) {
 		key.samplers[i] = bindings[DOOR_BINDING_SAMPLER + i];
 	}
 	pass.setBindGroup(GPU_RESOURCE_GROUP, resourceGroup(key), []);
+	for (let i = DOOR_BINDING_VIEW; i < DOOR_BINDING_LENGTH; i++) { applied.words[i] = bindings[i]; }
+	applied.valid = true;
 }
 
 export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): void {
