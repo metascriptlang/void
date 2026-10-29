@@ -1463,19 +1463,23 @@ export function submit(submitted: GPUCommandBuffer): void {
 	}
 }
 
-function loadAction(loadOp: string, member: string): int32 {
+function attachmentMember(slot: int32, member: string): string {
+	return slot < 0 ? member : `colorAttachments[${slot}].${member}`;
+}
+
+function loadAction(loadOp: string, slot: int32, member: string): int32 {
 	return match (loadOp) {
 		"clear" => LOAD_CLEAR,
 		"load" => LOAD_LOAD,
-		_ => stopOnMember(member, loadOp),
+		_ => stopOnMember(attachmentMember(slot, member), loadOp),
 	};
 }
 
-function storeAction(storeOp: string, resolve: boolean, member: string): int32 {
+function storeAction(storeOp: string, resolve: boolean, slot: int32, member: string): int32 {
 	return match (storeOp) {
 		"store" => resolve ? STORE_STORE_AND_RESOLVE : STORE_STORE,
 		"discard" => resolve ? STORE_RESOLVE : STORE_DONT_CARE,
-		_ => stopOnMember(member, storeOp),
+		_ => stopOnMember(attachmentMember(slot, member), storeOp),
 	};
 }
 
@@ -1503,8 +1507,8 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 			resolve,
 			viewRecords.slots[r].baseMip,
 			viewRecords.slots[r].baseLayer,
-			loadAction(descriptor.colorAttachments[i].loadOp, `colorAttachments[${i}].loadOp`),
-			storeAction(descriptor.colorAttachments[i].storeOp, resolve != null, `colorAttachments[${i}].storeOp`),
+			loadAction(descriptor.colorAttachments[i].loadOp, i, "loadOp"),
+			storeAction(descriptor.colorAttachments[i].storeOp, resolve != null, i, "storeOp"),
 			color.r,
 			color.g,
 			color.b,
@@ -1520,12 +1524,12 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 			attachmentNative(v),
 			viewRecords.slots[v].baseMip,
 			viewRecords.slots[v].baseLayer,
-			loadAction(attachment.depthLoadOp, "depthStencilAttachment.depthLoadOp"),
-			storeAction(attachment.depthStoreOp, false, "depthStencilAttachment.depthStoreOp"),
+			loadAction(attachment.depthLoadOp, -1, "depthStencilAttachment.depthLoadOp"),
+			storeAction(attachment.depthStoreOp, false, -1, "depthStencilAttachment.depthStoreOp"),
 			attachment.depthClearValue,
 			info.stencil ? 1 : 0,
-			info.stencil ? loadAction(attachment.stencilLoadOp, "depthStencilAttachment.stencilLoadOp") : 0,
-			info.stencil ? storeAction(attachment.stencilStoreOp, false, "depthStencilAttachment.stencilStoreOp") : 0,
+			info.stencil ? loadAction(attachment.stencilLoadOp, -1, "depthStencilAttachment.stencilLoadOp") : 0,
+			info.stencil ? storeAction(attachment.stencilStoreOp, false, -1, "depthStencilAttachment.stencilStoreOp") : 0,
 			attachment.stencilClearValue & 0xFF,
 		);
 	}
