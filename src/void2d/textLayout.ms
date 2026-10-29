@@ -21,6 +21,7 @@ import {
 	codepointFaceFor,
 	fontFace,
 	fontKerns,
+	isFontFace,
 } from "./font";
 import { Color } from "./types";
 import { GraphemeCursor, startGraphemes, breaksBefore } from "./grapheme";
@@ -1229,8 +1230,11 @@ function forceCells(
 	return (cells as float32) * cell;
 }
 
-// WezTerm's glyphcache.rs:747-790 (e2a98e1), for a scalable face: a cluster whose ink is wider
-// than its cells plus a quarter cell shrinks about its origin to that width, its offsets with it.
+// WezTerm's glyphcache.rs:747-790 (e2a98e1): a shaped cluster whose ink is wider than its cells
+// plus a quarter cell shrinks about its origin, its offsets with it. A glyph of the base font
+// (font_idx == 0) scales by 1 / cells, which keeps a one-cell cluster whole; any other face
+// shrinks to the width. The cluster is the shaper's (harfbuzz.rs:795-809), so a ligature owns
+// the cells of the graphemes it consumed.
 const OVERFLOW_CELLS: float32 = 0.25;
 
 function inkExtent(g: LaidGlyph): [float32, float32] {
@@ -1261,7 +1265,9 @@ function fitCluster(glyphs: Span<LaidGlyph>, head: int32, end: int32, cells: int
 	}
 	const room: float32 = ((cells < 1 ? 1 : cells) as float32 + OVERFLOW_CELLS) * cell;
 	if (!inked || right - left <= room) { return; }
-	const fit: float32 = room / (right - left);
+	const fit: float32 = isFontFace(glyphs[head].face)
+		? 1.0 / ((cells < 1 ? 1 : cells) as float32)
+		: room / (right - left);
 	for (let k = head; k < end; k++) {
 		glyphs[k].size = glyphs[k].size * fit;
 		glyphs[k].offsetX = glyphs[k].offsetX * fit;
@@ -1276,7 +1282,7 @@ function fitClusters(
 	let head: int32 = first;
 	let cells: int32 = 0;
 	for (let k = first; k < (glyphs.length as int32); k++) {
-		if (k > first && glyphs[k].clusterStart) {
+		if (k > first && glyphs[k].boundary()) {
 			fitCluster(glyphs, head, k, cells, cell);
 			head = k;
 			cells = 0;
