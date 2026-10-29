@@ -30,6 +30,7 @@ import {
 } from "./instanceLayout";
 import { packChannel } from "./instance";
 import { floatBits } from "./floatBits";
+import { copyFloatWords } from "./floatWords";
 import {
 	UB_void2d_params, UB_void2d_fx, UB_sprite_params, UB_ui_params, UB_ui_fx, UB_blur_params,
 	VIEW_tex, VIEW_spriteTex, VIEW_uiTex, VIEW_srcTex, SMP_smp, SMP_spriteSmp, SMP_uiSmp, SMP_srcSmp,
@@ -276,7 +277,7 @@ export function packUiInstance(
 ): void {
 	const to: int32 = instance * UI_WORDS;
 	const from: int32 = instance * REC_UI_FLOATS;
-	for (let i: int32 = 0; i < UI_FLOAT_WORDS; i++) { stage[to + i] = floatBits(records[from + i]); }
+	copyFloatWords(stage, to, records, from, UI_FLOAT_WORDS);
 	stage[to + UI_FLOAT_WORDS] = packColor(records, from + REC_UI_COLOR_FILL);
 	stage[to + UI_FLOAT_WORDS + 1] = packColor(records, from + REC_UI_COLOR_BORDER);
 	stage[to + UI_FLOAT_WORDS + 2] = packColor(records, from + REC_UI_COLOR_EXTRA);

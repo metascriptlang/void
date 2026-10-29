@@ -1,0 +1,14 @@
+import { exit } from "std/process";
+
+export function copyFloatWords(
+	to: uint32[], at: int32, from: Readonly<Span<float32>>, fromAt: int32, count: int32,
+): void {
+	if (at < 0 || fromAt < 0 || count < 0 || at + count > (to.length as int32) ||
+		fromAt + count > (from.length as int32)) {
+		console.error(`void2d: copyFloatWords ${count} words from ${fromAt} to ${at} leave a buffer`);
+		exit(1);
+	}
+	const src: Readonly<Ptr<uint32>> = (from as Readonly<Ptr<float32>>) as Readonly<Ptr<uint32>>;
+	const dst = ((to as Span<uint32>) as Ptr<uint32>);
+	for (let i: int32 = 0; i < count; i++) { dst[at + i] = src[fromAt + i]; }
+}
