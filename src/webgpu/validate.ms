@@ -241,12 +241,13 @@ export struct BoundFacts {
 	dynamicOffsets: uint32[GPU_MAX_BIND_GROUP_ENTRIES];
 	vertexSet: int32;
 	groupSet: int32;
-	ownersDirty: boolean;
-	drawValid: int32;
+	stale: int32;
 }
 
-const DRAW_VALID = 1;
-const DRAW_INDEXED_VALID = 2;
+export const ASPECT_GROUPS = 1;
+export const ASPECT_VERTEX = 2;
+export const ASPECT_INDEX = 4;
+export const ASPECT_ALL = 7;
 
 export let boundFacts: BoundFacts = { pipeline: 0 };
 
@@ -282,9 +283,9 @@ export function cacheCanvas(colorFormat: GPUTextureFormat, depthFormat: GPUTextu
 export function attachOcclusionSet(set: uint32): void { encoder.attachOcclusion(set); }
 export function markPipelineSet(pipeline: uint32): void {
 	encoder.markPipeline();
+	if (boundFacts.pipeline == pipeline) { return; }
 	boundFacts.pipeline = pipeline;
-	boundFacts.ownersDirty = true;
-	boundFacts.drawValid = 0;
+	boundFacts.stale = ASPECT_ALL;
 }
 
 export function vertexSlotRefusal(slot: int32): string {
@@ -296,7 +297,7 @@ export function markVertexSet(slot: int32, buffer: uint32, offset: int64): void 
 	boundFacts.vertexBuffers[slot] = buffer;
 	boundFacts.vertexSet = buffer == 0 ? boundFacts.vertexSet & ~(1 << slot) : boundFacts.vertexSet | (1 << slot);
 	boundFacts.vertexOffsets[slot] = offset;
-	boundFacts.drawValid = 0;
+	boundFacts.stale |= ASPECT_VERTEX;
 }
 
 export function markIndexSet(buffer: uint32, format: GPUIndexFormat, offset: int64): void {
@@ -304,14 +305,13 @@ export function markIndexSet(buffer: uint32, format: GPUIndexFormat, offset: int
 	boundFacts.indexFormat = format;
 	boundFacts.indexBuffer = buffer;
 	boundFacts.indexOffset = offset;
-	boundFacts.drawValid = 0;
+	boundFacts.stale |= ASPECT_INDEX;
 }
 
 export function markBindGroupSet(index: int32, bindGroup: uint32, dynamicOffsets: Readonly<Span<uint32>>): void {
 	if (boundFacts.bindGroups[index] != bindGroup) {
 		boundFacts.bindGroups[index] = bindGroup;
-		boundFacts.ownersDirty = true;
-		boundFacts.drawValid = 0;
+		boundFacts.stale |= ASPECT_GROUPS;
 		boundFacts.groupSet = bindGroup == 0 ? boundFacts.groupSet & ~(1 << index) : boundFacts.groupSet | (1 << index);
 	}
 	if (bindGroup == 0 || index != GPU_UNIFORM_GROUP) { return; }
@@ -319,22 +319,23 @@ export function markBindGroupSet(index: int32, bindGroup: uint32, dynamicOffsets
 	for (let i = 0; i < count; i++) { boundFacts.dynamicOffsets[i] = dynamicOffsets[i]; }
 }
 export function checkedPipelineSet(call: string): void { refuse(encoder.pipelineSetRefusal(call)); }
-// Dawn ValidateOperation (CommandBufferStateTracker.cpp:513-530): the state a draw needs is judged
-// once and kept in drawValid until a set call changes it; the shader module and the pipeline are
+// Dawn ValidateOperation (CommandBufferStateTracker.cpp:513-530) and its lazy aspects (:339, :791-854):
+// each aspect a draw needs (bind groups, vertex buffers, index buffer) is judged once and stays
+// out of `stale` until a set call touches that aspect; the shader module and the pipeline are
 // live handles that can die between draws, so they are read on every draw.
 export function checkedDrawState(call: string, indexed: boolean): void {
-	const kind = indexed ? DRAW_INDEXED_VALID : DRAW_VALID;
-	const ready = (boundFacts.drawValid & kind) != 0;
-	if (!ready) { refuse(encoder.drawRefusal(call, indexed)); }
+	const stale = boundFacts.stale & (indexed ? ASPECT_ALL : ASPECT_GROUPS | ASPECT_VERTEX);
+	if (stale != 0) { refuse(encoder.drawRefusal(call, indexed)); }
 	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
 	if (!shaderRecords.alive(pipelineRecords.slots[p].shader)) {
 		stop(`the shader module of GPURenderPipeline ${boundFacts.pipeline} was destroyed`);
 	}
-	if (ready) { return; }
-	refuse(boundRefusal(pipelineRecords.slots[p].vertexSlots, pipelineRecords.slots[p].groups, false));
-	checkGroupOwners(pipelineRecords.slots[p].groups, false);
-	if (indexed) { refuse(stripDrawRefusal(pipelineRecords.slots[p].strip, pipelineRecords.slots[p].stripIndexFormat == boundFacts.indexFormat)); }
-	boundFacts.drawValid |= kind;
+	if (stale == 0) { return; }
+	const groups = (stale & ASPECT_GROUPS) != 0 ? pipelineRecords.slots[p].groups : 0;
+	refuse(boundRefusal((stale & ASPECT_VERTEX) != 0 ? pipelineRecords.slots[p].vertexSlots : 0, groups, false));
+	if (groups != 0) { checkGroupOwners(groups, false); }
+	if ((stale & ASPECT_INDEX) != 0) { refuse(stripDrawRefusal(pipelineRecords.slots[p].strip, pipelineRecords.slots[p].stripIndexFormat == boundFacts.indexFormat)); }
+	boundFacts.stale &= ~stale;
 }
 
 // WebGPU draw and drawIndexed: every vertex and index a draw fetches lies inside the range bound
@@ -386,7 +387,9 @@ export function checkedDrawRange(call: string, indexed: boolean, count: int32, i
 export function checkedDispatchBound(): void {
 	const groups = pipelineRecords.slots[pipelineRecords.slotIndex(boundFacts.pipeline)].groups;
 	refuse(boundRefusal(0, groups, true));
+	if ((boundFacts.stale & ASPECT_GROUPS) == 0) { return; }
 	checkGroupOwners(groups, true);
+	boundFacts.stale &= ~ASPECT_GROUPS;
 }
 
 // WebGPU (Validate encoder bind groups): a bind group is group-equivalent with the pipeline's layout
@@ -398,8 +401,6 @@ export function groupOwnerRefusal(bindGroup: uint32, index: int32, owner: uint32
 }
 
 function checkGroupOwners(groups: int32, compute: boolean): void {
-	if (!boundFacts.ownersDirty) { return; }
-	boundFacts.ownersDirty = false;
 	for (let index = 0; index <= GPU_RESOURCE_GROUP; index++) {
 		if ((groups & (1 << index)) == 0) { continue; }
 		const id = boundFacts.bindGroups[index];
@@ -466,8 +467,7 @@ function resetBoundFacts(): void {
 	boundFacts.bindGroups[GPU_RESOURCE_GROUP] = 0;
 	boundFacts.vertexSet = 0;
 	boundFacts.groupSet = 0;
-	boundFacts.ownersDirty = false;
-	boundFacts.drawValid = 0;
+	boundFacts.stale = ASPECT_ALL;
 }
 export function checkedEndPass(kind: int32): void { refuse(encoder.endPassRefusal(kind)); }
 export function checkedOutsidePass(call: string): void { refuse(encoder.outsidePassRefusal(call)); }
