@@ -11,7 +11,7 @@ import {
 	GPUBufferUsage,
 } from "../webgpu/types.ms";
 import "../webgpu/device.ms";
-import { boundFacts } from "../webgpu/validate.ms";
+import { ASPECT_ALL, ASPECT_GROUPS, ASPECT_INDEX, ASPECT_VERTEX, boundFacts } from "../webgpu/validate.ms";
 import { openTestDevice } from "./testDevice";
 import { clearingPass, colourTarget, colourUniforms, vertexBuffer } from "./webgpuFixtures";
 
@@ -53,9 +53,9 @@ when (voidDummy) {
 		pass.setVertexBuffer(0, vertexBuffer(device, 24), 0);
 		pass.setBindGroup(0, group, first);
 		pass.draw(3, 1, 0, 0);
-		assert boundFacts.drawValid != 0;
+		assert boundFacts.stale == ASPECT_INDEX;
 		pass.setBindGroup(0, group, second);
-		assert boundFacts.drawValid != 0;
+		assert boundFacts.stale == ASPECT_INDEX;
 		assert boundFacts.dynamicOffsets[0] == 256;
 		pass.draw(3, 1, 0, 0);
 	}
@@ -73,8 +73,54 @@ when (voidDummy) {
 		pass.setBindGroup(0, group, offsets);
 		pass.draw(3, 1, 0, 0);
 		pass.setBindGroup(0, other, offsets);
-		assert boundFacts.drawValid == 0;
+		assert (boundFacts.stale & ASPECT_GROUPS) != 0;
 		pass.draw(3, 1, 0, 0);
-		assert boundFacts.drawValid != 0;
+		assert boundFacts.stale == ASPECT_INDEX;
+	}
+
+	test "a vertex or index set leaves the bind groups judged" {
+		const device = openTestDevice();
+		const pipeline = flatPipeline(device);
+		const group = groupOf(device, pipeline, colourUniforms(device));
+		const indexUsage = (GPUBufferUsage.INDEX as int32) | (GPUBufferUsage.COPY_DST as int32);
+		const indices = device.createBuffer({ label: "indices", size: 16, usage: indexUsage });
+		const vertices = vertexBuffer(device, 48);
+		const pass = openPass(device);
+		const offsets: Vec<uint32> = [0];
+		pass.setPipeline(pipeline);
+		assert boundFacts.stale == ASPECT_ALL;
+		pass.setVertexBuffer(0, vertices, 0);
+		pass.setBindGroup(0, group, offsets);
+		pass.setIndexBuffer(indices, "uint16", 0);
+		pass.drawIndexed(3, 1, 0, 0, 0);
+		assert boundFacts.stale == 0;
+		pass.setVertexBuffer(0, vertices, 8);
+		assert boundFacts.stale == ASPECT_VERTEX;
+		pass.draw(3, 1, 0, 0);
+		assert boundFacts.stale == 0;
+		pass.setIndexBuffer(indices, "uint32", 0);
+		assert boundFacts.stale == ASPECT_INDEX;
+		pass.draw(3, 1, 0, 0);
+		assert boundFacts.stale == ASPECT_INDEX;
+		pass.drawIndexed(3, 1, 0, 0, 0);
+		assert boundFacts.stale == 0;
+	}
+
+	test "a setPipeline of the bound pipeline resets nothing and another pipeline resets all" {
+		const device = openTestDevice();
+		const pipeline = flatPipeline(device);
+		const group = groupOf(device, pipeline, colourUniforms(device));
+		const pass = openPass(device);
+		const offsets: Vec<uint32> = [0];
+		pass.setPipeline(pipeline);
+		pass.setVertexBuffer(0, vertexBuffer(device, 24), 0);
+		pass.setBindGroup(0, group, offsets);
+		pass.draw(3, 1, 0, 0);
+		assert (boundFacts.stale & (ASPECT_GROUPS | ASPECT_VERTEX)) == 0;
+		pass.setPipeline(pipeline);
+		assert (boundFacts.stale & (ASPECT_GROUPS | ASPECT_VERTEX)) == 0;
+		const other = flatPipeline(device);
+		pass.setPipeline(other);
+		assert boundFacts.stale == ASPECT_ALL;
 	}
 }
