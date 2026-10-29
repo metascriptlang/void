@@ -460,6 +460,81 @@ void main() {
 }
 @end
 
+@fs fxaaFs
+layout(binding=0) uniform texture2D fxaaSource;
+layout(binding=0) uniform sampler fxaaSampler;
+layout(location=0) out vec4 fragColor;
+float lumaOf(vec3 rgb) {
+    return dot(rgb, vec3(0.299, 0.587, 0.114));
+}
+void main() {
+    ivec2 size = textureSize(sampler2D(fxaaSource, fxaaSampler), 0);
+    vec2 delta = vec2((1.0 / float(size.x)), (1.0 / float(size.y)));
+    vec2 uv = gl_FragCoord.xy * delta;
+    vec3 nw = texture(sampler2D(fxaaSource, fxaaSampler), (uv + (vec2(-1.0, -1.0) * delta))).xyz;
+    vec3 ne = texture(sampler2D(fxaaSource, fxaaSampler), (uv + (vec2(1.0, -1.0) * delta))).xyz;
+    vec3 sw = texture(sampler2D(fxaaSource, fxaaSampler), (uv + (vec2(-1.0, 1.0) * delta))).xyz;
+    vec3 se = texture(sampler2D(fxaaSource, fxaaSampler), (uv + (vec2(1.0, 1.0) * delta))).xyz;
+    vec4 origin = texture(sampler2D(fxaaSource, fxaaSampler), uv);
+    float lumNW = lumaOf(nw);
+    float lumNE = lumaOf(ne);
+    float lumSW = lumaOf(sw);
+    float lumSE = lumaOf(se);
+    float lumMid = lumaOf(origin.xyz);
+    float lumMin = min(lumMid, min(min(lumNW, lumNE), min(lumSW, lumSE)));
+    float lumMax = max(lumMid, max(max(lumNW, lumNE), max(lumSW, lumSE)));
+    vec2 edge = vec2((-((lumNW + lumNE) - (lumSW + lumSE))), ((lumNW + lumSW) - (lumNE + lumSE)));
+    float dirReduce = max(((((lumNW + lumNE) + lumSW) + lumSE) * 0.001953125), 0.125);
+    float rcpDirMin = 1.0 / (min(abs(edge.x), abs(edge.y)) + dirReduce);
+    vec2 dir = min(vec2(8.0, 8.0), max(vec2(-8.0, -8.0), (edge * rcpDirMin))) * delta;
+    vec3 rgbA = (texture(sampler2D(fxaaSource, fxaaSampler), (uv + (dir * ((1.0 / 3.0) - 0.5)))).xyz + texture(sampler2D(fxaaSource, fxaaSampler), (uv + (dir * ((2.0 / 3.0) - 0.5)))).xyz) * 0.5;
+    vec3 rgbB = (rgbA * 0.5) + ((texture(sampler2D(fxaaSource, fxaaSampler), (uv + (dir * -0.5))).xyz + texture(sampler2D(fxaaSource, fxaaSampler), (uv + (dir * 0.5))).xyz) * 0.25);
+    float lumB = lumaOf(rgbB);
+    float inside = ((lumB > lumMin) && (lumB < lumMax)) ? 1.0 : 0.0;
+    fragColor = vec4(mix(rgbA, rgbB, vec3(inside)), origin.w);
+    return;
+}
+@end
+
+@fs colorMatrixFs
+layout(binding=0) uniform texture2D colorSource;
+layout(binding=1) uniform texture2D colorMask;
+layout(binding=0) uniform sampler colorSampler;
+layout(binding=1) uniform sampler colorMaskSampler;
+layout(binding=0) uniform colorMatrixParams {
+    mat4 colorMatrix;
+    mat4 colorMatrixSecond;
+    vec4 colorMaskA;
+    vec4 colorMaskB;
+    vec4 colorMaskChannel;
+    vec4 colorMatrixFlags;
+};
+layout(location=0) out vec4 fragColor;
+vec4 colorMatrixApplied(vec4 color, mat4 matrix, bool useAlpha) {
+    return useAlpha ? (matrix * color) : (matrix * vec4(color.xyz, 1.0));
+}
+void main() {
+    ivec2 size = textureSize(sampler2D(colorSource, colorSampler), 0);
+    vec2 uv = gl_FragCoord.xy / vec2(float(size.x), float(size.y));
+    vec4 flags = colorMatrixFlags;
+    bool useAlpha = flags.x > 0.5;
+    vec4 color = texture(sampler2D(colorSource, colorSampler), uv);
+    vec4 first = colorMatrixApplied(color, colorMatrix, useAlpha);
+    if (flags.y < 0.5) {
+        fragColor = first;
+        return;
+    }
+    vec3 at = vec3(uv, 1.0);
+    vec4 maskA = colorMaskA;
+    vec2 maskUv = vec2(dot(at, maskA.xyz), dot(at, colorMaskB.xyz));
+    vec4 texel = texture(sampler2D(colorMask, colorMaskSampler), maskUv);
+    float weight = pow(dot(texel, colorMaskChannel), maskA.w);
+    vec4 second = (flags.w > 0.5) ? colorMatrixApplied(color, colorMatrixSecond, useAlpha) : color;
+    fragColor = (flags.z > 0.5) ? mix(second, first, weight) : mix(first, second, weight);
+    return;
+}
+@end
+
 @vs particleVisualVs
 layout(binding=0) uniform vertexParams {
     mat4 viewProj;
