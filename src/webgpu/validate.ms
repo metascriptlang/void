@@ -242,7 +242,14 @@ export struct BoundFacts {
 	vertexSet: int32;
 	groupSet: int32;
 	stale: int32;
+	vertexLimit: int64;
+	instanceLimit: int64;
+	indexLimit: int64;
+	vertexUsed: int32;
+	instanceUsed: int32;
 }
+
+const UNBOUNDED_RANGE: int64 = 1 << 40;
 
 export const ASPECT_GROUPS = 1;
 export const ASPECT_VERTEX = 2;
@@ -335,6 +342,8 @@ export function checkedDrawState(call: string, indexed: boolean): void {
 	refuse(boundRefusal((stale & ASPECT_VERTEX) != 0 ? pipelineRecords.slots[p].vertexSlots : 0, groups, false));
 	if (groups != 0) { checkGroupOwners(groups, false); }
 	if ((stale & ASPECT_INDEX) != 0) { refuse(stripDrawRefusal(pipelineRecords.slots[p].strip, pipelineRecords.slots[p].stripIndexFormat == boundFacts.indexFormat)); }
+	if ((stale & ASPECT_VERTEX) != 0) { limitVertexRanges(p); }
+	if ((stale & ASPECT_INDEX) != 0) { limitIndexRange(); }
 	boundFacts.stale &= ~stale;
 }
 
@@ -368,7 +377,57 @@ export function indexRangeRefusal(call: string, format: GPUIndexFormat, boundSiz
 
 function boundSize(buffer: uint32, offset: int64): int64 { return bufferRecords.slots[bufferRecords.slotIndex(buffer)].size - offset; }
 
+// The strides a bound range holds, judged when its aspect was (wgpu render.rs:583-590 update_limits and
+// :507, :525 validate_*_limit; Dawn CommandBufferStateTracker.cpp:405-510): a draw then compares
+// first + count with a limit. A destroyed buffer gets the limit that no non-empty draw passes, so
+// the slow path below names it as it always did.
+function strideLimit(layout: VertexBufferRecord, bound: int64): int64 {
+	if (bound < (layout.lastStride as int64)) { return 0; }
+	if (layout.stride == 0) { return UNBOUNDED_RANGE; }
+	return (bound - (layout.lastStride as int64)) / (layout.stride as int64) + 1;
+}
+
+function limitVertexRanges(p: int32): void {
+	let vertex = UNBOUNDED_RANGE;
+	let instance = UNBOUNDED_RANGE;
+	let instanceUsed = 0;
+	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
+		if ((pipelineRecords.slots[p].vertexSlots & (1 << slot)) == 0) { continue; }
+		const id = boundFacts.vertexBuffers[slot];
+		const layout = pipelineRecords.slots[p].vertexBuffers[slot];
+		const limit = bufferRecords.alive(id) ? strideLimit(layout, boundSize(id, boundFacts.vertexOffsets[slot])) : 0;
+		if (layout.instance) {
+			instanceUsed |= 1 << slot;
+			if (limit < instance) { instance = limit; }
+		} else if (limit < vertex) {
+			vertex = limit;
+		}
+	}
+	boundFacts.vertexLimit = vertex;
+	boundFacts.instanceLimit = instance;
+	boundFacts.vertexUsed = pipelineRecords.slots[p].vertexSlots;
+	boundFacts.instanceUsed = instanceUsed;
+}
+
+function limitIndexRange(): void {
+	const id = boundFacts.indexBuffer;
+	if (!bufferRecords.alive(id)) { boundFacts.indexLimit = -1; return; }
+	boundFacts.indexLimit = boundSize(id, boundFacts.indexOffset) / (boundFacts.indexFormat == "uint32" ? 4 : 2);
+}
+
+function boundBuffersAlive(slots: int32): boolean {
+	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
+		if ((slots & (1 << slot)) != 0 && !bufferRecords.alive(boundFacts.vertexBuffers[slot])) { return false; }
+	}
+	return true;
+}
+
 export function checkedDrawRange(call: string, indexed: boolean, count: int32, instanceCount: int32, first: int32, firstInstance: int32): void {
+	const instances = (firstInstance as int64) + (instanceCount as int64);
+	const fits = (first as int64) + (count as int64) <= (indexed ? boundFacts.indexLimit : boundFacts.vertexLimit);
+	if (fits && count >= 0 && instanceCount >= 0 && first >= 0 && firstInstance >= 0 && instances <= boundFacts.instanceLimit
+		&& boundBuffersAlive(indexed ? boundFacts.instanceUsed : boundFacts.vertexUsed)
+		&& (!indexed || bufferRecords.alive(boundFacts.indexBuffer))) { return; }
 	refuse(drawSignRefusal(call, indexed, count, instanceCount, first, firstInstance));
 	if (indexed) {
 		refuse(indexRangeRefusal(call, boundFacts.indexFormat, boundSize(boundFacts.indexBuffer, boundFacts.indexOffset), first, count));
