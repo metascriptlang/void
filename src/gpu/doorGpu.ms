@@ -65,7 +65,6 @@ import {
 	voidSwapchainSampleCount,
 	voidSwapchainWidth,
 } from "../platform/swapchainFrame";
-import "../host/gpu";
 import { stop } from "./stop";
 import {
 	GPU_TIMER_ON,
