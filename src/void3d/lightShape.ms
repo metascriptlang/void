@@ -64,12 +64,12 @@ export struct ConeCosines {
 	inner: float32;
 }
 
-function finiteVector(value: Vec3): boolean {
+function isFiniteVector(this value: Vec3): boolean {
 	return Number.isFinite(value.x) && Number.isFinite(value.y) && Number.isFinite(value.z);
 }
 
-function unitAxis(value: Vec3): boolean {
-	return finiteVector(value) && Math.abs(value.lengthSquared() - 1.0) <= 1e-4;
+function isUnitAxis(this value: Vec3): boolean {
+	return value.isFiniteVector() && Math.abs(value.lengthSquared() - 1.0) <= 1e-4;
 }
 
 function validRange(range: float32): boolean {
@@ -95,9 +95,9 @@ export function coneCosines(this cone: LightConeAngle): Result<ConeCosines, Ligh
 	});
 }
 
-function checkedDirection(delta: Vec3): Result<Vec3, LightShapeError> {
+function checkedDirection(this delta: Vec3): Result<Vec3, LightShapeError> {
 	const squared: float32 = delta.lengthSquared();
-	if (!finiteVector(delta) || !Number.isFinite(squared)) {
+	if (!delta.isFiniteVector() || !Number.isFinite(squared)) {
 		return Result.err(LightShapeError.NonFiniteCalculation);
 	}
 	if (squared < EPSILON) { return Result.err(LightShapeError.UndefinedDirection); }
@@ -106,13 +106,13 @@ function checkedDirection(delta: Vec3): Result<Vec3, LightShapeError> {
 
 function shapePoint(point: Vec3, position: Vec3): Result<LightShapePoint, LightShapeError> {
 	const delta: Vec3 = point - position;
-	const direction: Vec3 = try checkedDirection(delta);
+	const direction: Vec3 = try delta.checkedDirection();
 	return Result.ok({ point: point, delta: delta, direction: direction });
 }
 
 export function validateSpot(this light: SpotLightShape): Result<ConeCosines, LightShapeError> {
-	if (!finiteVector(light.position)) { return Result.err(LightShapeError.NonFiniteInput); }
-	if (!unitAxis(light.forward)) { return Result.err(LightShapeError.BadAxes); }
+	if (!light.position.isFiniteVector()) { return Result.err(LightShapeError.NonFiniteInput); }
+	if (!light.forward.isUnitAxis()) { return Result.err(LightShapeError.BadAxes); }
 	if (!validRange(light.range)) { return Result.err(LightShapeError.BadRange); }
 	const angles: ConeCosines = try light.cone.coneCosines();
 	if (light.cone.fullAngleRadians >= STRAIGHT_ANGLE) {
@@ -127,8 +127,8 @@ export function angularWeight(
 	position: Vec3,
 ): Result<float32, LightShapeError> {
 	const angles: ConeCosines = try light.validateSpot();
-	if (!finiteVector(position)) { return Result.err(LightShapeError.NonFiniteInput); }
-	const towardLight: Vec3 = try checkedDirection(light.position - position);
+	if (!position.isFiniteVector()) { return Result.err(LightShapeError.NonFiniteInput); }
+	const towardLight: Vec3 = try (light.position - position).checkedDirection();
 	const theta: float32 = towardLight.dot(light.forward.scaled(-1.0));
 	return Result.ok(saturate((theta - angles.outer) / (angles.inner - angles.outer)));
 }
@@ -140,7 +140,7 @@ export function perspectiveCamera(
 	up: Vec3,
 ): Result<Camera3D, LightShapeError> {
 	const _angles: ConeCosines = try light.validateSpot();
-	if (!unitAxis(up) || Math.abs(up.dot(light.forward)) > 1e-4) {
+	if (!up.isUnitAxis() || Math.abs(up.dot(light.forward)) > 1e-4) {
 		return Result.err(LightShapeError.BadAxes);
 	}
 	const nearPlane: float32 = light.range * 0.05;
@@ -163,8 +163,8 @@ export function perspectiveCamera(
 }
 
 export function validateRectangle(this light: RectangleLightShape): Result<void, LightShapeError> {
-	if (!finiteVector(light.position)) { return Result.err(LightShapeError.NonFiniteInput); }
-	if (!unitAxis(light.forward) || !unitAxis(light.right) || !unitAxis(light.up) ||
+	if (!light.position.isFiniteVector()) { return Result.err(LightShapeError.NonFiniteInput); }
+	if (!light.forward.isUnitAxis() || !light.right.isUnitAxis() || !light.up.isUnitAxis() ||
 		Math.abs(light.right.dot(light.up)) > 1e-4 ||
 		Math.abs(light.forward.dot(light.right)) > 1e-4 ||
 		Math.abs(light.forward.dot(light.up)) > 1e-4) {
@@ -186,13 +186,13 @@ function closestRectanglePoint(
 	ray: Vec3,
 ): Result<LightShapePoint, LightShapeError> {
 	const _valid = try light.validateRectangle();
-	if (!finiteVector(position)) { return Result.err(LightShapeError.NonFiniteInput); }
-	if (!unitAxis(ray)) { return Result.err(LightShapeError.BadAxes); }
+	if (!position.isFiniteVector()) { return Result.err(LightShapeError.NonFiniteInput); }
+	if (!ray.isUnitAxis()) { return Result.err(LightShapeError.BadAxes); }
 	const denominator: float32 = light.forward.dot(ray);
 	if (denominator == 0.0) { return Result.err(LightShapeError.ParallelPlane); }
 	const distance: float32 = light.forward.dot(light.position - position) / denominator;
 	const offset: Vec3 = position + ray.scaled(distance) - light.position;
-	if (!Number.isFinite(distance) || !finiteVector(offset)) {
+	if (!Number.isFinite(distance) || !offset.isFiniteVector()) {
 		return Result.err(LightShapeError.NonFiniteCalculation);
 	}
 	const projectedRight: float32 = offset.dot(light.right);
@@ -234,8 +234,8 @@ function projectedAngularWeight(
 	const inverseForward: Vec3 = forward.scaled(-1.0);
 	const projectedForward: Vec3 = inverseForward -
 		excludedAxis.scaled(inverseForward.dot(excludedAxis));
-	const deltaDirection: Vec3 = try checkedDirection(projectedDelta);
-	const lightDirection: Vec3 = try checkedDirection(projectedForward);
+	const deltaDirection: Vec3 = try projectedDelta.checkedDirection();
+	const lightDirection: Vec3 = try projectedForward.checkedDirection();
 	const epsilon: float32 = angles.inner - angles.outer + 0.00001;
 	return Result.ok(saturate((deltaDirection.dot(lightDirection) - angles.outer) / epsilon));
 }
@@ -246,7 +246,7 @@ export function angularWeight(
 	towardLightDelta: Vec3,
 ): Result<float32, LightShapeError> {
 	const _valid = try light.validateRectangle();
-	if (!finiteVector(towardLightDelta)) { return Result.err(LightShapeError.NonFiniteInput); }
+	if (!towardLightDelta.isFiniteVector()) { return Result.err(LightShapeError.NonFiniteInput); }
 	const horizontalAngles: ConeCosines = try light.horizontal.coneCosines();
 	const verticalAngles: ConeCosines = try light.vertical.coneCosines();
 	const horizontal: float32 = try projectedAngularWeight(
@@ -259,8 +259,8 @@ export function angularWeight(
 }
 
 export function validateCapsule(this light: CapsuleLightShape): Result<void, LightShapeError> {
-	if (!finiteVector(light.position)) { return Result.err(LightShapeError.NonFiniteInput); }
-	if (!unitAxis(light.axis)) { return Result.err(LightShapeError.BadAxes); }
+	if (!light.position.isFiniteVector()) { return Result.err(LightShapeError.NonFiniteInput); }
+	if (!light.axis.isUnitAxis()) { return Result.err(LightShapeError.BadAxes); }
 	if (!validRange(light.range)) { return Result.err(LightShapeError.BadRange); }
 	if (!Number.isFinite(light.halfLength) || !Number.isFinite(light.radius) ||
 		light.halfLength <= 0.0 || light.radius < 0.0) {
@@ -274,7 +274,7 @@ export function diffusePoint(
 	position: Vec3,
 ): Result<LightShapePoint, LightShapeError> {
 	const _valid = try light.validateCapsule();
-	if (!finiteVector(position)) { return Result.err(LightShapeError.NonFiniteInput); }
+	if (!position.isFiniteVector()) { return Result.err(LightShapeError.NonFiniteInput); }
 	const start: Vec3 = light.position - light.axis.scaled(light.halfLength);
 	const end: Vec3 = light.position + light.axis.scaled(light.halfLength);
 	const segment: Vec3 = end - start;
@@ -293,8 +293,8 @@ export function specularDirection(
 	reflectedViewRay: Vec3,
 ): Result<Vec3, LightShapeError> {
 	const _valid = try light.validateCapsule();
-	if (!finiteVector(position)) { return Result.err(LightShapeError.NonFiniteInput); }
-	if (!unitAxis(reflectedViewRay)) { return Result.err(LightShapeError.BadAxes); }
+	if (!position.isFiniteVector()) { return Result.err(LightShapeError.NonFiniteInput); }
+	if (!reflectedViewRay.isUnitAxis()) { return Result.err(LightShapeError.BadAxes); }
 	const start: Vec3 = light.position - light.axis.scaled(light.halfLength) - position;
 	const end: Vec3 = light.position + light.axis.scaled(light.halfLength) - position;
 	const segment: Vec3 = end - start;
@@ -317,5 +317,5 @@ export function specularDirection(
 	if (offsetLength == 0.0) { return Result.err(LightShapeError.ZeroRayOffset); }
 	const radius: float32 = Math.min(light.radius, light.range) as float32;
 	const adjusted: Vec3 = closest + centerToRay.scaled(saturate(radius / offsetLength));
-	return checkedDirection(adjusted);
+	return adjusted.checkedDirection();
 }

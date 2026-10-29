@@ -308,7 +308,7 @@ function yPlanesOf(grid: ClusterGrid, viewFromClip: Mat4, orthographic: boolean)
 }
 
 function cellAt(
-	setup: ClusterSetup,
+	this setup: ClusterSetup,
 	ndcX: float32,
 	ndcY: float32,
 	depth: float32,
@@ -324,7 +324,7 @@ function cellAt(
 // the clusters the sphere's view-space box covers. A perspective box has its depth held in front
 // of the eye, where the projection does not flip it; an orthographic one keeps its depth, since
 // its near plane can lie behind the eye and the slices there are lit too.
-function coveredRange(setup: ClusterSetup, sphere: ViewSphere): ClusterRange {
+function coveredRange(this setup: ClusterSetup, sphere: ViewSphere): ClusterRange {
 	const low: Vec3 = sphere.center - vec3(sphere.radius, sphere.radius, sphere.radius);
 	const high: Vec3 = sphere.center + vec3(sphere.radius, sphere.radius, sphere.radius);
 	const nearDepth: float32 = setup.orthographic ? low.z : Math.max(low.z, MIN_POSITIVE);
@@ -343,8 +343,8 @@ function coveredRange(setup: ClusterSetup, sphere: ViewSphere): ClusterRange {
 		ndcMin = minOf(ndcMin, ndc);
 		ndcMax = maxOf(ndcMax, ndc);
 	}
-	const lowCell: ClusterCell = cellAt(setup, ndcMin.x, ndcMin.y, nearDepth);
-	const highCell: ClusterCell = cellAt(setup, ndcMax.x, ndcMax.y, farDepth);
+	const lowCell: ClusterCell = setup.cellAt(ndcMin.x, ndcMin.y, nearDepth);
+	const highCell: ClusterCell = setup.cellAt(ndcMax.x, ndcMax.y, farDepth);
 	return {
 		min: {
 			x: Math.min(lowCell.x, highCell.x),
@@ -360,7 +360,7 @@ function coveredRange(setup: ClusterSetup, sphere: ViewSphere): ClusterRange {
 }
 
 // project_to_plane_z: the circle where the sphere meets the plane at `depth`, as a sphere.
-function projectToPlaneZ(sphere: ViewSphere, depth: float32): ViewSphere | null {
+function projectToPlaneZ(this sphere: ViewSphere, depth: float32): ViewSphere | null {
 	const distance: float32 = depth - sphere.center.z;
 	if (Math.abs(distance) > sphere.radius) { return null; }
 	return {
@@ -371,7 +371,7 @@ function projectToPlaneZ(sphere: ViewSphere, depth: float32): ViewSphere | null 
 
 // project_to_plane_y
 function projectToPlaneY(
-	sphere: ViewSphere,
+	this sphere: ViewSphere,
 	plane: Vec4,
 	orthographic: boolean,
 ): ViewSphere | null {
@@ -391,7 +391,12 @@ function distanceX(plane: Vec4, point: Vec3, orthographic: boolean): float32 {
 	return plane.x * point.x + plane.z * point.z;
 }
 
-function screenToView(setup: ClusterSetup, pixelX: float32, pixelY: float32, ndcZ: float32): Vec3 {
+function screenToView(
+	this setup: ClusterSetup,
+	pixelX: float32,
+	pixelY: float32,
+	ndcZ: float32,
+): Vec3 {
 	const u: float32 = pixelX / (setup.screenWidth as float32);
 	const v: float32 = pixelY / (setup.screenHeight as float32);
 	return clipToView(setup.viewFromClip, vec4(u * 2.0 - 1.0, (1.0 - v) * 2.0 - 1.0, ndcZ, 1.0));
@@ -402,14 +407,14 @@ function lineToDepth(point: Vec3, depth: float32): Vec3 {
 }
 
 // compute_aabb_for_cluster, as the sphere around the box.
-function clusterSphere(setup: ClusterSetup, x: int32, y: int32, z: int32): ViewSphere {
+function clusterSphere(this setup: ClusterSetup, x: int32, y: int32, z: int32): ViewSphere {
 	const grid: ClusterGrid = setup.grid;
 	const lowX: float32 = (x * grid.tileWidth) as float32;
 	const lowY: float32 = (y * grid.tileHeight) as float32;
 	const highX: float32 = lowX + (grid.tileWidth as float32);
 	const highY: float32 = lowY + (grid.tileHeight as float32);
-	const a: Vec3 = screenToView(setup, lowX, lowY, 0.0);
-	const b: Vec3 = screenToView(setup, highX, highY, 0.0);
+	const a: Vec3 = setup.screenToView(lowX, lowY, 0.0);
+	const b: Vec3 = setup.screenToView(highX, highY, 0.0);
 	let low: Vec3;
 	let high: Vec3;
 	if (setup.orthographic) {
@@ -451,7 +456,7 @@ function spotReaches(
 	return !angleCull && !frontCull && !backCull;
 }
 
-function checkLight(light: ClusterLight): Result<void, ClusterError> {
+function validate(this light: ClusterLight): Result<void, ClusterError> {
 	if (!Number.isFinite(light.position.x) || !Number.isFinite(light.position.y) ||
 		!Number.isFinite(light.position.z)) {
 		return Result.err(ClusterError.Position);
@@ -486,7 +491,7 @@ function checkInputs(
 		return Result.err(ClusterError.FarDepth);
 	}
 	for (const light of lights) {
-		const _checked = try checkLight(light);
+		const _checked = try light.validate();
 	}
 	return Result.ok(null);
 }
@@ -578,7 +583,7 @@ export function assignLights(
 				center: source.position * setup.viewFromWorld,
 				radius: source.range,
 			};
-			const covered: ClusterRange = coveredRange(setup, sphere);
+			const covered: ClusterRange = setup.coveredRange(sphere);
 			farthestZ = Math.max(farthestZ, sphere.center.z + source.range);
 			const back: Vec3 = source.direction.scaled(-1.0).transformDirection(setup.viewFromWorld)
 				.normalized();
@@ -586,13 +591,9 @@ export function assignLights(
 			const angleCos: float32 = Math.cos(source.outerHalfAngle as float64) as float32;
 			const centerClip: Vec4 = vec4(sphere.center.x, sphere.center.y, sphere.center.z, 1.0)
 				* setup.clipFromView;
-			const centerCell: ClusterCell = cellAt(
-				setup,
-				centerClip.x / centerClip.w,
-				centerClip.y / centerClip.w,
-				sphere.center.z,
-			);
 			const centerNdcY: float32 = centerClip.y / centerClip.w;
+			const centerCell: ClusterCell =
+				setup.cellAt(centerClip.x / centerClip.w, centerNdcY, sphere.center.z);
 			const hasZCenter: boolean = setup.orthographic
 				? sphere.center.z >= setup.projectionNear
 				: sphere.center.z < 0.0 || sphere.center.z >= setup.projectionNear;
@@ -604,7 +605,7 @@ export function assignLights(
 					const plane: float32 = hasZCenter && z < centerCell.z
 						? setup.zDepths[z + 1]
 						: setup.zDepths[z];
-					const projected: ViewSphere | null = projectToPlaneZ(zSphere, plane);
+					const projected: ViewSphere | null = zSphere.projectToPlaneZ(plane);
 					if (projected === null) { continue; }
 					zSphere = projected;
 				}
@@ -615,7 +616,7 @@ export function assignLights(
 							? setup.yPlanes[y + 1]
 							: setup.yPlanes[y];
 						const projected: ViewSphere | null =
-							projectToPlaneY(ySphere, plane, setup.orthographic);
+							ySphere.projectToPlaneY(plane, setup.orthographic);
 						if (projected === null) { continue; }
 						ySphere = projected;
 					}
@@ -635,7 +636,7 @@ export function assignLights(
 						const cluster: int32 = (y * grid.x + x) * grid.z + z;
 						if (kind == ClusterLightKind.Spot) {
 							if (!known[cluster]) {
-								spheres[cluster] = clusterSphere(setup, x, y, z);
+								spheres[cluster] = setup.clusterSphere(x, y, z);
 								known[cluster] = true;
 							}
 							if (!spotReaches(sphere, source.range, back, angleSin, angleCos,

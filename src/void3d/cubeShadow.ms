@@ -5,15 +5,13 @@
 // draws each face into one layer of the cube map (dirShadowMap.ms createCube), and shader3d.ms
 // cubeShadowAt picks the face by the largest axis.
 import {
-	LIGHT_UNIFORM_LENGTH,
-	LIGHT_RECORD_LENGTH,
 	LIGHT_RECORD_COLOR,
 	LIGHT_KIND_SPOT,
 	LIGHT_KIND_RECTANGLE,
 	LIGHT_CUBE_CASTER,
 	SHADOW_CUBE_FACES,
 } from "./gpu3d";
-import { NOT_A_RECORD, casterRecord, recordKind } from "./spotShadow";
+import { NOT_A_RECORD, casterRecord, recordAt, recordKind } from "./spotShadow";
 import { Vec3, vec3 } from "../math/math3d";
 import { Camera3D, CameraView, CameraError, ProjectionKind, resolve } from "./camera";
 
@@ -28,10 +26,6 @@ export enum CubeShadowError {
 export const POINT_SHADOW_NEAR: float32 = 0.02;
 // RectangleShadowMap.updateLightCameraNearFar.
 export const RECTANGLE_SHADOW_NEAR: float32 = 0.01;
-
-function recordAt(light: int32): int32 {
-	return LIGHT_UNIFORM_LENGTH + light * LIGHT_RECORD_LENGTH;
-}
 
 // The record that casts the cube map, or -1.
 export function cubeCaster(lights: Readonly<Span<float32>>): Result<int32, CubeShadowError> {

@@ -93,11 +93,11 @@ export enum ShadowSamplingKind {
 
 export interface DirShadowMap {
 	context: DrawContext;
-	// opacity is Godot's shadow_opacity; Heaps' DefaultShadowMap tints by a colour instead.
 	size: int32;
 	kind: ShadowKind;
 	bias: float32;
 	normalBias: float32;
+	// opacity is Godot's shadow_opacity; Heaps' DefaultShadowMap tints by a colour instead.
 	opacity: float32;
 	samplingKind: ShadowSamplingKind;
 	// In texels; Heaps' pcfScale is the same number, divided by the map's width in the shader.
@@ -183,6 +183,12 @@ export function createCube(
 	return buildMap(context, size, ShadowKind.Cube);
 }
 
+function zeroed(length: int32): Vec<float32> {
+	let values: Vec<float32> = new Array(length);
+	for (let i = 0; i < length; i++) { values[i] = 0.0; }
+	return values;
+}
+
 function buildMap(
 	context: DrawContext, size: int32, kind: ShadowKind,
 ): Result<DirShadowMap, ShadowError> {
@@ -194,10 +200,6 @@ function buildMap(
 		reserveOwned(context, VERTEX_UNIFORM_SLOT, VERTEX_UNIFORM_LENGTH);
 	const shadowBlock: UniformBlock =
 		reserveOwned(context, SHADOW_UNIFORM_SLOT, SHADOW_UNIFORM_LENGTH);
-	let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
-	for (let i = 0; i < VERTEX_UNIFORM_LENGTH; i++) { cameraValues[i] = 0.0; }
-	let shadowValues: Vec<float32> = new Array(SHADOW_UNIFORM_LENGTH);
-	for (let i = 0; i < SHADOW_UNIFORM_LENGTH; i++) { shadowValues[i] = 0.0; }
 	return Result.ok({
 		context: context,
 		size: size,
@@ -214,8 +216,8 @@ function buildMap(
 		cast: [],
 		cameraBlock: cameraBlock,
 		shadowBlock: shadowBlock,
-		cameraValues: cameraValues,
-		shadowValues: shadowValues,
+		cameraValues: zeroed(VERTEX_UNIFORM_LENGTH),
+		shadowValues: zeroed(SHADOW_UNIFORM_LENGTH),
 		globals: [cameraBlock],
 		viewProj: identity(),
 		casterCount: 0,
@@ -383,8 +385,19 @@ export function drawShadows(
 ): int32 {
 	if (shadow.closed) { stopOnClosed("drawShadows"); }
 	if (passState() != PassState.None) { stopOnPassOpen(); }
-	if (shadow.kind == ShadowKind.Spot) { return drawSpotShadows(shadow, items, lights); }
-	if (shadow.kind == ShadowKind.Cube) { return drawCubeShadows(shadow, items, lights); }
+	return match (shadow.kind) {
+		ShadowKind.Sun => drawSunShadows(shadow, items, camera, lights),
+		ShadowKind.Spot => drawSpotShadows(shadow, items, lights),
+		ShadowKind.Cube => drawCubeShadows(shadow, items, lights),
+	};
+}
+
+function drawSunShadows(
+	shadow: DirShadowMap,
+	items: Readonly<Span<DrawItem>>,
+	camera: Readonly<Span<float32>>,
+	lights: Readonly<Span<float32>>,
+): int32 {
 	const context: DrawContext = shadow.context;
 	const basis: CameraBasis = lightBasis(vec3(lights[4], lights[5], lights[6]));
 	const cameraViewProj: Mat4 = {

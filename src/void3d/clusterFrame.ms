@@ -141,7 +141,13 @@ function emptyAssignment(): ClusterAssignment {
 	};
 }
 
-function writeQuad(out: Span<float32>, at: int32, x: float32, y: float32, z: float32, w: float32,
+function writeQuad(
+	out: Span<float32>,
+	at: int32,
+	x: float32,
+	y: float32,
+	z: float32,
+	w: float32,
 ): void {
 	out[at] = x;
 	out[at + 1] = y;
@@ -197,19 +203,23 @@ function stopOnRefusedImage(): void {
 	unreachable;
 }
 
-function release(image: DataImage): void {
+function release(this image: DataImage): void {
 	if (image.view != 0) { destroyView(image.view); }
 	if (image.image != 0) { destroyImage(image.image); }
 }
 
 // The image to hold `height` rows: kept when it is current, the same size and not yet written
 // this frame, as sokol updates an image once a frame.
-function imageFor(frame: ClusterFrame, image: DataImage, height: int32, format: PixelFormat,
+function imageFor(
+	frame: ClusterFrame,
+	image: DataImage,
+	height: int32,
+	format: PixelFormat,
 	rewrite: boolean,
 ): DataImage {
 	const current: boolean = frame.generation == contextGeneration();
 	if (image.image != 0 && current && !rewrite && image.height == height) { return image; }
-	if (current) { release(image); }
+	if (current) { image.release(); }
 	const made: uint32 = makeDataImage(DATA_TEXTURE_WIDTH, height, format);
 	if (made == 0) { stopOnRefusedImage(); }
 	const view: uint32 = makeTextureView(made);
@@ -264,9 +274,9 @@ function stopOnClosed(call: string): void {
 export function closeClusterFrame(frame: ClusterFrame): void {
 	if (frame.closed) { stopOnClosed("closeClusterFrame"); }
 	if (frame.generation == contextGeneration()) {
-		release(frame.recordImage);
-		release(frame.clusterImage);
-		release(frame.indexImage);
+		frame.recordImage.release();
+		frame.clusterImage.release();
+		frame.indexImage.release();
 		if (frame.sampler != 0) { destroySampler(frame.sampler); }
 	}
 	frame.recordImage = NO_IMAGE;

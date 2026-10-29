@@ -24,7 +24,7 @@ export enum SpotShadowError {
 const CONE: int32 = LIGHT_RECORD_SHAPE + 4;
 const FULL_ANGLE: int32 = 3;
 
-function recordAt(light: int32): int32 {
+export function recordAt(light: int32): int32 {
 	return LIGHT_UNIFORM_LENGTH + light * LIGHT_RECORD_LENGTH;
 }
 
