@@ -1,4 +1,5 @@
 import {
+	BindGroupRecord,
 	TextureRecord,
 	ViewRecord,
 	bindGroupRecords,
@@ -408,10 +409,24 @@ struct PipelineSlot {
 	strides: int32[2];
 }
 
+struct ResolvedBinding {
+	binding: int32;
+	kind: BindingKind;
+	vertexStage: boolean;
+	fragmentStage: boolean;
+	nativeSlot: int32;
+	entry: int32;
+	dynamicIndex: int32;
+	offset: int64;
+	id: uint32;
+}
+
 struct BindGroupSlot {
 	group: int32;
 	entries: GPUBindGroupEntry[8];
 	entryCount: int32;
+	resolved: ResolvedBinding[8];
+	resolvedCount: int32;
 }
 
 struct PassState {
@@ -1391,7 +1406,43 @@ export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor):
 		slot.entries[slot.entryCount] = entry;
 		slot.entryCount += 1;
 	}
+	const record = bindGroupRecords.slots[slotOf(id)];
+	const s = shaderRecords.slotIndex(pipelines[slotOf(record.pipeline)].shader);
+	if (group == GPU_UNIFORM_GROUP) {
+		for (let u = 0; u < shaders[s].uniformCount; u++) { resolveBinding(slot, record, shaders[s].uniforms[u]); }
+	} else {
+		for (let r = 0; r < shaders[s].resourceCount; r++) { resolveBinding(slot, record, shaders[s].resources[r]); }
+	}
 	put(bindGroups, id, slot);
+}
+
+function resolveBinding(ref slot: BindGroupSlot, record: BindGroupRecord, binding: NativeBinding): void {
+	let e = -1;
+	for (let i = 0; i < slot.entryCount; i++) {
+		if (slot.entries[i].binding == binding.binding) { e = i; break; }
+	}
+	let resolved: ResolvedBinding = {
+		binding: binding.binding,
+		kind: binding.kind,
+		vertexStage: binding.vertexStage,
+		fragmentStage: binding.fragmentStage,
+		nativeSlot: binding.nativeSlot,
+		entry: e,
+		dynamicIndex: -1,
+	};
+	if (e >= 0) {
+		resolved.offset = slot.entries[e].offset;
+		resolved.dynamicIndex = record.dynamicIndex[e];
+		if (binding.kind == BindingKind.Texture) {
+			resolved.id = slot.entries[e].textureView.id;
+		} else if (binding.kind == BindingKind.Sampler) {
+			resolved.id = slot.entries[e].sampler.id;
+		} else {
+			resolved.id = slot.entries[e].buffer.id;
+		}
+	}
+	slot.resolved[slot.resolvedCount] = resolved;
+	slot.resolvedCount += 1;
 }
 
 export function destroyBindGroup(bindGroup: GPUBindGroup): void {
@@ -1701,20 +1752,19 @@ function applyResources(): void {
 	bound.resourcesDirty = false;
 	if (shaders[s].resourceCount == 0) { return; }
 	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]);
-	for (let r = 0; r < shaders[s].resourceCount; r++) {
-		const binding: NativeBinding = shaders[s].resources[r];
-		const e = entryOf(bindGroups[g], binding.binding);
+	for (let r = 0; r < bindGroups[g].resolvedCount; r++) {
+		const binding = bindGroups[g].resolved[r];
+		if (binding.entry < 0) { entryOf(bindGroups[g], binding.binding); }
 		if (binding.kind == BindingKind.Texture) {
-			const texture = viewNative(viewRecords.slotIndex(bindGroups[g].entries[e].textureView.id));
+			const texture = viewNative(viewRecords.slotIndex(binding.id));
 			if (binding.vertexStage) { bindTexture(STAGE_VERTEX, texture, binding.nativeSlot); }
 			if (binding.fragmentStage) { bindTexture(STAGE_FRAGMENT, texture, binding.nativeSlot); }
 		} else if (binding.kind == BindingKind.StorageBuffer) {
-			const native = liveBuffer(bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id));
-			const offset = bindGroups[g].entries[e].offset;
-			if (binding.vertexStage) { bindBuffer(STAGE_VERTEX, native, offset, binding.nativeSlot); }
-			if (binding.fragmentStage) { bindBuffer(STAGE_FRAGMENT, native, offset, binding.nativeSlot); }
+			const native = liveBuffer(bufferRecords.slotIndex(binding.id));
+			if (binding.vertexStage) { bindBuffer(STAGE_VERTEX, native, binding.offset, binding.nativeSlot); }
+			if (binding.fragmentStage) { bindBuffer(STAGE_FRAGMENT, native, binding.offset, binding.nativeSlot); }
 		} else {
-			const sampler = samplers[samplerRecords.slotIndex(bindGroups[g].entries[e].sampler.id)].native;
+			const sampler = samplers[samplerRecords.slotIndex(binding.id)].native;
 			if (binding.vertexStage) { bindSampler(STAGE_VERTEX, sampler, binding.nativeSlot); }
 			if (binding.fragmentStage) { bindSampler(STAGE_FRAGMENT, sampler, binding.nativeSlot); }
 		}
@@ -1726,14 +1776,13 @@ function applyUniforms(): void {
 	bound.uniformsDirty = false;
 	if (shaders[s].uniformCount == 0) { return; }
 	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_UNIFORM_GROUP]);
-	for (let u = 0; u < shaders[s].uniformCount; u++) {
-		const e = entryOf(bindGroups[g], shaders[s].uniforms[u].binding);
-		const offset = (boundFacts.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
-		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
-		const native = buffers[b].natives[buffers[b].active];
-		const slot = shaders[s].uniforms[u].nativeSlot;
-		if (shaders[s].uniforms[u].vertexStage) { bindBuffer(STAGE_VERTEX, native, offset, slot); }
-		if (shaders[s].uniforms[u].fragmentStage) { bindBuffer(STAGE_FRAGMENT, native, offset, slot); }
+	for (let u = 0; u < bindGroups[g].resolvedCount; u++) {
+		const binding = bindGroups[g].resolved[u];
+		if (binding.entry < 0) { entryOf(bindGroups[g], binding.binding); }
+		const offset = (boundFacts.dynamicOffsets[binding.dynamicIndex] as int64) + binding.offset;
+		const native = liveBuffer(bufferRecords.slotIndex(binding.id));
+		if (binding.vertexStage) { bindBuffer(STAGE_VERTEX, native, offset, binding.nativeSlot); }
+		if (binding.fragmentStage) { bindBuffer(STAGE_FRAGMENT, native, offset, binding.nativeSlot); }
 	}
 }
 
