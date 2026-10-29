@@ -475,10 +475,8 @@ export function addGroup(
 // h3d.scene.Mesh: an object that carries a primitive and a material, and holds both.
 //
 // Named `addMeshNode` rather than Heaps' `Mesh`, because `draw.ms` already exports
-// `addMesh(context: DrawContext, ...)` and two free functions with one name collide: with a `ref`
-// first parameter on both the call ran the wrong one silently, with a value one it is refused
-// (`out/tmp/overload`, `out/tmp/overload/value`). The compiler card
-// `2026-09-20-ref-receiver-not-an-extension.md` lists this as a site to rename back.
+// `addMesh(context: DrawContext, ...)`, and a file that imports both would name two declarations
+// `addMesh` (`Duplicate identifier`).
 // PENDING3D: mesh-node-name-collision
 export function addMeshNode(
 	scene: Scene3D,
