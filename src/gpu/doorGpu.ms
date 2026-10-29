@@ -52,6 +52,7 @@ import {
 } from "../webgpu/types.ms";
 import {
 	GPUNativeEnvironment,
+	GPUNativeSwapchain,
 	getCurrentDepthTexture,
 	getCurrentTexture,
 	requestDevice,
@@ -246,10 +247,16 @@ let layouts: Vec<DoorLayout> = [];
 let programs: Vec<DoorProgram> = [];
 let shaders: Vec<ShaderRecord> = [];
 let pipelines: Vec<PipelineRecord> = [];
+// The index in `pipelines` plus one of each pipeline by its pool slot, 0 for none.
+let pipelineSlots: Vec<int32> = [];
 let bindCache: Vec<BindEntry> = [];
 let appendCursors: Vec<AppendCursor> = [];
 let applied: AppliedBindings = { valid: false };
 let viewClasses: Vec<ViewClass> = [];
+// The screen pass's descriptor, built when the swapchain's view ids change: a frame refreshes
+// only the clear color and the timestamp writes.
+let screenPass: GPURenderPassDescriptor = { label: null } as GPURenderPassDescriptor;
+let screenDepth: uint32 = 0;
 let generation: int32 = 1;
 let everSetUp = false;
 let uniformRing: GPUBuffer = { id: 0 };
@@ -313,9 +320,12 @@ export function doorSetup(
 	device = requestDevice(environment);
 	shaders.length = 0;
 	pipelines.length = 0;
+	pipelineSlots.length = 0;
 	bindCache.length = 0;
 	appendCursors.length = 0;
 	viewClasses.length = 0;
+	screenPass = { label: null } as GPURenderPassDescriptor;
+	screenDepth = 0;
 	cubeImages.length = 0;
 	arrayImages.length = 0;
 	dataImages.length = 0;
@@ -847,13 +857,22 @@ function colorFormatAt(targets: TargetLayout, index: int32): PixelFormat {
 		uniformGroup,
 		stenciled: stencil != null,
 	});
+	setPipelineSlot(pipeline.id, (pipelines.length - 1) as int32);
 	return pipeline.id;
+}
+
+function setPipelineSlot(pipeline: uint32, index: int32): void {
+	const slot = slotOf(pipeline);
+	while (pipelineSlots.length <= slot) { pipelineSlots.push(0); }
+	pipelineSlots[slot] = index + 1;
 }
 
 function pipelineIndex(pipeline: uint32): int32 {
 	if (current >= 0 && pipelines[current].pipeline.id == pipeline) { return current; }
-	for (let i = 0; i < pipelines.length; i++) {
-		if (pipelines[i].pipeline.id == pipeline) { return i as int32; }
+	const slot = slotOf(pipeline);
+	if (slot < pipelineSlots.length && pipelineSlots[slot] != 0) {
+		const index = pipelineSlots[slot] - 1;
+		if (pipelines[index].pipeline.id == pipeline) { return index; }
 	}
 	stop("apply of pipeline " + String(pipeline) + ", which the door did not make");
 }
@@ -1151,7 +1170,13 @@ export function doorDestroyPipeline(pipeline: uint32): void {
 		if (pipelines[i].pipeline.id != pipeline) { continue; }
 		if (pipelines[i].uniformGroup.id != 0) { pipelines[i].uniformGroup.destroy(); }
 		pipelines[i].pipeline.destroy();
-		pipelines.splice(i, 1);
+		pipelineSlots[slotOf(pipeline)] = 0;
+		const last = (pipelines.length - 1) as int32;
+		if (i != last) {
+			pipelines[i] = pipelines[last];
+			setPipelineSlot(pipelines[i].pipeline.id, i as int32);
+		}
+		pipelines.pop();
 		current = -1;
 		return;
 	}
@@ -1727,15 +1752,19 @@ export function doorReadTexture(
 	return readTexture(texture, x, y, width, height, out);
 }
 
-function swapchainTexture(): GPUTexture {
-	return getCurrentTexture({
+function currentSwapchain(): GPUNativeSwapchain {
+	return {
 		width: voidSwapchainWidth(),
 		height: voidSwapchainHeight(),
 		sampleCount: voidSwapchainSampleCount(),
 		renderView: voidSwapchainRenderView(),
 		resolveView: voidSwapchainResolveView(),
 		depthStencilView: voidSwapchainDepthStencilView(),
-	});
+	};
+}
+
+function swapchainTexture(): GPUTexture {
+	return getCurrentTexture(currentSwapchain());
 }
 
 // The screen pass's color target as of the last frame that drew it: the whole swapchain buffer.
@@ -1967,31 +1996,37 @@ export function doorBeginScreenPass(
 	alpha: float32,
 ): void {
 	stopOnOpenPass("beginScreenPass");
-	let descriptor = { label: null } as GPURenderPassDescriptor;
-	const screen = swapchainTexture().createView({ label: null });
-	descriptor.colorAttachments[0] = {
-		view: screen,
-		resolveTarget: { id: 0 },
-		clearValue: { r: red, g: green, b: blue, a: alpha },
-		loadOp: "clear",
-		storeOp: "store",
-	};
+	const swapchain = currentSwapchain();
+	const screen = getCurrentTexture(swapchain).createView({ label: null });
 	const depth = getCurrentDepthTexture();
-	if (depth.id != 0) {
-		descriptor.depthStencilAttachment = withStencilOps({
-			view: depth.createView({ label: null }),
-			depthClearValue: 1,
-			depthLoadOp: "clear",
-			depthStoreOp: "discard",
-		}, depth, 0);
+	if (screenPass.colorAttachments[0].view.id != screen.id || screenDepth != depth.id) {
+		screenPass = { label: null } as GPURenderPassDescriptor;
+		screenPass.colorAttachments[0] = {
+			view: screen,
+			resolveTarget: { id: 0 },
+			clearValue: { r: red, g: green, b: blue, a: alpha },
+			loadOp: "clear",
+			storeOp: "store",
+		};
+		if (depth.id != 0) {
+			screenPass.depthStencilAttachment = withStencilOps({
+				view: depth.createView({ label: null }),
+				depthClearValue: 1,
+				depthLoadOp: "clear",
+				depthStoreOp: "discard",
+			}, depth, 0);
+		}
+		screenDepth = depth.id;
 	}
-	descriptor.timestampWrites = timestampsOf("screen");
-	pass = frameEncoder().beginRenderPass(descriptor);
+	screenPass.colorAttachments[0].clearValue = { r: red, g: green, b: blue, a: alpha };
+	screenPass.timestampWrites = timestampsOf("screen");
+	pass = frameEncoder().beginRenderPass(screenPass);
 	frameStats[DOOR_STAT_PASSES]++;
 	openPass = PassState.Screen;
 	stencilReference = 0;
 	passViews = [0, 0, 0, 0, 0];
-	measurePass(screen.id);
+	passWidth = swapchain.width;
+	passHeight = swapchain.height;
 	current = -1;
 }
 
