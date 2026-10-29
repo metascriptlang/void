@@ -61,18 +61,19 @@ function absolute(value: float32): float32 {
 }
 
 function intersectsPlane(plane: Vec4, center: Vec3, half: Vec3, world: Mat4): boolean {
-	let radius: float32 =
+	const radius: float32 =
 		absolute(plane.x * world.m11 + plane.y * world.m12 + plane.z * world.m13) * half.x +
 		absolute(plane.x * world.m21 + plane.y * world.m22 + plane.z * world.m23) * half.y +
 		absolute(plane.x * world.m31 + plane.y * world.m32 + plane.z * world.m33) * half.z;
-	let distance: float32 = plane.x * center.x + plane.y * center.y + plane.z * center.z + plane.w;
+	const distance: float32 =
+		plane.x * center.x + plane.y * center.y + plane.z * center.z + plane.w;
 	return distance + radius >= 0.0;
 }
 
 export function intersectsBounds(this frustum: Frustum3D, bounds: Bounds3D, world: Mat4): boolean {
 	if (bounds.isEmpty()) { return true; }
-	let center: Vec3 = bounds.center() * world;
-	let half: Vec3 = (bounds.max - bounds.min).scaled(0.5);
+	const center: Vec3 = bounds.center() * world;
+	const half: Vec3 = (bounds.max - bounds.min).scaled(0.5);
 	return intersectsPlane(frustum.left, center, half, world) &&
 		intersectsPlane(frustum.right, center, half, world) &&
 		intersectsPlane(frustum.bottom, center, half, world) &&

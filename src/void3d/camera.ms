@@ -165,11 +165,7 @@ export function fromWorld(
 }
 
 function validOrientation(basis: CameraBasis): boolean {
-	return Number.isFinite(basis.right.x) && Number.isFinite(basis.right.y) &&
-		Number.isFinite(basis.right.z) && Number.isFinite(basis.up.x) &&
-		Number.isFinite(basis.up.y) && Number.isFinite(basis.up.z) &&
-		Number.isFinite(basis.forward.x) && Number.isFinite(basis.forward.y) &&
-		Number.isFinite(basis.forward.z) &&
+	return basis.right.finitePoint() && basis.up.finitePoint() && basis.forward.finitePoint() &&
 		Math.abs(basis.right.lengthSquared() - 1.0) <= 1e-4 &&
 		Math.abs(basis.up.lengthSquared() - 1.0) <= 1e-4 &&
 		Math.abs(basis.forward.lengthSquared() - 1.0) <= 1e-4 &&
@@ -178,8 +174,6 @@ function validOrientation(basis: CameraBasis): boolean {
 		Math.abs(basis.up.dot(basis.forward)) <= 1e-4 &&
 		basis.right.cross(basis.up).dot(basis.forward) < -0.9999;
 }
-
-// ---- Basis, camera matrix, projection ----
 
 export function basisOf(this camera: Camera3D): CameraBasis {
 	const orientation: CameraBasis | null = camera.orientation;
@@ -228,12 +222,12 @@ export function orthoBounds(
 	texelWidth: int32,
 	texelHeight: int32,
 ): OrthoBounds {
-	let projection: CameraProjection = camera.projection;
+	const projection: CameraProjection = camera.projection;
 	if (projection.kind != ProjectionKind.Orthographic) {
 		console.log("void3d: orthoBounds asked of a perspective camera");
 		unreachable;
 	}
-	let half: float32 = projection.worldPerTexel * 0.5;
+	const half: float32 = projection.worldPerTexel * 0.5;
 	const halfWidth: float32 = (texelWidth as float32) * half;
 	const halfHeight: float32 = (texelHeight as float32) * half;
 	return {
@@ -265,8 +259,6 @@ export function projectionMatrix(this bounds: OrthoBounds): Mat4 {
 	};
 }
 
-// ---- The snap ----
-
 // The grid is the camera's own: the eye's components along `right` and `up` are measured in
 // texels and floored, while the component along `forward` is left alone, because moving an
 // orthographic camera along its view direction does not move the image. The remainder is the
@@ -290,8 +282,7 @@ export function resolve(
 	if (texelWidth <= 0 || texelHeight <= 0) {
 		return Result.err(CameraError.EmptyTarget);
 	}
-	if (!Number.isFinite(camera.position.x) || !Number.isFinite(camera.position.y) ||
-		!Number.isFinite(camera.position.z)) {
+	if (!camera.position.finitePoint()) {
 		return Result.err(CameraError.NonFinitePose);
 	}
 	const orientation: CameraBasis | null = camera.orientation;
@@ -308,10 +299,10 @@ export function resolve(
 		camera.farPlane <= camera.nearPlane) {
 		return Result.err(CameraError.EmptyDepthRange);
 	}
-	let basis: CameraBasis = camera.basisOf();
+	const basis: CameraBasis = camera.basisOf();
 	let placed: SnappedEye = { eye: camera.position, remainderX: 0.0, remainderY: 0.0 };
 	let matrix: Mat4;
-	let projection: CameraProjection = camera.projection;
+	const projection: CameraProjection = camera.projection;
 	match (projection.kind) {
 		ProjectionKind.Orthographic => {
 			if (!Number.isFinite(projection.worldPerTexel) || projection.worldPerTexel <= 0.0) {
@@ -330,13 +321,13 @@ export function resolve(
 			if (camera.nearPlane <= 0.0) {
 				return Result.err(CameraError.EmptyDepthRange);
 			}
-			let scaleY: float32 = (1.0 / Math.tan(projection.fovY * 0.5)) as float32;
-			let scaleX: float32 = scaleY * (texelHeight as float32) / (texelWidth as float32);
-			let depth: float32 = camera.farPlane / (camera.farPlane - camera.nearPlane);
+			const scaleY: float32 = (1.0 / Math.tan(projection.fovY * 0.5)) as float32;
+			const scaleX: float32 = scaleY * (texelHeight as float32) / (texelWidth as float32);
+			const depth: float32 = camera.farPlane / (camera.farPlane - camera.nearPlane);
 			if (depth <= 1.0) {
 				return Result.err(CameraError.UnrepresentableDepthRange);
 			}
-			let offsetZ: float32 = -camera.nearPlane * depth;
+			const offsetZ: float32 = -camera.nearPlane * depth;
 			matrix = {
 				m11: scaleX, m12: 0.0, m13: 0.0, m14: 0.0,
 				m21: 0.0, m22: scaleY, m23: 0.0, m24: 0.0,
@@ -349,9 +340,9 @@ export function resolve(
 		!Number.isFinite(matrix.m33) || !Number.isFinite(matrix.m43)) {
 		return Result.err(CameraError.NonFiniteProjection);
 	}
-	let cameraMatrix: Mat4 = basis.makeCameraMatrix(placed.eye);
-	let viewProj: Mat4 = cameraMatrix * matrix;
-	let inverseViewProj: Mat4 = viewProj.inverse();
+	const cameraMatrix: Mat4 = basis.makeCameraMatrix(placed.eye);
+	const viewProj: Mat4 = cameraMatrix * matrix;
+	const inverseViewProj: Mat4 = viewProj.inverse();
 	if (projection.kind == ProjectionKind.Perspective && !inverseViewProj.supportsScreenRays()) {
 		return Result.err(CameraError.UnprojectableView);
 	}
@@ -369,8 +360,6 @@ export function resolve(
 		nearPlane: camera.nearPlane,
 	});
 }
-
-// ---- Uniforms ----
 
 // The scene programs' camera block: viewProj in upload order, then the world-space right and up
 // the billboard program builds its quads from, then the eye its facing and stretched quads aim
@@ -390,8 +379,6 @@ export function writeCameraBlock(this view: CameraView, out: Span<float32>): voi
 	out[CAMERA_EYE + 2] = view.eye.z;
 	out[CAMERA_NEAR] = view.nearPlane;
 }
-
-// ---- Screen and back ----
 
 // Normalized device coordinates of a continuous low-res texel coordinate, and back. The texel
 // coordinate is in the target's row order, which is the framebuffer's: row 0 is the top on D3D11
@@ -443,8 +430,8 @@ export function rayFromScreen(
 ): Ray {
 	const texel: ViewPoint = blit.texelAt(framebufferX, framebufferY);
 	const ndc: ViewPoint = ndcOf(texel, view.texelWidth, view.texelHeight, originTopLeft);
-	let atNear: Vec3 = unproject(ndc, 0.0, view.inverseViewProj);
-	let atFar: Vec3 = unproject(ndc, 1.0, view.inverseViewProj);
+	const atNear: Vec3 = unproject(ndc, 0.0, view.inverseViewProj);
+	const atFar: Vec3 = unproject(ndc, 1.0, view.inverseViewProj);
 	return Ray.fromPoints(atNear, atFar);
 }
 
@@ -466,13 +453,13 @@ function finitePoint(this point: Vec3): boolean {
 
 function supportsScreenRays(this inverseViewProj: Mat4): boolean {
 	for (let sample = 0; sample < 5; sample++) {
-		let x: float32 = sample == 4 ? 0.0 : (sample & 1) == 0 ? -1.0 : 1.0;
-		let y: float32 = sample == 4 ? 0.0 : (sample & 2) == 0 ? -1.0 : 1.0;
-		let ndc: ViewPoint = { x: x, y: y };
-		let atNear: Vec3 = unproject(ndc, 0.0, inverseViewProj);
-		let atFar: Vec3 = unproject(ndc, 1.0, inverseViewProj);
+		const x: float32 = sample == 4 ? 0.0 : (sample & 1) == 0 ? -1.0 : 1.0;
+		const y: float32 = sample == 4 ? 0.0 : (sample & 2) == 0 ? -1.0 : 1.0;
+		const ndc: ViewPoint = { x: x, y: y };
+		const atNear: Vec3 = unproject(ndc, 0.0, inverseViewProj);
+		const atFar: Vec3 = unproject(ndc, 1.0, inverseViewProj);
 		if (!atNear.finitePoint() || !atFar.finitePoint()) { return false; }
-		let ray: Ray = Ray.fromPoints(atNear, atFar);
+		const ray: Ray = Ray.fromPoints(atNear, atFar);
 		if (!ray.direction.finitePoint() || ray.direction.lengthSquared() <= 0.0) { return false; }
 	}
 	return true;

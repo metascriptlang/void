@@ -1,14 +1,9 @@
-// Port of h3d.col.Bounds: an axis-aligned box, used for what a mesh occupies and later for
-// culling and picking (M10). Heaps' Bounds is a class that mutates in place; here it is a
-// value struct of two Vec3, so a bounds can be a field, returned, and compared without
-// allocating. The mutating builders (addPoint, addPos, addBounds) take `ref`, because
-// building a bounds over a vertex array is a loop over one accumulator.
-//
-// Empty is Heaps' empty(): min at +1e20, max at -1e20, so the first addPoint lands on both
-// sides and an empty bounds answers false to every containment test.
+// Port of h3d.col.Bounds. Heaps' Bounds is a class that mutates in place; here it is a value
+// struct of two Vec3, and the builders (addPoint, addPos, addBounds) take `ref`.
 
 import { Vec3, Mat4, vec3 } from "../math/math3d";
 import { Ray } from "./ray";
+import { FLOAT32_LIMIT, finiteVec } from "./colliderMath";
 
 export struct Bounds3D {
 	min: Vec3;
@@ -65,10 +60,7 @@ export function addSpherePos(
 	radius: float32,
 ): Result<void, SphereBoundsError> {
 	if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)
-		|| !Number.isFinite(radius) || !Number.isFinite(bounds.min.x)
-		|| !Number.isFinite(bounds.min.y) || !Number.isFinite(bounds.min.z)
-		|| !Number.isFinite(bounds.max.x) || !Number.isFinite(bounds.max.y)
-		|| !Number.isFinite(bounds.max.z)) {
+		|| !Number.isFinite(radius) || !finiteVec(bounds.min) || !finiteVec(bounds.max)) {
 		return Result.err(SphereBoundsError.NonFinite);
 	}
 	const r: float64 = radius as float64;
@@ -78,9 +70,8 @@ export function addSpherePos(
 	const maxX: float64 = (x as float64) + r;
 	const maxY: float64 = (y as float64) + r;
 	const maxZ: float64 = (z as float64) + r;
-	const limit: float64 = 3.4028234663852886e38;
-	if (minX < -limit || minY < -limit || minZ < -limit
-		|| maxX > limit || maxY > limit || maxZ > limit) {
+	if (minX < -FLOAT32_LIMIT || minY < -FLOAT32_LIMIT || minZ < -FLOAT32_LIMIT
+		|| maxX > FLOAT32_LIMIT || maxY > FLOAT32_LIMIT || maxZ > FLOAT32_LIMIT) {
 		return Result.err(SphereBoundsError.OutOfRange);
 	}
 	if (minX < (bounds.min.x as float64)) { bounds.min.x = minX as float32; }
@@ -89,7 +80,7 @@ export function addSpherePos(
 	if (maxX > (bounds.max.x as float64)) { bounds.max.x = maxX as float32; }
 	if (maxY > (bounds.max.y as float64)) { bounds.max.y = maxY as float32; }
 	if (maxZ > (bounds.max.z as float64)) { bounds.max.z = maxZ as float32; }
-	return Result.ok(undefined);
+	return Result.ok(null);
 }
 
 export function addPoint(ref bounds: Bounds3D, point: Vec3): void {
@@ -98,6 +89,8 @@ export function addPoint(ref bounds: Bounds3D, point: Vec3): void {
 
 // Heaps calls this `add`; that name is taken here by std's Set.add / HashSet.add, and a free
 // function with a `ref` receiver takes part in that overload set (Compiler notes).
+// Heaps' `add` merges with no emptiness test, so an empty box drags the result out to ±1e20;
+// this returns early instead, so a mixed list gives the union of the non-empty boxes.
 export function addBounds(ref bounds: Bounds3D, other: Bounds3D): void {
 	if (other.isEmpty()) { return; }
 	addPos(bounds, other.min.x, other.min.y, other.min.z);
@@ -131,11 +124,6 @@ export function boundingRadius(this bounds: Bounds3D): float64 {
 	const cz: float64 = ((bounds.max.z as float64) + (bounds.min.z as float64)) * 0.5;
 	return Math.sqrt(x * x + y * y + z * z) * 0.5 + Math.sqrt(cx * cx + cy * cy + cz * cz);
 }
-
-// Heaps' `add` merges axis by axis with no emptiness test, so adding an empty box drags the
-// result out to ±1e20. This returns early instead — a divergence, and the reason `addBounds`
-// over a mixed list of boxes gives the union of the non-empty ones.
-// (continued below)
 
 // Heaps' contains: min inclusive, max exclusive, so touching boxes do not both own a point.
 export function contains(this bounds: Bounds3D, point: Vec3): boolean {

@@ -230,9 +230,12 @@ export function indexCount(this data: Readonly<MeshData>): int32 {
 	return data.indices.length as int32;
 }
 
+function validVertexStorage(this data: Readonly<MeshData>): boolean {
+	return data.vertices.length <= MAX_MESH_VERTICES && data.vertices.length % data.stride() == 0;
+}
+
 export function validIndices(this data: Readonly<MeshData>): boolean {
-	if (!data.validIndexStorage() || data.vertices.length > 0x7fffffff ||
-		data.vertices.length % data.stride() != 0) { return false; }
+	if (!data.validIndexStorage() || !data.validVertexStorage()) { return false; }
 	const count: uint32 = data.vertexCount() as uint32;
 	for (let i = 0; i < data.indexCount(); i++) {
 		const index: uint32 = data.indexAt(i);
@@ -299,11 +302,8 @@ export function addTexturedVertex(
 	uv: Uv,
 	color: Rgba,
 ): Result<int32, MeshError> {
-	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
-	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
-	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
-	if (data.hasUvB) { return Result.err(MeshError.UvBAdded); }
-	let index: int32 = data.vertexCount();
+	const _textured = try data.checkLitTextured();
+	const index: int32 = data.vertexCount();
 	if (!data.hasRoomFor(1)) { return Result.err(MeshError.TooManyVertices); }
 	data.vertices.push(position.x);
 	data.vertices.push(position.y);
@@ -319,6 +319,14 @@ export function addTexturedVertex(
 	data.vertices.push(color.alpha);
 	addPoint(data.bounds, position);
 	return Result.ok(index);
+}
+
+function checkLitTextured(this data: Readonly<MeshData>): Result<void, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (data.hasUvB) { return Result.err(MeshError.UvBAdded); }
+	return Result.ok(null);
 }
 
 export function hasRoomFor(this data: MeshData, count: int32): boolean {
@@ -380,12 +388,12 @@ export function addTexturedQuad(
 ): Result<int32, MeshError> {
 	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	if (!data.hasRoomFor(4)) { return Result.err(MeshError.TooManyVertices); }
-	let first: int32 = try addTexturedVertex(data, a, normal, { u: 0.0, v: 1.0 }, color);
-	let second: int32 = try addTexturedVertex(data, b, normal, { u: 1.0, v: 1.0 }, color);
-	let third: int32 = try addTexturedVertex(data, c, normal, { u: 1.0, v: 0.0 }, color);
-	let fourth: int32 = try addTexturedVertex(data, d, normal, { u: 0.0, v: 0.0 }, color);
-	let _lower: int32 = try addTriangle(data, first, second, third);
-	let _upper: int32 = try addTriangle(data, first, third, fourth);
+	const first: int32 = try addTexturedVertex(data, a, normal, { u: 0.0, v: 1.0 }, color);
+	const second: int32 = try addTexturedVertex(data, b, normal, { u: 1.0, v: 1.0 }, color);
+	const third: int32 = try addTexturedVertex(data, c, normal, { u: 1.0, v: 0.0 }, color);
+	const fourth: int32 = try addTexturedVertex(data, d, normal, { u: 0.0, v: 0.0 }, color);
+	const _lower: int32 = try addTriangle(data, first, second, third);
+	const _upper: int32 = try addTriangle(data, first, third, fourth);
 	return Result.ok(first);
 }
 
@@ -403,10 +411,7 @@ export function addTangentsWithSources(
 	ref data: MeshData,
 	ref appendedSources: Vec<int32>,
 ): Result<int32, MeshError> {
-	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
-	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
-	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
-	if (data.hasUvB) { return Result.err(MeshError.UvBAdded); }
+	const _textured = try data.checkLitTextured();
 	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
 	const count: int32 = data.vertexCount();
 	const cornerCount: int32 = data.triangleCount() * 3;
@@ -504,10 +509,7 @@ export function addGivenTangents(
 	ref data: MeshData,
 	tangents: Readonly<Span<float32>>,
 ): Result<int32, MeshError> {
-	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
-	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
-	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
-	if (data.hasUvB) { return Result.err(MeshError.UvBAdded); }
+	const _textured = try data.checkLitTextured();
 	if ((tangents.length as int32) != data.vertexCount() * 4) {
 		return Result.err(MeshError.TangentCount);
 	}
@@ -580,9 +582,7 @@ export function duplicateVertices(
 
 export function recomputeNormals(ref data: MeshData): Result<void, MeshError> {
 	const width: int32 = data.stride();
-	if (data.vertices.length > MAX_MESH_VERTICES || data.vertices.length % width != 0) {
-		return Result.err(MeshError.VertexStorage);
-	}
+	if (!data.validVertexStorage()) { return Result.err(MeshError.VertexStorage); }
 	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
 	if (!data.validIndices()) { return Result.err(MeshError.IndexOutOfRange); }
 	for (let at = 0; at < data.vertices.length; at += width) {
@@ -636,9 +636,7 @@ export function recomputeNormals(ref data: MeshData): Result<void, MeshError> {
 
 export function translate(ref data: MeshData, offset: Vec3): Result<void, MeshError> {
 	const width: int32 = data.stride();
-	if (data.vertices.length > MAX_MESH_VERTICES || data.vertices.length % width != 0) {
-		return Result.err(MeshError.VertexStorage);
-	}
+	if (!data.validVertexStorage()) { return Result.err(MeshError.VertexStorage); }
 	if (!Number.isFinite(offset.x) || !Number.isFinite(offset.y) || !Number.isFinite(offset.z)) {
 		return Result.err(MeshError.TranslationOffset);
 	}
@@ -663,9 +661,7 @@ export function translate(ref data: MeshData, offset: Vec3): Result<void, MeshEr
 
 export function scaleUniform(ref data: MeshData, factor: float32): Result<void, MeshError> {
 	const width: int32 = data.stride();
-	if (data.vertices.length > MAX_MESH_VERTICES || data.vertices.length % width != 0) {
-		return Result.err(MeshError.VertexStorage);
-	}
+	if (!data.validVertexStorage()) { return Result.err(MeshError.VertexStorage); }
 	if (!Number.isFinite(factor)) { return Result.err(MeshError.ScaleParameters); }
 	for (let at = 0; at < data.vertices.length; at += width) {
 		const x: float64 = (data.vertices[at] as float64) * (factor as float64);
@@ -689,9 +685,7 @@ export function scaleUniform(ref data: MeshData, factor: float32): Result<void, 
 export function scaleUvs(ref data: MeshData, su: float32, sv: float32): Result<void, MeshError> {
 	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	const width: int32 = data.stride();
-	if (data.vertices.length > MAX_MESH_VERTICES || data.vertices.length % width != 0) {
-		return Result.err(MeshError.VertexStorage);
-	}
+	if (!data.validVertexStorage()) { return Result.err(MeshError.VertexStorage); }
 	if (!Number.isFinite(su) || !Number.isFinite(sv)) {
 		return Result.err(MeshError.UvScaleParameters);
 	}
@@ -813,17 +807,9 @@ function cornerOf(this data: Readonly<MeshData>, triangle: int32, corner: int32)
 	return vec3(data.vertices[base], data.vertices[base + 1], data.vertices[base + 2]);
 }
 
-// ---- builders --------------------------------------------------------------------------
-//
-// A box standing on its base, turned by `yaw` about Y and leaned by `tilt` about X, in the
-// role of h3d.prim.Cube. Heaps builds a cube at the origin and moves it with `translate` /
-// `scale`; here the placement is baked into the vertices, because until M6 gives every mesh
-// an Object3D the programs take world-space positions and there is no model matrix to put it
-// in (draw.ms, DrawItem.world). The arithmetic is the spike's, moved rather than rewritten —
-// the same term order, and the same `sinf`/`cosf` — so the vertex floats are bit-identical to
-// the pre-M5 images and `meshDataCheck.ms` pins a few of them to literals. M6 is where the
-// placement becomes a node transform and this becomes a plain unit box.
-// Five quads of four vertices: what addBox appends when it succeeds.
+// A box standing on its base, turned by `yaw` about Y and leaned by `tilt` about X, in the role
+// of h3d.prim.Cube with the placement baked into the vertices. Keep the term order and
+// `sinf`/`cosf`: `meshDataCheck.ms` pins the vertex floats to literals.
 export const BOX_VERTICES: int32 = 20;
 
 export struct Box {
@@ -925,6 +911,16 @@ export function addPlane(
 	);
 }
 
+function checkIndexedAppend(this data: Readonly<MeshData>): Result<void, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.vertexCount() > 0 && !data.isIndexed()) {
+		return Result.err(MeshError.UnindexedAppend);
+	}
+	return Result.ok(null);
+}
+
 export function addSphere(
 	ref data: MeshData,
 	radius: float32,
@@ -932,13 +928,8 @@ export function addSphere(
 	sectors: int32,
 	stacks: int32,
 ): Result<int32, MeshError> {
-	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
-	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
-	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
-	if (data.vertexCount() > 0 && !data.isIndexed()) {
-		return Result.err(MeshError.UnindexedAppend);
-	}
-	if (radius <= 0.0 || radius - radius != 0.0 || sectors < 3 || stacks < 2) {
+	const _appendable = try data.checkIndexedAppend();
+	if (radius <= 0.0 || !Number.isFinite(radius) || sectors < 3 || stacks < 2) {
 		return Result.err(MeshError.SphereParameters);
 	}
 	const vertices: int64 = ((sectors as int64) + 1) * ((stacks as int64) + 1);
@@ -987,14 +978,9 @@ export function addCylinderSides(
 	color: Rgba,
 	sectors: int32,
 ): Result<int32, MeshError> {
-	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
-	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
-	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
-	if (data.vertexCount() > 0 && !data.isIndexed()) {
-		return Result.err(MeshError.UnindexedAppend);
-	}
-	if (radius <= 0.0 || radius - radius != 0.0 || height <= 0.0
-		|| height - height != 0.0 || sectors < 3) {
+	const _appendable = try data.checkIndexedAppend();
+	if (radius <= 0.0 || !Number.isFinite(radius) || height <= 0.0
+		|| !Number.isFinite(height) || sectors < 3) {
 		return Result.err(MeshError.CylinderParameters);
 	}
 	const vertices: int64 = (sectors as int64) * 4;
@@ -1034,13 +1020,8 @@ export function addDisc(
 	color: Rgba,
 	segments: int32,
 ): Result<int32, MeshError> {
-	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
-	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
-	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
-	if (data.vertexCount() > 0 && !data.isIndexed()) {
-		return Result.err(MeshError.UnindexedAppend);
-	}
-	if (radius <= 0.0 || radius - radius != 0.0 || segments < 3) {
+	const _appendable = try data.checkIndexedAppend();
+	if (radius <= 0.0 || !Number.isFinite(radius) || segments < 3) {
 		return Result.err(MeshError.DiscParameters);
 	}
 	const vertices: int64 = (segments as int64) + 1;
@@ -1084,8 +1065,8 @@ export function addCapsuleY(
 		return Result.err(MeshError.UnindexedAppend);
 	}
 	const extent: float32 = radius + length * 0.5;
-	if (radius <= 0.0 || radius - radius != 0.0 || length < 0.0 || length - length != 0.0
-		|| extent - extent != 0.0 || segments < 3) {
+	if (radius <= 0.0 || !Number.isFinite(radius) || length < 0.0 || !Number.isFinite(length)
+		|| !Number.isFinite(extent) || segments < 3) {
 		return Result.err(MeshError.CapsuleParameters);
 	}
 	const ring: int64 = (segments as int64) + 1;
@@ -1160,16 +1141,11 @@ export function addGrid(
 	cellDepth: float32,
 	color: Rgba,
 ): Result<int32, MeshError> {
-	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
-	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
-	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
-	if (data.vertexCount() > 0 && !data.isIndexed()) {
-		return Result.err(MeshError.UnindexedAppend);
-	}
+	const _appendable = try data.checkIndexedAppend();
 	const extentX: float32 = cellWidth * (columns as float32);
 	const extentZ: float32 = cellDepth * (rows as float32);
 	if (columns < 1 || rows < 1 || cellWidth <= 0.0 || cellDepth <= 0.0
-		|| extentX - extentX != 0.0 || extentZ - extentZ != 0.0) {
+		|| !Number.isFinite(extentX) || !Number.isFinite(extentZ)) {
 		return Result.err(MeshError.GridParameters);
 	}
 	const vertices: int64 = ((columns as int64) + 1) * ((rows as int64) + 1);
@@ -1217,7 +1193,7 @@ export function addGeoSphere(
 	if (data.vertexCount() > 0 && !data.isIndexed()) {
 		return Result.err(MeshError.UnindexedAppend);
 	}
-	if (radius <= 0.0 || radius - radius != 0.0 || subdivisions < 0) {
+	if (radius <= 0.0 || !Number.isFinite(radius) || subdivisions < 0) {
 		return Result.err(MeshError.GeoSphereParameters);
 	}
 	let plannedVertices: int64 = 6;
@@ -1305,37 +1281,37 @@ export function addTexturedCube(
 ): Result<int32, MeshError> {
 	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	if (!data.hasRoomFor(CUBE_VERTICES)) { return Result.err(MeshError.TooManyVertices); }
-	let low: Vec3 = centered ? size.scaled(-0.5) : vec3(0.0, 0.0, 0.0);
-	let high: Vec3 = low + size;
-	let leftBottomBack: Vec3 = vec3(low.x, low.y, low.z);
-	let rightBottomBack: Vec3 = vec3(high.x, low.y, low.z);
-	let leftTopBack: Vec3 = vec3(low.x, high.y, low.z);
-	let rightTopBack: Vec3 = vec3(high.x, high.y, low.z);
-	let leftBottomFront: Vec3 = vec3(low.x, low.y, high.z);
-	let rightBottomFront: Vec3 = vec3(high.x, low.y, high.z);
-	let leftTopFront: Vec3 = vec3(low.x, high.y, high.z);
-	let rightTopFront: Vec3 = vec3(high.x, high.y, high.z);
-	let first: int32 = try addTexturedQuad(
+	const low: Vec3 = centered ? size.scaled(-0.5) : vec3(0.0, 0.0, 0.0);
+	const high: Vec3 = low + size;
+	const leftBottomBack: Vec3 = vec3(low.x, low.y, low.z);
+	const rightBottomBack: Vec3 = vec3(high.x, low.y, low.z);
+	const leftTopBack: Vec3 = vec3(low.x, high.y, low.z);
+	const rightTopBack: Vec3 = vec3(high.x, high.y, low.z);
+	const leftBottomFront: Vec3 = vec3(low.x, low.y, high.z);
+	const rightBottomFront: Vec3 = vec3(high.x, low.y, high.z);
+	const leftTopFront: Vec3 = vec3(low.x, high.y, high.z);
+	const rightTopFront: Vec3 = vec3(high.x, high.y, high.z);
+	const first: int32 = try addTexturedQuad(
 		data, leftBottomFront, rightBottomFront, rightTopFront, leftTopFront,
 		vec3(0.0, 0.0, 1.0), color,
 	);
-	let _right: int32 = try addTexturedQuad(
+	const _right: int32 = try addTexturedQuad(
 		data, rightBottomFront, rightBottomBack, rightTopBack, rightTopFront,
 		vec3(1.0, 0.0, 0.0), color,
 	);
-	let _back: int32 = try addTexturedQuad(
+	const _back: int32 = try addTexturedQuad(
 		data, rightBottomBack, leftBottomBack, leftTopBack, rightTopBack,
 		vec3(0.0, 0.0, -1.0), color,
 	);
-	let _left: int32 = try addTexturedQuad(
+	const _left: int32 = try addTexturedQuad(
 		data, leftBottomBack, leftBottomFront, leftTopFront, leftTopBack,
 		vec3(-1.0, 0.0, 0.0), color,
 	);
-	let _top: int32 = try addTexturedQuad(
+	const _top: int32 = try addTexturedQuad(
 		data, leftTopFront, rightTopFront, rightTopBack, leftTopBack,
 		vec3(0.0, 1.0, 0.0), color,
 	);
-	let _bottom: int32 = try addTexturedQuad(
+	const _bottom: int32 = try addTexturedQuad(
 		data, leftBottomBack, rightBottomBack, rightBottomFront, leftBottomFront,
 		vec3(0.0, -1.0, 0.0), color,
 	);

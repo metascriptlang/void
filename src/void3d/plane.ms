@@ -1,13 +1,17 @@
 import { Vec3, Vec4, vec3 } from "../math/math3d";
+import { FLOAT32_LIMIT, finiteVec } from "./colliderMath";
 
-export enum PlaneError { NonFinite, NonUnitNormal, OutOfRange }
+export enum PlaneError {
+	NonFinite,
+	NonUnitNormal,
+	OutOfRange,
+}
 
 export function signedPlaneDistance(
 	plane: Vec4, point: Vec3,
 ): Result<float64, PlaneError> {
 	if (!Number.isFinite(plane.x) || !Number.isFinite(plane.y) || !Number.isFinite(plane.z) ||
-		!Number.isFinite(plane.w) || !Number.isFinite(point.x) ||
-		!Number.isFinite(point.y) || !Number.isFinite(point.z)) {
+		!Number.isFinite(plane.w) || !finiteVec(point)) {
 		return Result.err(PlaneError.NonFinite);
 	}
 	const lengthSquared: float64 = (plane.x as float64) * plane.x +
@@ -27,8 +31,7 @@ export function projectPointToPlane(
 	const x: float64 = (point.x as float64) - distance * plane.x;
 	const y: float64 = (point.y as float64) - distance * plane.y;
 	const z: float64 = (point.z as float64) - distance * plane.z;
-	const float32Max: float64 = 3.4028234663852886e38;
-	if (Math.abs(x) > float32Max || Math.abs(y) > float32Max || Math.abs(z) > float32Max) {
+	if (Math.abs(x) > FLOAT32_LIMIT || Math.abs(y) > FLOAT32_LIMIT || Math.abs(z) > FLOAT32_LIMIT) {
 		return Result.err(PlaneError.OutOfRange);
 	}
 	return Result.ok(vec3(x as float32, y as float32, z as float32));

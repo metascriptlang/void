@@ -1,5 +1,6 @@
 import { Vec3, vec3 } from "../math/math3d";
 import { Ray } from "./ray";
+import { FLOAT32_LIMIT, finiteVec } from "./colliderMath";
 
 export struct Sphere3D {
 	center: Vec3;
@@ -24,9 +25,7 @@ function distanceSquared(first: Vec3, second: Vec3): float64 {
 }
 
 export function closestPoint(this sphere: Sphere3D, point: Vec3): Result<Vec3, SpherePointError> {
-	if (!Number.isFinite(sphere.center.x) || !Number.isFinite(sphere.center.y)
-		|| !Number.isFinite(sphere.center.z) || !Number.isFinite(sphere.radius)
-		|| !Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z)) {
+	if (!finiteVec(sphere.center) || !Number.isFinite(sphere.radius) || !finiteVec(point)) {
 		return Result.err(SpherePointError.NonFinite);
 	}
 	const squared: float64 = distanceSquared(sphere.center, point);
@@ -38,19 +37,15 @@ export function closestPoint(this sphere: Sphere3D, point: Vec3): Result<Vec3, S
 		+ (((point.y as float64) - (sphere.center.y as float64)) * inverse) * radius;
 	const z: float64 = (sphere.center.z as float64)
 		+ (((point.z as float64) - (sphere.center.z as float64)) * inverse) * radius;
-	const limit: float64 = 3.4028234663852886e38;
-	if (Math.abs(x) > limit || Math.abs(y) > limit || Math.abs(z) > limit) {
+	if (Math.abs(x) > FLOAT32_LIMIT || Math.abs(y) > FLOAT32_LIMIT || Math.abs(z) > FLOAT32_LIMIT) {
 		return Result.err(SpherePointError.OutOfRange);
 	}
 	return Result.ok(vec3(x as float32, y as float32, z as float32));
 }
 
 export function rayIntersection(this sphere: Sphere3D, ray: Ray): Result<float32, SphereRayError> {
-	if (!Number.isFinite(sphere.center.x) || !Number.isFinite(sphere.center.y)
-		|| !Number.isFinite(sphere.center.z) || !Number.isFinite(sphere.radius)
-		|| !Number.isFinite(ray.origin.x) || !Number.isFinite(ray.origin.y)
-		|| !Number.isFinite(ray.origin.z) || !Number.isFinite(ray.direction.x)
-		|| !Number.isFinite(ray.direction.y) || !Number.isFinite(ray.direction.z)) {
+	if (!finiteVec(sphere.center) || !Number.isFinite(sphere.radius)
+		|| !finiteVec(ray.origin) || !finiteVec(ray.direction)) {
 		return Result.err(SphereRayError.NonFinite);
 	}
 	const mx: float64 = (ray.origin.x as float64) - (sphere.center.x as float64);
@@ -64,7 +59,7 @@ export function rayIntersection(this sphere: Sphere3D, ray: Ray): Result<float32
 	const discriminant: float64 = b * b - c;
 	if (discriminant < 0.0) { return Result.ok(-1.0); }
 	const distance: float64 = Math.max(0.0, -b - Math.sqrt(discriminant));
-	if (distance > 3.4028234663852886e38) { return Result.err(SphereRayError.OutOfRange); }
+	if (distance > FLOAT32_LIMIT) { return Result.err(SphereRayError.OutOfRange); }
 	return Result.ok(distance as float32);
 }
 

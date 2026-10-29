@@ -229,7 +229,7 @@ export interface MeshLodPick {
 let pickPasses: int64 = 0;
 
 export function nextPickPass(): int64 {
-	pickPasses = pickPasses + 1;
+	pickPasses += 1;
 	return pickPasses;
 }
 

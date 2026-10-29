@@ -8,7 +8,10 @@ export struct Segment3D {
 	p2: Vec3;
 }
 
-export enum SegmentError { NonFinite, ZeroLength }
+export enum SegmentError {
+	NonFinite,
+	ZeroLength,
+}
 
 function distanceSquaredWide(a: Wide3, b: Wide3): float64 {
 	const d: Wide3 = wideSub(a, b);

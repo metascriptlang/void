@@ -1,4 +1,5 @@
 import { Vec3 } from "../math/math3d";
+import { finiteVec } from "./colliderMath";
 
 export struct OrientedBounds3D {
 	center: Vec3;
@@ -8,15 +9,15 @@ export struct OrientedBounds3D {
 	halfSize: Vec3;
 }
 
-export enum OrientedBoundsError { NonFinite, NegativeHalfSize, NonOrthonormalAxes }
-
-function finitePoint(p: Vec3): boolean {
-	return Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z);
+export enum OrientedBoundsError {
+	NonFinite,
+	NegativeHalfSize,
+	NonOrthonormalAxes,
 }
 
 function finiteBounds(b: OrientedBounds3D): boolean {
-	return finitePoint(b.center) && finitePoint(b.axisX) && finitePoint(b.axisY) &&
-		finitePoint(b.axisZ) && finitePoint(b.halfSize);
+	return finiteVec(b.center) && finiteVec(b.axisX) && finiteVec(b.axisY) &&
+		finiteVec(b.axisZ) && finiteVec(b.halfSize);
 }
 
 function wideDot(a: Vec3, b: Vec3): float64 {
