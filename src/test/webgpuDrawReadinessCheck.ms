@@ -123,4 +123,21 @@ when (voidDummy) {
 		pass.setPipeline(other);
 		assert boundFacts.stale == ASPECT_ALL;
 	}
+
+	test "a draw that exactly fills the bound vertex and index ranges passes" {
+		const device = openTestDevice();
+		const pipeline = flatPipeline(device);
+		const group = groupOf(device, pipeline, colourUniforms(device));
+		const indexUsage = (GPUBufferUsage.INDEX as int32) | (GPUBufferUsage.COPY_DST as int32);
+		const pass = openPass(device);
+		const offsets: Vec<uint32> = [0];
+		pass.setPipeline(pipeline);
+		pass.setVertexBuffer(0, vertexBuffer(device, 24), 0);
+		pass.setBindGroup(0, group, offsets);
+		pass.setIndexBuffer(device.createBuffer({ label: "indices", size: 16, usage: indexUsage }), "uint16", 0);
+		pass.draw(3, 1, 0, 0);
+		pass.draw(0, 1, 3, 0);
+		pass.drawIndexed(8, 1, 0, 0, 0);
+		pass.drawIndexed(0, 1, 8, 0, 0);
+	}
 }

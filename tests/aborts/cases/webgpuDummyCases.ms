@@ -11,6 +11,8 @@
 // expect afterIndexFormat: an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format
 // expect nextPassVertexReset: the pipeline reads vertex buffer 0, which is not set
 // expect vertexRangeOverrun: draw vertex range (first 0, count 4) needs 32 bytes of the vertex buffer at slot 0, which has 24 bound
+// expect vertexOffsetShrinks: draw vertex range (first 0, count 3) needs 24 bytes of the vertex buffer at slot 0, which has 8 bound
+// expect vertexBufferDestroyed: GPUBuffer
 import { argv } from "std/process";
 import {
 	GPUBindGroupDescriptor,
@@ -51,7 +53,7 @@ function run(name: string): void {
 		console.log("an indirect dispatch from a buffer without INDIRECT returned");
 		return;
 	}
-	const draws = ["stripIndexMismatch", "shaderDestroyed", "uniformOverrun", "groupFromOtherPipeline", "indexRangeOverrun", "vertexRangeOverrun", "afterGroupSwap", "afterPipelineSwap", "afterVertexSlotAdded", "afterIndexFormat", "nextPassVertexReset"];
+	const draws = ["stripIndexMismatch", "shaderDestroyed", "uniformOverrun", "groupFromOtherPipeline", "indexRangeOverrun", "vertexRangeOverrun", "afterGroupSwap", "afterPipelineSwap", "afterVertexSlotAdded", "afterIndexFormat", "nextPassVertexReset", "vertexOffsetShrinks", "vertexBufferDestroyed"];
 	if (!draws.includes(name)) {
 		console.log(`no case named '${name}'`);
 		process.exit(2);
@@ -98,13 +100,22 @@ function run(name: string): void {
 	const view = colourTarget(device, 1).createView({ label: null });
 	const pass = encoder.beginRenderPass(clearingPass(view, noResolve));
 	pass.setPipeline(pipeline);
-	pass.setVertexBuffer(0, vertexBuffer(device, 24), 0);
+	const vertices = vertexBuffer(device, 24);
+	pass.setVertexBuffer(0, vertices, 0);
 	pass.setBindGroup(0, group, offsets);
 	pass.setIndexBuffer(indices, name == "stripIndexMismatch" ? "uint32" : "uint16", 0);
-	if (name == "vertexRangeOverrun") {
-		pass.draw(4, 1, 0, 0);
+	if (name == "vertexRangeOverrun" || name == "vertexOffsetShrinks" || name == "vertexBufferDestroyed") {
+		pass.draw(name == "vertexRangeOverrun" ? 4 : 3, 1, 0, 0);
 	} else {
 		pass.drawIndexed(name == "indexRangeOverrun" ? 9 : 3, 1, 0, 0, 0);
+	}
+	if (name == "vertexOffsetShrinks") {
+		pass.setVertexBuffer(0, vertices, 16);
+		pass.draw(3, 1, 0, 0);
+	}
+	if (name == "vertexBufferDestroyed") {
+		vertices.destroy();
+		pass.draw(3, 1, 0, 0);
 	}
 	if (name == "afterGroupSwap") { pass.setBindGroup(0, secondGroup, offsets); }
 	if (name == "afterPipelineSwap" || name == "afterVertexSlotAdded") { pass.setPipeline(second); }
