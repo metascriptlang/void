@@ -25,6 +25,7 @@ import {
 } from "../void3d/meshData";
 import { BILLBOARD_INSTANCE_STRIDE } from "../void3d/billboard";
 import { added } from "./drawHelpers";
+import { NO_UNIFORMS, UniformBlock } from "../void3d/material";
 import {
 	DrawContext,
 	GpuMesh,
@@ -41,7 +42,9 @@ import {
 	writeStream,
 	addStreamMesh,
 	PipelineMemo,
+	SlotApply,
 	holds,
+	stillBound,
 } from "../void3d/draw";
 
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
@@ -337,4 +340,18 @@ test "a draw takes the last pipeline only when every input of its key is the sam
 	assert !memo.holds({ ...memo, format: IndexType.Uint32 }, true);
 	assert !memo.holds({ ...memo, state: RenderState.defaults().withBlendMode(BlendMode.Alpha) }, true);
 	assert !memo.holds({ ...memo, targets: { ...SWAPCHAIN_LAYOUT, sampleCount: 4 } }, true);
+}
+
+test "a block stays bound only while its range, its floats, its stamp and the pool's writes are the same" {
+	const block: UniformBlock = { store: 1, slot: 3, offset: 8, length: 12, generation: 1 };
+	const last: SlotApply = { block: block, declared: 12, stamp: 5, writes: 9 };
+	assert last.stillBound(block, 12, 5, 9);
+	assert !last.stillBound(block, 12, 0, 9);
+	assert !last.stillBound(block, 12, 6, 9);
+	assert !last.stillBound(block, 4, 5, 9);
+	assert !last.stillBound(block, 12, 5, 10);
+	assert !last.stillBound({ ...block, offset: 20 }, 12, 5, 9);
+	assert !last.stillBound({ ...block, generation: 2 }, 12, 5, 9);
+	const none: SlotApply = { block: NO_UNIFORMS, declared: 0, stamp: 0, writes: 0 };
+	assert !none.stillBound(NO_UNIFORMS, 0, 0, 0);
 }

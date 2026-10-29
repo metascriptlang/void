@@ -1741,38 +1741,48 @@ export function writeBlock<T>(
 	return writeTypedBlock<T>(context.uniforms, handle, value);
 }
 
-function applyBlock(this context: DrawContext, block: UniformBlock): void {
-	applyUniforms(block.slot, context.uniforms.values[block.offset..block.offset + block.length]);
+function applyRange(this context: DrawContext, block: UniformBlock, declared: int32): void {
+	applyUniforms(block.slot, context.uniforms.values[block.offset..block.offset + declared]);
 }
 
-// What the last global apply to a slot was, as the door numbered it and as the pool stood. The
-// record is the module's, like the door's bound state: any context's apply replaces it.
-struct GlobalApply { block: UniformBlock; stamp: int32; writes: int64; }
+// What the last apply to a slot was, as the door numbered it and as the pool stood: the block,
+// the floats of it applied, and the pool's write count. The record is the module's, like the
+// door's bound state: any context's apply replaces it.
+export struct SlotApply { block: UniformBlock; declared: int32; stamp: int32; writes: int64; }
 
-let globalApplies: Vec<GlobalApply> = [];
+export function stillBound(
+	this last: SlotApply,
+	block: UniformBlock,
+	declared: int32,
+	stamp: int32,
+	writes: int64,
+): boolean {
+	return stamp != 0 && stamp == last.stamp && last.block == block && last.declared == declared &&
+		last.writes == writes;
+}
 
-// A global block is applied once for as long as the door keeps the pipeline: while the slot's
-// stamp is the one its apply got, the block is the same range and no pool write came since, it
-// is still bound.
-function applyGlobal(context: DrawContext, block: UniformBlock): void {
-	while ((globalApplies.length as int32) < UNIFORM_SLOTS) {
-		globalApplies.push({ block: NO_UNIFORMS, stamp: 0, writes: 0 });
+let slotApplies: Vec<SlotApply> = [];
+
+// A block's first `declared` floats are applied once for as long as the door keeps the pipeline:
+// while the slot's stamp is the one its apply got, the block and its length are the same and no
+// pool write came since, they are still bound. A pass-wide global applies all of its block, a
+// material's block the head its program reads.
+function applyOnce(this context: DrawContext, block: UniformBlock, declared: int32): void {
+	while ((slotApplies.length as int32) < UNIFORM_SLOTS) {
+		slotApplies.push({ block: NO_UNIFORMS, declared: 0, stamp: 0, writes: 0 });
 	}
 	const slot: int32 = block.slot;
 	if (slot < 0 || slot >= UNIFORM_SLOTS) {
-		context.applyBlock(block);
+		context.applyRange(block, declared);
 		return;
 	}
 	const stamp: int32 = uniformStamp(slot);
-	const last: GlobalApply = globalApplies[slot];
-	if (
-		stamp != 0 && stamp == last.stamp && last.block == block &&
-		last.writes == uniformWrites()
-	) {
-		return;
-	}
-	context.applyBlock(block);
-	globalApplies[slot] = { block: block, stamp: uniformStamp(slot), writes: uniformWrites() };
+	const last: SlotApply = slotApplies[slot];
+	if (last.stillBound(block, declared, stamp, uniformWrites())) { return; }
+	context.applyRange(block, declared);
+	slotApplies[slot] = {
+		block: block, declared: declared, stamp: uniformStamp(slot), writes: uniformWrites(),
+	};
 }
 
 // The first `declared` floats of a block: a program that reads less than its material's block
@@ -1788,7 +1798,7 @@ export function applyBlockHead(
 	if (program.preset != Preset.Shadow && block.length != declared) {
 		stopOnLongBlock(program, block, declared);
 	}
-	applyUniforms(block.slot, context.uniforms.values[block.offset..block.offset + declared]);
+	context.applyOnce(block, declared);
 }
 
 function stopOnShortBlock(program: ProgramKey, block: UniformBlock, declared: int32): void {
@@ -2224,7 +2234,7 @@ function drawStaged(
 	if (pose !== null) { applyUniforms(SKIN_UNIFORM_SLOT, pose.blocks[item.skinPalette]); }
 	for (const block of globals) {
 		if (context.pipelines.declaresBlock(globalProgram, block.slot)) {
-			applyGlobal(context, block);
+			context.applyOnce(block, block.length);
 		}
 	}
 	// A caster that does not cut reads none of its material's block.
