@@ -1032,7 +1032,7 @@ SHADOW_PATH_FUNCTIONS="dirShadowMap:drawShadows dirShadowMap:castsAll dirShadowM
 WORLD_LABEL_PATH_FUNCTIONS="worldLabel:faceCamera worldLabel:facingRotation camera:rotationOfBasis
 	worldLabel:refreshLabel worldLabel:setLabelTint worldLabel:setLabelText
 	worldLabel:redraw worldLabel:place worldLabel:transformOf worldLabel:localFor
-	worldLabel:writeBlock worldLabel:uvOfSubRect worldLabel:grown
+	worldLabel:writeParams worldLabel:uvOfSubRect worldLabel:grown
 	scene:setLocal scene:liveRow scene:syncWorld"
 CARD_TABLE_PATH_FUNCTIONS="cardTableScene:frameCardTable cardTableScene:writeOrders
 	cardTableScene:writeDissolve cardTableScene:flicker cardTableScene:stepTorches
