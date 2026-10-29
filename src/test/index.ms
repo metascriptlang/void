@@ -149,6 +149,7 @@ when (windows || linux || android) {
 import "./featureBitCheck";
 import "./featureCheck";
 import "./webgpuValidateCheck";
+import "./webgpuDrawReadinessCheck";
 import "./uniformPoolCheck";
 import "./uniformPoolGrowCheck";
 import "./lifetimeCheck";
