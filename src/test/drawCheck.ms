@@ -45,6 +45,7 @@ import {
 	SlotApply,
 	holds,
 	stillBound,
+	takeListRows,
 } from "../void3d/draw";
 
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
@@ -354,4 +355,17 @@ test "a block stays bound only while its range, its floats, its stamp and the po
 	assert !last.stillBound({ ...block, generation: 2 }, 12, 5, 9);
 	const none: SlotApply = { block: NO_UNIFORMS, declared: 0, stamp: 0, writes: 0 };
 	assert !none.stillBound(NO_UNIFORMS, 0, 0, 0);
+}
+
+test "each draw of a staged list takes the rows after the draws before it" {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	context.listActive = true;
+	context.listBuffer = 9;
+	context.listOffset = 256;
+	context.listCounts = [1, 3, 2];
+	const row: int32 = MESH_INSTANCE_STRIDE * 4;
+	assert context.takeListRows(1) == 256;
+	assert context.takeListRows(3) == 256 + row;
+	assert context.takeListRows(2) == 256 + 4 * row;
+	assert context.listCursor == 6 && context.listNext == 3;
 }

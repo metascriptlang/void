@@ -9,7 +9,9 @@
 // order. The storage grows only when the item count does (a structural change), so a frame
 // allocates nothing.
 
-import { DrawContext, DrawItem, SceneTexture, drawBatchWith, drawItemWith } from "./draw";
+import {
+	DrawContext, DrawItem, SceneTexture, drawBatchWith, drawItemWith, stageListRows, endListRows,
+} from "./draw";
 import { TargetLayout } from "../gpu/target";
 import { Material, Phase, UniformBlock, ShadowCasting } from "./material";
 import { ProgramKey } from "./gpu3d";
@@ -307,6 +309,7 @@ export function drawPassList(
 	scene: SceneTexture,
 ): void {
 	const count: int32 = order.length as int32;
+	stageListRows(context, items, order);
 	let i: int32 = 0;
 	while (i < count) {
 		const index: int32 = order[i];
@@ -324,4 +327,5 @@ export function drawPassList(
 		}
 		i = end;
 	}
+	endListRows(context);
 }
