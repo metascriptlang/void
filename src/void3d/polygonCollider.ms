@@ -6,7 +6,8 @@
 import { Vec3, vec3 } from "../math/math3d";
 import { Ray } from "./ray";
 import {
-	Wide3, wide, wideSub, wideAdd, wideScaled, wideDot, wideCross, finiteVec, FLOAT32_LIMIT,
+	Wide3, wide, wideSub, wideAdd, wideScaled, wideDot, wideCross, finiteVec, narrowed,
+	FLOAT32_LIMIT,
 } from "./colliderMath";
 
 export struct Triangle3D {
@@ -15,9 +16,15 @@ export struct Triangle3D {
 	p2: Vec3;
 }
 
-export enum PolygonError { NonFinite, NotTriangles, IndexRange, EmptyMesh, OutOfRange }
+export enum PolygonError {
+	NonFinite,
+	NotTriangles,
+	IndexRange,
+	EmptyMesh,
+	OutOfRange,
+}
 
-function finiteTriangle(tri: Triangle3D): boolean {
+function isFiniteTriangle(this tri: Triangle3D): boolean {
 	return finiteVec(tri.p0) && finiteVec(tri.p1) && finiteVec(tri.p2);
 }
 
@@ -39,7 +46,7 @@ function inTriangle(p0: Wide3, d1: Wide3, d2: Wide3, point: Wide3): boolean {
 	return u >= 0.0 && v >= 0.0 && u + v < 1.0;
 }
 
-function rayTriangle(tri: Triangle3D, ray: Ray, oriented: boolean): float64 {
+function rayDistance(this tri: Triangle3D, ray: Ray, oriented: boolean): float64 {
 	const p0: Wide3 = wide(tri.p0);
 	const d1: Wide3 = wideSub(wide(tri.p1), p0);
 	const d2: Wide3 = wideSub(wide(tri.p2), p0);
@@ -62,12 +69,14 @@ function rayTriangle(tri: Triangle3D, ray: Ray, oriented: boolean): float64 {
 // the ray is also allowed to hit behind its origin; a negative answer is a miss either way, and
 // a ray parallel to the plane is a miss (Heaps divides by zero and the point test fails).
 export function rayIntersection(
-	this tri: Triangle3D, ray: Ray, oriented: boolean,
+	this tri: Triangle3D,
+	ray: Ray,
+	oriented: boolean,
 ): Result<float32, PolygonError> {
-	if (!finiteTriangle(tri) || !finiteVec(ray.origin) || !finiteVec(ray.direction)) {
+	if (!tri.isFiniteTriangle() || !finiteVec(ray.origin) || !finiteVec(ray.direction)) {
 		return Result.err(PolygonError.NonFinite);
 	}
-	const k: float64 = rayTriangle(tri, ray, oriented);
+	const k: float64 = tri.rayDistance(ray, oriented);
 	if (Math.abs(k) > FLOAT32_LIMIT) { return Result.err(PolygonError.OutOfRange); }
 	return Result.ok(k as float32);
 }
@@ -75,9 +84,12 @@ export function rayIntersection(
 // TriPlane.contains: the point lies inside the triangle's prism along its normal, so a point off
 // the plane is tested by where it projects.
 export function containsProjected(
-	this tri: Triangle3D, point: Vec3,
+	this tri: Triangle3D,
+	point: Vec3,
 ): Result<boolean, PolygonError> {
-	if (!finiteTriangle(tri) || !finiteVec(point)) { return Result.err(PolygonError.NonFinite); }
+	if (!tri.isFiniteTriangle() || !finiteVec(point)) {
+		return Result.err(PolygonError.NonFinite);
+	}
 	const p0: Wide3 = wide(tri.p0);
 	return Result.ok(
 		inTriangle(p0, wideSub(wide(tri.p1), p0), wideSub(wide(tri.p2), p0), wide(point)));
@@ -94,7 +106,7 @@ function closestOnEdge(point: Wide3, start: Wide3, direction: Wide3): Wide3 {
 	return wideAdd(start, wideScaled(direction, t));
 }
 
-function closestOnTriangle(tri: Triangle3D, point: Wide3): Wide3 {
+function closestOnTriangle(this tri: Triangle3D, point: Wide3): Wide3 {
 	const p0: Wide3 = wide(tri.p0);
 	const d1: Wide3 = wideSub(wide(tri.p1), p0);
 	const d2: Wide3 = wideSub(wide(tri.p2), p0);
@@ -121,13 +133,15 @@ function closestOnTriangle(tri: Triangle3D, point: Wide3): Wide3 {
 // TriPlane.closestPoint, Polygon.hx:116-154: the point itself projected onto the plane when it
 // falls inside the triangle, else the nearest of the three edges.
 export function closestPoint(this tri: Triangle3D, point: Vec3): Result<Vec3, PolygonError> {
-	if (!finiteTriangle(tri) || !finiteVec(point)) { return Result.err(PolygonError.NonFinite); }
-	const closest: Wide3 = closestOnTriangle(tri, wide(point));
+	if (!tri.isFiniteTriangle() || !finiteVec(point)) {
+		return Result.err(PolygonError.NonFinite);
+	}
+	const closest: Wide3 = tri.closestOnTriangle(wide(point));
 	if (Math.abs(closest.x) > FLOAT32_LIMIT || Math.abs(closest.y) > FLOAT32_LIMIT ||
 		Math.abs(closest.z) > FLOAT32_LIMIT) {
 		return Result.err(PolygonError.OutOfRange);
 	}
-	return Result.ok(vec3(closest.x as float32, closest.y as float32, closest.z as float32));
+	return Result.ok(narrowed(closest));
 }
 
 function corner(positions: Readonly<Span<float32>>, index: uint32): Vec3 {
@@ -135,21 +149,28 @@ function corner(positions: Readonly<Span<float32>>, index: uint32): Vec3 {
 	return vec3(positions[at], positions[at + 1], positions[at + 2]);
 }
 
-function soupError(
-	positions: Readonly<Span<float32>>, indices: Readonly<Span<uint32>>,
-): PolygonError | null {
-	if (positions.length % 3 != 0 || indices.length % 3 != 0) { return PolygonError.NotTriangles; }
-	for (let i = 0; i < indices.length; i++) {
-		if ((indices[i] as int64) * 3 + 2 >= positions.length) { return PolygonError.IndexRange; }
+function checkedSoup(
+	positions: Readonly<Span<float32>>,
+	indices: Readonly<Span<uint32>>,
+): Result<void, PolygonError> {
+	if (positions.length % 3 != 0 || indices.length % 3 != 0) {
+		return Result.err(PolygonError.NotTriangles);
 	}
-	for (let i = 0; i < positions.length; i++) {
-		if (!Number.isFinite(positions[i])) { return PolygonError.NonFinite; }
+	for (const index of indices) {
+		if ((index as int64) * 3 + 2 >= positions.length) {
+			return Result.err(PolygonError.IndexRange);
+		}
 	}
-	return null;
+	for (const position of positions) {
+		if (!Number.isFinite(position)) { return Result.err(PolygonError.NonFinite); }
+	}
+	return Result.ok(null);
 }
 
 function triangleAt(
-	positions: Readonly<Span<float32>>, indices: Readonly<Span<uint32>>, triangle: int32,
+	positions: Readonly<Span<float32>>,
+	indices: Readonly<Span<uint32>>,
+	triangle: int32,
 ): Triangle3D {
 	const at: int32 = triangle * 3;
 	return {
@@ -163,20 +184,23 @@ function triangleAt(
 // found when `bestMatch` is false. Polygon.addBuffers prepends each triangle, so Heaps walks them
 // last to first and the first found is the last triangle's hit.
 export function polygonRayIntersection(
-	positions: Readonly<Span<float32>>, indices: Readonly<Span<uint32>>,
-	ray: Ray, bestMatch: boolean, oriented: boolean,
+	positions: Readonly<Span<float32>>,
+	indices: Readonly<Span<uint32>>,
+	ray: Ray,
+	bestMatch: boolean,
+	oriented: boolean,
 ): Result<float32, PolygonError> {
-	const error: PolygonError | null = soupError(positions, indices);
-	if (error !== null) { return Result.err(error); }
+	const _soup = try checkedSoup(positions, indices);
 	if (!finiteVec(ray.origin) || !finiteVec(ray.direction)) {
 		return Result.err(PolygonError.NonFinite);
 	}
 	let best: float64 = -1.0;
 	for (let triangle = indices.length / 3 - 1; triangle >= 0; triangle--) {
-		const d: float64 = rayTriangle(triangleAt(positions, indices, triangle), ray, oriented);
-		if (d >= 0.0) {
-			if (!bestMatch) { best = d; break; }
-			if (best < 0.0 || d < best) { best = d; }
+		const distance: float64 =
+			triangleAt(positions, indices, triangle).rayDistance(ray, oriented);
+		if (distance >= 0.0) {
+			if (!bestMatch) { best = distance; break; }
+			if (best < 0.0 || distance < best) { best = distance; }
 		}
 	}
 	if (best > FLOAT32_LIMIT) { return Result.err(PolygonError.OutOfRange); }
@@ -187,10 +211,11 @@ export function polygonRayIntersection(
 // convex mesh when it lies behind every triangle plane (outward normal (p1 - p0) x (p2 - p0)).
 // Heaps answers true for a mesh with no triangles; that is EmptyMesh here.
 export function polygonContainsConvex(
-	positions: Readonly<Span<float32>>, indices: Readonly<Span<uint32>>, point: Vec3,
+	positions: Readonly<Span<float32>>,
+	indices: Readonly<Span<uint32>>,
+	point: Vec3,
 ): Result<boolean, PolygonError> {
-	const error: PolygonError | null = soupError(positions, indices);
-	if (error !== null) { return Result.err(error); }
+	const _soup = try checkedSoup(positions, indices);
 	if (!finiteVec(point)) { return Result.err(PolygonError.NonFinite); }
 	if (indices.length == 0) { return Result.err(PolygonError.EmptyMesh); }
 	const p: Wide3 = wide(point);
@@ -208,20 +233,21 @@ export function polygonContainsConvex(
 // first, so it picks the last on a tie). Heaps dereferences null for a mesh with no triangles;
 // that is EmptyMesh here.
 export function polygonClosestPoint(
-	positions: Readonly<Span<float32>>, indices: Readonly<Span<uint32>>, point: Vec3,
+	positions: Readonly<Span<float32>>,
+	indices: Readonly<Span<uint32>>,
+	point: Vec3,
 ): Result<Vec3, PolygonError> {
-	const error: PolygonError | null = soupError(positions, indices);
-	if (error !== null) { return Result.err(error); }
+	const _soup = try checkedSoup(positions, indices);
 	if (!finiteVec(point)) { return Result.err(PolygonError.NonFinite); }
 	if (indices.length == 0) { return Result.err(PolygonError.EmptyMesh); }
 	const p: Wide3 = wide(point);
 	let best: Wide3 = p;
 	let least: float64 = Infinity;
 	for (let triangle = 0; triangle < indices.length / 3; triangle++) {
-		const c: Wide3 = closestOnTriangle(triangleAt(positions, indices, triangle), p);
-		const d: Wide3 = wideSub(p, c);
-		const squared: float64 = wideDot(d, d);
-		if (squared < least) { least = squared; best = c; }
+		const closest: Wide3 = triangleAt(positions, indices, triangle).closestOnTriangle(p);
+		const offset: Wide3 = wideSub(p, closest);
+		const squared: float64 = wideDot(offset, offset);
+		if (squared < least) { least = squared; best = closest; }
 	}
-	return Result.ok(vec3(best.x as float32, best.y as float32, best.z as float32));
+	return Result.ok(narrowed(best));
 }

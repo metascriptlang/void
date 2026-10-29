@@ -1,11 +1,12 @@
 // Port of h3d.col.Cylinder: a flat-capped cylinder of radius `radius` around the axis a..b.
 
-import { Vec3, vec3 } from "../math/math3d";
+import { Vec3 } from "../math/math3d";
 import { Ray } from "./ray";
 import { Sphere3D, overlaps } from "./sphere";
 import { Frustum3D, intersectsSphere } from "./frustum";
 import {
-	Wide3, wide, wideSub, wideAdd, wideScaled, wideDot, finiteVec, FLOAT32_LIMIT,
+	Wide3, wide, wideSub, wideAdd, wideScaled, wideDot, finiteVec, fitsFloat32, narrowed,
+	FLOAT32_LIMIT,
 } from "./colliderMath";
 
 export struct Cylinder3D {
@@ -14,25 +15,30 @@ export struct Cylinder3D {
 	radius: float32;
 }
 
-export enum CylinderError { NonFinite, NegativeRadius, ZeroLengthAxis, OutOfRange }
+export enum CylinderError {
+	NonFinite,
+	NegativeRadius,
+	ZeroLengthAxis,
+	OutOfRange,
+}
 
 // sin^2 of the angle below which the ray counts as parallel to the axis.
 // PENDING3D: cylinder-ray-parallel-to-axis
 const PARALLEL: float64 = 1.0e-12;
 
-function validate(cylinder: Cylinder3D): Result<int32, CylinderError> {
+function validate(this cylinder: Cylinder3D): Result<void, CylinderError> {
 	if (!finiteVec(cylinder.a) || !finiteVec(cylinder.b) || !Number.isFinite(cylinder.radius)) {
 		return Result.err(CylinderError.NonFinite);
 	}
 	if (cylinder.radius < 0.0) { return Result.err(CylinderError.NegativeRadius); }
 	const axis: Wide3 = wideSub(wide(cylinder.b), wide(cylinder.a));
 	if (wideDot(axis, axis) == 0.0) { return Result.err(CylinderError.ZeroLengthAxis); }
-	return Result.ok(0);
+	return Result.ok(null);
 }
 
 // Cylinder.hx:46-51. Heaps divides by |b - a|^2 here, so a zero-length axis never contains.
 export function contains(this cylinder: Cylinder3D, point: Vec3): Result<boolean, CylinderError> {
-	const _valid: int32 = try validate(cylinder);
+	const _valid = try cylinder.validate();
 	if (!finiteVec(point)) { return Result.err(CylinderError.NonFinite); }
 	const a: Wide3 = wide(cylinder.a);
 	const axis: Wide3 = wideSub(wide(cylinder.b), a);
@@ -48,9 +54,10 @@ export function contains(this cylinder: Cylinder3D, point: Vec3): Result<boolean
 // `|b + a t| < hs` then compares |b| with |b|, so such a ray never hits a cap. That case hits the
 // nearer cap plane when the ray runs inside the radius. As in Heaps an origin inside is a miss.
 export function rayIntersection(
-	this cylinder: Cylinder3D, ray: Ray,
+	this cylinder: Cylinder3D,
+	ray: Ray,
 ): Result<float32, CylinderError> {
-	const _valid: int32 = try validate(cylinder);
+	const _valid = try cylinder.validate();
 	if (!finiteVec(ray.origin) || !finiteVec(ray.direction)) {
 		return Result.err(CylinderError.NonFinite);
 	}
@@ -96,7 +103,7 @@ export function rayIntersection(
 
 // Cylinder.hx:69-72: the diameter of the sphere through a rim point of each cap.
 export function dimension(this cylinder: Cylinder3D): Result<float64, CylinderError> {
-	const _valid: int32 = try validate(cylinder);
+	const _valid = try cylinder.validate();
 	const axis: Wide3 = wideSub(wide(cylinder.b), wide(cylinder.a));
 	const half: float64 = Math.sqrt(wideDot(axis, axis)) * 0.5;
 	const radius: float64 = cylinder.radius as float64;
@@ -112,25 +119,23 @@ export function boundingSphere(this cylinder: Cylinder3D): Result<Sphere3D, Cyli
 	const a: Wide3 = wide(cylinder.a);
 	const mid: Wide3 = wideAdd(a, wideScaled(wideSub(wide(cylinder.b), a), 0.5));
 	const radius: float64 = size * 0.5;
-	if (Math.abs(mid.x) > FLOAT32_LIMIT || Math.abs(mid.y) > FLOAT32_LIMIT ||
-		Math.abs(mid.z) > FLOAT32_LIMIT || radius > FLOAT32_LIMIT) {
+	if (!fitsFloat32(mid) || radius > FLOAT32_LIMIT) {
 		return Result.err(CylinderError.OutOfRange);
 	}
-	return Result.ok({
-		center: vec3(mid.x as float32, mid.y as float32, mid.z as float32),
-		radius: radius as float32,
-	});
+	return Result.ok({ center: narrowed(mid), radius: radius as float32 });
 }
 
 export function inFrustum(
-	this cylinder: Cylinder3D, frustum: Frustum3D,
+	this cylinder: Cylinder3D,
+	frustum: Frustum3D,
 ): Result<boolean, CylinderError> {
 	const sphere: Sphere3D = try cylinder.boundingSphere();
 	return Result.ok(frustum.intersectsSphere(sphere.center, sphere.radius));
 }
 
 export function inSphere(
-	this cylinder: Cylinder3D, other: Sphere3D,
+	this cylinder: Cylinder3D,
+	other: Sphere3D,
 ): Result<boolean, CylinderError> {
 	const sphere: Sphere3D = try cylinder.boundingSphere();
 	if (!finiteVec(other.center) || !Number.isFinite(other.radius)) {
