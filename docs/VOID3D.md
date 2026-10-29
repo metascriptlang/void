@@ -6971,7 +6971,8 @@ Release `tests/bench/flowCubes.ms`, 1.6M cubes, before the one walk: `refresh` 3
 box not quiet: `refresh` 74% of the two, `collectVisible` 26%.
 Tree `a4502578`, three builds running beside it, ten cubes moved per frame (`flow.refreshMoving`):
 flat under the root 12.4 ms (8.7 ms one tree earlier, before the skip), almost all of it
-`syncWorld`'s scan of the root's 1.6M children, unsettled until a quiet A/B;`FLOW_CUBES_GROUP=1000` 0.0031 ms. The full rewrite before the dirty slots: 38.9 ms.
+`syncWorld`'s scan of the root's 1.6M children, unsettled until a quiet A/B; `FLOW_CUBES_GROUP=1000` 0.0031 ms. The full rewrite before the
+dirty slots: 38.9 ms.
 Tree `3f128f59` (with the skip), a gate running beside it: a steady frame's `refresh` 0.0017 ms
 (38.9 ms on the same box before the skip), `collectVisible` 11.6 ms.
 
