@@ -417,6 +417,16 @@ export struct SurfaceUv {
 	uv: Vec2f;
 }
 
+export struct VertexUv {
+	uv: Vec2f;
+}
+
+export struct FlipbookFrames {
+	animatedUv: Vec2f;
+	animatedUv2: Vec2f;
+	blend: float32;
+}
+
 export struct SampleUv {
 	baseUv: Vec2f;
 	nextUv: Vec2f;
@@ -841,6 +851,8 @@ export function handednessOf(matrix: Mat4x4f): float32 {
 export function litTexturedVs(
 	input: TexturedAttributes, b: VertexBindings, key: LitKey,
 ): LitTexturedVaryings {
+	const vertexUv: VertexUv = { uv: input.uv };
+	const surfaceUv = hook(vertexUv).uv;
 	if (key.skinned) {
 		const matrix = skinWorld(b, input.skinJoints, input.skinWeights);
 		const world = matrix * vec4f(input.position, 1.0);
@@ -850,7 +862,7 @@ export function litTexturedVs(
 			worldTangent: vec4f(
 				upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w * handednessOf(matrix),
 			),
-			surfaceUv: input.uv,
+			surfaceUv: surfaceUv,
 			surfaceUvB: input.uvB,
 			baseColor: input.color,
 			clip: b.vertexParams.viewProj * world,
@@ -864,7 +876,7 @@ export function litTexturedVs(
 			worldTangent: vec4f(
 				upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w * handednessOf(matrix),
 			),
-			surfaceUv: input.uv,
+			surfaceUv: surfaceUv,
 			surfaceUvB: input.uvB,
 			baseColor: input.color * input.instanceColor,
 			clip: b.vertexParams.viewProj * world,
@@ -1291,15 +1303,20 @@ export function sinusUv(uv: Vec2f, deform: Vec4f, time: float32): Vec2f {
 // frame `play.y`, looped over `grid.z` frames when `play.z` is 1, else held on the last, read
 // from a `grid.x` by `grid.y` grid; xy is that frame's UV and zw the next frame's.
 export function flipbookUvs(uv: Vec2f, grid: Vec4f, play: Vec4f, time: float32): Vec4f {
+	const cell = uv / grid.xy;
+	const cells = flipbookCells(grid, play, time);
+	return vec4f(cell + cells.xy, cell + cells.zw);
+}
+
+export function flipbookCells(grid: Vec4f, play: Vec4f, time: float32): Vec4f {
 	const frame = floor((time - play.x) * grid.w + trunc(play.y));
 	const looped = frame - grid.z * floor(frame / grid.z);
 	const nextLooped = (looped + 1.0) - grid.z * floor((looped + 1.0) / grid.z);
 	const at = play.z == 1.0 ? looped : min(frame, grid.z - 1.0);
 	const next = play.z == 1.0 ? nextLooped : min(frame + 1.0, grid.z - 1.0);
-	const cell = uv / grid.xy;
 	const atCell = vec2f(at - grid.x * floor(at / grid.x), trunc(at / grid.x)) / grid.xy;
 	const nextCell = vec2f(next - grid.x * floor(next / grid.x), trunc(next / grid.x)) / grid.xy;
-	return vec4f(cell + atCell, cell + nextCell);
+	return vec4f(atCell, nextCell);
 }
 
 // How far AnimatedTexture's blendBetweenFrames mixes the next frame in: the elapsed fraction of
@@ -1538,18 +1555,41 @@ export function uvSinus(
 	return { uv: sinusUv(surface.uv, uvSinusDeformOf(b, key), b.frameParams.frame.x) };
 }
 
+export function flipbookFrames(
+	vertex: VertexUv,
+	b: UvTransformBindings,
+	key: UvTransformKey,
+): FlipbookFrames {
+	const grid = uvFlipbookGridOf(b, key);
+	const play = uvFlipbookPlayOf(b, key);
+	let frames: FlipbookFrames = { animatedUv: vec2f(0.0), animatedUv2: vec2f(0.0), blend: 0.0 };
+	if (grid.z > 0.0) {
+		const time = b.frameParams.frame.x;
+		const cells = flipbookCells(grid, play, time);
+		frames = {
+			animatedUv: cells.xy,
+			animatedUv2: cells.zw,
+			blend: flipbookBlend(grid, play, time),
+		};
+	}
+	return frames;
+}
+
 export function uvFlipbook(
 	sample: SampleUv,
 	b: UvTransformBindings,
 	key: UvTransformKey,
+	frames: FlipbookFrames,
 ): SampleUv {
 	const grid = uvFlipbookGridOf(b, key);
-	const play = uvFlipbookPlayOf(b, key);
 	let flipped = sample;
 	if (grid.z > 0.0) {
-		const time = b.frameParams.frame.x;
-		const frames = flipbookUvs(sample.baseUv, grid, play, time);
-		flipped = { baseUv: frames.xy, nextUv: frames.zw, blend: flipbookBlend(grid, play, time) };
+		const cell = sample.baseUv / grid.xy;
+		flipped = {
+			baseUv: cell + frames.animatedUv,
+			nextUv: cell + frames.animatedUv2,
+			blend: frames.blend,
+		};
 	}
 	return flipped;
 }
