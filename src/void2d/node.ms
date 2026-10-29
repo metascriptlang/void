@@ -30,7 +30,7 @@ when (voidProfiler) {
 import { sinf, cosf } from "../math/mat4";
 import { Mat4 } from "../math/math3d";
 import { NO_COLOR_MATRIX } from "./effect";
-import { FlexStyle, YGNode, freeLayoutTree } from "../../../yoga/src/index";
+import { FlexStyle, LayoutMeasure, YGNode, freeLayoutTree } from "../../../yoga/src/index";
 import {
 	BoxStyle,
 	CornerRadii,
@@ -905,6 +905,11 @@ export function layoutGetYg(this n: NodeRef): Ptr<YGNode> | null {
 export function layoutSetYg(this n: NodeRef, yg: Ptr<YGNode> | null): void {
 	const i: int32 = n.liveRow("layoutSetYg");
 	n.scene.layouts[i] = { ...n.scene.layouts[i], yg: yg };
+}
+
+export function layoutGetMeasure(this n: NodeRef): LayoutMeasure | null {
+	n.liveRow("layoutGetMeasure");
+	return null;
 }
 
 export function layoutSetFrame(
