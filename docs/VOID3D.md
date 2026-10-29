@@ -6874,6 +6874,11 @@ needs no new program key:
 - `shader3d.ms` `flipbookUvs` and `flipbookBlend` hold the vertex function's frame math. The
   base texture is read at that frame, and a second time at the next frame when the blend is
   above 0, in the lit, unlit and pixel-art programs.
+- The lit flipbook splits the stages as the reference does: the vertex segment `flipbookFrames`
+  computes both frames' cell offsets and the blend once per vertex into the carrier
+  `FlipbookFrames`, and `uvFlipbook` adds the cell UV and samples (`src/shader/CLAUDE.md`
+  carriers). fxc on `litTexturedUvTransform`: vertex 35 to 69 slots, fragment 481 to 451. The
+  unlit and pixel-art flipbooks stay inline in their fragment.
 - The frame count 0 is the off state, so a zero-filled moving block (glTF, world labels) reads
   its texture as before.
 - `renderer.ms` `readsFrameTime` wakes the core while a flipbook has frames and a speed.
@@ -6886,7 +6891,8 @@ needs no new program key:
 A pbr key has no flipbook: its block carries its own UV transform, and a pbr material with a UV
 transform is refused.
 
-Pinned on the CPU in `litShaderCheck.ms` (frame walk, wrap, hold, start frame and time, blend)
+Pinned on the CPU in `litShaderCheck.ms` (frame walk, wrap, hold, start frame and time, blend,
+and the split lit flipbook equal to the inline one within 1e-4)
 and `rendererCheck.ms` (wake). Making a non-looping flipbook loop turns the hold test red.
 
 `tests/integration/movingMaterial.ms` reads back a two-frame flipbook with and without the
