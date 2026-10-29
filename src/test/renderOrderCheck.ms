@@ -18,6 +18,7 @@ import {
 	remove,
 	setRenderOrder,
 	renderOrderOf,
+	setLocal,
 } from "../void3d/scene";
 import { Camera3D, ProjectionKind } from "../void3d/camera";
 import { collect, contextOf } from "./drawHelpers";
@@ -94,6 +95,21 @@ test "an order written on a steady frame reaches the item in place, with no rebu
 	assert items[0].order == 3 && items[1].order == 2;
 	assert items[0].mesh.index == 0 && items[1].mesh.index == 1;
 	assert (items.length as int32) == 2;
+}
+
+test "a steady frame with nothing set keeps its items; a setter's change reaches them" {
+	const context: DrawContext = contextOf(2, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const a: NodeId3D = meshAt(scene, context, 0, 0.0);
+	const _b: NodeId3D = meshAt(scene, context, 1, 0.0);
+	let items: Vec<DrawItem> = [];
+	assert refresh(scene, items) == 2 && !scene.itemsChanged;
+	items[0].order = 9;
+	assert refresh(scene, items) == 2 && items[0].order == 9;
+	setRenderOrder(scene, a, 3);
+	assert refresh(scene, items) == 2 && items[0].order == 3 && !scene.itemsChanged;
+	setLocal(scene, a, Transform3D.fromTranslation(vec3(0.0, 0.0, 4.0)));
+	assert refresh(scene, items) == 2 && items[0].world.m43 == 4.0;
 }
 
 test "swapping two orders between frames swaps the draw order of an alpha list" {
