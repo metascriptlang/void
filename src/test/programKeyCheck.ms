@@ -96,6 +96,7 @@ import {
 	SAO_NOISE_SAMPLER_SLOT,
 } from "../void3d/gpu3d";
 import { BLUR_UNIFORM_SLOT, BLUR_UNIFORM_LENGTH } from "../void3d/blur";
+import { COLOR_MATRIX_UNIFORM_SLOT, COLOR_MATRIX_UNIFORM_LENGTH } from "../void3d/colorMatrixPass";
 import { UNIFORM_SLOTS } from "../gpu/door";
 import { GPU3D_BINDING_VIEWS, GPU3D_BINDING_SAMPLERS } from "../void3d/gpu3d.h";
 import { RenderState, Blend, BlendMode, Face } from "../gpu/state";
@@ -210,7 +211,7 @@ const EVERY_PROGRAM: Vec<Program> = [
 	Program.LitTextured, Program.UnlitTextured, Program.BloomDownsampleFirst,
 	Program.BloomDownsample, Program.BloomUpsample, Program.OutlineMask, Program.OutlineMix,
 	Program.OutlineWidth, Program.ParticleVisual, Program.Decal, Program.Sao, Program.Blur,
-	Program.Line, Program.Fxaa,
+	Program.Line, Program.Fxaa, Program.ColorMatrix,
 ];
 
 const SCENE_PROGRAMS: Vec<Program> = [
@@ -245,6 +246,7 @@ function layoutFor(key: ProgramKey): VertexLayout {
 		Program.UnlitTextured => VertexLayout.LitTextured,
 		Program.Line => VertexLayout.LitTextured,
 		Program.Fxaa => VertexLayout.Fullscreen,
+		Program.ColorMatrix => VertexLayout.Fullscreen,
 	};
 }
 
@@ -286,7 +288,7 @@ test "every key packs to bits of its own, and each declared one reads its progra
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 174 + 6 + 1 + 1 + 1 + 1 + 1;
+	assert declared == 174 + 6 + 1 + 1 + 1 + 1 + 1 + 1;
 }
 
 test "the FXAA program is a screen program of the core, with a view and a sampler and no block" {
@@ -296,6 +298,16 @@ test "the FXAA program is a screen program of the core, with a view and a sample
 	assert vertexLayoutOf(key) == VertexLayout.Fullscreen;
 	assert declaredSlots(key) == 0;
 	assert textureSlotMask(key) == 1 && samplerSlotMask(key) == 1;
+}
+
+test "the colour matrix program is a core screen program with its block, two views, two samplers" {
+	const key: ProgramKey = ProgramKey.of(Program.ColorMatrix);
+	assert (Program.ColorMatrix as int32) == 20 && declares(key);
+	assert isScreenProgram(Program.ColorMatrix);
+	assert !declares(key.withPreset(Preset.PixelArt)) && !declares(key.withPreset(Preset.Shadow));
+	assert vertexLayoutOf(key) == VertexLayout.Fullscreen;
+	assert uniformBlockLength(key, COLOR_MATRIX_UNIFORM_SLOT) == COLOR_MATRIX_UNIFORM_LENGTH;
+	assert textureSlotMask(key) == 3 && samplerSlotMask(key) == 3;
 }
 
 test "the blur program is a screen program of the core, with its block, a view and a sampler" {
