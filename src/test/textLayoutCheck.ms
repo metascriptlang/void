@@ -493,16 +493,42 @@ test "under force_width a row one cell too long breaks at the space its cells re
 	assert l.lines[0].width == 912.0;
 }
 
-test "under force_width a glyph wider than its cell and a quarter shrinks to that width" {
+test "under force_width a primary-face glyph wider than its cell keeps its size" {
 	const l = laidInCells("Wi");
-	const room: float32 = 8.0 * 1.25;
 	const wide = l.glyphs[0];
 	const box = glyphInkBox(wide.face, wide.glyph, wide.size);
-	assert wide.size < 20.0;
-	assert box[2] - box[0] <= room + 1.0;
-	assert box[2] - box[0] > room - 2.0;
+	assert wide.face == fontFace(cellRow().font);
+	assert box[2] - box[0] > 8.0 * 1.25 + 2.0;
+	assert wide.size == 20.0;
 	assert l.glyphs[1].size == 20.0 && l.glyphs[1].x == 8.0;
 	assert l.lines[0].width == 16.0;
+}
+
+when (voidShaper) {
+	test "under force_width a ligature keeps its size across the cells of the graphemes it consumed" {
+		const fixture: FontId = try addFont("tests/fonts/shapeFixture.ttf") catch DEFAULT_FONT;
+		const row: TextStyle = { ...cellRow(), font: fixture, size: 25.0 };
+		const noRuns: TextRun[] = [];
+		const noBreaks: int32[] = [];
+		const cells: LineOptions = { ...PLAIN_LINES, forceWidth: 8.0 };
+		const l = wrapText(shapedOf("fi", row, noRuns, noBreaks), row, cells);
+		const lig = l.glyphs[0];
+		const box = glyphInkBox(lig.face, lig.glyph, lig.size);
+		assert l.glyphs[1].glyph == NO_GLYPH;
+		assert box[2] - box[0] > 8.0 * 1.25 + 1.0;
+		assert lig.size == 25.0;
+	}
+}
+
+test "under force_width a fallback-face glyph wider than its cell and a quarter shrinks to that width" {
+	addFallbackFont(cellRow().font, "tests/fonts/NotoSansSC-subset.ttf");
+	const l = laidInCells("\u4F60");
+	const wide = l.glyphs[0];
+	const box = glyphInkBox(wide.face, wide.glyph, wide.size);
+	assert wide.face != fontFace(cellRow().font);
+	assert wide.size < 20.0;
+	assert box[2] - box[0] <= 8.0 * 1.25 + 1.0;
+	assert box[2] - box[0] > 8.0 * 1.25 - 2.0;
 }
 
 test "splitAt cuts one line without shaping it again" {
