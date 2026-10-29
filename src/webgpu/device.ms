@@ -469,21 +469,22 @@ function destroyPipeline(pipeline: uint32): void {
 	checkedBeginPass(PASS_RENDER);
 	attachOcclusionSet(descriptor.occlusionQuerySet.id);
 	checkedPassQueries("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites, descriptor.occlusionQuerySet.id);
-	const pass = backend.beginRenderPass(self, descriptor, checkedRenderPass(descriptor, renderPassFacts(descriptor)));
+	fillPassFacts(descriptor);
+	const pass = backend.beginRenderPass(self, descriptor, checkedRenderPass(descriptor, passFacts));
 	markTimestampsWritten(descriptor.timestampWrites);
 	return pass;
 }
 
-function renderPassFacts(descriptor: GPURenderPassDescriptor): RenderPassFacts {
-	let facts: RenderPassFacts = { depth: { texture: 0 } };
+let passFacts: RenderPassFacts = { depth: { texture: 0 } };
+
+function fillPassFacts(descriptor: GPURenderPassDescriptor): void {
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		const attachment = descriptor.colorAttachments[i];
-		if (attachment.view.id != 0) { facts.colors[i] = attachmentFacts(attachment.view.id); }
-		if (attachment.resolveTarget.id != 0) { facts.resolves[i] = attachmentFacts(attachment.resolveTarget.id); }
+		if (attachment.view.id != 0) { passFacts.colors[i] = attachmentFacts(attachment.view.id); }
+		if (attachment.resolveTarget.id != 0) { passFacts.resolves[i] = attachmentFacts(attachment.resolveTarget.id); }
 	}
 	const depth = descriptor.depthStencilAttachment.view;
-	if (depth.id != 0) { facts.depth = attachmentFacts(depth.id); }
-	return facts;
+	if (depth.id != 0) { passFacts.depth = attachmentFacts(depth.id); }
 }
 
 function attachmentFacts(view: uint32): AttachmentFacts {

@@ -9,6 +9,7 @@
 // expect afterPipelineSwap: was made for GPURenderPipeline 65537, not the bound pipeline 65538
 // expect afterVertexSlotAdded: the pipeline reads vertex buffer 1, which is not set
 // expect afterIndexFormat: an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format
+// expect nextPassVertexReset: the pipeline reads vertex buffer 0, which is not set
 // expect vertexRangeOverrun: draw vertex range (first 0, count 4) needs 32 bytes of the vertex buffer at slot 0, which has 24 bound
 import { argv } from "std/process";
 import {
@@ -50,7 +51,7 @@ function run(name: string): void {
 		console.log("an indirect dispatch from a buffer without INDIRECT returned");
 		return;
 	}
-	const draws = ["stripIndexMismatch", "shaderDestroyed", "uniformOverrun", "groupFromOtherPipeline", "indexRangeOverrun", "vertexRangeOverrun", "afterGroupSwap", "afterPipelineSwap", "afterVertexSlotAdded", "afterIndexFormat"];
+	const draws = ["stripIndexMismatch", "shaderDestroyed", "uniformOverrun", "groupFromOtherPipeline", "indexRangeOverrun", "vertexRangeOverrun", "afterGroupSwap", "afterPipelineSwap", "afterVertexSlotAdded", "afterIndexFormat", "nextPassVertexReset"];
 	if (!draws.includes(name)) {
 		console.log(`no case named '${name}'`);
 		process.exit(2);
@@ -109,6 +110,14 @@ function run(name: string): void {
 	if (name == "afterPipelineSwap" || name == "afterVertexSlotAdded") { pass.setPipeline(second); }
 	if (name == "afterIndexFormat") { pass.setIndexBuffer(indices, "uint32", 0); }
 	if (name.startsWith("after")) { pass.drawIndexed(3, 1, 0, 0, 0); }
+	if (name == "nextPassVertexReset") {
+		pass.end();
+		const next = encoder.beginRenderPass(clearingPass(view, noResolve));
+		next.setPipeline(pipeline);
+		next.setBindGroup(0, group, offsets);
+		next.setIndexBuffer(indices, "uint16", 0);
+		next.drawIndexed(3, 1, 0, 0, 0);
+	}
 	console.log(`${name}: the draw returned`);
 }
 

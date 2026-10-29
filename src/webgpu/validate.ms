@@ -453,7 +453,19 @@ export function checkedCreateEncoder(): void { refuse(encoder.createRefusal()); 
 export function checkedFinish(): void { refuse(encoder.finishRefusal()); }
 export function checkedBeginPass(kind: int32): void {
 	refuse(encoder.beginPassRefusal(kind));
-	boundFacts = { pipeline: 0 };
+	resetBoundFacts();
+}
+
+function resetBoundFacts(): void {
+	boundFacts.pipeline = 0;
+	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) { boundFacts.vertexBuffers[slot] = 0; }
+	boundFacts.indexBuffer = 0;
+	boundFacts.bindGroups[GPU_UNIFORM_GROUP] = 0;
+	boundFacts.bindGroups[GPU_RESOURCE_GROUP] = 0;
+	boundFacts.vertexSet = 0;
+	boundFacts.groupSet = 0;
+	boundFacts.ownersDirty = false;
+	boundFacts.drawValid = 0;
 }
 export function checkedEndPass(kind: int32): void { refuse(encoder.endPassRefusal(kind)); }
 export function checkedOutsidePass(call: string): void { refuse(encoder.outsidePassRefusal(call)); }
