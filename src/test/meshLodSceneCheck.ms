@@ -22,9 +22,9 @@ import {
 	setInheritLod, setMeshOf, refresh,
 } from "../void3d/scene";
 import {
-	PassList, collect, collectCasters, collectVisible, filterFrustum,
+	PassList, collectCasters, collectVisible, filterFrustum,
 } from "../void3d/passList";
-import { added, litShape } from "./drawHelpers";
+import { added, collect, litShape } from "./drawHelpers";
 import { approx } from "./helpers";
 
 function twoLevels(): MeshLod {

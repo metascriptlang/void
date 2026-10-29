@@ -1,7 +1,7 @@
 // Port of h3d.pass.PassList: the draw items one renderer pass draws, in drawing order.
 //
 // Heaps links PassObjects into a list that `filter` splits and `sort` reorders in place. Here
-// a list holds indices into the frame's Span<DrawItem>: `collect` keeps the items whose
+// a list holds indices into the frame's Span<DrawItem>: `collectVisible` keeps the items whose
 // material is in the list's phase, in item order, `sortByLayer` orders them by Pass.layer as
 // SortByMaterial does first and then by the item's render order, and `sortBackToFront`
 // reorders them the way Renderer.depthSort does for the "alpha" pass. The index storage grows
@@ -43,28 +43,6 @@ function reserve(ref list: PassList, length: int32): void {
 		list.layers.push(0);
 		list.orders.push(0);
 	}
-}
-
-// PassList.init + filter: the items whose material draws in this list's phase; a shadow-only
-// caster draws in none.
-export function collect(
-	ref list: PassList,
-	items: Readonly<Span<DrawItem>>,
-	materials: Readonly<Span<Material>>,
-): void {
-	reserve(list, items.length as int32);
-	let count: int32 = 0;
-	for (let i = 0; i < (items.length as int32); i++) {
-		const material: int32 = items[i].material.index;
-		if (materials[material].phase == list.phase &&
-			materials[material].castShadows != ShadowCasting.Only) {
-			list.indices[count] = i;
-			list.layers[count] = materials[material].layer;
-			list.orders[count] = items[i].order;
-			count = count + 1;
-		}
-	}
-	list.count = count;
 }
 
 // The "shadow" pass list: the items whose material casts, in item order.
@@ -136,8 +114,9 @@ function place(ref list: PassList, index: int32, layer: int32, order: int32): vo
 	list.count = list.count + 1;
 }
 
-// Heaps' emitRec walk: one read of the items fills every phase's list with what `collect` then
-// `filterFrustum` would leave in it, and returns how many listed items the frustum excluded.
+// PassList.init + filter in Heaps' emitRec walk: one read of the items fills every phase's list
+// with the visible items whose material draws in it (a shadow-only caster draws in none), and
+// returns how many the frustum excluded.
 export function collectVisible(
 	ref opaque: PassList,
 	ref alpha: PassList,

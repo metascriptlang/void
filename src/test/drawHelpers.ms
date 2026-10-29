@@ -1,13 +1,15 @@
 import { Program } from "../void3d/gpu3d";
 import { RenderState } from "../gpu/state";
 import { Texture } from "../gpu/texture";
-import { Material, Phase } from "../void3d/material";
+import { Material, Phase, ShadowCasting } from "../void3d/material";
 import { TextureData, TextureId, TextureAlpha } from "../void3d/texture";
 import { claim } from "../void3d/slots";
 import { contextGeneration } from "../gpu/door";
 import { MeshData } from "../void3d/meshData";
+import { PassList } from "../void3d/passList";
 import {
 	DrawContext,
+	DrawItem,
 	GpuMesh,
 	MeshId,
 	MaterialId,
@@ -114,4 +116,30 @@ export function addedOwner(context: DrawContext, owner: Texture): TextureId {
 		index: index,
 		generation: context.textureSlots.generations[index],
 	};
+}
+
+// One phase's list as beginFrame filled it before collectVisible, the oracle its pins compare to.
+export function collect(
+	ref list: PassList,
+	items: Readonly<Span<DrawItem>>,
+	materials: Readonly<Span<Material>>,
+): void {
+	while ((list.indices.length as int32) < (items.length as int32)) {
+		list.indices.push(0);
+		list.depths.push(0.0);
+		list.layers.push(0);
+		list.orders.push(0);
+	}
+	let count: int32 = 0;
+	for (let i = 0; i < (items.length as int32); i++) {
+		const material: int32 = items[i].material.index;
+		if (materials[material].phase == list.phase &&
+			materials[material].castShadows != ShadowCasting.Only) {
+			list.indices[count] = i;
+			list.layers[count] = materials[material].layer;
+			list.orders[count] = items[i].order;
+			count = count + 1;
+		}
+	}
+	list.count = count;
 }

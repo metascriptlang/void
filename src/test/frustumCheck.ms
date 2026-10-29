@@ -7,8 +7,9 @@ import { Material, Phase } from "../void3d/material";
 import { Program } from "../void3d/gpu3d";
 import { RenderState } from "../gpu/state";
 import {
-	PassList, collect, filterFrustum, sortBackToFront, sortByLayer,
+	PassList, filterFrustum, sortBackToFront, sortByLayer,
 } from "../void3d/passList";
+import { collect } from "./drawHelpers";
 
 function cube(): Bounds3D {
 	return Bounds3D.fromValues(-0.25, -0.25, -0.25, 0.5, 0.5, 0.5);

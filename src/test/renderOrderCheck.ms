@@ -3,7 +3,7 @@ import { DrawContext, DrawItem } from "../void3d/draw";
 import { Material, Phase } from "../void3d/material";
 import { Program } from "../void3d/gpu3d";
 import { RenderState, BlendMode } from "../gpu/state";
-import { PassList, collect, sortBackToFront, sortByLayer } from "../void3d/passList";
+import { PassList, sortBackToFront, sortByLayer } from "../void3d/passList";
 import {
 	Scene3D,
 	NodeId3D,
@@ -20,7 +20,7 @@ import {
 	renderOrderOf,
 } from "../void3d/scene";
 import { Camera3D, ProjectionKind } from "../void3d/camera";
-import { contextOf } from "./drawHelpers";
+import { collect, contextOf } from "./drawHelpers";
 
 function meshAt(scene: Scene3D, context: DrawContext, mesh: int32, z: float32): NodeId3D {
 	const added: Result<NodeId3D, SceneError> = addMeshNode(

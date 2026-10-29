@@ -35,9 +35,9 @@ import {
 	releaseMesh,
 	writeUniforms,
 } from "../void3d/draw";
-import { lastMaterial, added, litShape } from "./drawHelpers";
+import { lastMaterial, added, collect, litShape } from "./drawHelpers";
 import { UniformError } from "../void3d/uniformPool";
-import { PassList, collect, sortBackToFront } from "../void3d/passList";
+import { PassList, sortBackToFront } from "../void3d/passList";
 import { LowResView, ViewError, lowResView } from "../void3d/blit";
 import {
 	PaletteLut,
