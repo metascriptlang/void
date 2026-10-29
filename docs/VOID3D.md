@@ -6918,6 +6918,28 @@ Pinned in `litShaderCheck.ms` (the threshold, alpha, the zero key). `movingMater
 red half of a red and green texture away in both presets, GPU-green on D3D11; the featureless
 control draws the red half.
 
+### FXAA and the colour matrix pass: Heaps' screen passes, as built (2026-10-29)
+
+Both are screen programs written in `post3d.ms` and drawn from a texture into a target of its
+size (`fxaa.ms` `FxaaPass`, `colorMatrixPass.ms` `ColorMatrixPass`); a size mismatch stops.
+
+- `fxaaFs` is `h3d/pass/FXAA.hx` line by line: the luma of four diagonal neighbours, two blends
+  along the edge direction, and `rgbB` unless its luma leaves the neighbourhood's range. Alpha is
+  the centre texel's.
+- `colorMatrixFs` is `h3d/pass/ColorMatrix.hx`: the matrix runs on the stored texel, as Heaps'
+  shader reads it, with `useAlpha` choosing the whole colour or its RGB with alpha 1. A mask
+  texture read at a UV mapped by two rows (`ColorMatrixMask.matA/matB`) gives a channel weight
+  raised to `power`, which mixes the result toward the second matrix's, or toward the source
+  when there is none; `invert` mixes the other way. A power of 0 or below is refused.
+- The material colour matrix (`h3d/shader/ColorMatrix.hx`, alpha kept, RGB through the matrix)
+  stays the CPU `materialColorMatrixRaw`; its program needs `shader3d.ms`, which is the shader
+  session's until its S6 lands.
+
+Pinned on the CPU in `post3dCheck.ms` (a flat colour stays, a staircase blends) and
+`colorMatrixPassCheck.ms` (the useAlpha pair, the mask mix and its invert, the mask UV, the
+refusals), with both programs' slots in `programKeyCheck.ms`. Not yet regenerated into
+`shader3dGen.glsl` nor read back on a GPU.
+
 ### Trail: CPU history and ribbon checkpoint
 
 Apps sample a world pose/time into standalone `Trail` state and obtain `MeshData` through
