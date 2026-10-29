@@ -219,12 +219,12 @@ export function destroy(this self: GPUDevice): void {
 }
 
 function discardView(id: uint32): void {
-	if (!viewRecords.record(id).swapchain) { backend.destroyView({ id: id }); }
+	if (!viewRecords.slots[viewRecords.slotIndex(id)].swapchain) { backend.destroyView({ id: id }); }
 	free(viewRecords, id);
 }
 
 function discardTexture(id: uint32): void {
-	if (textureRecords.record(id).swapchainView == 0) { backend.destroyTexture({ id: id }); }
+	if (textureRecords.slots[textureRecords.slotIndex(id)].swapchainView == 0) { backend.destroyTexture({ id: id }); }
 	free(textureRecords, id);
 }
 
@@ -306,7 +306,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	store(pipelineRecords, {
 		id: id,
 		shader: descriptor.compute.module.id,
-		groups: shaderRecords.record(descriptor.compute.module.id).groups,
+		groups: shaderRecords.slots[shaderRecords.slotIndex(descriptor.compute.module.id)].groups,
 		label: descriptor.label,
 		compute: true,
 	});
@@ -317,7 +317,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function createBindGroup(this self: GPUDevice, descriptor: GPUBindGroupDescriptor): GPUBindGroup {
 	const layout = layoutRecords.record(descriptor.layout.id);
 	const group = layout.group;
-	const shader = shaderRecords.record(pipelineRecords.record(layout.pipeline).shader);
+	const shader = shaderRecords.record(pipelineRecords.slots[pipelineRecords.slotIndex(layout.pipeline)].shader);
 	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
 		const entry: GPUBindGroupEntry = descriptor.entries[i];
 		if (entry.buffer.id != 0 || entry.textureView.id != 0 || entry.sampler.id != 0) { checkedBindGroupEntry(entry, group, shader); }
@@ -354,13 +354,13 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function has(this self: GPUSupportedFeatures, name: GPUFeatureName): boolean { return (self.bits & featureBit(name)) != 0; }
 
 export function createView(this self: GPUTexture, descriptor: GPUTextureViewDescriptor): GPUTextureView {
-	const texture = textureRecords.record(self.id);
-	if (texture.swapchainView != 0) { return { id: texture.swapchainView }; }
-	const range = checkedViewRange(descriptor, texture.id, texture.mipLevels, texture.layers, texture.volume, texture.cube);
+	const t = textureRecords.slotIndex(self.id);
+	if (textureRecords.slots[t].swapchainView != 0) { return { id: textureRecords.slots[t].swapchainView }; }
+	const range = checkedViewRange(descriptor, self.id, textureRecords.slots[t].mipLevels, textureRecords.slots[t].layers, textureRecords.slots[t].volume, textureRecords.slots[t].cube);
 	const id = allocate(viewRecords);
 	store(viewRecords, {
 		id: id,
-		texture: texture.id,
+		texture: self.id,
 		dimension: range.dimension,
 		baseMip: range.baseMip,
 		mipCount: range.mipCount,
@@ -379,8 +379,7 @@ export function createView(this self: GPUTexture, descriptor: GPUTextureViewDesc
 function checkedBoundGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	checkedBindGroupIndex(index);
 	if (bindGroup.id == 0) { return; }
-	const record = bindGroupRecords.record(bindGroup.id);
-	checkedBindGroupSet(index, record, dynamicOffsets, cachedLimits().minUniformBufferOffsetAlignment as uint32);
+	checkedBindGroupSet(index, bindGroupRecords.slots[bindGroupRecords.slotIndex(bindGroup.id)], dynamicOffsets, cachedLimits().minUniformBufferOffsetAlignment as uint32);
 }
 
 function layoutOf(pipeline: uint32, index: int32): GPUBindGroupLayout {
@@ -395,7 +394,7 @@ function layoutOf(pipeline: uint32, index: int32): GPUBindGroupLayout {
 }
 
 function destroyPipeline(pipeline: uint32): void {
-	const layouts = pipelineRecords.record(pipeline).layouts;
+	const layouts = pipelineRecords.slots[pipelineRecords.slotIndex(pipeline)].layouts;
 	backend.destroyRenderPipeline({ id: pipeline });
 	for (let g = 0; g < 2; g++) { if (layouts[g] != 0) { free(layoutRecords, layouts[g]); } }
 	free(pipelineRecords, pipeline);
@@ -412,12 +411,12 @@ function destroyPipeline(pipeline: uint32): void {
 	free(bufferRecords, self.id);
 }
 @inline export function destroy(this self: GPUTexture): void {
-	if (textureRecords.record(self.id).swapchainView != 0) { stop("the swapchain texture belongs to the platform"); }
+	if (textureRecords.slots[textureRecords.slotIndex(self.id)].swapchainView != 0) { stop("the swapchain texture belongs to the platform"); }
 	backend.destroyTexture(self);
 	free(textureRecords, self.id);
 }
 @inline export function destroy(this self: GPUTextureView): void {
-	if (viewRecords.record(self.id).swapchain) { return; }
+	if (viewRecords.slots[viewRecords.slotIndex(self.id)].swapchain) { return; }
 	backend.destroyView(self);
 	free(viewRecords, self.id);
 }
@@ -434,13 +433,13 @@ function destroyPipeline(pipeline: uint32): void {
 	free(bindGroupRecords, self.id);
 }
 
-@inline export function size(this self: GPUBuffer): int64 { return bufferRecords.record(self.id).size; }
-@inline export function width(this self: GPUTexture): int32 { return textureRecords.record(self.id).width; }
-@inline export function height(this self: GPUTexture): int32 { return textureRecords.record(self.id).height; }
-@inline export function usage(this self: GPUTexture): int32 { return textureRecords.record(self.id).usage; }
-@inline export function format(this self: GPUTexture): GPUTextureFormat { return textureRecords.record(self.id).format; }
-@inline export function texture(this self: GPUTextureView): GPUTexture { return { id: viewRecords.record(self.id).texture }; }
-@inline export function baseMipLevel(this self: GPUTextureView): int32 { return viewRecords.record(self.id).baseMip; }
+@inline export function size(this self: GPUBuffer): int64 { return bufferRecords.slots[bufferRecords.slotIndex(self.id)].size; }
+@inline export function width(this self: GPUTexture): int32 { return textureRecords.slots[textureRecords.slotIndex(self.id)].width; }
+@inline export function height(this self: GPUTexture): int32 { return textureRecords.slots[textureRecords.slotIndex(self.id)].height; }
+@inline export function usage(this self: GPUTexture): int32 { return textureRecords.slots[textureRecords.slotIndex(self.id)].usage; }
+@inline export function format(this self: GPUTexture): GPUTextureFormat { return textureRecords.slots[textureRecords.slotIndex(self.id)].format; }
+@inline export function texture(this self: GPUTextureView): GPUTexture { return { id: viewRecords.slots[viewRecords.slotIndex(self.id)].texture }; }
+@inline export function baseMipLevel(this self: GPUTextureView): int32 { return viewRecords.slots[viewRecords.slotIndex(self.id)].baseMip; }
 
 @inline export function writeBuffer<T>(this self: GPUQueue, buffer: GPUBuffer, bufferOffset: int64, data: Readonly<Span<T>>): void {
 	if (data.length == 0) { return; }
@@ -488,8 +487,8 @@ function renderPassFacts(descriptor: GPURenderPassDescriptor): RenderPassFacts {
 }
 
 function attachmentFacts(view: uint32): AttachmentFacts {
-	const record = viewRecords.record(view);
-	return attachmentFactsOf(record, textureRecords.record(record.texture));
+	const v = viewRecords.slotIndex(view);
+	return attachmentFactsOf(viewRecords.slots[v], textureRecords.slots[textureRecords.slotIndex(viewRecords.slots[v].texture)]);
 }
 
 @inline export function beginComputePass(this self: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
@@ -502,7 +501,7 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 
 @inline export function setPipeline(this self: GPUComputePassEncoder, pipeline: GPUComputePipeline): void {
 	checkedInPass(PASS_COMPUTE, "setPipeline");
-	checkedComputePipeline(pipeline.id, pipelineRecords.record(pipeline.id).compute);
+	checkedComputePipeline(pipeline.id, pipelineRecords.slots[pipelineRecords.slotIndex(pipeline.id)].compute);
 	markPipelineSet(pipeline.id);
 	backend.setComputePipeline(pipeline);
 }
@@ -526,8 +525,8 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	checkedInPass(PASS_COMPUTE, "dispatchWorkgroupsIndirect");
 	checkedPipelineSet("dispatchWorkgroupsIndirect");
 	checkedDispatchBound();
-	const record = bufferRecords.record(buffer.id);
-	checkedDispatchIndirect(buffer.id, record.usage, record.size, offset);
+	const b = bufferRecords.slotIndex(buffer.id);
+	checkedDispatchIndirect(buffer.id, bufferRecords.slots[b].usage, bufferRecords.slots[b].size, offset);
 	backend.dispatchWorkgroupsIndirect(buffer, offset);
 }
 
@@ -662,8 +661,8 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 }
 
 function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offset: int64, size: int64): int64 {
-	const record = bufferRecords.record(buffer.id);
-	return checkedMappedRange(member, buffer.id, record.size, record.mapMode, record.mapOffset, record.mapSize, mode as int32, offset, size);
+	const b = bufferRecords.slotIndex(buffer.id);
+	return checkedMappedRange(member, buffer.id, bufferRecords.slots[b].size, bufferRecords.slots[b].mapMode, bufferRecords.slots[b].mapOffset, bufferRecords.slots[b].mapSize, mode as int32, offset, size);
 }
 
 // A copy of the mapped bytes, not WebGPU's live ArrayBuffer view; a MAP_WRITE buffer takes writeMappedRange instead.
@@ -690,7 +689,7 @@ function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offse
 
 @inline export function setPipeline(this self: GPURenderPassEncoder, pipeline: GPURenderPipeline): void {
 	checkedInPass(PASS_RENDER, "setPipeline");
-	checkedRenderPassPipeline(pipeline.id, pipelineRecords.record(pipeline.id).compute);
+	checkedRenderPassPipeline(pipeline.id, pipelineRecords.slots[pipelineRecords.slotIndex(pipeline.id)].compute);
 	markPipelineSet(pipeline.id);
 	backend.setPipeline(pipeline);
 }
@@ -814,8 +813,8 @@ export function frameIndex(this self: GPUDevice): uint32 { return (currentFrame(
 
 export function liveCounts(this self: GPUDevice): GPULiveCounts {
 	let counts: GPULiveCounts = { buffers: bufferRecords.live() };
-	for (const id of textureRecords.liveIds()) { if (textureRecords.record(id).swapchainView == 0) { counts.textures += 1; } }
-	for (const id of viewRecords.liveIds()) { if (!viewRecords.record(id).swapchain) { counts.views += 1; } }
+	for (const id of textureRecords.liveIds()) { if (textureRecords.slots[textureRecords.slotIndex(id)].swapchainView == 0) { counts.textures += 1; } }
+	for (const id of viewRecords.liveIds()) { if (!viewRecords.slots[viewRecords.slotIndex(id)].swapchain) { counts.views += 1; } }
 	counts.samplers = samplerRecords.live();
 	counts.shaderModules = shaderRecords.live();
 	counts.pipelines = pipelineRecords.live();
