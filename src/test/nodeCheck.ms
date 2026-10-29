@@ -8,7 +8,7 @@ import {
 } from "../void2d/types";
 import { BlendMode } from "../gpu/state";
 import { approx, fakeTexture } from "./helpers";
-import { BoxStyle, uniformRadii, uniformBorders, boxStyles } from "../void2d/boxStyle";
+import { BoxStyle, CornerRadii, BorderWidths, boxStyles } from "../void2d/boxStyle";
 import { colorMatrixGrayscale, NO_COLOR_MATRIX } from "../void2d/effect";
 
 when (voidSvg) {
@@ -215,8 +215,8 @@ test "getBounds covers single rect" {
 test "getBounds includes an outset analytic box shadow" {
 	const n = fresh().rect(20.0, 10.0, rgba(0.3, 0.5, 0.8, 1.0)).at(50.0, 40.0);
 	n.setBoxStyle(BoxStyle.create(
-		uniformRadii(0.0),
-		uniformBorders(0.0),
+		CornerRadii.uniform(0.0),
+		BorderWidths.uniform(0.0),
 		rgba(0.0, 0.0, 0.0, 0.0),
 	).castShadow(rgba(0.0, 0.0, 0.0, 0.8), 2.0, -3.0, 4.0));
 	n.sync(identity2d(), false);
@@ -824,7 +824,7 @@ test "a color matrix lives in a side row that only a node with one holds" {
 test "a border-only promotion starts with a transparent fill" {
 	const s = fresh();
 	const n = s.group();
-	n.setBoxStyle(BoxStyle.create(uniformRadii(2.0), uniformBorders(1.0), white));
+	n.setBoxStyle(BoxStyle.create(CornerRadii.uniform(2.0), BorderWidths.uniform(1.0), white));
 	assert n.kind() === DrawKind.Rect;
 	assert n.paint().color.a == 0.0;
 }
@@ -833,7 +833,7 @@ test "clearing a background resets the fill a later promotion starts from" {
 	const s = fresh();
 	const n = s.group().setBackground(rgba(0.9, 0.1, 0.1, 1.0));
 	n.clearBackground();
-	n.setBoxStyle(BoxStyle.create(uniformRadii(1.0), uniformBorders(1.0), white));
+	n.setBoxStyle(BoxStyle.create(CornerRadii.uniform(1.0), BorderWidths.uniform(1.0), white));
 	assert n.paint().color.a == 0.0;
 }
 
@@ -856,12 +856,12 @@ test "a background promotes a group in place, keeping row, children and local" {
 test "clearing a background returns the row to a group and frees its box style" {
 	const s = fresh();
 	const n = s.group();
-	n.setBoxStyle(BoxStyle.create(uniformRadii(3.0), uniformBorders(0.0), white));
+	n.setBoxStyle(BoxStyle.create(CornerRadii.uniform(3.0), BorderWidths.uniform(0.0), white));
 	assert n.kind() === DrawKind.Rect;
 	const rows: int32 = boxStyles.length as int32;
 	n.clearBackground();
 	assert n.kind() === DrawKind.Group;
-	n.setBoxStyle(BoxStyle.create(uniformRadii(5.0), uniformBorders(0.0), white));
+	n.setBoxStyle(BoxStyle.create(CornerRadii.uniform(5.0), BorderWidths.uniform(0.0), white));
 	assert n.kind() === DrawKind.Rect;
 	assert (boxStyles.length as int32) == rows;
 	assert marked(n, Changed.Content);

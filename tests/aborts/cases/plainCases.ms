@@ -44,7 +44,7 @@ import { paint } from "../../../src/void2d/scene";
 import { sync } from "../../../src/void2d/render";
 import { rgba, whiteTile, identity2d, maskFilter, tile } from "../../../src/void2d/types";
 import { begin2d, blurPass, endTarget, beginTarget } from "../../../src/void2d/draw";
-import { BoxFillKind, BoxStyle, solidFill, uniformBorders, uniformRadii } from "../../../src/void2d/boxStyle";
+import { BoxFillKind, BoxStyle, solidFill, BorderWidths, CornerRadii } from "../../../src/void2d/boxStyle";
 import { GlyphKey, PageKind } from "../../../src/void2d/glyphAtlas";
 import { colorMatrixGrayscale } from "../../../src/void2d/effect";
 import { frameProfiler, drawBegin, commit, present } from "../../../src/void2d/profiler";
@@ -100,7 +100,7 @@ function run(name: string): void {
 		console.log("a blur was recorded into the screen list");
 	} else if (name == "boxFillCellZero") {
 		const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
-		const style = BoxStyle.create(uniformRadii(2.0), uniformBorders(0.0), rgba(0.0, 0.0, 0.0, 0.0));
+		const style = BoxStyle.create(CornerRadii.uniform(2.0), BorderWidths.uniform(0.0), rgba(0.0, 0.0, 0.0, 0.0));
 		const box = s.add(s.rect(10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0)));
 		box.setBoxStyle({ ...style, fill: { ...solidFill(), kind: BoxFillKind.Checker, cell: 0.0 } });
 		console.log("a checker fill of no cell size was taken");

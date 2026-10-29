@@ -19,7 +19,7 @@ when (voidSprites) {
 	import { spriteCellFor } from "../../src/void2d/font";
 }
 import {
-	BoxStyle, BoxShadow, CornerRadii, uniformRadii, uniformBorders, linearFill, slashFill,
+	BoxStyle, BoxShadow, CornerRadii, BorderWidths, linearFill, slashFill,
 	checkerFill, ditheredFill, castShadows,
 } from "../../src/void2d/boxStyle";
 import {
@@ -384,7 +384,7 @@ function primPerCornerRadii(): Scene2D {
 	box.setAlpha(0.78);
 	box.setBoxStyle(BoxStyle.create(
 		{ topLeft: 4.0, topRight: 14.0, bottomRight: 28.0, bottomLeft: 40.0 },
-		uniformBorders(3.0),
+		BorderWidths.uniform(3.0),
 		rgba(0.94, 0.96, 1.0, 1.0),
 	));
 	s.add(box);
@@ -398,7 +398,7 @@ function primPerSideBorders(): Scene2D {
 	box.setRotation(-0.27);
 	box.setAlpha(0.74);
 	box.setBoxStyle(BoxStyle.create(
-		uniformRadii(18.0),
+		CornerRadii.uniform(18.0),
 		{ left: 0.2, top: 6.0, right: 10.0, bottom: 14.0 },
 		rgba(0.98, 0.65, 0.24, 1.0),
 	));
@@ -419,14 +419,14 @@ function primDashedBorder(): Scene2D {
 	s.add(rounded);
 	const shadowed = s.rect(116.0, 58.0, rgba(0.30, 0.72, 0.48, 0.9)).at(40.0, 168.0);
 	shadowed.setBoxStyle(BoxStyle.create(
-		uniformRadii(14.0),
-		uniformBorders(4.0),
+		CornerRadii.uniform(14.0),
+		BorderWidths.uniform(4.0),
 		rgba(0.94, 0.96, 1.0, 1.0),
 	).dashed().castShadow(rgba(0.01, 0.01, 0.06, 0.6), 6.0, 7.0, 8.0));
 	s.add(shadowed);
 	const square = s.rect(112.0, 58.0, rgba(0.42, 0.24, 0.62, 0.9)).at(184.0, 172.0);
 	square.setBoxStyle(BoxStyle.create(
-		uniformRadii(0.0),
+		CornerRadii.uniform(0.0),
 		{ left: 2.0, top: 5.0, right: 8.0, bottom: 3.0 },
 		rgba(0.92, 0.95, 1.0, 1.0),
 	).dashed());
@@ -442,7 +442,7 @@ function primCardWithLabel(): Scene2D {
 	card.setAlpha(0.9);
 	card.setBoxStyle(BoxStyle.create(
 		{ topLeft: 18.0, topRight: 6.0, bottomRight: 14.0, bottomLeft: 4.0 },
-		uniformBorders(2.5),
+		BorderWidths.uniform(2.5),
 		rgba(0.92, 0.95, 1.0, 1.0),
 	));
 	s.add(card);
@@ -464,14 +464,14 @@ function primDropShadow(): Scene2D {
 	box.setAlpha(0.88);
 	box.setBoxStyle(BoxStyle.create(
 		{ topLeft: 4.0, topRight: 14.0, bottomRight: 28.0, bottomLeft: 40.0 },
-		uniformBorders(2.0),
+		BorderWidths.uniform(2.0),
 		rgba(0.94, 0.96, 1.0, 1.0),
 	).castShadow(rgba(0.01, 0.01, 0.06, 0.55), 9.0, 7.0, 10.0));
 	s.add(box);
 	const hard = s.rect(56.0, 32.0, rgba(0.30, 0.72, 0.48, 1.0)).at(16.0, 8.0);
 	hard.setBoxStyle(BoxStyle.create(
-		uniformRadii(8.0),
-		uniformBorders(0.0),
+		CornerRadii.uniform(8.0),
+		BorderWidths.uniform(0.0),
 		rgba(0.0, 0.0, 0.0, 0.0),
 	).castShadow(rgba(0.0, 0.0, 0.03, 0.8), 0.0, 5.0, 4.0));
 	s.add(hard);
@@ -482,15 +482,15 @@ function primInsetShadow(): Scene2D {
 	const s = Scene2D.create(DARK);
 	const well = s.rect(180.0, 110.0, rgba(0.88, 0.90, 0.95, 1.0)).at(70.0, 60.0);
 	well.setBoxStyle(BoxStyle.create(
-		uniformRadii(16.0),
-		uniformBorders(0.0),
+		CornerRadii.uniform(16.0),
+		BorderWidths.uniform(0.0),
 		rgba(0.0, 0.0, 0.0, 0.0),
 	).castInsetShadow(rgba(0.04, 0.05, 0.12, 0.7), 12.0));
 	s.add(well);
 	const pill = s.rect(120.0, 56.0, rgba(0.82, 0.88, 1.0, 1.0)).at(100.0, 190.0);
 	pill.setBoxStyle(BoxStyle.create(
 		{ topLeft: 28.0, topRight: 28.0, bottomRight: 28.0, bottomLeft: 28.0 },
-		uniformBorders(1.5),
+		BorderWidths.uniform(1.5),
 		rgba(0.3, 0.5, 0.8, 1.0),
 	).castInsetShadow(rgba(0.0, 0.0, 0.04, 0.55), 5.0));
 	s.add(pill);
@@ -506,8 +506,8 @@ function primAaShadow(): Scene2D {
 	const s = Scene2D.create(DARK);
 	const box = s.rect(120.0, 70.0, rgba(0.30, 0.62, 0.92, 1.0)).at(90.0, 60.0);
 	box.setBoxStyle(BoxStyle.create(
-		uniformRadii(12.0),
-		uniformBorders(0.0),
+		CornerRadii.uniform(12.0),
+		BorderWidths.uniform(0.0),
 		rgba(0.0, 0.0, 0.0, 0.0),
 	).castShadow(rgba(0.90, 0.45, 0.15, 0.85), 6.0, 30.0, 22.0));
 	s.add(box);
@@ -540,7 +540,7 @@ function primBoxFills(): Scene2D {
 	const edge = rgba(0.93, 0.95, 1.0, 1.0);
 	const card = (x: float32, y: float32, style: BoxStyle): NodeRef =>
 		s.add(s.rect(90.0, 56.0, white).at(x, y)).setBoxStyle(style);
-	const base = BoxStyle.create(uniformRadii(10.0), uniformBorders(1.5), edge);
+	const base = BoxStyle.create(CornerRadii.uniform(10.0), BorderWidths.uniform(1.5), edge);
 	const amber = rgba(0.98, 0.70, 0.20, 1.0);
 	const violet = rgba(0.35, 0.20, 0.85, 1.0);
 	card(10.0, 10.0, base.linearFill(90.0, amber, 0.0, violet, 1.0, GradientSpace.Srgb));
@@ -568,7 +568,7 @@ function primShadowStack(): Scene2D {
 	const edge = rgba(0.75, 0.78, 0.84, 1.0);
 	const card = (x: float32, y: float32, style: BoxStyle): NodeRef =>
 		s.add(s.rect(84.0, 56.0, paper).at(x, y)).setBoxStyle(style);
-	const base = BoxStyle.create(uniformRadii(8.0), uniformBorders(1.0), edge);
+	const base = BoxStyle.create(CornerRadii.uniform(8.0), BorderWidths.uniform(1.0), edge);
 	const elevation: BoxShadow[] = [
 		{ color: rgba(0.0, 0.0, 0.0, 0.10), blur: 1.0, offsetX: 0.0, offsetY: 1.0, spread: 0.0,
 			inset: false },
@@ -592,7 +592,7 @@ function primShadowStack(): Scene2D {
 		{ color: rgba(0.0, 0.0, 0.0, 0.45), blur: 3.0, offsetX: 0.0, offsetY: 2.0, spread: 2.0,
 			inset: true },
 	]));
-	card(120.0, 120.0, BoxStyle.create(uniformRadii(8.0), uniformBorders(3.0),
+	card(120.0, 120.0, BoxStyle.create(CornerRadii.uniform(8.0), BorderWidths.uniform(3.0),
 		rgba(0.95, 0.45, 0.20, 1.0)).castInsetShadow(rgba(0.0, 0.0, 0.0, 0.6), 4.0));
 	card(224.0, 120.0, base.linearFill(90.0, rgba(0.98, 0.70, 0.20, 1.0), 0.0,
 		rgba(0.35, 0.20, 0.85, 1.0), 1.0, GradientSpace.Oklab).castShadows(elevation));
@@ -724,8 +724,8 @@ function snapZeroBorder(): Scene2D {
 		const box = s.rect(56.0, 52.0, rgba(0.30, 0.55, 0.85, 0.82))
 			.at(18.0 + (i as float32) * 74.0, 34.0);
 		box.setBoxStyle(BoxStyle.create(
-			uniformRadii(4.0 + (i as float32) * 5.0),
-			uniformBorders(0.0),
+			CornerRadii.uniform(4.0 + (i as float32) * 5.0),
+			BorderWidths.uniform(0.0),
 			rgba(1.0, 0.0, 0.8, 1.0),
 		));
 		s.add(box);
@@ -823,9 +823,9 @@ function clipCameraPan(): Scene2D {
 // larger one over Graphics, and a scrolled list inside a rounded Mask.
 function clipRoundedMask(): Scene2D {
 	const s = Scene2D.create(DARK);
-	const radii = uniformRadii(16.0);
+	const radii = CornerRadii.uniform(16.0);
 	s.add(s.rect(100.0, 64.0, rgba(0.20, 0.24, 0.32, 1.0)).at(12.0, 12.0))
-		.setBoxStyle(BoxStyle.create(radii, uniformBorders(0.0), rgba(0.0, 0.0, 0.0, 0.0)));
+		.setBoxStyle(BoxStyle.create(radii, BorderWidths.uniform(0.0), rgba(0.0, 0.0, 0.0, 0.0)));
 	const card = s.add(s.mask(100.0, 64.0).at(12.0, 12.0));
 	card.setMaskRadii(radii);
 	card.addChild(s.rect(70.0, 30.0, rgba(0.92, 0.52, 0.20, 1.0)).at(-10.0, -10.0));
@@ -841,16 +841,16 @@ function clipRoundedMask(): Scene2D {
 	turned.addChild(s.rect(60.0, 40.0, rgba(0.92, 0.80, 0.30, 1.0)).at(50.0, 30.0));
 
 	const outer = s.add(s.mask(110.0, 60.0).at(12.0, 90.0));
-	outer.setMaskRadii(uniformRadii(18.0));
+	outer.setMaskRadii(CornerRadii.uniform(18.0));
 	const g = outer.addChild(s.graphics());
 	g.fillCheckerRect(0.0, 0.0, 110.0, 60.0,
 		rgba(0.16, 0.17, 0.20, 1.0), rgba(0.82, 0.84, 0.88, 1.0), 8.0);
 	const inner = outer.addChild(s.mask(50.0, 30.0).at(40.0, 15.0));
-	inner.setMaskRadii(uniformRadii(8.0));
+	inner.setMaskRadii(CornerRadii.uniform(8.0));
 	inner.addChild(s.rect(80.0, 60.0, rgba(0.95, 0.30, 0.45, 1.0)).at(-15.0, -15.0));
 
 	const frame = s.add(s.mask(100.0, 50.0).at(140.0, 106.0));
-	frame.setMaskRadii(uniformRadii(12.0));
+	frame.setMaskRadii(CornerRadii.uniform(12.0));
 	const list = frame.addChild(s.mask(100.0, 50.0));
 	for (let i: int32 = 0; i < 8; i++) {
 		const stripe: Color = i % 2 == 0 ? rgba(0.22, 0.26, 0.34, 1.0) : rgba(0.30, 0.36, 0.48, 1.0);
@@ -1571,7 +1571,7 @@ function imageObjectFit(): Scene2D {
 	const t = sheet();
 	const wide = t.sub(0.0, 0.0, t.texW, t.texH * 0.5);
 	const small = t.sub(t.texW * 0.35, t.texH * 0.35, 48.0, 24.0);
-	const square: CornerRadii = uniformRadii(0.0);
+	const square: CornerRadii = CornerRadii.uniform(0.0);
 	const xs: float32[] = [10.0, 110.0, 210.0, 60.0, 170.0];
 	const ys: float32[] = [14.0, 14.0, 14.0, 116.0, 116.0];
 	for (let i: int32 = 0; i < 5; i++) {
@@ -1598,7 +1598,7 @@ function imageCornerRadii(): Scene2D {
 
 function imageGrayscale(): Scene2D {
 	const s = Scene2D.create(DARK);
-	const radii: CornerRadii = uniformRadii(12.0);
+	const radii: CornerRadii = CornerRadii.uniform(12.0);
 	s.add(styledImage(s, sheet(), 18.0, 28.0, 132.0, 132.0,
 		ObjectFit.Cover, radii, false));
 	s.add(styledImage(s, sheet(), 170.0, 28.0, 132.0, 132.0,
@@ -1666,7 +1666,7 @@ function imagePremultipliedStyle(): Scene2D {
 	for (let k: int32 = 0; k < 2; k++) {
 		s.add(styledImage(s, alphaRampTile(false, k == 1),
 			PREMULTIPLIED_X + (k as float32) * PREMULTIPLIED_SHIFT, PREMULTIPLIED_Y, size, size,
-			ObjectFit.Fill, uniformRadii(10.0), true));
+			ObjectFit.Fill, CornerRadii.uniform(10.0), true));
 	}
 	return s;
 }
@@ -1686,7 +1686,7 @@ function laneList(s: Scene2D, x: float32, promise: boolean): NodeRef {
 	for (let k: int32 = 0; k < 7; k++) {
 		const shade: Color = k % 2 == 0 ? rgba(0.22, 0.26, 0.34, 1.0) : rgba(0.16, 0.19, 0.25, 1.0);
 		const row = s.rect(LANES_W, 18.0, shade).at(0.0, (k as float32) * 20.0);
-		row.setBoxStyle(BoxStyle.create(uniformRadii(4.0), uniformBorders(1.0),
+		row.setBoxStyle(BoxStyle.create(CornerRadii.uniform(4.0), BorderWidths.uniform(1.0),
 			rgba(0.4, 0.5, 0.7, 1.0)));
 		row.addChild(s.sprite(icon).at(3.0, 2.0));
 		row.addChild(s.label(`row ${k}`, 11.0, rgba(0.86, 0.90, 0.98, 1.0)).at(22.0, 2.0));
@@ -1773,8 +1773,8 @@ function filterBlur(): Scene2D {
 		s.rect(40.0, 26.0, rgba(0.25, 0.55, 0.95, 1.0)).at(95.0, 14.0),
 	);
 	card.setBoxStyle(BoxStyle.create(
-		uniformRadii(7.0),
-		uniformBorders(1.0),
+		CornerRadii.uniform(7.0),
+		BorderWidths.uniform(1.0),
 		rgba(0.85, 0.92, 1.0, 1.0),
 	).castShadow(rgba(0.0, 0.0, 0.0, 0.7), 5.0, 8.0, 4.0));
 	s.add(host);
@@ -1912,7 +1912,7 @@ function effectOnUiKinds(s: Scene2D, shift: float32, effect: boolean): void {
 	const white: Color = rgba(1.0, 1.0, 1.0, 1.0);
 	const card = s.rect(48.0, 22.0, rgba(0.90, 0.50, 0.20, 1.0)).at(8.0 + shift, 6.0);
 	card.setBoxStyle(BoxStyle.create(
-		uniformRadii(6.0), uniformBorders(2.0), rgba(0.20, 0.60, 0.90, 1.0),
+		CornerRadii.uniform(6.0), BorderWidths.uniform(2.0), rgba(0.20, 0.60, 0.90, 1.0),
 	));
 	const line = s.underline(56.0, 3.0, rgba(0.90, 0.30, 0.20, 1.0), true).at(64.0 + shift, 12.0);
 	const band = s.selection(80.0, 18.0, rgba(0.20, 0.50, 0.90, 0.65), -6.0, 58.0, 12.0, 92.0)
@@ -1927,7 +1927,7 @@ function effectOnUiKinds(s: Scene2D, shift: float32, effect: boolean): void {
 	label.setCursorIndex(9, rgba(1.0, 0.85, 0.30, 1.0));
 	const image = s.sprite(alphaRampTile(false, false)).at(8.0 + shift, 88.0);
 	image.setSize(80.0, 32.0);
-	image.setImageStyle(imageStyle(uniformRadii(6.0), false, ObjectFit.Fill));
+	image.setImageStyle(imageStyle(CornerRadii.uniform(6.0), false, ObjectFit.Fill));
 	if (effect) {
 		const grey = colorMatrixGrayscale(1.0);
 		card.setColorMatrix(grey);

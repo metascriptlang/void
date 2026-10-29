@@ -25,7 +25,7 @@ import { Scene2D, NodeRef } from "../void2d/node";
 import "../void2d/scene";
 import { setup2d } from "../void2d/draw";
 import { rgba, targetTile, whiteTile } from "../void2d/types";
-import { BoxStyle, uniformRadii, uniformBorders } from "../void2d/boxStyle";
+import { BoxStyle, CornerRadii, BorderWidths } from "../void2d/boxStyle";
 import {
 	Program,
 	ProgramKey,
@@ -487,7 +487,7 @@ function cardTarget(
 	);
 	if (rounded) {
 		face.setBoxStyle(BoxStyle.create(
-			uniformRadii(CARD_CORNER), uniformBorders(0.0), rgba(0.0, 0.0, 0.0, 0.0),
+			CornerRadii.uniform(CARD_CORNER), BorderWidths.uniform(0.0), rgba(0.0, 0.0, 0.0, 0.0),
 		));
 	}
 	ui.add(face);

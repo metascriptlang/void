@@ -67,7 +67,7 @@ import { TextLayout, TextRun } from "../../src/void2d/textLayout";
 import { nodeWidth } from "../../src/test/nodeTextHelpers";
 import { DEFAULT_FONT } from "../../src/void2d/font";
 import {
-	BoxStyle, BoxShadow, uniformRadii, uniformBorders, linearFill, slashFill, checkerFill,
+	BoxStyle, BoxShadow, CornerRadii, BorderWidths, linearFill, slashFill, checkerFill,
 	ditheredFill, castShadows,
 } from "../../src/void2d/boxStyle";
 import {
@@ -432,7 +432,7 @@ function snapScene(): NodeRef {
 	s.add(s.rect(40.4, 28.75, rgba(0.9, 0.4, 0.3, 1.0)).at(16.3, 12.6));
 	const boxed = s.add(s.rect(30.0, 20.0, rgba(0.3, 0.5, 0.9, 1.0)).at(64.35, 16.8));
 	boxed.setBoxStyle(BoxStyle.create(
-		uniformRadii(4.0),
+		CornerRadii.uniform(4.0),
 		{ left: 0.8, top: 1.3, right: 0.0, bottom: 2.2 },
 		rgba(0.95, 0.95, 1.0, 1.0),
 	));
@@ -443,8 +443,8 @@ function glyphScene(): NodeRef {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const card = s.add(s.rect(64.0, 40.0, rgba(0.2, 0.4, 0.6, 0.8)).at(8.0, 6.0));
 	card.setBoxStyle(BoxStyle.create(
-		uniformRadii(6.0),
-		uniformBorders(2.0),
+		CornerRadii.uniform(6.0),
+		BorderWidths.uniform(2.0),
 		rgba(0.9, 0.9, 0.95, 1.0),
 	));
 	s.add(s.label("Hi void", 16.0, rgba(0.95, 0.96, 1.0, 1.0)).at(16.0, 14.0));
@@ -456,13 +456,13 @@ function boxShadowScene(): NodeRef {
 	const box = s.add(s.rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
 	box.setBoxStyle(BoxStyle.create(
 		{ topLeft: 4.0, topRight: 6.0, bottomRight: 8.0, bottomLeft: 10.0 },
-		uniformBorders(1.0),
+		BorderWidths.uniform(1.0),
 		rgba(0.9, 0.9, 0.95, 1.0),
 	).castShadow(rgba(0.0, 0.0, 0.1, 0.5), 3.0, 2.0, 1.0));
 	const well = s.add(s.rect(36.0, 22.0, rgba(0.85, 0.88, 0.94, 1.0)).at(64.0, 16.0));
 	well.setBoxStyle(BoxStyle.create(
-		uniformRadii(5.0),
-		uniformBorders(0.0),
+		CornerRadii.uniform(5.0),
+		BorderWidths.uniform(0.0),
 		rgba(0.0, 0.0, 0.0, 0.0),
 	).castInsetShadow(rgba(0.0, 0.0, 0.05, 0.6), 2.5));
 	return s.refOf(s.root);
@@ -472,8 +472,8 @@ function shadowOnlyVisibleScene(): NodeRef {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const box = s.add(s.rect(20.0, 20.0, rgba(0.2, 0.4, 0.6, 0.8)).at(104.0, 10.0));
 	box.setBoxStyle(BoxStyle.create(
-		uniformRadii(4.0),
-		uniformBorders(0.0),
+		CornerRadii.uniform(4.0),
+		BorderWidths.uniform(0.0),
 		rgba(0.0, 0.0, 0.0, 0.0),
 	).castShadow(rgba(0.0, 0.0, 0.0, 0.8), 3.0, -6.0, 0.0));
 	return s.refOf(s.root);
@@ -508,7 +508,7 @@ function imageStyleScene(): NodeRef {
 }
 function premultipliedStyleScene(): NodeRef {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
-	const radii = uniformRadii(4.0);
+	const radii = CornerRadii.uniform(4.0);
 	const straight = s.sprite(tile(fakeTexture(17), 32.0, 32.0)).at(0.0, 0.0);
 	straight.setImageStyle(imageStyle(radii, true, ObjectFit.Cover));
 	s.add(straight);
@@ -821,7 +821,7 @@ test "T1 a Mask left of the viewport keeps its clip, so what it reaches on scree
 
 function boxFillScene(): NodeRef {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
-	const plain = BoxStyle.create(uniformRadii(4.0), uniformBorders(1.0), rgba(1.0, 1.0, 1.0, 1.0));
+	const plain = BoxStyle.create(CornerRadii.uniform(4.0), BorderWidths.uniform(1.0), rgba(1.0, 1.0, 1.0, 1.0));
 	s.add(s.rect(40.0, 20.0, rgba(1.0, 1.0, 1.0, 1.0)).at(8.0, 8.0)).setBoxStyle(plain
 		.linearFill(90.0, rgba(1.0, 0.0, 0.0, 1.0), 0.1, rgba(0.0, 0.0, 1.0, 1.0), 0.9,
 			GradientSpace.Oklab)
@@ -874,7 +874,7 @@ test "T1 a view painted only by a box fill draws the fill, not its transparent b
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const view = s.add(s.group().at(4.0, 4.0));
 	view.setSize(40.0, 20.0);
-	view.setBoxStyle(BoxStyle.create(uniformRadii(4.0), uniformBorders(0.0), rgba(0.0, 0.0, 0.0, 0.0))
+	view.setBoxStyle(BoxStyle.create(CornerRadii.uniform(4.0), BorderWidths.uniform(0.0), rgba(0.0, 0.0, 0.0, 0.0))
 		.linearFill(90.0, rgba(1.0, 0.5, 0.0, 1.0), 0.0, rgba(0.0, 0.5, 1.0, 1.0), 1.0,
 			GradientSpace.Srgb));
 	record(s.refOf(s.root), 64.0, 32.0, 1.0);
@@ -894,21 +894,21 @@ test "T1 a drop shadow's negative spread stops at the box's smaller half-extent"
 		{ color: rgba(0.0, 0.0, 0.0, 0.5), blur: 2.0, offsetX: 0.0, offsetY: 0.0, spread: -12.0,
 			inset: false },
 	];
-	record(oneBox(BoxStyle.create(uniformRadii(2.0), uniformBorders(0.0), rgba(0.0, 0.0, 0.0, 0.0))
+	record(oneBox(BoxStyle.create(CornerRadii.uniform(2.0), BorderWidths.uniform(0.0), rgba(0.0, 0.0, 0.0, 0.0))
 		.castShadows(shadows)), 128.0, 64.0, 1.0);
 	assert uiInstanceField(0, REC_UI_PARAMS0) == 1.0;
 	assert uiInstanceField(0, REC_UI_PARAMS1 + 2) == -10.0;
 }
 
 test "T1 ditheredFill before the fill it dithers still dithers it" {
-	const plain = BoxStyle.create(uniformRadii(2.0), uniformBorders(0.0), rgba(0.0, 0.0, 0.0, 0.0));
+	const plain = BoxStyle.create(CornerRadii.uniform(2.0), BorderWidths.uniform(0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	record(oneBox(plain.ditheredFill().linearFill(90.0, rgba(1.0, 0.0, 0.0, 1.0), 0.0,
 		rgba(0.0, 0.0, 1.0, 1.0), 1.0, GradientSpace.Srgb)), 128.0, 64.0, 1.0);
 	assert uiInstanceField(0, REC_UI_PARAMS0 + 3) == 2.0;
 }
 
 test "T1 an inset shadow over a border of no width draws no border instance" {
-	record(oneBox(BoxStyle.create(uniformRadii(2.0), uniformBorders(0.0), rgba(1.0, 0.0, 0.0, 1.0))
+	record(oneBox(BoxStyle.create(CornerRadii.uniform(2.0), BorderWidths.uniform(0.0), rgba(1.0, 0.0, 0.0, 1.0))
 		.castShadows([
 			{ color: rgba(0.0, 0.0, 0.0, 0.5), blur: 2.0, offsetX: 0.0, offsetY: 0.0, spread: 1.0,
 				inset: true },
@@ -929,7 +929,7 @@ function shadowListScene(): NodeRef {
 			inset: true },
 	];
 	s.add(s.rect(40.0, 24.0, rgba(0.2, 0.3, 0.4, 1.0)).at(40.0, 20.0)).setBoxStyle(BoxStyle.create(
-		uniformRadii(6.0), uniformBorders(0.0), rgba(0.0, 0.0, 0.0, 0.0),
+		CornerRadii.uniform(6.0), BorderWidths.uniform(0.0), rgba(0.0, 0.0, 0.0, 0.0),
 	).castShadows(shadows));
 	return s.refOf(s.root);
 }
@@ -1153,7 +1153,7 @@ test "a box style beside a colour effect draws through the UI program with the e
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const box = s.add(s.rect(40.0, 20.0, rgba(0.9, 0.7, 0.5, 1.0)).at(4.0, 4.0));
 	box.setBoxStyle(BoxStyle.create(
-		uniformRadii(6.0), uniformBorders(2.0), rgba(0.2, 0.3, 0.4, 1.0),
+		CornerRadii.uniform(6.0), BorderWidths.uniform(2.0), rgba(0.2, 0.3, 0.4, 1.0),
 	));
 	box.setColorMatrix(colorMatrixGrayscale(1.0));
 	record(s.refOf(s.root), 64.0, 32.0, 1.0);
@@ -1199,7 +1199,7 @@ test "a box style carries colorAdd into the effect row of its UI instance" {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const box = s.add(s.rect(40.0, 20.0, rgba(0.9, 0.7, 0.5, 1.0)).at(4.0, 4.0));
 	box.setBoxStyle(BoxStyle.create(
-		uniformRadii(6.0), uniformBorders(2.0), rgba(0.2, 0.3, 0.4, 1.0),
+		CornerRadii.uniform(6.0), BorderWidths.uniform(2.0), rgba(0.2, 0.3, 0.4, 1.0),
 	));
 	box.setColorAdd(rgba(0.25, 0.5, 0.125, 0.0625));
 	record(s.refOf(s.root), 64.0, 32.0, 1.0);
@@ -1212,7 +1212,7 @@ test "a box style carries colorKey into the effect row of its UI instance" {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const box = s.add(s.rect(40.0, 20.0, rgba(0.9, 0.7, 0.5, 1.0)).at(4.0, 4.0));
 	box.setBoxStyle(BoxStyle.create(
-		uniformRadii(6.0), uniformBorders(2.0), rgba(0.2, 0.3, 0.4, 1.0),
+		CornerRadii.uniform(6.0), BorderWidths.uniform(2.0), rgba(0.2, 0.3, 0.4, 1.0),
 	));
 	box.setColorKey(rgba(0.75, 0.5, 0.25, 1.0));
 	record(s.refOf(s.root), 64.0, 32.0, 1.0);
@@ -1225,7 +1225,7 @@ test "a box style carries colorMatrix, colorAdd and colorKey together" {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const box = s.add(s.rect(40.0, 20.0, rgba(0.9, 0.7, 0.5, 1.0)).at(4.0, 4.0));
 	box.setBoxStyle(BoxStyle.create(
-		uniformRadii(6.0), uniformBorders(2.0), rgba(0.2, 0.3, 0.4, 1.0),
+		CornerRadii.uniform(6.0), BorderWidths.uniform(2.0), rgba(0.2, 0.3, 0.4, 1.0),
 	));
 	box.setColorMatrix(colorMatrixGrayscale(1.0));
 	box.setColorAdd(rgba(0.125, 0.0, 0.0, 0.0));
@@ -1241,14 +1241,14 @@ test "a box style carries colorMatrix, colorAdd and colorKey together" {
 test "a shadowed box and a dashed box record one effected UI instance each" {
 	const add = rgba(0.0625, 0.125, 0.0, 0.0);
 	const shadowed = styledBoxScene(BoxStyle.create(
-		uniformRadii(6.0), uniformBorders(2.0), rgba(0.2, 0.3, 0.4, 1.0),
+		CornerRadii.uniform(6.0), BorderWidths.uniform(2.0), rgba(0.2, 0.3, 0.4, 1.0),
 	).castShadow(rgba(0.0, 0.0, 0.1, 0.5), 3.0, 2.0, 1.0), add);
 	record(shadowed, 64.0, 32.0, 1.0);
 	assert uiInstanceCount() == 1;
 	assert uiEffects() == 1;
 	assert lanesEqual(firstUiEffect(), add, NONE);
 	const dashed = styledBoxScene(BoxStyle.create(
-		uniformRadii(6.0), uniformBorders(2.0), rgba(0.2, 0.3, 0.4, 1.0),
+		CornerRadii.uniform(6.0), BorderWidths.uniform(2.0), rgba(0.2, 0.3, 0.4, 1.0),
 	).dashed(), add);
 	record(dashed, 64.0, 32.0, 1.0);
 	assert uiInstanceCount() == 1;
@@ -1271,7 +1271,7 @@ test "an underline and a selection beside a colour effect draw with it" {
 test "an image style beside a colour effect draws through the UI program with the effect" {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const image = s.add(s.sprite(tile(fakeTexture(17), 64.0, 64.0)).at(4.0, 4.0));
-	image.setImageStyle(imageStyle(uniformRadii(4.0), false, ObjectFit.Cover));
+	image.setImageStyle(imageStyle(CornerRadii.uniform(4.0), false, ObjectFit.Cover));
 	image.setColorMatrix(colorMatrixGrayscale(1.0));
 	record(s.refOf(s.root), 80.0, 80.0, 1.0);
 	assert uiInstanceCount() == 1;
@@ -1724,7 +1724,7 @@ when (voidProfiler) {
 function roundedClipScene(): NodeRef {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const card = s.add(s.mask(40.0, 30.0).at(4.0, 4.0));
-	card.setMaskRadii(uniformRadii(6.0));
+	card.setMaskRadii(CornerRadii.uniform(6.0));
 	card.addChild(s.rect(60.0, 60.0, rgba(0.0, 1.0, 0.0, 1.0)).at(-10.0, -10.0));
 	const inner = card.addChild(s.mask(20.0, 20.0).at(30.0, 5.0));
 	inner.addChild(s.rect(30.0, 30.0, rgba(1.0, 0.0, 0.0, 1.0)));
@@ -1763,7 +1763,7 @@ function roundFrameMatchesLocal(sx: float32): boolean {
 	parent.setScaleX(sx);
 	const mask = parent.addChild(s.mask(40.0, 20.0));
 	mask.setRotation(0.4);
-	mask.setMaskRadii(uniformRadii(5.0));
+	mask.setMaskRadii(CornerRadii.uniform(5.0));
 	mask.addChild(s.rect(80.0, 40.0, rgba(0.0, 1.0, 0.0, 1.0)).at(-20.0, -10.0));
 	record(s.refOf(s.root), 320.0, 160.0, 1.0);
 	const world = trs2d(150.0, 40.0, 0.0, sx, 1.0) * trs2d(0.0, 0.0, 0.4, 1.0, 1.0);
@@ -1802,8 +1802,8 @@ test "T1 a square Mask records no round shape, so its fragments skip the corner 
 	}
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const m = s.add(s.mask(24.0, 16.0).at(10.0, 4.0));
-	m.setMaskRadii(uniformRadii(3.0));
-	m.setMaskRadii(uniformRadii(0.0));
+	m.setMaskRadii(CornerRadii.uniform(3.0));
+	m.setMaskRadii(CornerRadii.uniform(0.0));
 	m.addChild(s.rect(40.0, 40.0, rgba(0.0, 1.0, 0.0, 1.0)));
 	record(s.refOf(s.root), 128.0, 64.0, 1.0);
 	assert uiInstanceCount() == 1;
@@ -1816,9 +1816,9 @@ function nestedRoundScene(
 ): NodeRef {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const outer = s.add(s.mask(ow, oh).at(20.0, 20.0));
-	outer.setMaskRadii(uniformRadii(outerRadius));
+	outer.setMaskRadii(CornerRadii.uniform(outerRadius));
 	const inner = outer.addChild(s.mask(iw, ih).at(ix, iy));
-	inner.setMaskRadii(uniformRadii(innerRadius));
+	inner.setMaskRadii(CornerRadii.uniform(innerRadius));
 	inner.addChild(s.rect(200.0, 200.0, rgba(0.0, 1.0, 0.0, 1.0)).at(-100.0, -100.0));
 	return s.refOf(s.root);
 }
@@ -1847,9 +1847,9 @@ test "T1 a rounded Mask scrolls through the world matrices, as a rotated one doe
 	const list = outer.addChild(s.mask(60.0, 40.0));
 	list.scrollTo(0.0, 10.0);
 	assert s.scrollScope(list.liveRow("test"));
-	outer.setMaskRadii(uniformRadii(6.0));
+	outer.setMaskRadii(CornerRadii.uniform(6.0));
 	assert !s.scrollScope(list.liveRow("test"));
-	list.setMaskRadii(uniformRadii(6.0));
+	list.setMaskRadii(CornerRadii.uniform(6.0));
 	assert !s.scrollScope(list.liveRow("test"));
 	assert list.scroll().y == 10.0 && list.scroll().radii.topLeft == 6.0;
 }

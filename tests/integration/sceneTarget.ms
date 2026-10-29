@@ -9,7 +9,7 @@ import { create } from "../../src/void2d/scene";
 import { setup2d, drawCallCount } from "../../src/void2d/draw";
 import { rgba, tile, blurFilter, targetTile } from "../../src/void2d/types";
 import { fillRect } from "../../src/void2d/graphics";
-import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
+import { BoxStyle, CornerRadii, BorderWidths } from "../../src/void2d/boxStyle";
 import { BlendMode } from "../../src/gpu/state";
 import { DrawContext } from "../../src/void3d/draw";
 import { Renderer, create, closePrepare, openScreen } from "../../src/void3d/renderer";
@@ -63,7 +63,7 @@ function init(): void {
 	source.add(source.rect(8.0, 8.0, rgba(1.0, 1.0, 0.0, 1.0)));
 	subject.add(red);
 	const rounded = subject.rect(16.0, 16.0, rgba(0.0, 1.0, 0.0, 0.5)).at(24.0, 4.0);
-	rounded.setBoxStyle(BoxStyle.create(uniformRadii(4.0), uniformBorders(0.0),
+	rounded.setBoxStyle(BoxStyle.create(CornerRadii.uniform(4.0), BorderWidths.uniform(0.0),
 		rgba(0.0, 0.0, 0.0, 0.0)));
 	subject.add(rounded);
 	const graphic = subject.graphics().at(4.0, 26.0);

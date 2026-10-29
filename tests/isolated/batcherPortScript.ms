@@ -11,7 +11,7 @@ import {
 import { currentContext } from "../../src/void2d/displayList";
 import { rgba, targetTile, blurFilter, vec2 } from "../../src/void2d/types";
 import { fillRect, fillGradientRect, fillCircle } from "../../src/void2d/graphics";
-import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
+import { BoxStyle, CornerRadii, BorderWidths } from "../../src/void2d/boxStyle";
 import { BlendMode } from "../../src/gpu/state";
 
 when (voidDummy) {
@@ -116,7 +116,7 @@ function richScene(source: RenderTarget): Scene2D {
 	const s = Scene2D.create(rgba(0.1, 0.2, 0.3, 1.0));
 	s.add(s.rect(16.0, 12.0, rgba(1.0, 0.0, 0.0, 0.5)).at(4.0, 4.0));
 	const rounded = s.rect(16.0, 16.0, rgba(0.0, 1.0, 0.0, 0.5)).at(24.0, 4.0);
-	rounded.setBoxStyle(BoxStyle.create(uniformRadii(4.0), uniformBorders(1.0), rgba(1.0, 1.0, 1.0, 1.0)));
+	rounded.setBoxStyle(BoxStyle.create(CornerRadii.uniform(4.0), BorderWidths.uniform(1.0), rgba(1.0, 1.0, 1.0, 1.0)));
 	s.add(rounded);
 	const g = s.graphics().at(4.0, 26.0);
 	fillRect(g, 0.0, 0.0, 12.0, 8.0, rgba(0.0, 0.0, 1.0, 0.5));
@@ -132,7 +132,7 @@ function richScene(source: RenderTarget): Scene2D {
 	clipped.addChild(s.rect(16.0, 12.0, rgba(0.0, 1.0, 1.0, 1.0)));
 	s.add(clipped);
 	const round = s.mask(12.0, 12.0).at(60.0, 4.0);
-	round.setMaskRadii(uniformRadii(4.0));
+	round.setMaskRadii(CornerRadii.uniform(4.0));
 	round.addChild(s.rect(24.0, 24.0, rgba(1.0, 0.5, 0.0, 1.0)));
 	s.add(round);
 	const tinted = s.rect(10.0, 8.0, rgba(0.5, 0.5, 0.5, 1.0)).at(70.0, 26.0);

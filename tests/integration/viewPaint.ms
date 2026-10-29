@@ -6,7 +6,7 @@ import { Scene2D, NodeRef } from "../../src/void2d/node";
 import { create } from "../../src/void2d/scene";
 import { setup2d, drawCallCount } from "../../src/void2d/draw";
 import { rgba } from "../../src/void2d/types";
-import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
+import { BoxStyle, CornerRadii, BorderWidths } from "../../src/void2d/boxStyle";
 import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit,
 } from "../capture/capture.h";
@@ -92,7 +92,7 @@ function frame(): void {
 		if (voidCaptureGrab(0) == 0) { fail("readback failed"); }
 		if (voidCapturePixel(0, 5, 5) != CLEAR_PIXEL) { fail("transparent background painted"); }
 	} else {
-		view.setBoxStyle(BoxStyle.create(uniformRadii(0.0), uniformBorders(2.0), BLUE));
+		view.setBoxStyle(BoxStyle.create(CornerRadii.uniform(0.0), BorderWidths.uniform(2.0), BLUE));
 		if (view.kind().toString() != "Rect") { fail("setBoxStyle did not promote the group"); }
 		if (view.paint().color.a != 0.0) { fail("a border-only promotion kept a fill colour"); }
 		drawToScreen(subject);

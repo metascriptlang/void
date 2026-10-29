@@ -3584,7 +3584,7 @@ abort stage) unless named otherwise.
 
   // the same target as a rounded, greyed thumbnail: before, an image style on it stopped
   const thumb = s.sprite(tile(forward.colorTarget.asTexture(), 256, 256).premultiplied());
-  thumb.setImageStyle(imageStyle(uniformRadii(8.0), true, ObjectFit.Cover));
+  thumb.setImageStyle(imageStyle(CornerRadii.uniform(8.0), true, ObjectFit.Cover));
   ```
 
   An image style and a colour effect on one node compose, through the UI program's effect (I
@@ -3695,7 +3695,7 @@ abort stage) unless named otherwise.
 
   ```ts
   // a disabled card: before, its rounded border and fill were dropped with one log line
-  card.setBoxStyle(BoxStyle.create(uniformRadii(6.0), uniformBorders(1.0), border));
+  card.setBoxStyle(BoxStyle.create(CornerRadii.uniform(6.0), BorderWidths.uniform(1.0), border));
   card.setColorMatrix(colorMatrixGrayscale(1.0));
   // a read-only editor line: before, its runs, selection and caret vanished under the effect
   code.setTextRuns(runs).setColorMatrix(colorMatrixGrayscale(0.6));

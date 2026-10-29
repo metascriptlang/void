@@ -65,14 +65,11 @@ export struct BoxStyle {
 	fill: BoxFill;
 }
 
-// Free functions, not CornerRadii.uniform / BorderWidths.uniform: two same-name static extensions
-// exported from one module resolve only the first in an importer
-// (~/metascript/.inbox/compiler/2026-09-26-same-name-static-extensions-one-module.md).
-export function uniformRadii(radius: float32): CornerRadii {
+export function uniform(this typeof CornerRadii, radius: float32): CornerRadii {
 	return { topLeft: radius, topRight: radius, bottomRight: radius, bottomLeft: radius };
 }
 
-export function uniformBorders(width: float32): BorderWidths {
+export function uniform(this typeof BorderWidths, width: float32): BorderWidths {
 	return { left: width, top: width, right: width, bottom: width };
 }
 
