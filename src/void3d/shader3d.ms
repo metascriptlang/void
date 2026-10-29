@@ -466,6 +466,16 @@ export struct DissolveKey {
 	@feature(EMISSIVE) emissive: boolean;
 }
 
+export struct UvTransformBindings {
+	movingMaterialParams: MovingMaterialParams;
+	movingEmissiveMaterialParams: MovingEmissiveMaterialParams;
+	frameParams: FrameParams;
+}
+
+export struct UvTransformKey {
+	@feature(EMISSIVE) emissive: boolean;
+}
+
 function skinRow(b: VertexBindings, joints: Vec4f, weights: Vec4f, column: int32): Vec4f {
 	return b.skinParams.skinRows[(joints.x as int32) * 3 + column] * weights.x +
 		b.skinParams.skinRows[(joints.y as int32) * 3 + column] * weights.y +
@@ -1480,6 +1490,91 @@ export function dissolveEdge(lit: LitShaded, b: DissolveBindings, key: DissolveK
 	return { color: color, uv: lit.uv, noise: lit.noise };
 }
 
+function uvSinusDeformOf(b: UvTransformBindings, key: UvTransformKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.sinusDeform;
+	} else {
+		return b.movingMaterialParams.sinusDeform;
+	}
+}
+
+function uvFlipbookGridOf(b: UvTransformBindings, key: UvTransformKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.flipbookGrid;
+	} else {
+		return b.movingMaterialParams.flipbookGrid;
+	}
+}
+
+function uvFlipbookPlayOf(b: UvTransformBindings, key: UvTransformKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.flipbookPlay;
+	} else {
+		return b.movingMaterialParams.flipbookPlay;
+	}
+}
+
+function uvColorKeyOf(b: UvTransformBindings, key: UvTransformKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.colorKey;
+	} else {
+		return b.movingMaterialParams.colorKey;
+	}
+}
+
+function uvDistanceFadeOf(b: UvTransformBindings, key: UvTransformKey): Vec4f {
+	if (key.emissive) {
+		return b.movingEmissiveMaterialParams.distanceFade;
+	} else {
+		return b.movingMaterialParams.distanceFade;
+	}
+}
+
+export function uvSinus(
+	surface: SurfaceUv,
+	b: UvTransformBindings,
+	key: UvTransformKey,
+): SurfaceUv {
+	return { uv: sinusUv(surface.uv, uvSinusDeformOf(b, key), b.frameParams.frame.x) };
+}
+
+export function uvFlipbook(
+	sample: SampleUv,
+	b: UvTransformBindings,
+	key: UvTransformKey,
+): SampleUv {
+	const grid = uvFlipbookGridOf(b, key);
+	const play = uvFlipbookPlayOf(b, key);
+	let flipped = sample;
+	if (grid.z > 0.0) {
+		const time = b.frameParams.frame.x;
+		const frames = flipbookUvs(sample.baseUv, grid, play, time);
+		flipped = { baseUv: frames.xy, nextUv: frames.zw, blend: flipbookBlend(grid, play, time) };
+	}
+	return flipped;
+}
+
+export function uvColorKey(
+	surface: SurfaceTexel,
+	b: UvTransformBindings,
+	key: UvTransformKey,
+): SurfaceTexel {
+	if (colorKeyed(surface.texel, uvColorKeyOf(b, key))) {
+		discard();
+	}
+	return surface;
+}
+
+export function uvDistanceFade(
+	faded: LitFaded,
+	b: UvTransformBindings,
+	key: UvTransformKey,
+): LitFaded {
+	const eye = b.frameParams.cameraPosition.xyz;
+	const fade = distanceFade(length(faded.worldPosition - eye), uvDistanceFadeOf(b, key));
+	return { color: vec4f(faded.color.rgb, faded.color.a * fade), worldPosition: faded.worldPosition };
+}
+
 export function pbrOf(b: LitBindings, key: LitKey): Vec4f {
 	if (key.emissive) {
 		return b.pbrEmissiveMaterialParams.pbr;
@@ -2118,9 +2213,6 @@ export function litTexturedFs(
 	}
 	const surfaceUv: SurfaceUv = { uv: moved };
 	let uv = hook(surfaceUv).uv;
-	if (key.uvTransform) {
-		uv = sinusUv(uv, sinusDeformOf(b, key), b.frameParams.frame.x);
-	}
 	if (key.normalMap && key.parallax) {
 		const view = normalize(b.frameParams.cameraPosition.xyz - input.worldPosition);
 		uv = parallaxUv(b, uv, view, normalize(input.worldNormal), input.worldTangent,
@@ -2128,23 +2220,10 @@ export function litTexturedFs(
 	}
 	const sampleUv: SampleUv = { baseUv: uv, nextUv: uv, blend: 0.0 };
 	const sampled = hook(sampleUv);
-	let baseUv = sampled.baseUv;
-	let nextUv = sampled.nextUv;
-	let blend = sampled.blend;
-	if (key.uvTransform) {
-		const grid = flipbookGridOf(b, key);
-		const play = flipbookPlayOf(b, key);
-		if (grid.z > 0.0) {
-			const time = b.frameParams.frame.x;
-			const frames = flipbookUvs(baseUv, grid, play, time);
-			baseUv = frames.xy;
-			nextUv = frames.zw;
-			blend = flipbookBlend(grid, play, time);
-		}
-	}
-	let texel = textureSample(b.baseTexture, b.baseSampler, baseUv);
-	if (blend > 0.0) {
-		texel = mix(texel, textureSample(b.baseTexture, b.baseSampler, nextUv), blend);
+	let texel = textureSample(b.baseTexture, b.baseSampler, sampled.baseUv);
+	if (sampled.blend > 0.0) {
+		texel = mix(texel, textureSample(b.baseTexture, b.baseSampler, sampled.nextUv),
+			sampled.blend);
 	}
 	if (key.backTexture) {
 		const backAt = backUv(input.surfaceUv, backUvMatrixOf(b, key), backUvOffsetOf(b, key));
@@ -2154,11 +2233,6 @@ export function litTexturedFs(
 	const surfaceTexel: SurfaceTexel = { texel: texel, surfaceUv: input.surfaceUv, noise: 0.0 };
 	const surface = hook(surfaceTexel);
 	texel = surface.texel;
-	if (key.uvTransform) {
-		if (colorKeyed(texel, colorKeyOf(b, key))) {
-			discard();
-		}
-	}
 	const noise = surface.noise;
 	if (key.premultiplied) {
 		texel = straightTexel(texel);
@@ -2201,11 +2275,6 @@ export function litTexturedFs(
 	const litFaded: LitFaded = { color: shaded, worldPosition: input.worldPosition };
 	const faded = hook(litFaded);
 	shaded = faded.color;
-	if (key.uvTransform) {
-		const eye = b.frameParams.cameraPosition.xyz;
-		const fade = distanceFade(length(faded.worldPosition - eye), distanceFadeOf(b, key));
-		shaded = vec4f(shaded.rgb, shaded.a * fade);
-	}
 	let color = vec4f(toneMapped(shaded.rgb, b.frameParams.frame), shaded.a);
 	if (key.premultiplied) {
 		color = vec4f(color.rgb * color.a, color.a);
