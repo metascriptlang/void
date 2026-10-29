@@ -863,6 +863,61 @@ test "a vertex effect and a fragment effect each land in their own stage" {
 	assert fs.includes("return colourAdd(phase);") && !fs.includes("nudge");
 }
 
+struct Carried {
+	lift: Vec2f;
+	fade: float32;
+}
+
+function carryLift(phase: VPhase): Carried {
+	return { lift: phase.offset * 2.0, fade: phase.offset.x };
+}
+
+function liftColour(shaded: Shaded, b: TintBindings, carried: Carried): Shaded {
+	return {
+		color: shaded.color + b.tintParams.tint +
+			vec4f(carried.lift.x, carried.lift.y, carried.fade, 0.0),
+	};
+}
+
+function liftOnly(shaded: Shaded, b: TintBindings, carried: Carried): Shaded {
+	return {
+		color: shaded.color + b.tintParams.tint + vec4f(carried.lift.x, carried.lift.y, 0.0, 0.0),
+	};
+}
+
+const CARRY_LIFT = glslSegmentIr(carryLift);
+const LIFT_COLOUR = glslSegmentIr(liftColour);
+const LIFT_ONLY = glslSegmentIr(liftOnly);
+const HOOKED_IOS = "vs in position,vs out clip,vs out uv,fs in position,fs in uv,fs out fragColor";
+
+test "a carrier a vertex segment writes reaches the fragment segment as varyings" {
+	const m = hookedLinked([CARRY_LIFT, LIFT_COLOUR]);
+	assert iosOf(hookedLinked([])) == HOOKED_IOS;
+	assert iosOf(m) == HOOKED_IOS + ",vs out lift,fs in lift,vs out fade,fs in fade";
+	assert irErrors(m).length == 0;
+	const vs = printed(m, ShaderTarget.Wgsl, "carriedVs.wgsl", 0);
+	const fs = printed(m, ShaderTarget.Wgsl, "carriedFs.wgsl", 1);
+	assert vs.includes("var carried : Carried = carryLift(phase);") &&
+		vs.includes("lift = carried.lift;") && vs.includes("fade = carried.fade;");
+	assert fs.includes("return liftColour(phase, Carried(lift, fade));");
+	assert reflected(m).split("\n").length == TARGETS.length;
+}
+
+test "a carried field no fragment segment reads gets no varying" {
+	const m = hookedLinked([CARRY_LIFT, LIFT_ONLY]);
+	assert iosOf(m) == HOOKED_IOS + ",vs out lift,fs in lift";
+	assert printed(m, ShaderTarget.Wgsl, "liftOnlyFs.wgsl", 1)
+		.includes("return liftOnly(phase, Carried(lift, 0f));");
+	assert iosOf(hookedLinked([CARRY_LIFT])) == HOOKED_IOS;
+}
+
+test "a fragment segment reading a carrier no vertex segment writes is refused" {
+	const base = programModule(glslIr(hookedVs), glslLinkedIr(baseFs, hookedVs), []);
+	assert base.ok && refusal(base.value, [moduleOf(LIFT_COLOUR)]) ==
+		"link: effect 'liftColour' reads varying 'lift' of carrier 'Carried', which no vertex " +
+		"segment writes";
+}
+
 struct DetailStage {
 	base: Vec2f;
 	detail: Vec2f;

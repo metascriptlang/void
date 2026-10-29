@@ -929,6 +929,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	let uniformLoadSite: Node | null = null;
 	let keyType: Node | null = null;
 	let phaseType: Node | null = null;
+	let carriedType: Node | null = null;
+	let writtenType: Node | null = null;
+	let carriedName = "";
 
 	function typeName(t: Node | null): string {
 		const fields = fieldsOf(t);
@@ -947,10 +950,6 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 					fail(fn, what + ": its first parameter '" + name + "' is the phase struct " +
 						"it reads and returns, and " + typeName(t) + " is no author struct");
 				}
-				if (outputType == null || !sameType(outputType, t)) {
-					fail(fn, what + " returns " + typeName(outputType) + ", and a segment " +
-						"returns its phase struct " + typeName(t));
-				}
 				phaseType = t;
 			} else if (keyType == null && fields != null &&
 				fields.typExprFieldNames.length > 0 && everyDecorated(fields, "feature")) {
@@ -961,9 +960,12 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 						"struct");
 				}
 				bindingsType = t;
+			} else if (carriedType == null && isAuthorStruct(t)) {
+				carriedType = t;
+				carriedName = name;
 			} else {
-				fail(fn, what + " takes its phase struct and its bindings struct, and '" + name +
-					"' is a third parameter");
+				fail(fn, what + " takes its phase struct, its bindings struct, a key and the " +
+					"carrier struct it reads, and '" + name + "' is none of them");
 			}
 			continue;
 		}
@@ -989,6 +991,18 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			if (inputType != null) { fail(fn, "two stage input structs: '" + name + "'"); }
 			inputType = t;
 		}
+	}
+	if (phaseType != null && (outputType == null || !sameType(outputType, phaseType))) {
+		if (carriedType != null || !isAuthorStruct(outputType)) {
+			fail(fn, "segment '" + fn.fnName + "' returns " + typeName(outputType) + ", and a " +
+				"segment returns its phase struct " + typeName(phaseType) + " or, reading no " +
+				"carrier, the carrier struct it writes");
+		}
+		writtenType = outputType;
+	}
+	if (phaseType != null && carriedType != null && sameType(carriedType, phaseType)) {
+		fail(fn, "segment '" + fn.fnName + "' reads its phase struct " + typeName(phaseType) +
+			" as its carrier");
 	}
 
 	function isType(n: Node, t: Node | null): boolean {
@@ -2670,8 +2684,12 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	if (phaseType != null) {
 		checkName(fn.fnName, fn);
 		checkName(signature.typExprParamNames[0], fn);
-		main.result = valueType(phaseType, fn);
-		main.params.push(shaderField(signature.typExprParamNames[0], main.result));
+		main.params.push(shaderField(signature.typExprParamNames[0], valueType(phaseType, fn)));
+		main.result = valueType(writtenType ?? phaseType, fn);
+	}
+	if (carriedType != null) {
+		checkName(carriedName, fn);
+		main.params.push(shaderField(carriedName, valueType(carriedType, fn)));
 	}
 	const mainIndex = addFunction(main);
 	authorFunctions.push(mainIndex);
