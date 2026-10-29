@@ -114,6 +114,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 		doorAppendBufferOf,
 		doorApplyUniformsOf,
 		doorDestroyBuffer,
+		doorDestroyPipeline,
 		doorMakeBuffer,
 		doorDestroyView,
 		doorMakeTargetImage,
@@ -277,6 +278,27 @@ when (voidDummy || (windows && !voidVulkan)) {
 		doorApplyBindings(wordsOf(scene.vertices), [0]);
 		doorDraw(0, 6, 1);
 		endPass();
+		closeScene(scene);
+	}
+
+	test "pipelines apply by id after another one is destroyed" {
+		const scene: Scene = openScene();
+		const first: uint32 = pipelineOf(scene, red, plain());
+		const second: uint32 = pipelineOf(scene, green, plain());
+		const third: uint32 = pipelineOf(scene, red, plain().withColorMask(false, true, true, true));
+		doorDestroyPipeline(first);
+		beginStencilPass(scene, 0);
+		doorApplyPipeline(third);
+		doorApplyBindings(wordsOf(scene.vertices), [0]);
+		doorDraw(0, 6, 1);
+		doorApplyPipeline(second);
+		doorApplyBindings(wordsOf(scene.vertices), [0]);
+		doorDraw(0, 6, 1);
+		doorApplyPipeline(third);
+		doorDraw(0, 6, 1);
+		endPass();
+		doorDestroyPipeline(third);
+		doorDestroyPipeline(second);
 		closeScene(scene);
 	}
 
