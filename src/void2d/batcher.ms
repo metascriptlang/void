@@ -31,6 +31,7 @@ import {
 import { packChannel } from "./instance";
 import { floatBits } from "./floatBits";
 import { copyFloatWords } from "./floatWords";
+import { zeroFloats, zeroWords } from "./zeros";
 import {
 	UB_void2d_params, UB_void2d_fx, UB_sprite_params, UB_ui_params, UB_ui_fx, UB_blur_params,
 	VIEW_tex, VIEW_spriteTex, VIEW_uiTex, VIEW_srcTex, SMP_smp, SMP_spriteSmp, SMP_uiSmp, SMP_srcSmp,
@@ -139,18 +140,6 @@ class DisplayList {
 function fail(message: string): never {
 	console.error(message);
 	exit(1);
-}
-
-function zeroFloats(count: int32): float32[] {
-	const values: float32[] = [];
-	for (let i: int32 = 0; i < count; i++) { values.push(0.0); }
-	return values;
-}
-
-function zeroWords(count: int32): uint32[] {
-	const values: uint32[] = [];
-	for (let i: int32 = 0; i < count; i++) { values.push(0); }
-	return values;
 }
 
 function clearWords(values: uint32[]): void {
