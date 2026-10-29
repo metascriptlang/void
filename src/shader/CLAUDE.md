@@ -185,7 +185,10 @@ later replaces the hand-written GLSL source of each base.
   `emissive` (`src/void3d/draw.ms` `applyBlockHead`); each refusal was run by breaking its input
   (2026-10-23). No derivative runs on the CPU, so a fragment that takes `dpdx`
   (void2d's `fs` and `uiFs`) is checked through its helpers and pixel goldens, not as a whole. Runtime modules never
-  call `glsl`, so no binary carries GLSL text.
+  call `glsl`, so no binary carries GLSL text. Each generated module also carries one
+  `<block>Members()` per uniform block (`BlockMember`: block, member, float offset, float count),
+  read off `layout.ms` `blockMembers`, the layout the printers use; `src/test/shaderBlockMemberCheck.ms`
+  pins the hand-kept `MOVING_*` and `PBR_*` offsets of `src/void3d/gpu3d.ms` against it.
 - **An app's own program is built while msc compiles it** (`shaderProgram` in `program.ms`, the
   person's "viết → chạy", 2026-10-18). The statement splices one declaration, `const <name>:
   int32`, initialized by `shaderBuild`: in the macro VM it joins the two lowered stages
