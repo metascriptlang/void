@@ -34,6 +34,7 @@ import {
 	saoFs,
 	saoVs,
 	blurFs,
+	colorMatrixFs,
 	fxaaFs,
 	toneMapFs,
 } from "../src/void3d/post3d";
@@ -55,6 +56,7 @@ console.log(stage("vs", "saoVs", glsl(saoVs)));
 console.log(stage("fs", "saoFs", glslLinked(saoFs, saoVs)));
 console.log(stage("fs", "blurFs", glsl(blurFs)));
 console.log(stage("fs", "fxaaFs", glsl(fxaaFs)));
+console.log(stage("fs", "colorMatrixFs", glsl(colorMatrixFs)));
 console.log(stage("vs", "particleVisualVs", glsl(particleVisualVs)));
 console.log(stage("vs", "particleVs", glsl(particleVs)));
 console.log(stage("fs", "particleFs", glslLinked(particleFs, particleVs)));

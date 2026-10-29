@@ -1,5 +1,5 @@
 // void3d's fullscreen passes written as MetaScript shader functions: tone map, bloom, outline,
-// ambient occlusion, blur and FXAA.
+// ambient occlusion, blur, FXAA and the colour matrix.
 // tools/genShaders.ms writes their GLSL into shader3dGen.glsl; src/test/post3dCheck.ms runs them on
 // the CPU.
 
@@ -228,6 +228,53 @@ export function fxaaFs(input: PostInput, b: FxaaBindings): Vec4f {
 	const lumB = lumaOf(rgbB);
 	const inside: float32 = lumB > lumMin && lumB < lumMax ? 1.0 : 0.0;
 	return vec4f(mix(rgbA, rgbB, vec3f(inside)), origin.w);
+}
+
+// colorMatrixPass.ms COLOR_MATRIX_*.
+export struct ColorMatrixParams {
+	colorMatrix: Mat4x4f;
+	colorMatrixSecond: Mat4x4f;
+	colorMaskA: Vec4f;
+	colorMaskB: Vec4f;
+	colorMaskChannel: Vec4f;
+	colorMatrixFlags: Vec4f;
+}
+
+export struct ColorMatrixBindings {
+	@binding(0) colorSource: Texture2d;
+	@binding(1) colorMask: Texture2d;
+	@binding(0) colorSampler: Sampler;
+	@binding(1) colorMaskSampler: Sampler;
+	@binding(0) colorMatrixParams: ColorMatrixParams;
+}
+
+// ColorMatrixShader.apply. The matrix multiplies the colour as a row, as the block holds Heaps'
+// rows in GLSL's columns.
+function colorMatrixApplied(color: Vec4f, matrix: Mat4x4f, useAlpha: boolean): Vec4f {
+	return useAlpha ? matrix * color : matrix * vec4f(color.xyz, 1.0);
+}
+
+// h3d.pass.ColorMatrix over a source the target's size, on its stored colour as Heaps' shader
+// reads it: with no mask, the matrix; with one, the mask texel's channel weight raised to the
+// power mixes the matrix's colour toward the second matrix's, or toward the source's.
+export function colorMatrixFs(input: PostInput, b: ColorMatrixBindings): Vec4f {
+	const size = textureDimensions(b.colorSource, b.colorSampler, 0);
+	const uv = input.position.xy / vec2f(size.x as float32, size.y as float32);
+	const flags = b.colorMatrixParams.colorMatrixFlags;
+	const useAlpha = flags.x > 0.5;
+	const color = textureSample(b.colorSource, b.colorSampler, uv);
+	const first = colorMatrixApplied(color, b.colorMatrixParams.colorMatrix, useAlpha);
+	if (flags.y < 0.5) {
+		return first;
+	}
+	const at = vec3f(uv, 1.0);
+	const maskA = b.colorMatrixParams.colorMaskA;
+	const maskUv = vec2f(dot(at, maskA.xyz), dot(at, b.colorMatrixParams.colorMaskB.xyz));
+	const texel = textureSample(b.colorMask, b.colorMaskSampler, maskUv);
+	const weight = pow(dot(texel, b.colorMatrixParams.colorMaskChannel), maskA.w);
+	const second = flags.w > 0.5 ?
+		colorMatrixApplied(color, b.colorMatrixParams.colorMatrixSecond, useAlpha) : color;
+	return flags.z > 0.5 ? mix(second, first, weight) : mix(first, second, weight);
 }
 
 export struct FullscreenAttributes {

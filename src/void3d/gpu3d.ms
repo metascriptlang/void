@@ -71,6 +71,8 @@ export enum Program {
 	Line,
 	// Heaps' FXAA over a texture the target's size (fxaa.ms).
 	Fxaa,
+	// Heaps' ColorMatrix pass over a texture the target's size (colorMatrixPass.ms).
+	ColorMatrix,
 }
 
 // Heaps adds a pass's output shaders to a material's (h3d.pass.Output); sokol-shdc programs
@@ -332,6 +334,7 @@ export function isScreenProgram(program: Program): boolean {
 		Program.Blur => true,
 		Program.Line => false,
 		Program.Fxaa => true,
+		Program.ColorMatrix => true,
 	};
 }
 

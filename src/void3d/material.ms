@@ -172,6 +172,7 @@ function cutoutOf(program: Program): ProgramKey {
 		Program.Blur => stopOnNoCutout(program),
 		Program.Line => stopOnNoCutout(program),
 		Program.Fxaa => stopOnNoCutout(program),
+		Program.ColorMatrix => stopOnNoCutout(program),
 	};
 }
 

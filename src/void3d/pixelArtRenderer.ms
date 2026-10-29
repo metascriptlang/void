@@ -790,6 +790,7 @@ function rampsHaveLevels(
 			Program.Blur => true,
 			Program.Line => true,
 			Program.Fxaa => true,
+			Program.ColorMatrix => true,
 		};
 		if (!held) { return false; }
 	}
