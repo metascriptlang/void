@@ -654,11 +654,12 @@ function loadOp(op: string | null, index: int32, field: string): int32 {
 	};
 }
 
-function storeOp(op: string, index: int32, field: string): int32 {
-	return match (op) {
+function storeOp(op: string | null, index: int32, field: string): int32 {
+	const name = op ?? "";
+	return match (name) {
 		"store" => STORE_STORE,
 		"discard" => STORE_DISCARD,
-		_ => stopOnMember(attachmentMember(index, field), op),
+		_ => stopOnMember(attachmentMember(index, field), name),
 	};
 }
 

@@ -1415,11 +1415,12 @@ function loadAction(loadOp: string | null, member: string): int32 {
 	};
 }
 
-function storeAction(storeOp: string, resolve: boolean, member: string): int32 {
-	return match (storeOp) {
+function storeAction(storeOp: string | null, resolve: boolean, member: string): int32 {
+	const name = storeOp ?? "";
+	return match (name) {
 		"store" => resolve ? STORE_STORE_AND_RESOLVE : STORE_STORE,
 		"discard" => resolve ? STORE_RESOLVE : STORE_DONT_CARE,
-		_ => stopOnMember(member, storeOp),
+		_ => stopOnMember(member, name),
 	};
 }
 

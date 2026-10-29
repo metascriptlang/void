@@ -245,10 +245,11 @@ function loadOp(value: string, member: string): int32 {
 	};
 }
 
-function storeOp(value: string, member: string): int32 {
-	return match (value) {
+function storeOp(value: string | null, member: string): int32 {
+	const name = value ?? "";
+	return match (name) {
 		"store" | "discard" => 0,
-		_ => stopOnMember(member, value),
+		_ => stopOnMember(member, name),
 	};
 }
 

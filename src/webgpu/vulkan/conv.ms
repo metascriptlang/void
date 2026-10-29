@@ -208,8 +208,8 @@ export function loadOp(op: GPULoadOp | null, member: string): uint32 {
 	return code as uint32;
 }
 
-export function storeOp(op: GPUStoreOp, member: string): uint32 {
-	const value: string = op;
+export function storeOp(op: GPUStoreOp | null, member: string): uint32 {
+	const value: string = op ?? "";
 	const code = match (value) {
 		"store" => STORE_OP_STORE as int32,
 		"discard" => STORE_OP_DONT_CARE as int32,

@@ -1093,4 +1093,6 @@ test "a descriptor member an author leaves out is null and reads as the WebGPU d
 	const descriptor: GPURenderPipelineDescriptor = { label: null };
 	assert descriptor.fragment.targets[0].format == null;
 	assert blendFactorIndex(descriptor.fragment.targets[0].blend.color.srcFactor, "srcFactor", "dummy") == blendFactorIndex("one", "srcFactor", "dummy");
+	const pass: GPURenderPassDescriptor = { label: null };
+	assert pass.depthStencilAttachment.stencilLoadOp == null && pass.depthStencilAttachment.stencilStoreOp == null;
 }

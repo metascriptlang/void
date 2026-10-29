@@ -783,7 +783,7 @@ export struct GPURenderPassDepthStencilAttachment {
 	depthStoreOp: GPUStoreOp;
 	stencilClearValue: uint32;
 	stencilLoadOp: GPULoadOp | null;
-	stencilStoreOp: GPUStoreOp;
+	stencilStoreOp: GPUStoreOp | null;
 }
 
 export struct GPURenderPassDescriptor {

@@ -1177,11 +1177,11 @@ function colorAttachmentRefusal(i: int32, descriptor: GPURenderPassDescriptor, v
 	return "";
 }
 
-function stencilOpsRefusal(load: string | null, store: string, stencil: boolean): string {
-	if (stencil && (load == null || store == "")) {
+function stencilOpsRefusal(load: string | null, store: string | null, stencil: boolean): string {
+	if (stencil && (load == null || store == null)) {
 		return "depthStencilAttachment.view has a stencil aspect, so stencilLoadOp and stencilStoreOp are required";
 	}
-	if (!stencil && (load != null || store != "")) {
+	if (!stencil && (load != null || store != null)) {
 		return "depthStencilAttachment.view has no stencil aspect, so stencilLoadOp and stencilStoreOp must be left out";
 	}
 	return "";

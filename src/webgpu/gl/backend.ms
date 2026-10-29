@@ -2147,8 +2147,9 @@ function isClear(loadOp: string | null, index: int32, field: string): boolean {
 	return value == 1;
 }
 
-@noinline function checkStoreOp(storeOp: string, index: int32, field: string): void {
-	if (storeOp != "store" && storeOp != "discard") { stopOnMember(attachmentMember(index, field), storeOp); }
+@noinline function checkStoreOp(storeOp: string | null, index: int32, field: string): void {
+	const name = storeOp ?? "";
+	if (name != "store" && name != "discard") { stopOnMember(attachmentMember(index, field), name); }
 }
 
 export function endPass(): void {

@@ -656,10 +656,11 @@ function loadOp(op: string | null, index: int32, field: string): string {
 	};
 }
 
-function storeOp(op: string, index: int32, field: string): string {
-	return match (op) {
-		"store" | "discard" => op,
-		_ => stopOnMember(attachmentMember(index, field), op),
+function storeOp(op: string | null, index: int32, field: string): string {
+	const name = op ?? "";
+	return match (name) {
+		"store" | "discard" => name,
+		_ => stopOnMember(attachmentMember(index, field), name),
 	};
 }
 
