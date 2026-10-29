@@ -830,9 +830,9 @@ test "an occlusion slot takes an occlusion set, not a timestamp set" {
 }
 
 test "a view takes its texture's dimension unless it names one, and 3d goes with 3d only" {
-	assert resolvedViewDimension("", false, 1) == "2d";
-	assert resolvedViewDimension("", false, 6) == "2d-array";
-	assert resolvedViewDimension("", true, 1) == "3d";
+	assert resolvedViewDimension(null, false, 1) == "2d";
+	assert resolvedViewDimension(null, false, 6) == "2d-array";
+	assert resolvedViewDimension(null, true, 1) == "3d";
 	assert resolvedViewDimension("cube", false, 6) == "cube";
 	assert viewDimensionRefusal("2d", false, 9) == "";
 	assert viewDimensionRefusal("3d", true, 9) == "";
@@ -1095,4 +1095,9 @@ test "a descriptor member an author leaves out is null and reads as the WebGPU d
 	assert blendFactorIndex(descriptor.fragment.targets[0].blend.color.srcFactor, "srcFactor", "dummy") == blendFactorIndex("one", "srcFactor", "dummy");
 	const pass: GPURenderPassDescriptor = { label: null };
 	assert pass.depthStencilAttachment.stencilLoadOp == null && pass.depthStencilAttachment.stencilStoreOp == null;
+	assert pass.depthStencilAttachment.depthLoadOp == null && pass.depthStencilAttachment.depthStoreOp == null;
+	const view: GPUTextureViewDescriptor = { label: null };
+	assert view.dimension == null && resolvedViewDimension(view.dimension, false, 6) == "2d-array";
+	const queries: GPUQuerySetDescriptor = { label: null, count: 1 };
+	assert queries.type == null;
 }

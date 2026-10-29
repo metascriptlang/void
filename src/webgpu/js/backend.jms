@@ -1359,7 +1359,7 @@ export function endComputePass(): void {
 }
 
 export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
-	const kind: string = descriptor.type;
+	const kind: string = descriptor.type ?? "";
 	const native = jsNew();
 	setText(native, "type", kind == "timestamp" ? "timestamp" : "occlusion");
 	setNumber(native, "count", descriptor.count);

@@ -2012,7 +2012,7 @@ export function insertDebugMarker(label: string): void {
 }
 
 export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
-	const kind: string = descriptor.type;
+	const kind: string = descriptor.type ?? "";
 	const timestamp = kind == "timestamp";
 	let slot: QuerySetSlot = {
 		samples: NO_SAMPLE_BUFFER,

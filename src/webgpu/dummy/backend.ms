@@ -238,10 +238,11 @@ function indexSize(format: GPUIndexFormat): int32 {
 	};
 }
 
-function loadOp(value: string, member: string): int32 {
-	return match (value) {
+function loadOp(value: string | null, member: string): int32 {
+	const name = value ?? "";
+	return match (name) {
 		"clear" | "load" => 0,
-		_ => stopOnMember(member, value),
+		_ => stopOnMember(member, name),
 	};
 }
 

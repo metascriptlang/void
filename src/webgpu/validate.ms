@@ -729,7 +729,7 @@ export function clampedAnisotropy(maxAnisotropy: int32): int32 {
 }
 
 export function querySetRefusal(descriptor: GPUQuerySetDescriptor, timestamps: boolean): string {
-	const kind: string = descriptor.type;
+	const kind: string = descriptor.type ?? "";
 	if (kind != "timestamp" && kind != "occlusion") { return `GPUQuerySetDescriptor.type '${kind}' is neither 'timestamp' nor 'occlusion'`; }
 	if (descriptor.count < 1 || descriptor.count > 4096) { return `GPUQuerySetDescriptor.count ${descriptor.count} is outside 1..4096`; }
 	if (kind == "timestamp" && !timestamps) { return "this device has no timestamp queries: features().has('timestamp-query') is false"; }
@@ -815,8 +815,8 @@ export function checkedViewport(width: float32, height: float32, minDepth: float
 export function checkedDispatch(x: int32, y: int32, z: int32, limit: int32): void { refuse(dispatchRefusal(x, y, z, limit)); }
 
 // A view without a dimension takes its texture's; a 3d view needs a 3d texture and no other does.
-export function resolvedViewDimension(dimension: string, volume: boolean, layers: int32): string {
-	if (dimension != "") { return dimension; }
+export function resolvedViewDimension(dimension: string | null, volume: boolean, layers: int32): string {
+	if (dimension != null) { return dimension; }
 	return volume ? "3d" : (layers > 1 ? "2d-array" : "2d");
 }
 
@@ -827,7 +827,7 @@ export function viewDimensionRefusal(name: string, volume: boolean, texture: uin
 	return "";
 }
 
-export function checkedViewDimension(dimension: string, volume: boolean, layers: int32, texture: uint32): string {
+export function checkedViewDimension(dimension: string | null, volume: boolean, layers: int32, texture: uint32): string {
 	const name = resolvedViewDimension(dimension, volume, layers);
 	refuse(viewDimensionRefusal(name, volume, texture));
 	return name;

@@ -225,7 +225,7 @@ export struct GPUTextureDescriptor {
 
 export struct GPUTextureViewDescriptor {
 	label: string | null;
-	dimension: GPUTextureViewDimension;
+	dimension: GPUTextureViewDimension | null;
 	baseMipLevel: int32;
 	mipLevelCount: int32;
 	baseArrayLayer: int32;
@@ -474,7 +474,7 @@ export struct GPUComputePassDescriptor {
 
 export struct GPUQuerySetDescriptor {
 	label: string | null;
-	type: GPUQueryType;
+	type: GPUQueryType | null;
 	count: int32;
 }
 
@@ -779,8 +779,8 @@ export struct GPURenderPassColorAttachment {
 export struct GPURenderPassDepthStencilAttachment {
 	view: GPUTextureView;
 	depthClearValue: float32;
-	depthLoadOp: GPULoadOp;
-	depthStoreOp: GPUStoreOp;
+	depthLoadOp: GPULoadOp | null;
+	depthStoreOp: GPUStoreOp | null;
 	stencilClearValue: uint32;
 	stencilLoadOp: GPULoadOp | null;
 	stencilStoreOp: GPUStoreOp | null;

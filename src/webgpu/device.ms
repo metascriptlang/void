@@ -343,7 +343,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function createQuerySet(this self: GPUDevice, descriptor: GPUQuerySetDescriptor): GPUQuerySet {
 	checkedQuerySet(descriptor, backend.features().has("timestamp-query"));
 	const id = allocate(querySetRecords);
-	const kind: string = descriptor.type;
+	const kind: string = descriptor.type ?? "";
 	store(querySetRecords, { id: id, timestamp: kind == "timestamp", count: descriptor.count, state: new Array(descriptor.count), usedPass: new Array(descriptor.count) });
 	backend.createQuerySet(id, descriptor);
 	return { id: id };

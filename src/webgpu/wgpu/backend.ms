@@ -1863,7 +1863,7 @@ export function endComputePass(): void {
 }
 
 export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
-	const kind: string = descriptor.type;
+	const kind: string = descriptor.type ?? "";
 	const timestamp = kind == "timestamp";
 	const native = wgCreateQuerySet(timestamp ? 1 : 0, descriptor.count, labelText(descriptor.label));
 	if (native == null) { stop(`wgpuDeviceCreateQuerySet failed for ${labelOf(descriptor.label)}`); }

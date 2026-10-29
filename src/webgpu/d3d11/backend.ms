@@ -1034,7 +1034,7 @@ function labelPass(label: string | null): boolean {
 }
 
 export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
-	const kind: string = descriptor.type;
+	const kind: string = descriptor.type ?? "";
 	const timestamp = kind == "timestamp";
 	let slot: QuerySetSlot = {
 		queries: [],
