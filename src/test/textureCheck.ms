@@ -230,7 +230,7 @@ test "the forward preset passes a replaced texture on by name" {
 	assert forward.core.generation == 0 && forward.colorTarget.image == 0;
 }
 
-test "a material names a texture only on a program that samples one at slot 0" {
+test "a material names a texture only on a program that reads one at slot 0" {
 	let context: DrawContext = DrawContext.withUniformCapacity(MATERIAL_UNIFORM_LENGTH);
 	let lit: Material = {
 		...texturedLit(context),
@@ -244,6 +244,11 @@ test "a material names a texture only on a program that samples one at slot 0" {
 	};
 	assert materialError(addMaterial(context, particle)) == MaterialError.TextureNotSampled;
 	assert context.liveMaterials() == 0;
+	let copy: Material = {
+		...Material.plain(Program.Copy, RenderState.defaults(), Phase.Opaque),
+		texture: firstSlotOf(context),
+	};
+	assert addMaterial(context, copy).ok;
 }
 
 test "each filter and wrap has a sampler slot of its own" {
