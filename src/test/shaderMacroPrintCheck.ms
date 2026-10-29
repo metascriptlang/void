@@ -15,6 +15,8 @@ import {
 import { glslComputeIr, glslIr, glslLinkedIr } from "../shader/emit";
 import { ShaderModule } from "../shader/ir";
 import { ShaderTarget } from "../shader/layout";
+import { linkedProgram } from "../shader/link";
+import { programEffects } from "../void3d/programEffects";
 import { litTexturedFs, litTexturedVs, shadowLitTexturedFs } from "../void3d/shader3d";
 import { boolFs, boolVs } from "./shaderBoolVectorCheck";
 import { cellsCs, shapeVs, twosFs } from "./shaderMatrixShapeCheck";
@@ -69,6 +71,12 @@ function printedProgram(vertex: string, fragment: string, features: string): str
 	return m.ok ? printedEveryTarget(m.value) : "module refused " + m.error + "\n";
 }
 
+function printedLinked(vertex: string, fragment: string, entry: string, features: string): string {
+	const on = features == "" ? [] : features.split(":");
+	const m = linkedProgram(vertex, fragment, on, programEffects("CORE", entry, on));
+	return m.ok ? printedEveryTarget(m.value) : "module refused " + m.error + "\n";
+}
+
 function printedCompute(text: string): string {
 	const m = computeModule(text, []);
 	return m.ok ? printedEveryTarget(m.value) : "module refused " + m.error + "\n";
@@ -80,6 +88,16 @@ macro printedProgramAtCompileTime(vertex: Node, fragment: Node, features: Node):
 		line: vertex.line,
 		column: vertex.column,
 		value: printedProgram(stringValue(vertex), stringValue(fragment), stringValue(features)),
+	};
+}
+
+macro printedLinkedAtCompileTime(vertex: Node, fragment: Node, entry: Node, features: Node): Node {
+	return {
+		kind: NodeKind.StringLiteral,
+		line: vertex.line,
+		column: vertex.column,
+		value: printedLinked(stringValue(vertex), stringValue(fragment), stringValue(entry),
+			stringValue(features)),
 	};
 }
 
@@ -133,12 +151,23 @@ test "a lit textured program with PBR maps, a normal map and shadows prints alik
 }
 
 test "a shadow caster with a dissolve and a cutout prints alike" {
-	const run = printedProgram(glslIr(litTexturedVs),
-		glslLinkedIr(shadowLitTexturedFs, litTexturedVs), "DISSOLVE:CUTOUT");
-	const macro = printedProgramAtCompileTime(glslIr(litTexturedVs),
-		glslLinkedIr(shadowLitTexturedFs, litTexturedVs), "DISSOLVE:CUTOUT");
+	const run = printedLinked(glslIr(litTexturedVs),
+		glslLinkedIr(shadowLitTexturedFs, litTexturedVs), "shadowLitTexturedFs", "DISSOLVE:CUTOUT");
+	const macro = printedLinkedAtCompileTime(glslIr(litTexturedVs),
+		glslLinkedIr(shadowLitTexturedFs, litTexturedVs), "shadowLitTexturedFs", "DISSOLVE:CUTOUT");
 	assert agree(macro, run);
 	assert refusals(run) == 0;
+}
+
+test "a linked shadow caster prints the dissolve discard" {
+	const on = ["DISSOLVE", "CUTOUT"];
+	const m = linkedProgram(glslIr(litTexturedVs),
+		glslLinkedIr(shadowLitTexturedFs, litTexturedVs), on,
+		programEffects("CORE", "shadowLitTexturedFs", on));
+	assert m.ok;
+	const text = stageSource(m.value, 1, ShaderTarget.Glsl300es);
+	assert text.ok && text.value.indexOf("dissolveTexture") >= 0 &&
+		text.value.indexOf("discard") >= 0;
 }
 
 test "bool vectors, componentwise compare and select print alike" {
