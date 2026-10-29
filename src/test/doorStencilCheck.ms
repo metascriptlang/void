@@ -106,6 +106,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 		LoadAction,
 		StoreAction,
 	} from "../gpu/doorGpu.ms";
+	import { boundFacts } from "../webgpu/validate.ms";
 	import { livePipelines } from "../gpu/door";
 	import {
 		ColorAttachment,
@@ -198,6 +199,39 @@ when (voidDummy || (windows && !voidVulkan)) {
 		const stencil: Stencil | null = state.stencil;
 		if (stencil != null) { doorApplyStencilReference(stencil.reference); }
 		doorDraw(first, 6, 1);
+	}
+
+	function wordsOf(vertices: uint32): Vec<uint32> {
+		let words: Vec<uint32> = [];
+		for (let i = 0; i < DOOR_BINDING_LENGTH; i++) { words.push(0); }
+		words[0] = vertices;
+		return words;
+	}
+
+	test "applyBindings sets what changed, and every pass and pipeline starts from nothing bound" {
+		const scene: Scene = openScene();
+		const other: uint32 = doorMakeBufferOf(DOOR_BUFFER_VERTEX, quads());
+		const first: uint32 = pipelineOf(scene, red, plain());
+		const second: uint32 = pipelineOf(scene, green, plain());
+		beginStencilPass(scene, 0);
+		doorApplyPipeline(first);
+		doorApplyBindings(wordsOf(scene.vertices), [0]);
+		assert boundFacts.vertexBuffers[0] == scene.vertices && boundFacts.vertexOffsets[0] == 0;
+		doorApplyBindings(wordsOf(scene.vertices), [16]);
+		assert boundFacts.vertexOffsets[0] == 16;
+		doorApplyBindings(wordsOf(other), [16]);
+		assert boundFacts.vertexBuffers[0] == other;
+		doorApplyPipeline(second);
+		doorApplyBindings(wordsOf(other), [16]);
+		doorDraw(0, 6, 1);
+		endPass();
+		beginStencilPass(scene, 0);
+		doorApplyPipeline(second);
+		doorApplyBindings(wordsOf(other), [16]);
+		assert boundFacts.vertexBuffers[0] == other && boundFacts.vertexOffsets[0] == 16;
+		doorDraw(0, 6, 1);
+		endPass();
+		closeScene(scene);
 	}
 
 	test "a reference change between two draws makes no pipeline and a stencil state makes one" {
