@@ -132,14 +132,14 @@ export function reserveRange(
 	return Result.ok(pool.blockAt(slot, offset));
 }
 
-function admitted(this pool: UniformPool, block: UniformBlock): Result<int32, UniformError> {
-	if (pool.holds(block)) { return Result.ok(block.length); }
+function admitted(this pool: UniformPool, block: UniformBlock): Result<void, UniformError> {
+	if (pool.holds(block)) { return Result.ok(null); }
 	return Result.err(block.store == pool.serial ? UniformError.Released : UniformError.Foreign);
 }
 
 export function ownRange(pool: UniformPool, block: UniformBlock): Result<int32, UniformError> {
 	if (pool.closed) { stopOnClosedPool("ownRange"); }
-	const _held: int32 = try pool.admitted(block);
+	const _admitted = try pool.admitted(block);
 	if (block.length == 0) { return Result.ok(0); }
 	if (pool.owned[block.offset]) { return Result.err(UniformError.Owned); }
 	pool.owned[block.offset] = true;
@@ -151,7 +151,7 @@ export function disownRange(
 	block: UniformBlock,
 ): Result<int32, UniformError> {
 	if (pool.closed) { stopOnClosedPool("disownRange"); }
-	const _held: int32 = try pool.admitted(block);
+	const _admitted = try pool.admitted(block);
 	if (block.length > 0) { pool.owned[block.offset] = false; }
 	return releaseRange(pool, block);
 }
@@ -161,7 +161,7 @@ export function releaseRange(
 	block: UniformBlock,
 ): Result<int32, UniformError> {
 	if (pool.closed) { stopOnClosedPool("releaseRange"); }
-	const _held: int32 = try pool.admitted(block);
+	const _admitted = try pool.admitted(block);
 	if (block.length == 0) { return Result.ok(0); }
 	if (pool.owned[block.offset]) { return Result.err(UniformError.Owned); }
 	const next: int32 = nextGeneration(pool.generations[block.offset]);
@@ -177,7 +177,7 @@ export function writeRange(
 ): Result<int32, UniformError> {
 	if (pool.closed) { stopOnClosedPool("writeRange"); }
 	if ((values.length as int32) != block.length) { return Result.err(UniformError.WrongLength); }
-	const _held: int32 = try pool.admitted(block);
+	const _admitted = try pool.admitted(block);
 	for (let i = 0; i < block.length; i++) {
 		pool.values[block.offset + i] = values[i];
 	}

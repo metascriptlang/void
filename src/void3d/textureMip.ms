@@ -4,6 +4,8 @@ export const MAX_TEXTURE_MIP_LEVELS: int32 = 16;
 const MAX_SOKOL_SURFACE_WORDS: int64 = 536870911;
 const MAX_TEXTURE_PIXEL_OFFSET: int64 = 2147483647;
 const SMALLEST_POSITIVE_LOD: float32 = 1.17549435e-38;
+const MAX_ANISOTROPY: int32 = 16;
+const BYTES_PER_PIXEL: int64 = 4;
 
 export enum TextureMipFilter {
 	None,
@@ -43,6 +45,13 @@ function validFilter(filter: FilterMode): boolean {
 	};
 }
 
+function validMipFilter(filter: TextureMipFilter): boolean {
+	return match (filter) {
+		TextureMipFilter.None | TextureMipFilter.Nearest | TextureMipFilter.Linear => true,
+		_ => false,
+	};
+}
+
 function validWrap(wrap: Wrap): boolean {
 	return match (wrap) {
 		Wrap.Clamp | Wrap.Repeat | Wrap.Mirror => true,
@@ -56,11 +65,7 @@ export function validate(
 ): Result<void, TextureSamplerError> {
 	if (!validFilter(sampler.minFilter)) { return Result.err(TextureSamplerError.MinFilter); }
 	if (!validFilter(sampler.magFilter)) { return Result.err(TextureSamplerError.MagFilter); }
-	const validMip: boolean = match (sampler.mipFilter) {
-		TextureMipFilter.None | TextureMipFilter.Nearest | TextureMipFilter.Linear => true,
-		_ => false,
-	};
-	if (!validMip) { return Result.err(TextureSamplerError.MipFilter); }
+	if (!validMipFilter(sampler.mipFilter)) { return Result.err(TextureSamplerError.MipFilter); }
 	if (!validWrap(sampler.wrapU)) { return Result.err(TextureSamplerError.WrapU); }
 	if (!validWrap(sampler.wrapV)) { return Result.err(TextureSamplerError.WrapV); }
 	if (!Number.isFinite(sampler.minLod) || !Number.isFinite(sampler.maxLod) ||
@@ -75,7 +80,7 @@ export function validate(
 		sampler.maxLod > ((levelCount - 1) as float32)) {
 		return Result.err(TextureSamplerError.LodOutsideChain);
 	}
-	if (sampler.maxAnisotropy < 1 || sampler.maxAnisotropy > 16) {
+	if (sampler.maxAnisotropy < 1 || sampler.maxAnisotropy > MAX_ANISOTROPY) {
 		return Result.err(TextureSamplerError.AnisotropyRange);
 	}
 	if (sampler.maxAnisotropy > 1 &&
@@ -163,11 +168,11 @@ export struct TextureMipLevel {
 }
 
 export function byteOffset(this level: TextureMipLevel): int64 {
-	return (level.pixelOffset as int64) * 4;
+	return (level.pixelOffset as int64) * BYTES_PER_PIXEL;
 }
 
 export function byteCount(this level: TextureMipLevel): int64 {
-	return (level.pixelCount as int64) * 4;
+	return (level.pixelCount as int64) * BYTES_PER_PIXEL;
 }
 
 export enum TextureMipError {
@@ -241,7 +246,7 @@ export function create(
 	const checked: Result<void, TextureSamplerError> = sampler.validate(levels.length as int32);
 	if (!checked.ok) { return Result.err(TextureMipError.Sampler); }
 	let data: TextureMipData = { levels: [], pixels: [], sampler: sampler };
-	for (const level of levels) { data.levels.push({ ...level }); }
+	for (const level of levels) { data.levels.push(level); }
 	for (const pixel of pixels) { data.pixels.push(pixel); }
 	return Result.ok(move data);
 }

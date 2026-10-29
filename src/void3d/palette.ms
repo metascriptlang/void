@@ -97,8 +97,8 @@ export function cellIndex(levels: int32, red: int32, green: int32, blue: int32):
 	return green * levels * levels + blue * levels + red;
 }
 
-function channel(color: uint32, shift: int32): float32 {
-	const byte: uint32 = (color >> (shift as uint32)) & BYTE;
+function channel(color: uint32, shift: uint32): float32 {
+	const byte: uint32 = (color >> shift) & BYTE;
 	return (byte as float32) / BYTE_RANGE;
 }
 
