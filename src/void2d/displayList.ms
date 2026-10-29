@@ -320,6 +320,10 @@ export interface DrawContext2D {
 	dirtyUiTotal: int32;
 	uiSkipped: int32;
 	uiCopied: int32;
+	uiCopies: Vec<int32>;
+	uiCopyTotal: int32;
+	uiCopySource: int32;
+	stagedTag: int32;
 	resetSerial: int32;
 	segmented: boolean;
 	segmentStart: int32;
@@ -377,6 +381,10 @@ export interface DrawContext2D {
 	laneByVertex: Vec<int32>;
 }
 
+const NO_STAGE: int32 = 0;
+const STAGE_REFUSED: int32 = -1;
+const STAGE_TAG_MAX: int32 = 2147483647;
+let stageTags: int32 = NO_STAGE;
 let serials: Vec<int32> = [];
 let freeContextIds: Vec<int32> = [];
 
@@ -441,6 +449,10 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		dirtyUiTotal: 0,
 		uiSkipped: 0,
 		uiCopied: 0,
+		uiCopies: new Array(3),
+		uiCopyTotal: 0,
+		uiCopySource: NO_STAGE,
+		stagedTag: NO_STAGE,
 		resetSerial: 0,
 		segmented: false,
 		segmentStart: 0,
@@ -541,6 +553,8 @@ export function resetContext(): void {
 	activeContext.dirtyVertices = false;
 	activeContext.dirtySprites = false;
 	activeContext.dirtyUiTotal = 0;
+	activeContext.uiCopyTotal = 0;
+	activeContext.uiCopySource = NO_STAGE;
 	serials[activeContext.id] = serials[activeContext.id] + 1;
 	activeContext.resetSerial = serials[activeContext.id];
 }
@@ -651,6 +665,13 @@ export function uploaded(): void {
 	activeContext.dirtyVertices = false;
 	activeContext.dirtySprites = false;
 	activeContext.dirtyUiTotal = 0;
+	activeContext.uiCopyTotal = 0;
+	activeContext.uiCopySource = NO_STAGE;
+}
+
+export function nextStageTag(): int32 {
+	stageTags = stageTags == STAGE_TAG_MAX ? 1 : stageTags + 1;
+	return stageTags;
 }
 
 
@@ -833,8 +854,66 @@ export function copyUiInstances(old: DrawContext2D, first: int32, count: int32):
 	growTo(activeContext.uiInstances, to + count * REC_UI_FLOATS);
 	copyFloats(activeContext.uiInstances, to, old.uiInstances, first * REC_UI_FLOATS,
 		count * REC_UI_FLOATS);
+	if (activeContext.uploadAll) { noteUiCopy(old, first, count, activeContext.uiInstanceTotal); }
 	activeContext.uiInstanceTotal = activeContext.uiInstanceTotal + count;
 	activeContext.uiCopied = activeContext.uiCopied + count;
+}
+
+function noteUiCopy(old: DrawContext2D, first: int32, count: int32, at: int32): void {
+	const source: int32 = old.uploadAll ? NO_STAGE : old.stagedTag;
+	if (activeContext.uiCopySource == NO_STAGE) { activeContext.uiCopySource = source; }
+	if (source == NO_STAGE || source != activeContext.uiCopySource) {
+		activeContext.uiCopySource = STAGE_REFUSED;
+		return;
+	}
+	stageCleanCopy(old, first, first + count, at, 0);
+}
+
+function stageCleanCopy(old: DrawContext2D, first: int32, end: int32, at: int32, from: int32): void {
+	if (first >= end) { return; }
+	for (let k: int32 = from; k < old.dirtyUiTotal; k++) {
+		const lo: int32 = old.dirtyUi[k * 2];
+		const hi: int32 = old.dirtyUi[k * 2 + 1];
+		if (lo < end && hi > first) {
+			stageCleanCopy(old, first, Math.max(lo, first), at, k + 1);
+			const resume: int32 = Math.min(hi, end);
+			stageCleanCopy(old, resume, end, at + (resume - first), k + 1);
+			return;
+		}
+	}
+	const count: int32 = end - first;
+	const n: int32 = activeContext.uiCopyTotal;
+	if (n > 0) {
+		const last: int32 = (n - 1) * 3;
+		const lastCount: int32 = activeContext.uiCopies[last + 2];
+		if (activeContext.uiCopies[last] + lastCount == first &&
+			activeContext.uiCopies[last + 1] + lastCount == at) {
+			activeContext.uiCopies[last + 2] = lastCount + count;
+			return;
+		}
+	}
+	while ((activeContext.uiCopies.length as int32) < (n + 1) * 3) { activeContext.uiCopies.push(0); }
+	activeContext.uiCopies[n * 3] = first;
+	activeContext.uiCopies[n * 3 + 1] = at;
+	activeContext.uiCopies[n * 3 + 2] = count;
+	activeContext.uiCopyTotal = n + 1;
+}
+
+export function stagedUiCopies(): int32 {
+	return activeContext.uiCopySource > NO_STAGE ? activeContext.uiCopyTotal : 0;
+}
+
+function dropUiCopiesFrom(lo: int32): void {
+	while (activeContext.uiCopyTotal > 0) {
+		const last: int32 = (activeContext.uiCopyTotal - 1) * 3;
+		const at: int32 = activeContext.uiCopies[last + 1];
+		if (at >= lo) {
+			activeContext.uiCopyTotal = activeContext.uiCopyTotal - 1;
+			continue;
+		}
+		if (at + activeContext.uiCopies[last + 2] > lo) { activeContext.uiCopies[last + 2] = lo - at; }
+		return;
+	}
 }
 
 export function copyPainted(old: DrawContext2D, a: PaintIndex, b: PaintIndex): void {
@@ -1560,6 +1639,7 @@ function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
 			copyFloats(activeContext.laneScratch, 0, activeContext.spriteInstances, lo * width, span);
 		},
 		Pipeline.Ui => {
+			dropUiCopiesFrom(lo);
 			copyFloats(activeContext.laneScratch, 0, activeContext.uiInstances, lo * width, span);
 		},
 		Pipeline.Vertex => {
