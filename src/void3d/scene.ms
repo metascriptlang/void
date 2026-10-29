@@ -245,6 +245,10 @@ export struct MeshInstance {
 	morphPrimitive: int32;
 	morphRevision: uint64;
 	lod: MeshLodPick | null;
+	// The item this mesh fills in the kept list, -1 when it has none, and whether that item
+	// waits in `dirtySlots`.
+	drawSlot: int32;
+	itemDirty: boolean;
 }
 
 // The morph state of one glTF node instance, shared by the mesh nodes of its primitives: weights
@@ -281,10 +285,10 @@ export interface Scene3D {
 	stack: Vec<int32>;
 	// The node behind each item of the list `refresh` and `collectDrawList` keep.
 	drawNodes: Vec<int32>;
-	// Bevy's change detection: set by whatever moves a field an item copies, so a steady frame
-	// with nothing set leaves the kept items as they are. LOD items are rewritten every frame.
-	itemsChanged: boolean;
-	drawLods: int32;
+	// Bevy's change detection, per item: whatever moves a field an item copies queues that
+	// item's slot, so a frame rewrites only the queued items. LOD items are rewritten every frame.
+	dirtySlots: Vec<int32>;
+	lodSlots: Vec<int32>;
 	root: int32;
 	structureChanged: boolean;
 	// Counts structural changes, so a list kept beside the draw list knows when it is stale.
@@ -434,8 +438,8 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 		ambientLight: vec3(0.5, 0.5, 0.5),
 		stack: [],
 		drawNodes: [],
-		itemsChanged: true,
-		drawLods: 0,
+		dirtySlots: [],
+		lodSlots: [],
 		root: NO_NODE_3D,
 		structureChanged: true,
 		structureRevision: 1,
@@ -519,6 +523,8 @@ export function addMeshNode(
 		morphPrimitive: 0,
 		morphRevision: 0,
 		lod: null,
+		drawSlot: -1,
+		itemDirty: false,
 	});
 	const id: NodeId3D = newSlot(scene, freshNode(NodeKind.Mesh, under, payload, local));
 	scene.meshOwners.push(id.index);
@@ -1202,7 +1208,7 @@ export function setLayers(scene: Scene3D, id: NodeId3D, layers: uint32): void {
 export function setRenderOrder(scene: Scene3D, id: NodeId3D, order: int32): void {
 	const row: int32 = scene.liveRow(id, "setRenderOrder");
 	scene.nodes[row].renderOrder = order;
-	scene.itemsChanged = true;
+	scene.markItemDirty(row);
 }
 
 export function renderOrderOf(this scene: Scene3D, id: NodeId3D): int32 {
@@ -1267,7 +1273,7 @@ export function setMeshOf(scene: Scene3D, id: NodeId3D, mesh: MeshId): Result<in
 	if (!pinMesh(context, mesh).ok) { return Result.err(meshError(context, mesh)); }
 	if (holds && !unpinMesh(context, shown).ok) { unreachable; }
 	scene.meshes[row].mesh = mesh;
-	scene.itemsChanged = true;
+	scene.markItemDirty(node);
 	return Result.ok(node);
 }
 
@@ -1291,7 +1297,7 @@ export function setMaterialOf(
 	if (!pinMaterial(context, material).ok) { unreachable; }
 	if (holds && !unpinMaterial(context, shown).ok) { unreachable; }
 	scene.meshes[row].material = material;
-	scene.itemsChanged = true;
+	scene.markItemDirty(node);
 	return Result.ok(node);
 }
 
@@ -1463,7 +1469,7 @@ export function syncWorld(scene: Scene3D): int32 {
 				parent == NO_NODE_3D ? local : local.multiplyAffine(parentWorld);
 			scene.nodes[index].flags = scene.nodes[index].flags.excl(NodeFlag.PosChanged);
 			synced = synced + 1;
-			scene.itemsChanged = true;
+			scene.markItemDirty(index);
 		}
 		for (const child of scene.nodes[index].children) {
 			if (changed) {
@@ -1505,8 +1511,12 @@ function fillDrawList(
 	while ((items.length as int32) > 0) { items.pop(); }
 	if (keep) {
 		while ((scene.drawNodes.length as int32) > 0) { scene.drawNodes.pop(); }
-		scene.drawLods = 0;
-		scene.itemsChanged = false;
+		while ((scene.dirtySlots.length as int32) > 0) { scene.dirtySlots.pop(); }
+		while ((scene.lodSlots.length as int32) > 0) { scene.lodSlots.pop(); }
+		for (let row = 0; row < (scene.meshes.length as int32); row++) {
+			scene.meshes[row].drawSlot = -1;
+			scene.meshes[row].itemDirty = false;
+		}
 	}
 	if (scene.root == NO_NODE_3D) { return 0; }
 	let top: int32 = 0;
@@ -1522,8 +1532,9 @@ function fillDrawList(
 			const pick = scene.meshes[payload].lod;
 			if (pick !== null) {
 				pick.ratioSource = ratioSourceOf(scene, index, layers);
-				if (keep) { scene.drawLods += 1; }
+				if (keep) { scene.lodSlots.push(items.length as int32); }
 			}
+			if (keep) { scene.meshes[payload].drawSlot = items.length as int32; }
 			items.push({
 				mesh: scene.meshes[payload].mesh,
 				material: scene.meshes[payload].material,
@@ -1666,32 +1677,47 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 	if ((items.length as int32) != count) {
 		return fillDrawList(scene, activeLayers(scene), items, true);
 	}
-	if (!scene.itemsChanged && scene.drawLods == 0) { return count; }
-	scene.itemsChanged = false;
+	for (const at of scene.dirtySlots) {
+		scene.meshes[scene.nodes[scene.drawNodes[at]].payload].itemDirty = false;
+		scene.rewriteItem(items, at);
+	}
+	while ((scene.dirtySlots.length as int32) > 0) { scene.dirtySlots.pop(); }
+	if ((scene.lodSlots.length as int32) == 0) { return count; }
 	const layers: uint32 = activeLayers(scene);
-	for (let at = 0; at < count; at++) {
+	for (const at of scene.lodSlots) {
 		const index: int32 = scene.drawNodes[at];
-		const payload: int32 = scene.nodes[index].payload;
-		if (scene.meshes[payload].lod !== null) {
-			const source = ratioSourceOf(scene, index, layers);
-			const pick = scene.meshes[payload].lod;
-			if (pick !== null) { pick.ratioSource = source; }
-		}
-		items[at].world = scene.nodes[index].world;
-		items[at].mesh = scene.meshes[payload].mesh;
-		items[at].material = scene.meshes[payload].material;
-		items[at].order = scene.nodes[index].renderOrder;
-		if (items[at].skin !== null) { items[at].skin = null; }
-		if (items[at].skinGeometry !== scene.meshes[payload].skinGeometry) {
-			items[at].skinGeometry = scene.meshes[payload].skinGeometry;
-		}
-		items[at].skinPalette = scene.meshes[payload].skinPalette;
-		items[at].range = scene.meshes[payload].range;
-		if (items[at].lod !== scene.meshes[payload].lod) {
-			items[at].lod = scene.meshes[payload].lod;
-		}
+		const pick = scene.meshes[scene.nodes[index].payload].lod;
+		if (pick !== null) { pick.ratioSource = ratioSourceOf(scene, index, layers); }
+		scene.rewriteItem(items, at);
 	}
 	return count;
+}
+
+function markItemDirty(this scene: Scene3D, index: int32): void {
+	if (scene.nodes[index].kind != NodeKind.Mesh) { return; }
+	const payload: int32 = scene.nodes[index].payload;
+	const slot: int32 = scene.meshes[payload].drawSlot;
+	if (slot < 0 || scene.meshes[payload].itemDirty) { return; }
+	scene.meshes[payload].itemDirty = true;
+	scene.dirtySlots.push(slot);
+}
+
+function rewriteItem(this scene: Scene3D, ref items: Vec<DrawItem>, at: int32): void {
+	const index: int32 = scene.drawNodes[at];
+	const payload: int32 = scene.nodes[index].payload;
+	items[at].world = scene.nodes[index].world;
+	items[at].mesh = scene.meshes[payload].mesh;
+	items[at].material = scene.meshes[payload].material;
+	items[at].order = scene.nodes[index].renderOrder;
+	if (items[at].skin !== null) { items[at].skin = null; }
+	if (items[at].skinGeometry !== scene.meshes[payload].skinGeometry) {
+		items[at].skinGeometry = scene.meshes[payload].skinGeometry;
+	}
+	items[at].skinPalette = scene.meshes[payload].skinPalette;
+	items[at].range = scene.meshes[payload].range;
+	if (items[at].lod !== scene.meshes[payload].lod) {
+		items[at].lod = scene.meshes[payload].lod;
+	}
 }
 
 export function refreshFor(scene: Scene3D, camera: NodeId3D, ref items: Vec<DrawItem>): int32 {
