@@ -2,6 +2,7 @@
 // render layers above see no change, with sokol's own mechanisms for what WebGPU leaves to the
 // caller (uniform ring, bind group cache).
 
+import { slotOf } from "../webgpu/pool.ms";
 import {
 	GPUBindGroup,
 	GPUAddressMode,
@@ -51,6 +52,7 @@ import {
 } from "../webgpu/types.ms";
 import {
 	GPUNativeEnvironment,
+	GPUNativeSwapchain,
 	getCurrentDepthTexture,
 	getCurrentTexture,
 	requestDevice,
@@ -223,15 +225,38 @@ struct BindKey {
 
 struct BindEntry { key: BindKey; group: GPUBindGroup; }
 
-struct AppendCursor { buffer: uint32; frame: uint32; position: int64; }
+// What the open pass holds from the last applyBindings: a word equal to its slot here is bound
+// already. Anything that changes the pipeline or destroys a handle clears `valid`, so the next
+// apply sets everything again and the device checks it.
+struct AppliedBindings {
+	valid: boolean;
+	words: uint32[DOOR_BINDING_LENGTH];
+	offsets: int32[GPU_MAX_VERTEX_BUFFERS];
+}
+
+// A view's class by pool slot, kept with the id it was read for: a live view keeps its texture, so
+// its format and usage never change, and a destroy clears the entry.
+struct ViewClass { view: uint32; colorAttachment: boolean; }
+
+// By pool slot of the buffer, kept with the id it was made for and the buffer's size, which never
+// changes.
+struct AppendCursor { buffer: uint32; frame: uint32; position: int64; size: int64; }
 
 let device: GPUDevice = { id: 0, queue: { id: 0 } };
 let layouts: Vec<DoorLayout> = [];
 let programs: Vec<DoorProgram> = [];
 let shaders: Vec<ShaderRecord> = [];
 let pipelines: Vec<PipelineRecord> = [];
+// The index in `pipelines` plus one of each pipeline by its pool slot, 0 for none.
+let pipelineSlots: Vec<int32> = [];
 let bindCache: Vec<BindEntry> = [];
 let appendCursors: Vec<AppendCursor> = [];
+let applied: AppliedBindings = { valid: false };
+let viewClasses: Vec<ViewClass> = [];
+// The screen pass's descriptor, built when the swapchain's view ids change: a frame refreshes
+// only the clear color and the timestamp writes.
+let screenPass: GPURenderPassDescriptor = { label: null } as GPURenderPassDescriptor;
+let screenDepth: uint32 = 0;
 let generation: int32 = 1;
 let everSetUp = false;
 let uniformRing: GPUBuffer = { id: 0 };
@@ -241,6 +266,14 @@ let uniformOffsets: uint32[DOOR_UNIFORM_SLOTS] = [0, 0, 0, 0, 0, 0, 0, 0];
 // changed: a block applied once stays bound for every draw of that pipeline.
 let uniformStamps: int32[DOOR_UNIFORM_SLOTS] = [0, 0, 0, 0, 0, 0, 0, 0];
 let uniformStampCounter: int32 = 0;
+let dynamicOffsets: uint32[DOOR_UNIFORM_SLOTS] = [0, 0, 0, 0, 0, 0, 0, 0];
+
+function clearUniformSlots(): void {
+	for (let s = 0; s < DOOR_UNIFORM_SLOTS; s++) {
+		uniformOffsets[s] = 0;
+		uniformStamps[s] = 0;
+	}
+}
 let encoder: GPUCommandEncoder = { id: 0 };
 let pass: GPURenderPassEncoder = { id: 0 };
 let current: int32 = -1;
@@ -287,8 +320,12 @@ export function doorSetup(
 	device = requestDevice(environment);
 	shaders.length = 0;
 	pipelines.length = 0;
+	pipelineSlots.length = 0;
 	bindCache.length = 0;
 	appendCursors.length = 0;
+	viewClasses.length = 0;
+	screenPass = { label: null } as GPURenderPassDescriptor;
+	screenDepth = 0;
 	cubeImages.length = 0;
 	arrayImages.length = 0;
 	dataImages.length = 0;
@@ -820,13 +857,22 @@ function colorFormatAt(targets: TargetLayout, index: int32): PixelFormat {
 		uniformGroup,
 		stenciled: stencil != null,
 	});
+	setPipelineSlot(pipeline.id, (pipelines.length - 1) as int32);
 	return pipeline.id;
+}
+
+function setPipelineSlot(pipeline: uint32, index: int32): void {
+	const slot = slotOf(pipeline);
+	while (pipelineSlots.length <= slot) { pipelineSlots.push(0); }
+	pipelineSlots[slot] = index + 1;
 }
 
 function pipelineIndex(pipeline: uint32): int32 {
 	if (current >= 0 && pipelines[current].pipeline.id == pipeline) { return current; }
-	for (let i = 0; i < pipelines.length; i++) {
-		if (pipelines[i].pipeline.id == pipeline) { return i as int32; }
+	const slot = slotOf(pipeline);
+	if (slot < pipelineSlots.length && pipelineSlots[slot] != 0) {
+		const index = pipelineSlots[slot] - 1;
+		if (pipelines[index].pipeline.id == pipeline) { return index; }
 	}
 	stop("apply of pipeline " + String(pipeline) + ", which the door did not make");
 }
@@ -1124,7 +1170,13 @@ export function doorDestroyPipeline(pipeline: uint32): void {
 		if (pipelines[i].pipeline.id != pipeline) { continue; }
 		if (pipelines[i].uniformGroup.id != 0) { pipelines[i].uniformGroup.destroy(); }
 		pipelines[i].pipeline.destroy();
-		pipelines.splice(i, 1);
+		pipelineSlots[slotOf(pipeline)] = 0;
+		const last = (pipelines.length - 1) as int32;
+		if (i != last) {
+			pipelines[i] = pipelines[last];
+			setPipelineSlot(pipelines[i].pipeline.id, i as int32);
+		}
+		pipelines.pop();
 		current = -1;
 		return;
 	}
@@ -1139,6 +1191,8 @@ export function doorDestroyImage(image: uint32): void {
 	const data = dataImages.findIndex((d) => d.id == image);
 	if (data >= 0) { dataImages.splice(data, 1); }
 	untrackTexture(image);
+	applied.valid = false;
+	viewClasses.length = 0;
 	const texture: GPUTexture = { id: image };
 	texture.destroy();
 }
@@ -1146,12 +1200,16 @@ export function doorDestroyImage(image: uint32): void {
 export function doorDestroyView(view: uint32): void {
 	if (view == 0) { return; }
 	const textureView: GPUTextureView = { id: view };
+	applied.valid = false;
+	const slot = slotOf(view);
+	if (slot < viewClasses.length) { viewClasses[slot] = { view: 0, colorAttachment: false }; }
 	textureView.destroy();
 }
 
 export function doorDestroySampler(sampler: uint32): void {
 	if (sampler == 0) { return; }
 	const handle: GPUSampler = { id: sampler };
+	applied.valid = false;
 	handle.destroy();
 }
 
@@ -1220,30 +1278,34 @@ export function doorUpdateBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int3
 	return 1;
 }
 
-function appendCursorOf(buffer: uint32): int32 {
-	for (let i = 0; i < appendCursors.length; i++) {
-		if (appendCursors[i].buffer == buffer) { return i as int32; }
+function appendCursorOf(id: uint32, frame: uint32): int32 {
+	const slot = slotOf(id);
+	while (appendCursors.length <= slot) {
+		appendCursors.push({ buffer: 0, frame: 0, position: 0, size: 0 });
 	}
-	return -1;
+	if (appendCursors[slot].buffer != id) {
+		const buffer: GPUBuffer = { id };
+		appendCursors[slot] = { buffer: id, frame, position: 0, size: buffer.size() };
+	}
+	return slot;
 }
 
 // sokol's sg_append_buffer: each append lands after the last one this frame, 4-byte aligned,
 // and returns its offset; the first append of a frame starts at 0. -1 when it does not fit.
 export function doorAppendBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int64 {
-	const buffer: GPUBuffer = { id };
 	const frame = device.frameIndex();
-	let at = appendCursorOf(id);
-	if (at < 0) {
-		appendCursors.push({ buffer: id, frame, position: 0 });
-		at = (appendCursors.length - 1) as int32;
-	}
+	const at = appendCursorOf(id, frame);
 	if (appendCursors[at].frame != frame) {
-		appendCursors[at] = { buffer: id, frame, position: 0 };
+		appendCursors[at].frame = frame;
+		appendCursors[at].position = 0;
 	}
 	const offset = appendCursors[at].position;
 	const bytes = (data.length as int64) * (sizeof(T) as int64);
-	if (offset + bytes > buffer.size()) { return -1; }
-	if (bytes > 0) { device.queue.writeBuffer(buffer, offset, data); }
+	if (offset + bytes > appendCursors[at].size) { return -1; }
+	if (bytes > 0) {
+		const buffer: GPUBuffer = { id };
+		device.queue.writeBuffer(buffer, offset, data);
+	}
 	frameStats[DOOR_STAT_BUFFER_BYTES] += bytes;
 	appendCursors[at].position = alignedToFour(offset + bytes);
 	return offset;
@@ -1252,10 +1314,13 @@ export function doorAppendBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int6
 export function doorDestroyBuffer(id: uint32): void {
 	if (id == 0) { return; }
 	untrackBuffer(id);
+	applied.valid = false;
 	const buffer: GPUBuffer = { id };
 	buffer.destroy();
-	const at = appendCursorOf(id);
-	if (at >= 0) { appendCursors.splice(at, 1); }
+	const slot = slotOf(id);
+	if (slot < appendCursors.length && appendCursors[slot].buffer == id) {
+		appendCursors[slot] = { buffer: 0, frame: 0, position: 0, size: 0 };
+	}
 }
 
 export function doorBufferAlive(id: uint32): int32 {
@@ -1353,14 +1418,26 @@ export function doorViewImage(view: uint32): uint32 {
 	return textureView.isAlive() ? textureView.texture().id : 0;
 }
 
-// sokol's sg_query_image_usage(sg_query_view_image(view)).color_attachment.
-export function doorViewIsColorAttachment(view: uint32): int32 {
+function viewIsColorAttachmentRead(view: uint32): boolean {
 	const image = doorViewImage(view);
-	if (image == 0) { return 0; }
+	if (image == 0) { return false; }
 	const texture: GPUTexture = { id: image };
 	const format = texture.format();
 	const depth = format == "depth32float" || format == "depth24plus-stencil8";
-	return !depth && (texture.usage() & (GPUTextureUsage.RENDER_ATTACHMENT as int32)) != 0 ? 1 : 0;
+	return !depth && (texture.usage() & (GPUTextureUsage.RENDER_ATTACHMENT as int32)) != 0;
+}
+
+// sokol's sg_query_image_usage(sg_query_view_image(view)).color_attachment, answered from the
+// view's pool slot as sokol answers it from its pool fields.
+export function doorViewIsColorAttachment(view: uint32): int32 {
+	const slot = slotOf(view);
+	if (slot < viewClasses.length && viewClasses[slot].view == view) {
+		return viewClasses[slot].colorAttachment ? 1 : 0;
+	}
+	const colorAttachment = viewIsColorAttachmentRead(view);
+	while (viewClasses.length <= slot) { viewClasses.push({ view: 0, colorAttachment: false }); }
+	viewClasses[slot] = { view, colorAttachment };
+	return colorAttachment ? 1 : 0;
 }
 
 // ---- draw ----
@@ -1372,9 +1449,9 @@ export function doorApplyPipeline(pipeline: uint32): void {
 	if (index != current) {
 		frameStats[DOOR_STAT_PIPELINE_CHANGES]++;
 		current = index;
+		applied.valid = false;
 		pass.setPipeline(pipelines[current].pipeline);
-		uniformOffsets = [0, 0, 0, 0, 0, 0, 0, 0];
-		uniformStamps = [0, 0, 0, 0, 0, 0, 0, 0];
+		clearUniformSlots();
 	}
 }
 
@@ -1433,7 +1510,10 @@ function cachedGroup(key: BindKey): GPUBindGroup {
 
 function cacheGroup(key: BindKey, group: GPUBindGroup): void {
 	const at = keyHash(key);
-	if (bindCache[at].group.id != 0) { bindCache[at].group.destroy(); }
+	if (bindCache[at].group.id != 0) {
+		bindCache[at].group.destroy();
+		applied.valid = false;
+	}
 	bindCache[at] = { key, group };
 }
 
@@ -1503,32 +1583,41 @@ export function doorApplyBindings(
 	if (current < 0) { stop("applyBindings before applyPipeline"); }
 	for (let i = 0; i < GPU_MAX_VERTEX_BUFFERS; i++) {
 		const buffer = bindings[DOOR_BINDING_VERTEX_BUFFER + i];
-		if (buffer != 0) {
-			pass.setVertexBuffer(
-				i as int32,
-				{ id: buffer },
-				i < vertexOffsets.length ? vertexOffsets[i] as int64 : 0,
-			);
+		const offset = i < vertexOffsets.length ? vertexOffsets[i] : 0;
+		if (buffer != 0 && (!applied.valid || buffer != applied.words[i] || offset != applied.offsets[i])) {
+			pass.setVertexBuffer(i as int32, { id: buffer }, offset as int64);
 		}
+		applied.words[i] = buffer;
+		applied.offsets[i] = offset;
 	}
-	const record = pipelines[current];
-	if (record.indexed) {
-		pass.setIndexBuffer({ id: bindings[DOOR_BINDING_INDEX_BUFFER] }, record.indexFormat, 0);
+	const indexBuffer = bindings[DOOR_BINDING_INDEX_BUFFER];
+	if (pipelines[current].indexed && (!applied.valid || indexBuffer != applied.words[DOOR_BINDING_INDEX_BUFFER])) {
+		pass.setIndexBuffer({ id: indexBuffer }, pipelines[current].indexFormat, 0);
 	}
-	if (record.textureMask == 0 && record.samplerMask == 0) { return; }
-	let key: BindKey = { pipeline: record.pipeline.id };
+	applied.words[DOOR_BINDING_INDEX_BUFFER] = indexBuffer;
+	let sameResources = applied.valid;
+	for (let i = DOOR_BINDING_VIEW; sameResources && i < DOOR_BINDING_LENGTH; i++) {
+		if (bindings[i] != applied.words[i]) { sameResources = false; }
+	}
+	if (pipelines[current].textureMask == 0 && pipelines[current].samplerMask == 0) {
+		applied.valid = true;
+		return;
+	}
+	if (sameResources) { return; }
+	let key: BindKey = { pipeline: pipelines[current].pipeline.id };
 	for (let i = 0; i < VIEW_SLOTS; i++) { key.views[i] = bindings[DOOR_BINDING_VIEW + i]; }
 	for (let i = 0; i < SAMPLER_SLOTS; i++) {
 		key.samplers[i] = bindings[DOOR_BINDING_SAMPLER + i];
 	}
 	pass.setBindGroup(GPU_RESOURCE_GROUP, resourceGroup(key), []);
+	for (let i = DOOR_BINDING_VIEW; i < DOOR_BINDING_LENGTH; i++) { applied.words[i] = bindings[i]; }
+	applied.valid = true;
 }
 
 export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): void {
 	stopInComputePass("applyUniforms");
 	if (current < 0) { stop("applyUniforms before applyPipeline"); }
 	if (slot < 0 || slot >= DOOR_UNIFORM_SLOTS) { stop("applyUniforms to slot " + String(slot)); }
-	const record = pipelines[current];
 	const bytes = (data.length as int64) * (sizeof(T) as int64);
 	if (uniformCursor + bytes > UNIFORM_RING_BYTES) {
 		stop("uniform ring of 4 MiB is full this frame");
@@ -1539,14 +1628,13 @@ export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): vo
 	uniformStamps[slot] = uniformStampCounter;
 	uniformOffsets[slot] = uniformCursor as uint32;
 	uniformCursor = (uniformCursor + bytes + (UNIFORM_ALIGNMENT - 1)) & ~(UNIFORM_ALIGNMENT - 1);
-	let offsets: uint32[DOOR_UNIFORM_SLOTS] = [0, 0, 0, 0, 0, 0, 0, 0];
 	let n = 0;
 	for (let s = 0; s < DOOR_UNIFORM_SLOTS; s++) {
-		if ((record.uniformMask & ((1 as uint32) << (s as uint32))) == 0) { continue; }
-		offsets[n] = uniformOffsets[s];
+		if ((pipelines[current].uniformMask & ((1 as uint32) << (s as uint32))) == 0) { continue; }
+		dynamicOffsets[n] = uniformOffsets[s];
 		n++;
 	}
-	pass.setBindGroup(GPU_UNIFORM_GROUP, record.uniformGroup, offsets[0..n]);
+	pass.setBindGroup(GPU_UNIFORM_GROUP, pipelines[current].uniformGroup, dynamicOffsets[0..n]);
 }
 
 function requireAppliedBlocks(): void {
@@ -1664,15 +1752,19 @@ export function doorReadTexture(
 	return readTexture(texture, x, y, width, height, out);
 }
 
-function swapchainTexture(): GPUTexture {
-	return getCurrentTexture({
+function currentSwapchain(): GPUNativeSwapchain {
+	return {
 		width: voidSwapchainWidth(),
 		height: voidSwapchainHeight(),
 		sampleCount: voidSwapchainSampleCount(),
 		renderView: voidSwapchainRenderView(),
 		resolveView: voidSwapchainResolveView(),
 		depthStencilView: voidSwapchainDepthStencilView(),
-	});
+	};
+}
+
+function swapchainTexture(): GPUTexture {
+	return getCurrentTexture(currentSwapchain());
 }
 
 // The screen pass's color target as of the last frame that drew it: the whole swapchain buffer.
@@ -1904,31 +1996,37 @@ export function doorBeginScreenPass(
 	alpha: float32,
 ): void {
 	stopOnOpenPass("beginScreenPass");
-	let descriptor = { label: null } as GPURenderPassDescriptor;
-	const screen = swapchainTexture().createView({ label: null });
-	descriptor.colorAttachments[0] = {
-		view: screen,
-		resolveTarget: { id: 0 },
-		clearValue: { r: red, g: green, b: blue, a: alpha },
-		loadOp: "clear",
-		storeOp: "store",
-	};
+	const swapchain = currentSwapchain();
+	const screen = getCurrentTexture(swapchain).createView({ label: null });
 	const depth = getCurrentDepthTexture();
-	if (depth.id != 0) {
-		descriptor.depthStencilAttachment = withStencilOps({
-			view: depth.createView({ label: null }),
-			depthClearValue: 1,
-			depthLoadOp: "clear",
-			depthStoreOp: "discard",
-		}, depth, 0);
+	if (screenPass.colorAttachments[0].view.id != screen.id || screenDepth != depth.id) {
+		screenPass = { label: null } as GPURenderPassDescriptor;
+		screenPass.colorAttachments[0] = {
+			view: screen,
+			resolveTarget: { id: 0 },
+			clearValue: { r: red, g: green, b: blue, a: alpha },
+			loadOp: "clear",
+			storeOp: "store",
+		};
+		if (depth.id != 0) {
+			screenPass.depthStencilAttachment = withStencilOps({
+				view: depth.createView({ label: null }),
+				depthClearValue: 1,
+				depthLoadOp: "clear",
+				depthStoreOp: "discard",
+			}, depth, 0);
+		}
+		screenDepth = depth.id;
 	}
-	descriptor.timestampWrites = timestampsOf("screen");
-	pass = frameEncoder().beginRenderPass(descriptor);
+	screenPass.colorAttachments[0].clearValue = { r: red, g: green, b: blue, a: alpha };
+	screenPass.timestampWrites = timestampsOf("screen");
+	pass = frameEncoder().beginRenderPass(screenPass);
 	frameStats[DOOR_STAT_PASSES]++;
 	openPass = PassState.Screen;
 	stencilReference = 0;
 	passViews = [0, 0, 0, 0, 0];
-	measurePass(screen.id);
+	passWidth = swapchain.width;
+	passHeight = swapchain.height;
 	current = -1;
 }
 

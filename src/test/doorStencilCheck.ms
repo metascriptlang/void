@@ -3,7 +3,7 @@
 // on a target with no stencil bits is refused naming the pipeline.
 
 import { shaderProgram } from "../shader/program";
-import { Vec2f, Vec4f, builtin, vec4f } from "../shader/std";
+import { Vec2f, Vec4f, binding, builtin, vec4f } from "../shader/std";
 import { Compare, Face, RenderState, Stencil, StencilOp } from "../gpu/state";
 import { PixelFormat, stencilTargetRefusal } from "../gpu/doorGpu.ms";
 import { TargetLayout } from "../gpu/target";
@@ -31,7 +31,20 @@ function greenFs(): Vec4f {
 	return vec4f(0.0, 1.0, 0.0, 1.0);
 }
 
+struct TintParams {
+	tint: Vec4f;
+}
+
+struct TintBindings {
+	@binding(0) params: TintParams;
+}
+
+function tintFs(b: TintBindings): Vec4f {
+	return b.params.tint;
+}
+
 shaderProgram(red, quadVs, redFs);
+shaderProgram(tinted, quadVs, tintFs);
 shaderProgram(green, quadVs, greenFs);
 
 function stencilOnly(): RenderState {
@@ -98,6 +111,16 @@ when (voidDummy || (windows && !voidVulkan)) {
 		doorApplyBindings,
 		doorApplyPipeline,
 		doorApplyStencilReference,
+		doorAppendBufferOf,
+		doorApplyUniformsOf,
+		doorDestroyBuffer,
+		doorDestroyPipeline,
+		doorMakeBuffer,
+		doorDestroyView,
+		doorMakeTargetImage,
+		doorMakeTextureView,
+		doorViewIsColorAttachment,
+		doorUniformStamp,
 		doorDraw,
 		doorMakeBufferOf,
 		doorReadTexture,
@@ -106,6 +129,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 		LoadAction,
 		StoreAction,
 	} from "../gpu/doorGpu.ms";
+	import { boundFacts } from "../webgpu/validate.ms";
 	import { livePipelines } from "../gpu/door";
 	import {
 		ColorAttachment,
@@ -198,6 +222,117 @@ when (voidDummy || (windows && !voidVulkan)) {
 		const stencil: Stencil | null = state.stencil;
 		if (stencil != null) { doorApplyStencilReference(stencil.reference); }
 		doorDraw(first, 6, 1);
+	}
+
+	function wordsOf(vertices: uint32): Vec<uint32> {
+		let words: Vec<uint32> = [];
+		for (let i = 0; i < DOOR_BINDING_LENGTH; i++) { words.push(0); }
+		words[0] = vertices;
+		return words;
+	}
+
+	test "applyBindings sets what changed, and every pass and pipeline starts from nothing bound" {
+		const scene: Scene = openScene();
+		const other: uint32 = doorMakeBufferOf(DOOR_BUFFER_VERTEX, quads());
+		const first: uint32 = pipelineOf(scene, red, plain());
+		const second: uint32 = pipelineOf(scene, green, plain());
+		beginStencilPass(scene, 0);
+		doorApplyPipeline(first);
+		doorApplyBindings(wordsOf(scene.vertices), [0]);
+		assert boundFacts.vertexBuffers[0] == scene.vertices && boundFacts.vertexOffsets[0] == 0;
+		doorApplyBindings(wordsOf(scene.vertices), [16]);
+		assert boundFacts.vertexOffsets[0] == 16;
+		doorApplyBindings(wordsOf(other), [16]);
+		assert boundFacts.vertexBuffers[0] == other;
+		doorApplyPipeline(second);
+		doorApplyBindings(wordsOf(other), [16]);
+		doorDraw(0, 6, 1);
+		endPass();
+		beginStencilPass(scene, 0);
+		doorApplyPipeline(second);
+		doorApplyBindings(wordsOf(other), [16]);
+		assert boundFacts.vertexBuffers[0] == other && boundFacts.vertexOffsets[0] == 16;
+		doorDraw(0, 6, 1);
+		endPass();
+		closeScene(scene);
+	}
+
+	test "a pipeline change clears the applied uniform blocks, so each pipeline's draw needs its own apply" {
+		const scene: Scene = openScene();
+		const tint: Vec<float32> = [0, 1, 0, 1];
+		beginStencilPass(scene, 0);
+		doorApplyPipeline(pipelineOf(scene, tinted, plain()));
+		assert doorUniformStamp(0) == 0;
+		doorApplyBindings(wordsOf(scene.vertices), [0]);
+		doorApplyUniformsOf(0, tint);
+		doorApplyUniformsOf(0, tint);
+		const stamp: int32 = doorUniformStamp(0);
+		assert stamp > 0;
+		doorDraw(0, 6, 1);
+		doorApplyPipeline(pipelineOf(scene, red, plain()));
+		assert doorUniformStamp(0) == 0;
+		doorApplyPipeline(pipelineOf(scene, tinted, plain()));
+		assert doorUniformStamp(0) == 0;
+		doorApplyUniformsOf(0, tint);
+		assert doorUniformStamp(0) > stamp;
+		doorApplyBindings(wordsOf(scene.vertices), [0]);
+		doorDraw(0, 6, 1);
+		endPass();
+		closeScene(scene);
+	}
+
+	test "pipelines apply by id after another one is destroyed" {
+		const scene: Scene = openScene();
+		const first: uint32 = pipelineOf(scene, red, plain());
+		const second: uint32 = pipelineOf(scene, green, plain());
+		const third: uint32 = pipelineOf(scene, red, plain().withColorMask(false, true, true, true));
+		doorDestroyPipeline(first);
+		beginStencilPass(scene, 0);
+		doorApplyPipeline(third);
+		doorApplyBindings(wordsOf(scene.vertices), [0]);
+		doorDraw(0, 6, 1);
+		doorApplyPipeline(second);
+		doorApplyBindings(wordsOf(scene.vertices), [0]);
+		doorDraw(0, 6, 1);
+		doorApplyPipeline(third);
+		doorDraw(0, 6, 1);
+		endPass();
+		doorDestroyPipeline(third);
+		doorDestroyPipeline(second);
+		closeScene(scene);
+	}
+
+	test "appends to each buffer land after its own last one and are refused past its size" {
+		const scene: Scene = openScene();
+		const four: Vec<float32> = [1, 2, 3, 4];
+		const none: Vec<uint8> = [];
+		const a: uint32 = doorMakeBuffer(DOOR_BUFFER_VERTEX, none, 32);
+		const b: uint32 = doorMakeBuffer(DOOR_BUFFER_VERTEX, none, 32);
+		assert doorAppendBufferOf(a, four) == 0;
+		assert doorAppendBufferOf(b, four) == 0;
+		assert doorAppendBufferOf(a, four) == 16;
+		assert doorAppendBufferOf(a, four) == -1;
+		assert doorAppendBufferOf(b, [1.0]) == 16;
+		doorDestroyBuffer(a);
+		const c: uint32 = doorMakeBuffer(DOOR_BUFFER_VERTEX, none, 16);
+		assert doorAppendBufferOf(c, four) == 0;
+		assert doorAppendBufferOf(c, [1.0]) == -1;
+		closeScene(scene);
+	}
+
+	test "a view is a color attachment when its texture is one, and a destroyed view is not" {
+		const scene: Scene = openScene();
+		const colorView: uint32 = doorMakeTextureView(doorMakeTargetImage(SIZE, SIZE, RGBA8));
+		const depthView: uint32 = doorMakeTextureView(
+			doorMakeTargetImage(SIZE, SIZE, PixelFormat.Depth as int32),
+		);
+		assert doorViewIsColorAttachment(colorView) == 1;
+		assert doorViewIsColorAttachment(colorView) == 1;
+		assert doorViewIsColorAttachment(depthView) == 0;
+		assert doorViewIsColorAttachment(0) == 0;
+		doorDestroyView(colorView);
+		assert doorViewIsColorAttachment(colorView) == 0;
+		closeScene(scene);
 	}
 
 	test "a reference change between two draws makes no pipeline and a stencil state makes one" {
