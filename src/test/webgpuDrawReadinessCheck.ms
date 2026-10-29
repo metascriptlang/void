@@ -1,0 +1,80 @@
+import {
+	GPUBindGroupDescriptor,
+	GPUDevice,
+	GPURenderPassEncoder,
+	GPURenderPipeline,
+	GPURenderPipelineDescriptor,
+	GPUShaderModuleDescriptor,
+	GPUShaderStage,
+	GPUBindGroup,
+	GPUBuffer,
+	GPUBufferUsage,
+} from "../webgpu/types.ms";
+import "../webgpu/device.ms";
+import { boundFacts } from "../webgpu/validate.ms";
+import { openTestDevice } from "./testDevice";
+import { clearingPass, colourTarget, colourUniforms, vertexBuffer } from "./webgpuFixtures";
+
+when (voidDummy) {
+	function flatPipeline(device: GPUDevice): GPURenderPipeline {
+		let sd: GPUShaderModuleDescriptor = { label: "flat", vertexCode: "v", vertexEntryPoint: "vmain", fragmentCode: "f", fragmentEntryPoint: "fmain" };
+		sd.bindings[0] = { group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: 0 };
+		sd.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+		const module = device.createShaderModule(sd);
+		let pd: GPURenderPipelineDescriptor = { label: "flat" };
+		pd.vertex.module = module;
+		pd.vertex.buffers[0].arrayStride = 8;
+		pd.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+		pd.fragment.module = module;
+		pd.fragment.targets[0].format = "rgba8unorm";
+		return device.createRenderPipeline(pd);
+	}
+
+	function groupOf(device: GPUDevice, pipeline: GPURenderPipeline, uniforms: GPUBuffer): GPUBindGroup {
+		let gd: GPUBindGroupDescriptor = { label: "colour", layout: pipeline.getBindGroupLayout(0) };
+		gd.entries[0] = { binding: 0, buffer: uniforms, offset: 0, size: 16 };
+		return device.createBindGroup(gd);
+	}
+
+	function openPass(device: GPUDevice): GPURenderPassEncoder {
+		const view = colourTarget(device, 1).createView({ label: null });
+		return device.createCommandEncoder().beginRenderPass(clearingPass(view, { id: 0 }));
+	}
+
+	test "a dynamic-offset-only setBindGroup keeps the draw readiness" {
+		const device = openTestDevice();
+		const pipeline = flatPipeline(device);
+		const uniforms = colourUniforms(device);
+		const group = groupOf(device, pipeline, uniforms);
+		const pass = openPass(device);
+		const first: Vec<uint32> = [0];
+		const second: Vec<uint32> = [256];
+		pass.setPipeline(pipeline);
+		pass.setVertexBuffer(0, vertexBuffer(device, 24), 0);
+		pass.setBindGroup(0, group, first);
+		pass.draw(3, 1, 0, 0);
+		assert boundFacts.drawValid != 0;
+		pass.setBindGroup(0, group, second);
+		assert boundFacts.drawValid != 0;
+		assert boundFacts.dynamicOffsets[0] == 256;
+		pass.draw(3, 1, 0, 0);
+	}
+
+	test "a different group at the same index drops the draw readiness" {
+		const device = openTestDevice();
+		const pipeline = flatPipeline(device);
+		const uniforms = colourUniforms(device);
+		const group = groupOf(device, pipeline, uniforms);
+		const other = groupOf(device, pipeline, uniforms);
+		const pass = openPass(device);
+		const offsets: Vec<uint32> = [0];
+		pass.setPipeline(pipeline);
+		pass.setVertexBuffer(0, vertexBuffer(device, 24), 0);
+		pass.setBindGroup(0, group, offsets);
+		pass.draw(3, 1, 0, 0);
+		pass.setBindGroup(0, other, offsets);
+		assert boundFacts.drawValid == 0;
+		pass.draw(3, 1, 0, 0);
+		assert boundFacts.drawValid != 0;
+	}
+}

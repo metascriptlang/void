@@ -308,10 +308,12 @@ export function markIndexSet(buffer: uint32, format: GPUIndexFormat, offset: int
 }
 
 export function markBindGroupSet(index: int32, bindGroup: uint32, dynamicOffsets: Readonly<Span<uint32>>): void {
-	boundFacts.bindGroups[index] = bindGroup;
-	boundFacts.ownersDirty = true;
-	boundFacts.drawValid = 0;
-	boundFacts.groupSet = bindGroup == 0 ? boundFacts.groupSet & ~(1 << index) : boundFacts.groupSet | (1 << index);
+	if (boundFacts.bindGroups[index] != bindGroup) {
+		boundFacts.bindGroups[index] = bindGroup;
+		boundFacts.ownersDirty = true;
+		boundFacts.drawValid = 0;
+		boundFacts.groupSet = bindGroup == 0 ? boundFacts.groupSet & ~(1 << index) : boundFacts.groupSet | (1 << index);
+	}
 	if (bindGroup == 0 || index != GPU_UNIFORM_GROUP) { return; }
 	const count = bindGroupRecords.slots[bindGroupRecords.slotIndex(bindGroup)].dynamicCount;
 	for (let i = 0; i < count; i++) { boundFacts.dynamicOffsets[i] = dynamicOffsets[i]; }
