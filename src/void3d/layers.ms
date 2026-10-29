@@ -10,7 +10,7 @@ export function layerBit(layer: int32): uint32 {
 }
 
 function stopOnLayer(layer: int32): void {
-	console.log(`void3d: layer ${layer} is outside 0 to 31`);
+	console.log(`void3d: layer ${layer} is outside 0 to ${LAYER_COUNT - 1}`);
 	unreachable;
 }
 

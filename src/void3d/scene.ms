@@ -49,7 +49,7 @@ import { syncSkinPose } from "./skinPose";
 import {
 	MorphData, MorphGeometry, MorphGeometryError, bind as bindMorphGeometry, publishMorphGeometry,
 } from "./morphGeometry";
-import { MeshData, stride, vertexCount, isIndexed, indexCount } from "./meshData";
+import { stride, vertexCount, isIndexed, indexCount } from "./meshData";
 import { PassState, passState } from "../gpu/door";
 import {
 	DrawContext,
@@ -310,8 +310,19 @@ function markStructureChanged(scene: Scene3D): void {
 	scene.structureRevision = scene.structureRevision + 1;
 }
 
-function freshFlags(): BitSet<NodeFlag> {
-	return (0 as BitSet<NodeFlag>).incl(NodeFlag.Visible).incl(NodeFlag.PosChanged);
+function freshNode(kind: NodeKind, parent: int32, payload: int32, local: Transform3D): Object3D {
+	return {
+		kind: kind,
+		flags: (0 as BitSet<NodeFlag>).incl(NodeFlag.Visible).incl(NodeFlag.PosChanged),
+		layers: DEFAULT_LAYERS,
+		renderOrder: 0,
+		parent: parent,
+		payload: payload,
+		name: "",
+		local: local,
+		world: identity(),
+		children: [],
+	};
 }
 
 export function isVisible(this node: Object3D): boolean {
@@ -362,6 +373,10 @@ function kindRow(this scene: Scene3D, id: NodeId3D, kind: NodeKind, call: string
 
 function meshError(context: DrawContext, mesh: MeshId): SceneError {
 	return context.issuedMesh(mesh) ? SceneError.StaleMesh : SceneError.ForeignMesh;
+}
+
+function materialError(context: DrawContext, material: MaterialId): SceneError {
+	return context.issuedMaterial(material) ? SceneError.StaleMaterial : SceneError.ForeignMaterial;
 }
 
 function stopOnClosed(call: string): void {
@@ -423,18 +438,9 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 		posChanged: true,
 		closed: false,
 	};
-	const root: NodeId3D = newSlot(scene, {
-		kind: NodeKind.Group,
-		flags: freshFlags(),
-		layers: DEFAULT_LAYERS,
-		renderOrder: 0,
-		parent: NO_NODE_3D,
-		payload: NO_NODE_3D,
-		name: "",
-		local: Transform3D.identity(),
-		world: identity(),
-		children: [],
-	});
+	const root: NodeId3D = newSlot(
+		scene, freshNode(NodeKind.Group, NO_NODE_3D, NO_NODE_3D, Transform3D.identity()),
+	);
 	scene.root = root.index;
 	return scene;
 }
@@ -468,18 +474,7 @@ export function addGroup(
 	scene: Scene3D, parent: NodeId3D | null, local: Transform3D,
 ): NodeId3D {
 	const under: int32 = parentRow(scene, parent, "addGroup");
-	const id: NodeId3D = newSlot(scene, {
-		kind: NodeKind.Group,
-		flags: freshFlags(),
-		layers: DEFAULT_LAYERS,
-		renderOrder: 0,
-		parent: under,
-		payload: NO_NODE_3D,
-		name: "",
-		local: local,
-		world: identity(),
-		children: [],
-	});
+	const id: NodeId3D = newSlot(scene, freshNode(NodeKind.Group, under, NO_NODE_3D, local));
 	linkChild(scene, under, id.index);
 	return id;
 }
@@ -503,29 +498,23 @@ export function addMeshNode(
 	const context: DrawContext = scene.context;
 	context.requireOpen("addMeshNode");
 	if (!context.hasMesh(mesh)) { return Result.err(meshError(context, mesh)); }
-	if (!context.hasMaterial(material)) {
-		const issued: boolean = context.issuedMaterial(material);
-		return Result.err(issued ? SceneError.StaleMaterial : SceneError.ForeignMaterial);
-	}
+	if (!context.hasMaterial(material)) { return Result.err(materialError(context, material)); }
 	const pinnedMesh: Result<int32, HandleError> = pinMesh(context, mesh);
 	const pinnedMaterial: Result<int32, HandleError> = pinMaterial(context, material);
 	if (!pinnedMesh.ok || !pinnedMaterial.ok) { unreachable; }
 	const payload: int32 = scene.meshes.length as int32;
-	scene.meshes.push({ mesh: mesh, material: material,
-		skinGeometry: null, skinPalette: 0, range: null,
-		morph: null, morphPrimitive: 0, morphRevision: 0, lod: null });
-	const id: NodeId3D = newSlot(scene, {
-		kind: NodeKind.Mesh,
-		flags: freshFlags(),
-		layers: DEFAULT_LAYERS,
-		renderOrder: 0,
-		parent: under,
-		payload: payload,
-		name: "",
-		local: local,
-		world: identity(),
-		children: [],
+	scene.meshes.push({
+		mesh: mesh,
+		material: material,
+		skinGeometry: null,
+		skinPalette: 0,
+		range: null,
+		morph: null,
+		morphPrimitive: 0,
+		morphRevision: 0,
+		lod: null,
 	});
+	const id: NodeId3D = newSlot(scene, freshNode(NodeKind.Mesh, under, payload, local));
 	scene.meshOwners.push(id.index);
 	linkChild(scene, under, id.index);
 	return Result.ok(id);
@@ -552,10 +541,7 @@ function validateSkinMesh(
 ): Result<int32, SceneError> {
 	const context = scene.context;
 	if (!context.hasMesh(mesh)) { return Result.err(meshError(context, mesh)); }
-	if (!context.hasMaterial(material)) {
-		return Result.err(context.issuedMaterial(material)
-			? SceneError.StaleMaterial : SceneError.ForeignMaterial);
-	}
+	if (!context.hasMaterial(material)) { return Result.err(materialError(context, material)); }
 	if (geometry.pose.scene.serial != scene.serial) { return Result.err(SceneError.ForeignSkin); }
 	if (palette < 0 || palette >= geometry.pose.palettes.length) {
 		return Result.err(SceneError.SkinPalette);
@@ -860,18 +846,7 @@ export function addLightNode(
 	const under: int32 = parentRow(scene, parent, "addLightNode");
 	const payload: int32 = scene.lights.length as int32;
 	scene.lights.push(light);
-	const id: NodeId3D = newSlot(scene, {
-		kind: NodeKind.Light,
-		flags: freshFlags(),
-		layers: DEFAULT_LAYERS,
-		renderOrder: 0,
-		parent: under,
-		payload: payload,
-		name: "",
-		local: local,
-		world: identity(),
-		children: [],
-	});
+	const id: NodeId3D = newSlot(scene, freshNode(NodeKind.Light, under, payload, local));
 	scene.lightOwners.push(id.index);
 	linkChild(scene, under, id.index);
 	return id;
@@ -884,11 +859,7 @@ export function addCameraNode(
 	camera: Camera3D,
 ): NodeId3D {
 	const under: int32 = parentRow(scene, parent, "addCameraNode");
-	const id: NodeId3D = newSlot(scene, {
-		kind: NodeKind.Group, flags: freshFlags(), layers: DEFAULT_LAYERS, renderOrder: 0,
-		parent: under, payload: NO_NODE_3D,
-		name: "", local: local, world: identity(), children: [],
-	});
+	const id: NodeId3D = newSlot(scene, freshNode(NodeKind.Group, under, NO_NODE_3D, local));
 	scene.cameras.push({ node: id, camera: camera, layers: DEFAULT_LAYERS });
 	linkChild(scene, under, id.index);
 	return id;
@@ -1300,10 +1271,7 @@ export function setMaterialOf(
 	context.requireOpen("setMaterialOf");
 	const row: int32 = scene.nodes[node].payload;
 	const shown: MaterialId = scene.meshes[row].material;
-	if (!context.hasMaterial(material)) {
-		return Result.err(context.issuedMaterial(material)
-			? SceneError.StaleMaterial : SceneError.ForeignMaterial);
-	}
+	if (!context.hasMaterial(material)) { return Result.err(materialError(context, material)); }
 	const geometry = scene.meshes[row].skinGeometry;
 	if (geometry !== null) {
 		const _valid: int32 = try validateSkinNode(scene, scene.meshes[row].mesh, material,
@@ -1859,40 +1827,46 @@ function packShape(
 	let b: Vec4 = vec4(0.0, 0.0, 0.0, 0.0);
 	let c: Vec4 = vec4(0.0, 0.0, 0.0, 0.0);
 	let d: Vec4 = vec4(0.0, 0.0, 0.0, 0.0);
-	if (light.kind == LightKind.Spot) {
-		const spot: SpotLightShape = {
-			position: position, forward: forward, range: light.radius,
-			cone: { fullAngleRadians: shape.angle, falloffRadians: shape.falloff },
-		};
-		const cosines: ConeCosines = try spot.validateSpot();
-		b = vec4(cosines.outer, cosines.inner, 0.0, shape.angle);
-	} else if (light.kind == LightKind.Rectangle) {
-		kind = LIGHT_KIND_RECTANGLE;
-		const xAxis: Vec3 = transformDirection(vec3(1.0, 0.0, 0.0), world);
-		const yAxis: Vec3 = transformDirection(vec3(0.0, 1.0, 0.0), world);
-		const rectangle: RectangleLightShape = {
-			position: position, forward: forward, right: xAxis.normalized(), up: yAxis.normalized(),
-			halfWidth: shape.width * 0.5 * xAxis.length(),
-			halfHeight: shape.height * 0.5 * yAxis.length(),
-			horizontal: { fullAngleRadians: shape.angle, falloffRadians: shape.falloff },
-			vertical: { fullAngleRadians: shape.verticalAngle, falloffRadians: shape.falloff },
-			range: light.radius,
-		};
-		const _valid = try rectangle.validateRectangle();
-		const horizontal: ConeCosines = try rectangle.horizontal.coneCosines();
-		const vertical: ConeCosines = try rectangle.vertical.coneCosines();
-		b = vec4(rectangle.right.x, rectangle.right.y, rectangle.right.z, rectangle.halfWidth);
-		c = vec4(rectangle.up.x, rectangle.up.y, rectangle.up.z, rectangle.halfHeight);
-		d = vec4(horizontal.outer, horizontal.inner, vertical.outer, vertical.inner);
-	} else {
-		kind = LIGHT_KIND_CAPSULE;
-		const capsule: CapsuleLightShape = {
-			position: position, axis: forward, halfLength: shape.length * 0.5,
-			radius: shape.capsuleRadius, range: light.radius,
-		};
-		const _valid = try capsule.validateCapsule();
-		b = vec4(capsule.halfLength, Math.min(capsule.radius, capsule.range) as float32, 0.0, 0.0);
-	}
+	match (light.kind) {
+		LightKind.Spot => {
+			const spot: SpotLightShape = {
+				position: position, forward: forward, range: light.radius,
+				cone: { fullAngleRadians: shape.angle, falloffRadians: shape.falloff },
+			};
+			const cosines: ConeCosines = try spot.validateSpot();
+			b = vec4(cosines.outer, cosines.inner, 0.0, shape.angle);
+		},
+		LightKind.Rectangle => {
+			kind = LIGHT_KIND_RECTANGLE;
+			const xAxis: Vec3 = transformDirection(vec3(1.0, 0.0, 0.0), world);
+			const yAxis: Vec3 = transformDirection(vec3(0.0, 1.0, 0.0), world);
+			const rectangle: RectangleLightShape = {
+				position: position, forward: forward,
+				right: xAxis.normalized(), up: yAxis.normalized(),
+				halfWidth: shape.width * 0.5 * xAxis.length(),
+				halfHeight: shape.height * 0.5 * yAxis.length(),
+				horizontal: { fullAngleRadians: shape.angle, falloffRadians: shape.falloff },
+				vertical: { fullAngleRadians: shape.verticalAngle, falloffRadians: shape.falloff },
+				range: light.radius,
+			};
+			const _valid = try rectangle.validateRectangle();
+			const horizontal: ConeCosines = try rectangle.horizontal.coneCosines();
+			const vertical: ConeCosines = try rectangle.vertical.coneCosines();
+			b = vec4(rectangle.right.x, rectangle.right.y, rectangle.right.z, rectangle.halfWidth);
+			c = vec4(rectangle.up.x, rectangle.up.y, rectangle.up.z, rectangle.halfHeight);
+			d = vec4(horizontal.outer, horizontal.inner, vertical.outer, vertical.inner);
+		},
+		_ => {
+			kind = LIGHT_KIND_CAPSULE;
+			const capsule: CapsuleLightShape = {
+				position: position, axis: forward, halfLength: shape.length * 0.5,
+				radius: shape.capsuleRadius, range: light.radius,
+			};
+			const _valid = try capsule.validateCapsule();
+			const reach: float32 = Math.min(capsule.radius, capsule.range) as float32;
+			b = vec4(capsule.halfLength, reach, 0.0, 0.0);
+		},
+	};
 	pushQuad(out, vec4(forward.x, forward.y, forward.z, kind));
 	pushQuad(out, b);
 	pushQuad(out, c);

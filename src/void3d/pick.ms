@@ -5,7 +5,7 @@
 import { Vec3, Mat4 } from "../math/math3d";
 import { Bounds3D } from "./bounds";
 import { MeshData, MeshRayHit, Uv } from "./meshData";
-import { SkinGeometry, rayIntersection, rayIntersectionElements } from "./skinGeometry";
+import { rayIntersection, rayIntersectionElements } from "./skinGeometry";
 import { DrawContext } from "./draw";
 import { Face } from "../gpu/state";
 import { Ray } from "./ray";
@@ -83,9 +83,9 @@ export function pickNearestOn(
 		if (owner != NO_NODE_3D) {
 			const instance = scene.meshes[scene.nodes[index].payload];
 			const geometry = instance.skinGeometry;
+			const face: Face = context.materials[instance.material.index].pass.culling;
 			let hit: MeshHit = MISS;
 			if (geometry !== null) {
-				const face: Face = context.materials[instance.material.index].pass.culling;
 				const range = instance.range;
 				const posed = range === null ? geometry.rayIntersection(ray, face)
 					: geometry.rayIntersectionElements(ray, face, range.base, range.count);
@@ -93,13 +93,14 @@ export function pickNearestOn(
 				if (posed.value.distance >= 0) {
 					const point: Vec3 = ray.pointAt(posed.value.distance);
 					hit = {
-						distance: (point - ray.origin).length(), point: point, uv: posed.value.uv
+						distance: (point - ray.origin).length(),
+						point: point,
+						uv: posed.value.uv,
 					};
 				}
 			} else {
 				hit = context.meshData[instance.mesh.index].meshHit(
-					context.materials[instance.material.index].pass.culling,
-					scene.nodes[index].world, ray,
+					face, scene.nodes[index].world, ray,
 				);
 			}
 			const nearer: boolean = best.distance < 0.0 || hit.distance < best.distance;

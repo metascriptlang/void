@@ -88,7 +88,7 @@ function padFor(outline: float32): int32 {
 }
 
 export function grown(have: int32, need: int32): int32 {
-	return need > have ? need : have;
+	return Math.max(have, need);
 }
 
 export struct LabelUv {

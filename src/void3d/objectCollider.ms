@@ -6,7 +6,11 @@
 import { Mat4, inverseAffine } from "../math/math3d";
 import { TransformFrame, TransformError, transformFrame } from "./transformCollider";
 
-export enum ObjectColliderError { NonFinite, Singular, NotAffine }
+export enum ObjectColliderError {
+	NonFinite,
+	Singular,
+	NotAffine,
+}
 
 // Object.getInvPos, Object.hx:432-441: `inverse3x4` of the absolute position, which is zero for a
 // singular one. Heaps then casts every query through that zero matrix; here it is Singular. An
@@ -15,10 +19,10 @@ export enum ObjectColliderError { NonFinite, Singular, NotAffine }
 export function objectFrame(absPos: Mat4): Result<TransformFrame, ObjectColliderError> {
 	const frame = transformFrame(absPos);
 	if (!frame.ok) {
-		if (frame.error == TransformError.Singular) {
-			return Result.err(ObjectColliderError.Singular);
-		}
-		return Result.err(ObjectColliderError.NonFinite);
+		return Result.err(match (frame.error) {
+			TransformError.Singular => ObjectColliderError.Singular,
+			TransformError.NonFinite | TransformError.OutOfRange => ObjectColliderError.NonFinite,
+		});
 	}
 	if (absPos.m14 != 0.0 || absPos.m24 != 0.0 || absPos.m34 != 0.0 || absPos.m44 != 1.0) {
 		return Result.err(ObjectColliderError.NotAffine);
