@@ -13,9 +13,12 @@ import {
 	Builtin,
 	DeclarationKind,
 	ExprKind,
+	Interpolation,
 	IoDirection,
 	ResourceKind,
+	ScalarKind,
 	ShaderExpr,
+	ShaderField,
 	ShaderFunction,
 	ShaderIo,
 	ShaderModule,
@@ -24,6 +27,7 @@ import {
 	ShaderType,
 	ShaderTypeKind,
 	StmtKind,
+	assignOf,
 	exprOf,
 	literal,
 	rootOf,
@@ -35,7 +39,7 @@ import { functionOrder, hasEffect, stmtExprs } from "./irWalk";
 import { irFromText, irText } from "./irText";
 import { slotLimit } from "./layout";
 import { suffixed } from "./names";
-import { readsFrom, withoutUnread } from "./specialize";
+import { withoutUnread } from "./specialize";
 
 function phaseOf(m: ShaderModule, f: ShaderFunction): string {
 	if (f.params.length != 1 || f.result.kind != ShaderTypeKind.Struct ||
@@ -181,22 +185,34 @@ function ownerOf(names: string[], owners: string[], effects: string[]): string {
 	return owned.length > 0 ? "effect '" + effects[owners.indexOf(owned[0])] + "'" : "the base";
 }
 
+function blockReads(e: ShaderExpr, out: string[]): void {
+	if (e.kind == ExprKind.BlockMember) {
+		const read = String(e.index) + ":" + String(e.member);
+		if (!out.includes(read)) { out.push(read); }
+	}
+	for (const o of e.operands) { blockReads(o, out); }
+}
+
 function sharedMember(m: ShaderModule, owners: string[], effects: string[]):
 	Result<void, string> {
 	for (const entry of m.entries) {
-		const reads = try readsFrom(m, entry.functionIndex);
+		let reachable: int32[] = [];
+		functionOrder(m, entry.functionIndex, [], reachable);
+		let reads: string[] = [];
+		for (const f of reachable) { stmtExprs(m.functions[f].body, (e) => blockReads(e, reads)); }
 		let members: string[] = [];
 		let blocks: int32[] = [];
 		for (let i = 0; i < m.resources.length; i++) {
 			const r = m.resources[i];
-			if (r.kind != ResourceKind.UniformBlock || !reads.resources.includes(i as int32)) {
-				continue;
-			}
-			for (const f of m.structs[r.type.structIndex].members) {
-				const k = members.findIndex((n, j) => n == f.name &&
+			if (r.kind != ResourceKind.UniformBlock) { continue; }
+			const fields = m.structs[r.type.structIndex].members;
+			for (let k = 0; k < fields.length; k++) {
+				const f = fields[k];
+				if (!reads.includes(String(i) + ":" + String(k))) { continue; }
+				const held = members.findIndex((n, j) => n == f.name &&
 					m.resources[blocks[j]].binding != r.binding);
-				if (k >= 0) {
-					const pair = [r.name, m.resources[blocks[k]].name];
+				if (held >= 0) {
+					const pair = [r.name, m.resources[blocks[held]].name];
 					return Result.err("link: " + ownerOf(pair, owners, effects) + ": '" + f.name +
 						"' names two things in one stage");
 				}
@@ -208,23 +224,178 @@ function sharedMember(m: ShaderModule, owners: string[], effects: string[]):
 	return Result.ok(null);
 }
 
+function segmentPhase(m: ShaderModule, f: ShaderFunction): string {
+	if (f.params.length < 1 || f.params.length > 2 || f.result.kind != ShaderTypeKind.Struct ||
+		f.params.some((p) => p.type.kind != ShaderTypeKind.Struct)) {
+		return "";
+	}
+	if (!sameShaderType(f.params[0].type, f.result) && f.params.length == 2) { return ""; }
+	return m.structs[f.params[0].type.structIndex].name;
+}
+
+function writesCarrier(f: ShaderFunction): boolean {
+	return !sameShaderType(f.params[0].type, f.result);
+}
+
+function markCarried(e: ShaderExpr, read: boolean[]): void {
+	const carried = e.kind == ExprKind.Field ? e.operands[0] : e;
+	if (carried.kind == ExprKind.Param && carried.index == 1) {
+		for (let k = 0; k < read.length; k++) {
+			if (e.kind != ExprKind.Field || k == e.index) { read[k] = true; }
+		}
+		return;
+	}
+	for (const o of e.operands) { markCarried(o, read); }
+}
+
+function carriedReads(m: ShaderModule, f: ShaderFunction): boolean[] {
+	let read = m.structs[f.params[1].type.structIndex].members.map((_) => false);
+	stmtExprs(f.body, (e) => markCarried(e, read));
+	return read;
+}
+
+class Carrier {
+	struct: int32 = -1;
+	writers: string[] = [];
+	read: boolean[] = [];
+	outs: int32[] = [];
+	ins: int32[] = [];
+}
+
+function carrierOf(m: ShaderModule, carriers: Carrier[], struct: int32): Carrier {
+	const held = carriers.find((c) => c.struct == struct);
+	if (held != null) { return held; }
+	let c = new Carrier();
+	c.struct = struct;
+	c.read = m.structs[struct].members.map((_) => false);
+	carriers.push(c);
+	return c;
+}
+
+function isVarying(t: ShaderType): boolean {
+	return (t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector) &&
+		t.scalar != ScalarKind.Bool;
+}
+
+function varyingIo(
+	name: string,
+	type: ShaderType,
+	stage: ShaderStage,
+	direction: IoDirection,
+): ShaderIo {
+	let io = new ShaderIo();
+	io.name = name;
+	io.stage = stage;
+	io.direction = direction;
+	io.type = type;
+	io.interpolation = type.scalar == ScalarKind.F32 ? Interpolation.Perspective :
+		Interpolation.Flat;
+	return io;
+}
+
+function addVaryings(m: ShaderModule, c: Carrier): Result<void, string> {
+	const s = m.structs[c.struct];
+	for (const f of s.members) {
+		if (!isVarying(f.type)) {
+			return Result.err("link: carrier '" + s.name + "' field '" + f.name + "' is no " +
+				"numeric scalar or vector, which a varying is");
+		}
+		const name = suffixed(f.name, m.ios.map((io) => io.name));
+		c.outs.push(m.ios.length as int32);
+		m.ios.push(varyingIo(name, f.type, ShaderStage.Vertex, IoDirection.Out));
+		c.ins.push(m.ios.length as int32);
+		m.ios.push(varyingIo(name, f.type, ShaderStage.Fragment, IoDirection.In));
+	}
+	return Result.ok(null);
+}
+
+function localOn(f: ShaderFunction, name: string, type: ShaderType): int32 {
+	let v = new ShaderField();
+	v.name = name;
+	v.type = type;
+	f.locals.push(v);
+	return (f.locals.length - 1) as int32;
+}
+
+function letOf(local: int32, type: ShaderType, value: ShaderExpr, out: ShaderStmt[]): ShaderExpr {
+	let s = stmtOf(StmtKind.Let, value, []);
+	s.local = local;
+	out.push(s);
+	return exprOf(ExprKind.Local, type, local, []);
+}
+
+function carriedValue(m: ShaderModule, c: Carrier | null, type: ShaderType): ShaderExpr {
+	const members = m.structs[type.structIndex].members;
+	let fields: ShaderExpr[] = [];
+	for (let k = 0; k < members.length; k++) {
+		let field = zeroOf(members[k].type);
+		if (c != null && c.ins.length > 0 && c.read[k]) {
+			field = exprOf(ExprKind.Io, members[k].type, c.ins[k], []);
+		}
+		fields.push(field);
+	}
+	return exprOf(ExprKind.Construct, type, -1, fields);
+}
+
+function siteBody(m: ShaderModule, site: ShaderFunction, steps: int32[], carriers: Carrier[]):
+	ShaderStmt[] {
+	let body: ShaderStmt[] = [];
+	let value = exprOf(ExprKind.Param, site.result, 0, []);
+	for (const index of steps) {
+		const g = m.functions[index];
+		if (!writesCarrier(g)) {
+			let args = [value];
+			if (g.params.length == 2) {
+				const type = g.params[1].type;
+				const c = carriers.find((k) => k.struct == type.structIndex);
+				args.push(carriedValue(m, c ?? null, type));
+			}
+			value = exprOf(ExprKind.Call, site.result, index, args);
+			continue;
+		}
+		const c = carriers.find((k) => k.struct == g.result.structIndex);
+		if (c == null || c.outs.length == 0) { continue; }
+		if (value.kind != ExprKind.Param && value.kind != ExprKind.Local) {
+			value = letOf(localOn(site, "chained", site.result), site.result, value, body);
+		}
+		const carried = letOf(localOn(site, "carried", g.result), g.result,
+			exprOf(ExprKind.Call, g.result, index, [value]), body);
+		const members = m.structs[c.struct].members;
+		for (let k = 0; k < members.length; k++) {
+			body.push(assignOf(exprOf(ExprKind.Io, members[k].type, c.outs[k], []),
+				exprOf(ExprKind.Field, members[k].type, k as int32, [carried])));
+		}
+	}
+	body.push(stmtOf(StmtKind.Return, value, []));
+	return body;
+}
+
 export function link(base: ShaderModule, effects: ShaderModule[]): Result<ShaderModule, string> {
 	let m = try irFromText(irText(base));
+	let vertexFunctions: int32[] = [];
+	for (const entry of m.entries) {
+		if (entry.stage == ShaderStage.Vertex) {
+			functionOrder(m, entry.functionIndex, [], vertexFunctions);
+		}
+	}
 	let sites: int32[] = [];
-	let chains: ShaderExpr[] = [];
+	let steps: int32[][] = [];
 	for (let i = 0; i < m.functions.length; i++) {
 		const f = m.functions[i];
 		if (!isHookSite(m, f)) { continue; }
 		sites.push(i as int32);
-		chains.push(exprOf(ExprKind.Param, f.result, 0, []));
+		steps.push([]);
 	}
 	let owners: string[] = [];
 	let owning: string[] = [];
+	let carriers: Carrier[] = [];
+	let readers: string[] = [];
+	let readerOf: int32[] = [];
 	for (const given of effects) {
 		const e = try irFromText(irText(given));
 		const segment = e.functions.length > 0 ? e.functions[e.functions.length - 1] :
 			new ShaderFunction();
-		const phase = phaseOf(e, segment);
+		const phase = segmentPhase(e, segment);
 		if (e.entries.length > 0 || e.ios.length > 0 || e.workgroups.length > 0 || phase == "") {
 			return Result.err("link: effect '" + segment.name + "' is no segment: a module " +
 				"without entries whose last function takes and returns its phase struct");
@@ -242,10 +413,45 @@ export function link(base: ShaderModule, effects: ShaderModule[]): Result<Shader
 				owning.push(effect);
 			}
 		}
-		chains[at] = exprOf(ExprKind.Call, chains[at].type, index, [chains[at]]);
+		const g = m.functions[index];
+		const writes = writesCarrier(g);
+		if (writes || g.params.length == 2) {
+			const struct = writes ? g.result.structIndex : g.params[1].type.structIndex;
+			if (writes != vertexFunctions.includes(sites[at])) {
+				return Result.err("link: effect '" + effect + "' " +
+					(writes ? "writes" : "reads") + " carrier '" + m.structs[struct].name +
+					"' at phase '" + phase + "', which is no " +
+					(writes ? "vertex" : "fragment") + " hook site");
+			}
+			let c = carrierOf(m, carriers, struct);
+			if (writes) {
+				c.writers.push(effect);
+			} else {
+				const read = carriedReads(m, g);
+				for (let k = 0; k < read.length; k++) { c.read[k] = c.read[k] || read[k]; }
+				readers.push(effect);
+				readerOf.push(index);
+			}
+		}
+		steps[at].push(index);
+	}
+	for (let k = 0; k < readers.length; k++) {
+		const g = m.functions[readerOf[k]];
+		const c = carrierOf(m, carriers, g.params[1].type.structIndex);
+		const unwritten = carriedReads(m, g).findIndex((r) => r);
+		if (c.writers.length == 0 && unwritten >= 0) {
+			const s = m.structs[c.struct];
+			return Result.err("link: effect '" + readers[k] + "' reads varying '" +
+				s.members[unwritten].name + "' of carrier '" + s.name + "', which no vertex " +
+				"segment writes");
+		}
+	}
+	for (const c of carriers) {
+		if (c.writers.length > 0 && c.read.some((r) => r)) { try addVaryings(m, c); }
 	}
 	for (let k = 0; k < sites.length; k++) {
-		m.functions[sites[k]].body = [stmtOf(StmtKind.Return, chains[k], [])];
+		let site = m.functions[sites[k]];
+		site.body = siteBody(m, site, steps[k], carriers);
 	}
 	for (const f of m.functions) { pruneDeadFields(m, f); }
 	const kept = try withoutUnread(try withoutUnreadVaryings(m));

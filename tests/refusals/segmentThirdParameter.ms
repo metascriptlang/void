@@ -1,4 +1,4 @@
-// expect: 13:1 segment 'tinted' takes its phase struct and its bindings struct, and 'scale' is a third parameter
+// expect: 13:1 segment 'tinted' takes its phase struct, its bindings struct, a key and the carrier struct it reads, and 'scale' is none of them
 import { glslSegmentIr } from "../../src/shader/emit";
 import { Vec4f } from "../../src/shader/std";
 struct Shaded {
