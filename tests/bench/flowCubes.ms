@@ -5,7 +5,8 @@
 // over FLOW_CUBES_FRAMES frames, so a change to one flow is proven by its own number before the
 // windowed A/B. The meshes are external, so no vertex buffer is made; FLOW_CUBES_COUNT sets the
 // cube count (1.6M, as benchCubes). `flow.refreshMoving` times refresh on frames where ten
-// cubes move.
+// cubes move; FLOW_CUBES_GROUP=n puts the cubes under groups of n, so the move descends into one
+// group instead of the root's every child.
 
 import { env, exit } from "std/process";
 import { Mat4, vec3, identityQuat, quatBetween } from "../../src/math/math3d";
@@ -31,7 +32,7 @@ import {
 import { PassList, collectVisible } from "../../src/void3d/passList";
 import {
 	Scene3D, NodeId3D, SceneError, Transform3D, LightInstance, LightKind, LightError,
-	addMeshNode, addLightNode, refresh, collectLights, setLocal,
+	addMeshNode, addLightNode, addGroup, refresh, collectLights, setLocal,
 } from "../../src/void3d/scene";
 import { added, litShape } from "../../src/test/drawHelpers";
 import { positiveEnv } from "./frameTimeLog";
@@ -87,13 +88,18 @@ function buildScene(count: int32): void {
 	const mesh = added(context, litShape());
 	const material: MaterialId = whiteMaterial();
 	const side: int32 = Math.ceil(Math.sqrt(count as float64)) as int32;
+	const group: int32 = positiveEnv("FLOW_CUBES_GROUP", count);
+	let under: NodeId3D = scene.rootId();
 	for (let i = 0; i < count; i++) {
+		if (group < count && i % group == 0) {
+			under = addGroup(scene, scene.rootId(), Transform3D.identity());
+		}
 		const local: Transform3D = {
 			position: vec3(((i % side) as float32) * 2.0, 0.0, ((i / side) as float32) * 2.0),
 			rotation: identityQuat(), scale: vec3(1.0, 1.0, 1.0),
 		};
 		const node: Result<NodeId3D, SceneError> =
-			addMeshNode(scene, scene.rootId(), local, mesh, material);
+			addMeshNode(scene, under, local, mesh, material);
 		if (!node.ok) { unreachable; }
 		if (i < 10) { movers.push(node.value); }
 	}
