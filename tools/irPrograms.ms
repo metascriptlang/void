@@ -22,7 +22,11 @@ import { irFromText } from "../src/shader/irText";
 import { linkedProgram } from "../src/shader/link";
 import { programEffects } from "../src/void3d/programEffects";
 import { ResourceKind, ShaderModule, ShaderStage } from "../src/shader/ir";
-import { ShaderTarget, uniformBlockLayout } from "../src/shader/layout";
+import {
+	ShaderTarget,
+	blockMembers as blockMemberTable,
+	uniformBlockLayout,
+} from "../src/shader/layout";
 import { printGlsl450 } from "../src/shader/printGlsl450";
 import {
 	billboardFs,
@@ -264,16 +268,43 @@ function blockMembers(program: Program, block: string): string[] {
 	for (let resourceIndex = 0; resourceIndex < resources.length; resourceIndex++) {
 		const resource = resources[resourceIndex];
 		if (resource.kind != ResourceKind.UniformBlock || resource.name != block) { continue; }
-		const layout = uniformBlockLayout(shaderModule, resourceIndex);
-		if (!layout.ok) { fail(program.name + ": " + layout.error); }
-		const members = shaderModule.structs[resource.type.structIndex].members;
-		let out: string[] = [];
-		for (let i = 0; i < members.length; i++) {
-			out.push(members[i].name + "@" + String(layout.value.offsets[i]));
-		}
-		return out;
+		const members = blockMemberTable(shaderModule, resourceIndex);
+		if (!members.ok) { fail(program.name + ": " + members.error); }
+		return members.value.map((member) => member.name + "@" + String(member.offset * 4));
 	}
 	fail(program.name + " has no uniform block " + block);
+}
+
+function memberFunction(shaderModule: ShaderModule, resourceIndex: int32, program: Program): string {
+	const block = shaderModule.resources[resourceIndex].name;
+	const members = blockMemberTable(shaderModule, resourceIndex);
+	if (!members.ok) { fail(program.name + ": " + members.error); }
+	let rows = "";
+	for (const member of members.value) {
+		rows += "\t\t{ block: " + quotedSource(block) + ", name: " + quotedSource(member.name) +
+			", offset: " + String(member.offset) + ", count: " + String(member.count) + " },\n";
+	}
+	return "export function " + block + "Members(): BlockMember[] {\n\treturn [\n" + rows +
+		"\t];\n}\n";
+}
+
+// One function per uniform block, once however many programs hold it: the same block name must
+// have the same members everywhere, or the table would say two things.
+function collectMembers(tables: Map<string, string>, owners: Map<string, string>,
+	shaderModule: ShaderModule, program: Program): void {
+	for (let i = 0; i < shaderModule.resources.length; i++) {
+		const resource = shaderModule.resources[i];
+		if (resource.kind != ResourceKind.UniformBlock) { continue; }
+		const text = memberFunction(shaderModule, i, program);
+		const held = tables.get(resource.name);
+		if (held === undefined) {
+			tables.set(resource.name, text);
+			owners.set(resource.name, program.name);
+		} else if (held != text) {
+			fail(program.name + " lays out " + resource.name + " differently from " +
+				(owners.get(resource.name) ?? ""));
+		}
+	}
 }
 
 function checkFeaturesRead(program: Program): void {
@@ -509,8 +540,11 @@ function moduleText(
 ): string {
 	let sources: ProgramSource[][] = [];
 	let agreement = new Agreement();
+	let memberTables: Map<string, string> = new Map();
+	let memberOwners: Map<string, string> = new Map();
 	for (const program of programs) {
 		const shaderModule = linkedModule(program);
+		collectMembers(memberTables, memberOwners, shaderModule, program);
 		counts.programs++;
 		let row: ProgramSource[] = [];
 		for (let a = 0; a < ARMS.length; a++) {
@@ -544,6 +578,12 @@ function moduleText(
 		"import { GPUShaderModuleDescriptor } from \"" + typesPath + "\";\n" +
 		"import { shaderBytecodeFromBase64 } from \"" +
 		typesPath.replace("webgpu/types.ms", "shader/dxbc.ms") + "\";\n";
+	let memberText = "";
+	for (const [_block, table] of memberTables) { memberText += "\n" + table; }
+	if (memberText != "") {
+		text += "import { BlockMember } from \"" +
+			typesPath.replace("webgpu/types.ms", "shader/blockMember.ms") + "\";\n" + memberText;
+	}
 	for (let targetIndex = 0; targetIndex < ARMS.length; targetIndex++) {
 		const language = ARMS[targetIndex].language;
 		const keepSource = language == "metal_ios";
