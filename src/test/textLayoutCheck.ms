@@ -531,6 +531,24 @@ test "under force_width a fallback-face glyph wider than its cell and a quarter 
 	assert box[2] - box[0] > 8.0 * 1.25 - 2.0;
 }
 
+test "under force_width a row holding a taller fallback face keeps the primary face's baseline and height" {
+	addFallbackFont(cellRow().font, "tests/fonts/NotoSansSC-subset.ttf");
+	const own = faceMetrics(fontFace(cellRow().font), 20.0);
+	const noRuns: TextRun[] = [];
+	const noBreaks: int32[] = [];
+	const cells: LineOptions = { ...PLAIN_LINES, forceWidth: 20.0 };
+	const l = wrapText(shapedOf("ab\n\u4F60b", cellRow(), noRuns, noBreaks), cellRow(), cells);
+	const fallback = faceMetrics(l.glyphs[2].face, l.glyphs[2].size);
+	const height: float32 = own.ascent + own.descent + own.lineGap;
+	assert l.glyphs[2].face != fontFace(cellRow().font);
+	assert fallback.ascent > own.ascent;
+	for (let k = 0; k < 2; k++) {
+		assert approx(l.lines[k].height, height);
+		assert approx(l.lines[k].baseline - l.lines[k].top, own.ascent);
+	}
+	assert approx(l.lines[1].top, height);
+}
+
 test "splitAt cuts one line without shaping it again" {
 	const l = laid("abcdef", style());
 	const [left, right] = l.splitAt(3);
