@@ -19,6 +19,8 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
 import { Renderer, RendererError, beginFrame, setCameraView } from "../void3d/renderer";
+import { PassList } from "../void3d/passList";
+import { Phase } from "../void3d/material";
 import {
 	LightError, LightInstance, LightKind, Scene3D, Transform3D, addLightNode, collectLights,
 } from "../void3d/scene";
@@ -168,4 +170,23 @@ test "a lit frame is refused with no camera view, or one that is not the camera 
 	const drawn: CameraView = viewOf(false, 0.0);
 	assert beganWith(null, drawn) == RendererError.ClusterViewUnset;
 	assert beganWith(viewOf(false, 0.5), drawn) == RendererError.ClusterViewStale;
+}
+
+test "a refused frame leaves the pass lists as the last frame left them" {
+	const created: Result<Renderer, RendererError> =
+		Renderer.create(DrawContext.withUniformCapacity(1024));
+	if (!created.ok) { unreachable; }
+	let core: Renderer = created.value;
+	setCameraView(core, viewOf(false, 0.5));
+	core.opaque = {
+		...PassList.forPhase(Phase.Opaque),
+		indices: [4, 7], depths: [0.0, 0.0], layers: [0, 1], orders: [0, 2], count: 2,
+	};
+	core.culledCount = 5;
+	let items: Vec<DrawItem> = [];
+	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	viewOf(false, 0.0).writeCameraBlock(camera);
+	const began: Result<boolean, RendererError> = beginFrame(core, items, camera, lightsOf());
+	assert !began.ok && began.error == RendererError.ClusterViewStale;
+	assert core.opaque.count == 2 && core.opaque.indices[1] == 7 && core.culledCount == 5;
 }

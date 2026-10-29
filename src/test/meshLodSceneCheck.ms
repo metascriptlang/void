@@ -5,6 +5,7 @@ import {
 	MeshLod, MeshLodRange, MeshLodRanges, MeshLodPick, MeshLodError, pickFor, nextPickPass,
 } from "../void3d/meshLod";
 import { Bounds3D } from "../void3d/bounds";
+import { MeshData } from "../void3d/meshData";
 import { Frustum3D } from "../void3d/frustum";
 import {
 	DrawContext, DrawItem, GpuMesh, MeshId, MaterialId, addMaterial, addMesh, reserveUniforms,
@@ -20,7 +21,9 @@ import {
 	Scene3D, NodeId3D, SceneError, Transform3D, addMeshNode, addLodMeshNode, setForcedLod,
 	setInheritLod, setMeshOf, refresh,
 } from "../void3d/scene";
-import { PassList, collect, collectCasters, filterFrustum } from "../void3d/passList";
+import {
+	PassList, collect, collectCasters, collectVisible, filterFrustum,
+} from "../void3d/passList";
 import { added, litShape } from "./drawHelpers";
 import { approx } from "./helpers";
 
@@ -319,4 +322,78 @@ test "a frame refuses an inherited pick whose source it does not pick" {
 	const orphan = litFrame(translation(0.0, 0.0, -3.0), pickOf(-1));
 	assert !orphan.began.ok && orphan.began.error == RendererError.MeshLod;
 	assert !orphan.published;
+}
+
+function placed(material: int32, x: float32, order: int32, lod: MeshLodPick | null): DrawItem {
+	return {
+		mesh: { store: 0, index: 0, generation: 1 },
+		material: { store: 0, index: material, generation: 1 },
+		world: translation(x, 0.0, 0.5), order: order, lod: lod,
+	};
+}
+
+function sameList(a: PassList, b: PassList): boolean {
+	if (a.count != b.count) { return false; }
+	for (let i = 0; i < a.count; i++) {
+		if (a.indices[i] != b.indices[i] || a.layers[i] != b.layers[i] ||
+			a.orders[i] != b.orders[i]) {
+			return false;
+		}
+	}
+	return true;
+}
+
+function phaseLists(): Vec<PassList> {
+	return [
+		PassList.forPhase(Phase.Opaque), PassList.forPhase(Phase.Alpha),
+		PassList.forPhase(Phase.Additive), PassList.forPhase(Phase.Decal),
+		PassList.forPhase(Phase.DecalAfterToneMap),
+	];
+}
+
+function walked(
+	ref lists: Vec<PassList>, items: Vec<DrawItem>, materials: Vec<Material>,
+	meshes: Vec<MeshData>, frustum: Frustum3D,
+): int32 {
+	return collectVisible(lists[0], lists[1], lists[2], lists[3], lists[4],
+		items, materials, meshes, frustum);
+}
+
+test "one walk lists what collect then filterFrustum leave, in every phase" {
+	const state = RenderState.defaults();
+	const materials: Vec<Material> = [
+		Material.plain(Program.Lit, state, Phase.Opaque),
+		{ ...Material.plain(Program.Lit, state, Phase.Alpha), layer: 2 },
+		Material.plain(Program.Lit, state, Phase.Additive),
+		Material.plain(Program.Lit, state, Phase.Decal),
+		Material.plain(Program.Lit, state, Phase.DecalAfterToneMap),
+		Material.plain(Program.Lit, state, Phase.Opaque).withShadows(ShadowCasting.Only, false),
+	];
+	let meshes: Vec<MeshData> = [{
+		vertices: [], indices: [], bounds: Bounds3D.fromValues(-0.25, -0.25, -0.25, 0.5, 0.5, 0.5),
+	}];
+	let culledPick = pickOf(-1);
+	culledPick.culled = true;
+	let items: Vec<DrawItem> = [
+		placed(0, 0.0, 0, null), placed(1, 0.0, 3, null), placed(0, 99.0, 0, null),
+		placed(5, 0.0, 0, null), placed(2, 0.0, 0, culledPick), placed(3, 0.0, 1, null),
+		placed(4, 0.0, 2, null), placed(0, 0.0, 4, pickOf(-1)), placed(1, 99.0, 0, null),
+	];
+	const frustum: Frustum3D = Frustum3D.fromMatrix(identity());
+	let old: Vec<PassList> = phaseLists();
+	let oldExcluded: int32 = 0;
+	for (let p = 0; p < 5; p++) {
+		collect(old[p], items, materials);
+		oldExcluded = oldExcluded + filterFrustum(old[p], items, meshes, frustum);
+	}
+	let fused: Vec<PassList> = phaseLists();
+	assert walked(fused, items, materials, meshes, frustum) == oldExcluded && oldExcluded == 3;
+	for (let p = 0; p < 5; p++) { assert sameList(fused[p], old[p]); }
+	assert fused[0].count == 2 && fused[0].indices[1] == 7 && fused[0].orders[1] == 4;
+	assert fused[1].count == 1 && fused[1].layers[0] == 2 && fused[2].count == 0;
+	assert fused[3].indices[0] == 5 && fused[4].indices[0] == 6;
+	let fewer: Vec<DrawItem> = [items[7], items[1]];
+	assert walked(fused, fewer, materials, meshes, frustum) == 0;
+	assert fused[0].count == 1 && fused[0].indices[0] == 0 && fused[0].orders[0] == 4;
+	assert fused[1].count == 1 && fused[1].indices[0] == 1 && fused[3].count == 0;
 }
