@@ -242,7 +242,11 @@ export struct BoundFacts {
 	vertexSet: int32;
 	groupSet: int32;
 	ownersDirty: boolean;
+	drawValid: int32;
 }
+
+const DRAW_VALID = 1;
+const DRAW_INDEXED_VALID = 2;
 
 export let boundFacts: BoundFacts = { pipeline: 0 };
 
@@ -280,6 +284,7 @@ export function markPipelineSet(pipeline: uint32): void {
 	encoder.markPipeline();
 	boundFacts.pipeline = pipeline;
 	boundFacts.ownersDirty = true;
+	boundFacts.drawValid = 0;
 }
 
 export function vertexSlotRefusal(slot: int32): string {
@@ -291,6 +296,7 @@ export function markVertexSet(slot: int32, buffer: uint32, offset: int64): void 
 	boundFacts.vertexBuffers[slot] = buffer;
 	boundFacts.vertexSet = buffer == 0 ? boundFacts.vertexSet & ~(1 << slot) : boundFacts.vertexSet | (1 << slot);
 	boundFacts.vertexOffsets[slot] = offset;
+	boundFacts.drawValid = 0;
 }
 
 export function markIndexSet(buffer: uint32, format: GPUIndexFormat, offset: int64): void {
@@ -298,26 +304,35 @@ export function markIndexSet(buffer: uint32, format: GPUIndexFormat, offset: int
 	boundFacts.indexFormat = format;
 	boundFacts.indexBuffer = buffer;
 	boundFacts.indexOffset = offset;
+	boundFacts.drawValid = 0;
 }
 
 export function markBindGroupSet(index: int32, bindGroup: uint32, dynamicOffsets: Readonly<Span<uint32>>): void {
 	boundFacts.bindGroups[index] = bindGroup;
 	boundFacts.ownersDirty = true;
+	boundFacts.drawValid = 0;
 	boundFacts.groupSet = bindGroup == 0 ? boundFacts.groupSet & ~(1 << index) : boundFacts.groupSet | (1 << index);
 	if (bindGroup == 0 || index != GPU_UNIFORM_GROUP) { return; }
 	const count = bindGroupRecords.slots[bindGroupRecords.slotIndex(bindGroup)].dynamicCount;
 	for (let i = 0; i < count; i++) { boundFacts.dynamicOffsets[i] = dynamicOffsets[i]; }
 }
 export function checkedPipelineSet(call: string): void { refuse(encoder.pipelineSetRefusal(call)); }
+// Dawn ValidateOperation (CommandBufferStateTracker.cpp:513-530): the state a draw needs is judged
+// once and kept in drawValid until a set call changes it; the shader module and the pipeline are
+// live handles that can die between draws, so they are read on every draw.
 export function checkedDrawState(call: string, indexed: boolean): void {
-	refuse(encoder.drawRefusal(call, indexed));
+	const kind = indexed ? DRAW_INDEXED_VALID : DRAW_VALID;
+	const ready = (boundFacts.drawValid & kind) != 0;
+	if (!ready) { refuse(encoder.drawRefusal(call, indexed)); }
 	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
 	if (!shaderRecords.alive(pipelineRecords.slots[p].shader)) {
 		stop(`the shader module of GPURenderPipeline ${boundFacts.pipeline} was destroyed`);
 	}
+	if (ready) { return; }
 	refuse(boundRefusal(pipelineRecords.slots[p].vertexSlots, pipelineRecords.slots[p].groups, false));
 	checkGroupOwners(pipelineRecords.slots[p].groups, false);
 	if (indexed) { refuse(stripDrawRefusal(pipelineRecords.slots[p].strip, pipelineRecords.slots[p].stripIndexFormat == boundFacts.indexFormat)); }
+	boundFacts.drawValid |= kind;
 }
 
 // WebGPU draw and drawIndexed: every vertex and index a draw fetches lies inside the range bound
