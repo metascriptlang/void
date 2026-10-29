@@ -1,4 +1,3 @@
-
 import {
 	uniformBlockBytes as doorUniformBlockBytes,
 	textureSlotMask as doorTextureSlotMask,
@@ -41,8 +40,8 @@ extern function gpu3dAppendBuffer(buffer: uint32, data: Readonly<Span<float32>>)
 extern function gpu3dApplyBindings(bindings: Readonly<Span<uint32>>): void;
 extern function gpu3dApplyUniforms(slot: int32, data: Readonly<Span<float32>>): void;
 
-let programBase: int32 = gpu3dProgramBase();
-let layoutBase: int32 = gpu3dLayoutBase();
+const programBase: int32 = gpu3dProgramBase();
+const layoutBase: int32 = gpu3dLayoutBase();
 
 // A program's base: what a material names. Its preset and features complete its key.
 export enum Program {
@@ -128,14 +127,14 @@ export function of(this typeof ProgramKey, program: Program): ProgramKey {
 	};
 }
 
-function stopOnFeature(key: ProgramKey, feature: string): ProgramKey {
+function stopOnFeature(this key: ProgramKey, feature: string): ProgramKey {
 	console.log(`void3d: ${key.describe()} has no ${feature} variant`);
 	unreachable;
 }
 
 export function withPremultiplied(this key: ProgramKey): ProgramKey {
 	if (key.program != Program.Billboard && key.program != Program.ParticleVisual) {
-		stopOnUntextured(key, "premultiplied");
+		key.stopOnUntextured("premultiplied");
 	}
 	return { ...key, premultiplied: true };
 }
@@ -144,87 +143,87 @@ export function withCutout(this key: ProgramKey): ProgramKey {
 	const cuts: boolean = key.program == Program.Lit || key.program == Program.LitTextured ||
 		key.program == Program.UnlitTextured || key.program == Program.Billboard ||
 		key.program == Program.Particle || key.program == Program.ParticleVisual;
-	if (!cuts) { return stopOnFeature(key, "cutout"); }
+	if (!cuts) { return key.stopOnFeature("cutout"); }
 	return { ...key, cutout: true };
 }
 
 // Heaps' receiveShadows adds its shadow shader to the lit pass.
 export function withShadowed(this key: ProgramKey): ProgramKey {
 	const lit: boolean = key.program == Program.Lit || key.program == Program.LitTextured;
-	if (!lit) { return stopOnFeature(key, "shadowed"); }
+	if (!lit) { return key.stopOnFeature("shadowed"); }
 	return { ...key, shadowed: true };
 }
 
-function stopOnUntextured(key: ProgramKey, feature: string): ProgramKey {
+function stopOnUntextured(this key: ProgramKey, feature: string): ProgramKey {
 	const textured: boolean =
 		key.program == Program.LitTextured || key.program == Program.UnlitTextured;
-	if (!textured) { return stopOnFeature(key, feature); }
+	if (!textured) { return key.stopOnFeature(feature); }
 	return key;
 }
 
 // A pbr key reads the UV transform in its own block, so it never takes the moving one.
 export function withUvTransform(this key: ProgramKey): ProgramKey {
-	if (key.pbr) { return stopOnFeature(key, "uv transform"); }
-	return { ...stopOnUntextured(key, "uv transform"), uvTransform: true };
+	if (key.pbr) { return key.stopOnFeature("uv transform"); }
+	return { ...key.stopOnUntextured("uv transform"), uvTransform: true };
 }
 
 export function withBackTexture(this key: ProgramKey): ProgramKey {
-	if (key.pbrMaps) { return stopOnFeature(key, "back texture"); }
-	return { ...stopOnUntextured(key, "back texture"), backTexture: true };
+	if (key.pbrMaps) { return key.stopOnFeature("back texture"); }
+	return { ...key.stopOnUntextured("back texture"), backTexture: true };
 }
 
 export function withDissolve(this key: ProgramKey): ProgramKey {
-	if (key.pbrMaps) { return stopOnFeature(key, "dissolve"); }
-	return { ...stopOnUntextured(key, "dissolve"), dissolve: true };
+	if (key.pbrMaps) { return key.stopOnFeature("dissolve"); }
+	return { ...key.stopOnUntextured("dissolve"), dissolve: true };
 }
 
-function stopOnNotLitTextured(key: ProgramKey, feature: string): ProgramKey {
-	if (key.program != Program.LitTextured) { return stopOnFeature(key, feature); }
+function stopOnNotLitTextured(this key: ProgramKey, feature: string): ProgramKey {
+	if (key.program != Program.LitTextured) { return key.stopOnFeature(feature); }
 	return key;
 }
 
 export function withEmissive(this key: ProgramKey): ProgramKey {
-	return { ...stopOnNotLitTextured(key, "emissive"), emissive: true };
+	return { ...key.stopOnNotLitTextured("emissive"), emissive: true };
 }
 
 export function withSkin(this key: ProgramKey): ProgramKey {
 	if (key.program != Program.Lit && key.program != Program.LitTextured &&
-		key.program != Program.UnlitTextured) { return stopOnFeature(key, "skinning"); }
+		key.program != Program.UnlitTextured) { return key.stopOnFeature("skinning"); }
 	return { ...key, skinned: true };
 }
 
 export function withNormalMap(this key: ProgramKey): ProgramKey {
-	return { ...stopOnNotLitTextured(key, "normal map"), normalMap: true };
+	return { ...key.stopOnNotLitTextured("normal map"), normalMap: true };
 }
 
 export function withPbr(this key: ProgramKey): ProgramKey {
 	if ((key.program != Program.Lit && key.program != Program.LitTextured) || key.moves()) {
-		return stopOnFeature(key, "pbr");
+		return key.stopOnFeature("pbr");
 	}
 	return { ...key, pbr: true };
 }
 
 export function withPbrMaps(this key: ProgramKey): ProgramKey {
 	if (!key.pbr || key.program != Program.LitTextured || key.backTexture || key.dissolve) {
-		return stopOnFeature(key, "pbr maps");
+		return key.stopOnFeature("pbr maps");
 	}
 	return { ...key, pbrMaps: true };
 }
 
 export function withOcclusionUvB(this key: ProgramKey): ProgramKey {
-	if (!key.pbrMaps) { return stopOnFeature(key, "second uv set"); }
+	if (!key.pbrMaps) { return key.stopOnFeature("second uv set"); }
 	return { ...key, occlusionUvB: true };
 }
 
 export function withParallax(this key: ProgramKey): ProgramKey {
-	if (!key.pbrMaps || !key.normalMap) { return stopOnFeature(key, "parallax"); }
+	if (!key.pbrMaps || !key.normalMap) { return key.stopOnFeature("parallax"); }
 	return { ...key, parallax: true };
 }
 
 export function withNormalMrt(this key: ProgramKey): ProgramKey {
 	const mesh: boolean = key.program == Program.Lit || key.program == Program.LitTextured ||
 		key.program == Program.UnlitTextured;
-	if (!mesh || key.preset != Preset.Core) { return stopOnFeature(key, "normal MRT"); }
+	if (!mesh || key.preset != Preset.Core) { return key.stopOnFeature("normal MRT"); }
 	return { ...key, normalMrt: true };
 }
 
@@ -285,20 +284,20 @@ function indexPrograms(): Vec<int32> {
 	return index;
 }
 
-let programIndex: Vec<int32> = indexPrograms();
+const programIndex: Vec<int32> = indexPrograms();
 
 export function declares(key: ProgramKey): boolean {
 	return programIndex[key.bits()] >= 0;
 }
 
-function stopOnUndeclared(key: ProgramKey): int32 {
+function stopOnUndeclared(this key: ProgramKey): int32 {
 	console.log(`void3d: no program declared for ${key.describe()} (src/void3d/programKeys.txt)`);
 	unreachable;
 }
 
 // The door id of one of void3d's programs / layouts.
 export function doorProgram(key: ProgramKey): int32 {
-	if (!declares(key)) { return stopOnUndeclared(key); }
+	if (!declares(key)) { return key.stopOnUndeclared(); }
 	return programBase + programIndex[key.bits()];
 }
 
@@ -314,27 +313,12 @@ export enum ProgramError {
 // Drawn only by drawScreen, through its own material, over a whole target.
 export function isScreenProgram(program: Program): boolean {
 	return match (program) {
-		Program.Lit => false,
-		Program.Particle => false,
-		Program.Billboard => false,
-		Program.ParticleVisual => false,
-		Program.Copy => true,
-		Program.Post => true,
-		Program.Blit => true,
-		Program.LitTextured => false,
-		Program.UnlitTextured => false,
-		Program.BloomDownsampleFirst => true,
-		Program.BloomDownsample => true,
-		Program.BloomUpsample => true,
-		Program.OutlineMask => true,
-		Program.OutlineMix => true,
-		Program.OutlineWidth => true,
-		Program.Decal => false,
-		Program.Sao => true,
-		Program.Blur => true,
-		Program.Line => false,
-		Program.Fxaa => true,
-		Program.ColorMatrix => true,
+		Program.Lit | Program.Particle | Program.Billboard | Program.ParticleVisual => false,
+		Program.LitTextured | Program.UnlitTextured | Program.Decal | Program.Line => false,
+		Program.Copy | Program.Post | Program.Blit => true,
+		Program.BloomDownsampleFirst | Program.BloomDownsample | Program.BloomUpsample => true,
+		Program.OutlineMask | Program.OutlineMix | Program.OutlineWidth => true,
+		Program.Sao | Program.Blur | Program.Fxaa | Program.ColorMatrix => true,
 	};
 }
 
@@ -750,7 +734,6 @@ export function pipelineFor(
 	);
 }
 
-
 export function makeVertexBuffer(data: Readonly<Span<float32>>): uint32 {
 	return gpu3dMakeVertexBuffer(data);
 }
@@ -791,7 +774,6 @@ export function updateBuffer(buffer: uint32, data: Readonly<Span<float32>>): boo
 export function appendBuffer(buffer: uint32, data: Readonly<Span<float32>>): int32 {
 	return gpu3dAppendBuffer(buffer, data);
 }
-
 
 export function destroyBuffer(buffer: uint32): void { gpu3dDestroyBuffer(buffer); }
 export function destroyImage(image: uint32): void { gpu3dDestroyImage(image); }

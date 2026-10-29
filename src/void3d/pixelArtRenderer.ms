@@ -35,9 +35,11 @@ import {
 	commit,
 	passState,
 	contextGeneration,
+	originTopLeft,
+	depthZeroToOne,
+	formatRenderable,
 } from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
-import { originTopLeft, depthZeroToOne, formatRenderable } from "../gpu/door";
 import { Material, Phase, UniformBlock } from "./material";
 import {
 	RenderTarget,
@@ -379,7 +381,6 @@ export function writePostParams(
 	out[POST_COLOR_ADJUST + 3] = OFF;
 }
 
-
 // create checked that the pool fits every block before the first was reserved.
 function reserve(context: DrawContext, slot: int32, length: int32): UniformBlock {
 	const reserved: Result<UniformBlock, UniformError> = reserveUniforms(context, slot, length);
@@ -477,7 +478,7 @@ function make(
 	const blit: Result<MaterialId, MaterialError> = addMaterial(context, blitMaterial);
 	if (!post.ok || !blit.ok) { unreachable; }
 	const toneMap: ToneMapPass | null = hdr ? ToneMapPass.reserve(context) : null;
-	let made: PixelArtRenderer = {
+	const made: PixelArtRenderer = {
 		core: core.value,
 		settings: settings,
 		look: look,
@@ -518,7 +519,11 @@ export function setSettings(renderer: PixelArtRenderer, settings: PixelArtSettin
 
 // The target the scene passes draw into: the HDR target when there is one, cleared to the
 // background decoded, else the colour target.
-function sceneColor(renderer: PixelArtRenderer, load: LoadAction, clear: Vec4): ColorAttachment {
+function sceneColor(
+	this renderer: PixelArtRenderer,
+	load: LoadAction,
+	clear: Vec4,
+): ColorAttachment {
 	const toneMap: ToneMapPass | null = renderer.toneMap;
 	if (toneMap === null) { return renderer.colorTarget.asColor(load, clear); }
 	return toneMap.target.asColor(load, linearBackground(clear));
@@ -528,7 +533,7 @@ export function setLook(renderer: PixelArtRenderer, look: PixelArtLook): void {
 	if (renderer.closed) { stopOnClosed("setLook"); }
 	look.requireFogRange("setLook");
 	renderer.look = look;
-	renderer.sceneColors[0] = sceneColor(renderer, LoadAction.Clear, look.background);
+	renderer.sceneColors[0] = renderer.sceneColor(LoadAction.Clear, look.background);
 	renderer.core.changed = true;
 }
 
@@ -593,13 +598,13 @@ function resizeTargets(renderer: PixelArtRenderer, width: int32, height: int32):
 		renderer.toneMapColors[0] =
 			renderer.colorTarget.asColor(LoadAction.DontCare, UNUSED_CLEAR);
 	}
-	renderer.targetEpoch = renderer.targetEpoch + 1;
+	renderer.targetEpoch += 1;
 	const background: Vec4 = renderer.look.background;
-	renderer.sceneColors[0] = sceneColor(renderer, LoadAction.Clear, background);
+	renderer.sceneColors[0] = renderer.sceneColor(LoadAction.Clear, background);
 	renderer.sceneColors[1] = renderer.normalTarget.asColor(LoadAction.Clear, NORMAL_CLEAR);
 	renderer.sceneDepth =
 		renderer.depthTarget.asDepth(LoadAction.Clear, FAR_DEPTH, StoreAction.DontCare);
-	renderer.translucentColors[0] = sceneColor(renderer, LoadAction.Load, UNUSED_CLEAR);
+	renderer.translucentColors[0] = renderer.sceneColor(LoadAction.Load, UNUSED_CLEAR);
 	renderer.translucentDepth =
 		renderer.depthTarget.asDepth(LoadAction.Load, FAR_DEPTH, StoreAction.DontCare);
 	renderer.postColors[0] = renderer.postTarget.asColor(LoadAction.DontCare, UNUSED_CLEAR);
@@ -635,7 +640,7 @@ function drawScene(renderer: PixelArtRenderer, items: Readonly<Span<DrawItem>>):
 	const core: Renderer = renderer.core;
 	const translucent: boolean =
 		core.phaseCount(Phase.Alpha) + core.phaseCount(Phase.Additive) > 0;
-	const sampled: boolean = postReadsDepth(renderer.settings);
+	const sampled: boolean = renderer.settings.postReadsDepth();
 	renderer.sceneDepth.store = storeWhen(translucent || sampled);
 	renderer.translucentDepth.store = storeWhen(sampled);
 	const hdr: boolean = renderer.toneMap !== null;
@@ -702,14 +707,11 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.MeshLod => PixelArtError.MeshLod,
 		RendererError.CameraPosition => PixelArtError.CameraPosition,
 		RendererError.MeshWrite => PixelArtError.MeshWrite,
-		RendererError.ShapedLightPreset => PixelArtError.ShapedLight,
 		RendererError.DecalPreset => PixelArtError.Decal,
-		RendererError.BadShadowSpot => PixelArtError.ShapedLight,
-		RendererError.SpotShadowUnattached => PixelArtError.ShapedLight,
-		RendererError.BadCubeShadow => PixelArtError.ShapedLight,
-		RendererError.CubeShadowUnattached => PixelArtError.ShapedLight,
-		RendererError.BadCookieSpot => PixelArtError.ShapedLight,
-		RendererError.StaleCookie => PixelArtError.ShapedLight,
+		RendererError.ShapedLightPreset | RendererError.BadShadowSpot |
+			RendererError.SpotShadowUnattached | RendererError.BadCubeShadow |
+			RendererError.CubeShadowUnattached | RendererError.BadCookieSpot |
+			RendererError.StaleCookie => PixelArtError.ShapedLight,
 		RendererError.ClusterViewUnset => PixelArtError.ClusterViewUnset,
 		RendererError.ClusterViewStale => PixelArtError.ClusterViewStale,
 		RendererError.ClusterAssign => PixelArtError.ClusterAssign,
@@ -737,7 +739,7 @@ function phasesFitTargets(
 	context: DrawContext,
 	items: Readonly<Span<DrawItem>>,
 	depthTexture: boolean,
-): Result<boolean, PixelArtError> {
+): Result<void, PixelArtError> {
 	for (const item of items) {
 		if (!context.hasMaterial(item.material)) { continue; }
 		const index: int32 = item.material.index;
@@ -749,10 +751,10 @@ function phasesFitTargets(
 			return Result.err(PixelArtError.TranslucentDepthWrite);
 		}
 	}
-	return Result.ok(true);
+	return Result.ok(null);
 }
 
-function postReadsDepth(settings: PixelArtSettings): boolean {
+function postReadsDepth(this settings: PixelArtSettings): boolean {
 	return settings.postPass && settings.depthSource == DepthSource.DepthTexture;
 }
 
@@ -770,27 +772,15 @@ function rampsHaveLevels(
 			drawnIn(material.program, preset, shadowed);
 		if (!drawn.ok) { continue; }
 		const held: boolean = match (drawn.value.program) {
-			Program.Lit => levelsAt(context, material.uniforms, RAMP_LEVELS),
-			Program.LitTextured => levelsAt(context, material.uniforms, RAMP_LEVELS),
-			Program.Billboard => billboardLevels(context, material.uniforms),
-			Program.ParticleVisual => billboardLevels(context, material.uniforms),
-			Program.Particle => true,
-			Program.UnlitTextured => true,
-			Program.Copy => true,
-			Program.Post => true,
-			Program.Blit => true,
-			Program.BloomDownsampleFirst => true,
-			Program.BloomDownsample => true,
-			Program.BloomUpsample => true,
-			Program.OutlineMask => true,
-			Program.OutlineMix => true,
-			Program.OutlineWidth => true,
-			Program.Decal => true,
-			Program.Sao => true,
-			Program.Blur => true,
-			Program.Line => true,
-			Program.Fxaa => true,
-			Program.ColorMatrix => true,
+			Program.Lit | Program.LitTextured => levelsAt(context, material.uniforms, RAMP_LEVELS),
+			Program.Billboard | Program.ParticleVisual =>
+				billboardLevels(context, material.uniforms),
+			Program.Particle | Program.UnlitTextured | Program.Decal | Program.Line => true,
+			Program.Copy | Program.Post | Program.Blit => true,
+			Program.BloomDownsampleFirst | Program.BloomDownsample |
+				Program.BloomUpsample => true,
+			Program.OutlineMask | Program.OutlineMix | Program.OutlineWidth => true,
+			Program.Sao | Program.Blur | Program.Fxaa | Program.ColorMatrix => true,
 		};
 		if (!held) { return false; }
 	}
@@ -820,7 +810,7 @@ export function prepareFrame(
 			context.issuedMaterial(renderer.blitMaterial);
 		return Result.err(issued ? PixelArtError.StaleMaterial : PixelArtError.ForeignMaterial);
 	}
-	let kept: boolean = context.keepsItsTexture(renderer.postMaterial) &&
+	const kept: boolean = context.keepsItsTexture(renderer.postMaterial) &&
 		context.keepsItsTexture(renderer.blitMaterial);
 	if (!kept) { return Result.err(PixelArtError.TextureReplaced); }
 	const blocksKept: boolean = context.keepsItsUniforms(renderer.postMaterial) &&
@@ -841,9 +831,7 @@ export function prepareFrame(
 	if (!rampsHaveLevels(renderer.core.preset, shadowed, context, items)) {
 		return Result.err(PixelArtError.RampLevels);
 	}
-	const phases: Result<boolean, PixelArtError> =
-		phasesFitTargets(context, items, postReadsDepth(renderer.settings));
-	if (!phases.ok) { return Result.err(phases.error); }
+	const _phases = try phasesFitTargets(context, items, renderer.settings.postReadsDepth());
 	const clusterView: CameraView | null = renderer.core.cameraView;
 	if (clusterView !== null &&
 		(clusterView.texelWidth != view.width || clusterView.texelHeight != view.height)) {

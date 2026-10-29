@@ -97,13 +97,17 @@ export function fxaaCoverage(
 	return b > low && b < high ? b : a;
 }
 
+function outlineRadius(width: float32): float32 {
+	return (Math.abs(width - 2.0) * 0.5) as float32;
+}
+
 export function outlineWidthCoverage(
 	sample: (x: float32, y: float32) => float32,
 	x: float32,
 	y: float32,
 	width: float32,
 ): float32 {
-	const radius: float32 = (Math.abs(width - 2.0) * 0.5) as float32;
+	const radius: float32 = outlineRadius(width);
 	const complement: boolean = width < 2.0;
 	const step: float32 = (6.283185307179586 / OUTLINE_WIDTH_SAMPLES) as float32;
 	let angle: float32 = 0.0;
@@ -241,7 +245,7 @@ export function prepare(
 	pass.mixValues[5] = 0.0;
 	pass.mixValues[6] = 0.0;
 	pass.mixValues[7] = 0.0;
-	pass.widthValues[0] = (Math.abs(settings.pixelWidth - 2.0) * 0.5) as float32;
+	pass.widthValues[0] = outlineRadius(settings.pixelWidth);
 	pass.widthValues[1] = settings.pixelWidth < 2.0 ? 1.0 : 0.0;
 	pass.widthValues[2] = 0.0;
 	pass.widthValues[3] = 0.0;
@@ -261,20 +265,19 @@ export function prepare(
 	context.materials[pass.mixMaterial.index].sampler1 = pass.linearSampler.asHandle();
 }
 
-export function drawMask(this pass: ForwardOutlinePass, core: Renderer): void {
-	beginPass(pass.maskColors, NO_DEPTH);
-	const drawn: Result<int32, RendererError> = drawScreen(core, pass.maskMaterial,
-		OUTLINE_SCREEN_LAYOUT);
+function drawScreenPass(core: Renderer, material: MaterialId, colors: Vec<ColorAttachment>): void {
+	beginPass(colors, NO_DEPTH);
+	const drawn: Result<int32, RendererError> = drawScreen(core, material, OUTLINE_SCREEN_LAYOUT);
 	if (!drawn.ok) { unreachable; }
 	endPass();
 }
 
+export function drawMask(this pass: ForwardOutlinePass, core: Renderer): void {
+	drawScreenPass(core, pass.maskMaterial, pass.maskColors);
+}
+
 export function drawWidth(this pass: ForwardOutlinePass, core: Renderer): void {
-	beginPass(pass.widthColors, NO_DEPTH);
-	const drawn: Result<int32, RendererError> =
-		drawScreen(core, pass.widthMaterial, OUTLINE_SCREEN_LAYOUT);
-	if (!drawn.ok) { unreachable; }
-	endPass();
+	drawScreenPass(core, pass.widthMaterial, pass.widthColors);
 }
 
 export function drawMix(
@@ -282,11 +285,7 @@ export function drawMix(
 	core: Renderer,
 	colors: Vec<ColorAttachment>,
 ): void {
-	beginPass(colors, NO_DEPTH);
-	const drawn: Result<int32, RendererError> =
-		drawScreen(core, pass.mixMaterial, OUTLINE_SCREEN_LAYOUT);
-	if (!drawn.ok) { unreachable; }
-	endPass();
+	drawScreenPass(core, pass.mixMaterial, colors);
 }
 
 export function close(this pass: ForwardOutlinePass, context: DrawContext): void {
