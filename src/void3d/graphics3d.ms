@@ -1,12 +1,25 @@
 import { Vec3, vec3 } from "../math/math3d";
 import {
-	MeshData, Rgba, LIT_TEXTURED_VERTEX_STRIDE, addTexturedVertex, addTriangle,
-	hasRoomFor, validIndexStorage, vertexCount, indexCount,
+	MeshData,
+	Rgba,
+	LIT_TEXTURED_VERTEX_STRIDE,
+	addTexturedVertex,
+	addTriangle,
+	hasRoomFor,
+	validIndexStorage,
+	vertexCount,
+	indexCount,
 } from "./meshData";
 import { addPoint } from "./bounds";
 import { Camera3D, CameraView } from "./camera";
+import { finiteVec } from "./colliderMath";
 import {
-	LINE_COLOR, LINE_FAR, LINE_LENGTH_SCALE, LINE_NEAR, LINE_PIXEL_SIZE, LINE_UNIFORM_LENGTH,
+	LINE_COLOR,
+	LINE_FAR,
+	LINE_LENGTH_SCALE,
+	LINE_NEAR,
+	LINE_PIXEL_SIZE,
+	LINE_UNIFORM_LENGTH,
 	LINE_WIDTH,
 } from "./gpu3d";
 
@@ -25,7 +38,13 @@ export struct Graphics3D {
 	points: Vec<GraphicsPoint>;
 }
 
-export enum GraphicsError { NonFinite, DeltaRange, Shape, Capacity, Degenerate }
+export enum GraphicsError {
+	NonFinite,
+	DeltaRange,
+	Shape,
+	Capacity,
+	Degenerate,
+}
 
 export function create(this typeof Graphics3D): Graphics3D {
 	return {
@@ -34,34 +53,40 @@ export function create(this typeof Graphics3D): Graphics3D {
 	};
 }
 
-function finiteColor(color: Rgba): boolean {
+function isFinite(this color: Rgba): boolean {
 	return Number.isFinite(color.red) && Number.isFinite(color.green) &&
 		Number.isFinite(color.blue) && Number.isFinite(color.alpha);
 }
 
-function finitePoint(point: Vec3): boolean {
-	return Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z);
-}
-
 export function setGraphicsColorF(
-	ref graphics: Graphics3D, red: float32, green: float32, blue: float32, alpha: float32 = 1,
+	ref graphics: Graphics3D,
+	red: float32,
+	green: float32,
+	blue: float32,
+	alpha: float32 = 1,
 ): Result<void, GraphicsError> {
 	const color: Rgba = { red: red, green: green, blue: blue, alpha: alpha };
-	if (!finiteColor(color)) { return Result.err(GraphicsError.NonFinite); }
+	if (!color.isFinite()) { return Result.err(GraphicsError.NonFinite); }
 	graphics.color = color;
 	return Result.ok(null);
 }
 
 export function lineStyle(
-	ref graphics: Graphics3D, width: float32 = 0, color: uint32 = 0, alpha: float32 = 1,
+	ref graphics: Graphics3D,
+	width: float32 = 0,
+	color: uint32 = 0,
+	alpha: float32 = 1,
 ): Result<void, GraphicsError> {
 	if (!Number.isFinite(width)) { return Result.err(GraphicsError.NonFinite); }
 	const flushed = flushGraphics(graphics);
 	if (!flushed.ok) { return flushed; }
-	const result = setGraphicsColorF(graphics,
+	const result = setGraphicsColorF(
+		graphics,
 		((color >> 16) & 0xff) as float32 / 255.0,
 		((color >> 8) & 0xff) as float32 / 255.0,
-		(color & 0xff) as float32 / 255.0, alpha);
+		(color & 0xff) as float32 / 255.0,
+		alpha,
+	);
 	if (!result.ok) { return result; }
 	if (width > 0 && graphics.lineSize != width) {
 		graphics.lineSize = width;
@@ -71,10 +96,13 @@ export function lineStyle(
 }
 
 export function moveTo(
-	ref graphics: Graphics3D, x: float32, y: float32, z: float32,
+	ref graphics: Graphics3D,
+	x: float32,
+	y: float32,
+	z: float32,
 ): Result<void, GraphicsError> {
 	const point: Vec3 = vec3(x, y, z);
-	if (!finitePoint(point)) { return Result.err(GraphicsError.NonFinite); }
+	if (!finiteVec(point)) { return Result.err(GraphicsError.NonFinite); }
 	if (graphics.is3D) {
 		const flushed = flushGraphics(graphics);
 		if (!flushed.ok) { return flushed; }
@@ -89,7 +117,11 @@ export function moveTo(
 // (RenderContext's 2 / width, 2 / height) and the camera's near and far, then `color`, the
 // material colour the vertex colours multiply.
 export function writeLineBlock(
-	graphics: Graphics3D, camera: Camera3D, view: CameraView, color: Rgba, out: Span<float32>,
+	graphics: Graphics3D,
+	camera: Camera3D,
+	view: CameraView,
+	color: Rgba,
+	out: Span<float32>,
 ): void {
 	for (let i = 0; i < LINE_UNIFORM_LENGTH; i++) { out[i] = 0.0; }
 	out[LINE_WIDTH] = graphics.width;
@@ -117,10 +149,13 @@ export function setIs3D(ref graphics: Graphics3D, is3D: boolean): void {
 }
 
 export function lineTo(
-	ref graphics: Graphics3D, x: float32, y: float32, z: float32,
+	ref graphics: Graphics3D,
+	x: float32,
+	y: float32,
+	z: float32,
 ): Result<void, GraphicsError> {
 	const end: Vec3 = vec3(x, y, z);
-	if (!finitePoint(end) || !finitePoint(graphics.current) || !finiteColor(graphics.color)) {
+	if (!finiteVec(end) || !finiteVec(graphics.current) || !graphics.color.isFinite()) {
 		return Result.err(GraphicsError.NonFinite);
 	}
 	if (graphics.is3D) {
@@ -134,7 +169,7 @@ export function lineTo(
 		((y as float64) - graphics.current.y) as float32,
 		((z as float64) - graphics.current.z) as float32,
 	);
-	if (!finitePoint(delta)) { return Result.err(GraphicsError.DeltaRange); }
+	if (!finiteVec(delta)) { return Result.err(GraphicsError.DeltaRange); }
 	if (!graphics.data.hasUvs || graphics.data.hasTangents || graphics.data.hasUvB ||
 		graphics.data.hasSkin ||
 		graphics.data.vertices.length % LIT_TEXTURED_VERTEX_STRIDE != 0 ||
@@ -148,8 +183,13 @@ export function lineTo(
 	}
 	const start: int32 = graphics.data.vertexCount();
 	for (let corner = 0; corner < 4; corner++) {
-		const added = addTexturedVertex(graphics.data, graphics.current, delta,
-			{ u: corner >= 2 ? 1.0 : 0.0, v: (corner % 2) as float32 }, graphics.color);
+		const added = addTexturedVertex(
+			graphics.data,
+			graphics.current,
+			delta,
+			{ u: corner >= 2 ? 1.0 : 0.0, v: (corner % 2) as float32 },
+			graphics.color,
+		);
 		if (!added.ok) { return Result.err(GraphicsError.Capacity); }
 	}
 	const first = addTriangle(graphics.data, start, start + 1, start + 2);
@@ -174,36 +214,36 @@ export function flushGraphics(ref graphics: Graphics3D): Result<void, GraphicsEr
 		graphics.points = [];
 		return Result.ok(null);
 	}
-	let pts: Vec<Vec3> = [];
-	for (const point of graphics.points) { pts.push(point.position); }
-	let last: int32 = (pts.length as int32) - 1;
-	let prev: Vec3 = pts[last];
-	let p: Vec3 = pts[0];
+	let positions: Vec<Vec3> = [];
+	for (const point of graphics.points) { positions.push(point.position); }
+	let last: int32 = (positions.length as int32) - 1;
+	let prev: Vec3 = positions[last];
+	let p: Vec3 = positions[0];
 	const closed: boolean = p.x == prev.x && p.y == prev.y && p.z == prev.z;
-	let count: int32 = pts.length as int32;
+	let count: int32 = positions.length as int32;
 	if (!closed) {
-		pts.push(mirrored(prev, pts[last - 1]));
-		prev = mirrored(p, pts[1]);
+		positions.push(mirrored(prev, positions[last - 1]));
+		prev = mirrored(p, positions[1]);
 	} else if (count > 1) {
-		count = count - 1;
-		last = last - 1;
-		prev = pts[last];
+		count -= 1;
+		last -= 1;
+		prev = positions[last];
 	}
 	let offsets: Vec<float32> = [];
 	for (let i = 0; i < count; i++) {
-		const next: Vec3 = pts[(i + 1) % (pts.length as int32)];
-		const nx1: number = prev.y - p.y;
-		const ny1: number = p.x - prev.x;
-		const ns1: number = 1 / Math.sqrt(nx1 * nx1 + ny1 * ny1);
-		const nx2: number = p.y - next.y;
-		const ny2: number = next.x - p.x;
-		const ns2: number = 1 / Math.sqrt(nx2 * nx2 + ny2 * ny2);
-		let nx: number = nx1 * ns1 + nx2 * ns2;
-		let ny: number = ny1 * ns1 + ny2 * ns2;
-		const ns: number = 1 / Math.sqrt(nx * nx + ny * ny);
+		const next: Vec3 = positions[(i + 1) % (positions.length as int32)];
+		const nx1: float64 = prev.y - p.y;
+		const ny1: float64 = p.x - prev.x;
+		const ns1: float64 = 1 / Math.sqrt(nx1 * nx1 + ny1 * ny1);
+		const nx2: float64 = p.y - next.y;
+		const ny2: float64 = next.x - p.x;
+		const ns2: float64 = 1 / Math.sqrt(nx2 * nx2 + ny2 * ny2);
+		let nx: float64 = nx1 * ns1 + nx2 * ns2;
+		let ny: float64 = ny1 * ns1 + ny2 * ns2;
+		const ns: float64 = 1 / Math.sqrt(nx * nx + ny * ny);
 		nx = nx * ns;
 		ny = ny * ns;
-		const d: number = graphics.lineSize * 0.5 / (nx * nx1 * ns1 + ny * ny1 * ns1);
+		const d: float64 = graphics.lineSize * 0.5 / (nx * nx1 * ns1 + ny * ny1 * ns1);
 		const ox: float32 = (nx * d) as float32;
 		const oy: float32 = (ny * d) as float32;
 		if (!Number.isFinite(ox) || !Number.isFinite(oy)) {
@@ -233,10 +273,20 @@ export function flushGraphics(ref graphics: Graphics3D): Result<void, GraphicsEr
 		const at: Vec3 = point.position;
 		const ox: float32 = offsets[i * 2];
 		const oy: float32 = offsets[i * 2 + 1];
-		const left = addTexturedVertex(graphics.data, vec3(at.x + ox, at.y + oy, at.z), up,
-			{ u: 0, v: v }, point.color);
-		const right = addTexturedVertex(graphics.data, vec3(at.x - ox, at.y - oy, at.z), up,
-			{ u: 1, v: v }, point.color);
+		const left = addTexturedVertex(
+			graphics.data,
+			vec3(at.x + ox, at.y + oy, at.z),
+			up,
+			{ u: 0, v: v },
+			point.color,
+		);
+		const right = addTexturedVertex(
+			graphics.data,
+			vec3(at.x - ox, at.y - oy, at.z),
+			up,
+			{ u: 1, v: v },
+			point.color,
+		);
 		if (!left.ok || !right.ok) { return Result.err(GraphicsError.Capacity); }
 		v = 1 - v;
 	}

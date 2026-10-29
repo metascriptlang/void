@@ -38,6 +38,22 @@ function componentBytes(component: int32): int32 {
 	};
 }
 
+function weightScale(component: int32): float64 {
+	return match (component) {
+		UNSIGNED_BYTE => 255.0,
+		UNSIGNED_SHORT => 65535.0,
+		_ => 0.0,
+	};
+}
+
+function jointEncoding(component: int32, normalized: boolean): boolean {
+	return !normalized && (component == UNSIGNED_BYTE || component == UNSIGNED_SHORT);
+}
+
+function weightEncoding(component: int32, normalized: boolean): boolean {
+	return componentBytes(component) > 0 && normalized == (component != FLOAT);
+}
+
 function unsignedAt(bytes: Readonly<Span<uint8>>, at: int32, component: int32): int32 {
 	const low: int32 = bytes[at] as int32;
 	return component == UNSIGNED_BYTE ? low : low | ((bytes[at + 1] as int32) << 8);
@@ -93,9 +109,8 @@ export function fromPacked(
 	sets: int32 = 1,
 ): Result<SkinInfluences, SkinInfluencesError> {
 	if (sets != 1) { return Result.err(SkinInfluencesError.ExtraSets); }
-	if (jointNormalized || (jointComponent != UNSIGNED_BYTE && jointComponent != UNSIGNED_SHORT)
-		|| (weightComponent != UNSIGNED_BYTE && weightComponent != UNSIGNED_SHORT &&
-		weightComponent != FLOAT) || weightNormalized != (weightComponent != FLOAT)) {
+	if (!jointEncoding(jointComponent, jointNormalized) ||
+		!weightEncoding(weightComponent, weightNormalized)) {
 		return Result.err(SkinInfluencesError.Encoding);
 	}
 	const jointSize: int32 = componentBytes(jointComponent);
@@ -114,9 +129,7 @@ export function fromPacked(
 				float32At(weightBytes, at * weightSize) :
 				unsignedAt(weightBytes, at * weightSize, weightComponent) as float32);
 		}
-		const required: float64 = weightComponent == UNSIGNED_BYTE ? 255.0 :
-			weightComponent == UNSIGNED_SHORT ? 65535.0 : 0.0;
-		const normalized = normalizeVertex(data, vertex, jointCount, required);
+		const normalized = normalizeVertex(data, vertex, jointCount, weightScale(weightComponent));
 		if (!normalized.ok) { return Result.err(normalized.error); }
 	}
 	return Result.ok(move data);
@@ -130,25 +143,25 @@ export function fromAccessor(
 	views: Readonly<Span<GltfAccessorView>>,
 	jointCount: int32,
 ): Result<SkinInfluences, SkinInfluencesError> {
-	if (joints.role != GltfAccessorRole.Attribute || weights.role != GltfAccessorRole.Attribute
-		|| joints.shape != GltfAccessorShape.Vec4 || weights.shape != GltfAccessorShape.Vec4
-		|| joints.normalized || (joints.componentType != UNSIGNED_BYTE
-		&& joints.componentType != UNSIGNED_SHORT) || (weights.componentType != UNSIGNED_BYTE
-		&& weights.componentType != UNSIGNED_SHORT && weights.componentType != FLOAT)
-		|| weights.normalized != (weights.componentType != FLOAT)) {
+	if (joints.role != GltfAccessorRole.Attribute || weights.role != GltfAccessorRole.Attribute ||
+		joints.shape != GltfAccessorShape.Vec4 || weights.shape != GltfAccessorShape.Vec4 ||
+		!jointEncoding(joints.componentType, joints.normalized) ||
+		!weightEncoding(weights.componentType, weights.normalized)) {
 		return Result.err(SkinInfluencesError.Encoding);
 	}
-	if (jointCount < 1 || joints.count < 1 || joints.count > 0x7fffffff / 16
-		|| weights.count != joints.count) { return Result.err(SkinInfluencesError.Shape); }
+	if (jointCount < 1 || joints.count < 1 || joints.count > 0x7fffffff / 16 ||
+		weights.count != joints.count) {
+		return Result.err(SkinInfluencesError.Shape);
+	}
 	const decodedJoints = GltfAccessorValues.decode(joints, buffers, views);
 	if (!decodedJoints.ok) { return Result.err(SkinInfluencesError.Shape); }
 	const decodedWeights = GltfAccessorValues.decode(weights, buffers, views);
 	if (!decodedWeights.ok) {
-		return Result.err(decodedWeights.error == GltfAccessorError.NonFinite
-			? SkinInfluencesError.BadWeight : SkinInfluencesError.Shape);
+		return Result.err(decodedWeights.error == GltfAccessorError.NonFinite ?
+			SkinInfluencesError.BadWeight :
+			SkinInfluencesError.Shape);
 	}
-	const scale: float64 = weights.componentType == UNSIGNED_BYTE ? 255.0 :
-		weights.componentType == UNSIGNED_SHORT ? 65535.0 : 0.0;
+	const scale: float64 = weightScale(weights.componentType);
 	let data: SkinInfluences = { joints: [], weights: [] };
 	for (let vertex = 0; vertex < joints.count; vertex++) {
 		for (let influence = 0; influence < 4; influence++) {

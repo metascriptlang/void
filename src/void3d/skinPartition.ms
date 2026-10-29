@@ -169,7 +169,7 @@ function assignJointSlots(
 				groups[group].assigned.push(-1);
 			}
 		}
-		let failed: int32 = -1;
+		let assignedAll: boolean = true;
 		for (const joint of order) {
 			slots[joint] = -1;
 			for (let slot = 0; slot < MAX_SKIN_PALETTE_JOINTS; slot++) {
@@ -194,11 +194,11 @@ function assignJointSlots(
 				if (priority[joint] > 10) {
 					return Result.err(SkinPartitionError.PaletteAssignment);
 				}
-				failed = joint;
+				assignedAll = false;
 				break;
 			}
 		}
-		if (failed < 0) { return Result.ok(move slots); }
+		if (assignedAll) { return Result.ok(move slots); }
 	}
 }
 
@@ -242,7 +242,7 @@ export function fromTriangles(
 			if (!Number.isFinite(weight) || weight < 0.0) {
 				return Result.err(SkinPartitionError.BadWeight);
 			}
-			total = total + (weight as float64);
+			total += weight as float64;
 			if (weight > 0.0) { addSortedJoint(used, joint); }
 		}
 		if (total < 0.99999 || total > 1.00001) {
@@ -254,8 +254,9 @@ export function fromTriangles(
 		let joints: Vec<int32> = [];
 		for (let corner = 0; corner < 3; corner++) {
 			const element: int32 = triangle * 3 + corner;
-			const index: uint32 = wideIndices.length > 0
-				? wideIndices[element] : (indices[element] as uint32);
+			const index: uint32 = wideIndices.length > 0 ?
+				wideIndices[element] :
+				(indices[element] as uint32);
 			if ((index as int64) >= jointIndices.length / 4) {
 				return Result.err(SkinPartitionError.IndexOutOfRange);
 			}

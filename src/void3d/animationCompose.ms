@@ -295,7 +295,10 @@ export function stageExclusiveCompose(
 }
 
 function weightedScalar(
-	a: float32, b: float32, c: float32, weights: Readonly<Span<float64>>,
+	a: float32,
+	b: float32,
+	c: float32,
+	weights: Readonly<Span<float64>>,
 ): float32 {
 	return ((a as float64) * weights[0] + (b as float64) * weights[1] +
 		(c as float64) * weights[2]) as float32;
@@ -303,7 +306,9 @@ function weightedScalar(
 
 function weightedRotation(
 	reference: Quat,
-	a: Quat, b: Quat, c: Quat,
+	a: Quat,
+	b: Quat,
+	c: Quat,
 	weights: Readonly<Span<float64>>,
 ): Quat {
 	const inverse: Quat = reference.conjugate();
@@ -311,7 +316,7 @@ function weightedRotation(
 	let y: float64 = 0.0;
 	let z: float64 = 0.0;
 	let w: float64 = 0.0;
-	const sources: Vec<Quat> = [a, b, c];
+	const sources: Quat[3] = [a, b, c];
 	for (let i = 0; i < 3; i++) {
 		let relative: Quat = inverse * sources[i];
 		if (relative.w < 0.0) {
@@ -359,24 +364,31 @@ export function stageWeightedCompose(
 			position: vec3(
 				weightedScalar(a.value.position.x, b.value.position.x, c.value.position.x, weights),
 				weightedScalar(a.value.position.y, b.value.position.y, c.value.position.y, weights),
-				weightedScalar(a.value.position.z, b.value.position.z, c.value.position.z,
-					weights)),
+				weightedScalar(a.value.position.z, b.value.position.z, c.value.position.z, weights),
+			),
 			rotation: weightedRotation(
-				compose.targets[i].rest.rotation, a.value.rotation, b.value.rotation,
-				c.value.rotation, weights),
+				compose.targets[i].rest.rotation,
+				a.value.rotation,
+				b.value.rotation,
+				c.value.rotation,
+				weights,
+			),
 			scale: vec3(
 				weightedScalar(a.value.scale.x, b.value.scale.x, c.value.scale.x, weights),
 				weightedScalar(a.value.scale.y, b.value.scale.y, c.value.scale.y, weights),
-				weightedScalar(a.value.scale.z, b.value.scale.z, c.value.scale.z, weights)),
+				weightedScalar(a.value.scale.z, b.value.scale.z, c.value.scale.z, weights),
+			),
 		};
 		const sample: AnimationTrsSample = {
-			sourceNode: compose.targets[i].sourceNode, value: value, present: allComponents(),
+			sourceNode: compose.targets[i].sourceNode,
+			value: value,
+			present: allComponents(),
 		};
 		const checked = try sample.checkedSample();
 		let present: BitSet<AnimationComponent> = 0 as BitSet<AnimationComponent>;
-		if (weights[0] != 0.0) { present = present | a.present; }
-		if (weights[1] != 0.0) { present = present | b.present; }
-		if (weights[2] != 0.0) { present = present | c.present; }
+		if (weights[0] != 0.0) { present |= a.present; }
+		if (weights[1] != 0.0) { present |= b.present; }
+		if (weights[2] != 0.0) { present |= c.present; }
 		compose.pending[i] = { ...sample, present: present };
 	}
 	publishCompose(compose, first.seconds, second.seconds);

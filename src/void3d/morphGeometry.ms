@@ -44,7 +44,14 @@ export struct MorphGeometry {
 	revision: uint64;
 }
 
-function meshShape(source: Readonly<MeshData>): boolean {
+function allFinite(values: Readonly<Span<float32>>): boolean {
+	for (const value of values) {
+		if (!Number.isFinite(value)) { return false; }
+	}
+	return true;
+}
+
+function meshShape(this source: Readonly<MeshData>): boolean {
 	if (source.hasTangents && !source.hasUvs) { return false; }
 	const stride: int32 = source.stride();
 	if (source.vertices.length < stride ||
@@ -97,14 +104,8 @@ function validateTarget(
 	if (!hasTangents && target.tangents.length != 0) {
 		return Result.err(MorphGeometryError.Semantic);
 	}
-	for (const value of target.positions) {
-		if (!Number.isFinite(value)) { return Result.err(MorphGeometryError.NonFinite); }
-	}
-	for (const value of target.normals) {
-		if (!Number.isFinite(value)) { return Result.err(MorphGeometryError.NonFinite); }
-	}
-	for (const value of target.tangents) {
-		if (!Number.isFinite(value)) { return Result.err(MorphGeometryError.NonFinite); }
+	if (!allFinite(target.positions) || !allFinite(target.normals) || !allFinite(target.tangents)) {
+		return Result.err(MorphGeometryError.NonFinite);
 	}
 	return Result.ok(null);
 }
@@ -119,7 +120,7 @@ export function create(
 	}
 	let primitives: Vec<MorphPrimitiveData> = [];
 	for (let primitive = 0; primitive < inputs.length; primitive++) {
-		if (!meshShape(inputs[primitive].base) || inputs[primitive].sourceVertexCount < 1 ||
+		if (!inputs[primitive].base.meshShape() || inputs[primitive].sourceVertexCount < 1 ||
 			inputs[primitive].sourceVertexCount > 0x7fffffff / 3) {
 			return Result.err(MorphGeometryError.Shape);
 		}
@@ -135,8 +136,8 @@ export function create(
 				return Result.err(MorphGeometryError.SourceVertex);
 			}
 		}
-		for (const value of inputs[primitive].base.vertices) {
-			if (!Number.isFinite(value)) { return Result.err(MorphGeometryError.NonFinite); }
+		if (!allFinite(inputs[primitive].base.vertices)) {
+			return Result.err(MorphGeometryError.NonFinite);
 		}
 		for (let target = 0; target < inputs[primitive].targets.length; target++) {
 			const validated = try validateTarget(
@@ -175,13 +176,14 @@ export function create(
 // The same offsets over other bases: one per primitive, the vertices of the primitive's base in
 // the same order, so a skinned layout of the mesh deforms by the weights the plain one does.
 export function rebased(
-	this data: Readonly<MorphData>, bases: Readonly<Span<MeshData>>,
+	this data: Readonly<MorphData>,
+	bases: Readonly<Span<MeshData>>,
 ): Result<MorphData, MorphGeometryError> {
 	if (bases.length != data.primitives.length) { return Result.err(MorphGeometryError.Shape); }
 	let primitives: Vec<MorphPrimitiveData> = [];
 	for (let primitive = 0; primitive < data.primitives.length; primitive++) {
 		const from: Readonly<MeshData> = data.primitives[primitive].base;
-		if (!meshShape(bases[primitive]) || bases[primitive].vertexCount() != from.vertexCount() ||
+		if (!bases[primitive].meshShape() || bases[primitive].vertexCount() != from.vertexCount() ||
 			bases[primitive].hasUvs != from.hasUvs ||
 			bases[primitive].hasTangents != from.hasTangents ||
 			bases[primitive].hasUvB != from.hasUvB) {
@@ -216,7 +218,7 @@ export function bind(
 		ready: false, revision: 0,
 	};
 	for (let primitive = 0; primitive < data.primitives.length; primitive++) {
-		if (!meshShape(data.primitives[primitive].base)) {
+		if (!data.primitives[primitive].base.meshShape()) {
 			return Result.err(MorphGeometryError.Shape);
 		}
 		const width: int64 = (data.targetCount as int64) *
@@ -224,8 +226,8 @@ export function bind(
 		if (width > 0x7fffffff || data.primitives[primitive].targetVertexXyz.length != width) {
 			return Result.err(MorphGeometryError.Shape);
 		}
-		for (const value of data.primitives[primitive].base.vertices) {
-			if (!Number.isFinite(value)) { return Result.err(MorphGeometryError.NonFinite); }
+		if (!allFinite(data.primitives[primitive].base.vertices)) {
+			return Result.err(MorphGeometryError.NonFinite);
 		}
 		for (let at = 0; at < data.primitives[primitive].targetVertexXyz.length; at++) {
 			const value: float32 = data.primitives[primitive].targetVertexXyz[at];

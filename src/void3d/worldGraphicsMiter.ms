@@ -1,14 +1,20 @@
 import { Vec3, vec3 } from "../math/math3d";
+import { FLOAT32_LIMIT, finiteVec } from "./colliderMath";
 
-export enum WorldMiterError { NonFinite, Width, Degenerate, OutOfRange }
+export enum WorldMiterError {
+	NonFinite,
+	Width,
+	Degenerate,
+	OutOfRange,
+}
 
 export function worldGraphicsMiter(
-	previous: Vec3, current: Vec3, next: Vec3, width: float32,
+	previous: Vec3,
+	current: Vec3,
+	next: Vec3,
+	width: float32,
 ): Result<Vec3, WorldMiterError> {
-	if (!Number.isFinite(previous.x) || !Number.isFinite(previous.y) ||
-		!Number.isFinite(previous.z) || !Number.isFinite(current.x) ||
-		!Number.isFinite(current.y) || !Number.isFinite(current.z) ||
-		!Number.isFinite(next.x) || !Number.isFinite(next.y) || !Number.isFinite(next.z)) {
+	if (!finiteVec(previous) || !finiteVec(current) || !finiteVec(next)) {
 		return Result.err(WorldMiterError.NonFinite);
 	}
 	if (!Number.isFinite(width) || width < 0) { return Result.err(WorldMiterError.Width); }
@@ -30,8 +36,7 @@ export function worldGraphicsMiter(
 	const scale: float64 = (width as float64) * 0.5 / facing;
 	const x: float64 = nx * scale;
 	const z: float64 = nz * scale;
-	const float32Max: float64 = 3.4028234663852886e38;
-	if (Math.abs(x) > float32Max || Math.abs(z) > float32Max) {
+	if (Math.abs(x) > FLOAT32_LIMIT || Math.abs(z) > FLOAT32_LIMIT) {
 		return Result.err(WorldMiterError.OutOfRange);
 	}
 	return Result.ok(vec3(x as float32, 0, z as float32));

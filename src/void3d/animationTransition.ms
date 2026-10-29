@@ -1,11 +1,20 @@
 import { vec3 } from "../math/math3d";
 import { Scene3D, NodeId3D, isLive, setLocal } from "./scene";
 import {
-	GltfPoseTrack, GltfWeightTrack, GltfCurvePath, sample, sampleWeightsInto,
+	GltfPoseTrack,
+	GltfWeightTrack,
+	GltfCurvePath,
+	sample,
+	sampleWeightsInto,
 } from "./gltfCurve";
 import {
-	AnimationCompose, AnimationRestTarget, AnimationChildSample,
-	AnimationComponent, blendedScalar, stageSmoothCompose, stageExclusiveCompose,
+	AnimationCompose,
+	AnimationRestTarget,
+	AnimationChildSample,
+	AnimationComponent,
+	blendedScalar,
+	stageSmoothCompose,
+	stageExclusiveCompose,
 } from "./animationCompose";
 
 export enum AnimationTransitionError {
@@ -76,7 +85,9 @@ export function forTracks(
 			return Result.err(AnimationTransitionError.Curve);
 		}
 		clip.seconds = Math.max(
-			clip.seconds, tracks[i].curve.times[tracks[i].curve.times.length - 1] as float64);
+			clip.seconds,
+			tracks[i].curve.times[tracks[i].curve.times.length - 1] as float64,
+		);
 		clip.tracks.push({ sourceNode: tracks[i].sourceNode, curve: tracks[i].curve });
 	}
 	for (let i = 0; i < weightTracks.length; i++) {
@@ -90,7 +101,8 @@ export function forTracks(
 		}
 		clip.seconds = Math.max(
 			clip.seconds,
-			weightTracks[i].curve.times[weightTracks[i].curve.times.length - 1] as float64);
+			weightTracks[i].curve.times[weightTracks[i].curve.times.length - 1] as float64,
+		);
 		clip.weightTracks.push({
 			sourceNode: weightTracks[i].sourceNode, curve: weightTracks[i].curve,
 		});
@@ -236,11 +248,19 @@ export function advance(
 ): Result<void, AnimationTransitionError> {
 	if (!Number.isFinite(dt) || dt < 0.0) { return Result.err(AnimationTransitionError.Delta); }
 	transition.first.time = transition.first.clip.steppedTime(
-		transition.first.time, dt, transition.firstSpeed);
+		transition.first.time,
+		dt,
+		transition.firstSpeed,
+	);
 	transition.second.time = transition.second.clip.steppedTime(
-		transition.second.time, dt, transition.secondSpeed);
-	transition.blend = Math.min(1.0, Math.max(
-		0.0, transition.blend + dt * transition.blendSpeed / transition.blendSeconds));
+		transition.second.time,
+		dt,
+		transition.secondSpeed,
+	);
+	transition.blend = Math.min(
+		1.0,
+		Math.max(0.0, transition.blend + dt * transition.blendSpeed / transition.blendSeconds),
+	);
 	return Result.ok(null);
 }
 
@@ -310,12 +330,19 @@ export function evaluate(
 	const sampled = try sampleBoth(transition);
 	const toward: float32 = transition.blend as float32;
 	const staged = stageSmoothCompose(
-		transition.compose, transition.first.child, transition.second.child, toward);
+		transition.compose,
+		transition.first.child,
+		transition.second.child,
+		toward,
+	);
 	if (!staged.ok) { return Result.err(AnimationTransitionError.Compose); }
 	for (let i = 0; i < transition.weights.length; i++) {
 		for (let k = 0; k < transition.weights[i].length; k++) {
 			transition.weights[i][k] = blendedScalar(
-				transition.first.weights[i][k], transition.second.weights[i][k], toward);
+				transition.first.weights[i][k],
+				transition.second.weights[i][k],
+				toward,
+			);
 		}
 	}
 	return Result.ok(null);
@@ -327,7 +354,11 @@ export function evaluateMasked(
 ): Result<void, AnimationTransitionError> {
 	const sampled = try sampleBoth(transition);
 	const staged = stageExclusiveCompose(
-		transition.compose, transition.first.child, transition.second.child, secondSources);
+		transition.compose,
+		transition.first.child,
+		transition.second.child,
+		secondSources,
+	);
 	if (!staged.ok) { return Result.err(AnimationTransitionError.Compose); }
 	for (let i = 0; i < transition.weights.length; i++) {
 		let fromSecond: boolean = false;
@@ -335,8 +366,9 @@ export function evaluateMasked(
 			if (source == transition.weightRest[i].sourceNode) { fromSecond = true; }
 		}
 		for (let k = 0; k < transition.weights[i].length; k++) {
-			transition.weights[i][k] = fromSecond
-				? transition.second.weights[i][k] : transition.first.weights[i][k];
+			transition.weights[i][k] = fromSecond ?
+				transition.second.weights[i][k] :
+				transition.first.weights[i][k];
 		}
 	}
 	return Result.ok(null);

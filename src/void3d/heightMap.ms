@@ -27,8 +27,11 @@ export function heightMapContains(getZ: (x: float32, y: float32) => float32, poi
 // A ray looking up or nearly level, or starting under the surface, is a miss as in Heaps.
 // PENDING3D: heightmap-bisect-at-interval-end
 export function heightMapRayIntersection(
-	getZ: (x: float32, y: float32) => float32, ray: Ray,
-	step: float32, precision: float32, maxDistance: float32,
+	getZ: (x: float32, y: float32) => float32,
+	ray: Ray,
+	step: float32,
+	precision: float32,
+	maxDistance: float32,
 ): Result<float32, HeightMapError> {
 	if (!finiteVec(ray.origin) || !finiteVec(ray.direction)) {
 		return Result.err(HeightMapError.NonFinite);

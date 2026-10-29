@@ -1,6 +1,10 @@
 import { AnimationCompose, AnimationRestTarget, stageWeightedCompose } from "./animationCompose";
 import {
-	AnimationTransitionClip, AnimationTransitionError, TransitionSide, bindSide, sampleSide,
+	AnimationTransitionClip,
+	AnimationTransitionError,
+	TransitionSide,
+	bindSide,
+	sampleSide,
 } from "./animationTransition";
 
 export enum AnimationBlendSpaceError {
@@ -57,8 +61,10 @@ export struct AnimationBlendSpace2D {
 }
 
 function inCircle(
-	xs: Readonly<Span<float64>>, ys: Readonly<Span<float64>>,
-	point: int32, triangle: BlendSpaceTriangle,
+	xs: Readonly<Span<float64>>,
+	ys: Readonly<Span<float64>>,
+	point: int32,
+	triangle: BlendSpaceTriangle,
 ): boolean {
 	const epsilon: float64 = 1e-10;
 	const x1: float64 = xs[triangle.a]; const y1: float64 = ys[triangle.a];
@@ -92,7 +98,7 @@ function inCircle(
 	return dx * dx + dy * dy <= rx * rx + ry * ry;
 }
 
-function sameEdge(a: BlendSpaceEdge, b: BlendSpaceEdge): boolean {
+function sameEdge(this a: BlendSpaceEdge, b: BlendSpaceEdge): boolean {
 	return (a.a == b.a && a.b == b.b) || (a.a == b.b && a.b == b.a);
 }
 
@@ -138,7 +144,7 @@ export function triangulate(
 		while (first >= 0) {
 			let second: int32 = (edges.length as int32) - 1;
 			while (second >= first + 1) {
-				if (sameEdge(edges[first], edges[second])) {
+				if (edges[first].sameEdge(edges[second])) {
 					edges.splice(second, 1);
 					edges.splice(first, 1);
 					second--;
@@ -161,7 +167,10 @@ export function triangulate(
 	return Result.ok(move kept);
 }
 
-function triangleArea(space: Readonly<AnimationBlendSpace2D>, t: BlendSpaceTriangle): float64 {
+function triangleArea(
+	this space: Readonly<AnimationBlendSpace2D>,
+	t: BlendSpaceTriangle,
+): float64 {
 	const ax: float64 = space.pointX[t.a]; const ay: float64 = space.pointY[t.a];
 	const bx: float64 = space.pointX[t.b]; const by: float64 = space.pointY[t.b];
 	const cx: float64 = space.pointX[t.c]; const cy: float64 = space.pointY[t.c];
@@ -194,8 +203,9 @@ export function create(
 		}
 		const side = bindSide(targets, [], points[i].clip);
 		if (!side.ok) {
-			return Result.err(side.error == AnimationTransitionError.Target
-				? AnimationBlendSpaceError.Target : AnimationBlendSpaceError.Curve);
+			return Result.err(side.error == AnimationTransitionError.Target ?
+				AnimationBlendSpaceError.Target :
+				AnimationBlendSpaceError.Curve);
 		}
 		space.pointX.push(points[i].x);
 		space.pointY.push(points[i].y);
@@ -218,7 +228,7 @@ export function create(
 	const triangles = try triangulate(unitX, unitY);
 	if (triangles.length < 1) { return Result.err(AnimationBlendSpaceError.Degenerate); }
 	for (const triangle of triangles) {
-		if (triangleArea(space, triangle) == 0.0) {
+		if (space.triangleArea(triangle) == 0.0) {
 			return Result.err(AnimationBlendSpaceError.Degenerate);
 		}
 		space.triangles.push(triangle);
@@ -263,17 +273,19 @@ export function resetBlendSpaceSmoothing(ref space: AnimationBlendSpace2D): void
 }
 
 function springStep(
-	value: float64, velocity: float64, goal: float64, halfLife: float64, dt: float64,
-	ref nextVelocity: float64,
-): float64 {
+	value: float64,
+	velocity: float64,
+	goal: float64,
+	halfLife: float64,
+	dt: float64,
+): [float64, float64] {
 	const damping: float64 = (4.0 * 0.69314718056) / (halfLife + 1e-5);
 	const halfDamping: float64 = damping / 2.0;
 	const j0: float64 = value - goal;
 	const j1: float64 = velocity + j0 * halfDamping;
 	const x: float64 = halfDamping * dt;
 	const eydt: float64 = 1.0 / (1.0 + x + 0.48 * x * x + 0.235 * x * x * x);
-	nextVelocity = eydt * (velocity - j1 * halfDamping * dt);
-	return eydt * (j0 + j1 * dt) + goal;
+	return [eydt * (j0 + j1 * dt) + goal, eydt * (velocity - j1 * halfDamping * dt)];
 }
 
 function refreshTriangle(ref space: AnimationBlendSpace2D): void {
@@ -285,7 +297,7 @@ function refreshTriangle(ref space: AnimationBlendSpace2D): void {
 		const ax: float64 = space.pointX[t.a]; const ay: float64 = space.pointY[t.a];
 		const bx: float64 = space.pointX[t.b]; const by: float64 = space.pointY[t.b];
 		const cx: float64 = space.pointX[t.c]; const cy: float64 = space.pointY[t.c];
-		const area: float64 = (1.0 / triangleArea(space, t)) * 0.5;
+		const area: float64 = (1.0 / space.triangleArea(t)) * 0.5;
 		const s: float64 = area * (ay * cx - ax * cy + (cy - ay) * px + (ax - cx) * py);
 		const u: float64 = area * (ax * by - ay * bx + (ay - by) * px + (bx - ax) * py);
 		if (s >= 0.0 && u >= 0.0 && s + u < 1.0) {
@@ -301,8 +313,10 @@ function refreshTriangle(ref space: AnimationBlendSpace2D): void {
 		let closestX: float64 = 0.0;
 		let closestY: float64 = 0.0;
 		for (let index = 0; index < space.triangles.length; index++) {
-			const corners: Vec<int32> = [
-				space.triangles[index].a, space.triangles[index].b, space.triangles[index].c,
+			const corners: int32[3] = [
+				space.triangles[index].a,
+				space.triangles[index].b,
+				space.triangles[index].c,
 			];
 			for (let i = 0; i < 3; i++) {
 				const next: int32 = (i + 1) % 3;
@@ -333,8 +347,9 @@ function refreshTriangle(ref space: AnimationBlendSpace2D): void {
 	} else {
 		space.outsideSpeedScale = 1.0;
 	}
-	const corners: Vec<int32> = [
-		space.triangles[space.current].a, space.triangles[space.current].b,
+	const corners: int32[3] = [
+		space.triangles[space.current].a,
+		space.triangles[space.current].b,
 		space.triangles[space.current].c,
 	];
 	let synced: int32 = 0;
@@ -358,17 +373,18 @@ export function advanceBlendSpace(
 	dt: float64,
 ): Result<void, AnimationBlendSpaceError> {
 	if (!Number.isFinite(dt) || dt < 0.0) { return Result.err(AnimationBlendSpaceError.Delta); }
-	let velocity: float64 = 0.0;
 	if (space.xSmooth > 0.0) {
-		space.xSmoothed =
-			springStep(space.xSmoothed, space.xVelocity, space.x, space.xSmooth, dt, velocity);
-		space.xVelocity = velocity;
+		const [xSmoothed, xVelocity] =
+			springStep(space.xSmoothed, space.xVelocity, space.x, space.xSmooth, dt);
+		space.xSmoothed = xSmoothed;
+		space.xVelocity = xVelocity;
 		space.current = -1;
 	} else { space.xSmoothed = space.x; }
 	if (space.ySmooth > 0.0) {
-		space.ySmoothed =
-			springStep(space.ySmoothed, space.yVelocity, space.y, space.ySmooth, dt, velocity);
-		space.yVelocity = velocity;
+		const [ySmoothed, yVelocity] =
+			springStep(space.ySmoothed, space.yVelocity, space.y, space.ySmooth, dt);
+		space.ySmoothed = ySmoothed;
+		space.yVelocity = yVelocity;
 		space.current = -1;
 	} else { space.ySmoothed = space.y; }
 	let scale: float64 = 1.0;
@@ -377,9 +393,9 @@ export function advanceBlendSpace(
 	space.phase = (space.phase + dt * scale) % 1.0;
 	refreshTriangle(space);
 	for (let i = 0; i < space.sides.length; i++) {
-		space.sides[i].time = space.keepSync[i]
-			? space.sides[i].clip.seconds * space.phase
-			: space.sides[i].clip.localTime(space.sides[i].time + dt);
+		space.sides[i].time = space.keepSync[i] ?
+			space.sides[i].clip.seconds * space.phase :
+			space.sides[i].clip.localTime(space.sides[i].time + dt);
 	}
 	return Result.ok(null);
 }
@@ -389,15 +405,19 @@ export function evaluateBlendSpace(
 ): Result<void, AnimationBlendSpaceError> {
 	refreshTriangle(space);
 	const triangle = space.triangles[space.current];
-	const corners: Vec<int32> = [triangle.a, triangle.b, triangle.c];
+	const corners: int32[3] = [triangle.a, triangle.b, triangle.c];
 	for (const corner of corners) {
 		if (!sampleSide(space.compose.targets, [], space.sides[corner]).ok) {
 			return Result.err(AnimationBlendSpaceError.Curve);
 		}
 	}
 	const staged = stageWeightedCompose(
-		space.compose, space.sides[triangle.a].child, space.sides[triangle.b].child,
-		space.sides[triangle.c].child, space.weights);
+		space.compose,
+		space.sides[triangle.a].child,
+		space.sides[triangle.b].child,
+		space.sides[triangle.c].child,
+		space.weights,
+	);
 	if (!staged.ok) { return Result.err(AnimationBlendSpaceError.Compose); }
 	return Result.ok(null);
 }

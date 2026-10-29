@@ -1,6 +1,10 @@
 import { vec3, Vec3 } from "../math/math3d";
 import {
-	MeshData, MeshRayHit, stride, vertexCount, rayIntersection as intersectMesh,
+	MeshData,
+	MeshRayHit,
+	stride,
+	vertexCount,
+	rayIntersection as intersectMesh,
 	rayIntersectionElements as intersectElements,
 } from "./meshData";
 import { Ray } from "./ray";
@@ -9,6 +13,7 @@ import { isLive } from "./scene";
 import { SkinInfluences } from "./skinInfluences";
 import { SkinPose, syncSkinPose } from "./skinPose";
 import { Bounds3D, addPoint } from "./bounds";
+import { finiteVec } from "./colliderMath";
 
 export enum SkinGeometryError {
 	Shape,
@@ -64,8 +69,8 @@ export function bind(
 			const at: int32 = vertex * 4 + slot;
 			const joint: int32 = influences.joints[at];
 			const weight: float32 = influences.weights[at];
-			if (joint < 0 || joint >= pose.joints.length || !Number.isFinite(weight)
-				|| weight < 0) {
+			if (joint < 0 || joint >= pose.joints.length || !Number.isFinite(weight) ||
+				weight < 0) {
 				return Result.err(SkinGeometryError.Influence);
 			}
 			sum += weight as float64;
@@ -82,7 +87,8 @@ export function bind(
 
 // A morphed pose of the bind mesh: the next deform skins these vertices instead of the bind ones.
 export function setSourceVertices(
-	this geometry: SkinGeometry, vertices: Readonly<Span<float32>>,
+	this geometry: SkinGeometry,
+	vertices: Readonly<Span<float32>>,
 ): Result<int32, SkinGeometryError> {
 	if (vertices.length != geometry.source.vertices.length) {
 		return Result.err(SkinGeometryError.Shape);
@@ -109,15 +115,18 @@ export function deformPublished(this geometry: SkinGeometry): Result<int32, Skin
 	const count: int32 = geometry.source.vertexCount();
 	const stride: int32 = geometry.source.stride();
 	if (geometry.pending.vertices.length != geometry.source.vertices.length ||
-		geometry.influences.joints.length != count * 4
-		|| geometry.influences.weights.length != count * 4) {
+		geometry.influences.joints.length != count * 4 ||
+		geometry.influences.weights.length != count * 4) {
 		return Result.err(SkinGeometryError.Shape);
 	}
 	let bounds = Bounds3D.empty();
 	for (let vertex = 0; vertex < count; vertex++) {
 		const at: int32 = vertex * stride;
-		const point: Vec3 = vec3(geometry.source.vertices[at], geometry.source.vertices[at + 1],
-			geometry.source.vertices[at + 2]);
+		const point: Vec3 = vec3(
+			geometry.source.vertices[at],
+			geometry.source.vertices[at + 1],
+			geometry.source.vertices[at + 2],
+		);
 		let result: Vec3 = vec3(0, 0, 0);
 		for (let slot = 0; slot < 4; slot++) {
 			const influence: int32 = vertex * 4 + slot;
@@ -130,8 +139,7 @@ export function deformPublished(this geometry: SkinGeometry): Result<int32, Skin
 			result.y += transformed.y * weight;
 			result.z += transformed.z * weight;
 		}
-		if (!Number.isFinite(result.x) || !Number.isFinite(result.y)
-			|| !Number.isFinite(result.z)) {
+		if (!finiteVec(result)) {
 			return Result.err(SkinGeometryError.NonFinite);
 		}
 		geometry.pending.vertices[at] = result.x;
@@ -159,7 +167,11 @@ export function spatialReady(this geometry: Readonly<SkinGeometry>): boolean {
 }
 
 export function rayIntersectionElements(
-	this geometry: Readonly<SkinGeometry>, ray: Ray, face: Face, base: int32, count: int32,
+	this geometry: Readonly<SkinGeometry>,
+	ray: Ray,
+	face: Face,
+	base: int32,
+	count: int32,
 ): Result<MeshRayHit, SkinGeometryError> {
 	if (!geometry.spatialReady()) { return Result.err(SkinGeometryError.Pose); }
 	const hit = intersectElements(geometry.mesh, ray, face, base, count);
@@ -168,7 +180,9 @@ export function rayIntersectionElements(
 }
 
 export function rayIntersection(
-	this geometry: Readonly<SkinGeometry>, ray: Ray, face: Face,
+	this geometry: Readonly<SkinGeometry>,
+	ray: Ray,
+	face: Face,
 ): Result<MeshRayHit, SkinGeometryError> {
 	if (!geometry.spatialReady()) { return Result.err(SkinGeometryError.Pose); }
 	return Result.ok(intersectMesh(geometry.mesh, ray, face));
