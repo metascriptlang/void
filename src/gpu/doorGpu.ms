@@ -1269,10 +1269,16 @@ function bufferLabel(usage: int32): string {
 
 // sokol's sg_update_buffer: the whole content from offset 0, refused past the buffer's size.
 export function doorUpdateBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int32 {
+	return doorUpdateBufferRangeOf(id, 0, data);
+}
+
+// The same write from a byte offset, so a caller uploads only the ranges it changed; 0 when the
+// range is empty, misaligned to 4 or past the buffer's size.
+export function doorUpdateBufferRangeOf<T>(id: uint32, byteOffset: int64, data: Readonly<Span<T>>): int32 {
 	const buffer: GPUBuffer = { id };
 	const bytes = (data.length as int64) * (sizeof(T) as int64);
-	if (bytes <= 0 || !buffer.isAlive() || bytes > buffer.size()) { return 0; }
-	device.queue.writeBuffer(buffer, 0, data);
+	if (bytes <= 0 || !buffer.isAlive() || byteOffset < 0 || (byteOffset & 3) != 0 || byteOffset + bytes > buffer.size()) { return 0; }
+	device.queue.writeBuffer(buffer, byteOffset, data);
 	frameStats[DOOR_STAT_BUFFER_BYTES] += bytes;
 	return 1;
 }
