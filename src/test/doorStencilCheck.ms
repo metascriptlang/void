@@ -112,6 +112,10 @@ when (voidDummy || (windows && !voidVulkan)) {
 		doorApplyPipeline,
 		doorApplyStencilReference,
 		doorApplyUniformsOf,
+		doorDestroyView,
+		doorMakeTargetImage,
+		doorMakeTextureView,
+		doorViewIsColorAttachment,
 		doorUniformStamp,
 		doorDraw,
 		doorMakeBufferOf,
@@ -270,6 +274,21 @@ when (voidDummy || (windows && !voidVulkan)) {
 		doorApplyBindings(wordsOf(scene.vertices), [0]);
 		doorDraw(0, 6, 1);
 		endPass();
+		closeScene(scene);
+	}
+
+	test "a view is a color attachment when its texture is one, and a destroyed view is not" {
+		const scene: Scene = openScene();
+		const colorView: uint32 = doorMakeTextureView(doorMakeTargetImage(SIZE, SIZE, RGBA8));
+		const depthView: uint32 = doorMakeTextureView(
+			doorMakeTargetImage(SIZE, SIZE, PixelFormat.Depth as int32),
+		);
+		assert doorViewIsColorAttachment(colorView) == 1;
+		assert doorViewIsColorAttachment(colorView) == 1;
+		assert doorViewIsColorAttachment(depthView) == 0;
+		assert doorViewIsColorAttachment(0) == 0;
+		doorDestroyView(colorView);
+		assert doorViewIsColorAttachment(colorView) == 0;
 		closeScene(scene);
 	}
 
