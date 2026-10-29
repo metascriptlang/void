@@ -1009,8 +1009,8 @@ export function drawPhase(
 		},
 		Phase.Additive => {
 			drawPassList(
-				context, renderer.additive.indices[0..renderer.additive.count], items, renderer.drawn,
-				targets, renderer.sceneGlobals, scene,
+				context, renderer.additive.indices[0..renderer.additive.count], items,
+				renderer.drawn, targets, renderer.sceneGlobals, scene,
 			);
 		},
 		Phase.Decal => stopOnDecalPhase(phase),
