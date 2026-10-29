@@ -251,6 +251,14 @@ let uniformOffsets: uint32[DOOR_UNIFORM_SLOTS] = [0, 0, 0, 0, 0, 0, 0, 0];
 // changed: a block applied once stays bound for every draw of that pipeline.
 let uniformStamps: int32[DOOR_UNIFORM_SLOTS] = [0, 0, 0, 0, 0, 0, 0, 0];
 let uniformStampCounter: int32 = 0;
+let dynamicOffsets: uint32[DOOR_UNIFORM_SLOTS] = [0, 0, 0, 0, 0, 0, 0, 0];
+
+function clearUniformSlots(): void {
+	for (let s = 0; s < DOOR_UNIFORM_SLOTS; s++) {
+		uniformOffsets[s] = 0;
+		uniformStamps[s] = 0;
+	}
+}
 let encoder: GPUCommandEncoder = { id: 0 };
 let pass: GPURenderPassEncoder = { id: 0 };
 let current: int32 = -1;
@@ -1388,8 +1396,7 @@ export function doorApplyPipeline(pipeline: uint32): void {
 		current = index;
 		applied.valid = false;
 		pass.setPipeline(pipelines[current].pipeline);
-		uniformOffsets = [0, 0, 0, 0, 0, 0, 0, 0];
-		uniformStamps = [0, 0, 0, 0, 0, 0, 0, 0];
+		clearUniformSlots();
 	}
 }
 
@@ -1556,7 +1563,6 @@ export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): vo
 	stopInComputePass("applyUniforms");
 	if (current < 0) { stop("applyUniforms before applyPipeline"); }
 	if (slot < 0 || slot >= DOOR_UNIFORM_SLOTS) { stop("applyUniforms to slot " + String(slot)); }
-	const record = pipelines[current];
 	const bytes = (data.length as int64) * (sizeof(T) as int64);
 	if (uniformCursor + bytes > UNIFORM_RING_BYTES) {
 		stop("uniform ring of 4 MiB is full this frame");
@@ -1567,14 +1573,13 @@ export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): vo
 	uniformStamps[slot] = uniformStampCounter;
 	uniformOffsets[slot] = uniformCursor as uint32;
 	uniformCursor = (uniformCursor + bytes + (UNIFORM_ALIGNMENT - 1)) & ~(UNIFORM_ALIGNMENT - 1);
-	let offsets: uint32[DOOR_UNIFORM_SLOTS] = [0, 0, 0, 0, 0, 0, 0, 0];
 	let n = 0;
 	for (let s = 0; s < DOOR_UNIFORM_SLOTS; s++) {
-		if ((record.uniformMask & ((1 as uint32) << (s as uint32))) == 0) { continue; }
-		offsets[n] = uniformOffsets[s];
+		if ((pipelines[current].uniformMask & ((1 as uint32) << (s as uint32))) == 0) { continue; }
+		dynamicOffsets[n] = uniformOffsets[s];
 		n++;
 	}
-	pass.setBindGroup(GPU_UNIFORM_GROUP, record.uniformGroup, offsets[0..n]);
+	pass.setBindGroup(GPU_UNIFORM_GROUP, pipelines[current].uniformGroup, dynamicOffsets[0..n]);
 }
 
 function requireAppliedBlocks(): void {
