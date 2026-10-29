@@ -177,9 +177,11 @@ test "a move descends only into the subtrees a moved node is under" {
 	assert syncWorld(scene) == 1;
 	setLocal(scene, still, Transform3D.fromTranslation(vec3(5.0, 0.0, 0.0)));
 	assert syncWorld(scene) == 2;
+	setLocal(scene, below.value, Transform3D.fromTranslation(vec3(0.0, 4.0, 0.0)));
+	assert syncWorld(scene) == 1;
 	const world: Result<Mat4, SceneError> = scene.worldOf(below.value);
 	assert world.ok;
-	if (world.ok) { assert near(translationOf(world.value), 5.0, 2.0, 0.0); }
+	if (world.ok) { assert near(translationOf(world.value), 5.0, 4.0, 0.0); }
 }
 
 test "moving a parent re-syncs its children and nothing above it" {
