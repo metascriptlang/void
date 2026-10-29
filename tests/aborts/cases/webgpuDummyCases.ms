@@ -5,6 +5,10 @@
 // expect groupFromOtherPipeline: was made for GPURenderPipeline 65538, not the bound pipeline 65537
 // expect shaderDestroyed: the shader module of GPURenderPipeline 65537 was destroyed
 // expect indexRangeOverrun: drawIndexed index range (first 0, count 9, uint16) needs 18 bytes of the index buffer, which has 16 bound
+// expect afterGroupSwap: was made for GPURenderPipeline 65538, not the bound pipeline 65537
+// expect afterPipelineSwap: was made for GPURenderPipeline 65537, not the bound pipeline 65538
+// expect afterVertexSlotAdded: the pipeline reads vertex buffer 1, which is not set
+// expect afterIndexFormat: an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format
 // expect vertexRangeOverrun: draw vertex range (first 0, count 4) needs 32 bytes of the vertex buffer at slot 0, which has 24 bound
 import { argv } from "std/process";
 import {
@@ -46,7 +50,7 @@ function run(name: string): void {
 		console.log("an indirect dispatch from a buffer without INDIRECT returned");
 		return;
 	}
-	const draws = ["stripIndexMismatch", "shaderDestroyed", "uniformOverrun", "groupFromOtherPipeline", "indexRangeOverrun", "vertexRangeOverrun"];
+	const draws = ["stripIndexMismatch", "shaderDestroyed", "uniformOverrun", "groupFromOtherPipeline", "indexRangeOverrun", "vertexRangeOverrun", "afterGroupSwap", "afterPipelineSwap", "afterVertexSlotAdded", "afterIndexFormat"];
 	if (!draws.includes(name)) {
 		console.log(`no case named '${name}'`);
 		process.exit(2);
@@ -80,6 +84,11 @@ function run(name: string): void {
 	let gd: GPUBindGroupDescriptor = { label: "colour", layout: (name == "groupFromOtherPipeline" ? device.createRenderPipeline(pd) : pipeline).getBindGroupLayout(0) };
 	gd.entries[0] = { binding: 0, buffer: colourUniforms(device), offset: 0, size: 16 };
 	const group = device.createBindGroup(gd);
+	const swapped = name == "afterGroupSwap" || name == "afterPipelineSwap" || name == "afterVertexSlotAdded";
+	if (name == "afterVertexSlotAdded") { pd.vertex.buffers[1].arrayStride = 8; }
+	const second = swapped ? device.createRenderPipeline(pd) : pipeline;
+	gd.layout = second.getBindGroupLayout(0);
+	const secondGroup = swapped ? device.createBindGroup(gd) : group;
 	const indexUsage = (GPUBufferUsage.INDEX as int32) | (GPUBufferUsage.COPY_DST as int32);
 	const indices = device.createBuffer({ label: "indices", size: 16, usage: indexUsage });
 	const noResolve: GPUTextureView = { id: 0 };
@@ -96,6 +105,10 @@ function run(name: string): void {
 	} else {
 		pass.drawIndexed(name == "indexRangeOverrun" ? 9 : 3, 1, 0, 0, 0);
 	}
+	if (name == "afterGroupSwap") { pass.setBindGroup(0, secondGroup, offsets); }
+	if (name == "afterPipelineSwap" || name == "afterVertexSlotAdded") { pass.setPipeline(second); }
+	if (name == "afterIndexFormat") { pass.setIndexBuffer(indices, "uint32", 0); }
+	if (name.startsWith("after")) { pass.drawIndexed(3, 1, 0, 0, 0); }
 	console.log(`${name}: the draw returned`);
 }
 
