@@ -64,6 +64,8 @@ import {
 	writeUniforms,
 	drawBatchWith,
 	drawItemWith,
+	stageListRows,
+	endListRows,
 } from "./draw";
 import { UniformError, ownRange, disownRange } from "./uniformPool";
 import { PassList, collectCasters, filterFrustum } from "./passList";
@@ -700,6 +702,7 @@ function drawLayers(
 // The collected casters into the open pass, neighbours that differ only in world as one draw.
 function drawCasters(shadow: DirShadowMap, items: Readonly<Span<DrawItem>>): void {
 	const context: DrawContext = shadow.context;
+	stageListRows(context, items, shadow.casters.indices[0..shadow.casters.count]);
 	let i: int32 = 0;
 	while (i < shadow.casters.count) {
 		const index: int32 = shadow.casters.indices[i];
@@ -721,6 +724,7 @@ function drawCasters(shadow: DirShadowMap, items: Readonly<Span<DrawItem>>): voi
 		}
 		i = end;
 	}
+	endListRows(context);
 }
 
 export function sceneTexture(this shadow: DirShadowMap): SceneTexture {
