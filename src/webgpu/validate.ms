@@ -305,7 +305,7 @@ export function markBindGroupSet(index: int32, bindGroup: uint32, dynamicOffsets
 	boundFacts.ownersDirty = true;
 	boundFacts.groupSet = bindGroup == 0 ? boundFacts.groupSet & ~(1 << index) : boundFacts.groupSet | (1 << index);
 	if (bindGroup == 0 || index != GPU_UNIFORM_GROUP) { return; }
-	const count = bindGroupRecords.record(bindGroup).dynamicCount;
+	const count = bindGroupRecords.slots[bindGroupRecords.slotIndex(bindGroup)].dynamicCount;
 	for (let i = 0; i < count; i++) { boundFacts.dynamicOffsets[i] = dynamicOffsets[i]; }
 }
 export function checkedPipelineSet(call: string): void { refuse(encoder.pipelineSetRefusal(call)); }
@@ -386,7 +386,7 @@ function checkGroupOwners(groups: int32, compute: boolean): void {
 	for (let index = 0; index <= GPU_RESOURCE_GROUP; index++) {
 		if ((groups & (1 << index)) == 0) { continue; }
 		const id = boundFacts.bindGroups[index];
-		refuse(groupOwnerRefusal(id, index, bindGroupRecords.record(id).pipeline, boundFacts.pipeline, compute));
+		refuse(groupOwnerRefusal(id, index, bindGroupRecords.slots[bindGroupRecords.slotIndex(id)].pipeline, boundFacts.pipeline, compute));
 	}
 }
 
@@ -670,7 +670,7 @@ export function drawOffsetRefusal(pipeline: PipelineRecord, call: string, vertex
 }
 
 export function checkedDrawOffsets(call: string, vertexMember: string, vertexOffset: int32, firstInstance: int32): void {
-	refuse(drawOffsetRefusal(pipelineRecords.record(boundFacts.pipeline), call, vertexMember, vertexOffset, firstInstance));
+	refuse(drawOffsetRefusal(pipelineRecords.slots[pipelineRecords.slotIndex(boundFacts.pipeline)], call, vertexMember, vertexOffset, firstInstance));
 }
 
 export function drawIndirectRefusal(call: string, buffer: uint32, usage: int32, bufferSize: int64, offset: int64, drawCount: int32): string {
@@ -699,9 +699,9 @@ export function indirectFeatureRefusal(call: string, firstInstance: boolean): st
 
 export function checkedDrawIndirect(call: string, buffer: uint32, offset: int64, drawCount: int32): void {
 	checkedDrawState(call, true);
-	const record = bufferRecords.record(buffer);
-	refuse(drawIndirectRefusal(call, buffer, record.usage, record.size, offset, drawCount));
-	refuse(indirectPipelineRefusal(pipelineRecords.record(boundFacts.pipeline), call));
+	const b = bufferRecords.slotIndex(buffer);
+	refuse(drawIndirectRefusal(call, buffer, bufferRecords.slots[b].usage, bufferRecords.slots[b].size, offset, drawCount));
+	refuse(indirectPipelineRefusal(pipelineRecords.slots[pipelineRecords.slotIndex(boundFacts.pipeline)], call));
 	refuse(indirectFeatureRefusal(call, (deviceFeatures.bits & featureBit("indirect-first-instance")) != 0));
 }
 
@@ -952,7 +952,7 @@ export function dynamicRoomOf(descriptor: GPUBindGroupDescriptor, shader: Shader
 		const binding = descriptor.entries[i].binding;
 		const u = shaderBindingAt(shader, GPU_UNIFORM_GROUP, binding, BindingKind.Uniform);
 		if (u < 0) { continue; }
-		room[dynamicRankOf(descriptor, binding)] = bufferRecords.record(buffer).size - descriptor.entries[i].offset - (shader.bindings[u].size as int64);
+		room[dynamicRankOf(descriptor, binding)] = bufferRecords.slots[bufferRecords.slotIndex(buffer)].size - descriptor.entries[i].offset - (shader.bindings[u].size as int64);
 	}
 	return room;
 }
@@ -1035,25 +1035,24 @@ export function shaderBindingAt(shader: ShaderRecord, group: int32, binding: int
 export function checkedBindGroupEntry(entry: GPUBindGroupEntry, group: int32, shader: ShaderRecord): int32 {
 	const limits = cachedLimits();
 	if (entry.buffer.id != 0) {
-		const buffer = bufferRecords.record(entry.buffer.id);
+		const b = bufferRecords.slotIndex(entry.buffer.id);
 		const u = shaderBindingAt(shader, group, entry.binding, BindingKind.Uniform);
 		if (u >= 0) {
-			const usage = (buffer.usage & (GPUBufferUsage.UNIFORM as int32)) != 0;
-			checkedUniformEntry(entry, usage, buffer.size, shader.bindings[u].size, limits.minUniformBufferOffsetAlignment as int64);
+			const usage = (bufferRecords.slots[b].usage & (GPUBufferUsage.UNIFORM as int32)) != 0;
+			checkedUniformEntry(entry, usage, bufferRecords.slots[b].size, shader.bindings[u].size, limits.minUniformBufferOffsetAlignment as int64);
 			return u;
 		}
 		const s = shaderBindingAt(shader, group, entry.binding, BindingKind.StorageBuffer);
 		if (s < 0) { notABinding(group, entry, "buffer"); }
-		const usage = (buffer.usage & (GPUBufferUsage.STORAGE as int32)) != 0;
-		checkedStorageEntry(entry, usage, buffer.size, limits.minStorageBufferOffsetAlignment as int64, limits.maxStorageBufferBindingSize);
+		const usage = (bufferRecords.slots[b].usage & (GPUBufferUsage.STORAGE as int32)) != 0;
+		checkedStorageEntry(entry, usage, bufferRecords.slots[b].size, limits.minStorageBufferOffsetAlignment as int64, limits.maxStorageBufferBindingSize);
 		return s;
 	}
 	if (entry.textureView.id != 0) {
 		const v = viewRecords.slotIndex(entry.textureView.id);
 		const t = shaderBindingAt(shader, group, entry.binding, BindingKind.Texture);
 		if (t >= 0) {
-			const texture = textureRecords.record(viewRecords.slots[v].texture);
-			checkedSampledView(entry.binding, (texture.usage & (GPUTextureUsage.TEXTURE_BINDING as int32)) != 0);
+			checkedSampledView(entry.binding, (textureRecords.slots[textureRecords.slotIndex(viewRecords.slots[v].texture)].usage & (GPUTextureUsage.TEXTURE_BINDING as int32)) != 0);
 			return t;
 		}
 		const s = shaderBindingAt(shader, group, entry.binding, BindingKind.StorageTexture);
@@ -1069,9 +1068,9 @@ export function checkedBindGroupEntry(entry: GPUBindGroupEntry, group: int32, sh
 
 export function checkedSampledView(binding: int32, textureIsSampled: boolean): void { refuse(sampledViewRefusal(binding, textureIsSampled)); }
 export function checkedStorageView(binding: int32, v: int32, declared: GPUTextureFormat): void {
-	const texture = textureRecords.record(viewRecords.slots[v].texture);
-	const storage = (texture.usage & (GPUTextureUsage.STORAGE_BINDING as int32)) != 0;
-	refuse(storageViewRefusal(binding, storage, viewRecords.slots[v].mipCount, declared, texture.format));
+	const t = textureRecords.slotIndex(viewRecords.slots[v].texture);
+	const storage = (textureRecords.slots[t].usage & (GPUTextureUsage.STORAGE_BINDING as int32)) != 0;
+	refuse(storageViewRefusal(binding, storage, viewRecords.slots[v].mipCount, declared, textureRecords.slots[t].format));
 }
 
 export function checkedCopyRegion<T>(member: string, texture: T, info: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
@@ -1094,26 +1093,26 @@ export function copyTextureRefusal(call: string, texture: TextureRecord, source:
 	return "";
 }
 
-export function checkedCopyBuffer(call: string, buffer: GPUBuffer, source: boolean): void { refuse(copyBufferRefusal(call, bufferRecords.record(buffer.id), source)); }
+export function checkedCopyBuffer(call: string, buffer: GPUBuffer, source: boolean): void { refuse(copyBufferRefusal(call, bufferRecords.slots[bufferRecords.slotIndex(buffer.id)], source)); }
 
 export function checkedCopyTexture(call: string, info: GPUTexelCopyTextureInfo, source: boolean, size: GPUExtent3D): void {
-	const texture = textureRecords.record(info.texture.id);
-	refuse(copyTextureRefusal(call, texture, source));
-	checkedCopyRegion(`${call} ${source ? "source" : "destination"}`, texture, info, size);
+	const t = textureRecords.slotIndex(info.texture.id);
+	refuse(copyTextureRefusal(call, textureRecords.slots[t], source));
+	checkedCopyRegion(`${call} ${source ? "source" : "destination"}`, textureRecords.slots[t], info, size);
 }
 
 export function checkedBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
 	checkedCopyBuffer("copyBufferToBuffer", source, true);
 	checkedCopyBuffer("copyBufferToBuffer", destination, false);
-	checkedBufferCopy(source.id, bufferRecords.record(source.id).size, sourceOffset, destination.id, bufferRecords.record(destination.id).size, destinationOffset, size);
+	checkedBufferCopy(source.id, bufferRecords.slots[bufferRecords.slotIndex(source.id)].size, sourceOffset, destination.id, bufferRecords.slots[bufferRecords.slotIndex(destination.id)].size, destinationOffset, size);
 }
 
 export function checkedTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	checkedCopyTexture("copyTextureToTexture", source, true, size);
 	checkedCopyTexture("copyTextureToTexture", destination, false, size);
-	const from = textureRecords.record(source.texture.id);
-	const to = textureRecords.record(destination.texture.id);
-	checkedTextureToTextureCopy(source, destination, size, from.format, to.format, from.volume, to.volume, isDepthFormat(from.format), from.width, from.height);
+	const from = textureRecords.slotIndex(source.texture.id);
+	const to = textureRecords.slotIndex(destination.texture.id);
+	checkedTextureToTextureCopy(source, destination, size, textureRecords.slots[from].format, textureRecords.slots[to].format, textureRecords.slots[from].volume, textureRecords.slots[to].volume, isDepthFormat(textureRecords.slots[from].format), textureRecords.slots[from].width, textureRecords.slots[from].height);
 }
 
 export function entryOf<T>(group: T, binding: int32): int32 {
