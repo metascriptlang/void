@@ -267,6 +267,7 @@ import "./shaderLinkCheck";
 import "./shaderMaterialProgramCheck";
 import "./shaderWgslCheck";
 import "./shaderIrProgramCheck";
+import "./shaderBlockMemberCheck";
 import "./shaderGlslCheck";
 import "./shaderMslCheck";
 import "./shaderSpirvCheck";
