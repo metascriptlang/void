@@ -443,6 +443,10 @@ struct BoundState {
 	vertexDirty: boolean;
 	resourcesDirty: boolean;
 	uniformsDirty: boolean;
+	vertexIds: uint32[GPU_MAX_VERTEX_BUFFERS];
+	vertexOffsets: int64[GPU_MAX_VERTEX_BUFFERS];
+	groupIds: uint32[2];
+	dynamicOffsets: uint32[GPU_MAX_BIND_GROUP_ENTRIES];
 }
 
 let device: Ptr<MtlDeviceImpl> = null as unknown as Ptr<MtlDeviceImpl>;
@@ -856,6 +860,7 @@ function nextBufferCopy(index: int32): void {
 	}
 	buffers[index].active = next;
 	bound.vertexDirty = true;
+	bound.resourcesDirty = true;
 	bound.uniformsDirty = true;
 }
 
@@ -1504,6 +1509,9 @@ export function endPass(): void {
 export function setPipeline(pipeline: GPURenderPipeline): void {}
 
 export function setVertexBuffer(slot: int32, buffer: GPUBuffer, offset: int64): void {
+	if (bound.vertexIds[slot] == buffer.id && bound.vertexOffsets[slot] == offset) { return; }
+	bound.vertexIds[slot] = buffer.id;
+	bound.vertexOffsets[slot] = offset;
 	bound.vertexDirty = true;
 }
 
@@ -1514,9 +1522,16 @@ export function setIndexBuffer(buffer: GPUBuffer, format: GPUIndexFormat, offset
 
 export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	if (bindGroup.id == 0) { return; }
+	let changed = bound.groupIds[index] != bindGroup.id;
+	bound.groupIds[index] = bindGroup.id;
 	if (index == GPU_UNIFORM_GROUP) {
-		bound.uniformsDirty = true;
-	} else {
+		const count = bindGroupRecords.slots[slotOf(bindGroup.id)].dynamicCount;
+		for (let i = 0; i < count; i++) {
+			if (bound.dynamicOffsets[i] != dynamicOffsets[i]) { changed = true; }
+			bound.dynamicOffsets[i] = dynamicOffsets[i];
+		}
+		if (changed) { bound.uniformsDirty = true; }
+	} else if (changed) {
 		bound.resourcesDirty = true;
 	}
 }
