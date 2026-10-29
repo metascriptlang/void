@@ -2,6 +2,7 @@
 // render layers above see no change, with sokol's own mechanisms for what WebGPU leaves to the
 // caller (uniform ring, bind group cache).
 
+import { slotOf } from "../webgpu/pool.ms";
 import {
 	GPUBindGroup,
 	GPUAddressMode,
@@ -232,6 +233,10 @@ struct AppliedBindings {
 	offsets: int32[GPU_MAX_VERTEX_BUFFERS];
 }
 
+// A view's class by pool slot, kept with the id it was read for: a live view keeps its texture, so
+// its format and usage never change, and a destroy clears the entry.
+struct ViewClass { view: uint32; colorAttachment: boolean; }
+
 struct AppendCursor { buffer: uint32; frame: uint32; position: int64; }
 
 let device: GPUDevice = { id: 0, queue: { id: 0 } };
@@ -242,6 +247,7 @@ let pipelines: Vec<PipelineRecord> = [];
 let bindCache: Vec<BindEntry> = [];
 let appendCursors: Vec<AppendCursor> = [];
 let applied: AppliedBindings = { valid: false };
+let viewClasses: Vec<ViewClass> = [];
 let generation: int32 = 1;
 let everSetUp = false;
 let uniformRing: GPUBuffer = { id: 0 };
@@ -307,6 +313,7 @@ export function doorSetup(
 	pipelines.length = 0;
 	bindCache.length = 0;
 	appendCursors.length = 0;
+	viewClasses.length = 0;
 	cubeImages.length = 0;
 	arrayImages.length = 0;
 	dataImages.length = 0;
@@ -1158,6 +1165,7 @@ export function doorDestroyImage(image: uint32): void {
 	if (data >= 0) { dataImages.splice(data, 1); }
 	untrackTexture(image);
 	applied.valid = false;
+	viewClasses.length = 0;
 	const texture: GPUTexture = { id: image };
 	texture.destroy();
 }
@@ -1166,6 +1174,8 @@ export function doorDestroyView(view: uint32): void {
 	if (view == 0) { return; }
 	const textureView: GPUTextureView = { id: view };
 	applied.valid = false;
+	const slot = slotOf(view);
+	if (slot < viewClasses.length) { viewClasses[slot] = { view: 0, colorAttachment: false }; }
 	textureView.destroy();
 }
 
@@ -1375,14 +1385,26 @@ export function doorViewImage(view: uint32): uint32 {
 	return textureView.isAlive() ? textureView.texture().id : 0;
 }
 
-// sokol's sg_query_image_usage(sg_query_view_image(view)).color_attachment.
-export function doorViewIsColorAttachment(view: uint32): int32 {
+function viewIsColorAttachmentRead(view: uint32): boolean {
 	const image = doorViewImage(view);
-	if (image == 0) { return 0; }
+	if (image == 0) { return false; }
 	const texture: GPUTexture = { id: image };
 	const format = texture.format();
 	const depth = format == "depth32float" || format == "depth24plus-stencil8";
-	return !depth && (texture.usage() & (GPUTextureUsage.RENDER_ATTACHMENT as int32)) != 0 ? 1 : 0;
+	return !depth && (texture.usage() & (GPUTextureUsage.RENDER_ATTACHMENT as int32)) != 0;
+}
+
+// sokol's sg_query_image_usage(sg_query_view_image(view)).color_attachment, answered from the
+// view's pool slot as sokol answers it from its pool fields.
+export function doorViewIsColorAttachment(view: uint32): int32 {
+	const slot = slotOf(view);
+	if (slot < viewClasses.length && viewClasses[slot].view == view) {
+		return viewClasses[slot].colorAttachment ? 1 : 0;
+	}
+	const colorAttachment = viewIsColorAttachmentRead(view);
+	while (viewClasses.length <= slot) { viewClasses.push({ view: 0, colorAttachment: false }); }
+	viewClasses[slot] = { view, colorAttachment };
+	return colorAttachment ? 1 : 0;
 }
 
 // ---- draw ----
