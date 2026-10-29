@@ -160,6 +160,28 @@ test "a sync after no setter ran skips the walk, and the next setter brings it b
 	if (world.ok) { assert near(translationOf(world.value), 3.0, 0.0, 0.0); }
 }
 
+test "a move descends only into the subtrees a moved node is under" {
+	let context: DrawContext = contextOf(64, 1);
+	let scene: Scene3D = Scene3D.create(context);
+	const moved: NodeId3D = oneMesh(scene, context, vec3(1.0, 0.0, 0.0), 0);
+	const still: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const below: Result<NodeId3D, SceneError> = addMeshNode(scene, still,
+		Transform3D.fromTranslation(vec3(0.0, 2.0, 0.0)), context.meshAt(0), context.materialAt(0));
+	assert below.ok;
+	if (!below.ok) { return; }
+	assert syncWorld(scene) == 4;
+	// A flag no setter raised is read only where the walk descends.
+	scene.nodes[below.value.index].flags =
+		scene.nodes[below.value.index].flags.incl(NodeFlag.PosChanged);
+	setLocal(scene, moved, Transform3D.fromTranslation(vec3(3.0, 0.0, 0.0)));
+	assert syncWorld(scene) == 1;
+	setLocal(scene, still, Transform3D.fromTranslation(vec3(5.0, 0.0, 0.0)));
+	assert syncWorld(scene) == 2;
+	const world: Result<Mat4, SceneError> = scene.worldOf(below.value);
+	assert world.ok;
+	if (world.ok) { assert near(translationOf(world.value), 5.0, 2.0, 0.0); }
+}
+
 test "moving a parent re-syncs its children and nothing above it" {
 	let context: DrawContext = contextOf(64, 1);
 	let scene: Scene3D = Scene3D.create(context);
