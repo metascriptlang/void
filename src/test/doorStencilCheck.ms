@@ -111,7 +111,10 @@ when (voidDummy || (windows && !voidVulkan)) {
 		doorApplyBindings,
 		doorApplyPipeline,
 		doorApplyStencilReference,
+		doorAppendBufferOf,
 		doorApplyUniformsOf,
+		doorDestroyBuffer,
+		doorMakeBuffer,
 		doorDestroyView,
 		doorMakeTargetImage,
 		doorMakeTextureView,
@@ -274,6 +277,24 @@ when (voidDummy || (windows && !voidVulkan)) {
 		doorApplyBindings(wordsOf(scene.vertices), [0]);
 		doorDraw(0, 6, 1);
 		endPass();
+		closeScene(scene);
+	}
+
+	test "appends to each buffer land after its own last one and are refused past its size" {
+		const scene: Scene = openScene();
+		const four: Vec<float32> = [1, 2, 3, 4];
+		const none: Vec<uint8> = [];
+		const a: uint32 = doorMakeBuffer(DOOR_BUFFER_VERTEX, none, 32);
+		const b: uint32 = doorMakeBuffer(DOOR_BUFFER_VERTEX, none, 32);
+		assert doorAppendBufferOf(a, four) == 0;
+		assert doorAppendBufferOf(b, four) == 0;
+		assert doorAppendBufferOf(a, four) == 16;
+		assert doorAppendBufferOf(a, four) == -1;
+		assert doorAppendBufferOf(b, [1.0]) == 16;
+		doorDestroyBuffer(a);
+		const c: uint32 = doorMakeBuffer(DOOR_BUFFER_VERTEX, none, 16);
+		assert doorAppendBufferOf(c, four) == 0;
+		assert doorAppendBufferOf(c, [1.0]) == -1;
 		closeScene(scene);
 	}
 
