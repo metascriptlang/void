@@ -6940,6 +6940,32 @@ Pinned on the CPU in `post3dCheck.ms` (a flat colour stays, a staircase blends) 
 refusals), with both programs' slots in `programKeyCheck.ms`. Not yet regenerated into
 `shader3dGen.glsl` nor read back on a GPU.
 
+### One walk fills the pass lists; a steady frame keeps its items (2026-10-30)
+
+`renderer.ms` `beginFrame` fills and culls every pass list in one walk of the draw items
+(`passList.ms` `collectVisible`), after every refusal of the frame, so a refused frame keeps the
+last lists. This is Heaps' `emitRec` (`b9aa6dcb` `h3d/scene/Object.hx:868-899`), which emits each
+visible object once into the pass it belongs to (`RenderContext.hx:200-214`), where the port had
+walked the items once per phase (`collect`, then `filterFrustum`).
+
+- The per-phase `collect` stays as the tests' oracle (`src/test/drawHelpers.ms`); the pins check
+  the one walk against it per phase. `filterFrustum` stays for `dirShadowMap.ms`'s casters.
+- `scene.ms` `refreshItemsSynced` returns the kept items untouched when `Scene3D.itemsChanged` is
+  clear and no kept item has LOD levels (`drawLods`). `syncWorld` sets the flag when it recomputes
+  a world matrix, and so do `setRenderOrder`, `setMeshOf` and `setMaterialOf`, the setters of the
+  fields an item copies. This is Bevy's change-detected extraction (`84e2d2c`
+  `bevy_pbr/src/render/mesh.rs:1952-1975`, `extract_meshes_for_gpu_building`: only entities with
+  a `Changed<GlobalTransform>`, `Changed<Mesh3d>`, ... are re-extracted) at scene level, not per
+  entity. A new field an item copies needs its setter to set the flag, or a steady frame shows the
+  old value; `renderOrderCheck.ms` pins that for `setRenderOrder` and `setLocal`.
+- **Ceiling:** one moving node still rewrites every item, and a scene with any LOD item rewrites
+  every frame. The upgrade, when a scene with few movers among many items measures refresh as its
+  cost, is Bevy's per-entity shape: a list of the changed nodes' item slots.
+
+Release `tests/bench/flowCubes.ms`, 1.6M cubes, before the one walk: `refresh` 33.8 ms,
+`collect` 12.1 ms per phase. Tree `999491b3` (one walk, before the steady-frame skip),
+box not quiet: `refresh` 74% of the two, `collectVisible` 26%.
+
 ### Trail: CPU history and ribbon checkpoint
 
 Apps sample a world pose/time into standalone `Trail` state and obtain `MeshData` through
