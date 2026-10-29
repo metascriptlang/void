@@ -1467,6 +1467,30 @@ run_sao() {
 	pass "sao: Heaps' ScalableAO over the scene depth and normals, blurred and multiplied, darkens the foot of a box only"
 }
 
+run_screen_colour() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "screenColour: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	exe="$WORK/screenColour.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/screenColour.ms --output="$exe" > "$WORK/screenColour.build.log" 2>&1; then
+		fail "screenColour: tests/integration/screenColour.ms does not build — see $WORK/screenColour.build.log"
+		return
+	fi
+	status=0
+	"$exe" > "$WORK/screenColour.log" 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "screenColour: no native readback backend"
+		return
+	fi
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS screen colour: ' "$WORK/screenColour.log"; then
+		fail "screenColour: the check failed (exit $status) — see $WORK/screenColour.log"
+		return
+	fi
+	pass "screenColour: Heaps' FXAA blends each stair and the colour matrix, plain and masked, gives the CPU's colour"
+}
+
 run_graphics_line() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "graphicsLine: GATE_SKIP_CAPTURE=1 — nothing was read back"
@@ -1501,7 +1525,7 @@ GL_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_B
 	movingMaterial:VOID_MOVING_PIXEL_ART=1 mrtBlend:- renderOrder:VOID_RENDER_ORDER_PIXEL_ART=1
 	sortLayer:VOID_SORT_LAYER_PIXEL_ART=1 targetTexture:VOID_TARGET_TEXTURE_PRESET=pixelArt
 	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1 hdr:VOID_HDR_PIXEL_ART=1 bloom:VOID_BLOOM_PIXEL_ART=1 decal:- sao:-
-	graphicsLine:-"
+	graphicsLine:- screenColour:-"
 
 run_gl_core() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
@@ -3240,6 +3264,7 @@ run_hdr
 run_bloom
 run_decal
 run_sao
+run_screen_colour
 run_graphics_line
 run_particle_fade
 run_particle_mesh
