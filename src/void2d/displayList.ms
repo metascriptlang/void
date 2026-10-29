@@ -29,6 +29,7 @@ import { Mat4 } from "../math/math3d";
 import { NO_COLOR_MATRIX, writeColorMatrix, readColorMatrix } from "./effect";
 import { BlendMode } from "../gpu/state";
 import "./face";
+import { zeroFlags } from "./zeros";
 import {
 	COMMAND_FLOATS,
 	commandViewOf,
@@ -136,13 +137,7 @@ export const PROGRAMS_2D: int32 = (Program2D.Blur as int32) + 1;
 export const BLEND_MODES: int32 = (BlendMode.Min as int32) + 1;
 export const PIPELINE_SLOTS: int32 = PROGRAMS_2D * 2 * BLEND_MODES;
 
-export function noPipelines(): Vec<boolean> {
-	let slots: Vec<boolean> = [];
-	for (let i: int32 = 0; i < PIPELINE_SLOTS; i++) { slots.push(false); }
-	return slots;
-}
-
-let wantedPipelines: Vec<boolean> = noPipelines();
+let wantedPipelines: Vec<boolean> = zeroFlags(PIPELINE_SLOTS);
 
 export function pipelineSlot(program: int32, target: int32, blend: int32): int32 {
 	return (program * 2 + target) * BLEND_MODES + blend;
@@ -374,8 +369,7 @@ export interface DrawContext2D {
 let serials: Vec<int32> = [];
 let freeContextIds: Vec<int32> = [];
 
-function noContextIssued(id: int32): void {}
-let contextIssuedHook: (id: int32) => void = noContextIssued;
+let contextIssuedHook: ((id: int32) => void) | null = null;
 
 export function setContextIssuedHook(hook: (id: int32) => void): void { contextIssuedHook = hook; }
 export function contextCount(): int32 { return serials.length as int32; }
@@ -388,7 +382,7 @@ export function create(this typeof DrawContext2D): DrawContext2D {
 	if ((freeContextIds.length as int32) > 0) { return DrawContext2D.twin(freeContextIds.pop()); }
 	serials.push(0);
 	const id: int32 = (serials.length as int32) - 1;
-	contextIssuedHook(id);
+	if (contextIssuedHook != null) { contextIssuedHook(id); }
 	return DrawContext2D.twin(id);
 }
 
@@ -486,9 +480,6 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		laneByVertex: [],
 	};
 }
-
-const defaultContext: DrawContext2D = DrawContext2D.create();
-let activeContext: DrawContext2D = defaultContext;
 
 export function useContext(next: DrawContext2D): void { activeContext = next; }
 export function isDefaultContext(context: DrawContext2D): boolean {
@@ -1855,3 +1846,6 @@ test "every break reason an emitter can produce is one this module still defines
 	assert breakReasonName(BreakReason.Barrier as int32).equals("barrier");
 	assert breakReasonName(BreakReason.Pipeline as int32).equals("pipeline");
 }
+
+const defaultContext: DrawContext2D = DrawContext2D.create();
+let activeContext: DrawContext2D = defaultContext;

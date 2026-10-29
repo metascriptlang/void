@@ -48,10 +48,11 @@ import {
 	RoundClip, NO_ROUND_CLIP,
 	ScopeRecord, NO_SCOPE, pushScope, scopeRow, resolveScopes,
 	pushSpriteInstance, putSpriteInstance, recordSpriteDraw, pipelineAt, runOffset, commandView,
-	Program2D, PROGRAMS_2D, BLEND_MODES, PIPELINE_SLOTS, pipelineWanted, noPipelines,
+	Program2D, PROGRAMS_2D, BLEND_MODES, PIPELINE_SLOTS, pipelineWanted,
 	pipelineSlot, wantPipelineSlot,
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, Smooth, rgba } from "./types";
+import { zeroFlags } from "./zeros";
 import { CornerRadii } from "./boxStyle";
 import { roundedRectDistance } from "./sdf";
 import { Mat4 } from "../math/math3d";
@@ -80,7 +81,7 @@ const OFFSCREEN_LAYOUT: TargetLayout = {
 };
 
 let pipelines: PipelineCache = PipelineCache.empty();
-let resolvedPipelines: Vec<boolean> = noPipelines();
+let resolvedPipelines: Vec<boolean> = zeroFlags(PIPELINE_SLOTS);
 
 function premultipliedSource(factor: Blend): Blend {
 	return factor == Blend.SourceAlpha ? Blend.One : factor;
