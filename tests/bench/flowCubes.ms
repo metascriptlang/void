@@ -1,13 +1,14 @@
 // The CPU flows of benchCubes' frame timed one by one: Scene3D's refresh, collectLights and the
-// pass-list collect beginFrame runs per phase, with no window and no GPU. FLOW_CUBES_BEGIN=1 then
-// opens a 64x64 window that draws nothing and times the core renderer's beginFrame, which needs a
-// device for its stand-in and cluster textures. Each prints its median over FLOW_CUBES_FRAMES
-// frames, so a change to one flow is proven by its own number before the windowed A/B. The
-// meshes are external, so no vertex buffer is made; FLOW_CUBES_COUNT sets the cube count (1.6M,
-// as benchCubes).
+// pass lists beginFrame fills and culls in one walk, with no window and no GPU.
+// FLOW_CUBES_BEGIN=1 then opens a 64x64 window that draws nothing and times the core renderer's
+// beginFrame, which needs a device for its stand-in and cluster textures. Each prints its median
+// over FLOW_CUBES_FRAMES frames, so a change to one flow is proven by its own number before the
+// windowed A/B. The meshes are external, so no vertex buffer is made; FLOW_CUBES_COUNT sets the
+// cube count (1.6M, as benchCubes).
 
 import { env, exit } from "std/process";
-import { vec3, identityQuat, quatBetween } from "../../src/math/math3d";
+import { Mat4, vec3, identityQuat, quatBetween } from "../../src/math/math3d";
+import { Frustum3D } from "../../src/void3d/frustum";
 import { gfxSetup } from "../../src/sokol/gpu";
 import { commit } from "../../src/gpu/door";
 import { RenderState } from "../../src/gpu/state";
@@ -26,7 +27,7 @@ import { Camera3D, CameraView, CameraError, ProjectionKind } from "../../src/voi
 import {
 	Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame, setCameraPosition,
 } from "../../src/void3d/renderer";
-import { PassList, collect } from "../../src/void3d/passList";
+import { PassList, collectVisible } from "../../src/void3d/passList";
 import {
 	Scene3D, NodeId3D, SceneError, Transform3D, LightInstance, LightKind, LightError,
 	addMeshNode, addLightNode, refresh, collectLights,
@@ -113,7 +114,19 @@ function buildScene(count: int32): void {
 }
 
 function cpuFlows(): void {
-	let list: PassList = PassList.forPhase(Phase.Opaque);
+	let opaque: PassList = PassList.forPhase(Phase.Opaque);
+	let alpha: PassList = PassList.forPhase(Phase.Alpha);
+	let additive: PassList = PassList.forPhase(Phase.Additive);
+	let decal: PassList = PassList.forPhase(Phase.Decal);
+	let toneMapped: PassList = PassList.forPhase(Phase.DecalAfterToneMap);
+	const camera: Vec<float32> = cameraValues;
+	const viewProj: Mat4 = {
+		m11: camera[0], m12: camera[1], m13: camera[2], m14: camera[3],
+		m21: camera[4], m22: camera[5], m23: camera[6], m24: camera[7],
+		m31: camera[8], m32: camera[9], m33: camera[10], m34: camera[11],
+		m41: camera[12], m42: camera[13], m43: camera[14], m44: camera[15],
+	};
+	const frustum: Frustum3D = Frustum3D.fromMatrix(viewProj);
 	let refreshed: Vec<float64> = [];
 	let lit: Vec<float64> = [];
 	let collected: Vec<float64> = [];
@@ -124,7 +137,8 @@ function cpuFlows(): void {
 		const light: Result<int32, LightError> = collectLights(scene, lights);
 		if (!light.ok) { unreachable; }
 		const t2: float64 = performance.now();
-		collect(list, items, context.materials);
+		const _culled: int32 = collectVisible(opaque, alpha, additive, decal, toneMapped, items,
+			context.materials, context.meshData, frustum);
 		const t3: float64 = performance.now();
 		if (frame == 0) { continue; }
 		refreshed.push(t1 - t0);
@@ -134,7 +148,7 @@ function cpuFlows(): void {
 	console.log(`flow.items ${items.length}`);
 	console.log(`flow.refresh ${median(refreshed)} ms`);
 	console.log(`flow.collectLights ${median(lit)} ms`);
-	console.log(`flow.collect ${median(collected)} ms`);
+	console.log(`flow.collectVisible ${median(collected)} ms`);
 }
 
 function beginFrameFlow(): void {
