@@ -281,6 +281,10 @@ export interface Scene3D {
 	stack: Vec<int32>;
 	// The node behind each item of the list `refresh` and `collectDrawList` keep.
 	drawNodes: Vec<int32>;
+	// Bevy's change detection: set by whatever moves a field an item copies, so a steady frame
+	// with nothing set leaves the kept items as they are. LOD items are rewritten every frame.
+	itemsChanged: boolean;
+	drawLods: int32;
 	root: int32;
 	structureChanged: boolean;
 	// Counts structural changes, so a list kept beside the draw list knows when it is stale.
@@ -430,6 +434,8 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 		ambientLight: vec3(0.5, 0.5, 0.5),
 		stack: [],
 		drawNodes: [],
+		itemsChanged: true,
+		drawLods: 0,
 		root: NO_NODE_3D,
 		structureChanged: true,
 		structureRevision: 1,
@@ -1196,6 +1202,7 @@ export function setLayers(scene: Scene3D, id: NodeId3D, layers: uint32): void {
 export function setRenderOrder(scene: Scene3D, id: NodeId3D, order: int32): void {
 	const row: int32 = scene.liveRow(id, "setRenderOrder");
 	scene.nodes[row].renderOrder = order;
+	scene.itemsChanged = true;
 }
 
 export function renderOrderOf(this scene: Scene3D, id: NodeId3D): int32 {
@@ -1260,6 +1267,7 @@ export function setMeshOf(scene: Scene3D, id: NodeId3D, mesh: MeshId): Result<in
 	if (!pinMesh(context, mesh).ok) { return Result.err(meshError(context, mesh)); }
 	if (holds && !unpinMesh(context, shown).ok) { unreachable; }
 	scene.meshes[row].mesh = mesh;
+	scene.itemsChanged = true;
 	return Result.ok(node);
 }
 
@@ -1283,6 +1291,7 @@ export function setMaterialOf(
 	if (!pinMaterial(context, material).ok) { unreachable; }
 	if (holds && !unpinMaterial(context, shown).ok) { unreachable; }
 	scene.meshes[row].material = material;
+	scene.itemsChanged = true;
 	return Result.ok(node);
 }
 
@@ -1454,6 +1463,7 @@ export function syncWorld(scene: Scene3D): int32 {
 				parent == NO_NODE_3D ? local : local.multiplyAffine(parentWorld);
 			scene.nodes[index].flags = scene.nodes[index].flags.excl(NodeFlag.PosChanged);
 			synced = synced + 1;
+			scene.itemsChanged = true;
 		}
 		for (const child of scene.nodes[index].children) {
 			if (changed) {
@@ -1495,6 +1505,8 @@ function fillDrawList(
 	while ((items.length as int32) > 0) { items.pop(); }
 	if (keep) {
 		while ((scene.drawNodes.length as int32) > 0) { scene.drawNodes.pop(); }
+		scene.drawLods = 0;
+		scene.itemsChanged = false;
 	}
 	if (scene.root == NO_NODE_3D) { return 0; }
 	let top: int32 = 0;
@@ -1508,7 +1520,10 @@ function fillDrawList(
 		if (shown && scene.nodes[index].kind == NodeKind.Mesh) {
 			const payload: int32 = scene.nodes[index].payload;
 			const pick = scene.meshes[payload].lod;
-			if (pick !== null) { pick.ratioSource = ratioSourceOf(scene, index, layers); }
+			if (pick !== null) {
+				pick.ratioSource = ratioSourceOf(scene, index, layers);
+				if (keep) { scene.drawLods += 1; }
+			}
 			items.push({
 				mesh: scene.meshes[payload].mesh,
 				material: scene.meshes[payload].material,
@@ -1651,6 +1666,8 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 	if ((items.length as int32) != count) {
 		return fillDrawList(scene, activeLayers(scene), items, true);
 	}
+	if (!scene.itemsChanged && scene.drawLods == 0) { return count; }
+	scene.itemsChanged = false;
 	const layers: uint32 = activeLayers(scene);
 	for (let at = 0; at < count; at++) {
 		const index: int32 = scene.drawNodes[at];
