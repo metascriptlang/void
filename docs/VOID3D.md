@@ -6950,21 +6950,28 @@ walked the items once per phase (`collect`, then `filterFrustum`).
 
 - The per-phase `collect` stays as the tests' oracle (`src/test/drawHelpers.ms`); the pins check
   the one walk against it per phase. `filterFrustum` stays for `dirShadowMap.ms`'s casters.
-- `scene.ms` `refreshItemsSynced` returns the kept items untouched when `Scene3D.itemsChanged` is
-  clear and no kept item has LOD levels (`drawLods`). `syncWorld` sets the flag when it recomputes
-  a world matrix, and so do `setRenderOrder`, `setMeshOf` and `setMaterialOf`, the setters of the
-  fields an item copies. This is Bevy's change-detected extraction (`84e2d2c`
-  `bevy_pbr/src/render/mesh.rs:1952-1975`, `extract_meshes_for_gpu_building`: only entities with
-  a `Changed<GlobalTransform>`, `Changed<Mesh3d>`, ... are re-extracted) at scene level, not per
-  entity. A new field an item copies needs its setter to set the flag, or a steady frame shows the
-  old value; `renderOrderCheck.ms` pins that for `setRenderOrder` and `setLocal`.
-- **Ceiling:** one moving node still rewrites every item, and a scene with any LOD item rewrites
-  every frame. The upgrade, when a scene with few movers among many items measures refresh as its
-  cost, is Bevy's per-entity shape: a list of the changed nodes' item slots.
+- `scene.ms` `refreshItemsSynced` rewrites only the slots in `Scene3D.dirtySlots`, plus every LOD
+  item (`lodSlots`), whose level is picked per frame. `syncWorld` queues a mesh's slot when it
+  recomputes its world matrix, and so do `setRenderOrder`, `setMeshOf` and `setMaterialOf`, the
+  setters of the fields an item copies (`markItemDirty`). This is Bevy's change-detected
+  extraction (`84e2d2c` `bevy_pbr/src/render/mesh.rs:1952-1975`,
+  `extract_meshes_for_gpu_building`: only entities with a `Changed<GlobalTransform>`,
+  `Changed<Mesh3d>`, ... are re-extracted). A new field an item copies needs its setter to call
+  `markItemDirty`, or the item keeps the old value; `renderOrderCheck.ms` pins that for
+  `setRenderOrder` and `setLocal`.
+- `syncWorld` skips a subtree no moved node is under. Heaps' `syncRec` (`Object.hx:783-830`)
+  visits every visible node each frame; the skip is Bevy's (`84e2d2c`
+  `bevy_transform/src/systems.rs:111-150` `mark_dirty_trees` marks the ancestors of a changed
+  node up to the first one already marked, `:520-524` `propagate_parent_transforms` returns from
+  an unmarked subtree): `markTreeChanged` sets `NodeFlag.TreeChanged` the same way. A parent's
+  child list is still scanned, so a flat scene with every node under the root gains nothing.
 
 Release `tests/bench/flowCubes.ms`, 1.6M cubes, before the one walk: `refresh` 33.8 ms,
 `collect` 12.1 ms per phase. Tree `999491b3` (one walk, before the steady-frame skip),
 box not quiet: `refresh` 74% of the two, `collectVisible` 26%.
+Tree `a4502578`, three builds running beside it, ten cubes moved per frame (`flow.refreshMoving`):
+flat under the root 12.4 ms (8.7 ms one tree earlier, before the skip), almost all of it
+`syncWorld`'s scan of the root's 1.6M children, unsettled until a quiet A/B;`FLOW_CUBES_GROUP=1000` 0.0031 ms. The full rewrite before the dirty slots: 38.9 ms.
 Tree `3f128f59` (with the skip), a gate running beside it: a steady frame's `refresh` 0.0017 ms
 (38.9 ms on the same box before the skip), `collectVisible` 11.6 ms.
 
