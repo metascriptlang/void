@@ -248,7 +248,7 @@ test "a material names a texture only on a program that reads one at slot 0" {
 		...Material.plain(Program.Copy, RenderState.defaults(), Phase.Opaque),
 		texture: firstSlotOf(context),
 	};
-	assert addMaterial(context, copy).ok;
+	assert materialError(addMaterial(context, copy)) == MaterialError.StaleTexture;
 }
 
 test "each filter and wrap has a sampler slot of its own" {
