@@ -2103,6 +2103,59 @@ function appendRows(context: DrawContext, count: int32): int32 {
 	return offset;
 }
 
+// The pipeline the last draw got, and every input its key was made of, with the context and its
+// generation: a draw that repeats them takes the id again without making the key. A pipeline
+// exists only while its program's shader does, and releasePipelines drops both.
+export struct PipelineMemo {
+	serial: int32;
+	generation: int32;
+	program: int32;
+	layout: VertexLayout;
+	indexed: boolean;
+	format: IndexType;
+	state: RenderState;
+	targets: TargetLayout;
+	pipeline: uint32;
+}
+
+export function holds(
+	this memo: PipelineMemo,
+	next: PipelineMemo,
+	shaderLive: boolean,
+): boolean {
+	return shaderLive && memo.serial == next.serial && memo.generation == next.generation &&
+		memo.program == next.program && memo.layout == next.layout &&
+		memo.indexed == next.indexed && memo.format == next.format &&
+		memo.state == next.state && memo.targets == next.targets;
+}
+
+let pipelineMemo: PipelineMemo | null = null;
+
+function pipelineOf(
+	this context: DrawContext,
+	program: ProgramKey,
+	doorId: int32,
+	mesh: GpuMesh,
+	state: RenderState,
+	targets: TargetLayout,
+): uint32 {
+	const asked: PipelineMemo = {
+		serial: context.serial, generation: contextGeneration(), program: doorId,
+		layout: mesh.layout, indexed: mesh.isIndexed(), format: mesh.indexType(), state: state,
+		targets: targets.resolved(), pipeline: 0,
+	};
+	const memo = pipelineMemo;
+	const shaderLive: boolean = !context.pipelines.closed &&
+		doorId < (context.pipelines.shaders.length as int32) &&
+		context.pipelines.shaders[doorId] != 0;
+	if (memo !== null && memo.holds(asked, shaderLive)) { return memo.pipeline; }
+	const pipeline: uint32 = pipelineFor(
+		context.pipelines, program, asked.layout, asked.indexed, state, asked.targets, asked.format,
+	);
+	pipelineMemo = { ...asked, pipeline: pipeline };
+	return pipeline;
+}
+
 // One draw of `item`'s mesh, material and range, over the `staged` rows stageRows holds, or
 // over its InstanceRun when it has one.
 function drawStaged(
@@ -2154,15 +2207,8 @@ function drawStaged(
 		}
 		if (!context.textureReady(texture.index)) { return; }
 	}
-	const pipeline: uint32 = pipelineFor(
-		context.pipelines,
-		program,
-		mesh.layout,
-		mesh.isIndexed(),
-		state,
-		targets,
-		mesh.indexType(),
-	);
+	const globalProgram: int32 = doorProgram(program);
+	const pipeline: uint32 = context.pipelineOf(program, globalProgram, mesh, state, targets);
 	applyPipeline(pipeline);
 	if (run !== null) {
 		const stream: GpuMesh = context.meshes[run.stream.index];
@@ -2174,7 +2220,6 @@ function drawStaged(
 	} else {
 		bindItem(context, mesh, 0, 0, material, scene);
 	}
-	let globalProgram: int32 = doorProgram(program);
 	const pose = item.skinPoseOf();
 	if (pose !== null) { applyUniforms(SKIN_UNIFORM_SLOT, pose.blocks[item.skinPalette]); }
 	for (const block of globals) {
