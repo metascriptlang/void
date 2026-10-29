@@ -3,7 +3,7 @@
 // on a target with no stencil bits is refused naming the pipeline.
 
 import { shaderProgram } from "../shader/program";
-import { Vec2f, Vec4f, builtin, vec4f } from "../shader/std";
+import { Vec2f, Vec4f, binding, builtin, vec4f } from "../shader/std";
 import { Compare, Face, RenderState, Stencil, StencilOp } from "../gpu/state";
 import { PixelFormat, stencilTargetRefusal } from "../gpu/doorGpu.ms";
 import { TargetLayout } from "../gpu/target";
@@ -31,7 +31,20 @@ function greenFs(): Vec4f {
 	return vec4f(0.0, 1.0, 0.0, 1.0);
 }
 
+struct TintParams {
+	tint: Vec4f;
+}
+
+struct TintBindings {
+	@binding(0) params: TintParams;
+}
+
+function tintFs(b: TintBindings): Vec4f {
+	return b.params.tint;
+}
+
 shaderProgram(red, quadVs, redFs);
+shaderProgram(tinted, quadVs, tintFs);
 shaderProgram(green, quadVs, greenFs);
 
 function stencilOnly(): RenderState {
@@ -98,6 +111,8 @@ when (voidDummy || (windows && !voidVulkan)) {
 		doorApplyBindings,
 		doorApplyPipeline,
 		doorApplyStencilReference,
+		doorApplyUniformsOf,
+		doorUniformStamp,
 		doorDraw,
 		doorMakeBufferOf,
 		doorReadTexture,
@@ -229,6 +244,30 @@ when (voidDummy || (windows && !voidVulkan)) {
 		doorApplyPipeline(second);
 		doorApplyBindings(wordsOf(other), [16]);
 		assert boundFacts.vertexBuffers[0] == other && boundFacts.vertexOffsets[0] == 16;
+		doorDraw(0, 6, 1);
+		endPass();
+		closeScene(scene);
+	}
+
+	test "a pipeline change clears the applied uniform blocks, so each pipeline's draw needs its own apply" {
+		const scene: Scene = openScene();
+		const tint: Vec<float32> = [0, 1, 0, 1];
+		beginStencilPass(scene, 0);
+		doorApplyPipeline(pipelineOf(scene, tinted, plain()));
+		assert doorUniformStamp(0) == 0;
+		doorApplyBindings(wordsOf(scene.vertices), [0]);
+		doorApplyUniformsOf(0, tint);
+		doorApplyUniformsOf(0, tint);
+		const stamp: int32 = doorUniformStamp(0);
+		assert stamp > 0;
+		doorDraw(0, 6, 1);
+		doorApplyPipeline(pipelineOf(scene, red, plain()));
+		assert doorUniformStamp(0) == 0;
+		doorApplyPipeline(pipelineOf(scene, tinted, plain()));
+		assert doorUniformStamp(0) == 0;
+		doorApplyUniformsOf(0, tint);
+		assert doorUniformStamp(0) > stamp;
+		doorApplyBindings(wordsOf(scene.vertices), [0]);
 		doorDraw(0, 6, 1);
 		endPass();
 		closeScene(scene);
