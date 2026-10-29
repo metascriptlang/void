@@ -74,9 +74,10 @@ later replaces the hand-written GLSL source of each base.
   as an entry's does, and `linkedProgram` specializes each segment by the row's features before
   `link`, also a feature the base never declares; `specialize` walks a module without entries
   from its last function. `tools/irPrograms.ms` counts a row's feature as read when one of its
-  effects reads it. Refused at the declaration: a return other than `P`, a first
-  parameter that is no author struct, a `@binding` on a bindings field, a third parameter that
-  is no key (`tests/refusals/segment*.ms`). Pinned in `src/test/shaderSegmentCheck.ms` and,
+  effects reads it. Refused at the declaration: a return other than `P` or a carrier struct
+  (below), a first parameter that is no author struct, a `@binding` on a bindings field, a
+  parameter after the bindings that is neither the key nor a carrier, a carrier that is `P`
+  (`tests/refusals/segment*.ms`). Pinned in `src/test/shaderSegmentCheck.ms` and,
   for the per-row fold, `src/test/shaderLinkCheck.ms`.
 - **A base hooks each phase struct once, and `link` chains segments there.** `hook(phase)`
   (`std.ms`) is the identity on the CPU, so a base without effects runs unchanged. The emitter
@@ -93,8 +94,9 @@ later replaces the hand-written GLSL source of each base.
   binding -1 within its group (blocks, views, samplers) at the next binding past the highest one there, in link order, as
   Heaps' `hxsl/Flatten.hx` `packTextures` and `packBuffers` give each var the next position of its
   kind; a block stays its own block. A group past `slotLimit` (`layout.ms`: 8 blocks, 32 views,
-  12 samplers) is refused, naming the effect and the resource. Then a member name shared by two
-  blocks one stage reads is refused unless they sit at one binding, the base's rule for
+  12 samplers) is refused, naming the effect and the resource. Then a member name one stage
+  reads from two blocks is refused unless they sit at one binding (no printer declares a block
+  member globally, so a member the stage does not read cannot clash), the base's rule for
   alternatives, checked only here because a segment's blocks have no binding before link. Pinned in
   `src/test/shaderLinkCheck.ms` with each target's reflection.
 - **A linked program carries only the varyings its fragment reads**, so attaching an effect
@@ -106,6 +108,18 @@ later replaces the hand-written GLSL source of each base.
   Builtins stay; a dropped store whose value has an effect is refused. The field liveness is per
   function and flow-insensitive, and a struct passed to any other function keeps every field.
   An unlinked program keeps every io (`specialize`), so its printed text does not move.
+- **An effect carries its own varyings in a carrier struct.** A vertex segment
+  `f(phase: P, b, key?): C` writes the carrier `C`; a fragment segment
+  `g(phase: Q, b, key?, carried: C): Q` reads it. `link` merges carriers by name, as structs
+  are, and gives each field read anywhere a vertex output and a fragment input appended after
+  the base's, in field order, on both sides; the vertex site stores the writer's result into
+  them and the fragment site builds `C` from them, zero for a field no reader reads, so the
+  varying pass drops that pair. The reference does the same with a `var` written in `vertex()`
+  and read in `fragment()` (`hxsl/Linker.hx:134-150` merge by name, `hxsl/Splitter.hx:66-70`).
+  A field a reader reads with no writer in the program is refused, naming the effect, field and
+  carrier (`hxsl/Splitter.hx:235`); a writer at a fragment site, a reader at a vertex site and a
+  field that is no numeric scalar or vector are refused too. Pinned in
+  `src/test/shaderLinkCheck.ms` (written and read, unread dropped, unwritten refused).
 - **Each declaration sits under the conditions its reads run under, and an unread one is left
   out.** A uniform or texture a variant does not read is still one its draw would have to bind, and
   shdc would reflect it. The condition is the `||` of every distinct context a read runs in,
