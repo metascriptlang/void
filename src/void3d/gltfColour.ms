@@ -8,6 +8,10 @@ import {
 	GltfAccessorError,
 } from "./gltfAccessor";
 
+const COMPONENT_FLOAT: int32 = 5126;
+const COMPONENT_UNSIGNED_BYTE: int32 = 5121;
+const COMPONENT_UNSIGNED_SHORT: int32 = 5123;
+
 export enum GltfColourError {
 	Encoding,
 	Shape,
@@ -36,9 +40,11 @@ export function fromAccessor(
 	views: Readonly<Span<GltfAccessorView>>,
 	vertexCount: int32,
 ): Result<GltfColour, GltfColourError> {
-	if (source.role != GltfAccessorRole.Attribute ||
-		(source.componentType != 5126 && source.componentType != 5121 &&
-			source.componentType != 5123) || source.normalized != (source.componentType != 5126)) {
+	const floats: boolean = source.componentType == COMPONENT_FLOAT;
+	const integers: boolean = source.componentType == COMPONENT_UNSIGNED_BYTE ||
+		source.componentType == COMPONENT_UNSIGNED_SHORT;
+	if (source.role != GltfAccessorRole.Attribute || (!floats && !integers) ||
+		source.normalized != !floats) {
 		return Result.err(GltfColourError.Encoding);
 	}
 	if (source.shape != GltfAccessorShape.Vec3 && source.shape != GltfAccessorShape.Vec4) {
@@ -49,13 +55,11 @@ export function fromAccessor(
 	}
 	const decoded = GltfAccessorValues.decode(source, buffers, views);
 	if (!decoded.ok) {
-		if (decoded.error == GltfAccessorError.Bounds) {
-			return Result.err(GltfColourError.Bounds);
-		}
-		if (decoded.error == GltfAccessorError.NonFinite) {
-			return Result.err(GltfColourError.NonFinite);
-		}
-		return Result.err(GltfColourError.Accessor);
+		return Result.err(match (decoded.error) {
+			GltfAccessorError.Bounds => GltfColourError.Bounds,
+			GltfAccessorError.NonFinite => GltfColourError.NonFinite,
+			_ => GltfColourError.Accessor,
+		});
 	}
 	const data = decoded.value;
 	for (const value of data.values) {
