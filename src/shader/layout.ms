@@ -13,6 +13,7 @@ import {
 	ShaderType,
 	ShaderTypeKind,
 } from "./ir";
+import { BlockMember } from "./blockMember";
 import { TexturePair, readsFrom } from "./specialize";
 
 enum LayoutRule {
@@ -137,6 +138,22 @@ export function uniformBlockLayout(m: ShaderModule, resourceIndex: int32):
 		}
 	}
 	return Result.ok(structLayoutOf(m, r.type.structIndex, LayoutRule.Std140));
+}
+
+// Each member of a uniform block as its float offset and float count in the block the printers lay
+// out, so a writer's offsets are read off the same layout.
+export function blockMembers(m: ShaderModule, resourceIndex: int32): Result<BlockMember[], string> {
+	const layout = uniformBlockLayout(m, resourceIndex);
+	if (!layout.ok) { return Result.err(layout.error); }
+	const r = m.resources[resourceIndex];
+	const members = m.structs[r.type.structIndex].members;
+	let out: BlockMember[] = [];
+	for (let i = 0; i < members.length; i++) {
+		const [_align, size] = extentOf(m, members[i].type, LayoutRule.Std140);
+		out.push({ block: r.name, name: members[i].name, offset: layout.value.offsets[i] / 4,
+			count: size / 4 });
+	}
+	return Result.ok(out);
 }
 
 function storageMemberError(m: ShaderModule, t: ShaderType, path: string): string {
