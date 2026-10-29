@@ -34,7 +34,7 @@ export struct AnimationSmoothTarget {
 }
 
 // Animation.hx:279 isPlaying, EPSILON at Animation.hx:30.
-const pausedBelow: float64 = 0.000001;
+const PAUSED_BELOW: float64 = 0.000001;
 
 function noComponents(): BitSet<AnimationComponent> {
 	return 0 as BitSet<AnimationComponent>;
@@ -90,8 +90,11 @@ export function create(
 	if (!composed.ok) { return Result.err(AnimationSmoothTargetError.Compose); }
 	const side = bindSide(pose, weights, clip);
 	if (!side.ok) {
-		return Result.err(side.error == AnimationTransitionError.WeightShape
-			? AnimationSmoothTargetError.WeightShape : AnimationSmoothTargetError.Target);
+		return Result.err(
+			side.error == AnimationTransitionError.WeightShape
+				? AnimationSmoothTargetError.WeightShape
+				: AnimationSmoothTargetError.Target,
+		);
 	}
 	let smooth: AnimationSmoothTarget = {
 		compose: composed.value, frozen: { seconds: 0.0, samples: [] },
@@ -133,11 +136,16 @@ export function advanceSmoothTarget(
 	dt: float64,
 ): Result<void, AnimationSmoothTargetError> {
 	if (!Number.isFinite(dt) || dt < 0.0) { return Result.err(AnimationSmoothTargetError.Delta); }
-	if (Math.abs(smooth.blendSpeed) <= pausedBelow) { return Result.ok(null); }
+	if (Math.abs(smooth.blendSpeed) <= PAUSED_BELOW) { return Result.ok(null); }
 	smooth.target.time = smooth.target.clip.steppedTime(
-		smooth.target.time, dt, smooth.targetSpeed);
-	smooth.blend = Math.min(1.0, Math.max(
-		0.0, smooth.blend + dt * smooth.blendSpeed / smooth.blendSeconds));
+		smooth.target.time,
+		dt,
+		smooth.targetSpeed,
+	);
+	smooth.blend = Math.min(
+		1.0,
+		Math.max(0.0, smooth.blend + dt * smooth.blendSpeed / smooth.blendSeconds),
+	);
 	return Result.ok(null);
 }
 
@@ -159,16 +167,17 @@ export function evaluateSmoothTarget(
 			smooth.frozen.samples[i].present = noComponents();
 		}
 	}
-	const eased: float64 = easeFactor(smooth.blend, smooth.easing);
-	if (!stageSmoothCompose(
-		smooth.compose, smooth.frozen, smooth.target.child, eased as float32,
-	).ok) {
+	const eased: float32 = easeFactor(smooth.blend, smooth.easing) as float32;
+	if (!stageSmoothCompose(smooth.compose, smooth.frozen, smooth.target.child, eased).ok) {
 		return Result.err(AnimationSmoothTargetError.Compose);
 	}
 	for (let i = 0; i < smooth.weights.length; i++) {
 		for (let k = 0; k < smooth.weights[i].length; k++) {
 			smooth.weights[i][k] = blendedScalar(
-				smooth.frozenWeights[i].rest[k], smooth.target.weights[i][k], eased as float32);
+				smooth.frozenWeights[i].rest[k],
+				smooth.target.weights[i][k],
+				eased,
+			);
 		}
 	}
 	return Result.ok(null);

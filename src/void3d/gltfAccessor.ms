@@ -329,7 +329,7 @@ export function decode(
 	const dense = layout.dense;
 	if (dense !== null) {
 		for (let i = 0; i < layout.count; i++) {
-			const read = try readElement(values, layout, buffers, dense, i, i);
+			const _read = try readElement(values, layout, buffers, dense, i, i);
 		}
 	} else {
 		for (let i = 0; i < values.length; i++) { values[i] = 0.0; }
@@ -342,7 +342,7 @@ export function decode(
 			const index = unsignedAt(
 				buffers[indices.buffer].bytes, indices.byteOffset + i * indexSize, indexSize,
 			) as int32;
-			const read = try readElement(values, layout, buffers, replacements, i, index);
+			const _read = try readElement(values, layout, buffers, replacements, i, index);
 		}
 	}
 	return Result.ok({

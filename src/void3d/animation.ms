@@ -116,8 +116,7 @@ export function forFrames(
 }
 
 export function isPlaying(this clock: AnimationClock): boolean {
-	const magnitude: float64 = clock.speed < 0.0 ? -clock.speed : clock.speed;
-	return !clock.pause && magnitude > PLAYING_EPSILON;
+	return !clock.pause && Math.abs(clock.speed) > PLAYING_EPSILON;
 }
 
 export function isFinished(this clock: AnimationClock): boolean {
@@ -446,13 +445,13 @@ export function checkBakedFrames(frames: Readonly<Span<MeshData>>): Result<int32
 	const vertices: int32 = frames[0].vertexCount();
 	const indices: int32 = frames[0].indexCount();
 	if (vertices == 0) { return Result.err(AnimationError.FrameTopology); }
-	for (let f = 1; f < count; f++) {
-		if (!frames[f].validIndices() || frames[f].vertexCount() != vertices ||
-			frames[f].indexCount() != indices) {
+	for (let frame = 1; frame < count; frame++) {
+		if (!frames[frame].validIndices() || frames[frame].vertexCount() != vertices ||
+			frames[frame].indexCount() != indices) {
 			return Result.err(AnimationError.FrameTopology);
 		}
 		for (let i = 0; i < indices; i++) {
-			if (frames[f].indexAt(i) != frames[0].indexAt(i)) {
+			if (frames[frame].indexAt(i) != frames[0].indexAt(i)) {
 				return Result.err(AnimationError.FrameTopology);
 			}
 		}
@@ -468,15 +467,16 @@ export function addBakedFrames(
 ): Result<Vec<MeshId>, AnimationError> {
 	const count: int32 = try checkBakedFrames(frames);
 	let added: Vec<MeshId> = [];
-	for (let f = 0; f < count; f++) {
-		const frame: Result<MeshId, MeshUploadError> = addMeshData(context, frames[f].copy());
-		if (!frame.ok) {
+	for (let frame = 0; frame < count; frame++) {
+		const uploaded: Result<MeshId, MeshUploadError> =
+			addMeshData(context, frames[frame].copy());
+		if (!uploaded.ok) {
 			for (const mesh of added) {
 				const _left: Result<int32, HandleError> = releaseMesh(context, mesh);
 			}
 			return Result.err(AnimationError.UploadRefused);
 		}
-		added.push(frame.value);
+		added.push(uploaded.value);
 	}
 	return Result.ok(added);
 }

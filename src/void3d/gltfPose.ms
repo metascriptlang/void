@@ -1,4 +1,4 @@
-import { vec3 } from "../math/math3d";
+import { Vec4, vec3 } from "../math/math3d";
 import { GltfCurvePath, GltfPoseTrack, sample } from "./gltfCurve";
 export { GltfPoseTrack } from "./gltfCurve";
 import { Scene3D, NodeId3D, Transform3D, isLive, setLocal } from "./scene";
@@ -15,6 +15,49 @@ export enum GltfPoseError {
 	Compose,
 }
 
+export interface GltfPose {
+	readonly scene: Scene3D;
+	nodes: Vec<NodeId3D>;
+	tracks: Vec<GltfPoseTrack>;
+	pending: Vec<Transform3D>;
+	touched: Vec<boolean>;
+}
+
+function duplicatesEarlier(tracks: Readonly<Span<GltfPoseTrack>>, index: int32): boolean {
+	for (let previous = 0; previous < index; previous++) {
+		if (tracks[previous].sourceNode == tracks[index].sourceNode &&
+			tracks[previous].curve.path == tracks[index].curve.path) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function animatedComponent(path: GltfCurvePath): AnimationComponent {
+	return match (path) {
+		GltfCurvePath.Translation => AnimationComponent.Translation,
+		GltfCurvePath.Rotation => AnimationComponent.Rotation,
+		GltfCurvePath.Scale => AnimationComponent.Scale,
+	};
+}
+
+function withSample(this local: Transform3D, path: GltfCurvePath, value: Vec4): Transform3D {
+	return match (path) {
+		GltfCurvePath.Translation => ({ ...local, position: vec3(value.x, value.y, value.z) }),
+		GltfCurvePath.Rotation => ({
+			...local,
+			rotation: { x: value.x, y: value.y, z: value.z, w: value.w },
+		}),
+		GltfCurvePath.Scale => ({ ...local, scale: vec3(value.x, value.y, value.z) }),
+	};
+}
+
+function committed(this compose: Readonly<AnimationCompose>, pose: GltfPose): int32 {
+	for (let i = 0; i < compose.targets.length; i++) {
+		setLocal(pose.scene, pose.nodes[compose.targets[i].sourceNode], compose.output[i].value);
+	}
+	return compose.targets.length as int32;
+}
 
 export function stageTrsChild(
 	this pose: GltfPose,
@@ -47,34 +90,15 @@ export function stageTrsChild(
 			}
 		}
 		if (targetIndex < 0) { return Result.err(GltfPoseError.Target); }
-		for (let previous = 0; previous < i; previous++) {
-			if (pose.tracks[previous].sourceNode == track.sourceNode &&
-				pose.tracks[previous].curve.path == track.curve.path) {
-				return Result.err(GltfPoseError.DuplicateTrack);
-			}
+		if (duplicatesEarlier(pose.tracks, i as int32)) {
+			return Result.err(GltfPoseError.DuplicateTrack);
 		}
 		const sampled = track.curve.sample(seconds);
 		if (!sampled.ok) { return Result.err(GltfPoseError.Curve); }
-		const value = sampled.value;
-		match (track.curve.path) {
-			GltfCurvePath.Translation => {
-				resolved[targetIndex].value.position = vec3(value.x, value.y, value.z);
-				resolved[targetIndex].present =
-					resolved[targetIndex].present.incl(AnimationComponent.Translation);
-			},
-			GltfCurvePath.Rotation => {
-				resolved[targetIndex].value.rotation = {
-					x: value.x, y: value.y, z: value.z, w: value.w,
-				};
-				resolved[targetIndex].present =
-					resolved[targetIndex].present.incl(AnimationComponent.Rotation);
-			},
-			GltfCurvePath.Scale => {
-				resolved[targetIndex].value.scale = vec3(value.x, value.y, value.z);
-				resolved[targetIndex].present =
-					resolved[targetIndex].present.incl(AnimationComponent.Scale);
-			},
-		}
+		const path = track.curve.path;
+		resolved[targetIndex].value = resolved[targetIndex].value.withSample(path, sampled.value);
+		resolved[targetIndex].present =
+			resolved[targetIndex].present.incl(animatedComponent(path));
 	}
 	let child: AnimationChildSample = { seconds: seconds, samples: [] };
 	for (const sample of resolved) {
@@ -120,10 +144,7 @@ export function commitSmoothTrs(
 	const secondChild = try second.stageTrsChild(compose.targets, secondSeconds);
 	const staged = stageSmoothCompose(compose, firstChild, secondChild, weight);
 	if (!staged.ok) { return Result.err(GltfPoseError.Compose); }
-	for (let i = 0; i < compose.targets.length; i++) {
-		setLocal(first.scene, first.nodes[compose.targets[i].sourceNode], compose.output[i].value);
-	}
-	return Result.ok(compose.targets.length as int32);
+	return Result.ok(compose.committed(first));
 }
 
 export function commitExclusiveTrs(
@@ -139,18 +160,7 @@ export function commitExclusiveTrs(
 	const secondChild = try second.stageTrsChild(compose.targets, secondSeconds);
 	const staged = stageExclusiveCompose(compose, firstChild, secondChild, secondSources);
 	if (!staged.ok) { return Result.err(GltfPoseError.Compose); }
-	for (let i = 0; i < compose.targets.length; i++) {
-		setLocal(first.scene, first.nodes[compose.targets[i].sourceNode], compose.output[i].value);
-	}
-	return Result.ok(compose.targets.length as int32);
-}
-
-export interface GltfPose {
-	readonly scene: Scene3D;
-	nodes: Vec<NodeId3D>;
-	tracks: Vec<GltfPoseTrack>;
-	pending: Vec<Transform3D>;
-	touched: Vec<boolean>;
+	return Result.ok(compose.committed(first));
 }
 
 export function bind(
@@ -172,11 +182,8 @@ export function bind(
 		const track = tracks[i];
 		if (track.sourceNode < 0 || track.sourceNode >= nodes.length ||
 			!scene.isLive(nodes[track.sourceNode])) { return Result.err(GltfPoseError.Target); }
-		for (let previous = 0; previous < i; previous++) {
-			if (tracks[previous].sourceNode == track.sourceNode &&
-				tracks[previous].curve.path == track.curve.path) {
-				return Result.err(GltfPoseError.DuplicateTrack);
-			}
+		if (duplicatesEarlier(tracks, i as int32)) {
+			return Result.err(GltfPoseError.DuplicateTrack);
 		}
 		const value = track.curve.sample(0.0);
 		if (!value.ok) { return Result.err(GltfPoseError.Curve); }
@@ -199,19 +206,8 @@ export function samplePose(this pose: GltfPose, seconds: float64): Result<int32,
 	for (const track of pose.tracks) {
 		const sampled = track.curve.sample(seconds);
 		if (!sampled.ok) { return Result.err(GltfPoseError.Curve); }
-		const value = sampled.value;
 		const source: int32 = track.sourceNode;
-		match (track.curve.path) {
-			GltfCurvePath.Translation => {
-				pose.pending[source].position = vec3(value.x, value.y, value.z);
-			},
-			GltfCurvePath.Scale => {
-				pose.pending[source].scale = vec3(value.x, value.y, value.z);
-			},
-			GltfCurvePath.Rotation => {
-				pose.pending[source].rotation = { x: value.x, y: value.y, z: value.z, w: value.w };
-			},
-		}
+		pose.pending[source] = pose.pending[source].withSample(track.curve.path, sampled.value);
 		pose.touched[source] = true;
 	}
 	let written: int32 = 0;
