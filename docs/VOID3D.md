@@ -6965,6 +6965,8 @@ walked the items once per phase (`collect`, then `filterFrustum`).
 Release `tests/bench/flowCubes.ms`, 1.6M cubes, before the one walk: `refresh` 33.8 ms,
 `collect` 12.1 ms per phase. Tree `999491b3` (one walk, before the steady-frame skip),
 box not quiet: `refresh` 74% of the two, `collectVisible` 26%.
+Tree `3f128f59` (with the skip), a gate running beside it: a steady frame's `refresh` 0.0017 ms
+(38.9 ms on the same box before the skip), `collectVisible` 11.6 ms.
 
 ### Trail: CPU history and ribbon checkpoint
 
