@@ -131,7 +131,7 @@ import {
 } from "./draw";
 import { UniformError, ownRange, disownRange } from "./uniformPool";
 import {
-	PassList, collect, filterFrustum, sortBackToFront, sortByLayer, drawPassList,
+	PassList, collectVisible, sortBackToFront, sortByLayer, drawPassList,
 } from "./passList";
 import { screenMesh, screenItem, makeScreenTriangle } from "./screenFx";
 import { Mat4 } from "../math/math3d";
@@ -655,9 +655,6 @@ export function beginFrame(
 	let checkedTotal: int32 = 0;
 	let lodItems: int32 = 0;
 	let readsTime: boolean = false;
-	let opaque: boolean = false;
-	let alpha: boolean = false;
-	let additive: boolean = false;
 	let decal: boolean = false;
 	let decalAfterToneMap: boolean = false;
 	while ((renderer.pairs.length as int32) < (context.materials.length as int32)) {
@@ -683,9 +680,6 @@ export function beginFrame(
 			renderer.pairs[material.index] = checked;
 			readsTime = readsTime || readsFrameTime(context, material.index, checked);
 			const phase: Phase = context.materials[material.index].phase;
-			opaque = opaque || phase == Phase.Opaque;
-			alpha = alpha || phase == Phase.Alpha;
-			additive = additive || phase == Phase.Additive;
 			decal = decal || phase == Phase.Decal;
 			decalAfterToneMap = decalAfterToneMap || phase == Phase.DecalAfterToneMap;
 		}
@@ -832,11 +826,6 @@ export function beginFrame(
 	}
 	const environment: Environment | null = renderer.environment;
 	if (environment !== null && !environment.isCurrent()) { environment.compute(); }
-	collectSeen(renderer.opaque, opaque, items, context.materials);
-	collectSeen(renderer.alpha, alpha, items, context.materials);
-	collectSeen(renderer.additive, additive, items, context.materials);
-	collectSeen(renderer.decal, decal, items, context.materials);
-	collectSeen(renderer.decalAfterToneMap, decalAfterToneMap, items, context.materials);
 	let viewProj: Mat4 = {
 		m11: camera[0], m12: camera[1], m13: camera[2], m14: camera[3],
 		m21: camera[4], m22: camera[5], m23: camera[6], m24: camera[7],
@@ -844,12 +833,10 @@ export function beginFrame(
 		m41: camera[12], m42: camera[13], m43: camera[14], m44: camera[15],
 	};
 	let frustum: Frustum3D = Frustum3D.fromMatrix(viewProj);
-	renderer.culledCount =
-		filterFrustum(renderer.opaque, items, context.meshData, frustum) +
-		filterFrustum(renderer.alpha, items, context.meshData, frustum) +
-		filterFrustum(renderer.additive, items, context.meshData, frustum) +
-		filterFrustum(renderer.decal, items, context.meshData, frustum) +
-		filterFrustum(renderer.decalAfterToneMap, items, context.meshData, frustum);
+	renderer.culledCount = collectVisible(
+		renderer.opaque, renderer.alpha, renderer.additive, renderer.decal,
+		renderer.decalAfterToneMap, items, context.materials, context.meshData, frustum,
+	);
 	sortByLayer(renderer.opaque);
 	sortBackToFront(renderer.alpha, items, camera);
 	sortByLayer(renderer.additive);
@@ -1104,15 +1091,6 @@ function pairProgram(
 	}
 	if (!texturesFit(drawn.value, material)) { return Result.err(RendererError.MaterialTexture); }
 	return Result.ok(drawn.value);
-}
-
-function collectSeen(
-	ref list: PassList,
-	seen: boolean,
-	items: Readonly<Span<DrawItem>>,
-	materials: Readonly<Span<Material>>,
-): void {
-	if (seen) { collect(list, items, materials); } else { list.count = 0; }
 }
 
 export function fadesWithDistance(context: DrawContext, index: int32, key: ProgramKey): boolean {

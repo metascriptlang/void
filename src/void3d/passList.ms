@@ -87,6 +87,18 @@ export function collectCasters(
 	list.count = count;
 }
 
+function visibleIn(
+	item: Readonly<DrawItem>,
+	meshes: Readonly<Span<MeshData>>,
+	frustum: Frustum3D,
+): boolean {
+	const geometry = item.skinGeometry;
+	const pick = item.lod;
+	return (pick === null || !pick.culled) && (geometry === null ?
+		frustum.intersectsBounds(meshes[item.mesh.index].bounds, item.world) :
+		frustum.intersectsBounds(geometry.mesh.bounds, identity()));
+}
+
 export function filterFrustum(
 	ref list: PassList,
 	items: Readonly<Span<DrawItem>>,
@@ -97,12 +109,7 @@ export function filterFrustum(
 	let excluded: int32 = 0;
 	for (let i = 0; i < list.count; i++) {
 		let index: int32 = list.indices[i];
-		const geometry = items[index].skinGeometry;
-		const pick = items[index].lod;
-		const visible: boolean = (pick === null || !pick.culled) && (geometry === null ?
-			frustum.intersectsBounds(meshes[items[index].mesh.index].bounds, items[index].world) :
-			frustum.intersectsBounds(geometry.mesh.bounds, identity()));
-		if (visible) {
+		if (visibleIn(items[index], meshes, frustum)) {
 			list.indices[count] = index;
 			list.layers[count] = list.layers[i];
 			list.orders[count] = list.orders[i];
@@ -112,6 +119,59 @@ export function filterFrustum(
 		}
 	}
 	list.count = count;
+	return excluded;
+}
+
+function place(ref list: PassList, index: int32, layer: int32, order: int32): void {
+	if (list.count == (list.indices.length as int32)) {
+		list.indices.push(index);
+		list.depths.push(0.0);
+		list.layers.push(layer);
+		list.orders.push(order);
+	} else {
+		list.indices[list.count] = index;
+		list.layers[list.count] = layer;
+		list.orders[list.count] = order;
+	}
+	list.count = list.count + 1;
+}
+
+// Heaps' emitRec walk: one read of the items fills every phase's list with what `collect` then
+// `filterFrustum` would leave in it, and returns how many listed items the frustum excluded.
+export function collectVisible(
+	ref opaque: PassList,
+	ref alpha: PassList,
+	ref additive: PassList,
+	ref decal: PassList,
+	ref decalAfterToneMap: PassList,
+	items: Readonly<Span<DrawItem>>,
+	materials: Readonly<Span<Material>>,
+	meshes: Readonly<Span<MeshData>>,
+	frustum: Frustum3D,
+): int32 {
+	opaque.count = 0;
+	alpha.count = 0;
+	additive.count = 0;
+	decal.count = 0;
+	decalAfterToneMap.count = 0;
+	let excluded: int32 = 0;
+	for (let i = 0; i < (items.length as int32); i++) {
+		const material: int32 = items[i].material.index;
+		if (materials[material].castShadows == ShadowCasting.Only) { continue; }
+		if (!visibleIn(items[i], meshes, frustum)) {
+			excluded = excluded + 1;
+			continue;
+		}
+		const layer: int32 = materials[material].layer;
+		const order: int32 = items[i].order;
+		match (materials[material].phase) {
+			Phase.Opaque => place(opaque, i, layer, order),
+			Phase.Alpha => place(alpha, i, layer, order),
+			Phase.Additive => place(additive, i, layer, order),
+			Phase.Decal => place(decal, i, layer, order),
+			Phase.DecalAfterToneMap => place(decalAfterToneMap, i, layer, order),
+		};
+	}
 	return excluded;
 }
 
