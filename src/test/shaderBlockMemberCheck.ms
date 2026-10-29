@@ -6,6 +6,8 @@ import { BlockMember } from "../shader/blockMember";
 import { ResourceKind } from "../shader/ir";
 import { blockMembers } from "../shader/layout";
 import { linkedProgram } from "../shader/link";
+import { Vec4f } from "../shader/std";
+import { uniformSize, writeUniform } from "../shader/uniform";
 import { programEffects } from "../void3d/programEffects";
 import {
 	EMISSIVE_COLOR,
@@ -55,6 +57,11 @@ import {
 	UNLIT_MATERIAL_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
 import {
+	MovingEmissiveMaterialParams,
+	MovingMaterialParams,
+	MovingUnlitMaterialParams,
+	PbrEmissiveMaterialParams,
+	PbrMaterialParams,
 	litTexturedFs,
 	litTexturedVs,
 	unlitTexturedFs,
@@ -247,4 +254,115 @@ test "an emissive pbr block is the pbr block and then the emissive vec4" {
 	}
 	assert disagreements(members, PBR_MATERIAL_UNIFORM_LENGTH, emissiveRows()) == "";
 	assert lengthOf(members) == PBR_MATERIAL_UNIFORM_LENGTH + EMISSIVE_LENGTH;
+}
+
+// A host write of a block struct against the block the printers lay out. Member k of the struct
+// holds the lanes 10 * (k + 1) to 10 * (k + 1) + 3, so a lane read at a printed offset names the
+// member it came from.
+function stamp(k: int32): Vec4f {
+	const at: float32 = (10 * (k + 1)) as float32;
+	return { x: at, y: at + 1, z: at + 2, w: at + 3 };
+}
+
+const MOVING_FIELDS: string[] = [
+	"material", "materialColor", "uvMatrix", "uvMotion", "backUvMatrix", "backUvOffset",
+	"dissolve", "dissolveEdge", "flipbookGrid", "flipbookPlay", "distanceFade", "colorKey",
+	"sinusDeform", "emissive",
+];
+const PBR_FIELDS: string[] = [
+	"material", "materialColor", "pbr", "uvMatrix", "uvMotion", "parallax", "emissive",
+];
+
+function bufferOf(size: int32): Vec<float32> {
+	let values: Vec<float32> = new Array(size / 4);
+	for (let i = 0; i < values.length; i++) { values[i] = -7.0; }
+	return values;
+}
+
+function writeDisagreements(members: BlockMember[], fields: string[], written: Vec<float32>,
+	size: int32): string {
+	let out = "";
+	if (members.length > fields.length) { out += " the program has more members;"; }
+	if (lengthOf(members) * 4 != size) {
+		out += " the program is " + String(lengthOf(members) * 4) + " bytes, the struct " +
+			String(size) + ";";
+	}
+	for (const member of members) {
+		let k = -1;
+		for (let i = 0; i < fields.length; i++) {
+			if (fields[i] == member.name) { k = i; }
+		}
+		if (k < 0) {
+			out += " " + member.name + " is not a field;";
+			continue;
+		}
+		if (member.count != 4) { out += " " + member.name + " is not four floats;"; }
+		for (let lane = 0; lane < member.count; lane++) {
+			if (written[member.offset + lane] != (10 * (k + 1) + lane) as float32) {
+				out += " " + member.name + "[" + String(lane) + "] is not at " +
+					String(member.offset + lane) + ";";
+			}
+		}
+	}
+	return out;
+}
+
+test "a MovingMaterialParams write lands where the lit moving block lays its members" {
+	const value: MovingMaterialParams = {
+		material: stamp(0), materialColor: stamp(1), uvMatrix: stamp(2), uvMotion: stamp(3),
+		backUvMatrix: stamp(4), backUvOffset: stamp(5), dissolve: stamp(6),
+		dissolveEdge: stamp(7), flipbookGrid: stamp(8), flipbookPlay: stamp(9),
+		distanceFade: stamp(10), colorKey: stamp(11), sinusDeform: stamp(12),
+	};
+	let values: Vec<float32> = bufferOf(uniformSize<MovingMaterialParams>());
+	writeUniform<MovingMaterialParams>(values, 0, value);
+	assert writeDisagreements(litMoving(), MOVING_FIELDS, values,
+		uniformSize<MovingMaterialParams>()) == "";
+}
+
+test "a MovingUnlitMaterialParams write lands where the unlit moving block lays its members" {
+	const value: MovingUnlitMaterialParams = {
+		material: stamp(0), materialColor: stamp(1), uvMatrix: stamp(2), uvMotion: stamp(3),
+		backUvMatrix: stamp(4), backUvOffset: stamp(5), dissolve: stamp(6),
+		dissolveEdge: stamp(7), flipbookGrid: stamp(8), flipbookPlay: stamp(9),
+		distanceFade: stamp(10), colorKey: stamp(11), sinusDeform: stamp(12),
+	};
+	let values: Vec<float32> = bufferOf(uniformSize<MovingUnlitMaterialParams>());
+	writeUniform<MovingUnlitMaterialParams>(values, 0, value);
+	assert writeDisagreements(unlitMoving(), MOVING_FIELDS, values,
+		uniformSize<MovingUnlitMaterialParams>()) == "";
+}
+
+test "a MovingEmissiveMaterialParams write lands where the emissive moving block lays its members" {
+	const value: MovingEmissiveMaterialParams = {
+		material: stamp(0), materialColor: stamp(1), uvMatrix: stamp(2), uvMotion: stamp(3),
+		backUvMatrix: stamp(4), backUvOffset: stamp(5), dissolve: stamp(6),
+		dissolveEdge: stamp(7), flipbookGrid: stamp(8), flipbookPlay: stamp(9),
+		distanceFade: stamp(10), colorKey: stamp(11), sinusDeform: stamp(12), emissive: stamp(13),
+	};
+	let values: Vec<float32> = bufferOf(uniformSize<MovingEmissiveMaterialParams>());
+	writeUniform<MovingEmissiveMaterialParams>(values, 0, value);
+	assert writeDisagreements(litMovingEmissive(), MOVING_FIELDS, values,
+		uniformSize<MovingEmissiveMaterialParams>()) == "";
+}
+
+test "a PbrMaterialParams write lands where the pbr block lays its members" {
+	const value: PbrMaterialParams = {
+		material: stamp(0), materialColor: stamp(1), pbr: stamp(2), uvMatrix: stamp(3),
+		uvMotion: stamp(4), parallax: stamp(5),
+	};
+	let values: Vec<float32> = bufferOf(uniformSize<PbrMaterialParams>());
+	writeUniform<PbrMaterialParams>(values, 0, value);
+	assert writeDisagreements(litPbr(), PBR_FIELDS, values, uniformSize<PbrMaterialParams>()) == "";
+}
+
+test "a PbrEmissiveMaterialParams write lands where the emissive pbr block lays its members" {
+	const value: PbrEmissiveMaterialParams = {
+		material: stamp(0), materialColor: stamp(1), pbr: stamp(2), uvMatrix: stamp(3),
+		uvMotion: stamp(4), parallax: stamp(5), emissive: stamp(6),
+	};
+	let values: Vec<float32> = bufferOf(uniformSize<PbrEmissiveMaterialParams>());
+	writeUniform<PbrEmissiveMaterialParams>(values, 0, value);
+	assert writeDisagreements(litPbrEmissive(), PBR_FIELDS, values,
+		uniformSize<PbrEmissiveMaterialParams>()) == "";
 }
