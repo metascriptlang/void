@@ -1269,3 +1269,31 @@ present 0.12-0.16 ms on the 2D scenes, 0.44 ms on Campfire; first paint 50 ms on
 Next, after the land: rerun the A/B in a quiet window for a verdict, then split `submit` per flow
 (the door's per-draw path, the uniform ring, the 2D batch upload) to find where the 0.01-0.04 ms
 per frame goes, before any fix.
+
+### 2026-10-29, Mac: the shared per-draw path trimmed on wt/gpu-perf, and what is left for gl and d3d11
+
+Branch `wt/gpu-perf` (off `wt/gpu-ms`, lands after it) trims the code every backend runs per draw
+and per pass:
+
+- `src/webgpu/` reads pool records in place, so no `PipelineRecord` or `BindGroupRecord` copy per draw.
+- Draw readiness is kept until a set call changes it, as Dawn's `ValidateOperation` does. Every
+  refusal still fires; the pins are in `tests/aborts/cases/webgpuDummyCases.ms`.
+- The pass facts reuse one scratch.
+- `src/gpu/` skips bindings that did not change since the pipeline was applied, allocates no arrays
+  per apply, caches a view's colour-attachment class, and reuses the screen pass descriptor.
+
+gl and d3d11 get the shared part without an edit. These are for the Windows side to judge. Each
+was read in code by a Mac research lane and was neither measured nor rechecked by the Mac:
+
+- d3d11: with `offsetUniforms` on, each uniform apply maps the 4 MiB dynamic ring, and each draw
+  calls `VSSetConstantBuffers1` and `PSSetConstantBuffers1` (`d3d11/backend.ms` ~1126-1136,
+  ~2238-2253). sokol does one `UpdateSubresource` per block and binds the constant buffers in
+  `apply_pipeline` (`sokol_gfx.h` 15170-15181, 14997-15003). This was the strongest d3d11 candidate.
+- d3d11: `nativeBinds = { indexFormat: 0 }` builds a struct with arrays on each pass (~1936).
+- gl: `applyStencilState` (~2257-2275) issues `glStencilOpSeparate` and `glStencilFuncSeparate`
+  on every pipeline apply. sokol compares against its cache first (12361-12407).
+- gl: per bound unit, `cacheClearUnits` also unbinds the multisample target (~1033-1047).
+- gl: attribute and blend state copy a struct per slot (~2583-2610, ~2300-2310).
+
+The Mac A/B against sokol has no verdict yet: the shared Mac's load moved the same scene's B/A
+from 1.02 to 1.22 between runs. A quiet-window rerun is next.
