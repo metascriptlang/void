@@ -223,6 +223,9 @@ const lastVertexFx: float32[] = zeroFloats(void2d_fx_FLOATS);
 const spriteParams: float32[] = zeroFloats(sprite_params_FLOATS);
 const uiParams: float32[] = zeroFloats(ui_params_FLOATS);
 const uiFx: float32[] = zeroFloats(ui_fx_FLOATS);
+const lastSpriteParams: float32[] = zeroFloats(sprite_params_FLOATS);
+const lastUiParams: float32[] = zeroFloats(ui_params_FLOATS);
+const lastUiFx: float32[] = zeroFloats(ui_fx_FLOATS);
 const blurParams: float32[] = zeroFloats(blur_params_FLOATS);
 const bindWords: uint32[] = [];
 const bindOffsets: int32[] = [0, 0];
@@ -1030,7 +1033,11 @@ function drawSpriteRun(
 		spriteParams, sprite_params_clipU, sprite_params_clipV, sprite_params_clipRoundU,
 		sprite_params_clipRoundV, sprite_params_clipRadii, cmd,
 	);
-	doorApplyUniformsOf(UB_sprite_params, spriteParams[0..sprite_params_FLOATS]);
+	if (!paramsValid || !sameFloats(spriteParams, lastSpriteParams)) {
+		doorApplyUniformsOf(UB_sprite_params, spriteParams[0..sprite_params_FLOATS]);
+		copyFloats(lastSpriteParams, spriteParams);
+		paramsValid = true;
+	}
 	doorDraw(0, 6, count);
 	drawCallCount++;
 	when (voidProfiler) {
@@ -1069,7 +1076,11 @@ function drawUiRun(
 		uiParams, ui_params_clipU, ui_params_clipV, ui_params_clipRoundU, ui_params_clipRoundV,
 		ui_params_clipRadii, cmd,
 	);
-	doorApplyUniformsOf(UB_ui_params, uiParams[0..ui_params_FLOATS]);
+	if (!paramsValid || !sameFloats(uiParams, lastUiParams)) {
+		doorApplyUniformsOf(UB_ui_params, uiParams[0..ui_params_FLOATS]);
+		copyFloats(lastUiParams, uiParams);
+		paramsValid = true;
+	}
 	clearFloats(uiFx);
 	for (let i: int32 = 0; i < 4; i++) { uiFx[ui_fx_gammaRatios + i] = textGamma[i]; }
 	uiFx[ui_fx_textParams] = textContrast;
@@ -1083,7 +1094,11 @@ function drawUiRun(
 		}
 		uiFx[ui_fx_effectParams] = 1.0;
 	}
-	doorApplyUniformsOf(UB_ui_fx, uiFx[0..ui_fx_FLOATS]);
+	if (!fxValid || !sameFloats(uiFx, lastUiFx)) {
+		doorApplyUniformsOf(UB_ui_fx, uiFx[0..ui_fx_FLOATS]);
+		copyFloats(lastUiFx, uiFx);
+		fxValid = true;
+	}
 	doorDraw(0, 6, count);
 	drawCallCount++;
 	when (voidProfiler) {
