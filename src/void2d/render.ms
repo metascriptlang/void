@@ -1,5 +1,5 @@
 // void2d rendering — sync (transform cache + content bounds), draw (dispatch + cull + filter),
-// getBounds. Extracted from node.ms so each file has one responsibility.
+// getBounds.
 
 import {
 	Scene2D, NodeRef, DrawKind, Changed, Content2D, GraphicsMesh, Scroll2D, TileCell, NO_SLOT,
@@ -522,7 +522,7 @@ function tinted(this c: Color, by: Color): Color {
 }
 
 // A run segment's box in local units, its edges on device pixels when the label is
-// axis-aligned; `thickness` > 0 makes the height a stroke of at least one device pixel.
+// axis-aligned; `stroke` makes the height a stroke of at least one device pixel.
 export function segmentBox(
 	x0: float32,
 	x1: float32,
@@ -1094,7 +1094,7 @@ function drawBoxShadow(
 	});
 }
 
-// cardOneInstance: one visible shadow with no spread over a solid fill is ONE instance carrying
+// oneCard: one visible shadow with no spread over a solid fill is ONE instance carrying
 // shadow, fill and border. Anything else is GPUI's paint order as instances: drop shadows, the
 // fill, inset shadows, then the border. The visible box is snapped before its quad is
 // inflated, otherwise a fractional shadow margin moves the reconstructed fill edge off the
@@ -1214,16 +1214,6 @@ function emitNode(
 	const payload: int32 = s.payloads[i];
 	setEffect(s.colorMatrixOf(i), s.paints[i].colorAdd, s.paints[i].colorKey);
 	setSampler(s.paints[i].smooth, s.paints[i].tileWrap);
-	// P2: a flat quad becomes one instance instead of six transformed vertices, whenever the
-	// program can express it. `tl` is the origin because it is what the node's local
-	// (xMin,yMin) maps to, and the shader rebuilds the other three corners from the same
-	// affine - so a rotated quad is the same pixels by construction and not by a second code
-	// path.
-	//
-	// A Rect goes to the UNIFIED UI pipeline and a Sprite or an Anim to the flat sprite one,
-	// and that is the line guardrail 8 draws: a box is a UI primitive whose edges are covered
-	// analytically, a sheet quad is a sprite that never runs SDF maths. benchSprites is the
-	// scene that measures the second half of that sentence.
 	const instanced: boolean = spriteInstancingAvailable();
 	match (s.kinds[i]) {
 		DrawKind.Rect => {
@@ -1373,13 +1363,10 @@ function acquireTarget(w: int32, h: int32): RenderTarget {
 	return target;
 }
 
-// Guardrail 3: downsample by 2^k, then blur at a one-texel step - never widen the tap
-// spacing. The shader is a five-tap linear-sampled Gaussian whose offsets (1.384615 and
-// 3.230769 texels) are the classic sigma-2 kernel, so it is only a Gaussian when `dir` is one
-// texel. The pre-P1 code passed `radius / size`, which put the outer taps at 3.2 * radius
-// texels: at radius 12 that samples 39 texels away and the result is a comb, not a blur.
-// Halving until the radius is about two texels keeps the kernel in its valid regime and makes
-// a wide blur cheaper rather than more wrong.
+// Downsample by 2^k, then blur at a one-texel step; never widen the tap spacing. The shader is
+// a five-tap linear-sampled Gaussian (offsets 1.384615 and 3.230769 texels, the sigma-2
+// kernel), a Gaussian only when `dir` is one texel. Halving until the radius is about two
+// texels keeps it in that regime.
 export function blurTargetPooled(
 	rt: RenderTarget,
 	w: int32,
@@ -2027,25 +2014,9 @@ export function patchOrder(this s: Scene2D, vw: float32, vh: float32): boolean {
 	return true;
 }
 
-// h2d.Object.drawFilters (`h2d/Object.hx:896-956`), which the pre-P1 version got wrong in
-// five separate ways. What it does now, and what each line replaces:
-//
-//   - **the node itself enters the target**, through `drawContent`; before, only `n.children`
-//     did, so a filtered Graphics lost its own geometry and kept its children's.
-//   - **alpha is applied once.** The subtree goes into the target at alpha 1 and the target is
-//     composited at the accumulated alpha. Before, `a * n.alpha` was used for both, so a group
-//     at 0.5 came out at 0.25.
-//   - **object-local space through a filter matrix**, which here is the translation the
-//     emitter subtracts from every vertex (`draw.ms` `originX/originY`). Before, the subtree
-//     was re-synced against a second world matrix and then synced back, so it was walked and
-//     transformed twice a frame and `localToGlobal` answered in target coordinates in between.
-//   - **bounds clipped to the viewport**, so a filtered node mostly offscreen allocates a
-//     target the size of the visible part instead of the size of the node.
-//   - **no pass is opened here at all.** `beginTarget` brackets a region of the display list;
-//     the replay opens the pass, outside the swapchain pass. Before, `beginRT` opened a pass
-//     inside the open swapchain pass - sokol's `!_sg.cur_pass.valid` assertion in a debug
-//     build, a frame of nothing but the clear colour in release, because the nested `begin2d`
-//     also reset the list the frame was being recorded into.
+// h2d.Object.drawFilters (`h2d/Object.hx:896-956`). `beginTarget` only brackets a region of
+// the display list: the replay opens the pass outside the swapchain pass, because a pass
+// opened here would nest inside the open one (sokol's `!_sg.cur_pass.valid` assertion).
 function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32): void {
 	const last: int32 = (s.filters[i].steps.length as int32) - 1;
 	const f: Filter = s.filters[i].steps[last];
@@ -2095,14 +2066,11 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	}
 
 	const na: float32 = a * s.paints[i].alpha;
-	// Composite at the exact logical extent represented by the physical target.
 	const qx1: float32 = xMin + logicalW;
 	const qy1: float32 = yMin + logicalH;
 	const rtTile: Tile = premultipliedTargetTile(src, rtW as float32, rtH as float32);
-	// Same reason as `blitTarget`: a composite that inherits the previous sibling's colour
-	// matrix gets tinted, and one that inherits its sampler gets point-sampled. A render
-	// target is always composited linear-clamp with no colour pipeline; the silhouette below
-	// sets its own effect and puts this one back afterwards.
+	// A composite inheriting the previous sibling's colour matrix gets tinted, and one inheriting
+	// its sampler gets point-sampled.
 	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	setSampler(Smooth.On, false);
 	if (f.kind === FilterKind.Blur || f.kind === FilterKind.Outline || f.kind === FilterKind.Mask) {
@@ -2110,21 +2078,6 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 			rgba(1.0, 1.0, 1.0, na), blend);
 		return;
 	}
-	// Glow and DropShadow composite a tinted silhouette of the blur, then the sharp original
-	// on top, both at the accumulated alpha.
-	//
-	// Both halves used to be wrong here and a whole phase of green filter goldens missed it.
-	// The sharp copy was produced by `drawContent(n, na, ...)` - a SECOND walk of the subtree
-	// straight into the swapchain - and `drawContent` opens with `na = a * n.alpha`, so the
-	// alpha was applied twice and the copy drew at `a * alpha^2`. Measured on
-	// `filter/dropShadowAlpha` before this line changed: the subject's interior read
-	// (76, 68, 45), which is `0.25 * subject + 0.75 * clear` to the byte, against
-	// (131, 113, 60) for the once-applied value.
-	//
-	// It is composited from `rt` now, which already holds the subtree at alpha 1 - that is
-	// what h2d does (`h2d/filter/Glow.hx` draws the blurred pass and then the source texture,
-	// not a re-render) - so the group composites exactly once, the second walk is gone, and
-	// the "one walk, one sync" this function claims is true for these two kinds as well.
 	setEffect(colorMatrixAlphaOnly(f.gain),
 		rgba(f.color.r, f.color.g, f.color.b, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	const ox: float32 = f.kind === FilterKind.DropShadow ? f.offsetX : 0.0;
