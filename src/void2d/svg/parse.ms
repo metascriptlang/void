@@ -488,7 +488,9 @@ function setPaint(paint: Paint, has: int32, opacity: float32): void {
 		2 => {
 			paint.kind = PAINT_UNDEF;
 		},
-		_ => {},
+		_ => {
+			throw new Error(`void2d svg: paint presence ${has} is not none, colour or url`);
+		},
 	}
 }
 
