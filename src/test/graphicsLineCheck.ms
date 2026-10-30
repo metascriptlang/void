@@ -28,7 +28,7 @@ function perspective(): Camera3D {
 }
 
 function resolved(camera: Camera3D, width: int32, height: int32): CameraView {
-	let result: Result<CameraView, CameraError> = camera.resolve(width, height);
+	const result: Result<CameraView, CameraError> = camera.resolve(width, height);
 	if (result.ok) { return result.value; }
 	unreachable;
 }

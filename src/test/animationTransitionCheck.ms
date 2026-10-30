@@ -70,7 +70,9 @@ function clipB(loops: boolean): AnimationTransitionClip {
 		},
 		{
 			sourceNode: 3,
-			curve: curve(GltfCurvePath.Rotation, [0.0, 2.0], [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, half, half]),
+			curve: curve(
+				GltfCurvePath.Rotation, [0.0, 2.0], [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, half, half],
+			),
 		},
 	];
 	const weights: Vec<GltfWeightTrack> = [
@@ -176,7 +178,9 @@ test "animationTransition two instances over one clip keep independent clocks an
 test "animationTransition commit writes the blended pose to the bound nodes" {
 	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
 	let nodes: Vec<NodeId3D> = [];
-	for (let i = 0; i < 6; i++) { nodes.push(addGroup(scene, scene.rootId(), Transform3D.identity())); }
+	for (let i = 0; i < 6; i++) {
+		nodes.push(addGroup(scene, scene.rootId(), Transform3D.identity()));
+	}
 	let t = fixture(2.0, false);
 	assert advance(t, 0.5).ok && evaluate(t).ok;
 	const written = t.commit(scene, nodes);
@@ -191,7 +195,9 @@ test "animationTransition commit writes the blended pose to the bound nodes" {
 test "animationTransition refuses unusable durations, steps and unmappable clips" {
 	const bad = [0.0, -1.0, NaN, Infinity];
 	for (const seconds of bad) {
-		const made = AnimationTransition.create(targets(), rests(), clipA(false), clipB(false), seconds);
+		const made = AnimationTransition.create(
+			targets(), rests(), clipA(false), clipB(false), seconds,
+		);
 		assert !made.ok;
 		if (!made.ok) { assert made.error == AnimationTransitionError.Duration; }
 	}

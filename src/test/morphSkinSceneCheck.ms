@@ -6,7 +6,9 @@ import {
 import { SkinGeometry } from "../void3d/skinGeometry";
 import { SkinPose, bind as bindPose } from "../void3d/skinPose";
 import { SkinPalette, create } from "../void3d/skinPalette";
-import { MorphData, MorphGeometryError, MorphPrimitiveInput, rebased } from "../void3d/morphGeometry";
+import {
+	MorphData, MorphGeometryError, MorphPrimitiveInput, rebased,
+} from "../void3d/morphGeometry";
 import { MeshData, addVertex, addTriangle, addSkinAttributes, stride } from "../void3d/meshData";
 import { DrawItem, MeshId, VertexStorage, validSkin } from "../void3d/draw";
 import { Program, ProgramKey, VertexLayout, withSkin } from "../void3d/gpu3d";
@@ -22,7 +24,9 @@ const STRIDE: int32 = skinnedTriangle().stride();
 function plainTriangle(): MeshData {
 	let mesh = MeshData.empty();
 	for (const point of [vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0)]) {
-		const added = addVertex(mesh, point, vec3(0, 0, 1), { red: 1, green: 1, blue: 1, alpha: 1 });
+		const added = addVertex(
+			mesh, point, vec3(0, 0, 1), { red: 1, green: 1, blue: 1, alpha: 1 },
+		);
 		if (!added.ok) { unreachable; }
 	}
 	return move mesh;
@@ -90,7 +94,10 @@ function fixture(meshes: int32 = 1): Fixture {
 	let joints: Vec<int32> = [];
 	let weights: Vec<float32> = [];
 	for (let vertex = 0; vertex < 3; vertex++) {
-		for (let slot = 0; slot < 4; slot++) { joints.push(0); weights.push(slot == 0 ? 1.0 : 0.0); }
+		for (let slot = 0; slot < 4; slot++) {
+			joints.push(0);
+			weights.push(slot == 0 ? 1.0 : 0.0);
+		}
 	}
 	const geometry = SkinGeometry.bind(source, { joints: joints, weights: weights }, pose.value);
 	if (!geometry.ok) { unreachable; }
@@ -126,9 +133,13 @@ test "a skinned morph node poses the morphed vertices and bounds, picks and draw
 	assert posed.bounds.max.x == 12 && posed.bounds.max.y == 12;
 	assert context.meshData[0].vertices[1] == 5 && context.meshData[0].bounds.max.y == 6;
 	assert context.meshStorage[0] == VertexStorage.Pending;
-	const morphed = pickNearest(f.scene, { origin: vec3(10.5, 10.25, 2), direction: vec3(0, 0, -1) });
+	const morphed = pickNearest(
+		f.scene, { origin: vec3(10.5, 10.25, 2), direction: vec3(0, 0, -1) },
+	);
 	assert morphed.ok;
-	if (morphed.ok) { assert morphed.value.mesh.index == node.value.index && morphed.value.distance == 2; }
+	if (morphed.ok) {
+		assert morphed.value.mesh.index == node.value.index && morphed.value.distance == 2;
+	}
 	assert !pickNearest(f.scene, { origin: vec3(10.5, 0.25, 2), direction: vec3(0, 0, -1) }).ok;
 	assert !pickNearest(f.scene, { origin: vec3(10.5, 5.25, 2), direction: vec3(0, 0, -1) }).ok;
 	assert setMorphWeights(morph, [0, 1]).ok;
@@ -153,7 +164,8 @@ test "a skinned morph node keeps the joint and weight attributes of the mesh unt
 	const shown = f.scene.context.meshData[0];
 	for (let vertex = 0; vertex < 3; vertex++) {
 		for (let field = STRIDE - 8; field < STRIDE; field++) {
-			assert shown.vertices[vertex * STRIDE + field] == base.vertices[vertex * STRIDE + field];
+			const at = vertex * STRIDE + field;
+			assert shown.vertices[at] == base.vertices[at];
 		}
 	}
 	assert shown.vertices[0] == 1 && shown.vertices[1] == 5;
@@ -252,7 +264,8 @@ test "rebased keeps the offsets and refuses a base that is not the same vertices
 	assert same.ok;
 	if (same.ok) {
 		assert same.value.primitives[0].base.hasSkin;
-		assert same.value.primitives[0].targetVertexXyz.length == data.primitives[0].targetVertexXyz.length;
+		assert same.value.primitives[0].targetVertexXyz.length ==
+			data.primitives[0].targetVertexXyz.length;
 	}
 	const none = data.rebased([]);
 	assert !none.ok;
@@ -263,7 +276,10 @@ test "rebased keeps the offsets and refuses a base that is not the same vertices
 	assert !drift.ok;
 	if (!drift.ok) { assert drift.error == MorphGeometryError.Shape; }
 	let longer = plainTriangle();
-	assert addVertex(longer, vec3(0, 0, 1), vec3(0, 0, 1), { red: 1, green: 1, blue: 1, alpha: 1 }).ok;
+	const extra = addVertex(
+		longer, vec3(0, 0, 1), vec3(0, 0, 1), { red: 1, green: 1, blue: 1, alpha: 1 },
+	);
+	assert extra.ok;
 	const count = data.rebased([longer]);
 	assert !count.ok;
 }
@@ -292,7 +308,9 @@ function payload(): Vec<uint8> {
 		}
 	}
 	for (let vertex = 0; vertex < 3; vertex++) {
-		for (const bits of [0 as uint32, 0x40a00000 as uint32, 0 as uint32]) { push32(bytes, bits); }
+		for (const bits of [0 as uint32, 0x40a00000 as uint32, 0 as uint32]) {
+			push32(bytes, bits);
+		}
 	}
 	return move bytes;
 }

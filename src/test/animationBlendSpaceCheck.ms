@@ -21,7 +21,9 @@ function ramp(path: GltfCurvePath, seconds: float32, last: Vec<float32>): Animat
 	for (const value of last) { values.push(value); }
 	const curve = GltfCurve.forValues(path, GltfCurveMode.Linear, [0.0, seconds], values);
 	if (!curve.ok) { unreachable; }
-	const made = AnimationTransitionClip.forTracks([{ sourceNode: 0, curve: curve.value }], [], true);
+	const made = AnimationTransitionClip.forTracks(
+		[{ sourceNode: 0, curve: curve.value }], [], true,
+	);
 	if (!made.ok) { unreachable; }
 	return made.value;
 }
@@ -31,10 +33,11 @@ function targets(): Vec<AnimationRestTarget> {
 }
 
 function points(syncThird: boolean): Vec<AnimationBlendSpacePoint> {
+	const translate = GltfCurvePath.Translation;
 	return [
-		{ x: 0.0, y: 0.0, clip: ramp(GltfCurvePath.Translation, 2.0, [2.0, 0.0, 0.0]), keepSync: true },
-		{ x: 4.0, y: 0.0, clip: ramp(GltfCurvePath.Translation, 4.0, [0.0, 4.0, 0.0]), keepSync: true },
-		{ x: 0.0, y: 4.0, clip: ramp(GltfCurvePath.Translation, 2.0, [0.0, 0.0, 2.0]), keepSync: syncThird },
+		{ x: 0.0, y: 0.0, clip: ramp(translate, 2.0, [2.0, 0.0, 0.0]), keepSync: true },
+		{ x: 4.0, y: 0.0, clip: ramp(translate, 4.0, [0.0, 4.0, 0.0]), keepSync: true },
+		{ x: 0.0, y: 4.0, clip: ramp(translate, 2.0, [0.0, 0.0, 2.0]), keepSync: syncThird },
 	];
 }
 
@@ -119,7 +122,10 @@ test "animationBlendSpace smoothing is simpleSpringDamper over the half life" {
 test "animationCompose weighted blend takes rotation about the rest and skips zero weights in presence" {
 	const created = AnimationCompose.create([{
 		sourceNode: 0,
-		rest: { ...Transform3D.identity(), rotation: { x: 0.0, y: 0.0, z: 0.70710678, w: 0.70710678 } },
+		rest: {
+			...Transform3D.identity(),
+			rotation: { x: 0.0, y: 0.0, z: 0.70710678, w: 0.70710678 },
+		},
 	}]);
 	assert created.ok;
 	if (!created.ok) { return; }
@@ -145,10 +151,13 @@ test "animationCompose weighted blend takes rotation about the rest and skips ze
 	assert stageWeightedCompose(compose, a, b, c, [0.5, 0.25, 0.25]).ok;
 	const out = compose.output[0];
 	assert close(out.value.position.x, 0.5) && close(out.value.position.z, 0.75);
-	assert close(out.value.rotation.z, 0.4637034049132155) && close(out.value.rotation.w, 0.8859904922017451);
-	assert out.present.has(AnimationComponent.Rotation) && out.present.has(AnimationComponent.Translation);
+	assert close(out.value.rotation.z, 0.4637034049132155) &&
+		close(out.value.rotation.w, 0.8859904922017451);
+	assert out.present.has(AnimationComponent.Rotation) &&
+		out.present.has(AnimationComponent.Translation);
 	assert stageWeightedCompose(compose, a, b, c, [0.5, 0.0, 0.5]).ok;
-	assert compose.output[0].present == (AnimationComponent.Translation | AnimationComponent.Rotation);
+	assert compose.output[0].present ==
+		(AnimationComponent.Translation | AnimationComponent.Rotation);
 	assert stageWeightedCompose(compose, a, b, c, [0.0, 1.0, 0.0]).ok;
 	assert compose.output[0].present == translation.incl(AnimationComponent.Rotation);
 	assert !stageWeightedCompose(compose, a, b, c, [0.5, 0.5, 0.5]).ok;
@@ -175,7 +184,10 @@ test "animationBlendSpace refuses too few, degenerate, duplicate and unmappable 
 	if (!two.ok) { assert two.error == AnimationBlendSpaceError.PointCount; }
 	assert !triangulate([0.0, 1.0], [0.0, 1.0]).ok;
 	let line = points(true);
-	line[0].x = 0.0; line[0].y = 0.0; line[1].x = 1.0; line[1].y = 1.0; line[2].x = 2.0; line[2].y = 2.0;
+	for (let i = 0; i < 3; i++) {
+		line[i].x = i as float32;
+		line[i].y = i as float32;
+	}
 	const flat = AnimationBlendSpace2D.create(targets(), line);
 	assert !flat.ok;
 	if (!flat.ok) { assert flat.error == AnimationBlendSpaceError.Degenerate; }

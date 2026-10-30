@@ -37,7 +37,11 @@ function pose(): Vec<AnimationRestTarget> {
 		{ sourceNode: 3, rest: Transform3D.fromTranslation(vec3(2.0, 0.0, 0.0)) },
 		{
 			sourceNode: 5,
-			rest: { ...Transform3D.identity(), position: vec3(1.0, 1.0, 1.0), scale: vec3(2.0, 2.0, 2.0) },
+			rest: {
+				...Transform3D.identity(),
+				position: vec3(1.0, 1.0, 1.0),
+				scale: vec3(2.0, 2.0, 2.0),
+			},
 		},
 	];
 }
@@ -55,7 +59,9 @@ function targetClip(loops: boolean): AnimationTransitionClip {
 		},
 		{
 			sourceNode: 3,
-			curve: curve(GltfCurvePath.Rotation, [0.0, 2.0], [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, half, half]),
+			curve: curve(
+				GltfCurvePath.Rotation, [0.0, 2.0], [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, half, half],
+			),
 		},
 		{
 			sourceNode: 5,
@@ -82,7 +88,11 @@ function slideClip(seconds: float32, y: float32): AnimationTransitionClip {
 	return made.value;
 }
 
-function fixture(blendSeconds: float64, easing: float64, ignoreTranslate: boolean): AnimationSmoothTarget {
+function fixture(
+	blendSeconds: float64,
+	easing: float64,
+	ignoreTranslate: boolean,
+): AnimationSmoothTarget {
 	const made = AnimationSmoothTarget.create(
 		pose(), heldWeights(), targetClip(false), blendSeconds, easing, ignoreTranslate);
 	if (!made.ok) { unreachable; }
@@ -219,7 +229,9 @@ test "animationSmoothTarget freezes a transition caught mid-blend and starts fro
 test "animationSmoothTarget commit writes the eased pose to the bound nodes" {
 	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
 	let nodes: Vec<NodeId3D> = [];
-	for (let i = 0; i < 6; i++) { nodes.push(addGroup(scene, scene.rootId(), Transform3D.identity())); }
+	for (let i = 0; i < 6; i++) {
+		nodes.push(addGroup(scene, scene.rootId(), Transform3D.identity()));
+	}
 	let s = fixture(2.0, 0.0, false);
 	assert advanceSmoothTarget(s, 0.5).ok && evaluateSmoothTarget(s).ok;
 	assert s.commitSmoothTarget(scene, nodes).ok;
@@ -259,7 +271,13 @@ test "animationSmoothTarget refuses unusable durations, easings, speeds, steps a
 	assert !missing.ok;
 	if (!missing.ok) { assert missing.error == AnimationSmoothTargetError.Target; }
 	const wrongCount = AnimationSmoothTarget.create(
-		pose(), [{ sourceNode: 3, rest: [0.5] }, heldWeights()[1]], targetClip(false), 1.0, 0.0, false);
+		pose(),
+		[{ sourceNode: 3, rest: [0.5] }, heldWeights()[1]],
+		targetClip(false),
+		1.0,
+		0.0,
+		false,
+	);
 	assert !wrongCount.ok;
 	if (!wrongCount.ok) { assert wrongCount.error == AnimationSmoothTargetError.WeightShape; }
 	const nan = AnimationSmoothTarget.create(

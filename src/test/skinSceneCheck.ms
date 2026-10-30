@@ -4,7 +4,7 @@ import {
 	SceneSyncError,
 } from "../void3d/scene";
 import { MeshLod, MeshLodRanges, nextPickPass, pickFor } from "../void3d/meshLod";
-import { SkinGeometry, SkinGeometryError, bind, spatialReady } from "../void3d/skinGeometry";
+import { SkinGeometry, bind, spatialReady } from "../void3d/skinGeometry";
 import { SkinPose, bind as bindPose } from "../void3d/skinPose";
 import { SkinPalette, create } from "../void3d/skinPalette";
 import { MeshData, addVertex, addSkinAttributes } from "../void3d/meshData";
@@ -219,17 +219,20 @@ test "a skinned node takes only a skinned material through setMaterialOf" {
 		f.mesh, f.material, f.geometry, 0, null);
 	assert made.ok;
 	if (!made.ok) { return; }
-	const flat = addMaterial(context, Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque));
-	const skinned = addMaterial(context, Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque));
+	const plain = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);
+	const flat = addMaterial(context, plain);
+	const skinned = addMaterial(context, plain);
 	assert flat.ok && skinned.ok;
 	if (!flat.ok || !skinned.ok) { return; }
 	context.materials[skinned.value.index].program = ProgramKey.of(Program.Lit).withSkin();
 	const refused = setMaterialOf(f.scene, made.value, flat.value);
 	assert !refused.ok;
 	if (!refused.ok) { assert refused.error == SceneError.SkinMesh; }
-	assert context.materialPins[f.material.index] == 1 && context.materialPins[flat.value.index] == 0;
+	assert context.materialPins[f.material.index] == 1 &&
+		context.materialPins[flat.value.index] == 0;
 	assert setMaterialOf(f.scene, made.value, skinned.value).ok;
-	assert context.materialPins[f.material.index] == 0 && context.materialPins[skinned.value.index] == 1;
+	assert context.materialPins[f.material.index] == 0 &&
+		context.materialPins[skinned.value.index] == 1;
 }
 
 test "retained skin rejects stale joints rather than bind fallback and close drops attachment" {

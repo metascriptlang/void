@@ -1,16 +1,20 @@
 import {
-	Scene3D, MorphNodeError, SceneSyncError, SceneMorph, NodeId3D, Transform3D, addMorphMeshNode, bindSceneMorph,
-	setMorphWeights, rootId, closeScene, refreshChecked, setPickable, remove,
+	Scene3D, MorphNodeError, SceneSyncError, SceneMorph, NodeId3D, Transform3D, addMorphMeshNode,
+	bindSceneMorph, setMorphWeights, rootId, closeScene, refreshChecked, setPickable, remove,
 	fromTranslation,
 } from "../void3d/scene";
 import {
-	MorphData, MorphGeometry, MorphGeometryError, MorphPrimitiveInput, publishMorphGeometry,
+	MorphData, MorphGeometry, MorphGeometryError, MorphPrimitiveInput,
 } from "../void3d/morphGeometry";
-import { GltfWeightCurve, GltfWeightTrack, GltfCurveMode, forWeightValues } from "../void3d/gltfCurve";
-import { GltfMorphPose, GltfMorphPoseError, bindMorphPose, sampleMorphPose } from "../void3d/gltfScene";
-import { MeshData, addVertex, addTriangle, addSkinAttributes } from "../void3d/meshData";
 import {
-	DrawItem, MeshId, MaterialId, VertexStorage, MeshWriteError, setMeshVertices,
+	GltfWeightCurve, GltfWeightTrack, GltfCurveMode, forWeightValues,
+} from "../void3d/gltfCurve";
+import {
+	GltfMorphPose, GltfMorphPoseError, bindMorphPose, sampleMorphPose,
+} from "../void3d/gltfScene";
+import { MeshData, addVertex, addTriangle } from "../void3d/meshData";
+import {
+	DrawItem, MeshId, VertexStorage, MeshWriteError, setMeshVertices,
 } from "../void3d/draw";
 import { PickError, pickNearest } from "../void3d/pick";
 import { Ray } from "../void3d/ray";
@@ -21,7 +25,9 @@ import { contextOf, meshAt, materialAt } from "./drawHelpers";
 function triangle(): MeshData {
 	let mesh = MeshData.empty();
 	for (const point of [vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0)]) {
-		const added = addVertex(mesh, point, vec3(0, 0, 1), { red: 1, green: 1, blue: 1, alpha: 1 });
+		const added = addVertex(
+			mesh, point, vec3(0, 0, 1), { red: 1, green: 1, blue: 1, alpha: 1 },
+		);
 		if (!added.ok) { unreachable; }
 	}
 	if (!addTriangle(mesh, 0, 1, 2).ok) { unreachable; }
@@ -73,7 +79,13 @@ function owners(morph: SceneMorph | null): Vec<SceneMorph | null> {
 	return move list;
 }
 
-function place(scene: Scene3D, morph: SceneMorph, mesh: int32, primitive: int32, at: Transform3D): Result<NodeId3D, MorphNodeError> {
+function place(
+	scene: Scene3D,
+	morph: SceneMorph,
+	mesh: int32,
+	primitive: int32,
+	at: Transform3D,
+): Result<NodeId3D, MorphNodeError> {
 	return addMorphMeshNode(scene, scene.rootId(), at, scene.context.meshAt(mesh),
 		scene.context.materialAt(0), morph, primitive);
 }
@@ -142,7 +154,8 @@ test "a weights track publishes its node once and every primitive follows" {
 	assert morph.geometry.weights[0] == 0.5 && morph.geometry.weights[1] == 0.25;
 	let items: Vec<DrawItem> = [];
 	assert refreshChecked(scene, items).ok;
-	assert scene.context.meshData[0].bounds.min.x == 5 && scene.context.meshData[1].bounds.min.x == 5;
+	assert scene.context.meshData[0].bounds.min.x == 5 &&
+		scene.context.meshData[1].bounds.min.x == 5;
 	assert scene.context.meshData[1].bounds.min.y == 1.25;
 	const other = GltfMorphPose.bindMorphPose(owners(null), tracks);
 	assert !other.ok;
