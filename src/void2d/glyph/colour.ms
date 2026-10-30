@@ -260,11 +260,10 @@ when (voidColourEmoji) {
 				tile[row * w + col] = rgbaTexelAt(p, x + col, y + row);
 			}
 		}
-		let status = colourGlyphRender(colourOf(f), f.bytes.data, glyph, sizePx, tile, w, w, h);
-		let result: int32 = COLOUR_RASTER_OK;
+		const status = colourGlyphRender(colourOf(f), f.bytes.data, glyph, sizePx, tile, w, w, h);
 		if (status == COLOUR_ABSENT && colourFaceHasLayers(colourOf(f))) {
-			result = colourLayerRasterize(f, glyph, sizePx, tile, w, h);
-			if (result != COLOUR_RASTER_OK) { return result; }
+			const layered = colourLayerRasterize(f, glyph, sizePx, tile, w, h);
+			if (layered != COLOUR_RASTER_OK) { return layered; }
 		} else if (status == COLOUR_NO_MEMORY) {
 			return COLOUR_RASTER_NO_MEMORY;
 		} else if (status != COLOUR_PRESENT) {
