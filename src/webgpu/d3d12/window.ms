@@ -9,7 +9,7 @@ import {
 	surfaceWaitable,
 	surfaceWidth,
 } from "./backend.ms";
-import "../d3d11/removal";
+import "../dxgi/removal";
 
 @exportName("voidD3d12SurfaceOpen")
 export function exportSurfaceOpen(window: uint64, composition: int32, width: int32, height: int32, presentMode: int32): uint32 {

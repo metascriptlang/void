@@ -1,5 +1,5 @@
 import { DeviceLoss } from "../webgpu/types";
-import { removalAction } from "../webgpu/d3d11/removal";
+import { removalAction } from "../webgpu/dxgi/removal";
 import { lostAction } from "../webgpu/wgpu/lost";
 
 test "the three recoverable DXGI removal codes recover" {

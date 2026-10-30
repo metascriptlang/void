@@ -5,7 +5,7 @@ const DXGI_ERROR_DEVICE_HUNG: int32 = 0x887A0006 as int32;
 const DXGI_ERROR_DEVICE_RESET: int32 = 0x887A0007 as int32;
 const DXGI_ERROR_DRIVER_INTERNAL_ERROR: int32 = 0x887A0020 as int32;
 
-@exportName("voidD3d11RemovalAction")
+@exportName("voidDxgiRemovalAction")
 export function removalAction(hr: int32): int32 {
 	const action = match (hr) {
 		DXGI_ERROR_DEVICE_REMOVED | DXGI_ERROR_DEVICE_HUNG | DXGI_ERROR_DEVICE_RESET => DeviceLoss.Recover,

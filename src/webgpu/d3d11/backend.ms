@@ -1,4 +1,4 @@
-import "./removal";
+import "../dxgi/removal";
 import {
 	GPU_MAX_ANISOTROPY,
 	BindingKind,

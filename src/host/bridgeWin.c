@@ -29,7 +29,7 @@ static int s_deviceRemoved = 0;
 #endif
 
 enum { REMOVAL_NONE, REMOVAL_RECOVER, REMOVAL_FATAL };
-int32_t voidD3d11RemovalAction(int32_t hr);
+int32_t voidDxgiRemovalAction(int32_t hr);
 
 static void setupViewsGfx(void);
 
@@ -244,13 +244,13 @@ static void deviceRemoved(const char *what, HRESULT hr) {
 #if defined(VOID_GLCORE) || defined(VOID_VULKAN)
 	voidFail("%s failed: 0x%08lx in a GL core or Vulkan build, whose host views are refused", what, (unsigned long)hr);
 #else
-	if (voidD3d11RemovalAction((int32_t)hr) == REMOVAL_NONE) voidFail("%s failed: 0x%08lx", what, (unsigned long)hr);
+	if (voidDxgiRemovalAction((int32_t)hr) == REMOVAL_NONE) voidFail("%s failed: 0x%08lx", what, (unsigned long)hr);
 #if defined(VOID_D3D12)
 	HRESULT reason = (HRESULT)voidD3d12RemovedReason();
 #else
 	HRESULT reason = ID3D11Device_GetDeviceRemovedReason(s_device);
 #endif
-	if (voidD3d11RemovalAction((int32_t)reason) != REMOVAL_RECOVER) {
+	if (voidDxgiRemovalAction((int32_t)reason) != REMOVAL_RECOVER) {
 		voidFail("%s failed: 0x%08lx, the device was removed for 0x%08lx, which Void does not recover from",
 			what, (unsigned long)hr, (unsigned long)reason);
 	}
