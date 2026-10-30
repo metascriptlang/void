@@ -2260,12 +2260,10 @@ export function splitAt(this l: TextLayout, index: int32): [TextLayout, TextLayo
 	}
 	const leftWidth: float32 = lineWidthOf(left, 0);
 	const rightWidth: float32 = lineWidthOf(right, 0);
-	let leftBidi: LayoutBidi = l.bidi;
-	let rightBidi: LayoutBidi = l.bidi;
+	const leftBidi: LayoutBidi = bidi ? l.bidi.portion(line.firstGlyph, cut, 0.0) : l.bidi;
+	const rightBidi: LayoutBidi = bidi ? l.bidi.portion(cut, total, origin) : l.bidi;
 	if (bidi) {
 		const paragraph: int32 = l.bidi.lineLevels[0];
-		leftBidi = l.bidi.portion(line.firstGlyph, cut, 0.0);
-		rightBidi = l.bidi.portion(cut, total, origin);
 		reflectLine(left, 0, leftBidi.levels, leftBidi.resets, paragraph, leftWidth);
 		reflectLine(right, 0, rightBidi.levels, rightBidi.resets, paragraph, rightWidth);
 	}
