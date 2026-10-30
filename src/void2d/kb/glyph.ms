@@ -121,12 +121,13 @@ export function kbGlyphClasses(font: KbFont, id: int32): KbGlyphClasses {
 	if (gdef != 0) {
 		const classDefinitionOffset = m.kbU16(gdef + 4);
 		if (classDefinitionOffset != 0) {
-			result.classValue = kbGlyphClassFromTable(m, gdef + classDefinitionOffset, id).classValue;
+			result.classValue =
+				kbGlyphClassFromTable(m, gdef + classDefinitionOffset, id).classValue;
 		}
 		const markAttachmentOffset = m.kbU16(gdef + 10);
 		if (markAttachmentOffset != 0 && result.classValue == KB_GLYPH_CLASS_MARK) {
-			result.markAttachmentClass = kbGlyphClassFromTable(m, gdef + markAttachmentOffset,
-				id).classValue;
+			result.markAttachmentClass =
+				kbGlyphClassFromTable(m, gdef + markAttachmentOffset, id).classValue;
 		}
 	}
 	return result;

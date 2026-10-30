@@ -143,8 +143,13 @@ function shapeDirect(
 			step(observe, s);
 
 			const lastClusterGlyph = g[onePastLastClusterGlyph].prev;
-			const wordBreak = (g[lastClusterGlyph].unicodeFlags & KB_UNICODE_FLAG_PART_OF_WORD) == 0;
-			s.cluster = kbPushGlyphList(storage, g[oneBeforeFirstClusterGlyph].next, lastClusterGlyph);
+			const wordBreak =
+				(g[lastClusterGlyph].unicodeFlags & KB_UNICODE_FLAG_PART_OF_WORD) == 0;
+			s.cluster = kbPushGlyphList(
+				storage,
+				g[oneBeforeFirstClusterGlyph].next,
+				lastClusterGlyph,
+			);
 
 			let glyph = g[KB_GLYPH_SENTINEL].next;
 			while (glyph != KB_GLYPH_SENTINEL) {
