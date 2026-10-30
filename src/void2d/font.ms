@@ -843,9 +843,11 @@ export function faceSlotFor(font: FontId, codepoint: int32, mode: Presentation):
 
 function forgetResolved(font: FontId): void {
 	const owner: uint64 = (font as int32) as uint64;
+	const owned: uint64[] = [];
 	for (const key of resolved.keys()) {
-		if ((key >> FONT_SHIFT) == owner) { resolved.delete(key); }
+		if ((key >> FONT_SHIFT) == owner) { owned.push(key); }
 	}
+	for (const key of owned) { resolved.delete(key); }
 }
 
 export function codepointFaceFor(

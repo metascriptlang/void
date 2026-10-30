@@ -472,6 +472,16 @@ when (voidCff) {
 	}
 }
 
+test "forgetting a font removes every one of its resolved entries" {
+	const broken = added(LATIN);
+	addFallbackFont(broken, UNLOADABLE);
+	for (let i = 0; i < 6; i++) { faceSlotFor(broken, 0x1F600 + i, Presentation.Default); }
+	assert codepointFaceFor(broken, 0x1F600, Presentation.Default).face == fontFace(broken);
+	const probes = fallbackProbes();
+	for (let i = 1; i < 6; i++) { faceSlotFor(broken, 0x1F600 + i, Presentation.Default); }
+	assert fallbackProbes() == probes + 5;
+}
+
 test "the largest codepoint is keyed and resolved" {
 	const f = added(LATIN);
 	const probes = fallbackProbes();
