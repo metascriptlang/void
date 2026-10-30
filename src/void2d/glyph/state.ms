@@ -35,7 +35,6 @@ export const SDF_BAD_HANDLE: int32 = 1;
 export const SDF_WRONG_PAGE_KIND: int32 = 2;
 export const SDF_OUTSIDE_PAGE: int32 = 3;
 export const SDF_BOX_MISMATCH: int32 = 4;
-export const SDF_NO_MEMORY: int32 = 5;
 
 export const ITALIC_SKEW: float32 = 0.21255656;
 
@@ -110,8 +109,6 @@ export class GlyphState {
 }
 
 export const state: GlyphState = new GlyphState();
-
-
 
 export function blankInfo(data: Readonly<Span<uint8>>): FontInfo {
 	return {
