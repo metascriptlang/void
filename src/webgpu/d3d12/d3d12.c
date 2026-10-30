@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "d3d12.h"
 
 #define DEVICE(d) ((ID3D12Device *)(uintptr_t)(d))
@@ -14,11 +15,15 @@
 #define FENCE(f) ((ID3D12Fence *)(uintptr_t)(f))
 #define ALLOCATOR(a) ((ID3D12CommandAllocator *)(uintptr_t)(a))
 #define LIST(l) ((ID3D12GraphicsCommandList *)(uintptr_t)(l))
+#define RESOURCE(r) ((ID3D12Resource *)(uintptr_t)(r))
 #define HANDLE_OF(e) ((HANDLE)(uintptr_t)(e))
 #define NATIVE(p) ((uint64_t)(uintptr_t)(p))
 
 static char s_error[512];
 static char s_adapter[256];
+static D3D12_RESOURCE_BARRIER *s_barriers;
+static uint32_t s_barrierCount;
+static uint32_t s_barrierCapacity;
 
 static int32_t fail(int32_t code, const char *format, ...) {
 	va_list args;
@@ -232,6 +237,103 @@ int32_t dx12ListReset(uint64_t list, uint64_t allocator) {
 int32_t dx12ListClose(uint64_t list) {
 	HRESULT hr = ID3D12GraphicsCommandList_Close(LIST(list));
 	return FAILED(hr) ? failCall("ID3D12GraphicsCommandList::Close", hr) : DX12_OK;
+}
+
+int32_t dx12BufferCreate(uint64_t device, uint64_t size, int32_t heap, uint32_t state, int32_t unordered, uint64_t *resource) {
+	*resource = 0;
+	D3D12_HEAP_PROPERTIES properties = {0};
+	properties.Type = (D3D12_HEAP_TYPE)heap;
+	D3D12_RESOURCE_DESC desc = {0};
+	desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	desc.Width = size;
+	desc.Height = 1;
+	desc.DepthOrArraySize = 1;
+	desc.MipLevels = 1;
+	desc.SampleDesc.Count = 1;
+	desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	desc.Flags = unordered ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE;
+	ID3D12Resource *created = NULL;
+	HRESULT hr = ID3D12Device_CreateCommittedResource(DEVICE(device), &properties, D3D12_HEAP_FLAG_NONE, &desc, (D3D12_RESOURCE_STATES)state, NULL,
+		&IID_ID3D12Resource, (void **)&created);
+	if (FAILED(hr)) return failCall("ID3D12Device::CreateCommittedResource for a buffer", hr);
+	*resource = NATIVE(created);
+	return DX12_OK;
+}
+
+int32_t dx12ResourceAddress(uint64_t resource, uint64_t *address) {
+	*address = ID3D12Resource_GetGPUVirtualAddress(RESOURCE(resource));
+	return DX12_OK;
+}
+
+int32_t dx12ResourceMap(uint64_t resource, uint64_t readBegin, uint64_t readEnd, uint64_t *pointer) {
+	*pointer = 0;
+	D3D12_RANGE range = { (SIZE_T)readBegin, (SIZE_T)readEnd };
+	void *data = NULL;
+	HRESULT hr = ID3D12Resource_Map(RESOURCE(resource), 0, &range, &data);
+	if (FAILED(hr)) return failCall("ID3D12Resource::Map", hr);
+	*pointer = NATIVE(data);
+	return DX12_OK;
+}
+
+int32_t dx12ResourceUnmap(uint64_t resource, uint64_t writtenBegin, uint64_t writtenEnd) {
+	D3D12_RANGE range = { (SIZE_T)writtenBegin, (SIZE_T)writtenEnd };
+	ID3D12Resource_Unmap(RESOURCE(resource), 0, &range);
+	return DX12_OK;
+}
+
+int32_t dx12MemoryWrite(uint64_t pointer, void *data, uint64_t bytes) {
+	memcpy((void *)(uintptr_t)pointer, data, (size_t)bytes);
+	return DX12_OK;
+}
+
+int32_t dx12MemoryRead(uint64_t pointer, void *out, uint64_t bytes) {
+	memcpy(out, (const void *)(uintptr_t)pointer, (size_t)bytes);
+	return DX12_OK;
+}
+
+int32_t dx12CopyBufferRegion(uint64_t list, uint64_t target, uint64_t targetOffset, uint64_t source, uint64_t sourceOffset, uint64_t bytes) {
+	ID3D12GraphicsCommandList_CopyBufferRegion(LIST(list), RESOURCE(target), targetOffset, RESOURCE(source), sourceOffset, bytes);
+	return DX12_OK;
+}
+
+static int32_t barrierSlot(D3D12_RESOURCE_BARRIER **barrier) {
+	if (s_barrierCount == s_barrierCapacity) {
+		uint32_t capacity = s_barrierCapacity > 0 ? s_barrierCapacity * 2 : 16;
+		D3D12_RESOURCE_BARRIER *grown = realloc(s_barriers, sizeof *grown * capacity);
+		if (grown == NULL) {
+			s_barrierCount = 0;
+			return fail(DX12_OUT_OF_MEMORY, "out of memory growing the resource barrier list to %u", capacity);
+		}
+		s_barriers = grown;
+		s_barrierCapacity = capacity;
+	}
+	*barrier = &s_barriers[s_barrierCount++];
+	memset(*barrier, 0, sizeof **barrier);
+	return DX12_OK;
+}
+
+int32_t dx12BarrierTransition(uint64_t resource, uint32_t before, uint32_t after) {
+	D3D12_RESOURCE_BARRIER *barrier = NULL;
+	int32_t status = barrierSlot(&barrier);
+	if (status != DX12_OK) return status;
+	barrier->Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	barrier->Transition.pResource = RESOURCE(resource);
+	barrier->Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+	barrier->Transition.StateBefore = (D3D12_RESOURCE_STATES)before;
+	barrier->Transition.StateAfter = (D3D12_RESOURCE_STATES)after;
+	return DX12_OK;
+}
+
+int32_t dx12BarrierFlush(uint64_t list, int32_t uav) {
+	if (uav) {
+		D3D12_RESOURCE_BARRIER *barrier = NULL;
+		int32_t status = barrierSlot(&barrier);
+		if (status != DX12_OK) return status;
+		barrier->Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+	}
+	if (s_barrierCount > 0) ID3D12GraphicsCommandList_ResourceBarrier(LIST(list), s_barrierCount, s_barriers);
+	s_barrierCount = 0;
+	return DX12_OK;
 }
 
 int32_t dx12Release(uint64_t object) {

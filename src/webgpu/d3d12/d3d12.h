@@ -30,4 +30,15 @@ int32_t dx12ListCreate(uint64_t device, uint64_t allocator, uint64_t *list);
 int32_t dx12ListReset(uint64_t list, uint64_t allocator);
 int32_t dx12ListClose(uint64_t list);
 
+int32_t dx12BufferCreate(uint64_t device, uint64_t size, int32_t heap, uint32_t state, int32_t unordered, uint64_t *resource);
+int32_t dx12ResourceAddress(uint64_t resource, uint64_t *address);
+int32_t dx12ResourceMap(uint64_t resource, uint64_t readBegin, uint64_t readEnd, uint64_t *pointer);
+int32_t dx12ResourceUnmap(uint64_t resource, uint64_t writtenBegin, uint64_t writtenEnd);
+int32_t dx12MemoryWrite(uint64_t pointer, void *data, uint64_t bytes);
+int32_t dx12MemoryRead(uint64_t pointer, void *out, uint64_t bytes);
+
+int32_t dx12CopyBufferRegion(uint64_t list, uint64_t target, uint64_t targetOffset, uint64_t source, uint64_t sourceOffset, uint64_t bytes);
+int32_t dx12BarrierTransition(uint64_t resource, uint32_t before, uint32_t after);
+int32_t dx12BarrierFlush(uint64_t list, int32_t uav);
+
 int32_t dx12Release(uint64_t object);
