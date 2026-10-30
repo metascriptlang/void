@@ -24,7 +24,7 @@ export function roundedRectDistance(
 // (`src/test/coverageOracleCheck.ms` bounds the error tightly enough to refuse it).
 export function coverageFromDistance(d: float32, aa: float32): float32 {
 	if (aa <= 0.0) { return d <= 0.0 ? 1.0 : 0.0; }
-	const t: float32 = (0.5 - d / aa) as float32;
+	const t: float32 = 0.5 - d / aa;
 	if (t <= 0.0) { return 0.0; }
 	if (t >= 1.0) { return 1.0; }
 	return t;
@@ -35,14 +35,14 @@ export function aaWidthForAffine(a: float32, b: float32, c: float32, d: float32)
 	const sy: float32 = Math.sqrt((c * c + d * d) as float64) as float32;
 	const s: float32 = Math.sqrt((sx * sy) as float64) as float32;
 	if (s <= 0.0) { return 0.0; }
-	return (1.0 / s) as float32;
+	return 1.0 / s;
 }
 export function smoothUnionDistance(a: float32, b: float32, k: float32): float32 {
 	if (k <= 0.0) { return a < b ? a : b; }
 	let h: float32 = 0.5 + 0.5 * (a - b) / k;
 	if (h < 0.0) { h = 0.0; }
 	if (h > 1.0) { h = 1.0; }
-	return (a * (1.0 - h) + b * h - k * h * (1.0 - h)) as float32;
+	return a * (1.0 - h) + b * h - k * h * (1.0 - h);
 }
 
 export function wavyUnderlineDistance(
@@ -51,7 +51,7 @@ export function wavyUnderlineDistance(
 	height: float32,
 	thickness: float32,
 ): float32 {
-	const frequency: float32 = (2.0 * (Math.PI as float32) * thickness / height) as float32;
+	const frequency: float32 = 2.0 * (Math.PI as float32) * thickness / height;
 	const amplitude: float32 = thickness * 0.8 / height;
 	const phase: float32 = px / height * frequency;
 	const slope: float32 = (Math.cos(phase as float64) as float32) * amplitude * frequency;
@@ -59,7 +59,7 @@ export function wavyUnderlineDistance(
 	const distance: float32 = (py / height - wave)
 		* height / (Math.sqrt((1.0 + slope * slope) as float64) as float32);
 	const ad: float32 = distance < 0.0 ? -distance : distance;
-	return (ad - thickness * 0.5) as float32;
+	return ad - thickness * 0.5;
 }
 
 // The analytic shadow is GPUI's `fs_shadow` (shaders.wgsl): a closed-form erf difference along x
@@ -73,12 +73,12 @@ export function erfApprox(x: float32): float32 {
 	const a: float32 = x < 0.0 ? -x : x;
 	const r1: float32 = 1.0 + (0.278393 + (0.230389 + (0.000972 + 0.078108 * a) * a) * a) * a;
 	const r2: float32 = r1 * r1;
-	return (s - s / (r2 * r2)) as float32;
+	return s - s / (r2 * r2);
 }
 
 export function gaussianPdf(x: float32, sigma: float32): float32 {
 	const e: float32 = Math.exp(((-(x * x) / (2.0 * sigma * sigma)) as float64)) as float32;
-	return (e as float32) / ((Math.sqrt((2.0 * Math.PI) as float64) as float32) * sigma);
+	return e / ((Math.sqrt((2.0 * Math.PI) as float64) as float32) * sigma);
 }
 
 export function cornerRadiusAt(
@@ -154,5 +154,5 @@ export function insetShadowCoverage(
 	const blur: float32 = shadowCoverage(px, py, hx, hy, rTL, rTR, rBR, rBL, 0.0, 0.0, sigma, aa);
 	const r: float32 = cornerRadiusAt(px, py, rTL, rTR, rBR, rBL);
 	const clip: float32 = coverageFromDistance(roundedRectDistance(px, py, hx, hy, r), aa);
-	return ((1.0 - blur) * clip) as float32;
+	return (1.0 - blur) * clip;
 }
