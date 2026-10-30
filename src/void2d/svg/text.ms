@@ -67,14 +67,14 @@ export function contains(this x: Str, literal: string): boolean {
 	return false;
 }
 
-function digitsEnd(x: Str, from: int32): int32 {
+function digitsEnd(this x: Str, from: int32): int32 {
 	let i = from;
 	while (isDigit(x.ch(i))) { i += 1; }
 	return i;
 }
 
 // (double)strtoll(digits): saturates at LLONG_MAX; up to 15 digits the double sum is exact.
-function digitsValue(x: Str, from: int32, to: int32): float64 {
+function digitsValue(this x: Str, from: int32, to: int32): float64 {
 	if (to - from <= BIG_DIGITS) {
 		let sum: float64 = 0.0;
 		for (let i = from; i < to; i++) { sum = sum * 10.0 + ((x.ch(i) - 48) as float64); }
@@ -94,7 +94,7 @@ function digitsValue(x: Str, from: int32, to: int32): float64 {
 
 // strtol(x + from, &end, 10) clamped to +-EXPONENT_LIMIT, where pow(10, n) is already 0 or inf;
 // returns the conversion's end, or `from` when nothing converts.
-function exponentValue(x: Str, from: int32, out: float64[]): int32 {
+function exponentValue(this x: Str, from: int32, out: float64[]): int32 {
 	let i = from;
 	while (isSpace(x.ch(i)) && x.ch(i) != 0) { i += 1; }
 	let negative = false;
@@ -104,16 +104,16 @@ function exponentValue(x: Str, from: int32, out: float64[]): int32 {
 	} else if (x.ch(i) == 43) {
 		i += 1;
 	}
-	const end = digitsEnd(x, i);
+	const end = x.digitsEnd(i);
 	if (end == i) { return from; }
-	let value = digitsValue(x, i, end);
+	let value = x.digitsValue(i, end);
 	if (value > EXPONENT_LIMIT) { value = EXPONENT_LIMIT; }
 	out[0] = negative ? -value : value;
 	return end;
 }
 
 // nsvg__atof, on the bytes of x up to its end.
-function atof(x: Str): float64 {
+function atof(this x: Str): float64 {
 	let cur: int32 = 0;
 	let sign: float64 = 1.0;
 	let res: float64 = 0.0;
@@ -127,16 +127,16 @@ function atof(x: Str): float64 {
 		cur += 1;
 	}
 	if (isDigit(x.ch(cur))) {
-		const end = digitsEnd(x, cur);
-		res = digitsValue(x, cur, end);
+		const end = x.digitsEnd(cur);
+		res = x.digitsValue(cur, end);
 		hasInt = true;
 		cur = end;
 	}
 	if (x.ch(cur) == 46) {
 		cur += 1;
 		if (isDigit(x.ch(cur))) {
-			const end = digitsEnd(x, cur);
-			res += digitsValue(x, cur, end) / Math.pow(10.0, (end - cur) as float64);
+			const end = x.digitsEnd(cur);
+			res += x.digitsValue(cur, end) / Math.pow(10.0, (end - cur) as float64);
 			hasFrac = true;
 			cur = end;
 		}
@@ -145,18 +145,18 @@ function atof(x: Str): float64 {
 	const marker = x.ch(cur);
 	if (marker == 101 || marker == 69) {
 		const exponent: float64[] = [0.0];
-		const end = exponentValue(x, cur + 1, exponent);
+		const end = x.exponentValue(cur + 1, exponent);
 		if (end != cur + 1) { res *= Math.pow(10.0, exponent[0]); }
 	}
 	return res * sign;
 }
 
-export function atofFloat(x: Str): float32 {
-	return atof(x) as float32;
+export function atofFloat(this x: Str): float32 {
+	return x.atof() as float32;
 }
 
 // nsvg__parseNumber: the end of the number that starts at `from`.
-export function numberEnd(x: Str, from: int32): int32 {
+export function numberEnd(this x: Str, from: int32): int32 {
 	let s = from;
 	const sign = x.ch(s);
 	if (sign == 45 || sign == 43) { s += 1; }
@@ -177,7 +177,7 @@ export function numberEnd(x: Str, from: int32): int32 {
 }
 
 // The bytes parseNumber keeps of the number that starts at `from` and ends at `end`.
-export function numberItem(x: Str, from: int32, end: int32): Str {
+export function numberItem(this x: Str, from: int32, end: int32): Str {
 	return x.sub(from, from + Math.min(end - from, NUMBER_ITEM_BYTES));
 }
 
