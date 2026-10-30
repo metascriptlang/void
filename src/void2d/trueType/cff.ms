@@ -23,7 +23,7 @@ export function get8(this ref b: Buf): int32 {
 	return value;
 }
 
-export function peek8(this b: Buf): int32 {
+function peek8(this b: Buf): int32 {
 	if (b.cursor >= b.size) { return 0; }
 	return b.data.u8At(b.base + (b.cursor as int64));
 }
@@ -67,7 +67,7 @@ export function readIndex(this ref b: Buf): Buf {
 	return b.range(start, b.cursor - start);
 }
 
-export function readInt(this ref b: Buf): int32 {
+function readInt(this ref b: Buf): int32 {
 	const b0 = b.get8();
 	if (b0 >= 32 && b0 <= 246) { return b0 - 139; }
 	if (b0 >= 247 && b0 <= 250) { return (b0 - 247) * 256 + b.get8() + 108; }
