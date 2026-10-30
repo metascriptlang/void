@@ -75,7 +75,7 @@ export function kbSwapArray32Context(m: Span<uint8>, c: KbSwapContext, at: int64
 	return ok;
 }
 
-export function kbAlreadyVisited(c: KbSwapContext, pointer: int64): boolean {
+function kbAlreadyVisited(c: KbSwapContext, pointer: int64): boolean {
 	let result = pointer == 0 || c.error;
 	if (!result) {
 		const pointer32 = pointer & 0xFFFFFFFF;
