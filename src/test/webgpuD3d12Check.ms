@@ -1,7 +1,16 @@
-import { GPUBuffer, GPUBufferUsage, GPUDevice, GPUMapMode } from "../webgpu/types.ms";
+import {
+	GPUBuffer,
+	GPUBufferUsage,
+	GPUDevice,
+	GPUMapMode,
+	GPUTexture,
+	GPUTextureFormat,
+	GPUTextureUsage,
+} from "../webgpu/types.ms";
 import { requestDevice } from "../webgpu/device.ms";
 import { adapterDescription, drainDebugMessages, executedAllocator, frameAllocator, idleSerial, retiredCount } from "../webgpu/d3d12/backend.ms";
-import { readBack, readbackBuffer } from "./webgpuFixtures.ms";
+import { splitTextureCopy } from "../webgpu/d3d12/resources.ms";
+import { GREEN, RED, readBack, readbackBuffer, texelAt, texels } from "./webgpuFixtures.ms";
 
 function openDevice(): GPUDevice {
 	return requestDevice({
@@ -137,6 +146,198 @@ test "two writes of 300 and 40 bytes at offsets 20 and 400 copy back through one
 	for (let i = 0; i < 300; i++) { assert read[20 + i] == first[i]; }
 	for (let i = 0; i < 40; i++) { assert read[400 + i] == second[i]; }
 	assert read[19] == 0 && read[320] == 0 && read[440] == 0;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+function copyTexture(device: GPUDevice, width: int32, height: int32, layers: int32, mipLevels: int32, format: GPUTextureFormat): GPUTexture {
+	return device.createTexture({
+		label: "copy",
+		size: { width: width, height: height, depthOrArrayLayers: layers },
+		format: format,
+		usage: (GPUTextureUsage.COPY_SRC as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+		mipLevelCount: mipLevels,
+	});
+}
+
+function readTexture(device: GPUDevice, texture: GPUTexture, mipLevel: int32, layer: int32, width: int32, height: int32): Vec<uint8> {
+	const destination = readbackBuffer(device, 256 * (height as int64));
+	const encoder = device.createCommandEncoder();
+	encoder.copyTextureToBuffer(
+		{ texture: texture, mipLevel: mipLevel, origin: { x: 0, y: 0, z: layer } },
+		{ buffer: destination, offset: 0, bytesPerRow: 256, rowsPerImage: height },
+		{ width: width, height: height, depthOrArrayLayers: 1 },
+	);
+	device.queue.submit(encoder.finish());
+	return readBack(destination);
+}
+
+function rowsMatch(read: Vec<uint8>, expected: Vec<uint8>, from: int32, pitch: int32, rowBytes: int32, rows: int32): boolean {
+	for (let y = 0; y < rows; y++) {
+		for (let x = 0; x < rowBytes; x++) {
+			if (read[y * 256 + x] != expected[from + y * pitch + x]) { return false; }
+		}
+	}
+	return true;
+}
+
+test "a copy 4 bytes past a 512 boundary keeps one region, and one straddling a 256-byte row splits at 512" {
+	const near = splitTextureCopy(4, 4, 256, 0, 4, 2);
+	assert near.length == 1 && near[0].alignedOffset == 0 && near[0].bufferX == 1 && near[0].bufferY == 0;
+	assert near[0].bufferWidth == 5 && near[0].bufferHeight == 2;
+	const straddling = splitTextureCopy(504, 4, 256, 4, 4, 2);
+	assert straddling.length == 2;
+	assert straddling[0].alignedOffset == 0 && straddling[0].bufferX == 62 && straddling[0].bufferY == 1;
+	assert straddling[0].width == 2 && straddling[0].bufferWidth == 64 && straddling[0].bufferHeight == 3;
+	assert straddling[1].alignedOffset == 512 && straddling[1].bufferX == 0 && straddling[1].bufferY == 0;
+	assert straddling[1].textureX == 6 && straddling[1].width == 2 && straddling[1].bufferWidth == 2;
+}
+
+test "rgba8unorm texels written to mip 1 and to array layer 1 copy back at 256 bytes per row" {
+	const device = openDevice();
+	const texture = copyTexture(device, 8, 8, 2, 2, "rgba8unorm");
+	const mipTexels = counting(4 * 4 * 4, 3);
+	const layerTexels = counting(8 * 8 * 4, 5);
+	device.queue.writeTexture(
+		{ texture: texture, mipLevel: 1 },
+		mipTexels,
+		{ offset: 0, bytesPerRow: 16, rowsPerImage: 4 },
+		{ width: 4, height: 4, depthOrArrayLayers: 1 },
+	);
+	device.queue.writeTexture(
+		{ texture: texture, origin: { x: 0, y: 0, z: 1 } },
+		layerTexels,
+		{ offset: 0, bytesPerRow: 32, rowsPerImage: 8 },
+		{ width: 8, height: 8, depthOrArrayLayers: 1 },
+	);
+	assert rowsMatch(readTexture(device, texture, 1, 0, 4, 4), mipTexels, 0, 16, 16, 4);
+	assert rowsMatch(readTexture(device, texture, 0, 1, 8, 8), layerTexels, 0, 32, 32, 8);
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a 3x2 writeTexture at 2,1 from a data offset fills that rectangle and leaves the zeroed rest" {
+	const device = openDevice();
+	const texture = copyTexture(device, 8, 4, 1, 1, "rgba8unorm");
+	const data = counting(8 + 12 * 2, 7);
+	device.queue.writeTexture(
+		{ texture: texture, origin: { x: 2, y: 1, z: 0 } },
+		data,
+		{ offset: 8, bytesPerRow: 12, rowsPerImage: 2 },
+		{ width: 3, height: 2, depthOrArrayLayers: 1 },
+	);
+	const read = readTexture(device, texture, 0, 0, 8, 4);
+	for (let y = 0; y < 4; y++) {
+		for (let x = 0; x < 32; x++) {
+			const inside = y >= 1 && y < 3 && x >= 8 && x < 20;
+			assert read[y * 256 + x] == (inside ? data[8 + (y - 1) * 12 + x - 8] : 0);
+		}
+	}
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "copyBufferToTexture from offsets 4 and 504 lands both regions, the second split at a 512 boundary" {
+	const device = openDevice();
+	const source = copyBuffer(device, 1024);
+	const bytes = counting(1024, 1);
+	device.queue.writeBuffer(source, 0, bytes);
+	const texture = copyTexture(device, 8, 4, 1, 1, "rgba8unorm");
+	const encoder = device.createCommandEncoder();
+	encoder.copyBufferToTexture(
+		{ buffer: source, offset: 4, bytesPerRow: 256, rowsPerImage: 2 },
+		{ texture: texture },
+		{ width: 4, height: 2, depthOrArrayLayers: 1 },
+	);
+	encoder.copyBufferToTexture(
+		{ buffer: source, offset: 504, bytesPerRow: 256, rowsPerImage: 2 },
+		{ texture: texture, origin: { x: 4, y: 2, z: 0 } },
+		{ width: 4, height: 2, depthOrArrayLayers: 1 },
+	);
+	device.queue.submit(encoder.finish());
+	const read = readTexture(device, texture, 0, 0, 8, 4);
+	for (let y = 0; y < 2; y++) {
+		for (let x = 0; x < 16; x++) {
+			assert read[y * 256 + x] == bytes[4 + y * 256 + x];
+			assert read[(y + 2) * 256 + 16 + x] == bytes[504 + y * 256 + x];
+			assert read[y * 256 + 16 + x] == 0 && read[(y + 2) * 256 + x] == 0;
+		}
+	}
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "copyTextureToTexture copies mip 1 of one texture into array layer 1 of another at 2,2" {
+	const device = openDevice();
+	const mips = copyTexture(device, 8, 8, 1, 2, "rgba8unorm");
+	const layers = copyTexture(device, 8, 8, 2, 1, "rgba8unorm");
+	device.queue.writeTexture(
+		{ texture: mips, mipLevel: 1 },
+		texels(0, 255, 0, 16),
+		{ offset: 0, bytesPerRow: 16, rowsPerImage: 4 },
+		{ width: 4, height: 4, depthOrArrayLayers: 1 },
+	);
+	device.queue.writeTexture(
+		{ texture: layers, origin: { x: 0, y: 0, z: 1 } },
+		texels(255, 0, 0, 64),
+		{ offset: 0, bytesPerRow: 32, rowsPerImage: 8 },
+		{ width: 8, height: 8, depthOrArrayLayers: 1 },
+	);
+	const encoder = device.createCommandEncoder();
+	encoder.copyTextureToTexture(
+		{ texture: mips, mipLevel: 1 },
+		{ texture: layers, origin: { x: 2, y: 2, z: 1 } },
+		{ width: 4, height: 4, depthOrArrayLayers: 1 },
+	);
+	device.queue.submit(encoder.finish());
+	const read = readTexture(device, layers, 0, 1, 8, 8);
+	assert texelAt(read, 256, 1, 1) == RED && texelAt(read, 256, 6, 6) == RED;
+	assert texelAt(read, 256, 2, 2) == GREEN && texelAt(read, 256, 5, 5) == GREEN;
+	assert texelAt(readTexture(device, layers, 0, 0, 8, 8), 256, 3, 3) == 0;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "rgba16float texels of 8 bytes round-trip through writeTexture and copyTextureToBuffer" {
+	const device = openDevice();
+	const texture = copyTexture(device, 4, 4, 1, 1, "rgba16float");
+	let halves: Vec<uint16> = [];
+	for (let i: int32 = 0; i < 64; i++) { halves.push((0x3c00 + i * 16) as uint16); }
+	device.queue.writeTexture(
+		{ texture: texture },
+		halves,
+		{ offset: 0, bytesPerRow: 32, rowsPerImage: 4 },
+		{ width: 4, height: 4, depthOrArrayLayers: 1 },
+	);
+	const read = readTexture(device, texture, 0, 0, 4, 4);
+	for (let y = 0; y < 4; y++) {
+		for (let i = 0; i < 16; i++) {
+			const half = halves[y * 16 + i];
+			assert read[y * 256 + i * 2] == (half & 0xff) as uint8 && read[y * 256 + i * 2 + 1] == (half >> 8) as uint8;
+		}
+	}
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "one texture read, written and read again over three submits leaves the debug layer silent" {
+	const device = openDevice();
+	const texture = copyTexture(device, 4, 4, 1, 1, "rgba8unorm");
+	const zeroed = readTexture(device, texture, 0, 0, 4, 4);
+	for (let y = 0; y < 4; y++) {
+		for (let x = 0; x < 16; x++) { assert zeroed[y * 256 + x] == 0; }
+	}
+	for (let round: int32 = 0; round < 2; round++) {
+		const bytes = counting(64, round + 2);
+		device.queue.writeTexture(
+			{ texture: texture },
+			bytes,
+			{ offset: 0, bytesPerRow: 16, rowsPerImage: 4 },
+			{ width: 4, height: 4, depthOrArrayLayers: 1 },
+		);
+		assert rowsMatch(readTexture(device, texture, 0, 0, 4, 4), bytes, 0, 16, 16, 4);
+	}
 	assert drainDebugMessages() == 0;
 	device.destroy();
 }
