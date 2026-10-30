@@ -336,7 +336,8 @@ read from the log.
    runs; `mixedFrame` with its controls and both registration orders. Then the backend checks of
    the host: `webgpuD3d11Check` and `doorZeroHandleCheck` on WARP and `webgpuGlCheck`
    (`-d:voidGlCore`) on the system device on Windows, `webgpuMetalCheck` on a Mac. With `--d3d12`,
-   also `webgpuD3d12Check` (`-d:voidD3d12`) on WARP.
+   also `webgpuD3d12Check` and the door checks (`doorZeroHandleCheck`, `doorComputeCheck`,
+   `doorStencilCheck`, `pipelinePrewarmCheck`), each `-d:voidD3d12` on WARP.
 3. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
    twice, compare the two, gate per-scene counters, write the PNG, then
    `tests/golden/compare.ms` judges every scene against `tests/golden/d3d11/` and prints
@@ -368,7 +369,7 @@ Flags:
   are one SKIP line. Pass it when a change touches `src/platform/macos/*`,
   `src/host/bridgeEmbed.m` or `tests/capture/capture.c`. `gpuTimer` runs on every Mac gate,
   in the quiet window.
-- `--d3d12` runs `webgpuD3d12Check` on WARP. Every pin ends by asserting that the D3D12 debug
+- `--d3d12` runs `webgpuD3d12Check` and the four door checks on WARP. Every pin ends by asserting that the D3D12 debug
   layer recorded no message, so it needs the Graphics Tools optional feature
   (`d3d12SDKLayers.dll`); without it `requestDevice` stops and names it. Without the flag it is
   one SKIP line on Windows.
