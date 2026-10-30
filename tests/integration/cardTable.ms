@@ -51,7 +51,7 @@ const MIN_LABEL_PIXELS: int32 = 30;
 const MIN_FLAME_PIXELS: int32 = 6;
 const SHADOW_RATIO_PERCENT: int32 = 75;
 const OVERLAY_RED_GAIN: int32 = 60;
-let control: boolean = voidCaptureEnvInt("VOID_CARD_TABLE_CONTROL", 0) != 0;
+const control: boolean = voidCaptureEnvInt("VOID_CARD_TABLE_CONTROL", 0) != 0;
 let frames: int32 = 0;
 let failures: int32 = 0;
 

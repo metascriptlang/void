@@ -25,7 +25,6 @@ import {
 import {
 	makeTextureView,
 	destroyView,
-	destroySampler,
 	originTopLeft,
 } from "../gpu/door";
 import { RenderState, Face, Compare, FilterMode, Wrap } from "../gpu/state";
@@ -103,7 +102,6 @@ import {
 import {
 	Scene3D,
 	NodeId3D,
-	NO_NODE_3D,
 	Transform3D,
 	SceneError,
 	LightError,
@@ -260,18 +258,18 @@ enum FrameShare {
 	Shared,
 }
 
-let context: DrawContext = DrawContext.withUniformCapacity(
+const context: DrawContext = DrawContext.withUniformCapacity(
 	PIXEL_ART_UNIFORM_LENGTH + FORWARD_UNIFORM_LENGTH + MATERIAL_POOL_LENGTH,
 );
-let renderer: PixelArtRenderer = createRenderer();
-let forward: ForwardRenderer = createForward();
+const renderer: PixelArtRenderer = createRenderer();
+const forward: ForwardRenderer = createForward();
 let forwardWanted: boolean = false;
 let campfireReady: boolean = false;
 let flameAnchor: Anchor = ANCHOR_BOTTOM_CENTER;
 let pointSampler: Sampler = { filter: FilterMode.Nearest, wrap: Wrap.Clamp, handle: 0 };
 // The draw list the tree writes into, owned here and reused every frame.
 let sceneItems: Vec<DrawItem> = [];
-let tree: Scene3D = Scene3D.create(context);
+const tree: Scene3D = Scene3D.create(context);
 let flameNode: NodeId3D = NO_NODE_ID;
 // The logs hang under their own group rather than off the root, so the tree has a real nested
 // transform to propagate through. The group sits at the identity unless a check turns it, and
@@ -283,7 +281,7 @@ let plainStoneNode: NodeId3D = NO_NODE_ID;
 let fireLight: NodeId3D = NO_NODE_ID;
 let firstLogPiece: int32 = 0;
 let logSpinPerFrame: float32 = 0.0;
-let flameFrames: MeshFrameAnimation = {
+const flameFrames: MeshFrameAnimation = {
 	context: context,
 	clock: {
 		frameCount: 0,
@@ -302,7 +300,7 @@ let flameFrames: MeshFrameAnimation = {
 	closed: false,
 };
 let logSpin: ObjectAnimation = ObjectAnimation.forClock(flameFrames.clock);
-let stoneFrames: MeshFrameAnimation = flameFrames;
+const stoneFrames: MeshFrameAnimation = flameFrames;
 let stoneFrameMeshes: Vec<MeshId> = [];
 const NEVER_REBUILD: int32 = -1;
 let flameMeshes: Vec<MeshId> = [];
@@ -1398,7 +1396,7 @@ function frameForward(share: FrameShare): Result<int32, CampfireError> {
 	const height: int32 = fbHeight();
 	const shortSide: float32 = Math.min(width, height) as float32;
 	const worldPerTexel: float32 = UNITS_ON_SHORT_SIDE / shortSide;
-	let centred: Camera3D = {
+	const centred: Camera3D = {
 		position: vec3(0.0, 0.0, 0.0),
 		yaw: CAMERA_YAW,
 		pitch: CAMERA_PITCH,
@@ -1409,7 +1407,7 @@ function frameForward(share: FrameShare): Result<int32, CampfireError> {
 		farPlane: 50.0,
 	};
 	const slide: float32 = panTexelsPerFrame * (frameIndex as float32) * worldPerTexel;
-	let camera: Camera3D = { ...centred, position: centred.basisOf().right.scaled(slide) };
+	const camera: Camera3D = { ...centred, position: centred.basisOf().right.scaled(slide) };
 	const resolved: Result<CameraView, CameraError> = camera.resolve(width, height);
 	if (!resolved.ok) {
 		console.log(`campfire: the camera was refused, ${resolved.error.toString()}`);
@@ -1471,7 +1469,7 @@ function framePixelArt(share: FrameShare): Result<int32, CampfireError> {
 
 	const shortSide: float32 = Math.min(grid.width, grid.height) as float32;
 	const worldPerTexel: float32 = UNITS_ON_SHORT_SIDE / shortSide;
-	let centred: Camera3D = {
+	const centred: Camera3D = {
 		position: vec3(0.0, 0.0, 0.0),
 		yaw: CAMERA_YAW,
 		pitch: CAMERA_PITCH,
@@ -1483,7 +1481,7 @@ function framePixelArt(share: FrameShare): Result<int32, CampfireError> {
 	};
 	const slide: float32 = panTexelsPerFrame * (frameIndex as float32) * worldPerTexel;
 	const target: Vec3 = centred.basisOf().right.scaled(slide);
-	let camera: Camera3D = { ...centred, position: target };
+	const camera: Camera3D = { ...centred, position: target };
 	const resolved: Result<CameraView, CameraError> = camera.resolve(grid.width, grid.height);
 	if (!resolved.ok) {
 		console.log(`campfire: the camera was refused, ${resolved.error.toString()}`);

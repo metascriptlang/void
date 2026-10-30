@@ -98,11 +98,10 @@ import { layerBit } from "../void3d/layers";
 import { Camera3D, CameraView, CameraError, ProjectionKind } from "../void3d/camera";
 import { ANCHOR_CENTER } from "../void3d/billboard";
 import { attachShadow, setCameraView } from "../void3d/renderer";
-import { DirShadowMap, ShadowError, DIR_SHADOW_UNIFORM_LENGTH } from "../void3d/dirShadowMap";
+import { DirShadowMap, ShadowError } from "../void3d/dirShadowMap";
 import {
 	ForwardRenderer,
 	ForwardError,
-	FORWARD_UNIFORM_LENGTH,
 	prepareFrame as prepareForward,
 	endPrepared,
 	drawToScreen as drawForwardToScreen,
@@ -193,13 +192,13 @@ const CARD_BLUE: Vec<float32> = [0.20, 0.12, 0.85, 0.75, 0.88];
 const CARD_LETTERS: Vec<string> = ["A", "B", "C", "D", "E"];
 
 let featureless: boolean = false;
-let context: DrawContext = DrawContext.withUniformCapacity(
+const context: DrawContext = DrawContext.withUniformCapacity(
 	uniformFloatsFor(2, 0, 1, poolKeys()),
 );
-let scene: Scene3D = Scene3D.create(context);
-let forward: ForwardRenderer = makeForward(CLEAR);
-let overlay: ForwardRenderer = makeForward(TRANSPARENT);
-let shadow: DirShadowMap = makeShadow();
+const scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = makeForward(CLEAR);
+const overlay: ForwardRenderer = makeForward(TRANSPARENT);
+const shadow: DirShadowMap = makeShadow();
 let items: Vec<DrawItem> = [];
 let overlayItems: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
@@ -214,8 +213,8 @@ let highlightNode: NodeId3D = NO_NODE_ID;
 let torchLights: Vec<NodeId3D> = [];
 let label: WorldLabel | null = null;
 let cardScenes: Vec<Scene2D> = [];
-let display: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 0.0));
-let displaySprite: NodeRef = display.sprite(whiteTile(1.0, 1.0));
+const display: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 0.0));
+const displaySprite: NodeRef = display.sprite(whiteTile(1.0, 1.0));
 let displayEpoch: int32 = 0;
 let torchA: ParticleSystem = systemOf(11);
 let torchB: ParticleSystem = systemOf(23);
@@ -226,7 +225,7 @@ let torchAMesh: MeshId = { store: 0, index: 0, generation: 0 };
 let torchBMesh: MeshId = { store: 0, index: 0, generation: 0 };
 let torchAInstances: Vec<float32> = new Array(flameState().maxParts * PARTICLE_INSTANCE_STRIDE);
 let torchBInstances: Vec<float32> = new Array(flameState().maxParts * PARTICLE_INSTANCE_STRIDE);
-let dissolveKey: ProgramKey =
+const dissolveKey: ProgramKey =
 	ProgramKey.of(Program.UnlitTextured).withDissolve().withPremultiplied();
 let dissolveBlock: UniformBlock = { store: 0, slot: 0, offset: 0, length: 0, generation: 0 };
 let dissolveValues: Vec<float32> = movingDefaults(dissolveKey);
@@ -313,7 +312,7 @@ function texture(
 	filter: FilterMode,
 	wrap: Wrap,
 ): TextureId {
-	const data: TextureData = {
+	let data: TextureData = {
 		pixels: pixels, width: width, height: height, filter: filter, wrap: wrap,
 	};
 	const uploaded: Result<TextureId, TextureUploadError> = addTexture(context, data);

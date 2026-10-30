@@ -53,12 +53,10 @@ import {
 	Scene3D,
 	NodeId3D,
 	SceneError,
-	NO_NODE_3D,
 	addGroup,
 	addMeshNode,
 	remove,
 	refresh,
-	NO_NODE_ID,
 } from "../void3d/scene";
 import {
 	ForwardRenderer,
@@ -111,20 +109,19 @@ const STREAM_WRITTEN: int32 = 4;
 const WIDTH: int32 = 640;
 const HEIGHT: int32 = 360;
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
-const NO_ID: NodeId3D = NO_NODE_ID;
 
-let context: DrawContext = DrawContext.withUniformCapacity(
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + 4 * MAX_FRAMES * MATERIAL_UNIFORM_LENGTH,
 );
-let forward: ForwardRenderer = createForward();
-let scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = createForward();
+const scene: Scene3D = Scene3D.create(context);
 let items: Vec<DrawItem> = [];
-let camera: Vec<float32> = zeros(VERTEX_UNIFORM_LENGTH);
-let lights: Vec<float32> = zeros(LIGHT_UNIFORM_LENGTH);
-let instances: Vec<float32> = zeros(STREAM_CAPACITY * STREAM_INSTANCE_STRIDE);
-let box: MeshData = boxData();
-let texturedBox: MeshData = texturedBoxData();
-let model: GltfData = modelData();
+const camera: Vec<float32> = zeros(VERTEX_UNIFORM_LENGTH);
+const lights: Vec<float32> = zeros(LIGHT_UNIFORM_LENGTH);
+const instances: Vec<float32> = zeros(STREAM_CAPACITY * STREAM_INSTANCE_STRIDE);
+const box: MeshData = boxData();
+const texturedBox: MeshData = texturedBoxData();
+const model: GltfData = modelData();
 let releasing: boolean = true;
 let frames: int32 = 0;
 let secondWritesRefused: int32 = 0;
@@ -158,7 +155,7 @@ function boxData(): MeshData {
 
 function texturedBoxData(): MeshData {
 	let data: MeshData = MeshData.withUvs();
-	let _added: Result<int32, MeshError> =
+	const _added: Result<int32, MeshError> =
 		addTexturedCube(data, vec3(1.0, 1.0, 1.0), true, WHITE);
 	return data;
 }
@@ -288,25 +285,25 @@ function loadLevel(): Result<NodeId3D, ChurnError> {
 	if (!mesh.ok) { return Result.err(ChurnError.MeshRefused); }
 	const stream: Result<MeshId, StreamError> = addStreamMesh(context, STREAM_CAPACITY);
 	if (!stream.ok) { return Result.err(ChurnError.StreamRefused); }
-	let texturedMesh: Result<MeshId, MeshUploadError> = addMeshData(context, texturedBox);
+	const texturedMesh: Result<MeshId, MeshUploadError> = addMeshData(context, texturedBox);
 	if (!texturedMesh.ok) { return Result.err(ChurnError.MeshRefused); }
-	let texture: Result<TextureId, TextureUploadError> = addTexture(context, checker());
+	const texture: Result<TextureId, TextureUploadError> = addTexture(context, checker());
 	if (!texture.ok) { return Result.err(ChurnError.TextureRefused); }
 	const lit: MaterialId = try litMaterial(Program.Lit, NO_TEXTURE);
-	let textured: MaterialId = try litMaterial(Program.LitTextured, texture.value);
+	const textured: MaterialId = try litMaterial(Program.LitTextured, texture.value);
 	const particles: MaterialId = try particleMaterial();
 	const _box: NodeId3D = try place(level, mesh.value, lit);
-	let _texturedBox: NodeId3D = try place(level, texturedMesh.value, textured);
+	const _texturedBox: NodeId3D = try place(level, texturedMesh.value, textured);
 	const _stream: NodeId3D = try place(level, stream.value, particles);
 	const _written: int32 = try fillStream(stream.value);
 	const _model: int32 = try loadModel(level);
 	if (releasing) {
 		const _mesh: Result<int32, HandleError> = releaseMesh(context, mesh.value);
-		let _texturedMesh: Result<int32, HandleError> = releaseMesh(context, texturedMesh.value);
+		const _texturedMesh: Result<int32, HandleError> = releaseMesh(context, texturedMesh.value);
 		const _particles: Result<int32, HandleError> = releaseMesh(context, stream.value);
-		let _texture: Result<int32, HandleError> = releaseTexture(context, texture.value);
+		const _texture: Result<int32, HandleError> = releaseTexture(context, texture.value);
 		const _lit: Result<int32, HandleError> = releaseMaterial(context, lit);
-		let _textured: Result<int32, HandleError> = releaseMaterial(context, textured);
+		const _textured: Result<int32, HandleError> = releaseMaterial(context, textured);
 		const _particle: Result<int32, HandleError> = releaseMaterial(context, particles);
 	}
 	return Result.ok(level);
