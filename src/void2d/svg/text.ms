@@ -20,12 +20,6 @@ export function ch(this x: Str, i: int32): int32 {
 	return x.b[k] as int32;
 }
 
-export function length(this x: Str): int32 {
-	let n: int32 = 0;
-	while (x.ch(n) != 0) { n += 1; }
-	return n;
-}
-
 export function sub(this x: Str, from: int32, to: int32): Str {
 	return { b: x.b, s: x.s + from, e: Math.min(x.s + to, x.e) };
 }
