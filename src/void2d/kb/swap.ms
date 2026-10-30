@@ -245,13 +245,11 @@ export function kbSwapCoverage(m: Span<uint8>, c: KbSwapContext, coverage: int64
 	if (!kbAlreadyVisited(c, coverage)) {
 		kbSwapArray16Context(m, c, coverage, 2);
 
-		let u16Count: int64 = 0;
-		const format = m.kbU16(coverage);
-		if (format == 1) {
-			u16Count = u16At(m, coverage + 2);
-		} else if (format == 2) {
-			u16Count = u16At(m, coverage + 2) * 3;
-		}
+		const u16Count: int64 = match (m.kbU16(coverage)) {
+			1 => u16At(m, coverage + 2),
+			2 => u16At(m, coverage + 2) * 3,
+			_ => 0,
+		};
 		kbSwapArray16Context(m, c, coverage + KB_SIZE_COVERAGE, u16Count);
 	}
 }
@@ -260,13 +258,11 @@ function swapAnchor(m: Span<uint8>, c: KbSwapContext, anchor: int64): void {
 	if (!kbAlreadyVisited(c, anchor)) {
 		m.kbSwapU16At(anchor);
 
-		let u16Count: int64 = 2;
-		const format = m.kbU16(anchor);
-		if (format == 2) {
-			u16Count = 3;
-		} else if (format == 3) {
-			u16Count = 4;
-		}
+		const u16Count: int64 = match (m.kbU16(anchor)) {
+			2 => 3,
+			3 => 4,
+			_ => 2,
+		};
 		kbSwapArray16Context(m, c, anchor + 2, u16Count);
 	}
 }
@@ -439,113 +435,124 @@ export function kbSwapClassDefinition(m: Span<uint8>, c: KbSwapContext, base: in
 	if (!kbAlreadyVisited(c, base)) {
 		m.kbSwapU16At(base);
 
-		const format = m.kbU16(base);
-		if (format == 1) {
-			kbSwapArray16Context(m, c, base + 2, 2);
-			kbSwapArray16Context(m, c, base + 6, u16At(m, base + 4));
-		} else if (format == 2) {
-			m.kbSwapU16At(base + 2);
-			kbSwapArray16Context(m, c, base + KB_SIZE_CLASS_DEFINITION_2, u16At(m, base + 2) * 3);
+		match (m.kbU16(base)) {
+			1 => {
+				kbSwapArray16Context(m, c, base + 2, 2);
+				kbSwapArray16Context(m, c, base + 6, u16At(m, base + 4));
+			},
+			2 => {
+				m.kbSwapU16At(base + 2);
+				kbSwapArray16Context(m, c, base + KB_SIZE_CLASS_DEFINITION_2, u16At(m, base + 2) * 3);
+			},
+			_ => {},
 		}
 	}
 }
 
 function swapSequenceContextSubtable(m: Span<uint8>, c: KbSwapContext, base: int64): void {
-	const format = m.kbU16(base);
-	if (format == 1) {
-		m.kbSwapU16At(base + 4);
-		kbSwapArray16Context(m, c, base + KB_SIZE_SEQUENCE_CONTEXT_1, u16At(m, base + 4));
+	match (m.kbU16(base)) {
+		1 => {
+			m.kbSwapU16At(base + 4);
+			kbSwapArray16Context(m, c, base + KB_SIZE_SEQUENCE_CONTEXT_1, u16At(m, base + 4));
 
-		for (let setIndex: int64 = 0; setIndex < u16At(m, base + 4); setIndex++) {
-			const set = kbGetSequenceRuleSet(m, base, setIndex);
+			for (let setIndex: int64 = 0; setIndex < u16At(m, base + 4); setIndex++) {
+				const set = kbGetSequenceRuleSet(m, base, setIndex);
 
-			if (set != 0 && !kbAlreadyVisited(c, set)) {
-				m.kbSwapU16At(set);
-				kbSwapArray16Context(m, c, set + 2, u16At(m, set));
+				if (set != 0 && !kbAlreadyVisited(c, set)) {
+					m.kbSwapU16At(set);
+					kbSwapArray16Context(m, c, set + 2, u16At(m, set));
 
-				for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
-					const rule = kbGetSequenceRule(m, set, ruleIndex);
+					for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
+						const rule = kbGetSequenceRule(m, set, ruleIndex);
 
-					if (!kbAlreadyVisited(c, rule)) {
-						kbSwapArray16Context(m, c, rule, 2);
-						kbSwapArray16Context(m, c, rule + 4,
-							kbUn(u16At(m, rule) - 1 + u16At(m, rule + 2) * 2));
+						if (!kbAlreadyVisited(c, rule)) {
+							kbSwapArray16Context(m, c, rule, 2);
+							kbSwapArray16Context(m, c, rule + 4,
+								kbUn(u16At(m, rule) - 1 + u16At(m, rule + 2) * 2));
+						}
 					}
 				}
 			}
-		}
-	} else if (format == 2) {
-		kbSwapArray16Context(m, c, base + 4, 2);
-		kbSwapArray16Context(m, c, base + KB_SIZE_SEQUENCE_CONTEXT_2, u16At(m, base + 6));
+		},
+		2 => {
+			kbSwapArray16Context(m, c, base + 4, 2);
+			kbSwapArray16Context(m, c, base + KB_SIZE_SEQUENCE_CONTEXT_2, u16At(m, base + 6));
 
-		const classDefBase = base + u16At(m, base + 4);
-		kbSwapClassDefinition(m, c, classDefBase);
+			const classDefBase = base + u16At(m, base + 4);
+			kbSwapClassDefinition(m, c, classDefBase);
 
-		for (let setIndex: int64 = 0; setIndex < u16At(m, base + 6); setIndex++) {
-			const set = kbGetClassSequenceRuleSet(m, base, setIndex);
+			for (let setIndex: int64 = 0; setIndex < u16At(m, base + 6); setIndex++) {
+				const set = kbGetClassSequenceRuleSet(m, base, setIndex);
 
-			if (set != 0 && !kbAlreadyVisited(c, set)) {
-				m.kbSwapU16At(set);
-				kbSwapArray16Context(m, c, set + 2, u16At(m, set));
+				if (set != 0 && !kbAlreadyVisited(c, set)) {
+					m.kbSwapU16At(set);
+					kbSwapArray16Context(m, c, set + 2, u16At(m, set));
 
-				for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
-					const rule = kbGetClassSequenceRule(m, set, ruleIndex);
+					for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
+						const rule = kbGetClassSequenceRule(m, set, ruleIndex);
 
-					if (!kbAlreadyVisited(c, rule)) {
-						kbSwapArray16Context(m, c, rule, 2);
-						kbSwapArray16Context(m, c, rule + 4,
-							kbUn(u16At(m, rule) - 1 + 2 * u16At(m, rule + 2)));
+						if (!kbAlreadyVisited(c, rule)) {
+							kbSwapArray16Context(m, c, rule, 2);
+							kbSwapArray16Context(m, c, rule + 4,
+								kbUn(u16At(m, rule) - 1 + 2 * u16At(m, rule + 2)));
+						}
 					}
 				}
 			}
-		}
-	} else if (format == 3) {
-		kbSwapArray16Context(m, c, base + 2, 2);
-		kbSwapArray16Context(m, c, base + 6, u16At(m, base + 2) + 2 * u16At(m, base + 4));
+		},
+		3 => {
+			kbSwapArray16Context(m, c, base + 2, 2);
+			kbSwapArray16Context(m, c, base + 6, u16At(m, base + 2) + 2 * u16At(m, base + 4));
 
-		const coverageOffsets = base + 6;
-		for (let coverageIndex: int64 = 0; coverageIndex < u16At(m, base + 2); coverageIndex++) {
-			kbSwapCoverage(m, c, base + u16At(m, coverageOffsets + coverageIndex * 2));
-		}
+			const coverageOffsets = base + 6;
+			for (let coverageIndex: int64 = 0; coverageIndex < u16At(m, base + 2); coverageIndex++) {
+				kbSwapCoverage(m, c, base + u16At(m, coverageOffsets + coverageIndex * 2));
+			}
+		},
+		_ => {},
 	}
 }
 
 function swapChainedSequenceContextSubtable(m: Span<uint8>, c: KbSwapContext, base: int64): void {
-	const format = m.kbU16(base);
-	if (format == 1) {
-		m.kbSwapU16At(base + 4);
-		kbSwapArray16Context(m, c, base + KB_SIZE_CHAINED_SEQUENCE_CONTEXT_1, u16At(m, base + 4));
+	match (m.kbU16(base)) {
+		1 => {
+			m.kbSwapU16At(base + 4);
+			kbSwapArray16Context(m, c, base + KB_SIZE_CHAINED_SEQUENCE_CONTEXT_1, u16At(m, base + 4));
 
-		for (let setIndex: int64 = 0; setIndex < u16At(m, base + 4); setIndex++) {
-			swapChainedSequenceRuleSet(m, c, kbGetChainedSequenceRuleSet(m, base, setIndex));
-		}
-	} else if (format == 2) {
-		kbSwapArray16Context(m, c, base + 4, 4);
-		kbSwapArray16Context(m, c, base + KB_SIZE_CHAINED_SEQUENCE_CONTEXT_2, u16At(m, base + 10));
+			for (let setIndex: int64 = 0; setIndex < u16At(m, base + 4); setIndex++) {
+				swapChainedSequenceRuleSet(m, c, kbGetChainedSequenceRuleSet(m, base, setIndex));
+			}
+		},
+		2 => {
+			kbSwapArray16Context(m, c, base + 4, 4);
+			kbSwapArray16Context(m, c, base + KB_SIZE_CHAINED_SEQUENCE_CONTEXT_2, u16At(m, base + 10));
 
-		kbSwapClassDefinition(m, c, base + u16At(m, base + 4));
-		kbSwapClassDefinition(m, c, base + u16At(m, base + 6));
-		kbSwapClassDefinition(m, c, base + u16At(m, base + 8));
+			kbSwapClassDefinition(m, c, base + u16At(m, base + 4));
+			kbSwapClassDefinition(m, c, base + u16At(m, base + 6));
+			kbSwapClassDefinition(m, c, base + u16At(m, base + 8));
 
-		for (let setIndex: int64 = 0; setIndex < u16At(m, base + 10); setIndex++) {
-			swapChainedSequenceRuleSet(m, c, kbGetChainedClassSequenceRuleSet(m, base, setIndex));
-		}
-	} else if (format == 3) {
-		const unpacked = kbUnpackChainedSequenceContext3(m, base, true);
+			for (let setIndex: int64 = 0; setIndex < u16At(m, base + 10); setIndex++) {
+				swapChainedSequenceRuleSet(m, c, kbGetChainedClassSequenceRuleSet(m, base, setIndex));
+			}
+		},
+		3 => {
+			const unpacked = kbUnpackChainedSequenceContext3(m, base, true);
 
-		const u16Count = (unpacked.backtrackCount as int64) + (unpacked.inputCount as int64) +
-			(unpacked.lookaheadCount as int64) + (unpacked.recordCount as int64) * 2 + 4;
-		kbSwapArray16Context(m, c, base + 2, u16Count);
+			const u16Count = (unpacked.backtrackCount as int64) + (unpacked.inputCount as int64) +
+				(unpacked.lookaheadCount as int64) + (unpacked.recordCount as int64) * 2 + 4;
+			kbSwapArray16Context(m, c, base + 2, u16Count);
 
-		for (let index: int64 = 0; index < (unpacked.backtrackCount as int64); index++) {
-			kbSwapCoverage(m, c, base + u16At(m, unpacked.backtrackCoverageOffsets + index * 2));
-		}
-		for (let index: int64 = 0; index < (unpacked.inputCount as int64); index++) {
-			kbSwapCoverage(m, c, base + u16At(m, unpacked.inputCoverageOffsets + index * 2));
-		}
-		for (let index: int64 = 0; index < (unpacked.lookaheadCount as int64); index++) {
-			kbSwapCoverage(m, c, base + u16At(m, unpacked.lookaheadCoverageOffsets + index * 2));
-		}
+			for (let index: int64 = 0; index < (unpacked.backtrackCount as int64); index++) {
+				kbSwapCoverage(m, c, base + u16At(m, unpacked.backtrackCoverageOffsets + index * 2));
+			}
+			for (let index: int64 = 0; index < (unpacked.inputCount as int64); index++) {
+				kbSwapCoverage(m, c, base + u16At(m, unpacked.inputCoverageOffsets + index * 2));
+			}
+			for (let index: int64 = 0; index < (unpacked.lookaheadCount as int64); index++) {
+				kbSwapCoverage(m, c, base + u16At(m, unpacked.lookaheadCoverageOffsets + index * 2));
+			}
+		},
+		_ => {},
 	}
 }
 
@@ -674,70 +681,78 @@ export function kbSwapGposLookupSubtable(
 			1 => {
 				m.kbSwapU16At(base + 4);
 
-				if (m.kbU16(base) == 1) {
-					swapValueRecord(m, c, base, m.kbU16(base + 4), base + 6);
-				} else if (m.kbU16(base) == 2) {
-					m.kbSwapU16At(base + 6);
+				match (m.kbU16(base)) {
+					1 => {
+						swapValueRecord(m, c, base, m.kbU16(base + 4), base + 6);
+					},
+					2 => {
+						m.kbSwapU16At(base + 6);
 
-					let at = base + 8;
-					for (let recordIndex: int64 = 0; recordIndex < u16At(m, base + 6); recordIndex++) {
-						const size = swapValueRecord(m, c, base, m.kbU16(base + 4), at);
-						at += size * 2;
-					}
+						let at = base + 8;
+						for (let recordIndex: int64 = 0; recordIndex < u16At(m, base + 6); recordIndex++) {
+							const size = swapValueRecord(m, c, base, m.kbU16(base + 4), at);
+							at += size * 2;
+						}
+					},
+					_ => {},
 				}
 			},
 			2 => {
-				if (m.kbU16(base) == 1) {
-					kbSwapArray16Context(m, c, base + 4, 3);
+				match (m.kbU16(base)) {
+					1 => {
+						kbSwapArray16Context(m, c, base + 4, 3);
 
-					const setOffsets = base + KB_SIZE_PAIR_ADJUSTMENT_1;
-					kbSwapArray16Context(m, c, setOffsets, u16At(m, base + 8));
+						const setOffsets = base + KB_SIZE_PAIR_ADJUSTMENT_1;
+						kbSwapArray16Context(m, c, setOffsets, u16At(m, base + 8));
 
-					const size1 = kbPopCount32(m.kbU16(base + 4));
-					const size2 = kbPopCount32(m.kbU16(base + 6));
-					const pairRecordSize = size1 + size2 + 1;
+						const size1 = kbPopCount32(m.kbU16(base + 4));
+						const size2 = kbPopCount32(m.kbU16(base + 6));
+						const pairRecordSize = size1 + size2 + 1;
 
-					for (let setIndex: int64 = 0; setIndex < u16At(m, base + 8); setIndex++) {
-						const set = base + u16At(m, setOffsets + setIndex * 2);
+						for (let setIndex: int64 = 0; setIndex < u16At(m, base + 8); setIndex++) {
+							const set = base + u16At(m, setOffsets + setIndex * 2);
 
-						if (!kbAlreadyVisited(c, set)) {
-							m.kbSwapU16At(set);
+							if (!kbAlreadyVisited(c, set)) {
+								m.kbSwapU16At(set);
 
-							const at = set + 2;
+								const at = set + 2;
 
-							for (let recordIndex: int64 = 0; recordIndex < u16At(m, set); recordIndex++) {
-								const pairRecord = at + recordIndex * pairRecordSize * 2;
+								for (let recordIndex: int64 = 0; recordIndex < u16At(m, set); recordIndex++) {
+									const pairRecord = at + recordIndex * pairRecordSize * 2;
 
-								m.kbSwapU16At(pairRecord);
-								let record = pairRecord + KB_SIZE_PAIR_VALUE_RECORD;
+									m.kbSwapU16At(pairRecord);
+									let record = pairRecord + KB_SIZE_PAIR_VALUE_RECORD;
 
-								const size = swapValueRecord(m, c, set, m.kbU16(base + 4), record);
-								record += size * 2;
-								swapValueRecord(m, c, set, m.kbU16(base + 6), record);
+									const size = swapValueRecord(m, c, set, m.kbU16(base + 4), record);
+									record += size * 2;
+									swapValueRecord(m, c, set, m.kbU16(base + 6), record);
+								}
 							}
 						}
-					}
-				} else if (m.kbU16(base) == 2) {
-					kbSwapArray16Context(m, c, base + 4, 6);
+					},
+					2 => {
+						kbSwapArray16Context(m, c, base + 4, 6);
 
-					kbSwapClassDefinition(m, c, base + u16At(m, base + 8));
-					kbSwapClassDefinition(m, c, base + u16At(m, base + 10));
+						kbSwapClassDefinition(m, c, base + u16At(m, base + 8));
+						kbSwapClassDefinition(m, c, base + u16At(m, base + 10));
 
-					const size1 = kbPopCount32(m.kbU16(base + 4));
-					const size2 = kbPopCount32(m.kbU16(base + 6));
+						const size1 = kbPopCount32(m.kbU16(base + 4));
+						const size2 = kbPopCount32(m.kbU16(base + 6));
 
-					let recordPair = base + KB_SIZE_PAIR_ADJUSTMENT_2;
-					for (
-						let recordIndex: int64 = 0;
-						recordIndex < u16At(m, base + 12) * u16At(m, base + 14);
-						recordIndex++
-					) {
-						swapValueRecord(m, c, base, m.kbU16(base + 4), recordPair);
-						recordPair += size1 * 2;
+						let recordPair = base + KB_SIZE_PAIR_ADJUSTMENT_2;
+						for (
+							let recordIndex: int64 = 0;
+							recordIndex < u16At(m, base + 12) * u16At(m, base + 14);
+							recordIndex++
+						) {
+							swapValueRecord(m, c, base, m.kbU16(base + 4), recordPair);
+							recordPair += size1 * 2;
 
-						swapValueRecord(m, c, base, m.kbU16(base + 6), recordPair);
-						recordPair += size2 * 2;
-					}
+							swapValueRecord(m, c, base, m.kbU16(base + 6), recordPair);
+							recordPair += size2 * 2;
+						}
+					},
+					_ => {},
 				}
 			},
 			3 => {
