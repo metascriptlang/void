@@ -223,13 +223,16 @@ test "morph default weights take node over mesh over zeros" {
 		triangleDocument(primitive(TARGETS_TWO), "", `,"weights":[3,2]`), triangleBytes());
 	assert nodeOnly.ok;
 	if (nodeOnly.ok) {
-		assert nodeOnly.value.nodes[0].weights[0] == 3 && nodeOnly.value.morphs[0].meshWeights[0] == 0;
+		assert nodeOnly.value.nodes[0].weights[0] == 3;
+		assert nodeOnly.value.morphs[0].meshWeights[0] == 0;
 	}
 }
 
 test "weights animation decodes LINEAR STEP and CUBICSPLINE with one value per target" {
 	const linear = loadGltf(
-		triangleDocument(primitive(TARGETS_TWO), "", "", animation(LINEAR_SAMPLER)), triangleBytes());
+		triangleDocument(primitive(TARGETS_TWO), "", "", animation(LINEAR_SAMPLER)),
+		triangleBytes(),
+	);
 	assert linear.ok;
 	if (!linear.ok) { return; }
 	assert linear.value.animations[0].tracks.length == 0;

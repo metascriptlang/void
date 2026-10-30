@@ -521,7 +521,7 @@ test "addGltfAssets refuses a setup or data it cannot use before it makes anythi
 	]);
 	texturedWithoutUvs.meshes.push(MeshData.empty());
 	texturedWithoutUvs.meshMaterials.push(0);
-	let farTexture: GltfData = materialsOnly([
+	const farTexture: GltfData = materialsOnly([
 		sourceOf(3, false, GltfAlphaMode.Opaque, 0.0),
 	]);
 	let unmatched: GltfData = twoMaterials();
@@ -555,7 +555,7 @@ test "a glTF material is the setup's block and culling, double sides unculled an
 	assert values[single.uniforms.offset + MATERIAL_DOUBLE_SIDED] == 0.0;
 	assert values[double.uniforms.offset + MATERIAL_DOUBLE_SIDED] == 1.0;
 	assert values[double.uniforms.offset + MATERIAL_ALPHA_KILL] == 0.0;
-	let alias: GltfAssets = made.value;
+	const alias: GltfAssets = made.value;
 	closeGltfAssets(alias);
 	assert made.value.isClosed() && context.liveMaterials() == 0;
 }
@@ -576,7 +576,7 @@ test "a glTF material's kind sets its phase, blend and alpha kill over the setup
 	const values: Vec<float32> = context.uniforms.values;
 	assert values[cut.uniforms.offset + MATERIAL_ALPHA_KILL] == 0.25;
 	assert values[blended.uniforms.offset + MATERIAL_ALPHA_KILL] == 0.0;
-	let alias: GltfAssets = made.value;
+	const alias: GltfAssets = made.value;
 	closeGltfAssets(alias);
 }
 

@@ -79,7 +79,8 @@ function materialsOnly(materials: Readonly<Span<GltfMaterial>>, withTexture: boo
 		});
 	}
 	return {
-		meshes: [], meshMaterials: [], materials: list, textures: textures, nodes: [], sceneRoots: [],
+		meshes: [], meshMaterials: [], materials: list, textures: textures, nodes: [],
+		sceneRoots: [],
 	};
 }
 
@@ -236,7 +237,8 @@ const SKIN_DOCUMENT: string = `{"asset":{"version":"2.0"},"scene":0,"scenes":[{"
 	+ `"buffers":[{"byteLength":268}],"bufferViews":[`
 	+ `{"buffer":0,"byteLength":36},{"buffer":0,"byteOffset":36,"byteLength":36},`
 	+ `{"buffer":0,"byteOffset":72,"byteLength":6},{"buffer":0,"byteOffset":80,"byteLength":12},`
-	+ `{"buffer":0,"byteOffset":92,"byteLength":48},{"buffer":0,"byteOffset":140,"byteLength":128}],`
+	+ `{"buffer":0,"byteOffset":92,"byteLength":48},`
+	+ `{"buffer":0,"byteOffset":140,"byteLength":128}],`
 	+ `"accessors":[`
 	+ `{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,1,0]},`
 	+ `{"bufferView":1,"componentType":5126,"count":3,"type":"VEC3"},`
@@ -276,7 +278,9 @@ test "a skinned pbr material has declared skinned programs, shadowed or not, cut
 			assert key.pbr && key.skinned && declares(key) && declares({ ...key, shadowed: false });
 		}
 	}
-	let mapped: GltfMaterial = mappedMaterial({ metalRough: 1, occlusion: 0, occlusionStrength: 1.0 });
+	let mapped: GltfMaterial = mappedMaterial(
+		{ metalRough: 1, occlusion: 0, occlusionStrength: 1.0 },
+	);
 	mapped.normalTexture = 0;
 	const key: ProgramKey = gltfProgramOf(mapped).withSkin();
 	assert key.pbrMaps && key.normalMap && declares(key) && declares({ ...key, shadowed: false });
