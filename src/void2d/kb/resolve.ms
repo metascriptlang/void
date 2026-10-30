@@ -16,7 +16,7 @@ export struct KbAnchorXy {
 	y: int32;
 }
 
-function wrapS16(value: int32): int32 {
+export function kbWrapS16(value: int32): int32 {
 	return ((value & 0xFFFF) ^ 0x8000) - 0x8000;
 }
 
@@ -40,7 +40,7 @@ function halfWordDelta(byte: int32): int32 {
 	return byte >= 0x80 ? byte - 0x100 : byte;
 }
 
-function fixed2_14ToFloat(x: int32): float32 {
+export function kbFixed2_14ToFloat(x: int32): float32 {
 	return (x as float32) * FIXED_2_14_SCALE;
 }
 
@@ -95,14 +95,14 @@ export function kbItemVariationStoreDelta(
 				let axisFactor: float32 = 0;
 
 				if (inputFixed >= lowFixed && inputFixed <= highFixed) {
-					const inputFloat = fixed2_14ToFloat(inputFixed);
-					const peakFloat = fixed2_14ToFloat(peakFixed);
+					const inputFloat = kbFixed2_14ToFloat(inputFixed);
+					const peakFloat = kbFixed2_14ToFloat(peakFixed);
 
 					if (inputFixed < peakFixed) {
-						const lowFloat = fixed2_14ToFloat(lowFixed);
+						const lowFloat = kbFixed2_14ToFloat(lowFixed);
 						axisFactor = (inputFloat - lowFloat) / (peakFloat - lowFloat);
 					} else {
-						const highFloat = fixed2_14ToFloat(highFixed);
+						const highFloat = kbFixed2_14ToFloat(highFixed);
 						axisFactor = (highFloat - inputFloat) / (highFloat - peakFloat);
 					}
 				}
@@ -131,7 +131,7 @@ function resolveDevice(s: KbScratch, device: int64): float32 {
 }
 
 function adjustedByDevice(s: KbScratch, value: int32, device: int64): int32 {
-	return wrapS16(value + wrapS16(kbRound32(resolveDevice(s, device))));
+	return kbWrapS16(value + kbWrapS16(kbRound32(resolveDevice(s, device))));
 }
 
 function adjustedByOptionalDevice(s: KbScratch, value: int32, device: int64): int32 {

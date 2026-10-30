@@ -89,7 +89,7 @@ import {
 	kbPushGlyphList,
 	kbZeroGlyph,
 } from "./glyph";
-import { kbRound32 } from "./resolve";
+import { kbFixed2_14ToFloat, kbRound32, kbWrapS16 } from "./resolve";
 import {
 	KB_GLYPH_FEATURE_MASK,
 	KB_INDIC_SCRIPT_ABOVE_BASE_MATRA_POSITION,
@@ -132,7 +132,6 @@ import {
 import { kbDoSubstitution } from "./gsub";
 
 const FIXED_16_16_SCALE: float32 = 0.0000152587890625;
-const FIXED_2_14_SCALE: float32 = 0.00006103515625;
 const FIXED_ONE: float32 = 65536.0;
 const HALF: float32 = 0.5;
 
@@ -161,10 +160,6 @@ class KbMurmur {
 	bytesHashed: int64 = 0;
 }
 
-function wrapS16(value: int32): int32 {
-	return ((value & 0xFFFF) ^ 0x8000) - 0x8000;
-}
-
 function kbS32(m: Readonly<Span<uint8>>, at: int64): int32 {
 	const value = m.kbU32(at);
 	return (value >= 2147483648 ? value - 4294967296 : value) as int32;
@@ -172,10 +167,6 @@ function kbS32(m: Readonly<Span<uint8>>, at: int64): int32 {
 
 function fixed16_16ToFloat(value: int32): float32 {
 	return ((value >> 16) as float32) + ((value & 0xFFFF) as float32) * FIXED_16_16_SCALE;
-}
-
-function fixed2_14ToFloat(value: int32): float32 {
-	return (value as float32) * FIXED_2_14_SCALE;
 }
 
 function floor32(x: float32): int32 {
@@ -321,22 +312,22 @@ export function kbNormalizeVariationVector(
 		}
 
 		normalizedFloat = (floor32(normalizedFloat * FIXED_ONE + HALF) as float32) / FIXED_ONE;
-		const normalizedFixed = wrapS16(((normalizedFloat * FIXED_ONE) as int32 + 2) >> 2);
+		const normalizedFixed = kbWrapS16(((normalizedFloat * FIXED_ONE) as int32 + 2) >> 2);
 
 		if (positionMapCount != 0) {
 			let last = valueMaps;
-			let from0 = fixed2_14ToFloat(m.kbS16(last));
+			let from0 = kbFixed2_14ToFloat(m.kbS16(last));
 			for (let positionMapIndex = 1; positionMapIndex < positionMapCount; positionMapIndex++) {
 				const current = valueMaps + (positionMapIndex as int64) * 4;
-				const from1 = fixed2_14ToFloat(m.kbS16(current));
+				const from1 = kbFixed2_14ToFloat(m.kbS16(current));
 
 				if (from1 >= normalizedFloat) {
-					const to0 = fixed2_14ToFloat(m.kbS16(last + 2));
-					const to1 = fixed2_14ToFloat(m.kbS16(current + 2));
+					const to0 = kbFixed2_14ToFloat(m.kbS16(last + 2));
+					const to1 = kbFixed2_14ToFloat(m.kbS16(current + 2));
 					const lerpFactor = (normalizedFloat - from0) / (from1 - from0);
 					let remappedFloat = to0 + (to1 - to0) * lerpFactor;
 					remappedFloat = kbRound32(remappedFloat * FIXED_ONE) as float32;
-					normalized[axisIndex] = wrapS16(((remappedFloat as int32) + 2) >> 2);
+					normalized[axisIndex] = kbWrapS16(((remappedFloat as int32) + 2) >> 2);
 					break;
 				}
 
