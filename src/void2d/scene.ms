@@ -209,11 +209,6 @@ export function present(this s: Scene2D): void {
 	s.presentAt(dpiScale());
 }
 
-// h2d has no DPI concept — a Heaps scene is sized in framebuffer pixels. void2d needs one,
-// because the pixel-exact text regime and the snapping rules are stated per device pixel.
-// `present()` takes the host's ratio; `presentAt` takes an explicit one, which is how a
-// golden scene pins DPI 1.25 or 1.5 on a box whose display reports 1.0 (docs/TESTING.md,
-// "Determinism preconditions").
 export function isDirty(this s: Scene2D): boolean {
 	s.requireOpen("isDirty");
 	const l: DrawContext2D = s.context;
@@ -319,7 +314,7 @@ export function drawScreen(this s: Scene2D): void {
 	s.context.drawScreen();
 }
 
-function paintedOnScreen(s: Scene2D, i: int32): boolean {
+function paintedOnScreen(this s: Scene2D, i: int32): boolean {
 	const l: DrawContext2D = s.context;
 	return s.slots[i] != NO_SLOT && i < (l.paintStates.length as int32) &&
 		l.paintStates[i] == PaintState.Painted;
@@ -334,7 +329,7 @@ export function paintedSlots(this s: Scene2D): NodeRef[] {
 	const out: NodeRef[] = [];
 	for (let p: int32 = 0; p < (s.order.length as int32); p++) {
 		const i: int32 = s.order[p];
-		if (s.orders[i].layerSlot && paintedOnScreen(s, i)) { out.push(s.refOf(i)); }
+		if (s.orders[i].layerSlot && s.paintedOnScreen(i)) { out.push(s.refOf(i)); }
 	}
 	return out;
 }
@@ -351,7 +346,7 @@ export function drawScreenUntil(this s: Scene2D, slot: NodeRef): void {
 		unreachable;
 	}
 	const l: DrawContext2D = s.context;
-	if (!paintedOnScreen(s, i)) {
+	if (!s.paintedOnScreen(i)) {
 		console.log(`void2d: drawScreenUntil on node ${i}, which the prepared frame did not paint ` +
 			"on the screen");
 		unreachable;
@@ -369,6 +364,9 @@ export function drawTarget(this s: Scene2D, target: RenderTarget): void {
 	s.context.drawTarget(target, s.clear);
 }
 
+// `present` takes the host's DPI ratio; `presentAt` takes an explicit one, which is how a
+// golden scene pins DPI 1.25 or 1.5 on a box whose display reports 1.0 (docs/TESTING.md,
+// "Determinism preconditions").
 export function presentAt(this s: Scene2D, dpi: float32): void {
 	s.requireOpen("presentAt");
 	const w: float32 = (fbWidth() as float32) / dpi;
