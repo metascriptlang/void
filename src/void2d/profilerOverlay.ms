@@ -58,12 +58,6 @@ export function nextMode(mode: OverlayMode): OverlayMode {
 	};
 }
 
-function copyBuckets(counts: Vec<int32>): Vec<int32> {
-	let out: Vec<int32> = new Array(0);
-	for (let i: int32 = 0; i < (counts.length as int32); i++) { out.push(counts[i]); }
-	return out;
-}
-
 export function overlayModel(
 	p: FrameProfiler,
 	counters: FrameCounters,
@@ -75,8 +69,8 @@ export function overlayModel(
 		return {
 			mode: mode,
 			lines: lines,
-			drawBuckets: copyBuckets(p.drawHistogram.counts),
-			dirtyBuckets: copyBuckets(p.dirtyHistogram.counts),
+			drawBuckets: p.drawHistogram.counts,
+			dirtyBuckets: p.dirtyHistogram.counts,
 		};
 	}
 	return { mode: mode, lines: lines, drawBuckets: new Array(0), dirtyBuckets: new Array(0) };
@@ -118,8 +112,8 @@ function textRects(
 
 function peak(buckets: Vec<int32>): int32 {
 	let most: int32 = 0;
-	for (let i: int32 = 0; i < (buckets.length as int32); i++) {
-		if (buckets[i] > most) { most = buckets[i]; }
+	for (const count of buckets) {
+		if (count > most) { most = count; }
 	}
 	return most;
 }
@@ -242,7 +236,7 @@ export function profilerOverlayRefresh(): void {
 	modelVersion = modelVersion + 1;
 }
 
-function recordLayout(layout: OverlayLayout, w: float32, h: float32, dpi: float32): void {
+function recordLayout(layout: OverlayLayout, w: float32, dpi: float32): void {
 	const cell: int32 = cellPixels(dpi);
 	const framebufferWidth: int32 = (w * dpi + 0.5) as int32;
 	const right: int32 = framebufferWidth - (layout.widthCells + PANEL_MARGIN) * cell;
@@ -264,7 +258,7 @@ function recordLayout(layout: OverlayLayout, w: float32, h: float32, dpi: float3
 export function profilerOverlayRecord(w: float32, h: float32, dpi: float32): void {
 	if (overlayMode == OverlayMode.Hidden) { return; }
 	profilerOverlayRefresh();
-	recordLayout(layoutOverlay(model), w, h, dpi);
+	recordLayout(layoutOverlay(model), w, dpi);
 }
 
 const overlayContext: DrawContext2D = DrawContext2D.create();
@@ -302,7 +296,7 @@ export function profilerPrepare(w: float32, h: float32, dpi: float32): void {
 		w, h, dpi, contextGeneration(), modelVersion,
 	)) {
 		startContext();
-		recordLayout(layoutOverlay(model), w, h, dpi);
+		recordLayout(layoutOverlay(model), w, dpi);
 		finishRecording();
 		recorded = true;
 		recordedW = w;
