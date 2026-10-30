@@ -2742,11 +2742,11 @@ export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, desti
 
 function flipBufferRows(index: int32, offset: int64, span: int64, rowStride: int32, rowBytes: int32, rows: int32): void {
 	if (rows < 2) { return; }
-	const bytes: Vec<uint8> = new Array(span);
+	let bytes: Vec<uint8> = new Array(span);
 	if (oglGetBufferDataUncached(bufferName(index), offset, bytes[0], span) == 0) {
 		stop("copyTextureToBuffer: this GL target cannot read the default framebuffer rows back to flip them");
 	}
-	const swap: Vec<uint8> = new Array(rowBytes);
+	let swap: Vec<uint8> = new Array(rowBytes);
 	for (let top = 0; top < rows - 1 - top; top++) {
 		const upper = (top as int64) * (rowStride as int64);
 		const lower = ((rows - 1 - top) as int64) * (rowStride as int64);
