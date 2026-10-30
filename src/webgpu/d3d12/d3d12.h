@@ -94,6 +94,8 @@ int32_t dx12QueryResolve(uint64_t list, uint64_t heap, int32_t type, uint32_t fi
 int32_t dx12TimestampFrequency(uint64_t queue, uint64_t *frequency);
 int32_t dx12ResolveSubresource(uint64_t list, uint64_t target, uint32_t targetSubresource, uint64_t source, uint32_t sourceSubresource, int32_t format);
 int32_t dx12Event(uint64_t list, int32_t kind, const char *label);
+int32_t dx12SetName(uint64_t object, const char *name);
+int32_t dx12ObjectName(uint64_t object, uint8_t *out, int32_t size);
 
 int32_t dx12TearingSupported(uint64_t adapter, int32_t *supported);
 int32_t dx12SwapchainCreate(uint64_t adapter, uint64_t queue, uint64_t window, int32_t composition, uint32_t width, uint32_t height, int32_t format, uint32_t bufferCount, uint32_t flags, uint32_t latency, uint64_t *swapchain, uint64_t *waitable);

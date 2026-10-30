@@ -1025,6 +1025,30 @@ int32_t dx12Event(uint64_t list, int32_t kind, const char *label) {
 	return DX12_OK;
 }
 
+int32_t dx12SetName(uint64_t object, const char *name) {
+	int units = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, name, -1, NULL, 0);
+	if (units == 0) return fail(DX12_ERROR_CALL, "label '%s' is not UTF-8", name);
+	wchar_t *wide = (wchar_t *)malloc((size_t)units * sizeof(wchar_t));
+	if (wide == NULL) return fail(DX12_OUT_OF_MEMORY, "out of memory widening label '%s'", name);
+	MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, name, -1, wide, units);
+	HRESULT hr = ID3D12Object_SetName((ID3D12Object *)(uintptr_t)object, wide);
+	free(wide);
+	return FAILED(hr) ? failCall("ID3D12Object::SetName", hr) : DX12_OK;
+}
+
+// mingw's d3dcommon.h lacks WKPDID_D3DDebugObjectNameW; the value is the Windows SDK's (um/d3dcommon.h).
+static const GUID debugObjectNameW = { 0x4cca5fd8, 0x921f, 0x42c8, { 0x85, 0x66, 0x70, 0xca, 0xf2, 0xa9, 0xb7, 0x41 } };
+
+int32_t dx12ObjectName(uint64_t object, uint8_t *out, int32_t size) {
+	wchar_t wide[DX12_LABEL_UNITS];
+	UINT bytes = sizeof wide;
+	HRESULT hr = ID3D12Object_GetPrivateData((ID3D12Object *)(uintptr_t)object, &debugObjectNameW, &bytes, wide);
+	if (FAILED(hr)) return failCall("ID3D12Object::GetPrivateData(WKPDID_D3DDebugObjectNameW)", hr);
+	int units = (int)(bytes / sizeof(wchar_t));
+	if (units > 0 && wide[units - 1] == 0) units--;
+	return WideCharToMultiByte(CP_UTF8, 0, wide, units, (char *)out, size, NULL, NULL);
+}
+
 static HMODULE s_compilerDll;
 static pD3DCompile s_compile;
 static char s_compileLog[4096];
