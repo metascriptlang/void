@@ -13,15 +13,16 @@ import {
 	WHITESPACE_RESET,
 } from "./textDirection";
 
-const NEWLINE: int32 = 10;
+const NEWLINE: int32 = "\n".code;
 
 function resetOf(c: BidiClass): int32 {
-	if (c == BidiClass.B || c == BidiClass.S) { return SEPARATOR_RESET; }
-	if (c == BidiClass.WS || c == BidiClass.LRI || c == BidiClass.RLI || c == BidiClass.FSI ||
-		c == BidiClass.PDI || removedByX9(c)) {
-		return WHITESPACE_RESET;
-	}
-	return NO_RESET;
+	return match (c) {
+		BidiClass.B | BidiClass.S => SEPARATOR_RESET,
+		BidiClass.WS | BidiClass.LRI | BidiClass.RLI | BidiClass.FSI | BidiClass.PDI =>
+			WHITESPACE_RESET,
+		_ when removedByX9(c) => WHITESPACE_RESET,
+		_ => NO_RESET,
+	};
 }
 
 export function resolveText(
@@ -33,17 +34,20 @@ export function resolveText(
 ): void {
 	const count: int32 = values.length as int32;
 	let start: int32 = 0;
+	let classes: Vec<BidiClass> = new Array(0);
+	let brackets: Vec<int32> = new Array(0);
+	let resolved: Vec<int32> = new Array(0);
 	while (true) {
 		let end: int32 = start;
 		while (end < count && values[end] != NEWLINE) { end = end + 1; }
 		const stop: int32 = end < count ? end + 1 : end;
-		let classes: Vec<BidiClass> = new Array(0);
-		let brackets: Vec<int32> = new Array(0);
+		classes.length = 0;
+		brackets.length = 0;
+		resolved.length = 0;
 		for (let i = start; i < stop; i++) {
 			classes.push(bidiClassOf(values[i]));
 			brackets.push(bracketCode(values[i]));
 		}
-		let resolved: Vec<int32> = new Array(0);
 		paragraphs.push(resolveLevels(classes, brackets, direction, resolved));
 		for (let i = 0; i < (classes.length as int32); i++) {
 			levels.push(resolved[i]);
