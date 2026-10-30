@@ -15,6 +15,7 @@ const MESH_VERTEX_FLOATS: int32 = 8;
 const CIRCLE_MAX_SEG: int32 = 64;
 const DEGENERATE_LEN: float32 = 0.0001;
 const MITER_LIMIT: float32 = 4.0;
+const NO_MIDDLE: float32 = -1.0;
 const WHITE: Color = rgba(1.0, 1.0, 1.0, 1.0);
 const NO_NORMAL: Vec2 = vec2(0.0, 0.0);
 
@@ -419,46 +420,44 @@ export function fillConvex(this g: NodeRef, pts: Vec2[], color: Color): NodeRef 
 	return g;
 }
 
-function appendOp(
-	n: GraphicsMesh,
-	kind: GraphicsOpKind,
-	vertexOffset: int32,
-	vertexCount: int32,
-	space: GradientSpace,
-	dither: boolean,
-	middle: float32,
-	c0: Color,
-	c1: Color,
-	c2: Color,
-	p0: float32,
-	p1: float32,
-	p2: float32,
-	p3: float32,
-): void {
+struct GraphicsOp {
+	kind: GraphicsOpKind;
+	vertexOffset: int32;
+	vertexCount: int32;
+	space: GradientSpace;
+	dither: boolean;
+	middle: float32;
+	c0: Color;
+	c1: Color;
+	c2: Color;
+	params: [float32, float32, float32, float32];
+}
+
+function appendOp(this n: GraphicsMesh, op: GraphicsOp): void {
 	const base: int32 = n.records.length as int32;
 	for (let i: int32 = 0; i < GRAPHICS_OP_FLOATS; i++) { n.records.push(0.0 as float32); }
-	n.records[base + GFX_OP_KIND] = (kind as int32) as float32;
-	n.records[base + GFX_OP_VERTEX_OFFSET] = vertexOffset as float32;
-	n.records[base + GFX_OP_VERTEX_COUNT] = vertexCount as float32;
-	n.records[base + GFX_OP_SPACE] = (space as int32) as float32;
-	n.records[base + GFX_OP_DITHER] = dither ? 1.0 : 0.0;
-	n.records[base + GFX_OP_MIDDLE] = middle;
-	n.records[base + GFX_OP_COLOR0] = c0.r;
-	n.records[base + GFX_OP_COLOR0 + 1] = c0.g;
-	n.records[base + GFX_OP_COLOR0 + 2] = c0.b;
-	n.records[base + GFX_OP_COLOR0 + 3] = c0.a;
-	n.records[base + GFX_OP_COLOR1] = c1.r;
-	n.records[base + GFX_OP_COLOR1 + 1] = c1.g;
-	n.records[base + GFX_OP_COLOR1 + 2] = c1.b;
-	n.records[base + GFX_OP_COLOR1 + 3] = c1.a;
-	n.records[base + GFX_OP_COLOR2] = c2.r;
-	n.records[base + GFX_OP_COLOR2 + 1] = c2.g;
-	n.records[base + GFX_OP_COLOR2 + 2] = c2.b;
-	n.records[base + GFX_OP_COLOR2 + 3] = c2.a;
-	n.records[base + GFX_OP_PARAMS] = p0;
-	n.records[base + GFX_OP_PARAMS + 1] = p1;
-	n.records[base + GFX_OP_PARAMS + 2] = p2;
-	n.records[base + GFX_OP_PARAMS + 3] = p3;
+	n.records[base + GFX_OP_KIND] = (op.kind as int32) as float32;
+	n.records[base + GFX_OP_VERTEX_OFFSET] = op.vertexOffset as float32;
+	n.records[base + GFX_OP_VERTEX_COUNT] = op.vertexCount as float32;
+	n.records[base + GFX_OP_SPACE] = (op.space as int32) as float32;
+	n.records[base + GFX_OP_DITHER] = op.dither ? 1.0 : 0.0;
+	n.records[base + GFX_OP_MIDDLE] = op.middle;
+	n.records[base + GFX_OP_COLOR0] = op.c0.r;
+	n.records[base + GFX_OP_COLOR0 + 1] = op.c0.g;
+	n.records[base + GFX_OP_COLOR0 + 2] = op.c0.b;
+	n.records[base + GFX_OP_COLOR0 + 3] = op.c0.a;
+	n.records[base + GFX_OP_COLOR1] = op.c1.r;
+	n.records[base + GFX_OP_COLOR1 + 1] = op.c1.g;
+	n.records[base + GFX_OP_COLOR1 + 2] = op.c1.b;
+	n.records[base + GFX_OP_COLOR1 + 3] = op.c1.a;
+	n.records[base + GFX_OP_COLOR2] = op.c2.r;
+	n.records[base + GFX_OP_COLOR2 + 1] = op.c2.g;
+	n.records[base + GFX_OP_COLOR2 + 2] = op.c2.b;
+	n.records[base + GFX_OP_COLOR2 + 3] = op.c2.a;
+	n.records[base + GFX_OP_PARAMS] = op.params[0];
+	n.records[base + GFX_OP_PARAMS + 1] = op.params[1];
+	n.records[base + GFX_OP_PARAMS + 2] = op.params[2];
+	n.records[base + GFX_OP_PARAMS + 3] = op.params[3];
 }
 
 function polyArea2(pts: Readonly<Span<Vec2>>): float32 {
@@ -599,8 +598,11 @@ export function fillGradientPolygonStops(
 	contourFill(target, false, pts, [m], triangulate(pts), map, WHITE, EdgeLimit.Convex);
 	const count: int32 = target.vertexTotal() - start;
 	if (count > 0) {
-		appendOp(target, GraphicsOpKind.LinearGradient, start, count, space, true, middle,
-			c0, cMiddle, c1, 0.0, 0.0, 0.0, 0.0);
+		target.appendOp({
+			kind: GraphicsOpKind.LinearGradient, vertexOffset: start, vertexCount: count,
+			space: space, dither: true, middle: middle, c0: c0, c1: cMiddle, c2: c1,
+			params: [0.0, 0.0, 0.0, 0.0],
+		});
 	}
 	return g;
 }
@@ -612,7 +614,7 @@ export function fillGradientPolygon(
 	c1: Color,
 	angle: float32,
 ): NodeRef {
-	return g.fillGradientPolygonStops(pts, c0, c1, c1, -1.0, angle, GradientSpace.Srgb);
+	return g.fillGradientPolygonStops(pts, c0, c1, c1, NO_MIDDLE, angle, GradientSpace.Srgb);
 }
 export function fillGradientPolygonOklab(
 	this g: NodeRef,
@@ -621,7 +623,7 @@ export function fillGradientPolygonOklab(
 	c1: Color,
 	angle: float32,
 ): NodeRef {
-	return g.fillGradientPolygonStops(pts, c0, c1, c1, -1.0, angle, GradientSpace.Oklab);
+	return g.fillGradientPolygonStops(pts, c0, c1, c1, NO_MIDDLE, angle, GradientSpace.Oklab);
 }
 
 export function fillGradientRect(
@@ -649,7 +651,7 @@ export function fillGradientRectOklab(
 	angle: float32,
 ): NodeRef {
 	const pts: Vec2[] = rectPoints(x, y, w, h);
-	return g.fillGradientPolygonStops(pts, c0, c1, c1, -1.0, angle, GradientSpace.Oklab);
+	return g.fillGradientPolygonStops(pts, c0, c1, c1, NO_MIDDLE, angle, GradientSpace.Oklab);
 }
 
 export function fillGradientRectStops(
@@ -688,8 +690,11 @@ export function fillRadialGradientStops(
 	contourFill(target, false, ellipsePoints(cx, cy, r, r, seg), [seg], fanTris(seg), map, WHITE,
 		EdgeLimit.Convex);
 	const count: int32 = target.vertexTotal() - start;
-	appendOp(target, GraphicsOpKind.RadialGradient, start, count, space, true, middle,
-		c0, cMiddle, c1, 0.0, 0.0, 0.0, 0.0);
+	target.appendOp({
+		kind: GraphicsOpKind.RadialGradient, vertexOffset: start, vertexCount: count,
+		space: space, dither: true, middle: middle, c0: c0, c1: cMiddle, c2: c1,
+		params: [0.0, 0.0, 0.0, 0.0],
+	});
 	return g;
 }
 
@@ -701,7 +706,7 @@ export function fillRadialGradient(
 	cInner: Color,
 	cOuter: Color,
 ): NodeRef {
-	return g.fillRadialGradientStops(cx, cy, r, cInner, cOuter, cOuter, -1.0, GradientSpace.Srgb);
+	return g.fillRadialGradientStops(cx, cy, r, cInner, cOuter, cOuter, NO_MIDDLE, GradientSpace.Srgb);
 }
 
 export function fillRadialGradientOklab(
@@ -712,7 +717,7 @@ export function fillRadialGradientOklab(
 	cInner: Color,
 	cOuter: Color,
 ): NodeRef {
-	return g.fillRadialGradientStops(cx, cy, r, cInner, cOuter, cOuter, -1.0, GradientSpace.Oklab);
+	return g.fillRadialGradientStops(cx, cy, r, cInner, cOuter, cOuter, NO_MIDDLE, GradientSpace.Oklab);
 }
 
 function fillPatternRect(
@@ -733,8 +738,10 @@ function fillPatternRect(
 	contourFill(target, false, rectPoints(x, y, w, h), [4], RECT_TRIS, map, WHITE,
 		EdgeLimit.Parallel);
 	const count: int32 = target.vertexTotal() - start;
-	appendOp(target, kind, start, count, GradientSpace.Srgb, false, -1.0,
-		c0, c1, c1, p0, p1, 0.0, 0.0);
+	target.appendOp({
+		kind: kind, vertexOffset: start, vertexCount: count, space: GradientSpace.Srgb,
+		dither: false, middle: NO_MIDDLE, c0: c0, c1: c1, c2: c1, params: [p0, p1, 0.0, 0.0],
+	});
 	return g;
 }
 
