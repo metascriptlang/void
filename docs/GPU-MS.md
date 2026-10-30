@@ -1297,3 +1297,28 @@ was read in code by a Mac research lane and was neither measured nor rechecked b
 
 The Mac A/B against sokol has no verdict yet: the shared Mac's load moved the same scene's B/A
 from 1.02 to 1.22 between runs. A quiet-window rerun is next.
+
+### 2026-10-30, Mac: writeBuffer keeps the bytes it does not write, on every backend
+
+`wt/gpu-perf` gives buffers WebGPU's meaning: a `writeBuffer` changes only its own range. A buffer
+created with `transient: true` keeps the old behaviour, sokol's `write_transient`, where bytes last
+one frame (`docs/GPU.md` "Two kinds of buffer"). The door's uniform ring, its append buffers and
+void2d's frame vertex buffer are transient. Two new refusals are shared by every backend and pinned
+in `tests/aborts/cases/webgpuDummyCases.ms` (`writeAfterRead`, `transientUnwritten`).
+
+The Mac verified Metal: `webgpuMetalCheck` passes, and every bench scene runs without a refusal.
+The gl and d3d11 edits are only type-checked on the Mac. Please run them on Windows:
+
+- gl (`gl/backend.ms` `writeBuffer`, `claimBufferCopy`): only a transient buffer, or a write from 0
+  over every byte ever written (`replacesWrittenBytes`), rotates the slot. Any other write is
+  `glBufferSubData` in place, as Dawn's `QueueGL.cpp:99` writes it.
+- d3d11 (`createBuffer`, `writeBuffer`): a `COPY_DST` buffer that is not transient is now
+  `USAGE_DEFAULT`, written by `UpdateSubresource`, as Dawn's `BufferD3D11.cpp:1548-1600` writes a
+  partial range. A transient buffer stays `USAGE_DYNAMIC` with discard or no-overwrite. A partial
+  first write of the frame to a constant buffer that is not transient (the `offsetUniforms` path)
+  stops by name, because D3D11.0 cannot update part of a constant buffer.
+- New tests: `webgpuGlCheck` and `webgpuD3d11Check` "a later frame's first writeBuffer of a range
+  keeps the bytes around it". They are red on the old code by construction, because the old first
+  write moved to a fresh copy.
+- Also on Windows: the d3d11 and gl goldens, and the 2D bench frame time, to judge
+  `UpdateSubresource` against the old map-discard on a vertex buffer void2d rewrites.
