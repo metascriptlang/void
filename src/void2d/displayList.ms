@@ -1592,7 +1592,7 @@ export function lanesReorderable(c0: int32, c1: int32): boolean {
 }
 
 function orderLanes(c0: int32, c1: int32, marks: Readonly<Span<int32>>, reorder: boolean): void {
-	while ((activeContext.laneOrder.length as int32) > 0) { activeContext.laneOrder.pop(); }
+	activeContext.laneOrder.length = 0;
 	if (!reorder) {
 		for (let c: int32 = c0; c < c1; c++) { activeContext.laneOrder.push(c); }
 		return;
@@ -1678,9 +1678,9 @@ export function layLanes(
 	sized(activeContext.laneOutputs, sources);
 	sized(activeContext.laneOffsets, sources);
 	growTo(activeContext.laneOut, sources * COMMAND_FLOATS);
-	while ((activeContext.laneBySprite.length as int32) > 0) { activeContext.laneBySprite.pop(); }
-	while ((activeContext.laneByUi.length as int32) > 0) { activeContext.laneByUi.pop(); }
-	while ((activeContext.laneByVertex.length as int32) > 0) { activeContext.laneByVertex.pop(); }
+	activeContext.laneBySprite.length = 0;
+	activeContext.laneByUi.length = 0;
+	activeContext.laneByVertex.length = 0;
 	for (let c: int32 = c0; c < c1; c++) {
 		const base: int32 = c * COMMAND_FLOATS;
 		const drawn: boolean = isDraw(activeContext.commands, base);
