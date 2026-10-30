@@ -310,8 +310,8 @@ function runCharstring(info: FontInfo, glyphIndex: int32, ref c: CsCtx): boolean
 	let subrStackHeight: int32 = 0;
 	let sp: int32 = 0;
 	let hasSubrs = false;
-	let s: float32[] = new Array<float32>(MAX_STACK);
-	let subrStack: Buf[] = new Array<Buf>(MAX_SUBR_DEPTH);
+	const s: float32[] = new Array<float32>(MAX_STACK);
+	const subrStack: Buf[] = new Array<Buf>(MAX_SUBR_DEPTH);
 	let subrs = info.subrs;
 	let b = indexGet(info.charstrings, glyphIndex);
 	while (b.cursor < b.size) {
