@@ -785,7 +785,7 @@ when (voidShaper) {
 			a.font == b.font;
 	}
 
-	function levelAt(bidi: BidiRuns, k: int32): int32 {
+	function levelAt(this bidi: BidiRuns, k: int32): int32 {
 		return (bidi.levels.length as int32) == 0 ? -1 : bidi.levels[k];
 	}
 
@@ -819,7 +819,7 @@ when (voidShaper) {
 		ref extras: Vec<Extra>,
 	): void {
 		const first: Codepoint = cps[from];
-		const direction: ShapeDirection = directionOf(levelAt(bidi, from));
+		const direction: ShapeDirection = directionOf(bidi.levelAt(from));
 		if (!shaperTryBegin(first.face, direction)) { return; }
 		for (const feature of fontFeatures(first.font)) {
 			shaperFeature(feature.tag, feature.value);
@@ -859,7 +859,7 @@ when (voidShaper) {
 				console.log(
 					`void2d: the shaper ran the text at UTF-16 index ${at} ` +
 					`${directionName(g.direction)} where BiDi resolved ` +
-					`level ${levelAt(bidi, from)}`,
+					`level ${bidi.levelAt(from)}`,
 				);
 				unreachable;
 			}
@@ -916,7 +916,7 @@ when (voidShaper) {
 			if (cps[k].clusterStart) { graphemes = graphemes + 1; }
 		}
 		if (count == 1 && graphemes > 1) {
-			const whole: float32 = advanceOf(glyphs[0], perUnit, bold);
+			const whole: float32 = glyphs[0].advanceOf(perUnit, bold);
 			const share: float32 = whole / (graphemes as float32);
 			cells[first] = { ...cells[first], glyph: glyphs[0].glyph };
 			cells[first].offsetX = (glyphs[0].offsetX as float32) * perUnit;
@@ -928,7 +928,7 @@ when (voidShaper) {
 		}
 		for (let j = 0; j < count; j++) {
 			const g: ShapedGlyph = glyphs[j];
-			const advance: float32 = advanceOf(g, perUnit, bold);
+			const advance: float32 = g.advanceOf(perUnit, bold);
 			const offsetX: float32 = (g.offsetX as float32) * perUnit;
 			const offsetY: float32 = -(g.offsetY as float32) * perUnit;
 			const glyph: int32 = inkless(cps, origin, g) ? NO_GLYPH : g.glyph;
@@ -948,7 +948,7 @@ when (voidShaper) {
 		}
 	}
 
-	function advanceOf(g: ShapedGlyph, perUnit: float32, bold: float32): float32 {
+	function advanceOf(this g: ShapedGlyph, perUnit: float32, bold: float32): float32 {
 		const plain: float32 = (g.advanceX as float32) * perUnit;
 		return g.advanceX != 0 ? plain + bold : plain;
 	}
@@ -971,7 +971,7 @@ when (voidShaper) {
 			}
 			let to: int32 = from + 1;
 			while (to < count && cps[from].sameGroup(cps[to]) &&
-				levelAt(bidi, from) == levelAt(bidi, to)) {
+				bidi.levelAt(from) == bidi.levelAt(to)) {
 				to = to + 1;
 			}
 			shapeGroup(cps, from, to, style, bidi, cells, extras);
@@ -1403,7 +1403,8 @@ function forceCells(
 			head = k;
 			headCells = cells;
 			const forced: float32 = (cells as float32) * cell;
-			if (Math.abs(shaped - forced) > GRID_SNAP_TOLERANCE || isSpriteFace(glyphs[k].face)) {
+			if (Math.abs(shaped - forced) > GRID_SNAP_TOLERANCE ||
+				isSpriteFace(glyphs[k].face)) {
 				glyphs[k].x = forced;
 			}
 			lastShaped = shaped;
@@ -1427,7 +1428,7 @@ function forceCells(
 // the cells of the graphemes it consumed.
 const OVERFLOW_CELLS: float32 = 0.25;
 
-function inkExtent(g: LaidGlyph): [float32, float32] {
+function inkExtent(this g: LaidGlyph): [float32, float32] {
 	if (hasColourTables(g.face)) {
 		const colour: ColourTileBox = colourTileBox(g.face, g.glyph, g.size);
 		if (colour.glyph == ColourGlyph.Present) {
@@ -1446,7 +1447,7 @@ function fitCluster(glyphs: Span<LaidGlyph>, head: int32, end: int32, cells: int
 	let right: float32 = 0.0;
 	for (let k = head; k < end; k++) {
 		if (glyphs[k].glyph == NO_GLYPH) { continue; }
-		const [inkLeft, inkRight] = inkExtent(glyphs[k]);
+		const [inkLeft, inkRight] = glyphs[k].inkExtent();
 		if (!(inkRight > inkLeft)) { continue; }
 		const at: float32 = glyphs[k].x - origin + glyphs[k].offsetX;
 		if (!inked || at + inkLeft < left) { left = at + inkLeft; }
@@ -1837,8 +1838,8 @@ function sameCells(a: Readonly<Span<uint8>>, b: Readonly<Span<uint8>>): boolean 
 	return true;
 }
 
-function wrapHolds(
-	key: Readonly<WrapKey>,
+function matches(
+	this key: Readonly<WrapKey>,
 	style: TextStyle,
 	options: LineOptions,
 	cells: Readonly<Span<uint8>>,
@@ -1931,7 +1932,7 @@ export function wrapLines(
 		const cells: Readonly<Span<uint8>> =
 			cellWidths[(gridded ? bytes : 0)..(gridded ? bytes + shaped.bytes : 0)];
 		const bidi: boolean = anyBidi && (shaped.bidi.paragraphs.length as int32) == 0;
-		if (!wrapHolds(shapes.lines[li].wrap.key, style, options, cells, bidi)) {
+		if (!shapes.lines[li].wrap.key.matches(style, options, cells, bidi)) {
 			shapes.lines[li].wrap =
 				wrapLine(shaped, style, options, cells, bidi, shapes.direction, primary);
 		}
@@ -2267,8 +2268,8 @@ export function splitAt(this l: TextLayout, index: int32): [TextLayout, TextLayo
 	let rightBidi: LayoutBidi = l.bidi;
 	if (bidi) {
 		const paragraph: int32 = l.bidi.lineLevels[0];
-		leftBidi = splitBidi(l.bidi, line.firstGlyph, cut, 0.0);
-		rightBidi = splitBidi(l.bidi, cut, total, origin);
+		leftBidi = l.bidi.portion(line.firstGlyph, cut, 0.0);
+		rightBidi = l.bidi.portion(cut, total, origin);
 		reflectLine(left, 0, leftBidi.levels, leftBidi.resets, paragraph, leftWidth);
 		reflectLine(right, 0, rightBidi.levels, rightBidi.resets, paragraph, rightWidth);
 	}
@@ -2295,7 +2296,9 @@ export function splitAt(this l: TextLayout, index: int32): [TextLayout, TextLayo
 	];
 }
 
-function splitBidi(whole: LayoutBidi, from: int32, to: int32, origin: float32): LayoutBidi {
+function portion(
+	this whole: LayoutBidi, from: int32, to: int32, origin: float32,
+): LayoutBidi {
 	let part: LayoutBidi = {
 		levels: new Array(0), resets: new Array(0), logicalX: new Array(0),
 		lineLevels: new Array(0),
