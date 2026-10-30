@@ -466,9 +466,9 @@ function rasterizeSortedEdges(
 	offX: int32,
 	offY: int32,
 ): void {
-	let arena: ActiveEdge[] = [];
+	const arena: ActiveEdge[] = [];
 	let active: int32 = -1;
-	let buf: float32[] = new Array<float32>(width * 2 + 1);
+	const buf: float32[] = new Array<float32>(width * 2 + 1);
 	let y: int32 = offY;
 	let ei: int32 = 0;
 	let sentinel = edges[n];
@@ -539,7 +539,7 @@ function rasterizeContours(
 	invert: boolean,
 ): void {
 	const yScaleInv: float32 = invert ? -scaleY : scaleY;
-	let edges: Edge[] = [];
+	const edges: Edge[] = [];
 	let m: int32 = 0;
 	for (let i: int32 = 0; i < (flat.lengths.length as int32); i++) {
 		const count = flat.lengths[i];
