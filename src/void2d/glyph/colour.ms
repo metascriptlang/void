@@ -33,7 +33,6 @@ when (voidColourEmoji) {
 		colourFaceGlyphIndex as faceGlyphIndex,
 		colourFaceHasLayers,
 		colourFaceOpen,
-		colourFaceReason,
 		colourFaceSfnt,
 		colourGlyphBox,
 		colourGlyphLayers,
@@ -51,10 +50,6 @@ when (voidColourEmoji) {
 		head: int32 = 0;
 		hhea: int32 = 0;
 		hmtx: int32 = 0;
-	}
-
-	export function colourReason(): string {
-		return colourFaceReason();
 	}
 
 	export function colourFaceGlyphIndex(handle: int32, bytes: uint8[], codepoint: int32): int32 {
