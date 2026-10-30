@@ -166,8 +166,7 @@ function takeSlot(image: SvgImage): int32 {
 		reason = `more than ${MAX_SLOTS} SVGs alive or retired`;
 		return 0;
 	}
-	let grown = capacity > 0 ? capacity * 2 : 16;
-	if (grown > MAX_SLOTS) { grown = MAX_SLOTS; }
+	const grown = Math.min(capacity > 0 ? capacity * 2 : 16, MAX_SLOTS);
 	for (let i = capacity; i < grown; i++) {
 		slotImages.push(null);
 		slotGenerations.push(1);
