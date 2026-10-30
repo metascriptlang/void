@@ -224,11 +224,11 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 }
 
 export function createTexture(texture: TextureRecord, descriptor: GPUTextureDescriptor): void {
-	notBuilt("createTexture", "D2");
+	ran("createTexture", resources.createTexture(r, texture));
 }
 
 export function destroyTexture(texture: GPUTexture): void {
-	notBuilt("destroyTexture", "D2");
+	resources.destroyTexture(r, ring, texture.id);
 }
 
 export function writeTexture<T>(
@@ -237,7 +237,7 @@ export function writeTexture<T>(
 	layout: GPUTexelCopyBufferLayout,
 	size: GPUExtent3D,
 ): void {
-	notBuilt("writeTexture", "D2");
+	ran("writeTexture", resources.writeTexture(r, ring, destination, data, layout, size));
 }
 
 export function createView(view: ViewRecord, descriptor: GPUTextureViewDescriptor): void {
@@ -354,15 +354,15 @@ export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, desti
 }
 
 export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
-	notBuilt("copyTextureToBuffer", "D6");
+	ran("copyTextureToBuffer", resources.copyTextureToBuffer(r, ring, source, destination, size));
 }
 
 export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
-	notBuilt("copyBufferToTexture", "D6");
+	ran("copyBufferToTexture", resources.copyBufferToTexture(r, ring, source, destination, size));
 }
 
 export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
-	notBuilt("copyTextureToTexture", "D6");
+	ran("copyTextureToTexture", resources.copyTextureToTexture(r, ring, source, destination, size));
 }
 
 export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, length: int64): void {
