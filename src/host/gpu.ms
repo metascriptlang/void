@@ -26,6 +26,9 @@ when (windows && voidVulkan && !voidDummy) {
 	@compile("./bridgeWin.c", "-DVOID_VULKAN");
 	@compile("./windowVulkan.c", "-DVOID_VULKAN");
 	import "../webgpu/vulkan/window";
+} else when (windows && voidD3d12 && !voidDummy) {
+	@compile("./bridgeWin.c", "-DVOID_D3D12");
+	import "../webgpu/d3d12/window";
 } else when (windows && !voidDummy) {
 	@compile("./bridgeWin.c");
 }

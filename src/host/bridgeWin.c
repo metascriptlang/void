@@ -24,7 +24,9 @@ static msClosure s_frame;
 static int s_reqW = 0;
 static int s_reqH = 0;
 
+#if defined(VOID_D3D11)
 static int s_deviceRemoved = 0;
+#endif
 
 enum { REMOVAL_NONE, REMOVAL_RECOVER, REMOVAL_FATAL };
 int32_t voidD3d11RemovalAction(int32_t hr);
@@ -38,8 +40,8 @@ static void recreateWindowDevice(void);
 static void restoreDoor(void) {
 #if defined(VOID_D3D11)
 	if (s_deviceRemoved) recreateWindowDevice();
-#endif
 	s_deviceRemoved = 0;
+#endif
 	if (voidDriver == VOID_DRIVER_WINDOW) voidWindowDoorSetup();
 	else setupViewsGfx();
 }
@@ -179,8 +181,13 @@ static void _frame(void) {
 }
 
 static void _cleanup(void) {
+#if defined(VOID_D3D12)
+	voidWindowSurfaceDestroy();
+	doorShutdown();
+#else
 	doorShutdown();
 	voidWindowSurfaceDestroy();
+#endif
 }
 
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
@@ -209,20 +216,40 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 	voidRunConfigured(w, h, 4, 1, init, frame);
 }
 
+#if defined(VOID_D3D12)
+uint32_t voidD3d12SurfaceOpen(uint64_t window, int32_t composition, int32_t width, int32_t height, int32_t presentMode);
+uint64_t voidD3d12SurfaceWaitable(uint32_t surface);
+uint64_t voidD3d12SurfaceNative(uint32_t surface);
+void voidD3d12SurfaceFit(uint32_t surface, int32_t width, int32_t height);
+int32_t voidD3d12SurfaceWidth(uint32_t surface);
+int32_t voidD3d12SurfaceHeight(uint32_t surface);
+int32_t voidD3d12SurfacePresent(uint32_t surface, int32_t modal);
+void voidD3d12SurfaceClose(uint32_t surface);
+int32_t voidD3d12RemovedReason(void);
+
+static void closeWindowSurface(void);
+#else
 static ID3D11Device *s_device;
 static ID3D11DeviceContext *s_context;
 static IDXGIFactory2 *s_factory;
+#endif
 
 // What the last doorSetup made screen pipelines for; every swapchain handed to the door must match.
 static int s_doorSamples;
+#if !defined(VOID_D3D12)
 static bool s_doorDepth;
+#endif
 
 static void deviceRemoved(const char *what, HRESULT hr) {
 #if defined(VOID_GLCORE) || defined(VOID_VULKAN)
 	voidFail("%s failed: 0x%08lx in a GL core or Vulkan build, whose host views are refused", what, (unsigned long)hr);
 #else
 	if (voidD3d11RemovalAction((int32_t)hr) == REMOVAL_NONE) voidFail("%s failed: 0x%08lx", what, (unsigned long)hr);
+#if defined(VOID_D3D12)
+	HRESULT reason = (HRESULT)voidD3d12RemovedReason();
+#else
 	HRESULT reason = ID3D11Device_GetDeviceRemovedReason(s_device);
+#endif
 	if (voidD3d11RemovalAction((int32_t)reason) != REMOVAL_RECOVER) {
 		voidFail("%s failed: 0x%08lx, the device was removed for 0x%08lx, which Void does not recover from",
 			what, (unsigned long)hr, (unsigned long)reason);
@@ -231,11 +258,29 @@ static void deviceRemoved(const char *what, HRESULT hr) {
 		voidFail("%s failed: 0x%08lx, the device was removed for 0x%08lx and host views cannot rebuild their swap chains",
 			what, (unsigned long)hr, (unsigned long)reason);
 	}
+#if defined(VOID_D3D12)
+	closeWindowSurface();
+#else
 	s_deviceRemoved = 1;
+#endif
 	voidLoseContext();
 #endif
 }
 
+#if defined(VOID_D3D12)
+static void setupDoor(int32_t depthFormat, int samples) {
+	doorSetup(NULL, NULL, DOOR_PIXEL_FORMAT_BGRA8, depthFormat, samples);
+	if (!doorValid()) voidFail("doorSetup on the D3D12 device failed");
+	s_doorSamples = samples;
+}
+
+typedef struct {
+	uint32_t surface;
+	HANDLE frameLatency;
+	int samples;
+	bool admitted;
+} WinSurface;
+#else
 void *voidD3d11Device(void) { return s_device; }
 void *voidD3d11Context(void) { return s_context; }
 
@@ -273,12 +318,14 @@ static void watchFrameLatency(WinSurface *s) {
 	IDXGISwapChain2_Release(chain2);
 	if (s->frameLatency == NULL) voidFail("the swap chain gave no frame latency waitable object");
 }
+#endif
 
 static int surfaceReady(WinSurface *s) {
 	if (!s->admitted) s->admitted = WaitForSingleObjectEx(s->frameLatency, 0, FALSE) == WAIT_OBJECT_0;
 	return s->admitted;
 }
 
+#if !defined(VOID_D3D12)
 static void createDevice(UINT flags) {
 	const D3D_FEATURE_LEVEL wanted[] = { D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0 };
 	D3D_FEATURE_LEVEL level;
@@ -294,6 +341,7 @@ static void createDevice(UINT flags) {
 	if (dxgiDevice) IDXGIDevice_Release(dxgiDevice);
 	if (FAILED(hr)) voidFail("the D3D11 device has no IDXGIFactory2: 0x%08lx", (unsigned long)hr);
 }
+#endif
 
 void voidPlatformDeviceEnsure(void) {
 	if (voidDriver == VOID_DRIVER_WINDOW) voidFail("voidViewCreate: this process already runs a Void window");
@@ -303,7 +351,9 @@ void voidPlatformDeviceEnsure(void) {
 #elif defined(VOID_VULKAN)
 	voidFail("voidViewCreate: host views on Windows render through D3D11; this is a Vulkan build");
 #endif
+#if !defined(VOID_D3D12)
 	createDevice(0);
+#endif
 	setupViewsGfx();
 	voidDriver = VOID_DRIVER_VIEWS;
 }
@@ -314,6 +364,106 @@ static void setupViewsGfx(void) {
 
 void voidPlatformRunInit(msClosure init) { voidCallClosure(init); }
 
+#if defined(VOID_D3D12)
+void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
+	(void)native;
+	WinSurface *s = (WinSurface *)calloc(1, sizeof(WinSurface));
+	if (s == NULL) voidFail("voidViewCreate: out of memory for a D3D12 surface");
+	s->samples = voidViewsSampleCount();
+	s->surface = voidD3d12SurfaceOpen(0, 1, w, h, 0);
+	s->frameLatency = (HANDLE)(uintptr_t)voidD3d12SurfaceWaitable(s->surface);
+	return s;
+}
+
+void voidPlatformSurfaceResize(void *surface, int w, int h) {
+	voidD3d12SurfaceFit(((WinSurface *)surface)->surface, w, h);
+}
+
+int voidPlatformSurfaceReady(void *surface) { return surfaceReady((WinSurface *)surface); }
+
+int voidPlatformSurfaceAcquire(void *surface) {
+	(void)surface;
+	voidRestoreContextIfLost(restoreDoor);
+	return 1;
+}
+
+void voidPlatformSurfacePresent(void *surface) {
+	WinSurface *s = (WinSurface *)surface;
+	s->admitted = false;
+	HRESULT hr = (HRESULT)voidD3d12SurfacePresent(s->surface, 0);
+	if (hr != 0) deviceRemoved("IDXGISwapChain3::Present", hr);
+}
+
+void voidPlatformSurfaceDestroy(void *surface) {
+	WinSurface *s = (WinSurface *)surface;
+	voidD3d12SurfaceClose(s->surface);
+	free(s);
+}
+
+long long voidPlatformSurfaceNative(void *surface) {
+	return (long long)voidD3d12SurfaceNative(((WinSurface *)surface)->surface);
+}
+
+static WinSurface s_window;
+static HWND s_hwnd;
+
+void voidWindowSurfaceCreate(HWND hwnd, int samples) {
+	s_hwnd = hwnd;
+	s_window.samples = samples;
+}
+
+static void closeWindowSurface(void) {
+	if (s_window.surface == 0) return;
+	voidD3d12SurfaceClose(s_window.surface);
+	s_window.surface = 0;
+	s_window.frameLatency = NULL;
+	s_window.admitted = false;
+}
+
+void voidWindowDoorSetup(void) {
+	if (s_window.surface != 0) voidFail("voidWindowDoorSetup while the D3D12 window swapchain is open; the door is set up once per device");
+	setupDoor(DOOR_PIXEL_FORMAT_DEPTH, s_window.samples);
+	s_window.surface = voidD3d12SurfaceOpen((uint64_t)(uintptr_t)s_hwnd, 0, voidWindowWidth(), voidWindowHeight(), voidPresentMode());
+	s_window.frameLatency = (HANDLE)(uintptr_t)voidD3d12SurfaceWaitable(s_window.surface);
+}
+
+bool voidWindowAwaitFrame(void) {
+	if (s_window.surface == 0 || surfaceReady(&s_window)) return true;
+	DWORD woke = MsgWaitForMultipleObjectsEx(1, &s_window.frameLatency, INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+	s_window.admitted = woke == WAIT_OBJECT_0;
+	return s_window.admitted;
+}
+
+void voidWindowPresent(bool modal) {
+	if (s_window.surface == 0) voidFail("present on the D3D12 window before voidGfxSetup opened its swapchain");
+	s_window.admitted = false;
+	HRESULT hr = (HRESULT)voidD3d12SurfacePresent(s_window.surface, modal ? 1 : 0);
+	if (hr != 0) deviceRemoved("IDXGISwapChain3::Present", hr);
+}
+
+void voidWindowSurfaceDestroy(void) { closeWindowSurface(); }
+
+static WinSurface *screenSurface(void) {
+	WinSurface *s = &s_window;
+	if (voidDriverFor("beginPass") == VOID_DRIVER_VIEWS) {
+		s = (WinSurface *)voidViewsCurrentSurface();
+	} else {
+		if (s_window.surface == 0) voidFail("the screen pass before voidGfxSetup opened the D3D12 window swapchain");
+		voidD3d12SurfaceFit(s_window.surface, voidWindowWidth(), voidWindowHeight());
+	}
+	if (s->samples != s_doorSamples) {
+		voidFail("the swapchain has %d samples, but screen pipelines are made for the door's %d samples", s->samples, s_doorSamples);
+	}
+	return s;
+}
+
+int32_t voidSwapchainWidth(void) { return voidD3d12SurfaceWidth(screenSurface()->surface); }
+int32_t voidSwapchainHeight(void) { return voidD3d12SurfaceHeight(screenSurface()->surface); }
+int32_t voidSwapchainSampleCount(void) { return screenSurface()->samples; }
+void *voidSwapchainRenderView(void) { return (void *)(uintptr_t)screenSurface()->surface; }
+void *voidSwapchainResolveView(void) { return NULL; }
+void *voidSwapchainDepthStencilView(void) { return NULL; }
+#else
 static void makeTarget(WinSurface *s) {
 	ID3D11Texture2D *back = NULL;
 	HRESULT hr = IDXGISwapChain1_GetBuffer(s->swapChain, 0, &IID_ID3D11Texture2D, (void **)&back);
@@ -426,6 +576,7 @@ void voidPlatformSurfaceDestroy(void *surface) {
 long long voidPlatformSurfaceNative(void *surface) {
 	return (long long)(intptr_t)((WinSurface *)surface)->swapChain;
 }
+#endif
 
 #if defined(VOID_D3D11)
 static WinSurface s_window;
@@ -512,7 +663,7 @@ static void recreateWindowDevice(void) {
 void *voidWindowSwapChain(void) { return s_window.swapChain; }
 #endif
 
-#if !defined(VOID_VULKAN)
+#if !defined(VOID_VULKAN) && !defined(VOID_D3D12)
 // The surface the door's screen pass draws into, or NULL for the GL window, whose default
 // framebuffer has no view objects.
 static WinSurface *screenSurface(void) {
