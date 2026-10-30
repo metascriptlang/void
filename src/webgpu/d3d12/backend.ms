@@ -8,7 +8,7 @@ import {
 	dx12Release,
 } from "./d3d12.h";
 import { formatInfo } from "./conv.ms";
-import { TextureRecord, ViewRecord } from "../pool.ms";
+import { TextureRecord, ViewRecord, bindGroupRecords, put, slotOf, vacate } from "../pool.ms";
 import {
 	DX12_OK,
 	FRAMES_IN_FLIGHT,
@@ -17,12 +17,14 @@ import {
 	closeFrames,
 	closedFrames,
 	openFrames,
+	retire,
 	stop,
 	stopOnNative,
 	submit as submitFrame,
 	waitIdle,
 	waitSerial,
 } from "./frame.ms";
+import * as descriptor from "./descriptor.ms";
 import * as resources from "./resources.ms";
 import {
 	GPU_MAX_BIND_GROUP_ENTRIES,
@@ -54,6 +56,7 @@ import {
 	GPURenderPipelineDescriptor,
 	GPUSampler,
 	GPUSamplerDescriptor,
+	GPUShaderBinding,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
 	GPUSupportedFeatures,
@@ -116,6 +119,8 @@ let adapter: uint64 = 0;
 let queue: uint64 = 0;
 let ring: FrameRing = closedFrames();
 let r: resources.Resources = resources.closedResources();
+let d: descriptor.Descriptors = descriptor.closedDescriptors();
+let layouts: Vec<descriptor.PipelineLayout> = [descriptor.NO_LAYOUT];
 let encoding = false;
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
@@ -152,6 +157,9 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	if (!frames.ok) { stopOnFrame("requestDevice", frames.error); }
 	ring = frames.value;
 	r = resources.openResources(device, FRAMES_IN_FLIGHT);
+	const heaps = descriptor.openDescriptors(device, FRAMES_IN_FLIGHT);
+	if (!heaps.ok) { stopOnFrame("requestDevice", heaps.error); }
+	d = heaps.value;
 	return { id: 1, queue: { id: 1 } };
 }
 
@@ -177,6 +185,9 @@ export function shutdown(): void {
 	const closed = closeFrames(ring);
 	ring = closedFrames();
 	resources.closeResources(r);
+	descriptor.closeDescriptors(d);
+	for (const layout of layouts) { dx12Release(layout.signature); }
+	layouts = [descriptor.NO_LAYOUT];
 	encoding = false;
 	dx12Release(queue);
 	dx12Release(device);
@@ -224,6 +235,7 @@ function submitted(call: string): void {
 	const serial = submitFrame(ring, r.tracker);
 	if (!serial.ok) { stopOnFrame(call, serial.error); }
 	resources.resetUploads(r, ring.slot());
+	descriptor.beginFrame(d, ring);
 	encoding = false;
 }
 
@@ -256,25 +268,29 @@ export function writeTexture<T>(
 	ran("writeTexture", resources.writeTexture(r, ring, destination, data, layout, size));
 }
 
-export function createView(view: ViewRecord, descriptor: GPUTextureViewDescriptor): void {
-	notBuilt("createView", "D2");
+export function createView(view: ViewRecord, viewDescriptor: GPUTextureViewDescriptor): void {
+	ran("createView", descriptor.createView(d, r, view));
 }
 
 export function destroyView(view: GPUTextureView): void {
-	notBuilt("destroyView", "D2");
+	descriptor.destroyView(d, ring, view.id);
 }
+
+export function viewDescriptor(view: GPUTextureView): uint64 { return d.viewHandle(view.id); }
 
 export function acquireSwapchain(swapchain: NativeSwapchain): void {
 	notBuilt("acquireSwapchain", "D5");
 }
 
-export function createSampler(id: uint32, descriptor: GPUSamplerDescriptor): void {
-	notBuilt("createSampler", "D3");
+export function createSampler(id: uint32, samplerDescriptor: GPUSamplerDescriptor): void {
+	ran("createSampler", descriptor.createSampler(d, id, samplerDescriptor));
 }
 
 export function destroySampler(sampler: GPUSampler): void {
-	notBuilt("destroySampler", "D3");
+	descriptor.destroySampler(d, sampler.id);
 }
+
+export function samplerDescriptor(sampler: GPUSampler): uint64 { return d.samplerHandle(sampler.id); }
 
 export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescriptor): void {
 	notBuilt("createShaderModule", "D4");
@@ -292,13 +308,33 @@ export function destroyRenderPipeline(pipeline: GPURenderPipeline): void {
 	notBuilt("destroyRenderPipeline", "D4");
 }
 
-export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor): void {
-	notBuilt("createBindGroup", "D3");
+export function adoptPipelineLayout(pipeline: uint32, bindings: Readonly<Span<GPUShaderBinding>>, compute: boolean): void {
+	const layout = descriptor.createPipelineLayout(d, bindings, compute);
+	if (!layout.ok) { stopOnFrame("createPipelineLayout", layout.error); }
+	put(layouts, pipeline, layout.value);
+}
+
+export function releasePipelineLayout(pipeline: uint32): void {
+	retire(ring, layouts[slotOf(pipeline)].signature);
+	vacate(layouts, pipeline);
+}
+
+export function createBindGroup(id: uint32, groupDescriptor: GPUBindGroupDescriptor): void {
+	const pipeline = bindGroupRecords.record(id).pipeline;
+	const layout = layouts[slotOf(pipeline)];
+	if (layout.signature == 0) { stop(`createBindGroup: pipeline ${pipeline} has no d3d12 root signature`); }
+	ran("createBindGroup", descriptor.createGroup(d, r, id, layout.shader, groupDescriptor));
 }
 
 export function destroyBindGroup(bindGroup: GPUBindGroup): void {
-	notBuilt("destroyBindGroup", "D3");
+	descriptor.destroyGroup(d, ring, bindGroup.id);
 }
+
+export function applyBindings(pipeline: uint32): void {
+	ran("applyBindings", descriptor.applyBindings(d, r, ring, layouts[slotOf(pipeline)]));
+}
+
+export function descriptorStats(): descriptor.DescriptorStats { return d.stats(); }
 
 export function createCommandEncoder(): GPUCommandEncoder {
 	encoding = true;
@@ -334,7 +370,7 @@ export function setIndexBuffer(buffer: GPUBuffer, format: GPUIndexFormat, offset
 }
 
 export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	notBuilt("setBindGroup", "D3");
+	descriptor.setGroup(d, index, bindGroup.id, dynamicOffsets);
 }
 
 export function setScissorRect(x: int32, y: int32, width: int32, height: int32): void {
