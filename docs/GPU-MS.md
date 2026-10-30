@@ -1325,3 +1325,19 @@ The gl and d3d11 edits are only type-checked on the Mac. Please run them on Wind
   write moved to a fresh copy.
 - Also on Windows: the d3d11 and gl goldens, and the 2D bench frame time, to judge
   `UpdateSubresource` against the old map-discard on a vertex buffer void2d rewrites.
+
+### 2026-10-30, Windows: gpu-ms landed; D3D12 is its own arc
+
+gpu-ms landed into main as `9255aa33` after a green gate: gate.sh, gate3d.sh, and web3d.sh with
+WebGL2 at 42/42 and the WebGPU campfire presenting. The card `~/metascript/.wt/gpu-ms.md` is
+closed. Open items stay under "Known follow-ups" above. The perf work after the land starts from
+the A/B section above, with main `0cc6351b` as the last sokol side.
+
+D3D12 runs on branch `wt/d3d12`, card `~/metascript/.wt/d3d12.md`. Two of the person's decisions
+from 2026-10-28 replace step 3 of the Mac's 2026-10-28 list:
+- D3D12 replaces D3D11 on Windows, and D3D11 is deleted once D3D12 covers it, not kept as the
+  default.
+- The port follows Heaps `h3d/impl/DX12Driver.hx` with hashlink `libs/directx/dx12.cpp`. Dawn
+  `native/d3d12` and wgpu-hal `dx12` are cross-read. Mach's `d3d12.zig` is not the reference.
+
+The Mac owns no D3D12 file.
