@@ -1,6 +1,3 @@
-// Void 2D value types — small POD structs (value semantics), MetaScript-side only.
-// At the C/FFI boundary the draw wrappers unpack these into flat floats.
-
 import { sinf, cosf } from "../math/mat4";
 import { Texture } from "../gpu/texture";
 import { RenderTarget } from "../gpu/target";
@@ -25,9 +22,6 @@ export function rgba(r: float32, g: float32, b: float32, a: float32): Color {
 	return { r: r, g: g, b: b, a: a };
 }
 
-// h2d.Drawable.smooth is `Null<Bool>`: null means "whatever the scene says". There is no
-// nullable boolean here, so the third state is named instead of encoded, which also makes
-// `node.smooth = Smooth.Inherit` read as the thing it is.
 export enum Smooth { Inherit, Off, On }
 
 export enum ScaleMode { Resize, Stretch, LetterBox, Fixed, Zoom, AutoZoom }
