@@ -49,7 +49,7 @@ import { TextureRecord, bufferRecords, put, slotOf, textureRecords, vacate } fro
 const HEAP_DEFAULT: int32 = 1;
 const HEAP_UPLOAD: int32 = 2;
 const HEAP_READBACK: int32 = 3;
-const NO_TRACKING: int32 = -1;
+export const NO_TRACKING: int32 = -1;
 const CONSTANT_BUFFER_ALIGNMENT: uint64 = 256;
 const UPLOAD_ALIGNMENT: uint64 = 256;
 const TEXTURE_DATA_PLACEMENT_ALIGNMENT: uint64 = 512;
@@ -128,7 +128,7 @@ const NO_FORMAT: FormatInfo = {
 	depth: false,
 	stencil: false,
 };
-const NO_TEXTURE: TextureNative = { native: 0, info: NO_FORMAT, tracked: NO_TRACKING };
+export const NO_TEXTURE: TextureNative = { native: 0, info: NO_FORMAT, tracked: NO_TRACKING };
 
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
 
@@ -319,6 +319,11 @@ function textureFlags(texture: TextureRecord, info: FormatInfo): uint32 {
 }
 
 export function createTexture(ref r: Resources, texture: TextureRecord): Result<void, NativeError> {
+	put(r.textures, texture.id, try makeTexture(r, texture));
+	return Result.ok(null);
+}
+
+export function makeTexture(ref r: Resources, texture: TextureRecord): Result<TextureNative, NativeError> {
 	const info = formatInfo(texture.format, "GPUTextureDescriptor.format");
 	let native: uint64 = 0;
 	try checked(dx12TextureCreate(
@@ -335,8 +340,7 @@ export function createTexture(ref r: Resources, texture: TextureRecord): Result<
 	));
 	const layers = texture.volume ? 1 : texture.layers;
 	const tracked = trackTexture(r.tracker, native, texture.mipLevels, layers, info.stencil ? 2 : 1);
-	put(r.textures, texture.id, { native: native, info: info, tracked: tracked });
-	return Result.ok(null);
+	return Result.ok({ native: native, info: info, tracked: tracked });
 }
 
 export function destroyTexture(ref r: Resources, ref ring: FrameRing, id: uint32): void {

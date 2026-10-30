@@ -12,8 +12,10 @@ import {
 	dx12ExecuteIndirect,
 	dx12FormatSupport,
 	dx12InfoDrain,
+	dx12PointerBits,
 	dx12QueueCreate,
 	dx12Release,
+	dx12RemovedReason,
 	dx12RenderTargetView,
 	dx12ResolveSubresource,
 	dx12SetBlendFactor,
@@ -24,6 +26,8 @@ import {
 	dx12SetStencilReference,
 	dx12SetVertexBuffer,
 	dx12SetViewport,
+	dx12SwapchainPresent,
+	dx12TearingSupported,
 } from "./d3d12.h";
 import { formatInfo } from "./conv.ms";
 import {
@@ -45,6 +49,7 @@ import {
 	NativeError,
 	closeFrames,
 	closedFrames,
+	failure,
 	openFrames,
 	retire,
 	stop,
@@ -56,7 +61,8 @@ import {
 import * as descriptor from "./descriptor.ms";
 import * as resources from "./resources.ms";
 import * as pipeline from "./pipeline.ms";
-import { SubresourceRange, flushTransitions, transitionRange } from "./tracker.ms";
+import * as surface from "./surface.ms";
+import { SubresourceRange, flushTransitions, settledAt, transition, transitionRange, untrack } from "./tracker.ms";
 import { boundFacts, renderPassOpen } from "../validate.ms";
 import {
 	GPU_MAX_BIND_GROUP_ENTRIES,
@@ -100,6 +106,7 @@ import {
 	GPUTexture,
 	GPUTextureDescriptor,
 	GPUTextureFormat,
+	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	featureBit,
@@ -146,11 +153,13 @@ const FORMAT_SUPPORT1_DEPTH_STENCIL: uint32 = 0x10000;
 const FORMAT_SUPPORT1_SHADER_SAMPLE: uint32 = 0x200;
 const STATE_VERTEX_AND_CONSTANT_BUFFER: uint32 = 0x1;
 const STATE_INDEX_BUFFER: uint32 = 0x2;
+const STATE_PRESENT: uint32 = 0;
 const STATE_RENDER_TARGET: uint32 = 0x4;
 const STATE_DEPTH_WRITE: uint32 = 0x10;
 const STATE_INDIRECT_ARGUMENT: uint32 = 0x200;
 const STATE_RESOLVE_DEST: uint32 = 0x1000;
 const STATE_RESOLVE_SOURCE: uint32 = 0x2000;
+const DXGI_ERROR_DEVICE_REMOVED: int32 = 0x887A0005 as int32;
 const DXGI_R16_UINT: int32 = 57;
 const DXGI_R32_UINT: int32 = 42;
 const VIEW_2D: int32 = 0;
@@ -177,6 +186,13 @@ let swapchainDepth: uint32 = 0;
 let shaders: Vec<pipeline.ShaderNative> = [pipeline.NO_SHADER];
 let pipelines: Vec<pipeline.PipelineNative> = [pipeline.NO_PIPELINE];
 let drawIndexedSignature: uint64 = 0;
+let surfaces: Vec<surface.Swapchain> = [];
+let surfaceCount: uint32 = 0;
+let canvasMsaa: resources.TextureNative = resources.NO_TEXTURE;
+let canvasWidth: int32 = 0;
+let canvasHeight: int32 = 0;
+let canvasSamples: int32 = 0;
+let removed = false;
 
 struct PassState {
 	colorViews: uint32[GPU_MAX_COLOR_ATTACHMENTS];
@@ -200,7 +216,7 @@ let pass: PassState = { labeled: false };
 
 @noinline function stopOnFrame(call: string, error: NativeError): never {
 	match (error) {
-		NativeError.DeviceRemoved => stop(`${call} lost the device; recovering it is not built yet (D5)`),
+		NativeError.DeviceRemoved => stop(`${call} lost the device, removed for 0x${(removedReason() as uint32).toString(16)}; only a removal that Present reports recovers`),
 		NativeError.OutOfMemory => stop(`${call} ran out of memory`),
 	};
 }
@@ -219,6 +235,7 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	commanded(dx12DeviceCreate(environment.warp ? 1 : 0, environment.debug ? 1 : 0, opened, chosen));
 	device = opened;
 	adapter = chosen;
+	removed = false;
 	let direct: uint64 = 0;
 	commanded(dx12QueueCreate(device, direct));
 	queue = direct;
@@ -238,6 +255,141 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 export function adoptSwapchain(color: uint32, depth: uint32): void {
 	swapchainColor = color;
 	swapchainDepth = depth;
+	const info = formatInfo(textureRecords.record(color).format, "NativeEnvironment.colorFormat");
+	put(r.textures, color, { native: 0, info: info, tracked: resources.NO_TRACKING });
+	if (depth != 0) { put(r.textures, depth, resources.NO_TEXTURE); }
+}
+
+export function removedReason(): int32 {
+	let reason: int32 = 0;
+	commanded(dx12RemovedReason(device, reason));
+	return reason;
+}
+
+function surfaceAt(id: uint32, call: string): int32 {
+	for (let i: int32 = 0; i < surfaces.length; i++) {
+		if (surfaces[i].id == id) { return i; }
+	}
+	stop(`${call} on d3d12 surface ${id}, which openSurface did not open or which was closed`);
+}
+
+@noinline function stopOnExtent(call: string, width: int32, height: int32): never {
+	stop(`${call} at ${width}x${height}, which is not a drawable size`);
+}
+
+export function openSurface(window: uint64, composition: boolean, width: int32, height: int32, presentMode: int32): uint32 {
+	if (device == 0) { stop("openSurface before requestDevice opened the D3D12 device"); }
+	if (width <= 0 || height <= 0) { stopOnExtent("openSurface", width, height); }
+	const format = r.textures[slotOf(swapchainColor)].info.renderTarget;
+	if (!surface.flipFormat(format)) {
+		const canvas: string = textureRecords.record(swapchainColor).format;
+		stop(`a flip swapchain cannot present the canvas format '${canvas}'`);
+	}
+	let tearing: int32 = 0;
+	if (presentMode == surface.PRESENT_MODE_IMMEDIATE) { commanded(dx12TearingSupported(adapter, tearing)); }
+	const opened = surface.openSwapchain(r.tracker, adapter, queue, window, composition, width, height, format, surface.planPresent(presentMode, tearing != 0));
+	if (!opened.ok) { stopOnFrame("openSurface", opened.error); }
+	surfaceCount += 1;
+	let chain = opened.value;
+	chain.id = surfaceCount;
+	surfaces.push(chain);
+	return chain.id;
+}
+
+export function surfaceWaitable(id: uint32): uint64 { return surfaces[surfaceAt(id, "surfaceWaitable")].waitable; }
+
+export function surfaceNative(id: uint32): uint64 { return surfaces[surfaceAt(id, "surfaceNative")].native; }
+
+export function surfaceWidth(id: uint32): int32 { return surfaces[surfaceAt(id, "surfaceWidth")].width; }
+
+export function surfaceHeight(id: uint32): int32 { return surfaces[surfaceAt(id, "surfaceHeight")].height; }
+
+function unbindBackBuffer(): void {
+	const color = slotOf(swapchainColor);
+	r.textures[color].native = 0;
+	r.textures[color].tracked = resources.NO_TRACKING;
+}
+
+@noinline function stopOnUnsubmitted(call: string, id: uint32): never {
+	stop(`${call} on surface ${id} while its back buffer holds drawing that was not submitted`);
+}
+
+function checkSubmitted(chain: surface.Swapchain, call: string): void {
+	for (const tracked of chain.tracked) {
+		if (!settledAt(r.tracker, tracked, STATE_PRESENT)) { stopOnUnsubmitted(call, chain.id); }
+	}
+}
+
+export function fitSurface(id: uint32, width: int32, height: int32): void {
+	const at = surfaceAt(id, "fitSurface");
+	if (surface.fits(surfaces[at], width, height)) { return; }
+	if (width <= 0 || height <= 0) { stopOnExtent("fitSurface", width, height); }
+	checkSubmitted(surfaces[at], "fitSurface");
+	unbindBackBuffer();
+	idleSerial();
+	ran("fitSurface", surface.resizeSwapchain(r.tracker, surfaces[at], width, height));
+}
+
+export function presentSurface(id: uint32, modal: boolean): int32 {
+	const at = surfaceAt(id, "presentSurface");
+	if (removed) { return DXGI_ERROR_DEVICE_REMOVED; }
+	checkSubmitted(surfaces[at], "presentSurface");
+	const call = surface.presentCall(surfaces[at].plan, modal);
+	let result: int32 = 0;
+	const code = dx12SwapchainPresent(surfaces[at].native, call.interval, call.flags, result);
+	if (code == DX12_OK) { return 0; }
+	const error = failure(code);
+	if (error != NativeError.DeviceRemoved) { stopOnFrame("presentSurface", error); }
+	removed = true;
+	return result;
+}
+
+export function closeSurface(id: uint32): void {
+	const at = surfaceAt(id, "closeSurface");
+	if (!removed) {
+		checkSubmitted(surfaces[at], "closeSurface");
+		idleSerial();
+	}
+	unbindBackBuffer();
+	surface.closeSwapchain(r.tracker, surfaces[at]);
+	surfaces.splice(at, 1);
+}
+
+function releaseCanvas(): void {
+	if (swapchainDepth != 0) {
+		const depth = r.textures[slotOf(swapchainDepth)];
+		if (depth.native != 0) {
+			retire(ring, depth.native);
+			untrack(r.tracker, depth.tracked);
+		}
+		put(r.textures, swapchainDepth, resources.NO_TEXTURE);
+	}
+	if (canvasMsaa.native != 0) {
+		retire(ring, canvasMsaa.native);
+		untrack(r.tracker, canvasMsaa.tracked);
+	}
+	canvasMsaa = resources.NO_TEXTURE;
+	canvasWidth = 0;
+	canvasHeight = 0;
+	canvasSamples = 0;
+}
+
+function sizeCanvas(width: int32, height: int32, samples: int32): Result<void, NativeError> {
+	if (canvasWidth == width && canvasHeight == height && canvasSamples == samples) { return Result.ok(null); }
+	releaseCanvas();
+	if (swapchainDepth != 0) {
+		const depth = try resources.makeTexture(r, textureRecords.record(swapchainDepth));
+		put(r.textures, swapchainDepth, depth);
+	}
+	if (samples > 1) {
+		let record: TextureRecord = textureRecords.record(swapchainColor);
+		record.usage = GPUTextureUsage.RENDER_ATTACHMENT as int32;
+		canvasMsaa = try resources.makeTexture(r, record);
+	}
+	canvasWidth = width;
+	canvasHeight = height;
+	canvasSamples = samples;
+	return Result.ok(null);
 }
 
 function formatSupport(format: int32): uint32 {
@@ -254,8 +406,13 @@ export function formatRenderable(format: GPUTextureFormat): boolean {
 }
 
 export function shutdown(): void {
+	if (surfaces.length > 0) { stop(`destroy while d3d12 surface ${surfaces[0].id} is open; close every surface first`); }
+	if (swapchainColor != 0) { releaseCanvas(); }
+	swapchainColor = 0;
+	swapchainDepth = 0;
 	const closed = closeFrames(ring);
 	ring = closedFrames();
+	if (!closed.ok && !(removed && closed.error == NativeError.DeviceRemoved)) { stopOnFrame("destroy", closed.error); }
 	resources.closeResources(r);
 	descriptor.closeDescriptors(d);
 	for (const layout of layouts) { dx12Release(layout.signature); }
@@ -272,7 +429,6 @@ export function shutdown(): void {
 	queue = 0;
 	device = 0;
 	adapter = 0;
-	if (!closed.ok) { stopOnFrame("destroy", closed.error); }
 }
 
 export function adapterInfo(): GPUAdapterInfo {
@@ -309,8 +465,15 @@ function ran(call: string, result: Result<void, NativeError>): void {
 }
 
 function submitted(call: string): void {
+	if (swapchainColor != 0 && r.textures[slotOf(swapchainColor)].tracked != resources.NO_TRACKING) {
+		transition(r.tracker, r.textures[slotOf(swapchainColor)].tracked, STATE_PRESENT);
+	}
+	const before = ring.submitted;
 	const serial = submitFrame(ring, r.tracker);
-	if (!serial.ok) { stopOnFrame(call, serial.error); }
+	if (!serial.ok) {
+		if (serial.error != NativeError.DeviceRemoved || ring.submitted == before) { stopOnFrame(call, serial.error); }
+		removed = true;
+	}
 	resources.resetUploads(r, ring.slot());
 	descriptor.beginFrame(d, ring);
 	encoding = false;
@@ -358,7 +521,32 @@ export function destroyView(view: GPUTextureView): void {
 export function viewDescriptor(view: GPUTextureView): uint64 { return d.viewHandle(view.id); }
 
 export function acquireSwapchain(swapchain: NativeSwapchain): void {
-	notBuilt("acquireSwapchain", "D5");
+	if (swapchain.resolveView !== null) {
+		stop("the backend owns the multisampled canvas and resolves it into the back buffer; NativeSwapchain.resolveView stays null");
+	}
+	if (swapchain.depthStencilView !== null) {
+		stop("the backend owns the swapchain depth; NativeSwapchain.depthStencilView stays null");
+	}
+	if (swapchain.renderView === null) { stop("NativeSwapchain.renderView is null; it carries the d3d12 surface id"); }
+	let id: uint64 = 0;
+	commanded(dx12PointerBits(swapchain.renderView, id));
+	const chain = surfaces[surfaceAt(id as uint32, "getCurrentTexture")];
+	if (!surface.fits(chain, swapchain.width, swapchain.height)) {
+		stop(`getCurrentTexture at ${swapchain.width}x${swapchain.height} on surface ${id} of ${chain.width}x${chain.height}; fit the surface first`);
+	}
+	const index = surface.currentBuffer(chain);
+	const color = slotOf(swapchainColor);
+	const bound = r.textures[color].tracked;
+	if (bound != resources.NO_TRACKING && bound != chain.tracked[index]) {
+		transition(r.tracker, bound, STATE_PRESENT);
+		if (!settledAt(r.tracker, bound, STATE_PRESENT)) {
+			stop(`getCurrentTexture on surface ${id} while another surface's back buffer holds drawing that was not submitted`);
+		}
+	}
+	r.textures[color].native = chain.buffers[index];
+	r.textures[color].tracked = chain.tracked[index];
+	transition(r.tracker, chain.tracked[index], STATE_RENDER_TARGET);
+	ran("getCurrentTexture", sizeCanvas(swapchain.width, swapchain.height, swapchain.sampleCount == 0 ? 1 : swapchain.sampleCount));
 }
 
 export function createSampler(id: uint32, samplerDescriptor: GPUSamplerDescriptor): void {
@@ -488,16 +676,21 @@ function invalidateBindings(): void {
 	pass.indexDirty = true;
 }
 
-@noinline function stopOnSwapchainPass(view: uint32): never {
-	notBuilt(`a render pass on swapchain GPUTextureView ${view}`, "D5");
+@noinline function stopOnUnboundSwapchain(texture: uint32): never {
+	stop(`a render pass on swapchain GPUTexture ${texture} before getCurrentTexture bound a back buffer`);
+}
+
+function attachedNative(texture: uint32, slot: int32): resources.TextureNative {
+	const native = texture == swapchainColor && textureRecords.slots[slot].sampleCount > 1 ? canvasMsaa : r.textures[slot];
+	if (native.native == 0) { stopOnUnboundSwapchain(texture); }
+	return native;
 }
 
 function attachmentTarget(view: uint32, depthSlice: int32, depthStencil: boolean): uint64 {
 	const record = viewRecords.record(view);
-	if (record.swapchain || record.texture == swapchainColor || record.texture == swapchainDepth) { stopOnSwapchainPass(view); }
 	const t = textureRecords.slotIndex(record.texture);
 	const texture = textureRecords.slots[t];
-	const native = r.textures[t];
+	const native = attachedNative(record.texture, t);
 	const dimension = texture.volume ? VIEW_3D : (texture.layers > 1 ? VIEW_2D_ARRAY : VIEW_2D);
 	const layer = texture.volume ? depthSlice : record.baseLayer;
 	const multisampled = texture.sampleCount > 1 ? 1 : 0;
@@ -544,25 +737,40 @@ function resolveRange(view: ViewRecord): SubresourceRange {
 	return { baseMip: view.baseMip, mips: 1, baseLayer: view.baseLayer, layers: 1 };
 }
 
+function resolveInto(
+	source: resources.TextureNative,
+	sourceView: ViewRecord,
+	sourceTexture: TextureRecord,
+	target: resources.TextureNative,
+	targetView: ViewRecord,
+	targetTexture: TextureRecord,
+): void {
+	transitionRange(r.tracker, source.tracked, STATE_RESOLVE_SOURCE, resolveRange(sourceView));
+	transitionRange(r.tracker, target.tracked, STATE_RESOLVE_DEST, resolveRange(targetView));
+	commanded(flushTransitions(r.tracker, ring.list));
+	commanded(dx12ResolveSubresource(
+		ring.list,
+		target.native,
+		subresourceOf(targetView, targetTexture),
+		source.native,
+		subresourceOf(sourceView, sourceTexture),
+		source.info.renderTarget,
+	));
+}
+
 export function endPass(): void {
 	for (let i: int32 = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
-		if (pass.resolveViews[i] == 0) { continue; }
+		if (pass.colorViews[i] == 0) { continue; }
 		const sourceView = viewRecords.record(pass.colorViews[i]);
-		const targetView = viewRecords.record(pass.resolveViews[i]);
-		if (targetView.swapchain || targetView.texture == swapchainColor) { stopOnSwapchainPass(pass.resolveViews[i]); }
 		const s = textureRecords.slotIndex(sourceView.texture);
+		const source = attachedNative(sourceView.texture, s);
+		if (sourceView.texture == swapchainColor && textureRecords.slots[s].sampleCount > 1) {
+			resolveInto(source, sourceView, textureRecords.slots[s], r.textures[s], sourceView, textureRecords.slots[s]);
+		}
+		if (pass.resolveViews[i] == 0) { continue; }
+		const targetView = viewRecords.record(pass.resolveViews[i]);
 		const t = textureRecords.slotIndex(targetView.texture);
-		transitionRange(r.tracker, r.textures[s].tracked, STATE_RESOLVE_SOURCE, resolveRange(sourceView));
-		transitionRange(r.tracker, r.textures[t].tracked, STATE_RESOLVE_DEST, resolveRange(targetView));
-		commanded(flushTransitions(r.tracker, ring.list));
-		commanded(dx12ResolveSubresource(
-			ring.list,
-			r.textures[t].native,
-			subresourceOf(targetView, textureRecords.slots[t]),
-			r.textures[s].native,
-			subresourceOf(sourceView, textureRecords.slots[s]),
-			r.textures[s].info.renderTarget,
-		));
+		resolveInto(source, sourceView, textureRecords.slots[s], attachedNative(targetView.texture, t), targetView, textureRecords.slots[t]);
 	}
 	if (pass.labeled) { commanded(dx12Event(ring.list, EVENT_END, "")); }
 	pass = { labeled: false };

@@ -122,9 +122,11 @@ export function submit(ref ring: FrameRing, ref tracker: StateTracker): Result<u
 
 function reopen(ref ring: FrameRing): Result<void, NativeError> {
 	const s = ring.slot();
-	try checked(dx12FenceWait(ring.fence, ring.event, ring.serials[s]));
+	const waited = checked(dx12FenceWait(ring.fence, ring.event, ring.serials[s]));
+	if (!waited.ok && waited.error != NativeError.DeviceRemoved) { return waited; }
 	try checked(dx12AllocatorReset(ring.allocators[s]));
 	try checked(dx12ListReset(ring.list, ring.allocators[s]));
+	if (!waited.ok) { return waited; }
 	try collect(ring);
 	return Result.ok(null);
 }
