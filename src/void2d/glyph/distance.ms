@@ -237,8 +237,8 @@ export function flattenCubics(input: Vec<Vertex>, flatness: float32): Flattened 
 			if (absF(value) > reach) { reach = absF(value); }
 		}
 	}
-	let g: int32 = 1;
-	while (g < FLATTEN_GRID_LIMIT && reach * ((g * 2) as float32) <= FLATTEN_REACH) { g *= 2; }
+	let grid: int32 = 1;
+	while (grid < FLATTEN_GRID_LIMIT && reach * ((grid * 2) as float32) <= FLATTEN_REACH) { grid *= 2; }
 	const flatnessSquared: float32 = flatness * flatness;
 	let out: Vec<Vertex> = [];
 	let px: float32 = 0.0;
@@ -253,8 +253,8 @@ export function flattenCubics(input: Vec<Vertex>, flatness: float32): Flattened 
 			);
 			for (let k: int32 = 0; k < (points.length as int32); k++) {
 				out.push({
-					x: outlineQuantise(points[k].x, g),
-					y: outlineQuantise(points[k].y, g),
+					x: outlineQuantise(points[k].x, grid),
+					y: outlineQuantise(points[k].y, grid),
 					cx: 0,
 					cy: 0,
 					cx1: 0,
@@ -264,10 +264,10 @@ export function flattenCubics(input: Vec<Vertex>, flatness: float32): Flattened 
 			}
 		} else {
 			out.push({
-				x: outlineQuantise(v.x as float32, g),
-				y: outlineQuantise(v.y as float32, g),
-				cx: outlineQuantise(v.cx as float32, g),
-				cy: outlineQuantise(v.cy as float32, g),
+				x: outlineQuantise(v.x as float32, grid),
+				y: outlineQuantise(v.y as float32, grid),
+				cx: outlineQuantise(v.cx as float32, grid),
+				cy: outlineQuantise(v.cy as float32, grid),
 				cx1: v.cx1,
 				cy1: v.cy1,
 				kind: v.kind,
@@ -276,5 +276,5 @@ export function flattenCubics(input: Vec<Vertex>, flatness: float32): Flattened 
 		px = v.x as float32;
 		py = v.y as float32;
 	}
-	return { vertices: out, grid: g };
+	return { vertices: out, grid: grid };
 }
