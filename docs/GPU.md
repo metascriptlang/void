@@ -247,6 +247,65 @@ The JS target calls `navigator.gpu` through `extern class` declarations in a `.j
 `Vec<float32>` is a plain JS Array there and only a fixed `float32[N]` is a `Float32Array`, so
 `writeBuffer` copies a growable array into a typed array on JS.
 
+## D3D12
+
+`src/webgpu/d3d12/` replaces `d3d11/` on Windows (arc `d3d12`, card `~/metascript/.wt/d3d12.md`).
+Its gold standard is Heaps `h3d/impl/DX12Driver.hx` at `b9aa6dcb` together with its C layer,
+hashlink `libs/directx/dx12.cpp` at `d7c31e6`. Dawn `native/d3d12` at `1716e88` covers what the
+WebGPU facade asks for and Heaps' API never needed. The file split follows `vulkan/`: `frame`,
+`tracker`, `descriptor`, `resources`, `pipeline`, `pass`, `conv`, `surface` and `window` .ms
+files over a thin `d3d12.c`, where every call returns an `int32` status and native objects come
+back as `uint64` out-params. There is no `memory.ms`, because Heaps uses committed resources
+everywhere (`DX12Driver.hx:2245-2259`, `:2554`).
+
+What it takes from Heaps:
+- **Frames.** Two frames in flight, each with its own command allocator. One fence carries a
+  serial per submit, and a resource destroyed during a frame is released once that frame's
+  serial completes (Heaps' `toRelease`, `:306-344`, `:1117-1176`, `:3639-3653`).
+- **Resource states.** Each resource has a state and a target state. A transition is queued
+  and only issued, as one batch, before the next clear, draw, copy or dispatch (`:1354-1431`);
+  a dispatch queues a UAV barrier the same way (`:3693-3701`).
+- **Descriptors.** Persistent views and samplers live in CPU heaps (a block free list, samplers
+  deduplicated, `:531-571`, `:2909-2921`). Each frame has scratch shader-visible heaps, and a
+  bind group's descriptors are copied into them only when the group changes (`:147-180`,
+  `:3592-3637`, `:2770-2773`).
+- **Uploads and readback.** Upload pages are 256-aligned and reset after the frame's fence
+  (`:182-304`). Textures are written through `GetCopyableFootprints` (`:2685-2707`). Readback
+  uses a READBACK resource and a wait (`:1693-1742`).
+- **Swapchain.** `CreateSwapChainForHwnd` on the direct queue, FLIP_DISCARD with tearing
+  allowed (`dx12.cpp:518-539`). Resize waits for the GPU, releases the back buffers and calls
+  `ResizeBuffers` (`:1230-1296`).
+
+Where it differs from Heaps, and why:
+- **The frame slot is not the back-buffer index** (Heaps `:1119`). Void submits without a
+  window (tests, `mapAsync`) and to several surfaces, so frames go round a serial ring, as in
+  `vulkan/frame.ms` and Dawn's allocator pool (`QueueD3D12.cpp:232-276`).
+- **Group 0 is root CBVs.** Uniform blocks bind as up to 8 root constant buffer views,
+  addressed by buffer address plus dynamic offset (Dawn, `PipelineLayoutD3D12.cpp:61-64`,
+  `CommandBufferD3D12.cpp:631-641`). Heaps copies its uniforms into root constants on every
+  draw (`:1885-1906`, `:2955-3027`), because its shaders get their constants from the CPU. A
+  WebGPU uniform block is a GPU buffer at a dynamic offset, which root constants cannot carry
+  without a CPU copy. Group 1 uses Heaps' per-stage tables (SRV/UAV and samplers, `:1984-2036`),
+  because HLSL view registers are counted per stage (`shader/layout.ms:329-370`).
+- **Feature level 11_0** (Dawn, `BackendD3D12.cpp:86`), not Heaps' 12_0 (`dx12.cpp:434`).
+  Heaps needs 12_0 for DXIL at shader model 6; Void keeps DXBC from fxc, and the backend must
+  run on the D3D11 backend's hardware floor (`host/bridgeWin.c:283`).
+- **WARP is reachable.** Heaps skips software adapters (`dx12.cpp:423-428`), but the checks run
+  on WARP, so the backend takes `IDXGIFactory4::EnumWarpAdapter` when asked for it.
+- **A buffer's state decays to COMMON after a submit** (Dawn, `BufferD3D12.cpp:361-436`). Heaps
+  keeps the recorded state across `ExecuteCommandLists`. Once a promoted resource has decayed, a
+  barrier issued from that recorded state names the wrong before-state.
+- **PSOs are built at `createRenderPipeline`.** A WebGPU pipeline already names its formats,
+  layout and blend (Dawn, `RenderPipelineD3D12.cpp:414`), so Heaps' lazy pipeline cache
+  (`:3326-3451`) is not needed.
+- **From Dawn, because Heaps has none of it:** MSAA resolve, a copy splitter for buffer
+  offsets that are not 512-aligned (`TextureCopySplitter.cpp`; Void only asks for a texel
+  multiple), MAP_READ and MAP_WRITE buffers on READBACK and UPLOAD heaps, occlusion queries,
+  and `DEVICE_REMOVED` reported as device loss along with its reason
+  (`DeviceD3D12.cpp:777-783`).
+- `dx12.cpp:886` passes `&data` to `CheckFeatureSupport`, so the caller's buffer is never
+  written; the port passes `data`.
+
 ## Coverage against sokol's pin
 
 The layer covers every backend and platform that sokol `2e75443d` covers, Vulkan included and
@@ -430,7 +489,7 @@ Each item is built once a probe shows the cost it removes; the A/B against main 
 
 ## Steps
 
-The card `~/metascript/.wt/gpu-ms.md` tracks where the branch is. The order: the API module
+The arc landed into main as `9255aa33`; D3D12 continues on the card `~/metascript/.wt/d3d12.md`. The order was: the API module
 and the D3D11 backend, then void2d, void3d and the door on it; WebGPU (C through
 `webgpu.h`, JS through `navigator.gpu`); GL; window and time; shader tables without
 `sokol_gfx.h`; Metal; delete every sokol include.
