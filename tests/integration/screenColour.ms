@@ -57,18 +57,18 @@ const NO_CLEAR: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 0.0 };
 const SOURCE_PIXEL: uint32 = 0xFFBF8040;
 const MASK_PIXEL: uint32 = 0x80BF4080;
 
-let context: DrawContext =
+const context: DrawContext =
 	DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH + COLOR_MATRIX_UNIFORM_LENGTH);
-let core: Renderer = makeCore();
-let fxaa: FxaaPass = FxaaPass.reserve(context);
-let colorMatrix: ColorMatrixPass = ColorMatrixPass.reserve(context, plainSettings());
+const core: Renderer = makeCore();
+const fxaa: FxaaPass = FxaaPass.reserve(context);
+const colorMatrix: ColorMatrixPass = ColorMatrixPass.reserve(context, plainSettings());
 let stairsCopy: MaterialId = { store: 0, index: 0, generation: 0 };
 let flatCopy: MaterialId = { store: 0, index: 0, generation: 0 };
 let maskCopy: MaterialId = { store: 0, index: 0, generation: 0 };
 let screenCopy: MaterialId = { store: 0, index: 0, generation: 0 };
-let source: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
-let maskTarget: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
-let result: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
+const source: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
+const maskTarget: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
+const result: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
 let colors: Vec<ColorAttachment> = new Array(1);
 let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);

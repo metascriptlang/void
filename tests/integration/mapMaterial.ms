@@ -68,19 +68,19 @@ const TO_LIGHT: Vec3 = { x: 1.0, y: -0.5, z: 1.2 };
 // The half-strength quad's emissive colour, gamma-encoded.
 const ORANGE: Vec3 = { x: 1.0, y: 0.5, z: 0.0 };
 const LAST_FRAME: int32 = 2;
-let pixelArt: boolean = voidCaptureEnvInt("VOID_MAP_PIXEL_ART", 0) != 0;
-let control: boolean = voidCaptureEnvInt("VOID_MAP_CONTROL", 0) != 0;
-let context: DrawContext = DrawContext.withUniformCapacity(
+const pixelArt: boolean = voidCaptureEnvInt("VOID_MAP_PIXEL_ART", 0) != 0;
+const control: boolean = voidCaptureEnvInt("VOID_MAP_CONTROL", 0) != 0;
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH +
 		6 * (MATERIAL_UNIFORM_LENGTH + EMISSIVE_LENGTH),
 );
-let scene: Scene3D = Scene3D.create(context);
-let forward: ForwardRenderer = makeForward();
-let preset: PixelArtRenderer = makePreset();
+const scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = makeForward();
+const preset: PixelArtRenderer = makePreset();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-let positions: Vec<float32> = [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5];
+const positions: Vec<float32> = [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5];
 let frameIndex: int32 = 0;
 let failures: int32 = 0;
 

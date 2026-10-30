@@ -58,8 +58,8 @@ enum Scene {
 	Edge,
 }
 
-let pixelArt: boolean = voidCaptureEnvInt("VOID_BLOOM_PIXEL_ART", 0) != 0;
-let context: DrawContext = DrawContext.withUniformCapacity(
+const pixelArt: boolean = voidCaptureEnvInt("VOID_BLOOM_PIXEL_ART", 0) != 0;
+const context: DrawContext = DrawContext.withUniformCapacity(
 	2 * (pixelArt ? PIXEL_ART_HDR_UNIFORM_LENGTH : FORWARD_HDR_UNIFORM_LENGTH) +
 		4 * UNLIT_MATERIAL_UNIFORM_LENGTH,
 );
@@ -71,7 +71,7 @@ let bright: Vec<DrawItem> = [];
 let patch: Vec<DrawItem> = [];
 let edge: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
-let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let stage: int32 = 0;
 let patchEnergy: float64 = 0.0;
 let edgeWithout: int32 = 0;
@@ -127,7 +127,7 @@ function unitQuad(): MeshId {
 }
 
 function white(): TextureId {
-	const data: TextureData = {
+	let data: TextureData = {
 		pixels: [0xFFFFFFFF], width: 1, height: 1, filter: FilterMode.Nearest, wrap: Wrap.Clamp,
 	};
 	const uploaded: Result<TextureId, TextureUploadError> = addTexture(context, data);
@@ -275,7 +275,9 @@ function frame(): void {
 	const additive: BloomSettings = { ...natural, compositeMode: BloomCompositeMode.Additive };
 	if (stage == 0) {
 		draw(Scene.Bright, 1);
-		if (green(WIDTH / 2 + RADII[1], HEIGHT / 2, 1) != 0) { fail("light outside the square, off"); }
+		if (green(WIDTH / 2 + RADII[1], HEIGHT / 2, 1) != 0) {
+			fail("light outside the square, off");
+		}
 	} else if (stage == 1) {
 		setOn(natural, false);
 		draw(Scene.Bright, 0);

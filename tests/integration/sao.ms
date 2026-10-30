@@ -78,26 +78,26 @@ const NORMAL_CLEAR: Vec4 = { x: 0.5, y: 0.5, z: 0.5, w: 0.0 };
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const FRAMES: int32 = 3;
 
-let context: DrawContext = DrawContext.withUniformCapacity(
+const context: DrawContext = DrawContext.withUniformCapacity(
 	RENDERER_UNIFORM_LENGTH + UNLIT_MATERIAL_UNIFORM_LENGTH + SAO_UNIFORM_LENGTH +
 		BLUR_UNIFORM_LENGTH,
 );
-let core: Renderer = makeCore();
-let sao: ScalableAoPass = ScalableAoPass.reserve(context);
-let blur: BlurPass = BlurPass.reserve(context, BlurSettings.defaults());
-let copy: MaterialId = added(Material.plain(Program.Copy, screenState(), Phase.Opaque));
-let multiply: MaterialId = added(Material.plain(
+const core: Renderer = makeCore();
+const sao: ScalableAoPass = ScalableAoPass.reserve(context);
+const blur: BlurPass = BlurPass.reserve(context, BlurSettings.defaults());
+const copy: MaterialId = added(Material.plain(Program.Copy, screenState(), Phase.Opaque));
+const multiply: MaterialId = added(Material.plain(
 	Program.Copy, screenState().withBlendMode(BlendMode.Multiply), Phase.Opaque,
 ));
-let lit: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
-let normal: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
-let depth: RenderTarget = RenderTarget.unallocated(PixelFormat.Depth, true);
+const lit: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
+const normal: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
+const depth: RenderTarget = RenderTarget.unallocated(PixelFormat.Depth, true);
 let pointSampler: Sampler =
 	{ filter: FilterMode.Nearest, wrap: Wrap.Clamp, handle: 0, generation: 0 };
 let sceneColors: Vec<ColorAttachment> = new Array(2);
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
-let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let frames: int32 = 0;
 
 function fail(message: string): void {
@@ -158,7 +158,7 @@ function box(): MeshId {
 }
 
 function white(): TextureId {
-	const data: TextureData = {
+	let data: TextureData = {
 		pixels: [0xFFFFFFFF], width: 1, height: 1, filter: FilterMode.Nearest, wrap: Wrap.Clamp,
 	};
 	const uploaded: Result<TextureId, TextureUploadError> = addTexture(context, data);

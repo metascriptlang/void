@@ -58,11 +58,11 @@ const NORMAL_FRAMES: int32 = 2;
 const FRAMES: int32 = 4;
 const UNLIT: ProgramKey = ProgramKey.of(Program.UnlitTextured);
 const PREMULTIPLIED_UNLIT: ProgramKey = UNLIT.withPremultiplied();
-let context: DrawContext = DrawContext.withUniformCapacity(
+const context: DrawContext = DrawContext.withUniformCapacity(
 	PIXEL_ART_UNIFORM_LENGTH + 5 * UNLIT_MATERIAL_UNIFORM_LENGTH,
 );
-let scene: Scene3D = Scene3D.create(context);
-let preset: PixelArtRenderer = makePreset();
+const scene: Scene3D = Scene3D.create(context);
+const preset: PixelArtRenderer = makePreset();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);

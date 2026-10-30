@@ -107,16 +107,16 @@ const QUAD_BOTTOM: float32 = 140.0;
 const WITH_QUAD: int32 = 0;
 const WITHOUT_QUAD: int32 = 1;
 
-let context: DrawContext = DrawContext.withUniformCapacity(
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH,
 );
-let forward: ForwardRenderer = createForward();
-let scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = createForward();
+const scene: Scene3D = Scene3D.create(context);
 let items: Vec<DrawItem> = [];
 let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let stage: int32 = 0;
-let foreignCache: PipelineCache = PipelineCache.empty();
+const foreignCache: PipelineCache = PipelineCache.empty();
 
 function createForward(): ForwardRenderer {
 	const created: Result<ForwardRenderer, ForwardError> =
@@ -172,7 +172,7 @@ function buildScene(): void {
 	const _drawn: int32 = refresh(scene, items);
 	const collected: Result<int32, LightError> = collectLights(scene, lights);
 	if (!collected.ok) { unreachable; }
-	let view: Camera3D = {
+	const view: Camera3D = {
 		position: vec3(0.0, 0.0, 0.0),
 		yaw: 0.5,
 		pitch: 0.5,
@@ -199,9 +199,9 @@ function initMixed(): void {
 	setup2d();
 	buildScene();
 	if (voidCaptureEnvInt("VOID_GPU_REGISTRATION", 0) != 0) {
-		let program: int32 = foreignProgram();
-		let layout: int32 = foreignLayout();
-		let before: boolean = voidCaptureEnvInt("VOID_GPU_REGISTRATION", 0) == 2;
+		const program: int32 = foreignProgram();
+		const layout: int32 = foreignLayout();
+		const before: boolean = voidCaptureEnvInt("VOID_GPU_REGISTRATION", 0) == 2;
 		if ((registrationPreload >= 0) != before) {
 			fail("the registration preload ran in the wrong order");
 		}
@@ -247,11 +247,11 @@ function drawMixed(withQuad: boolean): void {
 	if (!swapped) {
 		if (voidCaptureEnvInt("VOID_GPU_REGISTRATION", 0) != 0 && stage == 1) {
 			openScreen(forward.core);
-			let pipeline: uint32 = pipelineFor(
+			const pipeline: uint32 = pipelineFor(
 				foreignCache, foreignProgram(), foreignLayout(), false,
 				screenState(), SWAPCHAIN_LAYOUT,
 			);
-			let reused: uint32 = pipelineFor(
+			const reused: uint32 = pipelineFor(
 				foreignCache, foreignProgram(), foreignLayout(), false,
 				screenState(), SWAPCHAIN_LAYOUT,
 			);

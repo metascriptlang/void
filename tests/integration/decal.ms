@@ -92,16 +92,16 @@ const STAGES: Vec<Stage> = [
 	},
 ];
 
-let context: DrawContext = DrawContext.withUniformCapacity(
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + FORWARD_HDR_UNIFORM_LENGTH + UNLIT_MATERIAL_UNIFORM_LENGTH +
 		(STAGES.length as int32) * DECAL_UNIFORM_LENGTH,
 );
-let forward: ForwardRenderer = makeForward();
+const forward: ForwardRenderer = makeForward();
 let hdrForward: ForwardRenderer | null = null;
 let decals: Vec<MaterialId> = [];
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
-let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let stage: int32 = 0;
 let hdrSkipped: boolean = false;
 
@@ -157,7 +157,7 @@ function unitBox(): MeshId {
 }
 
 function white(): TextureId {
-	const data: TextureData = {
+	let data: TextureData = {
 		pixels: [0xFFFFFFFF], width: 1, height: 1, filter: FilterMode.Nearest, wrap: Wrap.Clamp,
 	};
 	const uploaded: Result<TextureId, TextureUploadError> = addTexture(context, data);

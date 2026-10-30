@@ -34,21 +34,21 @@ import {
 	voidCaptureEnvInt, voidCaptureExit,
 } from "../capture/capture.h";
 
-let WIDTH: int32 = 320;
-let HEIGHT: int32 = 240;
-let BACKGROUND: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
-let context: DrawContext = DrawContext.withUniformCapacity(
+const WIDTH: int32 = 320;
+const HEIGHT: int32 = 240;
+const BACKGROUND: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + UNLIT_MATERIAL_UNIFORM_LENGTH,
 );
-let scene: Scene3D = Scene3D.create(context);
-let reference: Scene3D = Scene3D.create(context);
-let forward: ForwardRenderer = madeForward();
-let preset: PixelArtRenderer = madePreset();
+const scene: Scene3D = Scene3D.create(context);
+const reference: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = madeForward();
+const preset: PixelArtRenderer = madePreset();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let baseline: Vec<int64> = new Array(WIDTH * HEIGHT);
-let SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
+const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 let firstParent: NodeId3D = NO_NODE_ID;
 let secondParent: NodeId3D = NO_NODE_ID;
 let movedGroup: NodeId3D = NO_NODE_ID;
@@ -113,7 +113,7 @@ function meshOf(color: Rgba): MeshId {
 }
 
 function materialOf(): MaterialId {
-	const data: TextureData = {
+	let data: TextureData = {
 		width: 1, height: 1, pixels: [0xFFFFFFFF], filter: FilterMode.Nearest, wrap: Wrap.Clamp,
 	};
 	const image: Result<TextureId, TextureUploadError> = addTexture(context, data);

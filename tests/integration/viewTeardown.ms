@@ -73,35 +73,35 @@ extern function voidRunConfigured(
 	init: () => void, frame: () => void,
 ): void;
 
-let FIXTURE: string = "tests/fixtures/gltf/texturedScene.glb";
-let WIDTH: int32 = 320;
-let HEIGHT: int32 = 240;
-let CYCLES: int32 = 6;
-let FRAMES_PER_CYCLE: int32 = 3;
-let MODEL_NODES: int32 = 5;
-let HALF: float32 = 0.3;
-let BACKGROUND: Vec4 = { x: 0.025, y: 0.05, z: 0.1, w: 1.0 };
-let SURVIVOR_GREEN: Vec4 = { x: 0.0, y: 1.0, z: 0.0, w: 1.0 };
-let RED: uint32 = 0xFF0000;
-let GREEN: uint32 = 0x00FF00;
-let BLUE: uint32 = 0x0000FF;
-let YELLOW: uint32 = 0xFFFF00;
-let SCREEN_MAPPING: LowResView = {
+const FIXTURE: string = "tests/fixtures/gltf/texturedScene.glb";
+const WIDTH: int32 = 320;
+const HEIGHT: int32 = 240;
+const CYCLES: int32 = 6;
+const FRAMES_PER_CYCLE: int32 = 3;
+const MODEL_NODES: int32 = 5;
+const HALF: float32 = 0.3;
+const BACKGROUND: Vec4 = { x: 0.025, y: 0.05, z: 0.1, w: 1.0 };
+const SURVIVOR_GREEN: Vec4 = { x: 0.0, y: 1.0, z: 0.0, w: 1.0 };
+const RED: uint32 = 0xFF0000;
+const GREEN: uint32 = 0x00FF00;
+const BLUE: uint32 = 0x0000FF;
+const YELLOW: uint32 = 0xFFFF00;
+const SCREEN_MAPPING: LowResView = {
 	width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0,
 };
-let COUNTERS: Vec<string> = ["buffers", "images", "views", "samplers", "shaders", "pipelines"];
+const COUNTERS: Vec<string> = ["buffers", "images", "views", "samplers", "shaders", "pipelines"];
 
 let failures: int32 = 0;
-let data: GltfData = decoded();
+const data: GltfData = decoded();
 let cameraBlock: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let noLights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let noItems: Vec<DrawItem> = [];
 let items: Vec<DrawItem> = [];
-let survivorContext: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
-let survivor: ForwardRenderer = forwardOf(survivorContext, SURVIVOR_GREEN);
-let survivorMeshes: int32 = survivorContext.liveMeshes();
-let survivorMaterials: int32 = survivorContext.liveMaterials();
+const survivorContext: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
+const survivor: ForwardRenderer = forwardOf(survivorContext, SURVIVOR_GREEN);
+const survivorMeshes: int32 = survivorContext.liveMeshes();
+const survivorMaterials: int32 = survivorContext.liveMaterials();
 let viewContext: DrawContext =
 	DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH);
 let viewScene: Scene3D = Scene3D.create(viewContext);
@@ -118,28 +118,28 @@ function check(name: string, value: boolean): void {
 }
 
 function decoded(): GltfData {
-	let file = readFile(FIXTURE);
+	const file = readFile(FIXTURE);
 	if (!file.ok) {
 		console.log(`UNEXPECTED view teardown: ${FIXTURE} could not be read`);
 		unreachable;
 	}
 	const bytes: Vec<uint8> = [...file.value.asBytes()];
-	let loaded: Result<GltfData, GltfError> = loadGlb(bytes);
+	const loaded: Result<GltfData, GltfError> = loadGlb(bytes);
 	if (loaded.ok) { return loaded.value; }
 	console.log(`UNEXPECTED view teardown: the fixture was refused: ${loaded.error.toString()}`);
 	unreachable;
 }
 
 function forwardOf(context: DrawContext, background: Vec4): ForwardRenderer {
-	let made: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(context, background);
+	const made: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(context, background);
 	if (made.ok) { return made.value; }
 	console.log("UNEXPECTED view teardown: the forward preset was refused");
 	unreachable;
 }
 
 function pixelArtOf(context: DrawContext): PixelArtRenderer {
-	let settings: PixelArtSettings = { ...PixelArtSettings.full(), postPass: false };
-	let look: PixelArtLook = {
+	const settings: PixelArtSettings = { ...PixelArtSettings.full(), postPass: false };
+	const look: PixelArtLook = {
 		background: BACKGROUND,
 		outline: {
 			depthThreshold: 0.006,
@@ -150,7 +150,7 @@ function pixelArtOf(context: DrawContext): PixelArtRenderer {
 		fog: { start: 0.0, end: 1.0, strength: 0.0, color: BACKGROUND },
 		saturation: 0.0,
 	};
-	let made: Result<PixelArtRenderer, PixelArtError> =
+	const made: Result<PixelArtRenderer, PixelArtError> =
 		PixelArtRenderer.create(context, settings, look);
 	if (made.ok) { return made.value; }
 	console.log("UNEXPECTED view teardown: the pixel-art preset was refused");
@@ -176,15 +176,15 @@ function openView(): void {
 	viewForward = forwardOf(viewContext, BACKGROUND);
 	viewPixelArt = pixelArtOf(viewContext);
 	upload(viewPixelArt.palette);
-	let setup: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
-	let assets: Result<GltfAssets, GltfSceneError> =
+	const setup: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+	const assets: Result<GltfAssets, GltfSceneError> =
 		addGltfAssets(viewContext, data, { pass: RenderState.defaults(), block: setup });
 	if (!assets.ok) {
 		console.log(`UNEXPECTED view teardown: the model was refused: ${assets.error.toString()}`);
 		unreachable;
 	}
-	let model = addGroup(viewScene, viewScene.rootId(), Transform3D.identity());
-	let added: Result<int32, GltfSceneError> =
+	const model = addGroup(viewScene, viewScene.rootId(), Transform3D.identity());
+	const added: Result<int32, GltfSceneError> =
 		addGltfNodes(viewScene, model, data, assets.value.bindings);
 	check("the model's nodes enter the view's scene", added.ok && added.value == MODEL_NODES);
 	closeGltfAssets(assets.value);
@@ -193,7 +193,7 @@ function openView(): void {
 }
 
 function closeView(): void {
-	let alias: ForwardRenderer = viewForward;
+	const alias: ForwardRenderer = viewForward;
 	closeForward(alias);
 	closePixelArt(viewPixelArt);
 	closeScene(viewScene);
@@ -212,7 +212,7 @@ function closeView(): void {
 }
 
 function viewOf(): CameraView {
-	let camera: Camera3D = {
+	const camera: Camera3D = {
 		position: vec3(0.2, 0.0, 7.0),
 		yaw: 0.0,
 		pitch: 0.0,
@@ -220,7 +220,7 @@ function viewOf(): CameraView {
 		farPlane: 30.0,
 		projection: { kind: ProjectionKind.Perspective, fovY: 1.0471975512 },
 	};
-	let resolved: Result<CameraView, CameraError> = camera.resolve(WIDTH, HEIGHT);
+	const resolved: Result<CameraView, CameraError> = camera.resolve(WIDTH, HEIGHT);
 	if (resolved.ok) { return resolved.value; }
 	unreachable;
 }
@@ -230,7 +230,7 @@ function rgbOf(pixel: int64): uint32 {
 }
 
 function pixelAt(view: CameraView, point: Vec3): uint32 {
-	let at: Vec3 = view.project(point, SCREEN_MAPPING, true);
+	const at: Vec3 = view.project(point, SCREEN_MAPPING, true);
 	return rgbOf(voidCapturePixel(0, at.x as int32, at.y as int32));
 }
 
@@ -239,13 +239,13 @@ function checkModel(view: CameraView, preset: string): void {
 		check(`the ${preset} frame reads back`, false);
 		return;
 	}
-	let quadrants: Vec<Vec3> = [
+	const quadrants: Vec<Vec3> = [
 		vec3((-1.4 - HALF) as float32, HALF, 0.6), vec3((-1.4 + HALF) as float32, HALF, 0.6),
 		vec3((-1.4 - HALF) as float32, -HALF, 0.6), vec3((-1.4 + HALF) as float32, -HALF, 0.6),
 	];
-	let texels: Vec<uint32> = [RED, GREEN, BLUE, YELLOW];
+	const texels: Vec<uint32> = [RED, GREEN, BLUE, YELLOW];
 	for (let i = 0; i < 4; i++) {
-		let got: uint32 = pixelAt(view, quadrants[i]);
+		const got: uint32 = pixelAt(view, quadrants[i]);
 		check(`the ${preset} view's cube quadrant ${i} is ${got}, not ${texels[i]}`,
 			got == texels[i]);
 	}
@@ -256,12 +256,12 @@ function checkSurvivor(): void {
 		check("the survivor's frame reads back", false);
 		return;
 	}
-	let pixel: uint32 = rgbOf(voidCapturePixel(0, WIDTH / 2, HEIGHT / 2));
+	const pixel: uint32 = rgbOf(voidCapturePixel(0, WIDTH / 2, HEIGHT / 2));
 	check(`the survivor's frame is ${pixel}, not its own green`, pixel == GREEN);
 }
 
 function prepareSurvivor(): void {
-	let drawn: Result<int32, ForwardError> = prepareForward(
+	const drawn: Result<int32, ForwardError> = prepareForward(
 		survivor, noItems, cameraBlock, noLights, WIDTH, HEIGHT,
 	);
 	check("the survivor prepares its frame", drawn.ok);
@@ -269,15 +269,15 @@ function prepareSurvivor(): void {
 
 function viewFrame(view: CameraView, throughPixelArt: boolean): void {
 	check("the view's scene draws the model", refresh(viewScene, items) == MODEL_NODES);
-	let collected: Result<int32, LightError> = collectLights(viewScene, lights);
+	const collected: Result<int32, LightError> = collectLights(viewScene, lights);
 	if (!collected.ok) { unreachable; }
 	if (throughPixelArt) {
-		let drawn: Result<int32, PixelArtError> = preparePixelArt(
+		const drawn: Result<int32, PixelArtError> = preparePixelArt(
 			viewPixelArt, items, cameraBlock, lights, SCREEN_MAPPING,
 		);
 		check("the pixel-art view prepares its frame", drawn.ok);
 	} else {
-		let drawn: Result<int32, ForwardError> = prepareForward(
+		const drawn: Result<int32, ForwardError> = prepareForward(
 			viewForward, items, cameraBlock, lights, WIDTH, HEIGHT,
 		);
 		check("the forward view prepares its frame", drawn.ok);
@@ -301,7 +301,7 @@ function survivorFrame(): void {
 }
 
 function compareWarm(cycle: int32): void {
-	let now: Vec<int32> = counters();
+	const now: Vec<int32> = counters();
 	if (cycle == 0) {
 		warm = now;
 		return;
@@ -313,7 +313,7 @@ function compareWarm(cycle: int32): void {
 }
 
 function report(): void {
-	let now: Vec<int32> = counters();
+	const now: Vec<int32> = counters();
 	for (let i = 0; i < (COUNTERS.length as int32); i++) {
 		console.log(`growth.${COUNTERS[i]}=${now[i] - warm[i]}`);
 	}
@@ -340,9 +340,9 @@ function init(): void {
 
 function frame(): void {
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { check("the framebuffer size", false); }
-	let cycle: int32 = frames / FRAMES_PER_CYCLE;
-	let step: int32 = frames % FRAMES_PER_CYCLE;
-	let view: CameraView = viewOf();
+	const cycle: int32 = frames / FRAMES_PER_CYCLE;
+	const step: int32 = frames % FRAMES_PER_CYCLE;
+	const view: CameraView = viewOf();
 	view.writeCameraBlock(cameraBlock);
 	if (step == 0) { openView(); }
 	if (step == 2) { closeView(); }

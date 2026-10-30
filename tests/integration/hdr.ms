@@ -57,8 +57,8 @@ const GREY: Vec4 = { x: 0.5, y: 0.5, z: 0.5, w: 1.0 };
 const CLEAR: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 0.0 };
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
-let pixelArt: boolean = voidCaptureEnvInt("VOID_HDR_PIXEL_ART", 0) != 0;
-let context: DrawContext = DrawContext.withUniformCapacity(
+const pixelArt: boolean = voidCaptureEnvInt("VOID_HDR_PIXEL_ART", 0) != 0;
+const context: DrawContext = DrawContext.withUniformCapacity(
 	(pixelArt ? PIXEL_ART_HDR_UNIFORM_LENGTH : FORWARD_HDR_UNIFORM_LENGTH) +
 		2 * (pixelArt ? PIXEL_ART_HDR_UNIFORM_LENGTH : FORWARD_HDR_UNIFORM_LENGTH) +
 		4 * UNLIT_MATERIAL_UNIFORM_LENGTH,
@@ -70,7 +70,7 @@ let edgePreset: PixelArtRenderer | null = null;
 let items: Vec<DrawItem> = [];
 let edgeItems: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
-let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let stage: int32 = 0;
 
 function fail(message: string): void {
@@ -122,7 +122,7 @@ function unitQuad(): MeshId {
 }
 
 function white(): TextureId {
-	const data: TextureData = {
+	let data: TextureData = {
 		pixels: [0xFFFFFFFF], width: 1, height: 1, filter: FilterMode.Nearest, wrap: Wrap.Clamp,
 	};
 	const uploaded: Result<TextureId, TextureUploadError> = addTexture(context, data);

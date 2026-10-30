@@ -48,16 +48,16 @@ const WORLD_PER_TEXEL: float32 = 0.02;
 const BACKGROUND: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 const SURFACE: Rgba = { red: 1.0, green: 0.2, blue: 0.1, alpha: 1.0 };
 const SCREEN: LowResView = { width: WIDTH, height: HEIGHT, scale: 1, offsetX: 0.0, offsetY: 0.0 };
-let control: int32 = voidCaptureEnvInt("VOID_MESH_LOD_CONTROL", 0);
-let outlined: boolean = voidCaptureEnvInt("VOID_MESH_LOD_OUTLINE", 0) != 0;
-let wide: boolean = voidCaptureEnvInt("VOID_MESH_LOD_INDEX32", 0) != 0;
-let scenePicked: boolean = voidCaptureEnvInt("VOID_MESH_LOD_SCENE", 0) != 0;
-let context: DrawContext = DrawContext.withUniformCapacity(
+const control: int32 = voidCaptureEnvInt("VOID_MESH_LOD_CONTROL", 0);
+const outlined: boolean = voidCaptureEnvInt("VOID_MESH_LOD_OUTLINE", 0) != 0;
+const wide: boolean = voidCaptureEnvInt("VOID_MESH_LOD_INDEX32", 0) != 0;
+const scenePicked: boolean = voidCaptureEnvInt("VOID_MESH_LOD_SCENE", 0) != 0;
+const context: DrawContext = DrawContext.withUniformCapacity(
 	(outlined ? FORWARD_OUTLINE_UNIFORM_LENGTH : FORWARD_UNIFORM_LENGTH) +
 	2 * MATERIAL_UNIFORM_LENGTH,
 );
-let forward: ForwardRenderer = createForward();
-let scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = createForward();
+const scene: Scene3D = Scene3D.create(context);
 let mesh: MeshId = NO_MESH;
 let materials: Vec<MaterialId> = [];
 let nodes: Vec<NodeId3D> = [];
@@ -65,8 +65,8 @@ let source: Vec<DrawItem> = [];
 let selected: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-let lod: MeshLod = createLod();
-let ranges: MeshLodRanges = createRanges();
+const lod: MeshLod = createLod();
+const ranges: MeshLodRanges = createRanges();
 let radius: float64 = 0.0;
 let stage: int32 = 0;
 
@@ -160,8 +160,8 @@ function init(): void {
 	materials.push(materialAt(-1.0));
 	for (let slot = 0; slot < 2; slot++) {
 		const node = scenePicked ?
-			addLodMeshNode(scene, scene.rootId(), Transform3D.identity(), mesh, materials[slot], lod,
-				ranges, slot) :
+			addLodMeshNode(scene, scene.rootId(), Transform3D.identity(), mesh, materials[slot],
+				lod, ranges, slot) :
 			addMeshNode(scene, scene.rootId(), Transform3D.identity(), mesh, materials[slot]);
 		if (!node.ok) { fail(`node attachment ${node.error.toString()}`); unreachable; }
 		nodes.push(node.value);

@@ -35,35 +35,35 @@ import {
 	voidCaptureEnvInt, voidCaptureExit,
 } from "../capture/capture.h";
 
-let WIDTH: int32 = 320;
-let HEIGHT: int32 = 240;
-let HALF: float32 = 0.6;
-let WORLD_PER_TEXEL: float32 = 0.02;
-let REGION_SIDE: int32 = 64;
-let BACKGROUND: Vec4 = { x: 0.1, y: 0.15, z: 0.2, w: 1.0 };
-let WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
-let VERTEX_TINT: Rgba = { red: 0.6, green: 0.8, blue: 0.4, alpha: 0.75 };
-let MATERIAL_TINT: Vec4 = { x: 0.9, y: 0.7, z: 0.3, w: 0.5 };
-let TEXELS: Vec<uint32> = [0xFF408080, 0xFF80C040, 0x80C040A0, 0xFF2080C0];
-let SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
-let context: DrawContext = DrawContext.withUniformCapacity(
+const WIDTH: int32 = 320;
+const HEIGHT: int32 = 240;
+const HALF: float32 = 0.6;
+const WORLD_PER_TEXEL: float32 = 0.02;
+const REGION_SIDE: int32 = 64;
+const BACKGROUND: Vec4 = { x: 0.1, y: 0.15, z: 0.2, w: 1.0 };
+const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
+const VERTEX_TINT: Rgba = { red: 0.6, green: 0.8, blue: 0.4, alpha: 0.75 };
+const MATERIAL_TINT: Vec4 = { x: 0.9, y: 0.7, z: 0.3, w: 0.5 };
+const TEXELS: Vec<uint32> = [0xFF408080, 0xFF80C040, 0x80C040A0, 0xFF2080C0];
+const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 2 * UNLIT_MATERIAL_UNIFORM_LENGTH +
 	MATERIAL_UNIFORM_LENGTH,
 );
-let scene: Scene3D = Scene3D.create(context);
-let forward: ForwardRenderer = makeForward();
-let preset: PixelArtRenderer = makePreset();
+const scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = makeForward();
+const preset: PixelArtRenderer = makePreset();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let baseline: Vec<int64> = new Array(2 * REGION_SIDE * REGION_SIDE);
-let positions: Vec<float32> = [-2.0, 0.0, 2.0];
-let TEXEL_SHIFTS: Vec<uint32> = [0, 8, 16];
-let PIXEL_SHIFTS: Vec<int64> = [24, 16, 8];
-let VERTEX_COMPONENTS: Vec<float32> = [VERTEX_TINT.red, VERTEX_TINT.green, VERTEX_TINT.blue];
-let MATERIAL_COMPONENTS: Vec<float32> = [MATERIAL_TINT.x, MATERIAL_TINT.y, MATERIAL_TINT.z];
-let BACKGROUND_COMPONENTS: Vec<float32> = [BACKGROUND.x, BACKGROUND.y, BACKGROUND.z];
-let CORNERS: Vec<Vec3> = [
+const positions: Vec<float32> = [-2.0, 0.0, 2.0];
+const TEXEL_SHIFTS: Vec<uint32> = [0, 8, 16];
+const PIXEL_SHIFTS: Vec<int64> = [24, 16, 8];
+const VERTEX_COMPONENTS: Vec<float32> = [VERTEX_TINT.red, VERTEX_TINT.green, VERTEX_TINT.blue];
+const MATERIAL_COMPONENTS: Vec<float32> = [MATERIAL_TINT.x, MATERIAL_TINT.y, MATERIAL_TINT.z];
+const BACKGROUND_COMPONENTS: Vec<float32> = [BACKGROUND.x, BACKGROUND.y, BACKGROUND.z];
+const CORNERS: Vec<Vec3> = [
 	vec3(-0.3, 0.3, 0.0), vec3(0.3, 0.3, 0.0),
 	vec3(-0.3, -0.3, 0.0), vec3(0.3, -0.3, 0.0),
 ];
@@ -89,7 +89,9 @@ function makePreset(): PixelArtRenderer {
 	};
 	const look: PixelArtLook = {
 		background: BACKGROUND,
-		outline: { depthThreshold: 0.006, normalThreshold: 0.6, depthShade: 0.55, normalShade: 1.35 },
+		outline: {
+			depthThreshold: 0.006, normalThreshold: 0.6, depthShade: 0.55, normalShade: 1.35,
+		},
 		fog: { start: 0.0, end: 1.0, strength: 0.0, color: BACKGROUND },
 		saturation: 0.0,
 	};
@@ -238,7 +240,9 @@ function holdRegions(view: CameraView, frameIndex: int32): void {
 				const pixel: int64 = voidCapturePixel(0, left + x, top + y);
 				const offset: int32 = quad * REGION_SIDE * REGION_SIDE + y * REGION_SIDE + x;
 				if (frameIndex == 1) { baseline[offset] = pixel; }
-				else if (baseline[offset] != pixel) { fail("an unlit region changed with the lights"); }
+				else if (baseline[offset] != pixel) {
+					fail("an unlit region changed with the lights");
+				}
 			}
 		}
 	}
