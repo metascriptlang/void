@@ -71,6 +71,10 @@ import { RenderState, Face, Compare, Blend, BlendMode } from "../gpu/state";
 import { RenderTarget, TargetLayout, SWAPCHAIN_LAYOUT } from "../gpu/target";
 import { fbWidth, fbHeight } from "../host/gpu";
 
+const SWAPCHAIN_TARGET: int32 = 0;
+const OFFSCREEN_TARGET: int32 = 1;
+const TARGET_KINDS: int32 = 2;
+
 const OFFSCREEN_LAYOUT: TargetLayout = {
 	color0: PixelFormat.Rgba8,
 	color1: PixelFormat.None,
@@ -108,15 +112,15 @@ function resolvePipelines(): void {
 	for (let slot: int32 = 0; slot < PIPELINE_SLOTS; slot++) {
 		if (resolvedPipelines[slot] || !pipelineWanted(slot)) { continue; }
 		const blend: int32 = slot % BLEND_MODES;
-		const target: int32 = (slot / BLEND_MODES) % 2;
-		const program: int32 = slot / (BLEND_MODES * 2);
+		const target: int32 = (slot / BLEND_MODES) % TARGET_KINDS;
+		const program: int32 = slot / (BLEND_MODES * TARGET_KINDS);
 		const pipeline: uint32 = pipelineFor(
 			pipelines,
 			programBase + program,
 			layoutBase + program,
 			false,
 			premultipliedBlend(blend as BlendMode),
-			target == 1 ? OFFSCREEN_LAYOUT : SWAPCHAIN_LAYOUT,
+			target == OFFSCREEN_TARGET ? OFFSCREEN_LAYOUT : SWAPCHAIN_LAYOUT,
 		);
 		void2dSetPipeline(program, target, blend, pipeline);
 		resolvedPipelines[slot] = true;
@@ -128,11 +132,13 @@ function resolvePipelines(): void {
 export function preparePipelines(modes: Readonly<Span<BlendMode>>): void {
 	for (const mode of modes) {
 		for (let program: int32 = 0; program < (Program2D.Blur as int32); program++) {
-			wantPipelineSlot(pipelineSlot(program, 0, mode as int32));
-			wantPipelineSlot(pipelineSlot(program, 1, mode as int32));
+			wantPipelineSlot(pipelineSlot(program, SWAPCHAIN_TARGET, mode as int32));
+			wantPipelineSlot(pipelineSlot(program, OFFSCREEN_TARGET, mode as int32));
 		}
 	}
-	wantPipelineSlot(pipelineSlot(Program2D.Blur as int32, 1, BlendMode.None as int32));
+	wantPipelineSlot(
+		pipelineSlot(Program2D.Blur as int32, OFFSCREEN_TARGET, BlendMode.None as int32),
+	);
 	resolvePipelines();
 }
 
@@ -661,7 +667,7 @@ export function drawTarget(this ctx: DrawContext2D, target: RenderTarget, clear:
 		if ((ctx.commands[base + CMD_KIND] as int32) != (CommandKind.Draw as int32)) { continue; }
 		const program: int32 = ctx.commands[base + CMD_PIPELINE] as int32;
 		const blend: int32 = ctx.commands[base + CMD_BLEND] as int32;
-		wantPipelineSlot(pipelineSlot(program, 1, blend));
+		wantPipelineSlot(pipelineSlot(program, OFFSCREEN_TARGET, blend));
 	}
 	resolvePipelines();
 	ctx.prepared = false;
