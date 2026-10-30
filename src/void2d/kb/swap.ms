@@ -107,7 +107,7 @@ function swapFeature(m: Span<uint8>, c: KbSwapContext, feature: int64): void {
 		kbSwapArray16Context(m, c, lookupIndices, u16At(m, feature + 2));
 
 		const lookupIndexCount = u16At(m, feature + 2);
-		for (let iter: int64 = 0; iter < lookupIndexCount; iter++) {
+		for (let sortPass: int64 = 0; sortPass < lookupIndexCount; sortPass++) {
 			for (let indexIndex: int64 = 1; indexIndex < lookupIndexCount; indexIndex++) {
 				const left = m.kbU16(lookupIndices + (indexIndex - 1) * 2);
 				const right = m.kbU16(lookupIndices + indexIndex * 2);
@@ -179,8 +179,8 @@ export function kbSwapGsubGposCommon(m: Span<uint8>, c: KbSwapContext, header: i
 		m.kbSwapU16At(scriptList);
 
 		const scriptRecords = scriptList + 2;
-		for (let it: int64 = 0; it < u16At(m, scriptList); it++) {
-			const scriptRecord = scriptRecords + it * 6;
+		for (let scriptIndex: int64 = 0; scriptIndex < u16At(m, scriptList); scriptIndex++) {
+			const scriptRecord = scriptRecords + scriptIndex * 6;
 			m.kbSwapU16At(scriptRecord + 4);
 
 			const script = scriptList + u16At(m, scriptRecord + 4);
@@ -226,18 +226,14 @@ export function kbSwapGsubGposCommon(m: Span<uint8>, c: KbSwapContext, header: i
 }
 
 export function kbSwapLookup(m: Span<uint8>, c: KbSwapContext, lookup: int64): boolean {
-	let result = false;
-	if (!kbAlreadyVisited(c, lookup)) {
-		result = true;
-		kbSwapArray16Context(m, c, lookup, 3);
-		const subtableOffsets = lookup + KB_SIZE_LOOKUP;
-		let u16Count = u16At(m, lookup + 4);
-		if ((m.kbU16(lookup + 2) & KB_LOOKUP_FLAG_USE_MARK_FILTERING_SET) != 0) {
-			u16Count += 1;
-		}
-		kbSwapArray16Context(m, c, subtableOffsets, u16Count);
-	}
-	return result;
+	if (kbAlreadyVisited(c, lookup)) { return false; }
+	kbSwapArray16Context(m, c, lookup, 3);
+	const subtableOffsets = lookup + KB_SIZE_LOOKUP;
+	const subtableCount = u16At(m, lookup + 4);
+	const markFilteringSetCount: int64 =
+		(m.kbU16(lookup + 2) & KB_LOOKUP_FLAG_USE_MARK_FILTERING_SET) != 0 ? 1 : 0;
+	kbSwapArray16Context(m, c, subtableOffsets, subtableCount + markFilteringSetCount);
+	return true;
 }
 
 export function kbSwapCoverage(m: Span<uint8>, c: KbSwapContext, coverage: int64): void {
