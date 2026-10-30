@@ -1,6 +1,6 @@
-// KBTS__IN_SET and KBTS__SET32/SET64. The C shifts by a runtime class, so a class past the set width
-// is undefined there; x86 masks the count (5 bits for the 32-bit sets, 6 for the 64-bit ones) and
-// the port does the same.
+// KBTS__IN_SET and KBTS__SET32/SET64. The C shifts by a runtime class, so a class past the set
+// width is undefined there; x86 masks the count (5 bits for the 32-bit sets, 6 for the 64-bit
+// ones) and the port does the same.
 
 export function kbSet32(members: uint8[]): uint32 {
 	let result: uint32 = 0;

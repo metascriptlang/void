@@ -40,7 +40,11 @@ export function kbDllistSwap(storage: KbGlyphStorage, a: int32, b: int32): void 
 	relink(storage, b);
 }
 
-export function kbDllistReverseSublist(storage: KbGlyphStorage, first: int32, onePastLast: int32): void {
+export function kbDllistReverseSublist(
+	storage: KbGlyphStorage,
+	first: int32,
+	onePastLast: int32,
+): void {
 	const oneBeforeFirst = storage.glyphs[first].prev;
 	let last = first;
 
@@ -66,10 +70,13 @@ export function kbDllistReverseSublist(storage: KbGlyphStorage, first: int32, on
 	}
 }
 
-// KBTS__DLLIST_SORT: an insertion sort over the glyph links, keyed by one u8 member. Equal keys keep
-// their order because the swap happens only on a strictly greater predecessor.
+// KBTS__DLLIST_SORT: an insertion sort over the glyph links, keyed by one u8 member. Equal keys
+// keep their order because the swap happens only on a strictly greater predecessor.
 function sortKey(storage: KbGlyphStorage, glyph: int32, bySyllabicPosition: boolean): int32 {
-	return (bySyllabicPosition ? storage.glyphs[glyph].syllabicPosition : storage.glyphs[glyph].markOrdering) as int32;
+	const key = bySyllabicPosition ?
+		storage.glyphs[glyph].syllabicPosition :
+		storage.glyphs[glyph].markOrdering;
+	return key as int32;
 }
 
 export function kbDllistSort(

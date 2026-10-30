@@ -210,7 +210,11 @@ export function kbUnpackChainedSequenceContext3(
 	};
 }
 
-export function kbUnpackLookup(m: Readonly<Span<uint8>>, gdef: int64, lookup: int64): KbUnpackedLookup {
+export function kbUnpackLookup(
+	m: Readonly<Span<uint8>>,
+	gdef: int64,
+	lookup: int64,
+): KbUnpackedLookup {
 	let result: KbUnpackedLookup = {
 		subtableOffsets: lookup + 6, markFilteringSet: 0, type: m.kbU16(lookup),
 		flags: m.kbU16(lookup + 2), subtableCount: m.kbU16(lookup + 4),
@@ -221,7 +225,8 @@ export function kbUnpackLookup(m: Readonly<Span<uint8>>, gdef: int64, lookup: in
 		if (gdef != 0 && m.kbU16(gdef + 12) != 0) {
 			const markGlyphSets = gdef + m.kbU16(gdef + 12);
 			if (m.kbU16(markGlyphSets + 2) > markFilteringSetIndex) {
-				const coverageOffset = m.kbU32(markGlyphSets + 4 + (markFilteringSetIndex as int64) * 4);
+				const coverageOffset =
+					m.kbU32(markGlyphSets + 4 + (markFilteringSetIndex as int64) * 4);
 				result.markFilteringSet = markGlyphSets + coverageOffset;
 			}
 		}
@@ -239,7 +244,11 @@ export function kbGetDefaultLangsys(m: Readonly<Span<uint8>>, script: int64): in
 	return offset != 0 ? script + offset : 0;
 }
 
-export function kbGetLangsys(m: Readonly<Span<uint8>>, script: int64, index: int64): KbTaggedPointer {
+export function kbGetLangsys(
+	m: Readonly<Span<uint8>>,
+	script: int64,
+	index: int64,
+): KbTaggedPointer {
 	const record = script + 4 + index * 6;
 	return { tag: m.kbU32(record), at: script + m.kbU16(record + 4) };
 }
@@ -260,7 +269,11 @@ export function kbGetLookup(m: Readonly<Span<uint8>>, list: int64, index: int64)
 	return list + m.kbU16(list + 2 + index * 2);
 }
 
-export function kbGetSequenceRuleSet(m: Readonly<Span<uint8>>, context: int64, index: int64): int64 {
+export function kbGetSequenceRuleSet(
+	m: Readonly<Span<uint8>>,
+	context: int64,
+	index: int64,
+): int64 {
 	const offset = m.kbU16(context + 6 + index * 2);
 	return offset != 0 ? context + offset : 0;
 }
@@ -377,7 +390,11 @@ export function kbGetMarkInfo(
 	return { array, record, anchor: array + m.kbU16(record + 2) };
 }
 
-export function kbLookupBeginsWithCoverage(gpos: boolean, lookupType: int32, format: int32): boolean {
+export function kbLookupBeginsWithCoverage(
+	gpos: boolean,
+	lookupType: int32,
+	format: int32,
+): boolean {
 	return gpos ? lookupType != 9 && format != 3 : lookupType != 7 && format != 3;
 }
 
@@ -400,7 +417,9 @@ export function kbGlyphClassFromTable(
 		if (rangeCount != 0) {
 			while (rangeCount > 1) {
 				const halfCount = rangeCount / 2;
-				ranges = m.kbU16(ranges + (halfCount - 1) * 6 + 2) < id ? ranges + halfCount * 6 : ranges;
+				ranges = m.kbU16(ranges + (halfCount - 1) * 6 + 2) < id ?
+					ranges + halfCount * 6 :
+					ranges;
 				rangeCount -= halfCount;
 			}
 			if (id >= m.kbU16(ranges) && id <= m.kbU16(ranges + 2)) {
@@ -426,7 +445,9 @@ export function kbCoverGlyph(
 			let glyphIds = first;
 			while (count > 1) {
 				const halfCount = count / 2;
-				glyphIds = m.kbU16(glyphIds + (halfCount - 1) * 2) < glyphId ? glyphIds + halfCount * 2 : glyphIds;
+				glyphIds = m.kbU16(glyphIds + (halfCount - 1) * 2) < glyphId ?
+					glyphIds + halfCount * 2 :
+					glyphIds;
 				count -= halfCount;
 			}
 			if (glyphId == m.kbU16(glyphIds)) {
@@ -437,7 +458,9 @@ export function kbCoverGlyph(
 			let ranges = coverage + 4;
 			while (count > 1) {
 				const halfCount = count / 2;
-				ranges = m.kbU16(ranges + (halfCount - 1) * 6 + 2) < glyphId ? ranges + halfCount * 6 : ranges;
+				ranges = m.kbU16(ranges + (halfCount - 1) * 6 + 2) < glyphId ?
+					ranges + halfCount * 6 :
+					ranges;
 				count -= halfCount;
 			}
 			const start = m.kbU16(ranges);

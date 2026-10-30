@@ -231,7 +231,8 @@ export function kbGposMetrics(s: KbScratch, m: Span<uint8>, config: KbShapeConfi
 			advance = (advance + kbRound32(delta)) & 0xFFFF;
 		}
 
-		if (!clearMarkAdvances || (storage.glyphs[glyph].classValue as int32) != KB_GLYPH_CLASS_MARK) {
+		if (!clearMarkAdvances ||
+			(storage.glyphs[glyph].classValue as int32) != KB_GLYPH_CLASS_MARK) {
 			storage.glyphs[glyph].advanceX = advance;
 		}
 
@@ -273,8 +274,13 @@ export function kbGposFeatures(s: KbScratch, m: Span<uint8>, config: KbShapeConf
 					const glyph = entry.glyph;
 					kbBeginLookupApplication(s, glyph);
 
-					for (let subtableIndex = 0; subtableIndex < lookup.subtableCount; subtableIndex++) {
-						const subtableOffset = lookup.subtableOffsets + (subtableIndex as int64) * 2;
+					for (
+						let subtableIndex = 0;
+						subtableIndex < lookup.subtableCount;
+						subtableIndex++
+					) {
+						const subtableOffset =
+							lookup.subtableOffsets + (subtableIndex as int64) * 2;
 						const subtable = packedLookup + m.kbU16(subtableOffset);
 						if (kbDoSingleAdjustment(s, lookupList, lookupIndex as int64,
 							subtableIndex as int64, lookup, subtable, glyph, 0, skipFlags)) {
@@ -349,7 +355,8 @@ export function kbPostGposFixup(s: KbScratch, config: KbShapeConfig): void {
 				storage.glyphs[glyph].configPlusOne = glyphConfig;
 			}
 		} else {
-			if (clearMarkAdvances && (storage.glyphs[glyph].classValue as int32) == KB_GLYPH_CLASS_MARK) {
+			if (clearMarkAdvances &&
+				(storage.glyphs[glyph].classValue as int32) == KB_GLYPH_CLASS_MARK) {
 				storage.glyphs[glyph].advanceX = 0;
 				storage.glyphs[glyph].advanceY = 0;
 			}
