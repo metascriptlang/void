@@ -119,15 +119,9 @@ class Attrib {
 	paintOrder: int32 = 0;
 }
 
-function copyFloats(source: float32[]): float32[] {
-	const copy: float32[] = [];
-	for (let i: int32 = 0; i < (source.length as int32); i++) { copy.push(source[i]); }
-	return copy;
-}
-
 function cloneAttrib(source: Attrib): Attrib {
 	const a = new Attrib();
-	a.xform = copyFloats(source.xform);
+	a.xform = [...source.xform];
 	a.opacity = source.opacity;
 	a.fillOpacity = source.fillOpacity;
 	a.strokeOpacity = source.strokeOpacity;
@@ -135,7 +129,7 @@ function cloneAttrib(source: Attrib): Attrib {
 	a.strokeGradient = source.strokeGradient;
 	a.strokeWidth = source.strokeWidth;
 	a.strokeDashOffset = source.strokeDashOffset;
-	a.strokeDashArray = copyFloats(source.strokeDashArray);
+	a.strokeDashArray = [...source.strokeDashArray];
 	a.strokeDashCount = source.strokeDashCount;
 	a.strokeLineJoin = source.strokeLineJoin;
 	a.strokeLineCap = source.strokeLineCap;
@@ -504,7 +498,7 @@ function addShape(p: Parser): void {
 	const shape = new Shape();
 	shape.fillGradient = attr.fillGradient;
 	shape.strokeGradient = attr.strokeGradient;
-	shape.xform = copyFloats(attr.xform);
+	shape.xform = [...attr.xform];
 	const scale = getAverageScale(attr.xform);
 	shape.strokeWidth = attr.strokeWidth * scale;
 	shape.strokeDashOffset = attr.strokeDashOffset * scale;
