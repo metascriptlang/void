@@ -172,11 +172,10 @@ export function premultiplied(this t: Tile): Tile {
 // h2d.Tile.sub — a sub-region (pixel coords on the same texture) → new Tile with UVs.
 export function sub(this t: Tile, x: float32, y: float32, w: float32, h: float32): Tile {
 	return {
-		source: t.source,
+		...t,
 		u0: x / t.texW, v0: y / t.texH,
 		u1: (x + w) / t.texW, v1: (y + h) / t.texH,
-		w: w, h: h, dx: 0.0, dy: 0.0, texW: t.texW, texH: t.texH,
-		alphaPremultiplied: t.alphaPremultiplied,
+		w: w, h: h, dx: 0.0, dy: 0.0,
 	};
 }
 export function center(this t: Tile): Tile {
@@ -193,18 +192,10 @@ export function setCenterRatio(ref t: Tile, px: float32, py: float32): void {
 
 // h2d.Tile.flipX / flipY — mirror UVs and the visual offset.
 export function flipX(this t: Tile): Tile {
-	return {
-		source: t.source, u0: t.u1, v0: t.v0, u1: t.u0, v1: t.v1,
-		w: t.w, h: t.h, dx: -t.dx - t.w, dy: t.dy, texW: t.texW, texH: t.texH,
-		alphaPremultiplied: t.alphaPremultiplied,
-	};
+	return { ...t, u0: t.u1, u1: t.u0, dx: -t.dx - t.w };
 }
 export function flipY(this t: Tile): Tile {
-	return {
-		source: t.source, u0: t.u0, v0: t.v1, u1: t.u1, v1: t.v0,
-		w: t.w, h: t.h, dx: t.dx, dy: -t.dy - t.h, texW: t.texW, texH: t.texH,
-		alphaPremultiplied: t.alphaPremultiplied,
-	};
+	return { ...t, v0: t.v1, v1: t.v0, dy: -t.dy - t.h };
 }
 
 // 2D affine transform [a c tx ; b d ty] — point (x,y) → (a·x + c·y + tx, b·x + d·y + ty).
