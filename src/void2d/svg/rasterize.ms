@@ -1245,6 +1245,23 @@ function startPass(r: Rasterizer): void {
 	r.nedges = 0;
 }
 
+function fillEdges(
+	r: Rasterizer,
+	dst: Span<uint8>,
+	tx: float32,
+	ty: float32,
+	scale: float32,
+	cache: Cache,
+	paint: Paint,
+	opacity: float32,
+	fillRule: int32,
+): void {
+	placeEdges(r, tx, ty);
+	if (r.nedges != 0) { sortEdges(r); }
+	initPaint(cache, paint, opacity);
+	rasterizeSortedEdges(r, dst, tx, ty, scale, cache, fillRule);
+}
+
 // nsvgRasterize with tessellation tolerance 0.05, as the alpha channel of a w x h image.
 export function rasterize(
 	image: SvgImage,
@@ -1270,19 +1287,13 @@ export function rasterize(
 			if (order == PAINT_ORDER_FILL && shape.fill.kind != PAINT_NONE) {
 				startPass(r);
 				flattenShape(r, shape, scale);
-				placeEdges(r, tx, ty);
-				if (r.nedges != 0) { sortEdges(r); }
-				initPaint(cache, shape.fill, shape.opacity);
-				rasterizeSortedEdges(r, dst, tx, ty, scale, cache, shape.fillRule);
+				fillEdges(r, dst, tx, ty, scale, cache, shape.fill, shape.opacity, shape.fillRule);
 			}
 			const width: float32 = shape.strokeWidth * scale;
 			if (order == PAINT_ORDER_STROKE && shape.stroke.kind != PAINT_NONE && width > MIN_STROKE_WIDTH) {
 				startPass(r);
 				flattenShapeStroke(r, shape, scale);
-				placeEdges(r, tx, ty);
-				if (r.nedges != 0) { sortEdges(r); }
-				initPaint(cache, shape.stroke, shape.opacity);
-				rasterizeSortedEdges(r, dst, tx, ty, scale, cache, FILLRULE_NONZERO);
+				fillEdges(r, dst, tx, ty, scale, cache, shape.stroke, shape.opacity, FILLRULE_NONZERO);
 			}
 		}
 	}
