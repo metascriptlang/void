@@ -178,15 +178,23 @@ export function sizeQuanta(this key: GlyphKey): int32 {
 	return Math.floor(scaled + 0.5) as int32;
 }
 
+export const KEY_FACE_MAX: int32 = 65535;
+export const KEY_GLYPH_MAX: int32 = 65535;
+export const KEY_VARIANT_MAX: int32 = 15;
+
+function identityFits(key: GlyphKey): boolean {
+	return key.face >= 0 && key.face <= KEY_FACE_MAX && key.glyph >= 0 &&
+		key.glyph <= KEY_GLYPH_MAX && key.variant >= 0 && key.variant <= KEY_VARIANT_MAX &&
+		key.outline >= 0 && key.outline <= OUTLINE_LANE_MAX;
+}
+
 export function fitsKey(this key: GlyphKey): boolean {
 	const quanta: int32 = key.sizeQuanta();
-	return quanta >= 0 && quanta <= SIZE_QUANTA_MAX && key.outline >= 0 &&
-		key.outline <= OUTLINE_LANE_MAX;
+	return identityFits(key) && quanta >= 0 && quanta <= SIZE_QUANTA_MAX;
 }
 
 function onlyOversize(key: GlyphKey): boolean {
-	return key.outline >= 0 && key.outline <= OUTLINE_LANE_MAX &&
-		key.sizeQuanta() > SIZE_QUANTA_MAX;
+	return identityFits(key) && key.sizeQuanta() > SIZE_QUANTA_MAX;
 }
 
 function retainEmpty(this atlas: GlyphAtlas): int32 {
@@ -206,8 +214,10 @@ function retainEmpty(this atlas: GlyphAtlas): int32 {
 export function packed(this key: GlyphKey): uint64 {
 	if (!key.fitsKey()) {
 		console.log(
-			`void2d glyph atlas: a key of size ${key.sizePx} px and outline lane ${key.outline} ` +
-			`does not fit the packed key (size quanta 0..${SIZE_QUANTA_MAX}, ` +
+			`void2d glyph atlas: a key of face ${key.face}, glyph ${key.glyph}, variant ` +
+			`${key.variant}, size ${key.sizePx} px and outline lane ${key.outline} does not ` +
+			`fit the packed key (face 0..${KEY_FACE_MAX}, glyph 0..${KEY_GLYPH_MAX}, ` +
+			`variant 0..${KEY_VARIANT_MAX}, size quanta 0..${SIZE_QUANTA_MAX}, ` +
 			`lane 0..${OUTLINE_LANE_MAX})`,
 		);
 		unreachable;

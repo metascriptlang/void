@@ -8,6 +8,9 @@ import {
 	COVERAGE_OUTLINE_PER_PX,
 	SDF_OUTLINE_PER_TEXEL,
 	SIZE_QUANTA_MAX,
+	KEY_FACE_MAX,
+	KEY_GLYPH_MAX,
+	KEY_VARIANT_MAX,
 	maskKey,
 } from "../void2d/glyphAtlas";
 import {
@@ -161,4 +164,33 @@ test "a pixel-exact outline snaps to whole device pixels with a floor of one" {
 	assert deviceOutlineWidth(0.4, 1.0, true) == 1.0;
 	assert deviceOutlineWidth(0.0, 1.25, true) == 0.0;
 	assert deviceOutlineWidth(2.0, 1.25, false) == 2.5;
+}
+
+test "the largest face, glyph and variant pack to keys distinct from their neighbours" {
+	const edge: GlyphKey = {
+		kind: PageKind.Coverage, face: KEY_FACE_MAX, glyph: KEY_GLYPH_MAX, sizePx: 16.0,
+		variant: KEY_VARIANT_MAX, outline: 0,
+	};
+	const lowFace: GlyphKey = { ...edge, face: KEY_FACE_MAX - 1 };
+	const lowGlyph: GlyphKey = { ...edge, glyph: KEY_GLYPH_MAX - 1 };
+	const lowVariant: GlyphKey = { ...edge, variant: KEY_VARIANT_MAX - 1 };
+	const overFace: GlyphKey = { ...edge, face: KEY_FACE_MAX + 1 };
+	const overGlyph: GlyphKey = { ...edge, glyph: KEY_GLYPH_MAX + 1 };
+	const overVariant: GlyphKey = { ...edge, variant: KEY_VARIANT_MAX + 1 };
+	const negativeFace: GlyphKey = { ...edge, face: -1 };
+	assert edge.fitsKey();
+	assert !overFace.fitsKey();
+	assert !overGlyph.fitsKey();
+	assert !overVariant.fitsKey();
+	assert !negativeFace.fitsKey();
+	assert lowFace.packed() != edge.packed();
+	assert lowGlyph.packed() != edge.packed();
+	assert lowVariant.packed() != edge.packed();
+}
+
+test "a mask key with the largest icon and height packs and one past it is refused" {
+	assert maskKey(KEY_FACE_MAX, 24, KEY_GLYPH_MAX).fitsKey();
+	assert !maskKey(KEY_FACE_MAX + 1, 24, 24).fitsKey();
+	assert !maskKey(1, 24, KEY_GLYPH_MAX + 1).fitsKey();
+	assert maskKey(KEY_FACE_MAX, 24, 24).packed() != maskKey(KEY_FACE_MAX - 1, 24, 24).packed();
 }
