@@ -1,4 +1,4 @@
-import { readFile } from "std/fs";
+import { readFileBytes } from "std/fs";
 import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3, quatBetween } from "../../src/math/math3d";
 import { RenderState } from "../../src/gpu/state";
@@ -79,9 +79,9 @@ function makeShadow(): DirShadowMap {
 }
 
 function decoded(): GltfData {
-	const file = readFile(FIXTURE);
+	const file = readFileBytes(FIXTURE);
 	if (!file.ok) { fail("generated GLB missing"); unreachable; }
-	const bytes: Vec<uint8> = [...file.value.asBytes()];
+	const bytes: Vec<uint8> = [...file.value];
 	const loaded: Result<GltfData, GltfDiagnostic> = loadGlbDetailed(bytes, FIXTURE);
 	if (loaded.ok) { return loaded.value; }
 	fail(loaded.error.describe());

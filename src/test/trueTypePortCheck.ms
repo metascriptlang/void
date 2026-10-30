@@ -54,7 +54,7 @@ test "the TrueType port over byte fixtures keeps the digest recorded from stb_tr
 // A font file is read only where the target has files: js holds faces as bytes.
 when (js) {
 } else {
-	import { readDir, readFile } from "std/fs";
+	import { readDir, readFileBytes } from "std/fs";
 
 	// stb_truetype reads outside these files, so no C output exists to pin them against.
 	const READS_OUTSIDE: string[] = ["collectionOffsetHuge.ttc", "directoryWraps.ttf", "offsetNear2G.ttf"];
@@ -82,9 +82,9 @@ when (js) {
 	function digestOf(paths: string[]): uint32 {
 		let result: uint32 = SEED;
 		for (const path of paths) {
-			const text = readFile(path);
-			if (!text.ok) { throw new Error(`cannot read ${path}`); }
-			result = combineFont(text.value.asBytes(), result, CODEPOINT_STRIDE);
+			const bytes = readFileBytes(path);
+			if (!bytes.ok) { throw new Error(`cannot read ${path}`); }
+			result = combineFont(bytes.value, result, CODEPOINT_STRIDE);
 		}
 		return result;
 	}
