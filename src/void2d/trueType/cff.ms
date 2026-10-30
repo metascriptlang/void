@@ -163,21 +163,25 @@ function cidGetGlyphSubrs(info: FontInfo, glyphIndex: int32): Buf {
 	let fdselector: int32 = -1;
 	fdselect.seekTo(0);
 	const format = fdselect.get8();
-	if (format == 0) {
-		fdselect.skip(glyphIndex);
-		fdselector = fdselect.get8();
-	} else if (format == 3) {
-		const ranges = fdselect.get16();
-		let start = fdselect.get16();
-		for (let i: int32 = 0; i < ranges; i++) {
-			const v = fdselect.get8();
-			const end = fdselect.get16();
-			if (glyphIndex >= start && glyphIndex < end) {
-				fdselector = v;
-				break;
+	match (format) {
+		0 => {
+			fdselect.skip(glyphIndex);
+			fdselector = fdselect.get8();
+		},
+		3 => {
+			const ranges = fdselect.get16();
+			let start = fdselect.get16();
+			for (let i: int32 = 0; i < ranges; i++) {
+				const v = fdselect.get8();
+				const end = fdselect.get16();
+				if (glyphIndex >= start && glyphIndex < end) {
+					fdselector = v;
+					break;
+				}
+				start = end;
 			}
-			start = end;
-		}
+		},
+		_ => {},
 	}
 	return getSubrs(info.cff, indexGet(info.fontdicts, fdselector));
 }
@@ -314,162 +318,200 @@ function runCharstring(info: FontInfo, glyphIndex: int32, ref c: CsCtx): boolean
 		let i: int32 = 0;
 		let clearStack = true;
 		const b0 = b.get8();
-		if (b0 == 0x13 || b0 == 0x14) {
-			if (inHeader) { maskbits += sp / 2; }
-			inHeader = false;
-			b.skip((maskbits + 7) / 8);
-		} else if (b0 == 0x01 || b0 == 0x03 || b0 == 0x12 || b0 == 0x17) {
-			maskbits += sp / 2;
-		} else if (b0 == 0x15) {
-			inHeader = false;
-			if (sp < 2) { return false; }
-			c.rMoveTo(s[sp - 2], s[sp - 1]);
-		} else if (b0 == 0x04) {
-			inHeader = false;
-			if (sp < 1) { return false; }
-			c.rMoveTo(0, s[sp - 1]);
-		} else if (b0 == 0x16) {
-			inHeader = false;
-			if (sp < 1) { return false; }
-			c.rMoveTo(s[sp - 1], 0);
-		} else if (b0 == 0x05) {
-			if (sp < 2) { return false; }
-			while (i + 1 < sp) {
-				c.rLineTo(s[i], s[i + 1]);
-				i += 2;
-			}
-		} else if (b0 == 0x06 || b0 == 0x07) {
-			if (sp < 1) { return false; }
-			let vertical = b0 == 0x07;
-			while (true) {
-				if (!vertical) {
+		match (b0) {
+			0x13 | 0x14 => {
+				if (inHeader) { maskbits += sp / 2; }
+				inHeader = false;
+				b.skip((maskbits + 7) / 8);
+			},
+			0x01 | 0x03 | 0x12 | 0x17 => {
+				maskbits += sp / 2;
+			},
+			0x15 => {
+				inHeader = false;
+				if (sp < 2) { return false; }
+				c.rMoveTo(s[sp - 2], s[sp - 1]);
+			},
+			0x04 => {
+				inHeader = false;
+				if (sp < 1) { return false; }
+				c.rMoveTo(0, s[sp - 1]);
+			},
+			0x16 => {
+				inHeader = false;
+				if (sp < 1) { return false; }
+				c.rMoveTo(s[sp - 1], 0);
+			},
+			0x05 => {
+				if (sp < 2) { return false; }
+				while (i + 1 < sp) {
+					c.rLineTo(s[i], s[i + 1]);
+					i += 2;
+				}
+			},
+			0x06 | 0x07 => {
+				if (sp < 1) { return false; }
+				let vertical = b0 == 0x07;
+				while (true) {
+					if (!vertical) {
+						if (i >= sp) { break; }
+						c.rLineTo(s[i], 0);
+						i++;
+					}
+					vertical = false;
 					if (i >= sp) { break; }
-					c.rLineTo(s[i], 0);
+					c.rLineTo(0, s[i]);
 					i++;
 				}
-				vertical = false;
-				if (i >= sp) { break; }
-				c.rLineTo(0, s[i]);
-				i++;
-			}
-		} else if (b0 == 0x1E || b0 == 0x1F) {
-			if (sp < 4) { return false; }
-			let horizontal = b0 == 0x1F;
-			while (true) {
-				if (!horizontal) {
+			},
+			0x1E | 0x1F => {
+				if (sp < 4) { return false; }
+				let horizontal = b0 == 0x1F;
+				while (true) {
+					if (!horizontal) {
+						if (i + 3 >= sp) { break; }
+						c.rCurveTo(
+							0,
+							s[i],
+							s[i + 1],
+							s[i + 2],
+							s[i + 3],
+							(sp - i == 5) ? s[i + 4] : 0.0,
+						);
+						i += 4;
+					}
+					horizontal = false;
 					if (i + 3 >= sp) { break; }
-					c.rCurveTo(0, s[i], s[i + 1], s[i + 2], s[i + 3], (sp - i == 5) ? s[i + 4] : 0.0);
+					c.rCurveTo(
+						s[i],
+						0,
+						s[i + 1],
+						s[i + 2],
+						(sp - i == 5) ? s[i + 4] : 0.0,
+						s[i + 3],
+					);
 					i += 4;
 				}
-				horizontal = false;
-				if (i + 3 >= sp) { break; }
-				c.rCurveTo(s[i], 0, s[i + 1], s[i + 2], (sp - i == 5) ? s[i + 4] : 0.0, s[i + 3]);
-				i += 4;
-			}
-		} else if (b0 == 0x08) {
-			if (sp < 6) { return false; }
-			while (i + 5 < sp) {
-				c.rCurveTo(s[i], s[i + 1], s[i + 2], s[i + 3], s[i + 4], s[i + 5]);
-				i += 6;
-			}
-		} else if (b0 == 0x18) {
-			if (sp < 8) { return false; }
-			while (i + 5 < sp - 2) {
-				c.rCurveTo(s[i], s[i + 1], s[i + 2], s[i + 3], s[i + 4], s[i + 5]);
-				i += 6;
-			}
-			if (i + 1 >= sp) { return false; }
-			c.rLineTo(s[i], s[i + 1]);
-		} else if (b0 == 0x19) {
-			if (sp < 8) { return false; }
-			while (i + 1 < sp - 6) {
+			},
+			0x08 => {
+				if (sp < 6) { return false; }
+				while (i + 5 < sp) {
+					c.rCurveTo(s[i], s[i + 1], s[i + 2], s[i + 3], s[i + 4], s[i + 5]);
+					i += 6;
+				}
+			},
+			0x18 => {
+				if (sp < 8) { return false; }
+				while (i + 5 < sp - 2) {
+					c.rCurveTo(s[i], s[i + 1], s[i + 2], s[i + 3], s[i + 4], s[i + 5]);
+					i += 6;
+				}
+				if (i + 1 >= sp) { return false; }
 				c.rLineTo(s[i], s[i + 1]);
-				i += 2;
-			}
-			if (i + 5 >= sp) { return false; }
-			c.rCurveTo(s[i], s[i + 1], s[i + 2], s[i + 3], s[i + 4], s[i + 5]);
-		} else if (b0 == 0x1A || b0 == 0x1B) {
-			if (sp < 4) { return false; }
-			let f: float32 = 0;
-			if ((sp & 1) != 0) {
-				f = s[i];
-				i++;
-			}
-			while (i + 3 < sp) {
-				if (b0 == 0x1B) {
-					c.rCurveTo(s[i], f, s[i + 1], s[i + 2], s[i + 3], 0);
-				} else {
-					c.rCurveTo(f, s[i], s[i + 1], s[i + 2], 0, s[i + 3]);
+			},
+			0x19 => {
+				if (sp < 8) { return false; }
+				while (i + 1 < sp - 6) {
+					c.rLineTo(s[i], s[i + 1]);
+					i += 2;
 				}
-				f = 0;
-				i += 4;
-			}
-		} else if (b0 == 0x0A || b0 == 0x1D) {
-			if (b0 == 0x0A && !hasSubrs) {
-				if (info.fdselect.size != 0) { subrs = cidGetGlyphSubrs(info, glyphIndex); }
-				hasSubrs = true;
-			}
-			if (sp < 1) { return false; }
-			sp -= 1;
-			const v = truncInt(s[sp] as float64);
-			if (subrStackHeight >= MAX_SUBR_DEPTH) { return false; }
-			subrStack[subrStackHeight] = b;
-			subrStackHeight += 1;
-			b = getSubr(b0 == 0x0A ? subrs : info.gsubrs, v);
-			if (b.size == 0) { return false; }
-			b.cursor = 0;
-			clearStack = false;
-		} else if (b0 == 0x0B) {
-			if (subrStackHeight <= 0) { return false; }
-			subrStackHeight -= 1;
-			b = subrStack[subrStackHeight];
-			clearStack = false;
-		} else if (b0 == 0x0E) {
-			c.closeShape();
-			return true;
-		} else if (b0 == 0x0C) {
-			const b1 = b.get8();
-			if (b1 == 0x22) {
-				if (sp < 7) { return false; }
-				c.rCurveTo(s[0], 0, s[1], s[2], s[3], 0);
-				c.rCurveTo(s[4], 0, s[5], -s[2], s[6], 0);
-			} else if (b1 == 0x23) {
-				if (sp < 13) { return false; }
-				c.rCurveTo(s[0], s[1], s[2], s[3], s[4], s[5]);
-				c.rCurveTo(s[6], s[7], s[8], s[9], s[10], s[11]);
-			} else if (b1 == 0x24) {
-				if (sp < 9) { return false; }
-				c.rCurveTo(s[0], s[1], s[2], s[3], s[4], 0);
-				c.rCurveTo(s[5], 0, s[6], s[7], s[8], -(s[1] + s[3] + s[7]));
-			} else if (b1 == 0x25) {
-				if (sp < 11) { return false; }
-				let dx6: float32 = s[10];
-				let dy6: float32 = s[10];
-				const dx: float32 = s[0] + s[2] + s[4] + s[6] + s[8];
-				const dy: float32 = s[1] + s[3] + s[5] + s[7] + s[9];
-				if (Math.abs(dx as float64) > Math.abs(dy as float64)) {
-					dy6 = -dy;
-				} else {
-					dx6 = -dx;
+				if (i + 5 >= sp) { return false; }
+				c.rCurveTo(s[i], s[i + 1], s[i + 2], s[i + 3], s[i + 4], s[i + 5]);
+			},
+			0x1A | 0x1B => {
+				if (sp < 4) { return false; }
+				let f: float32 = 0;
+				if ((sp & 1) != 0) {
+					f = s[i];
+					i++;
 				}
-				c.rCurveTo(s[0], s[1], s[2], s[3], s[4], s[5]);
-				c.rCurveTo(s[6], s[7], s[8], s[9], dx6, dy6);
-			} else {
-				return false;
-			}
-		} else {
-			if (b0 != 255 && b0 != 28 && b0 < 32) { return false; }
-			let f: float32 = 0;
-			if (b0 == 255) {
-				f = (asInt32(b.getBytes(4)) as float32) / 65536;
-			} else {
-				b.skip(-1);
-				f = wrapInt16(b.readInt()) as float32;
-			}
-			if (sp >= MAX_STACK) { return false; }
-			s[sp] = f;
-			sp += 1;
-			clearStack = false;
+				while (i + 3 < sp) {
+					if (b0 == 0x1B) {
+						c.rCurveTo(s[i], f, s[i + 1], s[i + 2], s[i + 3], 0);
+					} else {
+						c.rCurveTo(f, s[i], s[i + 1], s[i + 2], 0, s[i + 3]);
+					}
+					f = 0;
+					i += 4;
+				}
+			},
+			0x0A | 0x1D => {
+				if (b0 == 0x0A && !hasSubrs) {
+					if (info.fdselect.size != 0) { subrs = cidGetGlyphSubrs(info, glyphIndex); }
+					hasSubrs = true;
+				}
+				if (sp < 1) { return false; }
+				sp -= 1;
+				const v = truncInt(s[sp] as float64);
+				if (subrStackHeight >= MAX_SUBR_DEPTH) { return false; }
+				subrStack[subrStackHeight] = b;
+				subrStackHeight += 1;
+				b = getSubr(b0 == 0x0A ? subrs : info.gsubrs, v);
+				if (b.size == 0) { return false; }
+				b.cursor = 0;
+				clearStack = false;
+			},
+			0x0B => {
+				if (subrStackHeight <= 0) { return false; }
+				subrStackHeight -= 1;
+				b = subrStack[subrStackHeight];
+				clearStack = false;
+			},
+			0x0E => {
+				c.closeShape();
+				return true;
+			},
+			0x0C => {
+				const b1 = b.get8();
+				match (b1) {
+					0x22 => {
+						if (sp < 7) { return false; }
+						c.rCurveTo(s[0], 0, s[1], s[2], s[3], 0);
+						c.rCurveTo(s[4], 0, s[5], -s[2], s[6], 0);
+					},
+					0x23 => {
+						if (sp < 13) { return false; }
+						c.rCurveTo(s[0], s[1], s[2], s[3], s[4], s[5]);
+						c.rCurveTo(s[6], s[7], s[8], s[9], s[10], s[11]);
+					},
+					0x24 => {
+						if (sp < 9) { return false; }
+						c.rCurveTo(s[0], s[1], s[2], s[3], s[4], 0);
+						c.rCurveTo(s[5], 0, s[6], s[7], s[8], -(s[1] + s[3] + s[7]));
+					},
+					0x25 => {
+						if (sp < 11) { return false; }
+						let dx6: float32 = s[10];
+						let dy6: float32 = s[10];
+						const dx: float32 = s[0] + s[2] + s[4] + s[6] + s[8];
+						const dy: float32 = s[1] + s[3] + s[5] + s[7] + s[9];
+						if (Math.abs(dx as float64) > Math.abs(dy as float64)) {
+							dy6 = -dy;
+						} else {
+							dx6 = -dx;
+						}
+						c.rCurveTo(s[0], s[1], s[2], s[3], s[4], s[5]);
+						c.rCurveTo(s[6], s[7], s[8], s[9], dx6, dy6);
+					},
+					_ => {
+						return false;
+					},
+				}
+			},
+			_ => {
+				if (b0 != 255 && b0 != 28 && b0 < 32) { return false; }
+				let f: float32 = 0;
+				if (b0 == 255) {
+					f = (asInt32(b.getBytes(4)) as float32) / 65536;
+				} else {
+					b.skip(-1);
+					f = wrapInt16(b.readInt()) as float32;
+				}
+				if (sp >= MAX_STACK) { return false; }
+				s[sp] = f;
+				sp += 1;
+				clearStack = false;
+			},
 		}
 		if (clearStack) { sp = 0; }
 	}

@@ -28,15 +28,19 @@ struct OutlinePoints {
 
 function pushPoint(ref points: OutlinePoints, vertices: Readonly<Span<Vertex>>, v: int32, k: int32): void {
 	const vertex = vertices[v];
-	if (k == 0) {
-		points.x.push(vertex.x as float32);
-		points.y.push(vertex.y as float32);
-	} else if (k == 1) {
-		points.x.push(vertex.cx as float32);
-		points.y.push(vertex.cy as float32);
-	} else {
-		points.x.push(vertex.cx1 as float32);
-		points.y.push(vertex.cy1 as float32);
+	match (k) {
+		0 => {
+			points.x.push(vertex.x as float32);
+			points.y.push(vertex.y as float32);
+		},
+		1 => {
+			points.x.push(vertex.cx as float32);
+			points.y.push(vertex.cy as float32);
+		},
+		_ => {
+			points.x.push(vertex.cx1 as float32);
+			points.y.push(vertex.cy1 as float32);
+		},
 	}
 	points.slot.push(v * 3 + k);
 }
@@ -45,19 +49,23 @@ function outlinePoints(vertices: Readonly<Span<Vertex>>, ref points: OutlinePoin
 	let n: int32 = 0;
 	let contours: int32 = 0;
 	for (let i: int32 = 0; i < (vertices.length as int32); i++) {
-		const kind = vertices[i].kind;
-		if (kind == VERTEX_MOVE) {
-			if (n > 0) {
-				ends[contours] = n - 1;
-				contours++;
-			}
-		} else if (kind == VERTEX_CURVE) {
-			pushPoint(points, vertices, i, 1);
-			n++;
-		} else if (kind == VERTEX_CUBIC) {
-			pushPoint(points, vertices, i, 1);
-			pushPoint(points, vertices, i, 2);
-			n += 2;
+		match (vertices[i].kind) {
+			VERTEX_MOVE => {
+				if (n > 0) {
+					ends[contours] = n - 1;
+					contours++;
+				}
+			},
+			VERTEX_CURVE => {
+				pushPoint(points, vertices, i, 1);
+				n++;
+			},
+			VERTEX_CUBIC => {
+				pushPoint(points, vertices, i, 1);
+				pushPoint(points, vertices, i, 2);
+				n += 2;
+			},
+			_ => {},
 		}
 		pushPoint(points, vertices, i, 0);
 		n++;
@@ -174,15 +182,19 @@ function embolden(ref vertices: Vec<Vertex>, strength: float32): void {
 		const k = slot % 3;
 		const x = shortOf(floorF(points.x[i] + 0.5));
 		const y = shortOf(floorF(points.y[i] + 0.5));
-		if (k == 0) {
-			vertices[v].x = x;
-			vertices[v].y = y;
-		} else if (k == 1) {
-			vertices[v].cx = x;
-			vertices[v].cy = y;
-		} else {
-			vertices[v].cx1 = x;
-			vertices[v].cy1 = y;
+		match (k) {
+			0 => {
+				vertices[v].x = x;
+				vertices[v].y = y;
+			},
+			1 => {
+				vertices[v].cx = x;
+				vertices[v].cy = y;
+			},
+			_ => {
+				vertices[v].cx1 = x;
+				vertices[v].cy1 = y;
+			},
 		}
 	}
 }
@@ -214,10 +226,24 @@ export function shapeBox(vertices: Readonly<Span<Vertex>>, scale: float32, shift
 	let y1: float32 = y0;
 	for (let i: int32 = 0; i < count; i++) {
 		const v = vertices[i];
-		const used = v.kind == VERTEX_CUBIC ? 3 : v.kind == VERTEX_CURVE ? 2 : 1;
+		const used: int32 = match (v.kind) {
+			VERTEX_CUBIC => 3,
+			VERTEX_CURVE => 2,
+			_ => 1,
+		};
 		for (let k: int32 = 0; k < used; k++) {
-			const x: float32 = (k == 0 ? v.x : k == 1 ? v.cx : v.cx1) as float32;
-			const y: float32 = (k == 0 ? v.y : k == 1 ? v.cy : v.cy1) as float32;
+			const unitsX: int16 = match (k) {
+				0 => v.x,
+				1 => v.cx,
+				_ => v.cx1,
+			};
+			const unitsY: int16 = match (k) {
+				0 => v.y,
+				1 => v.cy,
+				_ => v.cy1,
+			};
+			const x = unitsX as float32;
+			const y = unitsY as float32;
 			if (x < x0) { x0 = x; }
 			if (x > x1) { x1 = x; }
 			if (y < y0) { y0 = y; }
