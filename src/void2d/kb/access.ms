@@ -95,6 +95,30 @@ export struct KbGlyphClassResult {
 	classValue: int32;
 }
 
+function offsetAt(m: Readonly<Span<uint8>>, base: int64, offsets: int64, index: int64): int64 {
+	return base + m.kbU16(offsets + index * 2);
+}
+
+function optionalOffsetAt(
+	m: Readonly<Span<uint8>>,
+	base: int64,
+	offsets: int64,
+	index: int64,
+): int64 {
+	const offset = m.kbU16(offsets + index * 2);
+	return offset != 0 ? base + offset : 0;
+}
+
+function taggedRecord(
+	m: Readonly<Span<uint8>>,
+	base: int64,
+	records: int64,
+	index: int64,
+): KbTaggedPointer {
+	const record = records + index * 6;
+	return { tag: m.kbU32(record), at: base + m.kbU16(record + 4) };
+}
+
 function readCount(m: Readonly<Span<uint8>>, at: int64, byteSwap: boolean): int32 {
 	const value = m.kbU16(at);
 	return byteSwap ? kbSwap16(value) : value;
@@ -235,8 +259,7 @@ export function kbUnpackLookup(
 }
 
 export function kbGetScript(m: Readonly<Span<uint8>>, list: int64, index: int64): KbTaggedPointer {
-	const record = list + 2 + index * 6;
-	return { tag: m.kbU32(record), at: list + m.kbU16(record + 4) };
+	return taggedRecord(m, list, list + 2, index);
 }
 
 export function kbGetDefaultLangsys(m: Readonly<Span<uint8>>, script: int64): int64 {
@@ -249,13 +272,11 @@ export function kbGetLangsys(
 	script: int64,
 	index: int64,
 ): KbTaggedPointer {
-	const record = script + 4 + index * 6;
-	return { tag: m.kbU32(record), at: script + m.kbU16(record + 4) };
+	return taggedRecord(m, script, script + 4, index);
 }
 
 export function kbGetFeature(m: Readonly<Span<uint8>>, list: int64, index: int64): KbTaggedPointer {
-	const record = list + 2 + index * 6;
-	return { tag: m.kbU32(record), at: list + m.kbU16(record + 4) };
+	return taggedRecord(m, list, list + 2, index);
 }
 
 export function kbGetLookupList(m: Readonly<Span<uint8>>, gsubGpos: int64): int64 {
@@ -266,7 +287,7 @@ export function kbGetLookup(m: Readonly<Span<uint8>>, list: int64, index: int64)
 	if (list == 0) {
 		throw kbBoundsFail("lookup list is missing", index);
 	}
-	return list + m.kbU16(list + 2 + index * 2);
+	return offsetAt(m, list, list + 2, index);
 }
 
 export function kbGetSequenceRuleSet(
@@ -274,12 +295,11 @@ export function kbGetSequenceRuleSet(
 	context: int64,
 	index: int64,
 ): int64 {
-	const offset = m.kbU16(context + 6 + index * 2);
-	return offset != 0 ? context + offset : 0;
+	return optionalOffsetAt(m, context, context + 6, index);
 }
 
 export function kbGetSequenceRule(m: Readonly<Span<uint8>>, set: int64, index: int64): int64 {
-	return set + m.kbU16(set + 2 + index * 2);
+	return offsetAt(m, set, set + 2, index);
 }
 
 export function kbGetClassSequenceRuleSet(
@@ -288,12 +308,11 @@ export function kbGetClassSequenceRuleSet(
 	index: int64,
 ): int64 {
 	if (index >= m.kbU16(context + 6)) { return 0; }
-	const offset = m.kbU16(context + 8 + index * 2);
-	return offset != 0 ? context + offset : 0;
+	return optionalOffsetAt(m, context, context + 8, index);
 }
 
 export function kbGetClassSequenceRule(m: Readonly<Span<uint8>>, set: int64, index: int64): int64 {
-	return set + m.kbU16(set + 2 + index * 2);
+	return offsetAt(m, set, set + 2, index);
 }
 
 export function kbGetChainedSequenceRuleSet(
@@ -301,8 +320,7 @@ export function kbGetChainedSequenceRuleSet(
 	context: int64,
 	index: int64,
 ): int64 {
-	const offset = m.kbU16(context + 6 + index * 2);
-	return offset != 0 ? context + offset : 0;
+	return optionalOffsetAt(m, context, context + 6, index);
 }
 
 export function kbGetChainedSequenceRule(
@@ -310,7 +328,7 @@ export function kbGetChainedSequenceRule(
 	set: int64,
 	index: int64,
 ): int64 {
-	return set + m.kbU16(set + 2 + index * 2);
+	return offsetAt(m, set, set + 2, index);
 }
 
 export function kbGetChainedClassSequenceRuleSet(
@@ -318,8 +336,7 @@ export function kbGetChainedClassSequenceRuleSet(
 	context: int64,
 	index: int64,
 ): int64 {
-	const offset = m.kbU16(context + 12 + index * 2);
-	return offset != 0 ? context + offset : 0;
+	return optionalOffsetAt(m, context, context + 12, index);
 }
 
 export function kbGetChainedClassSequenceRule(
@@ -327,7 +344,7 @@ export function kbGetChainedClassSequenceRule(
 	set: int64,
 	index: int64,
 ): int64 {
-	return set + m.kbU16(set + 2 + index * 2);
+	return offsetAt(m, set, set + 2, index);
 }
 
 export function kbGetCmapSubtable(
@@ -343,19 +360,19 @@ export function kbGetCmapSubtable(
 }
 
 export function kbGetSequence(m: Readonly<Span<uint8>>, subst: int64, index: int64): int64 {
-	return subst + m.kbU16(subst + 6 + index * 2);
+	return offsetAt(m, subst, subst + 6, index);
 }
 
 export function kbGetAlternateSet(m: Readonly<Span<uint8>>, subst: int64, index: int64): int64 {
-	return subst + m.kbU16(subst + 6 + index * 2);
+	return offsetAt(m, subst, subst + 6, index);
 }
 
 export function kbGetLigatureSet(m: Readonly<Span<uint8>>, subst: int64, index: int64): int64 {
-	return subst + m.kbU16(subst + 6 + index * 2);
+	return offsetAt(m, subst, subst + 6, index);
 }
 
 export function kbGetLigature(m: Readonly<Span<uint8>>, set: int64, index: int64): int64 {
-	return set + m.kbU16(set + 2 + index * 2);
+	return offsetAt(m, set, set + 2, index);
 }
 
 function kbGetMarkRecord(array: int64, index: int64): int64 {
@@ -363,7 +380,7 @@ function kbGetMarkRecord(array: int64, index: int64): int64 {
 }
 
 export function kbGetLigatureAttach(m: Readonly<Span<uint8>>, array: int64, index: int64): int64 {
-	return array + m.kbU16(array + 2 + index * 2);
+	return offsetAt(m, array, array + 2, index);
 }
 
 export function kbGetLigatureAttachAnchor(
