@@ -1320,7 +1320,6 @@ function bakeChainedSequenceContext(
 
 function bakeMatrices(m: Span<uint8>, state: KbLoadFontState, bumpAfterTables: int64): void {
 	const glyphCount = m.kbU32(KB_BLOB_HEADER_GLYPH_COUNT);
-	const lookupCount = m.kbU32(KB_BLOB_HEADER_LOOKUP_COUNT);
 
 	const glyphLookupMatrix = kbAlign(bumpAfterTables, 4);
 	const glyphLookupSubtableMatrix = kbAlign(glyphLookupMatrix + state.glyphLookupMatrixSizeInBytes, 4);
