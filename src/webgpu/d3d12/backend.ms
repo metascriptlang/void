@@ -1,14 +1,43 @@
 import {
 	dx12AdapterDescribe,
 	dx12AdapterDescription,
+	dx12ClearDepthStencil,
+	dx12ClearRenderTarget,
+	dx12DepthStencilView,
 	dx12DeviceCreate,
+	dx12Draw,
+	dx12DrawIndexed,
+	dx12DrawIndexedSignatureCreate,
+	dx12Event,
+	dx12ExecuteIndirect,
 	dx12FormatSupport,
 	dx12InfoDrain,
 	dx12QueueCreate,
 	dx12Release,
+	dx12RenderTargetView,
+	dx12ResolveSubresource,
+	dx12SetBlendFactor,
+	dx12SetIndexBuffer,
+	dx12SetPipelineState,
+	dx12SetRenderTargets,
+	dx12SetScissorRect,
+	dx12SetStencilReference,
+	dx12SetVertexBuffer,
+	dx12SetViewport,
 } from "./d3d12.h";
 import { formatInfo } from "./conv.ms";
-import { TextureRecord, ViewRecord, bindGroupRecords, put, slotOf, vacate } from "../pool.ms";
+import {
+	TextureRecord,
+	ViewRecord,
+	bindGroupRecords,
+	bufferRecords,
+	pipelineRecords,
+	put,
+	slotOf,
+	textureRecords,
+	vacate,
+	viewRecords,
+} from "../pool.ms";
 import {
 	DX12_OK,
 	FRAMES_IN_FLIGHT,
@@ -26,12 +55,16 @@ import {
 } from "./frame.ms";
 import * as descriptor from "./descriptor.ms";
 import * as resources from "./resources.ms";
+import * as pipeline from "./pipeline.ms";
+import { SubresourceRange, flushTransitions, transitionRange } from "./tracker.ms";
+import { boundFacts, renderPassOpen } from "../validate.ms";
 import {
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_UNIFORM_BLOCKS,
 	GPU_MAX_VERTEX_ATTRIBUTES,
 	GPU_MAX_VERTEX_BUFFERS,
+	GPU_DRAW_INDEXED_INDIRECT_STRIDE,
 	GPU_RESOURCE_GROUP,
 	GPUAdapterInfo,
 	GPUBindGroup,
@@ -111,6 +144,23 @@ const FORMAT_SUPPORT1_RENDER_TARGET: uint32 = 0x4000;
 const FORMAT_SUPPORT1_BLENDABLE: uint32 = 0x8000;
 const FORMAT_SUPPORT1_DEPTH_STENCIL: uint32 = 0x10000;
 const FORMAT_SUPPORT1_SHADER_SAMPLE: uint32 = 0x200;
+const STATE_VERTEX_AND_CONSTANT_BUFFER: uint32 = 0x1;
+const STATE_INDEX_BUFFER: uint32 = 0x2;
+const STATE_RENDER_TARGET: uint32 = 0x4;
+const STATE_DEPTH_WRITE: uint32 = 0x10;
+const STATE_INDIRECT_ARGUMENT: uint32 = 0x200;
+const STATE_RESOLVE_DEST: uint32 = 0x1000;
+const STATE_RESOLVE_SOURCE: uint32 = 0x2000;
+const DXGI_R16_UINT: int32 = 57;
+const DXGI_R32_UINT: int32 = 42;
+const VIEW_2D: int32 = 0;
+const VIEW_2D_ARRAY: int32 = 1;
+const VIEW_3D: int32 = 4;
+const CLEAR_DEPTH: int32 = 1;
+const CLEAR_STENCIL: int32 = 2;
+const EVENT_BEGIN: int32 = 0;
+const EVENT_END: int32 = 1;
+const EVENT_MARKER: int32 = 2;
 
 export const BACKEND = "d3d12";
 
@@ -124,6 +174,25 @@ let layouts: Vec<descriptor.PipelineLayout> = [descriptor.NO_LAYOUT];
 let encoding = false;
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
+let shaders: Vec<pipeline.ShaderNative> = [pipeline.NO_SHADER];
+let pipelines: Vec<pipeline.PipelineNative> = [pipeline.NO_PIPELINE];
+let drawIndexedSignature: uint64 = 0;
+
+struct PassState {
+	colorViews: uint32[GPU_MAX_COLOR_ATTACHMENTS];
+	resolveViews: uint32[GPU_MAX_COLOR_ATTACHMENTS];
+	labeled: boolean;
+	vertexDirty: boolean;
+	indexDirty: boolean;
+}
+
+struct BufferUse {
+	native: uint64;
+	address: uint64;
+	size: int64;
+}
+
+let pass: PassState = { labeled: false };
 
 @noinline function notBuilt(call: string, step: string): never {
 	stop(`${call} not built yet (${step})`);
@@ -160,6 +229,9 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	const heaps = descriptor.openDescriptors(device, FRAMES_IN_FLIGHT);
 	if (!heaps.ok) { stopOnFrame("requestDevice", heaps.error); }
 	d = heaps.value;
+	let signature: uint64 = 0;
+	commanded(dx12DrawIndexedSignatureCreate(device, GPU_DRAW_INDEXED_INDIRECT_STRIDE as uint32, signature));
+	drawIndexedSignature = signature;
 	return { id: 1, queue: { id: 1 } };
 }
 
@@ -188,6 +260,11 @@ export function shutdown(): void {
 	descriptor.closeDescriptors(d);
 	for (const layout of layouts) { dx12Release(layout.signature); }
 	layouts = [descriptor.NO_LAYOUT];
+	for (const native of pipelines) { dx12Release(native.state); }
+	pipelines = [pipeline.NO_PIPELINE];
+	shaders = [pipeline.NO_SHADER];
+	dx12Release(drawIndexedSignature);
+	drawIndexedSignature = 0;
 	encoding = false;
 	dx12Release(queue);
 	dx12Release(device);
@@ -249,6 +326,7 @@ export function destroyBuffer(buffer: GPUBuffer): void {
 
 export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
 	ran("writeBuffer", resources.writeBuffer(r, ring, buffer, offset, data));
+	if (renderPassOpen()) { invalidateBindings(); }
 }
 
 export function createTexture(texture: TextureRecord, descriptor: GPUTextureDescriptor): void {
@@ -266,6 +344,7 @@ export function writeTexture<T>(
 	size: GPUExtent3D,
 ): void {
 	ran("writeTexture", resources.writeTexture(r, ring, destination, data, layout, size));
+	if (renderPassOpen()) { invalidateBindings(); }
 }
 
 export function createView(view: ViewRecord, viewDescriptor: GPUTextureViewDescriptor): void {
@@ -293,19 +372,23 @@ export function destroySampler(sampler: GPUSampler): void {
 export function samplerDescriptor(sampler: GPUSampler): uint64 { return d.samplerHandle(sampler.id); }
 
 export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescriptor): void {
-	notBuilt("createShaderModule", "D4");
+	pipeline.createShaderModule(shaders, id, descriptor);
 }
 
 export function destroyShaderModule(module: GPUShaderModule): void {
-	notBuilt("destroyShaderModule", "D4");
+	pipeline.destroyShaderModule(shaders, module.id);
 }
 
 export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDescriptor): void {
-	notBuilt("createRenderPipeline", "D4");
+	const shader = shaders[slotOf(descriptor.vertex.module.id)];
+	adoptPipelineLayout(id, shader.bindings, false);
+	ran("createRenderPipeline", pipeline.createRenderPipeline(pipelines, device, layouts[slotOf(id)].signature, shader, id, descriptor));
 }
 
-export function destroyRenderPipeline(pipeline: GPURenderPipeline): void {
-	notBuilt("destroyRenderPipeline", "D4");
+export function destroyRenderPipeline(destroyed: GPURenderPipeline): void {
+	retire(ring, pipelines[slotOf(destroyed.id)].state);
+	vacate(pipelines, destroyed.id);
+	releasePipelineLayout(destroyed.id);
 }
 
 export function adoptPipelineLayout(pipeline: uint32, bindings: Readonly<Span<GPUShaderBinding>>, compute: boolean): void {
@@ -349,24 +432,154 @@ export function submit(commandBuffer: GPUCommandBuffer): void {
 	submitted("submit");
 }
 
-export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {
-	notBuilt("beginRenderPass", "D4");
+export function beginRenderPass(encoder: GPUCommandEncoder, passDescriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {
+	if (passDescriptor.timestampWrites.querySet.id != 0 || passDescriptor.occlusionQuerySet.id != 0) {
+		notBuilt("a render pass with timestampWrites or occlusionQuerySet", "D6");
+	}
+	pass = { labeled: passDescriptor.label != null };
+	let targets: uint64[GPU_MAX_COLOR_ATTACHMENTS] = [0];
+	let targetCount: int32 = 0;
+	for (let i: int32 = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
+		const attachment = passDescriptor.colorAttachments[i];
+		if (attachment.view.id == 0) { continue; }
+		checkStoreOp(attachment.storeOp, i, "storeOp");
+		targets[i] = attachmentTarget(attachment.view.id, attachment.depthSlice, false);
+		targetCount = i + 1;
+		pass.colorViews[i] = attachment.view.id;
+		pass.resolveViews[i] = attachment.resolveTarget.id;
+	}
+	const depthAttachment = passDescriptor.depthStencilAttachment;
+	let depth: uint64 = 0;
+	let stencil = false;
+	if (depthAttachment.view.id != 0) {
+		stencil = r.textures[textureRecords.slotIndex(viewRecords.record(depthAttachment.view.id).texture)].info.stencil;
+		checkStoreOp(depthAttachment.depthStoreOp, -1, "depthStoreOp");
+		if (stencil) { checkStoreOp(depthAttachment.stencilStoreOp, -1, "stencilStoreOp"); }
+		depth = attachmentTarget(depthAttachment.view.id, 0, true);
+	}
+	commanded(flushTransitions(r.tracker, ring.list));
+	commanded(dx12SetRenderTargets(ring.list, targets[0], targetCount as uint32, depth));
+	for (let i: int32 = 0; i < targetCount; i++) {
+		if (pass.colorViews[i] == 0 || !isClear(passDescriptor.colorAttachments[i].loadOp, i, "loadOp")) { continue; }
+		const color = passDescriptor.colorAttachments[i].clearValue;
+		commanded(dx12ClearRenderTarget(ring.list, targets[i], color.r, color.g, color.b, color.a));
+	}
+	if (depth != 0) {
+		const clearDepth = isClear(depthAttachment.depthLoadOp, -1, "depthLoadOp");
+		const clearStencil = stencil && isClear(depthAttachment.stencilLoadOp, -1, "stencilLoadOp");
+		const flags = (clearDepth ? CLEAR_DEPTH : 0) | (clearStencil ? CLEAR_STENCIL : 0);
+		if (flags != 0) {
+			commanded(dx12ClearDepthStencil(ring.list, depth, flags, depthAttachment.depthClearValue as float64, depthAttachment.stencilClearValue & 0xFF));
+		}
+	}
+	commanded(dx12SetViewport(ring.list, 0.0, 0.0, extent.width as float64, extent.height as float64, 0.0, 1.0));
+	commanded(dx12SetScissorRect(ring.list, 0, 0, extent.width, extent.height));
+	commanded(dx12SetBlendFactor(ring.list, 0.0, 0.0, 0.0, 0.0));
+	commanded(dx12SetStencilReference(ring.list, 0));
+	invalidateBindings();
+	const label = passDescriptor.label;
+	if (label != null) { commanded(dx12Event(ring.list, EVENT_BEGIN, label)); }
+	return { id: 1 };
+}
+
+function invalidateBindings(): void {
+	d.bound.signature = 0;
+	pass.vertexDirty = true;
+	pass.indexDirty = true;
+}
+
+@noinline function stopOnSwapchainPass(view: uint32): never {
+	notBuilt(`a render pass on swapchain GPUTextureView ${view}`, "D5");
+}
+
+function attachmentTarget(view: uint32, depthSlice: int32, depthStencil: boolean): uint64 {
+	const record = viewRecords.record(view);
+	if (record.swapchain || record.texture == swapchainColor || record.texture == swapchainDepth) { stopOnSwapchainPass(view); }
+	const t = textureRecords.slotIndex(record.texture);
+	const texture = textureRecords.slots[t];
+	const native = r.textures[t];
+	const dimension = texture.volume ? VIEW_3D : (texture.layers > 1 ? VIEW_2D_ARRAY : VIEW_2D);
+	const layer = texture.volume ? depthSlice : record.baseLayer;
+	const multisampled = texture.sampleCount > 1 ? 1 : 0;
+	const range: SubresourceRange = { baseMip: record.baseMip, mips: 1, baseLayer: texture.volume ? 0 : record.baseLayer, layers: 1 };
+	if (depthStencil) {
+		const handle = descriptor.depthStencilHandle(d, ring);
+		if (!handle.ok) { stopOnFrame("beginRenderPass", handle.error); }
+		commanded(dx12DepthStencilView(device, native.native, native.info.depthStencil, dimension, multisampled, record.baseMip as uint32, layer as uint32, handle.value));
+		transitionRange(r.tracker, native.tracked, STATE_DEPTH_WRITE, range);
+		return handle.value;
+	}
+	const handle = descriptor.renderTargetHandle(d, ring);
+	if (!handle.ok) { stopOnFrame("beginRenderPass", handle.error); }
+	commanded(dx12RenderTargetView(device, native.native, native.info.renderTarget, dimension, multisampled, record.baseMip as uint32, layer as uint32, handle.value));
+	transitionRange(r.tracker, native.tracked, STATE_RENDER_TARGET, range);
+	return handle.value;
+}
+
+function attachmentMember(index: int32, field: string): string {
+	return index < 0 ? `depthStencilAttachment.${field}` : `colorAttachments[${index}].${field}`;
+}
+
+@noinline function stopOnAttachment(index: int32, field: string, value: string): never {
+	stop(`GPURenderPassDescriptor ${attachmentMember(index, field)} '${value}' is not supported`);
+}
+
+function isClear(loadOp: string, index: int32, field: string): boolean {
+	return match (loadOp) {
+		"clear" => true,
+		"load" => false,
+		_ => stopOnAttachment(index, field, loadOp),
+	};
+}
+
+function checkStoreOp(storeOp: string, index: int32, field: string): void {
+	if (storeOp != "store" && storeOp != "discard") { stopOnAttachment(index, field, storeOp); }
+}
+
+function subresourceOf(view: ViewRecord, texture: TextureRecord): uint32 {
+	return (view.baseMip + view.baseLayer * texture.mipLevels) as uint32;
+}
+
+function resolveRange(view: ViewRecord): SubresourceRange {
+	return { baseMip: view.baseMip, mips: 1, baseLayer: view.baseLayer, layers: 1 };
 }
 
 export function endPass(): void {
-	notBuilt("endPass", "D4");
+	for (let i: int32 = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
+		if (pass.resolveViews[i] == 0) { continue; }
+		const sourceView = viewRecords.record(pass.colorViews[i]);
+		const targetView = viewRecords.record(pass.resolveViews[i]);
+		if (targetView.swapchain || targetView.texture == swapchainColor) { stopOnSwapchainPass(pass.resolveViews[i]); }
+		const s = textureRecords.slotIndex(sourceView.texture);
+		const t = textureRecords.slotIndex(targetView.texture);
+		transitionRange(r.tracker, r.textures[s].tracked, STATE_RESOLVE_SOURCE, resolveRange(sourceView));
+		transitionRange(r.tracker, r.textures[t].tracked, STATE_RESOLVE_DEST, resolveRange(targetView));
+		commanded(flushTransitions(r.tracker, ring.list));
+		commanded(dx12ResolveSubresource(
+			ring.list,
+			r.textures[t].native,
+			subresourceOf(targetView, textureRecords.slots[t]),
+			r.textures[s].native,
+			subresourceOf(sourceView, textureRecords.slots[s]),
+			r.textures[s].info.renderTarget,
+		));
+	}
+	if (pass.labeled) { commanded(dx12Event(ring.list, EVENT_END, "")); }
+	pass = { labeled: false };
 }
 
-export function setPipeline(pipeline: GPURenderPipeline): void {
-	notBuilt("setPipeline", "D4");
+export function setPipeline(bound: GPURenderPipeline): void {
+	const native = pipelines[slotOf(bound.id)];
+	commanded(dx12SetPipelineState(ring.list, native.state, native.topology));
+	pass.vertexDirty = true;
 }
 
 export function setVertexBuffer(slot: int32, buffer: GPUBuffer, offset: int64): void {
-	notBuilt("setVertexBuffer", "D4");
+	pass.vertexDirty = true;
 }
 
 export function setIndexBuffer(buffer: GPUBuffer, format: GPUIndexFormat, offset: int64): void {
-	notBuilt("setIndexBuffer", "D4");
+	pass.indexDirty = true;
 }
 
 export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
@@ -374,31 +587,80 @@ export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffse
 }
 
 export function setScissorRect(x: int32, y: int32, width: int32, height: int32): void {
-	notBuilt("setScissorRect", "D4");
+	commanded(dx12SetScissorRect(ring.list, x, y, x + width, y + height));
 }
 
 export function setViewport(x: float32, y: float32, width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
-	notBuilt("setViewport", "D4");
+	commanded(dx12SetViewport(ring.list, x as float64, y as float64, width as float64, height as float64, minDepth as float64, maxDepth as float64));
 }
 
 export function setBlendConstant(color: GPUColor): void {
-	notBuilt("setBlendConstant", "D4");
+	commanded(dx12SetBlendFactor(ring.list, color.r, color.g, color.b, color.a));
 }
 
 export function setStencilReference(reference: uint32): void {
-	notBuilt("setStencilReference", "D4");
+	commanded(dx12SetStencilReference(ring.list, reference));
 }
 
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
-	notBuilt("draw", "D4");
+	if (instanceCount == 0) { return; }
+	prepareDraw(false);
+	commanded(dx12Draw(ring.list, vertexCount as uint32, instanceCount as uint32, firstVertex as uint32, firstInstance as uint32));
+}
+
+function usedBuffer(id: uint32, state: uint32): BufferUse {
+	const b = bufferRecords.slotIndex(id);
+	resources.useBuffer(r, id, b, state);
+	r.buffers[b].lastUse = ring.recording();
+	return { native: r.buffers[b].native, address: r.buffers[b].address, size: bufferRecords.slots[b].size };
+}
+
+function prepareDraw(indexed: boolean): void {
+	const p = slotOf(boundFacts.pipeline);
+	if (pass.vertexDirty) {
+		const slots = pipelineRecords.record(boundFacts.pipeline).vertexSlots;
+		for (let slot: int32 = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
+			if ((slots & (1 << slot)) == 0) { continue; }
+			const used = usedBuffer(boundFacts.vertexBuffers[slot], STATE_VERTEX_AND_CONSTANT_BUFFER);
+			const offset = boundFacts.vertexOffsets[slot];
+			commanded(dx12SetVertexBuffer(ring.list, slot as uint32, used.address + (offset as uint64), (used.size - offset) as uint32, pipelines[p].strides[slot] as uint32));
+		}
+		pass.vertexDirty = false;
+	}
+	if (indexed && pass.indexDirty) {
+		const used = usedBuffer(boundFacts.indexBuffer, STATE_INDEX_BUFFER);
+		const offset = boundFacts.indexOffset;
+		commanded(dx12SetIndexBuffer(ring.list, used.address + (offset as uint64), (used.size - offset) as uint32, indexFormat(boundFacts.indexFormat)));
+		pass.indexDirty = false;
+	}
+	applyBindings(boundFacts.pipeline);
+	commanded(flushTransitions(r.tracker, ring.list));
+}
+
+@noinline function stopOnIndexFormat(format: string): never {
+	stop(`GPUIndexFormat '${format}' is not supported`);
+}
+
+function indexFormat(format: GPUIndexFormat): int32 {
+	const value: string = format;
+	return match (value) {
+		"uint16" => DXGI_R16_UINT,
+		"uint32" => DXGI_R32_UINT,
+		_ => stopOnIndexFormat(value),
+	};
 }
 
 export function drawIndexed(indexCount: int32, instanceCount: int32, firstIndex: int32, baseVertex: int32, firstInstance: int32): void {
-	notBuilt("drawIndexed", "D4");
+	if (instanceCount == 0) { return; }
+	prepareDraw(true);
+	commanded(dx12DrawIndexed(ring.list, indexCount as uint32, instanceCount as uint32, firstIndex as uint32, baseVertex, firstInstance as uint32));
 }
 
 export function multiDrawIndexedIndirect(buffer: GPUBuffer, offset: int64, drawCount: int32): void {
-	notBuilt("multiDrawIndexedIndirect", "D4");
+	if (drawCount == 0) { return; }
+	const used = usedBuffer(buffer.id, STATE_INDIRECT_ARGUMENT);
+	prepareDraw(true);
+	commanded(dx12ExecuteIndirect(ring.list, drawIndexedSignature, drawCount as uint32, used.native, offset as uint64));
 }
 
 export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
@@ -510,15 +772,15 @@ export function features(): GPUSupportedFeatures {
 }
 
 export function pushDebugGroup(label: string): void {
-	notBuilt("pushDebugGroup", "D4");
+	commanded(dx12Event(ring.list, EVENT_BEGIN, label));
 }
 
 export function popDebugGroup(): void {
-	notBuilt("popDebugGroup", "D4");
+	commanded(dx12Event(ring.list, EVENT_END, ""));
 }
 
 export function insertDebugMarker(label: string): void {
-	notBuilt("insertDebugMarker", "D4");
+	commanded(dx12Event(ring.list, EVENT_MARKER, label));
 }
 
 export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
