@@ -798,6 +798,20 @@ int32_t dx12RenderPipelineCreate(uint64_t device, uint64_t signature, const uint
 	return DX12_OK;
 }
 
+int32_t dx12ComputePipelineCreate(uint64_t device, uint64_t signature, const uint8_t *compute, uint64_t computeBytes, uint64_t *pipeline) {
+	*pipeline = 0;
+	D3D12_COMPUTE_PIPELINE_STATE_DESC desc;
+	memset(&desc, 0, sizeof desc);
+	desc.pRootSignature = (ID3D12RootSignature *)(uintptr_t)signature;
+	desc.CS.pShaderBytecode = compute;
+	desc.CS.BytecodeLength = (SIZE_T)computeBytes;
+	ID3D12PipelineState *created = NULL;
+	HRESULT hr = ID3D12Device_CreateComputePipelineState(DEVICE(device), &desc, &IID_ID3D12PipelineState, (void **)&created);
+	if (FAILED(hr)) return failCall("ID3D12Device::CreateComputePipelineState", hr);
+	*pipeline = NATIVE(created);
+	return DX12_OK;
+}
+
 int32_t dx12RenderTargetView(uint64_t device, uint64_t resource, int32_t format, int32_t dimension, int32_t multisampled, uint32_t mip, uint32_t layer, uint64_t handle) {
 	D3D12_RENDER_TARGET_VIEW_DESC desc;
 	memset(&desc, 0, sizeof desc);
@@ -900,7 +914,7 @@ int32_t dx12SetStencilReference(uint64_t list, uint32_t reference) {
 
 int32_t dx12SetPipelineState(uint64_t list, uint64_t pipeline, int32_t topology) {
 	ID3D12GraphicsCommandList_SetPipelineState(LIST(list), (ID3D12PipelineState *)(uintptr_t)pipeline);
-	ID3D12GraphicsCommandList_IASetPrimitiveTopology(LIST(list), (D3D12_PRIMITIVE_TOPOLOGY)topology);
+	if (topology != D3D_PRIMITIVE_TOPOLOGY_UNDEFINED) ID3D12GraphicsCommandList_IASetPrimitiveTopology(LIST(list), (D3D12_PRIMITIVE_TOPOLOGY)topology);
 	return DX12_OK;
 }
 
@@ -926,10 +940,15 @@ int32_t dx12DrawIndexed(uint64_t list, uint32_t indexCount, uint32_t instanceCou
 	return DX12_OK;
 }
 
-int32_t dx12DrawIndexedSignatureCreate(uint64_t device, uint32_t stride, uint64_t *signature) {
+int32_t dx12Dispatch(uint64_t list, uint32_t x, uint32_t y, uint32_t z) {
+	ID3D12GraphicsCommandList_Dispatch(LIST(list), x, y, z);
+	return DX12_OK;
+}
+
+int32_t dx12CommandSignatureCreate(uint64_t device, int32_t argumentType, uint32_t stride, uint64_t *signature) {
 	*signature = 0;
 	D3D12_INDIRECT_ARGUMENT_DESC argument = {0};
-	argument.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
+	argument.Type = (D3D12_INDIRECT_ARGUMENT_TYPE)argumentType;
 	D3D12_COMMAND_SIGNATURE_DESC desc = {0};
 	desc.ByteStride = stride;
 	desc.NumArgumentDescs = 1;
