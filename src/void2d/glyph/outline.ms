@@ -199,19 +199,27 @@ function embolden(ref vertices: Vec<Vertex>, strength: float32): void {
 	}
 }
 
-export function applySynthetic(ref vertices: Vec<Vertex>, emboldenUnits: float32, skew: float32): void {
+function skewedX(x: int16, y: int16, skew: float32): int16 {
+	return shortOf(floorF((x as float32) + (y as float32) * skew + 0.5));
+}
+
+export function applySynthetic(
+	ref vertices: Vec<Vertex>,
+	emboldenUnits: float32,
+	skew: float32,
+): void {
 	const count = vertices.length as int32;
 	if (count <= 0) { return; }
 	if (emboldenUnits > 0.0) { embolden(vertices, emboldenUnits); }
 	if (skew != 0.0) {
 		for (let i: int32 = 0; i < count; i++) {
 			const v = vertices[i];
-			vertices[i].x = shortOf(floorF((v.x as float32) + (v.y as float32) * skew + 0.5));
+			vertices[i].x = skewedX(v.x, v.y, skew);
 			if (v.kind == VERTEX_CURVE || v.kind == VERTEX_CUBIC) {
-				vertices[i].cx = shortOf(floorF((v.cx as float32) + (v.cy as float32) * skew + 0.5));
+				vertices[i].cx = skewedX(v.cx, v.cy, skew);
 			}
 			if (v.kind == VERTEX_CUBIC) {
-				vertices[i].cx1 = shortOf(floorF((v.cx1 as float32) + (v.cy1 as float32) * skew + 0.5));
+				vertices[i].cx1 = skewedX(v.cx1, v.cy1, skew);
 			}
 		}
 	}
