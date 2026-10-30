@@ -545,7 +545,10 @@ function triangulate(pts: Readonly<Span<Vec2>>): int32[] {
 		} else {
 			v = next[v];
 			guard = guard + 1;
-			if (guard > remaining) { return out; }
+			if (guard > remaining) {
+				console.log(`void2d: triangulate found no ear in a ${n} point polygon with ${remaining} points left; the outline is self-intersecting or degenerate`);
+				unreachable;
+			}
 		}
 	}
 	out.push(prev[v]);
@@ -803,6 +806,10 @@ export function fillTexPolygon(
 	const target: GraphicsMesh = meshOf(g, "fillTexPolygon");
 	target.source = t.source;
 	target.alphaPremultiplied = t.alphaPremultiplied;
+	if (!(tileW > 0.0) || !(tileH > 0.0)) {
+		console.log(`void2d: fillTexPolygon got tile size ${tileW}x${tileH}; give both a size above 0`);
+		unreachable;
+	}
 	const du: float32 = (t.u1 - t.u0) / tileW;
 	const dv: float32 = (t.v1 - t.v0) / tileH;
 	const map: UvMap = {

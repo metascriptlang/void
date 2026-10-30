@@ -75,6 +75,13 @@ test "fillPolygon concave arrow ear-clips without overlap" {
 	assert approxRel(meshTriArea(geometry(g).mesh), 4082.0, 0.5);
 }
 
+test "fillPolygon of a concave outline emits n-2 triangles" {
+	const pts: Vec2[] =
+		[vec2(0.0, 0.0), vec2(10.0, 0.0), vec2(10.0, 10.0), vec2(5.0, 4.0), vec2(0.0, 10.0)];
+	const g = body().fillPolygon(pts, rgba(1.0, 1.0, 1.0, 1.0));
+	assert (geometry(g).mesh.length as int32) === 3 * 24;
+}
+
 test "fillPolygon degenerate input emits nothing" {
 	const two: Vec2[] = [vec2(0.0, 0.0), vec2(10.0, 0.0)];
 	const g = s.graphics().fillPolygon(two, rgba(1.0, 1.0, 1.0, 1.0));
@@ -136,6 +143,13 @@ test "fillTexPolygon maps UVs from origin over tile size" {
 	assert geometry(g).source.view() === 9;
 	assert meshHasVertUV(geometry(g).mesh, 0.0, 0.0, 0.0, 0.0);
 	assert meshHasVertUV(geometry(g).mesh, 10.0, 10.0, 1.0, 1.0);
+}
+
+test "fillTexPolygon accepts a tile size of 1" {
+	const t = tile(fakeTexture(9), 64.0, 64.0);
+	const pts: Vec2[] = [vec2(0.0, 0.0), vec2(10.0, 0.0), vec2(10.0, 10.0), vec2(0.0, 10.0)];
+	const g = s.graphics().fillTexPolygon(t, pts, 0.0, 0.0, 1.0, 1.0, rgba(1.0, 1.0, 1.0, 1.0));
+	assert meshHasVertUV(geometry(g).mesh, 10.0, 10.0, 10.0, 10.0);
 }
 
 test "clear resets mesh and view" {
