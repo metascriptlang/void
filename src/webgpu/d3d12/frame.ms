@@ -44,6 +44,7 @@ export struct FrameRing {
 	next: uint64;
 	submitted: uint64;
 	executed: uint64;
+	completed: uint64;
 	retired: Vec<Retired>;
 }
 
@@ -68,7 +69,7 @@ export function checked(code: int32): Result<void, NativeError> {
 }
 
 export function closedFrames(): FrameRing {
-	return { queue: 0, fence: 0, event: 0, list: 0, allocators: [], serials: [], next: 0, submitted: 0, executed: 0, retired: [] };
+	return { queue: 0, fence: 0, event: 0, list: 0, allocators: [], serials: [], next: 0, submitted: 0, executed: 0, completed: 0, retired: [] };
 }
 
 export function slot(this ring: FrameRing): int32 {
@@ -146,6 +147,7 @@ export function collect(ref ring: FrameRing): Result<uint64, NativeError> {
 		}
 	}
 	ring.retired = kept;
+	ring.completed = completed;
 	return Result.ok(completed);
 }
 

@@ -180,7 +180,7 @@ export function destroyBuffer(ref r: Resources, ref ring: FrameRing, id: uint32)
 	vacate(r.buffers, id);
 }
 
-function useBuffer(ref r: Resources, id: uint32, index: int32, state: uint32): void {
+export function useBuffer(ref r: Resources, id: uint32, index: int32, state: uint32): void {
 	const buffer = r.buffers[index];
 	if (buffer.tracked != NO_TRACKING) {
 		transition(r.tracker, buffer.tracked, state);
