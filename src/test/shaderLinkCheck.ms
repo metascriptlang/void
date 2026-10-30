@@ -325,7 +325,8 @@ const CHAIN_WGSL =
 	"}\n" +
 	"\n" +
 	"@fragment\n" +
-	"fn main(@builtin(position) position_param : vec4f, @location(0) uv_param : vec2f) -> main_out {\n" +
+	"fn main(@builtin(position) position_param : vec4f, " +
+	"@location(0) uv_param : vec2f) -> main_out {\n" +
 	"  position = position_param;\n" +
 	"  uv = uv_param;\n" +
 	"  baseFs();\n" +
@@ -500,7 +501,8 @@ const SPLIT_FS_WGSL =
 	"}\n" +
 	"\n" +
 	"@fragment\n" +
-	"fn main(@builtin(position) position_param : vec4f, @location(0) a_param : vec2f) -> main_out {\n" +
+	"fn main(@builtin(position) position_param : vec4f, " +
+	"@location(0) a_param : vec2f) -> main_out {\n" +
 	"  position = position_param;\n" +
 	"  a = a_param;\n" +
 	"  splitFs();\n" +
@@ -755,7 +757,8 @@ function iosOf(m: ShaderModule): string {
 
 test "a varying the linked fragment never reads is dropped from both stages" {
 	assert iosOf(splitLinked([ADD_DETAIL])) ==
-		"vs in position,vs out clip,vs out a,vs out b,fs in position,fs in a,fs in b,fs out fragColor";
+		"vs in position,vs out clip,vs out a,vs out b," +
+		"fs in position,fs in a,fs in b,fs out fragColor";
 	assert iosOf(splitLinked([])) ==
 		"vs in position,vs out clip,vs out a,fs in position,fs in a,fs out fragColor";
 }
@@ -984,10 +987,14 @@ test "two programs on one base each keep the varyings their own fragment reads" 
 	const detail = layerLinked(LAYER_DETAIL);
 	const extra = layerLinked(LAYER_EXTRA);
 	assert iosOf(detail) ==
-		"vs in position,vs out clip,vs out a,vs out b,fs in position,fs in a,fs in b,fs out fragColor";
+		"vs in position,vs out clip,vs out a,vs out b," +
+		"fs in position,fs in a,fs in b,fs out fragColor";
 	assert iosOf(extra) ==
-		"vs in position,vs out clip,vs out a,vs out c,fs in position,fs in a,fs in c,fs out fragColor";
-	const outputs = "struct main_out {\n  @builtin(position) clip : vec4f,\n  @location(0) a : vec2f,\n";
+		"vs in position,vs out clip,vs out a,vs out c," +
+		"fs in position,fs in a,fs in c,fs out fragColor";
+	const outputs =
+		"struct main_out {\n  @builtin(position) clip : vec4f,\n" +
+		"  @location(0) a : vec2f,\n";
 	assert printed(detail, ShaderTarget.Wgsl, "layerDetailVs.wgsl", 0)
 		.includes(outputs + "  @location(1) b : vec2f,\n}");
 	assert printed(extra, ShaderTarget.Wgsl, "layerExtraVs.wgsl", 0)
@@ -1056,7 +1063,10 @@ function fadeFs(input: FadePixel, b: BaseBindings, key: FadeKey): Vec4f {
 	if (key.f) {
 		world = input.world;
 	}
-	const lit: FadeShaded = { color: vec4f(input.uv.x, input.uv.y, b.frame.time, 1.0), world: world };
+	const lit: FadeShaded = {
+		color: vec4f(input.uv.x, input.uv.y, b.frame.time, 1.0),
+		world: world,
+	};
 	return hook(lit).color;
 }
 

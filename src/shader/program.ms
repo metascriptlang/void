@@ -31,7 +31,11 @@ import { ShaderTarget } from "./layout";
 import { linkedProgram } from "./link";
 import { reflectProgram } from "./reflect";
 import { Vec2f, Vec2i, Vec2u, Vec3f, Vec3i, Vec3u, Vec4f, Vec4i, Vec4u } from "./std";
-import { GPUShaderModuleDescriptor, UNLIMITED_UNIFORM_BYTES, shaderBindingsRefusal } from "../webgpu/types.ms";
+import {
+	GPUShaderModuleDescriptor,
+	UNLIMITED_UNIFORM_BYTES,
+	shaderBindingsRefusal,
+} from "../webgpu/types.ms";
 import { DoorLayout, doorRegisterLayouts, doorRegisterPrograms } from "../gpu/doorGpu.ms";
 import { registerComputePrograms } from "../gpu/doorCompute.ms";
 
@@ -185,19 +189,27 @@ function splicedBuild(
 		if (formats == null) { return null; }
 		if (one == null) { return null; }
 		for (const entry of [vertex, fragment]) {
-			productArg = createNodeAt(NodeKind.CallExpr, { callee: one, arguments: [productArg, entry] },
-				at.location);
+			productArg = createNodeAt(
+				NodeKind.CallExpr,
+				{ callee: one, arguments: [productArg, entry] },
+				at.location,
+			);
 		}
 		for (const e of effects) {
-			productArg = createNodeAt(NodeKind.CallExpr, { callee: one, arguments: [productArg, e] },
-				e.location);
+			productArg = createNodeAt(
+				NodeKind.CallExpr,
+				{ callee: one, arguments: [productArg, e] },
+				e.location,
+			);
 		}
 		formatsArg = createNodeAt(NodeKind.CallExpr, { callee: formats, arguments: [vertex, fragment] },
 			at.location);
 	}
 	const lowered: Node[] = [];
 	for (const e of effects) {
-		lowered.push(createNodeAt(NodeKind.CallExpr, { callee: segment, arguments: [e] }, e.location));
+		lowered.push(
+			createNodeAt(NodeKind.CallExpr, { callee: segment, arguments: [e] }, e.location),
+		);
 	}
 	const args: Node[] = [
 		createNodeAt(NodeKind.StringLiteral, { value: base }, at.location),
@@ -354,7 +366,11 @@ export macro shaderBuild(
 	if (!source.ok) { refused(source.error); }
 	const s = source.value;
 	if (s.refusal != "") { refused(s.refusal); }
-	const bindingRefusal = shaderBindingsRefusal(s.reflection.bindings, isComputeSource(s), UNLIMITED_UNIFORM_BYTES);
+	const bindingRefusal = shaderBindingsRefusal(
+		s.reflection.bindings,
+		isComputeSource(s),
+		UNLIMITED_UNIFORM_BYTES,
+	);
 	if (bindingRefusal != "") { refused(bindingRefusal); }
 	const fxc = arm.language == "hlsl5" ? findFxc(define("fxc")) : "";
 	function blobBase64(stage: string, code: string): string {
@@ -516,7 +532,12 @@ export macro shaderCompute(name: Node, kernel: Node, workgroupSize: Node): Node 
 					literal(""),
 					literal(""),
 					called(bindSym("oneProgram"), [literal("shaderCompute"), kernel]),
-					{ kind: NodeKind.ArrayLiteral, line: name.line, column: name.column, elements: [] },
+					{
+						kind: NodeKind.ArrayLiteral,
+						line: name.line,
+						column: name.column,
+						elements: [],
+					},
 				]),
 				declKind: DeclKind.Const,
 				nameLocation: { line: name.line, column: name.column },

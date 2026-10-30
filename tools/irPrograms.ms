@@ -275,7 +275,11 @@ function blockMembers(program: Program, block: string): string[] {
 	fail(program.name + " has no uniform block " + block);
 }
 
-function memberFunction(shaderModule: ShaderModule, resourceIndex: int32, program: Program): string {
+function memberFunction(
+	shaderModule: ShaderModule,
+	resourceIndex: int32,
+	program: Program,
+): string {
 	const block = shaderModule.resources[resourceIndex].name;
 	const members = blockMemberTable(shaderModule, resourceIndex);
 	if (!members.ok) { fail(program.name + ": " + members.error); }
