@@ -2,7 +2,7 @@ import { readFile } from "std/fs";
 import { readFileBytes } from "../assets/imageFile";
 import { decodePng } from "../assets/png";
 import "../void2d/face";
-import { SpriteCanvas, drawSprite, spriteCodepoint, spriteCount } from "../void2d/spriteGlyph";
+import { SpriteCanvas, SpriteError, drawSprite, spriteCodepoint, spriteCount } from "../void2d/spriteGlyph";
 import { trimSpaces, parseInt32, NOT_A_NUMBER } from "../../tests/harness/parse";
 
 struct CellSize {
@@ -332,4 +332,10 @@ test "a box line and a powerline cap in neighbouring cells meet without a gap or
 		}
 		assert pixelAt(cap, 0, 0) < 255 && pixelAt(cap, 0, size.height - 1) < 255;
 	}
+}
+
+test "a cell whose canvas would overflow int32 is refused as a bad cell" {
+	const huge = drawSprite(0x2500, 40000, 40000, 1);
+	assert !huge.ok;
+	assert huge.error == SpriteError.BadCell;
 }

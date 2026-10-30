@@ -143,6 +143,12 @@ function paint(painter: Painter, codepoint: int32, family: Family): boolean {
 	return fits && !painter.failed;
 }
 
+function canvasFits(cellWidth: int32, cellHeight: int32): boolean {
+	const w: int64 = (cellWidth as int64) + 2 * ((cellWidth as int64) / 4);
+	const h: int64 = (cellHeight as int64) + 2 * ((cellHeight as int64) / 4);
+	return w * h <= 2147483647;
+}
+
 function drawId(
 	id: int32, cellWidth: int32, cellHeight: int32, thickness: int32,
 ): Result<SpriteCanvas, SpriteError> {
@@ -151,6 +157,7 @@ function drawId(
 	if (cellWidth < 1 || cellHeight < 1 || thickness < 1) {
 		return Result.err(SpriteError.BadCell);
 	}
+	if (!canvasFits(cellWidth, cellHeight)) { return Result.err(SpriteError.BadCell); }
 	const painter: Painter = new Painter(cellWidth, cellHeight, thickness);
 	if (!paint(painter, codepoint, RANGES[rangeOf(codepoint)].family)) {
 		return Result.err(SpriteError.Geometry);
