@@ -1794,9 +1794,9 @@ function laidOut(rows: LineWrap, style: TextStyle, primary: int32): TextLayout {
 	alignLines(rows.glyphs, rows.rows, style, rows.width);
 	const metrics = faceMetrics(primary, style.size);
 	return {
-		glyphs: rows.glyphs,
-		bidi: rows.bidi,
-		lines: rows.rows,
+		glyphs: move rows.glyphs,
+		bidi: move rows.bidi,
+		lines: move rows.rows,
 		ascent: metrics.ascent,
 		descent: metrics.descent,
 		lineHeight: metrics.ascent + metrics.descent + metrics.lineGap,
