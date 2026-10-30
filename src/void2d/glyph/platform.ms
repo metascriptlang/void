@@ -4,7 +4,16 @@ import {
 	void2dPlatformFaceOpen,
 	void2dPlatformFaceUnitsBox,
 } from "../platformFace.h";
-import { FontInfo, GlyphBox, asInt32, findTable, u16At, u32At, u8At } from "../trueType/fontInfo";
+import {
+	FontInfo,
+	GlyphBox,
+	asInt32,
+	findTable,
+	newBuf,
+	u16At,
+	u32At,
+	u8At,
+} from "../trueType/fontInfo";
 
 when (macos || ios) {
 	@compile("../platformFaceApple.m", "-fobjc-arc");
@@ -73,12 +82,12 @@ export function platformInfo(bytes: uint8[], offset: int32): PlatformTable | nul
 		svg: 0,
 		indexMap: indexMap,
 		indexToLocFormat: data.u16At((head as int64) + 50),
-		cff: { data: data, base: 0, size: 0, cursor: 0 },
-		charstrings: { data: data, base: 0, size: 0, cursor: 0 },
-		gsubrs: { data: data, base: 0, size: 0, cursor: 0 },
-		subrs: { data: data, base: 0, size: 0, cursor: 0 },
-		fontdicts: { data: data, base: 0, size: 0, cursor: 0 },
-		fdselect: { data: data, base: 0, size: 0, cursor: 0 },
+		cff: newBuf(data),
+		charstrings: newBuf(data),
+		gsubrs: newBuf(data),
+		subrs: newBuf(data),
+		fontdicts: newBuf(data),
+		fdselect: newBuf(data),
 	};
 	return new PlatformTable(
 		info,
