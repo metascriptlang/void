@@ -99,8 +99,8 @@ function findTableSlice(face: GlyphFace, tag: string): TableSlice {
 	const data = face.info.data;
 	const font: int64 = face.info.fontstart as int64;
 	const tables = data.u16At(font + 4);
-	for (let i: int32 = 0; i < tables; i++) {
-		const record: int64 = font + 12 + 16 * (i as int64);
+	for (let table: int32 = 0; table < tables; table++) {
+		const record: int64 = font + 12 + 16 * (table as int64);
 		if (!data.hasTag(record, tag)) { continue; }
 		return { offset: data.u32At(record + 8), length: asInt32(data.u32At(record + 12)) };
 	}
@@ -197,8 +197,8 @@ function asciiExtent(face: GlyphFace): AsciiExtent {
 	let top: int32 = 0;
 	let bottom: int32 = 0;
 	let widest: int32 = 0;
-	for (let c: int32 = 32; c < 127; c++) {
-		const glyph = findGlyph(face, c);
+	for (let codepoint: int32 = 32; codepoint < 127; codepoint++) {
+		const glyph = findGlyph(face, codepoint);
 		if (glyph == 0) { continue; }
 		const advance = advanceUnits(face, glyph);
 		if (advance > widest) { widest = advance; }
@@ -289,15 +289,15 @@ export function void2dGlyphFaceHeights(face: int32, out: Span<float32>): void {
 	if (!validFace(face)) { return; }
 	const f = faceAt(face);
 	measureFace(f);
-	const h = f.heights;
+	const heights = f.heights;
 	const perEm = void2dGlyphScale(face, 1.0);
-	out[0] = (h.ic > 0.0 ? h.ic : 0.0) * perEm;
-	out[1] = (h.ex > 0.0 ? h.ex : 0.0) * perEm;
-	out[2] = (h.cap > 0.0 ? h.cap : 0.0) * perEm;
-	out[3] = h.icEstimate * perEm;
-	out[4] = h.exEstimate * perEm;
-	out[5] = h.capEstimate * perEm;
-	out[6] = h.lineHeight * perEm;
+	out[0] = (heights.ic > 0.0 ? heights.ic : 0.0) * perEm;
+	out[1] = (heights.ex > 0.0 ? heights.ex : 0.0) * perEm;
+	out[2] = (heights.cap > 0.0 ? heights.cap : 0.0) * perEm;
+	out[3] = heights.icEstimate * perEm;
+	out[4] = heights.exEstimate * perEm;
+	out[5] = heights.capEstimate * perEm;
+	out[6] = heights.lineHeight * perEm;
 }
 
 export function void2dGlyphDecoration(face: int32, sizePx: float32, out: Span<float32>): void {
@@ -557,8 +557,8 @@ when (voidSprites) {
 	function spriteAsciiUnits(face: GlyphFace): float32 {
 		if (face.asciiUnits > 0.0) { return face.asciiUnits; }
 		let widest: int32 = 0;
-		for (let c: int32 = 32; c < 127; c++) {
-			const glyph = findGlyphIndex(face.info, c);
+		for (let codepoint: int32 = 32; codepoint < 127; codepoint++) {
+			const glyph = findGlyphIndex(face.info, codepoint);
 			if (glyph == 0) { continue; }
 			const metrics = getGlyphHMetrics(face.info, glyph);
 			if (metrics.advance > widest) { widest = metrics.advance; }
