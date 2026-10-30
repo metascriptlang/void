@@ -117,6 +117,9 @@ export struct BufferRecord {
 	usage: int32;
 	writtenFrame: int64;
 	writtenEnd: int64;
+	writtenExtent: int64;
+	usedFrame: int64;
+	transient: boolean;
 	mapMode: int32;
 	mapOffset: int64;
 	mapSize: int64;
@@ -200,6 +203,7 @@ export struct BindGroupRecord {
 	dynamicCount: int32;
 	dynamicIndex: int32[GPU_MAX_BIND_GROUP_ENTRIES];
 	dynamicRoom: int64[GPU_MAX_BIND_GROUP_ENTRIES];
+	buffers: uint32[GPU_MAX_BIND_GROUP_ENTRIES];
 }
 
 export struct IdRecord { id: uint32; }

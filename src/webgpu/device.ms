@@ -145,6 +145,9 @@ import {
 	resolvedRenderPipeline,
 	textureRecordOf,
 	dynamicIndexOf,
+	entryBuffersOf,
+	markBufferRead,
+	markBufferUsed,
 	dynamicRoomOf,
 	groupOfKind,
 	uniformEntryCount,
@@ -233,7 +236,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function createBuffer(this self: GPUDevice, descriptor: GPUBufferDescriptor): GPUBuffer {
 	checkedBuffer(descriptor.size, descriptor.usage);
 	const id = allocate(bufferRecords);
-	store(bufferRecords, { id: id, size: descriptor.size, usage: descriptor.usage, writtenFrame: -1 });
+	store(bufferRecords, { id: id, size: descriptor.size, usage: descriptor.usage, writtenFrame: -1, usedFrame: -1, transient: descriptor.transient });
 	backend.createBuffer(id, descriptor);
 	return { id: id };
 }
@@ -330,6 +333,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 		dynamicCount: group == GPU_UNIFORM_GROUP ? uniformEntryCount(descriptor) : 0,
 		dynamicIndex: dynamicIndexOf(descriptor),
 		dynamicRoom: group == GPU_UNIFORM_GROUP ? dynamicRoomOf(descriptor, shader) : [0],
+		buffers: entryBuffersOf(descriptor),
 	});
 	backend.createBindGroup(id, descriptor);
 	return { id: id };
@@ -528,6 +532,7 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	checkedDispatchBound();
 	const b = bufferRecords.slotIndex(buffer.id);
 	checkedDispatchIndirect(buffer.id, bufferRecords.slots[b].usage, bufferRecords.slots[b].size, offset);
+	markBufferRead(buffer.id);
 	backend.dispatchWorkgroupsIndirect(buffer, offset);
 }
 
@@ -547,6 +552,8 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	checkedOutsidePass("copyBufferToBuffer");
 	checkedBufferToBuffer(source, sourceOffset, destination, destinationOffset, size);
 	if (size == 0) { return; }
+	markBufferRead(source.id);
+	markBufferUsed(destination.id);
 	backend.copyBufferToBuffer(source, sourceOffset, destination, destinationOffset, size);
 }
 
@@ -559,6 +566,7 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	checkedOutsidePass("copyBufferToTexture");
 	checkedCopyBuffer("copyBufferToTexture", source.buffer, true);
 	checkedCopyTexture("copyBufferToTexture", destination, false, copySize);
+	markBufferRead(source.buffer.id);
 	backend.copyBufferToTexture(source, destination, copySize);
 }
 
@@ -571,6 +579,7 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	checkedOutsidePass("copyTextureToBuffer");
 	checkedCopyTexture("copyTextureToBuffer", source, true, copySize);
 	checkedCopyBuffer("copyTextureToBuffer", destination.buffer, false);
+	markBufferUsed(destination.buffer.id);
 	backend.copyTextureToBuffer(source, destination, copySize);
 }
 
@@ -597,6 +606,7 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	checkedOutsidePass("resolveQuerySet");
 	checkedResolveQueries(querySet.id, firstQuery, queryCount, destination.id, destinationOffset);
 	if (queryCount == 0) { return; }
+	markBufferUsed(destination.id);
 	backend.resolveQuerySet(querySet, firstQuery, queryCount, destination, destinationOffset);
 }
 
@@ -770,12 +780,14 @@ function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offse
 @inline export function drawIndexedIndirect(this self: GPURenderPassEncoder, indirectBuffer: GPUBuffer, indirectOffset: int64): void {
 	checkedInPass(PASS_RENDER, "drawIndexedIndirect");
 	checkedDrawIndirect("drawIndexedIndirect", indirectBuffer.id, indirectOffset, 1);
+	markBufferRead(indirectBuffer.id);
 	backend.multiDrawIndexedIndirect(indirectBuffer, indirectOffset, 1);
 }
 
 @inline export function multiDrawIndexedIndirect(this self: GPURenderPassEncoder, indirectBuffer: GPUBuffer, indirectOffset: int64, maxDrawCount: int32): void {
 	checkedInPass(PASS_RENDER, "multiDrawIndexedIndirect");
 	checkedDrawIndirect("multiDrawIndexedIndirect", indirectBuffer.id, indirectOffset, maxDrawCount);
+	markBufferRead(indirectBuffer.id);
 	if (maxDrawCount == 0) { return; }
 	backend.multiDrawIndexedIndirect(indirectBuffer, indirectOffset, maxDrawCount);
 }

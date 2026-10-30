@@ -28,6 +28,7 @@ import {
 	makeIndexBuffer,
 	makeIndexBuffer32,
 	makeStreamBuffer,
+	makeTransientBuffer,
 	updateBuffer,
 	appendBuffer,
 	destroyBuffer,
@@ -2174,7 +2175,7 @@ function appendRows(context: DrawContext, count: int32): int32 {
 		let size: int32 = Math.max(context.rowFloats * 2, MIN_ROW_FLOATS);
 		while (size < floats) { size = size * 2; }
 		doom(context, context.rowBuffer, context.rowGeneration);
-		context.rowBuffer = makeStreamBuffer(size);
+		context.rowBuffer = makeTransientBuffer(size);
 		if (context.rowBuffer == 0) {
 			console.log(`void3d: drawItem could not make a row buffer of ${size} floats`);
 			unreachable;

@@ -210,6 +210,7 @@ export struct GPUBufferDescriptor {
 	label: string | null;
 	size: int64;
 	usage: int32;
+	transient: boolean;
 }
 
 export struct GPUTextureDescriptor {

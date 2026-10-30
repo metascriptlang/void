@@ -332,6 +332,7 @@ export function doorSetup(
 		label: "uniforms",
 		size: UNIFORM_RING_BYTES,
 		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+		transient: true,
 	});
 	uniformCursor = 0;
 	uniformStamps = [0, 0, 0, 0, 0, 0, 0, 0];
@@ -1218,6 +1219,7 @@ export const DOOR_BUFFER_VERTEX = 1;
 export const DOOR_BUFFER_INDEX = 2;
 export const DOOR_BUFFER_INDIRECT = 4;
 export const DOOR_BUFFER_STORAGE = 8;
+export const DOOR_BUFFER_TRANSIENT = 16;
 
 function alignedToFour(bytes: int64): int64 {
 	return (bytes + 3) & ~(3 as int64);
@@ -1231,6 +1233,7 @@ export function doorMakeBuffer(usage: int32, data: Readonly<Span<uint8>>, size: 
 		label: bufferLabel(usage),
 		size: alignedToFour(bytes),
 		usage: doorBufferUsage(usage),
+		transient: (usage & DOOR_BUFFER_TRANSIENT) != 0,
 	});
 	if (buffer.id != 0 && data.length > 0) { device.queue.writeBuffer(buffer, 0, data); }
 	return buffer.id;
@@ -1242,6 +1245,7 @@ export function doorMakeBufferOf<T>(usage: int32, data: Readonly<Span<T>>): uint
 		label: bufferLabel(usage),
 		size: alignedToFour((data.length as int64) * (sizeof(T) as int64)),
 		usage: doorBufferUsage(usage),
+		transient: (usage & DOOR_BUFFER_TRANSIENT) != 0,
 	});
 	if (buffer.id != 0) { device.queue.writeBuffer(buffer, 0, data); }
 	return buffer.id;

@@ -140,4 +140,43 @@ when (voidDummy) {
 		pass.drawIndexed(8, 1, 0, 0, 0);
 		pass.drawIndexed(0, 1, 8, 0, 0);
 	}
+
+	test "a transient buffer takes fresh ranges after a draw read it, and a lasting one takes a write the next frame" {
+		const device = openTestDevice();
+		const pipeline = flatPipeline(device);
+		const group = groupOf(device, pipeline, colourUniforms(device));
+		const usage = (GPUBufferUsage.VERTEX as int32) | (GPUBufferUsage.COPY_DST as int32);
+		const ring = device.createBuffer({ label: "ring", size: 48, usage: usage, transient: true });
+		const lasting = vertexBuffer(device, 24);
+		const triangle: Vec<float32> = [0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+		const offsets: Vec<uint32> = [0];
+		const view = colourTarget(device, 1).createView({ label: null });
+		device.queue.writeBuffer(ring, 0, triangle);
+		device.queue.writeBuffer(lasting, 0, triangle);
+		let encoder = device.createCommandEncoder();
+		const pass = encoder.beginRenderPass(clearingPass(view, { id: 0 }));
+		pass.setPipeline(pipeline);
+		pass.setBindGroup(0, group, offsets);
+		pass.setVertexBuffer(0, ring, 0);
+		pass.draw(3, 1, 0, 0);
+		device.queue.writeBuffer(ring, 24, triangle);
+		pass.setVertexBuffer(0, ring, 24);
+		pass.draw(3, 1, 0, 0);
+		pass.setVertexBuffer(0, lasting, 0);
+		pass.draw(3, 1, 0, 0);
+		pass.end();
+		device.queue.submit(encoder.finish());
+		device.queue.writeBuffer(lasting, 8, [2.0, 2.0] as Vec<float32>);
+		device.queue.writeBuffer(ring, 0, triangle);
+		encoder = device.createCommandEncoder();
+		const next = encoder.beginRenderPass(clearingPass(view, { id: 0 }));
+		next.setPipeline(pipeline);
+		next.setBindGroup(0, group, offsets);
+		next.setVertexBuffer(0, lasting, 0);
+		next.draw(3, 1, 0, 0);
+		next.setVertexBuffer(0, ring, 0);
+		next.draw(3, 1, 0, 0);
+		next.end();
+		device.queue.submit(encoder.finish());
+	}
 }

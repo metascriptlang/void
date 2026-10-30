@@ -340,7 +340,9 @@ export function checkedDrawState(call: string, indexed: boolean): void {
 	if (stale == 0) { return; }
 	const groups = (stale & ASPECT_GROUPS) != 0 ? pipelineRecords.slots[p].groups : 0;
 	refuse(boundRefusal((stale & ASPECT_VERTEX) != 0 ? pipelineRecords.slots[p].vertexSlots : 0, groups, false));
-	if (groups != 0) { checkGroupOwners(groups, false); }
+	if (groups != 0) { checkGroupOwners(groups, false); markGroupsRead(groups); }
+	if ((stale & ASPECT_VERTEX) != 0) { markVertexRead(pipelineRecords.slots[p].vertexSlots); }
+	if ((stale & ASPECT_INDEX) != 0) { markBufferRead(boundFacts.indexBuffer); }
 	if ((stale & ASPECT_INDEX) != 0) { refuse(stripDrawRefusal(pipelineRecords.slots[p].strip, pipelineRecords.slots[p].stripIndexFormat == boundFacts.indexFormat)); }
 	if ((stale & ASPECT_VERTEX) != 0) { limitVertexRanges(p); }
 	if ((stale & ASPECT_INDEX) != 0) { limitIndexRange(); }
@@ -448,6 +450,7 @@ export function checkedDispatchBound(): void {
 	refuse(boundRefusal(0, groups, true));
 	if ((boundFacts.stale & ASPECT_GROUPS) == 0) { return; }
 	checkGroupOwners(groups, true);
+	markGroupsRead(groups);
 	boundFacts.stale &= ~ASPECT_GROUPS;
 }
 
@@ -665,6 +668,9 @@ export function writeBufferRefusal(buffer: BufferRecord, offset: int64, bytes: i
 	if ((buffer.usage & (GPUBufferUsage.COPY_DST as int32)) == 0) { return `GPUBuffer ${buffer.id} was created without COPY_DST`; }
 	if (offset < 0 || offset + bytes > buffer.size) { return `writeBuffer of ${bytes} bytes at ${offset} overruns GPUBuffer ${buffer.id} of ${buffer.size}`; }
 	if ((offset & 3) != 0) { return `writeBuffer offset ${offset} is not a multiple of 4`; }
+	if (!buffer.transient && buffer.usedFrame == frame) {
+		return `writeBuffer on GPUBuffer ${buffer.id} after a command this frame read it: write it before its first use in the frame, or create it transient`;
+	}
 	return bufferRewriteRefusal(buffer, "writeBuffer", offset, frame);
 }
 
@@ -676,6 +682,40 @@ export function checkedBufferRewrite(index: int32, member: string, offset: int64
 export function markBufferWritten(index: int32, offset: int64, bytes: int64): void {
 	bufferRecords.slots[index].writtenFrame = frame;
 	bufferRecords.slots[index].writtenEnd = offset + bytes;
+	bufferRecords.slots[index].writtenExtent = Math.max(bufferRecords.slots[index].writtenExtent, offset + bytes);
+}
+
+export function replacesWrittenBytes(index: int32, offset: int64, bytes: int64): boolean {
+	return offset == 0 && bytes >= bufferRecords.slots[index].writtenExtent;
+}
+
+// After a command of the frame uses a buffer, a writeBuffer to it is refused unless it is transient,
+// so an immediate backend and a recording one draw the same frame.
+export function markBufferUsed(id: uint32): void {
+	if (id != 0) { bufferRecords.slots[bufferRecords.slotIndex(id)].usedFrame = frame; }
+}
+
+export function markBufferRead(id: uint32): void {
+	if (id == 0) { return; }
+	const index = bufferRecords.slotIndex(id);
+	if (bufferRecords.slots[index].transient && bufferRecords.slots[index].writtenFrame != frame) {
+		stop(`transient GPUBuffer ${id} is read in a frame that has not written it`);
+	}
+	bufferRecords.slots[index].usedFrame = frame;
+}
+
+function markGroupsRead(groups: int32): void {
+	for (let index = 0; index <= GPU_RESOURCE_GROUP; index++) {
+		if ((groups & (1 << index)) == 0) { continue; }
+		const group = bindGroupRecords.slotIndex(boundFacts.bindGroups[index]);
+		for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) { markBufferRead(bindGroupRecords.slots[group].buffers[i]); }
+	}
+}
+
+function markVertexRead(slots: int32): void {
+	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
+		if ((slots & (1 << slot)) != 0) { markBufferRead(boundFacts.vertexBuffers[slot]); }
+	}
 }
 export function checkedTexture(descriptor: GPUTextureDescriptor, limits: GPUSupportedLimits): void { refuse(textureRefusal(descriptor, limits)); }
 
@@ -1010,6 +1050,12 @@ export function uniformEntryCount(descriptor: GPUBindGroupDescriptor): int32 {
 
 // The place of each buffer entry among the group's dynamic offsets: its rank by binding among the
 // buffer entries, in the order the entries are stored.
+export function entryBuffersOf(descriptor: GPUBindGroupDescriptor): uint32[GPU_MAX_BIND_GROUP_ENTRIES] {
+	let buffers: uint32[GPU_MAX_BIND_GROUP_ENTRIES] = [0];
+	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) { buffers[i] = descriptor.entries[i].buffer.id; }
+	return buffers;
+}
+
 export function dynamicIndexOf(descriptor: GPUBindGroupDescriptor): int32[GPU_MAX_BIND_GROUP_ENTRIES] {
 	let ranks: int32[GPU_MAX_BIND_GROUP_ENTRIES] = [0];
 	let stored = 0;

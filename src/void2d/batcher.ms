@@ -1,6 +1,6 @@
 import { exit } from "std/process";
 import {
-	DOOR_BUFFER_VERTEX, PixelFormat, PassState, doorValid, doorOriginTopLeft,
+	DOOR_BUFFER_TRANSIENT, DOOR_BUFFER_VERTEX, PixelFormat, PassState, doorValid, doorOriginTopLeft,
 	doorContextGeneration, doorMakeBuffer, doorMakeBufferOf, doorDestroyBuffer, doorAppendBufferOf,
 	doorUpdateBufferOf, doorMakeTexture, doorMakeTextureView, doorDestroyView, doorDestroyImage,
 	doorUpdateTexture, doorUpdateTextureRect, doorMakeSampler, doorViewIsColorAttachment,
@@ -288,8 +288,8 @@ function releaseRetiredBuffers(): void {
 	clearWords(closedBuf);
 }
 
-function makeBuffer(bytes: int32, what: string): uint32 {
-	const id: uint32 = doorMakeBuffer(DOOR_BUFFER_VERTEX, [], bytes as int64);
+function makeBuffer(usage: int32, bytes: int32, what: string): uint32 {
+	const id: uint32 = doorMakeBuffer(usage, [], bytes as int64);
 	if (id == 0) { fail(`void2d: the door made no ${bytes}-byte ${what} buffer`); }
 	return id;
 }
@@ -312,7 +312,7 @@ function ensureVertexBuffer(bytes: int32): boolean {
 		}
 		retiredBuf.push(vbuf);
 	}
-	vbuf = makeBuffer(want, "frame vertex");
+	vbuf = makeBuffer(DOOR_BUFFER_VERTEX | DOOR_BUFFER_TRANSIENT, want, "frame vertex");
 	buffersMade++;
 	vbufBytes = want;
 	return true;
@@ -858,7 +858,7 @@ function ensureListBuffer(l: DisplayList, which: int32, bytes: int32): boolean {
 		if ((retiredBuf.length as int32) >= MAX_RETIRED_BUFFERS) { return false; }
 		retiredBuf.push(l.buf[which]);
 	}
-	l.buf[which] = makeBuffer(want, "display list");
+	l.buf[which] = makeBuffer(DOOR_BUFFER_VERTEX, want, "display list");
 	buffersMade++;
 	l.cap[which] = want;
 	return true;
