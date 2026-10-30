@@ -1206,6 +1206,45 @@ function emitBox(
 	}
 }
 
+function opColor(ops: float32[], at: int32): Color {
+	return rgba(ops[at], ops[at + 1], ops[at + 2], ops[at + 3]);
+}
+
+function emitGraphics(
+	s: Scene2D, i: int32, world: Transform2D, na: float32, blend: BlendMode,
+): void {
+	const geometry: GraphicsMesh = s.meshes[s.payloads[i]];
+	const ops: float32[] = geometry.records;
+	const opTotal: int32 = ops.length as int32;
+	if (opTotal == 0) {
+		drawMesh(geometry.mesh, geometry.edges, geometry.source.view(),
+			geometry.alphaPremultiplied, blend, world, WHITE, na);
+		return;
+	}
+	for (let oi: int32 = 0; oi + GRAPHICS_OP_FLOATS <= opTotal; oi += GRAPHICS_OP_FLOATS) {
+		const kind: int32 = ops[oi + GFX_OP_KIND] as int32;
+		const offset: int32 = ops[oi + GFX_OP_VERTEX_OFFSET] as int32;
+		const count: int32 = ops[oi + GFX_OP_VERTEX_COUNT] as int32;
+		if (kind == GraphicsOpKind.Mesh as int32) {
+			setEffect(s.colorMatrixOf(i), s.paints[i].colorAdd, s.paints[i].colorKey);
+			drawMeshRange(
+				geometry.mesh, geometry.edges, offset, count, geometry.source.view(),
+				geometry.alphaPremultiplied, blend, world, WHITE, na);
+		} else {
+			setGradientEffect(
+				s.colorMatrixOf(i), s.paints[i].colorAdd, s.paints[i].colorKey,
+				kind, ops[oi + GFX_OP_SPACE] as int32,
+				ops[oi + GFX_OP_DITHER] != 0.0, ops[oi + GFX_OP_MIDDLE],
+				ops[oi + GFX_OP_PARAMS], ops[oi + GFX_OP_PARAMS + 1],
+				ops[oi + GFX_OP_PARAMS + 2], ops[oi + GFX_OP_PARAMS + 3],
+				opColor(ops, oi + GFX_OP_COLOR0), opColor(ops, oi + GFX_OP_COLOR1),
+				opColor(ops, oi + GFX_OP_COLOR2));
+			drawMeshRange(
+				geometry.mesh, geometry.edges, offset, count, 0, false, blend, world, WHITE, na);
+		}
+	}
+}
+
 function emitNode(
 	s: Scene2D, i: int32, world: Transform2D, na: float32, col: Color,
 	tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2, sizeX: float32, sizeY: float32, lbMin: Vec2,
@@ -1256,49 +1295,7 @@ function emitNode(
 			emitIcon(s, i, world, col);
 		},
 		DrawKind.Graphics => {
-			const geometry: GraphicsMesh = s.meshes[payload];
-			const ops: float32[] = geometry.records;
-			const opTotal: int32 = ops.length as int32;
-			if (opTotal == 0) {
-				drawMesh(geometry.mesh, geometry.edges, geometry.source.view(),
-					geometry.alphaPremultiplied, blend, world, WHITE, na);
-			} else {
-				const stride: int32 = GRAPHICS_OP_FLOATS;
-				for (let oi: int32 = 0; oi + stride <= opTotal; oi += stride) {
-					const kind: int32 = ops[oi + GFX_OP_KIND] as int32;
-					const offset: int32 = ops[oi + GFX_OP_VERTEX_OFFSET] as int32;
-					const count: int32 = ops[oi + GFX_OP_VERTEX_COUNT] as int32;
-					if (kind == GraphicsOpKind.Mesh as int32) {
-						setEffect(
-							s.colorMatrixOf(i), s.paints[i].colorAdd, s.paints[i].colorKey,
-						);
-						drawMeshRange(
-							geometry.mesh, geometry.edges, offset, count, geometry.source.view(),
-							geometry.alphaPremultiplied, blend, world,
-							WHITE, na);
-					} else {
-						const c0: Color = rgba(
-							ops[oi + GFX_OP_COLOR0], ops[oi + GFX_OP_COLOR0 + 1],
-							ops[oi + GFX_OP_COLOR0 + 2], ops[oi + GFX_OP_COLOR0 + 3]);
-						const c1: Color = rgba(
-							ops[oi + GFX_OP_COLOR1], ops[oi + GFX_OP_COLOR1 + 1],
-							ops[oi + GFX_OP_COLOR1 + 2], ops[oi + GFX_OP_COLOR1 + 3]);
-						const c2: Color = rgba(
-							ops[oi + GFX_OP_COLOR2], ops[oi + GFX_OP_COLOR2 + 1],
-							ops[oi + GFX_OP_COLOR2 + 2], ops[oi + GFX_OP_COLOR2 + 3]);
-						setGradientEffect(
-							s.colorMatrixOf(i), s.paints[i].colorAdd, s.paints[i].colorKey,
-							kind, ops[oi + GFX_OP_SPACE] as int32,
-							ops[oi + GFX_OP_DITHER] != 0.0, ops[oi + GFX_OP_MIDDLE],
-							ops[oi + GFX_OP_PARAMS], ops[oi + GFX_OP_PARAMS + 1],
-							ops[oi + GFX_OP_PARAMS + 2], ops[oi + GFX_OP_PARAMS + 3],
-							c0, c1, c2);
-						drawMeshRange(
-							geometry.mesh, geometry.edges, offset, count, 0, false, blend, world,
-							WHITE, na);
-					}
-				}
-			}
+			emitGraphics(s, i, world, na, blend);
 		},
 		DrawKind.ScaleGrid => {
 			renderScaleGrid(s, i, world, col);
