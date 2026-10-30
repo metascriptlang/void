@@ -563,13 +563,21 @@ export function kbWouldSubstitute(
 	return result;
 }
 
-function kbIdSequentialLookupMatrixWord(
+function idSequentialLookupMatrixFlatBit(
 	sequentialLookupIndex: int64,
 	glyphIndex: int64,
 	sequentialLookupCount: int64,
 ): int64 {
 	const bitsPerRow = (sequentialLookupCount + 31) & ~(31 as int64);
-	return (glyphIndex * bitsPerRow + sequentialLookupIndex) / 32;
+	return glyphIndex * bitsPerRow + sequentialLookupIndex;
+}
+
+function kbIdSequentialLookupMatrixWord(
+	sequentialLookupIndex: int64,
+	glyphIndex: int64,
+	sequentialLookupCount: int64,
+): int64 {
+	return idSequentialLookupMatrixFlatBit(sequentialLookupIndex, glyphIndex, sequentialLookupCount) / 32;
 }
 
 function idSequentialLookupMatrixBit(
@@ -577,8 +585,7 @@ function idSequentialLookupMatrixBit(
 	glyphIndex: int64,
 	sequentialLookupCount: int64,
 ): int64 {
-	const bitsPerRow = (sequentialLookupCount + 31) & ~(31 as int64);
-	return (glyphIndex * bitsPerRow + sequentialLookupIndex) % 32;
+	return idSequentialLookupMatrixFlatBit(sequentialLookupIndex, glyphIndex, sequentialLookupCount) % 32;
 }
 
 struct KbLangsysChoice {
