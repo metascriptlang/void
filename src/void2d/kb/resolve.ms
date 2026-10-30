@@ -134,7 +134,7 @@ export function kbItemVariationStoreDelta(
 	return result;
 }
 
-export function kbResolveDevice(s: KbScratch, device: int64): float32 {
+function resolveDevice(s: KbScratch, device: int64): float32 {
 	const m: Span<uint8> = s.font.blob[0..s.font.blob.length];
 	let result: float32 = 0;
 	if (s.hasVariationVector && m.kbU16(device + 4) == 0x8000 && s.gdefItemVariationStore != 0) {
@@ -142,6 +142,10 @@ export function kbResolveDevice(s: KbScratch, device: int64): float32 {
 			m.kbU16(device + 2) as int64, s.variationVectorNormalized);
 	}
 	return result;
+}
+
+function adjustedByDevice(s: KbScratch, value: int32, device: int64): int32 {
+	return wrapS16(value + wrapS16(kbRound32(resolveDevice(s, device))));
 }
 
 export function kbResolveValueRecord(
@@ -174,32 +178,28 @@ export function kbResolveValueRecord(
 		const offset = m.kbU16(at);
 		at += 2;
 		if (offset != 0) {
-			result.placementX = wrapS16(result.placementX +
-				wrapS16(kbRound32(kbResolveDevice(s, parent + offset))));
+			result.placementX = adjustedByDevice(s, result.placementX, parent + offset);
 		}
 	}
 	if ((format & KB_VALUE_FORMAT_Y_PLACEMENT_DEVICE) != 0) {
 		const offset = m.kbU16(at);
 		at += 2;
 		if (offset != 0) {
-			result.placementY = wrapS16(result.placementY +
-				wrapS16(kbRound32(kbResolveDevice(s, parent + offset))));
+			result.placementY = adjustedByDevice(s, result.placementY, parent + offset);
 		}
 	}
 	if ((format & KB_VALUE_FORMAT_X_ADVANCE_DEVICE) != 0) {
 		const offset = m.kbU16(at);
 		at += 2;
 		if (offset != 0) {
-			result.advanceX = wrapS16(result.advanceX +
-				wrapS16(kbRound32(kbResolveDevice(s, parent + offset))));
+			result.advanceX = adjustedByDevice(s, result.advanceX, parent + offset);
 		}
 	}
 	if ((format & KB_VALUE_FORMAT_Y_ADVANCE_DEVICE) != 0) {
 		const offset = m.kbU16(at);
 		at += 2;
 		if (offset != 0) {
-			result.advanceY = wrapS16(result.advanceY +
-				wrapS16(kbRound32(kbResolveDevice(s, parent + offset))));
+			result.advanceY = adjustedByDevice(s, result.advanceY, parent + offset);
 		}
 	}
 	return result;
@@ -213,11 +213,11 @@ export function kbResolveAnchorXy(s: KbScratch, anchor: int64): KbAnchorXy {
 	if (m.kbU16(anchor) == 3) {
 		const xDeviceOffset = m.kbU16(anchor + 6);
 		if (xDeviceOffset != 0) {
-			x += kbRound32(kbResolveDevice(s, anchor + xDeviceOffset));
+			x += kbRound32(resolveDevice(s, anchor + xDeviceOffset));
 		}
 		const yDeviceOffset = m.kbU16(anchor + 8);
 		if (yDeviceOffset != 0) {
-			y += kbRound32(kbResolveDevice(s, anchor + yDeviceOffset));
+			y += kbRound32(resolveDevice(s, anchor + yDeviceOffset));
 		}
 	}
 	return { x, y };
