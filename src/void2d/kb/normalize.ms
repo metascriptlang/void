@@ -350,28 +350,14 @@ function reorderArabicMarks(s: KbScratch): void {
 				if (sequenceGlyphCombiningClass == REMAPPED_CCC_33) {
 					markOrdering = 2;
 				} else if (sequenceGlyphCombiningClass == 220) {
-					if ((sequenceGlyphFlags & KB_UNICODE_FLAG_MODIFIER_COMBINING_MARK) != 0) {
-						if (mcm220SequenceState != KB_MCM_SEQUENCE_STATE_OUT) {
-							mcm220SequenceState = KB_MCM_SEQUENCE_STATE_IN;
-						}
-					} else {
-						mcm220SequenceState = KB_MCM_SEQUENCE_STATE_OUT;
-					}
-
+					mcm220SequenceState = nextMcmSequenceState(mcm220SequenceState, sequenceGlyphFlags);
 					if (mcm220SequenceState == KB_MCM_SEQUENCE_STATE_IN) {
 						markOrdering = 0;
 					}
 
 					mcm230SequenceState = KB_MCM_SEQUENCE_STATE_NONE;
 				} else if (sequenceGlyphCombiningClass == 230) {
-					if ((sequenceGlyphFlags & KB_UNICODE_FLAG_MODIFIER_COMBINING_MARK) != 0) {
-						if (mcm230SequenceState != KB_MCM_SEQUENCE_STATE_OUT) {
-							mcm230SequenceState = KB_MCM_SEQUENCE_STATE_IN;
-						}
-					} else {
-						mcm230SequenceState = KB_MCM_SEQUENCE_STATE_OUT;
-					}
-
+					mcm230SequenceState = nextMcmSequenceState(mcm230SequenceState, sequenceGlyphFlags);
 					if (mcm230SequenceState == KB_MCM_SEQUENCE_STATE_IN) {
 						markOrdering = 1;
 					}
@@ -393,6 +379,13 @@ function reorderArabicMarks(s: KbScratch): void {
 
 		glyph = next;
 	}
+}
+
+function nextMcmSequenceState(state: uint32, unicodeFlags: uint8): uint32 {
+	if ((unicodeFlags & KB_UNICODE_FLAG_MODIFIER_COMBINING_MARK) == 0) {
+		return KB_MCM_SEQUENCE_STATE_OUT;
+	}
+	return state == KB_MCM_SEQUENCE_STATE_OUT ? KB_MCM_SEQUENCE_STATE_OUT : KB_MCM_SEQUENCE_STATE_IN;
 }
 
 function isAboveBaseThaiLaoMark(codepoint: uint32): boolean {
