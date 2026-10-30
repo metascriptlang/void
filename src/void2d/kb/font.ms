@@ -192,8 +192,8 @@ function selectCmapSubtable(
 	let result: KbCmapSubtablePointer = { platformId: 0, encodingId: 0, at: 0 };
 
 	const preferredFormat = 1;
-	for (let it: int64 = 0; it < u16At(m, cmap + 2); it++) {
-		const subtable = kbGetCmapSubtable(m, cmap, it);
+	for (let subtableIndex: int64 = 0; subtableIndex < u16At(m, cmap + 2); subtableIndex++) {
+		const subtable = kbGetCmapSubtable(m, cmap, subtableIndex);
 		if (subtable.at + 2 <= tableEnd) {
 			let format = m.kbU16(subtable.at);
 
@@ -621,8 +621,8 @@ function swapCmapSubtable(m: Span<uint8>, font: KbFont, cmap: int64, tableEnd: i
 	const records = cmap + KB_SIZE_CMAP;
 
 	if (records + u16At(m, cmap + 2) * KB_SIZE_ENCODING_RECORD <= tableEnd) {
-		for (let it: int64 = 0; it < u16At(m, cmap + 2); it++) {
-			const record = records + it * KB_SIZE_ENCODING_RECORD;
+		for (let recordIndex: int64 = 0; recordIndex < u16At(m, cmap + 2); recordIndex++) {
+			const record = records + recordIndex * KB_SIZE_ENCODING_RECORD;
 			m.kbSwapU16At(record + 2);
 			m.kbSwapU16At(record);
 			m.kbSwapU32At(record + 4);
@@ -643,8 +643,8 @@ function swapCmapSubtable(m: Span<uint8>, font: KbFont, cmap: int64, tableEnd: i
 				2 => {
 					if (m.kbSwapArray16(subtable + 2, 258, tableEnd)) {
 						let subHeaderCount: int64 = 0;
-						for (let it: int64 = 0; it < 256; it++) {
-							const subHeaderIndex = u16At(m, subtable + 6 + it * 2);
+						for (let highByte: int64 = 0; highByte < 256; highByte++) {
+							const subHeaderIndex = u16At(m, subtable + 6 + highByte * 2);
 							if (subHeaderIndex + 1 > subHeaderCount) {
 								subHeaderCount = subHeaderIndex + 1;
 							}
@@ -655,8 +655,8 @@ function swapCmapSubtable(m: Span<uint8>, font: KbFont, cmap: int64, tableEnd: i
 							const glyphIds = subHeaders + subHeaderCount * 8;
 
 							let glyphIdCount: int64 = 0;
-							for (let it: int64 = 0; it < subHeaderCount; it++) {
-								const subHeader = subHeaders + it * 8;
+							for (let headerIndex: int64 = 0; headerIndex < subHeaderCount; headerIndex++) {
+								const subHeader = subHeaders + headerIndex * 8;
 
 								const onePastLastGlyphId = subHeader + 6 +
 									(u16At(m, subHeader + 6) / 2 + u16At(m, subHeader + 2)) * 2;
@@ -1548,9 +1548,9 @@ export function kbFontIsValid(font: KbFont): boolean {
 	return font.error == 0;
 }
 
-export function kbCodepointToGlyphId(font: KbFont, iCodepoint: int32): int32 {
+export function kbCodepointToGlyphId(font: KbFont, signedCodepoint: int32): int32 {
 	let result: int32 = 0;
-	let codepoint: int64 = (iCodepoint as int64) & 0xFFFFFFFF;
+	let codepoint: int64 = (signedCodepoint as int64) & 0xFFFFFFFF;
 
 	const cmapBase = font.cmap;
 	if (cmapBase != 0) {
