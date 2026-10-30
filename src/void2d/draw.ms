@@ -263,13 +263,12 @@ export function finishRecording(): void {
 
 export function paintIndex(): PaintIndex {
 	const ctx: DrawContext2D = currentContext();
-	const l: DrawContext2D = currentContext();
 	return {
-		commands: l.commandTotal,
-		effects: l.effectTotal,
-		vertices: l.vertexTotal,
-		uiInstances: l.uiInstanceTotal,
-		spriteInstances: l.spriteInstanceTotal,
+		commands: ctx.commandTotal,
+		effects: ctx.effectTotal,
+		vertices: ctx.vertexTotal,
+		uiInstances: ctx.uiInstanceTotal,
+		spriteInstances: ctx.spriteInstanceTotal,
 		runOpen: ctx.runOpen,
 		runStart: ctx.runStart,
 		pipeline: ctx.curPipeline,
@@ -279,18 +278,17 @@ export function paintIndex(): PaintIndex {
 		sampler: ctx.curSampler,
 		effect: ctx.curEffect,
 		mask: ctx.clipDepth > 0 ? ctx.maskIndices[ctx.clipDepth - 1] : NO_MASK,
-		scope: l.scopeNow,
+		scope: ctx.scopeNow,
 	};
 }
 
 export function resumePaint(p: PaintIndex): void {
 	const ctx: DrawContext2D = currentContext();
-	const l: DrawContext2D = currentContext();
-	l.commandTotal = p.commands;
-	l.effectTotal = p.effects;
-	l.vertexTotal = p.vertices;
-	l.uiInstanceTotal = p.uiInstances;
-	l.spriteInstanceTotal = p.spriteInstances;
+	ctx.commandTotal = p.commands;
+	ctx.effectTotal = p.effects;
+	ctx.vertexTotal = p.vertices;
+	ctx.uiInstanceTotal = p.uiInstances;
+	ctx.spriteInstanceTotal = p.spriteInstances;
 	ctx.runOpen = p.runOpen;
 	ctx.runStart = p.runStart;
 	ctx.curPipeline = p.pipeline;
@@ -299,18 +297,18 @@ export function resumePaint(p: PaintIndex): void {
 	ctx.curBlend = p.blend;
 	ctx.curSampler = p.sampler;
 	restoreEffect(p.effect);
-	l.scopeNow = p.scope;
+	ctx.scopeNow = p.scope;
 	ctx.originX = 0.0;
 	ctx.originY = 0.0;
 	if (p.mask == NO_MASK) {
 		ctx.clipDepth = 0;
-		l.clip = NO_CLIP;
+		ctx.clip = NO_CLIP;
 		return;
 	}
 	ctx.clipStack[0] = maskClipAt(p.mask);
 	ctx.maskIndices[0] = p.mask;
 	ctx.clipDepth = 1;
-	l.clip = clipOf(ctx.clipStack[0]);
+	ctx.clip = clipOf(ctx.clipStack[0]);
 }
 
 function streamOf(p: PaintIndex, pipeline: Pipeline): int32 {
@@ -332,15 +330,14 @@ export function continuesLike(old: DrawContext2D, start: PaintIndex, end: PaintI
 		return false;
 	}
 	if (ctx.curBlend != start.blend || ctx.curSampler != start.sampler) { return false; }
-	const l: DrawContext2D = currentContext();
 	const cursor: int32 = match (ctx.curPipeline) {
-		Pipeline.Sprite => l.spriteInstanceTotal,
-		Pipeline.Ui => l.uiInstanceTotal,
-		Pipeline.Vertex => l.vertexTotal,
+		Pipeline.Sprite => ctx.spriteInstanceTotal,
+		Pipeline.Ui => ctx.uiInstanceTotal,
+		Pipeline.Vertex => ctx.vertexTotal,
 	};
 	const emptyThen: boolean = start.runStart == streamOf(start, start.pipeline);
 	if ((ctx.runStart == cursor) != emptyThen) { return false; }
-	if (scopeRow(l, l.scopeNow) != scopeRow(old, start.scope)) { return false; }
+	if (scopeRow(ctx, ctx.scopeNow) != scopeRow(old, start.scope)) { return false; }
 	const maskNow: int32 = ctx.clipDepth > 0 ? ctx.maskIndices[ctx.clipDepth - 1] : NO_MASK;
 	if (maskNow == NO_MASK || start.mask == NO_MASK) { return maskNow == start.mask; }
 	return ctx.clipStack[ctx.clipDepth - 1] == old.masks[start.mask];
@@ -419,18 +416,17 @@ export function restoreLaneRun(): void {
 
 export function reopenLast(): void {
 	const ctx: DrawContext2D = currentContext();
-	const l: DrawContext2D = currentContext();
-	const last: int32 = l.commandTotal - 1;
+	const last: int32 = ctx.commandTotal - 1;
 	const base: int32 = last * COMMAND_FLOATS;
-	ctx.curPipeline = pipelineAt(l.commands, base);
+	ctx.curPipeline = pipelineAt(ctx.commands, base);
 	ctx.curView = commandView(last);
-	ctx.curBlend = ((l.commands[base + CMD_BLEND] as int32) as BlendMode);
-	ctx.curSampler = l.commands[base + CMD_SAMPLER] as int32;
-	restoreEffect(l.commands[base + CMD_EFFECT] as int32);
-	ctx.runReason = (l.commands[base + CMD_BREAK] as int32) as BreakReason;
-	ctx.runStart = runOffset(l.commands, base);
+	ctx.curBlend = ((ctx.commands[base + CMD_BLEND] as int32) as BlendMode);
+	ctx.curSampler = ctx.commands[base + CMD_SAMPLER] as int32;
+	restoreEffect(ctx.commands[base + CMD_EFFECT] as int32);
+	ctx.runReason = (ctx.commands[base + CMD_BREAK] as int32) as BreakReason;
+	ctx.runStart = runOffset(ctx.commands, base);
 	ctx.runOpen = true;
-	l.commandTotal = last;
+	ctx.commandTotal = last;
 }
 
 export function endPatch(end: PaintIndex): void {
@@ -956,7 +952,6 @@ export function inScope(): boolean {
 
 export function enterCamera(row: int32, dx: float32, dy: float32): void {
 	const ctx: DrawContext2D = currentContext();
-	const l: DrawContext2D = currentContext();
 	const record: ScopeRecord = {
 		row: row,
 		parent: NO_SCOPE,
@@ -968,8 +963,8 @@ export function enterCamera(row: int32, dx: float32, dy: float32): void {
 		w: ctx.fbW,
 		h: ctx.fbH,
 	};
-	l.scopeNow = pushScope(record);
-	l.cameraScope = l.scopeNow;
+	ctx.scopeNow = pushScope(record);
+	ctx.cameraScope = ctx.scopeNow;
 }
 
 export function enterScope(
@@ -988,10 +983,9 @@ export function enterScope(
 		if (outer.y1 < y1) { y1 = outer.y1; }
 	}
 	closeRun();
-	const l: DrawContext2D = currentContext();
 	const record: ScopeRecord = {
 		row: row,
-		parent: l.scopeNow,
+		parent: ctx.scopeNow,
 		scale: currentRenderScale(),
 		dx: dx,
 		dy: dy,
@@ -1000,18 +994,17 @@ export function enterScope(
 		w: x1 > x0 ? x1 - x0 : 0.0,
 		h: y1 > y0 ? y1 - y0 : 0.0,
 	};
-	l.scopeNow = pushScope(record);
+	ctx.scopeNow = pushScope(record);
 	ctx.scopeDepths.push(ctx.clipDepth);
 	ctx.clipDepth = 0;
-	l.clip = NO_CLIP;
+	ctx.clip = NO_CLIP;
 	openRun(BreakReason.Clip);
 }
 
 export function leaveScope(): void {
 	const ctx: DrawContext2D = currentContext();
 	closeRun();
-	const l: DrawContext2D = currentContext();
-	l.scopeNow = l.scopes[l.scopeNow].parent;
+	ctx.scopeNow = ctx.scopes[ctx.scopeNow].parent;
 	ctx.clipDepth = ctx.scopeDepths.pop();
 	if (ctx.clipDepth > 0) {
 		applyClip(ctx.clipDepth - 1);
