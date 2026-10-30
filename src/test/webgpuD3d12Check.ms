@@ -26,11 +26,22 @@ import {
 	GPUTextureView,
 } from "../webgpu/types.ms";
 import { requestDevice } from "../webgpu/device.ms";
-import { adapterDescription, descriptorStats, drainDebugMessages, executedAllocator, frameAllocator, idleSerial, retiredCount, samplerDescriptor, viewDescriptor } from "../webgpu/d3d12/backend.ms";
+import {
+	adapterDescription,
+	descriptorStats,
+	drainDebugMessages,
+	executedAllocator,
+	frameAllocator,
+	idleSerial,
+	nativeTexture,
+	retiredCount,
+	samplerDescriptor,
+	viewDescriptor,
+} from "../webgpu/d3d12/backend.ms";
 import { splitTextureCopy } from "../webgpu/d3d12/resources.ms";
 import { PRESENT_MODE_IMMEDIATE, PRESENT_MODE_VSYNC, flipFormat, planPresent, presentCall } from "../webgpu/d3d12/surface.ms";
 import { newCursor, nextPair, serializeRootSignature, shaderLayout, tableEntries } from "../webgpu/d3d12/descriptor.ms";
-import { dx12Release } from "../webgpu/d3d12/d3d12.h";
+import { dx12ObjectName, dx12Release } from "../webgpu/d3d12/d3d12.h";
 import { d3dBlobFree, d3dBlobRead, d3dCompile, d3dCompileLog } from "../webgpu/d3d11/d3d11.h";
 import {
 	BLUE,
@@ -1970,6 +1981,22 @@ test "debug groups and markers in the encoder, a labelled render pass and a labe
 	compute.end();
 	encoder.popDebugGroup();
 	device.queue.submit(encoder.finish());
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a label reaches the native object as its D3D12 name" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "labelled texture",
+		size: { width: 4, height: 4, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: GPUTextureUsage.TEXTURE_BINDING as int32,
+	});
+	let name: Vec<uint8> = new Array(64);
+	const length = dx12ObjectName(nativeTexture(texture), name[0], 64);
+	assert length == 16;
+	assert name[0] == 108 && name[9] == 116 && name[15] == 101;
 	assert drainDebugMessages() == 0;
 	device.destroy();
 }

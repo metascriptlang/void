@@ -31,6 +31,7 @@ import {
 	dx12SetIndexBuffer,
 	dx12SetPipelineState,
 	dx12SetRenderTargets,
+	dx12SetName,
 	dx12SetScissorRect,
 	dx12SetStencilReference,
 	dx12SetVertexBuffer,
@@ -521,6 +522,12 @@ function submitted(call: string): void {
 
 export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void {
 	ran("createBuffer", resources.createBuffer(r, id, descriptor));
+	setLabel(r.buffers[slotOf(id)].native, descriptor.label);
+}
+
+function setLabel(object: uint64, label: string | null): void {
+	if (label === null) { return; }
+	commanded(dx12SetName(object, label));
 }
 
 export function destroyBuffer(buffer: GPUBuffer): void {
@@ -534,7 +541,10 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 
 export function createTexture(texture: TextureRecord, descriptor: GPUTextureDescriptor): void {
 	ran("createTexture", resources.createTexture(r, texture));
+	setLabel(r.textures[slotOf(texture.id)].native, descriptor.label);
 }
+
+export function nativeTexture(texture: GPUTexture): uint64 { return r.textures[slotOf(texture.id)].native; }
 
 export function destroyTexture(texture: GPUTexture): void {
 	resources.destroyTexture(r, ring, texture.id);
@@ -611,6 +621,7 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	const shader = shaders[slotOf(descriptor.vertex.module.id)];
 	adoptPipelineLayout(id, shader.bindings, false);
 	ran("createRenderPipeline", pipeline.createRenderPipeline(pipelines, device, layouts[slotOf(id)].signature, shader, id, descriptor));
+	setLabel(pipelines[slotOf(id)].state, descriptor.label);
 }
 
 export function destroyRenderPipeline(destroyed: GPURenderPipeline): void {
@@ -961,6 +972,7 @@ export function createComputePipeline(id: uint32, descriptor: GPUComputePipeline
 	const shader = shaders[slotOf(descriptor.compute.module.id)];
 	adoptPipelineLayout(id, shader.bindings, true);
 	ran("createComputePipeline", pipeline.createComputePipeline(pipelines, device, layouts[slotOf(id)].signature, shader, id, descriptor));
+	setLabel(pipelines[slotOf(id)].state, descriptor.label);
 }
 
 export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
@@ -1064,6 +1076,7 @@ export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): v
 	const made = makeQuerySet(kind == "timestamp", descriptor.count);
 	if (!made.ok) { stopOnFrame("createQuerySet", made.error); }
 	put(querySets, id, made.value);
+	setLabel(made.value.heap, descriptor.label);
 }
 
 function makeQuerySet(timestamp: boolean, count: int32): Result<QuerySetNative, NativeError> {
