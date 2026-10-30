@@ -358,7 +358,7 @@ export function kbGetLigature(m: Readonly<Span<uint8>>, set: int64, index: int64
 	return set + m.kbU16(set + 2 + index * 2);
 }
 
-export function kbGetMarkRecord(array: int64, index: int64): int64 {
+function kbGetMarkRecord(array: int64, index: int64): int64 {
 	return array + 2 + index * 4;
 }
 
