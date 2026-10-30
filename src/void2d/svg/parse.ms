@@ -553,14 +553,14 @@ function addPath(p: Parser, closed: boolean): void {
 }
 
 function parseOpacity(value: Str): float32 {
-	let val: float32 = atofFloat(value);
+	let val: float32 = value.atofFloat();
 	if (val < 0.0) { val = 0.0; }
 	if (val > 1.0) { val = 1.0; }
 	return val;
 }
 
 function parseMiterLimit(value: Str): float32 {
-	let val: float32 = atofFloat(value);
+	let val: float32 = value.atofFloat();
 	if (val < 0.0) { val = 0.0; }
 	return val;
 }
@@ -588,9 +588,9 @@ function isCoordinate(x: Str): boolean {
 }
 
 function parseCoordinateRaw(x: Str): Coord {
-	const end = numberEnd(x, 0);
+	const end = x.numberEnd(0);
 	const units = parseUnits(x, end);
-	const value = atofFloat(numberItem(x, 0, end));
+	const value = x.numberItem(0, end).atofFloat();
 	return { value: value, units: units };
 }
 
@@ -612,8 +612,8 @@ function parseTransformArgs(x: Str, args: float32[], maxNa: int32, na: int32[]):
 		const c = x.ch(ptr);
 		if (c == 45 || c == 43 || c == 46 || isDigit(c)) {
 			if (na[0] >= maxNa) { return 0; }
-			const stop = numberEnd(x, ptr);
-			args[na[0]] = atofFloat(numberItem(x, ptr, stop));
+			const stop = x.numberEnd(ptr);
+			args[na[0]] = x.numberItem(ptr, stop).atofFloat();
 			na[0] += 1;
 			ptr = stop;
 		} else {
@@ -1295,7 +1295,7 @@ function nextPathItem(x: Str, from: int32, item: Item): int32 {
 	if (x.ch(s) == 0) { return s; }
 	const c = x.ch(s);
 	if (c == 45 || c == 43 || c == 46 || isDigit(c)) {
-		const end = numberEnd(x, s);
+		const end = x.numberEnd(s);
 		item.from = s;
 		item.to = s + Math.min(end - s, 63);
 		return end;
@@ -1345,7 +1345,7 @@ function parsePath(p: Parser, attrs: Attr[]): void {
 			const text = itemStr(d, item);
 			if (cmd != 0 && isCoordinate(text)) {
 				if (nargs < 10) {
-					args[nargs] = atofFloat(text);
+					args[nargs] = text.atofFloat();
 					nargs += 1;
 				}
 				if (nargs >= rargs) {
@@ -1570,7 +1570,7 @@ function parsePoly(p: Parser, attrs: Attr[], closeFlag: boolean): void {
 				let nargs: int32 = 0;
 				while (value.ch(s) != 0) {
 					s = nextPathItem(value, s, item);
-					args[nargs] = atofFloat(itemStr(value, item));
+					args[nargs] = itemStr(value, item).atofFloat();
 					nargs += 1;
 					if (nargs >= 2) {
 						if (npts == 0) {
@@ -1598,23 +1598,23 @@ function skipViewBoxSeparators(x: Str, from: int32): int32 {
 // Reads up to four numbers from a viewBox, stopping at the C's early return when it runs dry.
 function parseViewBox(p: Parser, x: Str): void {
 	let s: int32 = 0;
-	let end = numberEnd(x, s);
-	p.viewMinx = atofFloat(numberItem(x, s, end));
+	let end = x.numberEnd(s);
+	p.viewMinx = x.numberItem(s, end).atofFloat();
 	s = end;
 	s = skipViewBoxSeparators(x, s);
 	if (x.ch(s) == 0) { return; }
-	end = numberEnd(x, s);
-	p.viewMiny = atofFloat(numberItem(x, s, end));
+	end = x.numberEnd(s);
+	p.viewMiny = x.numberItem(s, end).atofFloat();
 	s = end;
 	s = skipViewBoxSeparators(x, s);
 	if (x.ch(s) == 0) { return; }
-	end = numberEnd(x, s);
-	p.viewWidth = atofFloat(numberItem(x, s, end));
+	end = x.numberEnd(s);
+	p.viewWidth = x.numberItem(s, end).atofFloat();
 	s = end;
 	s = skipViewBoxSeparators(x, s);
 	if (x.ch(s) == 0) { return; }
-	end = numberEnd(x, s);
-	p.viewHeight = atofFloat(numberItem(x, s, end));
+	end = x.numberEnd(s);
+	p.viewHeight = x.numberItem(s, end).atofFloat();
 }
 
 // nsvg__parseSVG: a viewBox that runs dry ends the whole attribute loop, as the C returns.
@@ -1661,11 +1661,11 @@ function parseSvg(p: Parser, attrs: Attr[]): void {
 
 // Whether parseViewBox returns before its fourth number.
 function viewBoxRunsDry(x: Str): boolean {
-	let s: int32 = numberEnd(x, 0);
+	let s: int32 = x.numberEnd(0);
 	for (let k: int32 = 0; k < 3; k++) {
 		s = skipViewBoxSeparators(x, s);
 		if (x.ch(s) == 0) { return true; }
-		s = numberEnd(x, s);
+		s = x.numberEnd(s);
 	}
 	return false;
 }
