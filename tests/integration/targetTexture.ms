@@ -69,13 +69,13 @@ const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 const UNLIT_X: float32 = -1.0;
 const LIT_X: float32 = 1.0;
-let context: DrawContext = DrawContext.withUniformCapacity(
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 4 * UNLIT_MATERIAL_UNIFORM_LENGTH +
 	4 * MATERIAL_UNIFORM_LENGTH,
 );
-let scene: Scene3D = Scene3D.create(context);
-let forward: ForwardRenderer = makeForward();
-let preset: PixelArtRenderer = makePreset();
+const scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = makeForward();
+const preset: PixelArtRenderer = makePreset();
 const ui: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 0.0));
 let target: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
 let targetTexture: TextureId = { store: 0, index: 0, generation: 0 };

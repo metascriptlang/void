@@ -107,13 +107,13 @@ const BOX_COLOR: Rgba = { red: 0.95, green: 0.55, blue: 0.2, alpha: 1.0 };
 const FIRST: int32 = 0;
 const LATER: int32 = 1;
 
-let contextA: DrawContext = DrawContext.withUniformCapacity(MATERIAL_UNIFORM_LENGTH);
+const contextA: DrawContext = DrawContext.withUniformCapacity(MATERIAL_UNIFORM_LENGTH);
 let held: PassHolder = { pipelines: PipelineCache.empty() };
-let contextB: DrawContext = DrawContext.withUniformCapacity(
+const contextB: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH,
 );
-let forward: ForwardRenderer = createForward();
-let scene: Scene3D = Scene3D.create(contextB);
+const forward: ForwardRenderer = createForward();
+const scene: Scene3D = Scene3D.create(contextB);
 let items: Vec<DrawItem> = [];
 let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
@@ -238,7 +238,7 @@ function buildScene(): void {
 	const _drawn: int32 = refresh(scene, items);
 	const collected: Result<int32, LightError> = collectLights(scene, lights);
 	if (!collected.ok) { unreachable; }
-	let view: Camera3D = {
+	const view: Camera3D = {
 		position: vec3(0.0, 0.0, 0.0),
 		yaw: 0.5,
 		pitch: 0.5,

@@ -72,26 +72,26 @@ import {
 	voidCaptureExit,
 } from "../capture/capture.h";
 
-let FIXTURE: string = "tests/fixtures/gltf/texturedScene.glb";
-let WIDTH: int32 = 320;
-let HEIGHT: int32 = 240;
-let BACKGROUND: Vec4 = { x: 0.025, y: 0.05, z: 0.1, w: 1.0 };
-let RED: uint32 = 0xFF0000;
-let GREEN: uint32 = 0x00FF00;
-let BLUE: uint32 = 0x0000FF;
-let YELLOW: uint32 = 0xFFFF00;
-let WHITE: uint32 = 0xFFFFFF;
-let MODEL_NODES: int32 = 5;
-let HALF: float32 = 0.3;
-let SCREEN_MAPPING: LowResView = {
+const FIXTURE: string = "tests/fixtures/gltf/texturedScene.glb";
+const WIDTH: int32 = 320;
+const HEIGHT: int32 = 240;
+const BACKGROUND: Vec4 = { x: 0.025, y: 0.05, z: 0.1, w: 1.0 };
+const RED: uint32 = 0xFF0000;
+const GREEN: uint32 = 0x00FF00;
+const BLUE: uint32 = 0x0000FF;
+const YELLOW: uint32 = 0xFFFF00;
+const WHITE: uint32 = 0xFFFFFF;
+const MODEL_NODES: int32 = 5;
+const HALF: float32 = 0.3;
+const SCREEN_MAPPING: LowResView = {
 	width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0,
 };
-let context: DrawContext = DrawContext.withUniformCapacity(
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 5 * MATERIAL_UNIFORM_LENGTH,
 );
-let forward: ForwardRenderer = createForward();
-let preset: PixelArtRenderer = createPreset();
-let scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = createForward();
+const preset: PixelArtRenderer = createPreset();
+const scene: Scene3D = Scene3D.create(context);
 let items: Vec<DrawItem> = [];
 let model: NodeId3D = NO_NODE_ID;
 let sun: NodeId3D = NO_NODE_ID;
@@ -112,15 +112,15 @@ let imagesLoaded: int32 = 0;
 let viewsLoaded: int32 = 0;
 
 function createForward(): ForwardRenderer {
-	let created: Result<ForwardRenderer, ForwardError> =
+	const created: Result<ForwardRenderer, ForwardError> =
 		ForwardRenderer.create(context, BACKGROUND);
 	if (created.ok) { return created.value; }
 	unreachable;
 }
 
 function createPreset(): PixelArtRenderer {
-	let settings: PixelArtSettings = { ...PixelArtSettings.full(), postPass: false };
-	let look: PixelArtLook = {
+	const settings: PixelArtSettings = { ...PixelArtSettings.full(), postPass: false };
+	const look: PixelArtLook = {
 		background: BACKGROUND,
 		outline: {
 			depthThreshold: 0.006,
@@ -131,7 +131,7 @@ function createPreset(): PixelArtRenderer {
 		fog: { start: 0.0, end: 1.0, strength: 0.0, color: BACKGROUND },
 		saturation: 0.0,
 	};
-	let created: Result<PixelArtRenderer, PixelArtError> =
+	const created: Result<PixelArtRenderer, PixelArtError> =
 		PixelArtRenderer.create(context, settings, look);
 	if (created.ok) { return created.value; }
 	unreachable;
@@ -148,13 +148,13 @@ export function configureGltf(throughPixelArt: boolean, rebuildFrame: int32): vo
 }
 
 function decoded(): GltfData {
-	let file = readFile(FIXTURE);
+	const file = readFile(FIXTURE);
 	if (!file.ok) {
 		fail(`${FIXTURE} could not be read`);
 		unreachable;
 	}
 	const bytes: Vec<uint8> = [...file.value.asBytes()];
-	let data: Result<GltfData, GltfDiagnostic> = loadGlbDetailed(bytes, FIXTURE);
+	const data: Result<GltfData, GltfDiagnostic> = loadGlbDetailed(bytes, FIXTURE);
 	if (data.ok) { return data.value; }
 	fail(data.error.describe());
 	unreachable;
@@ -165,8 +165,8 @@ function setupBlock(): Vec<float32> {
 }
 
 function checkRollback(data: GltfData): void {
-	let small: DrawContext = DrawContext.withUniformCapacity(2 * MATERIAL_UNIFORM_LENGTH);
-	let refused: Result<GltfAssets, GltfSceneError> =
+	const small: DrawContext = DrawContext.withUniformCapacity(2 * MATERIAL_UNIFORM_LENGTH);
+	const refused: Result<GltfAssets, GltfSceneError> =
 		addGltfAssets(small, data, { pass: RenderState.defaults(), block: setupBlock() });
 	if (refused.ok || refused.error != GltfSceneError.UniformsFull) {
 		fail("five materials in a pool of two were not refused as UniformsFull");
@@ -175,14 +175,14 @@ function checkRollback(data: GltfData): void {
 	if (small.liveTextures() != 0 || small.liveMaterials() != 0 || small.liveMeshes() != 0) {
 		fail("a refused load left an asset live");
 	}
-	let buried: int32 = buryDoomed(small, contextGeneration());
+	const buried: int32 = buryDoomed(small, contextGeneration());
 	if (buried == 0 || liveImages() != imagesBefore || liveViews() != viewsBefore) {
 		fail(`a refused load left ${liveImages() - imagesBefore} images after ${buried} burials`);
 	}
 }
 
 function loadModel(data: GltfData): void {
-	let assets: Result<GltfAssets, GltfSceneError> =
+	const assets: Result<GltfAssets, GltfSceneError> =
 		addGltfAssets(context, data, { pass: RenderState.defaults(), block: setupBlock() });
 	if (!assets.ok) {
 		fail(`the driver refused the model: ${assets.error.toString()}`);
@@ -195,7 +195,7 @@ function loadModel(data: GltfData): void {
 	}
 	if (context.texturePinned(texture) != 2) { fail("two textured materials do not pin it"); }
 	model = addGroup(scene, scene.rootId(), Transform3D.identity());
-	let added: Result<int32, GltfSceneError> =
+	const added: Result<int32, GltfSceneError> =
 		addGltfNodes(scene, model, data, assets.value.bindings);
 	if (!added.ok || added.value != MODEL_NODES) {
 		fail("the model's five nodes did not enter the scene");
@@ -217,22 +217,22 @@ export function initGltf(): void {
 	materialsBefore = context.liveMaterials();
 	imagesBefore = liveImages();
 	viewsBefore = liveViews();
-	let data: GltfData = decoded();
+	const data: GltfData = decoded();
 	checkRollback(data);
 	loadModel(data);
-	let light: LightInstance = {
+	const light: LightInstance = {
 		kind: LightKind.Directional,
 		color: vec3(1.0, 1.0, 1.0),
 		radius: 0.0,
 		power: 0.0,
 		priority: 0,
 	};
-	let towardCamera: Transform3D = {
+	const towardCamera: Transform3D = {
 		...Transform3D.identity(), rotation: { x: 0.0, y: 1.0, z: 0.0, w: 0.0 },
 	};
 	sun = addLightNode(scene, scene.rootId(), towardCamera, light);
-	let point: LightInstance = { ...light, kind: LightKind.Point, radius: 2.0 };
-	let lampXs: Vec<float32> = [0.4, 2.0];
+	const point: LightInstance = { ...light, kind: LightKind.Point, radius: 2.0 };
+	const lampXs: Vec<float32> = [0.4, 2.0];
 	for (const x of lampXs) {
 		lamps.push(addLightNode(
 			scene, scene.rootId(), Transform3D.fromTranslation(vec3(x, 0.0, 0.2)), point,
@@ -241,7 +241,7 @@ export function initGltf(): void {
 }
 
 function viewOf(): CameraView {
-	let camera: Camera3D = {
+	const camera: Camera3D = {
 		position: vec3(0.2, 0.0, 7.0),
 		yaw: 0.0,
 		pitch: 0.0,
@@ -249,7 +249,7 @@ function viewOf(): CameraView {
 		farPlane: 30.0,
 		projection: { kind: ProjectionKind.Perspective, fovY: 1.0471975512 },
 	};
-	let resolved: Result<CameraView, CameraError> = camera.resolve(WIDTH, HEIGHT);
+	const resolved: Result<CameraView, CameraError> = camera.resolve(WIDTH, HEIGHT);
 	if (resolved.ok) { return resolved.value; }
 	unreachable;
 }
@@ -262,14 +262,14 @@ function stage(frameIndex: int32): int32 {
 }
 
 function pose(frameIndex: int32): void {
-	let turn: float32 = stage(frameIndex) == 2 ? 0.6 : 0.0;
+	const turn: float32 = stage(frameIndex) == 2 ? 0.6 : 0.0;
 	if (stage(frameIndex) < 3) {
 		setLocal(scene, model, { ...Transform3D.identity(), rotation: eulerQuat(0.0, turn, 0.0) });
 	}
-	let lit: boolean = stage(frameIndex) == 1;
-	let lamplit: boolean = lit && pixelArt;
-	let sunlit: boolean = lit && !pixelArt;
-	let ambient: float32 = lamplit ? 0.0 : sunlit ? 0.25 : 1.0;
+	const lit: boolean = stage(frameIndex) == 1;
+	const lamplit: boolean = lit && pixelArt;
+	const sunlit: boolean = lit && !pixelArt;
+	const ambient: float32 = lamplit ? 0.0 : sunlit ? 0.25 : 1.0;
 	setAmbient(scene, vec3(ambient, ambient, ambient));
 	setLightPower(scene, sun, sunlit ? 1.0 - srgbToLinear(ambient) : 0.0);
 	for (const lamp of lamps) { setLightPower(scene, lamp, lamplit ? 3.0 : 0.0); }
@@ -284,38 +284,38 @@ function channelOf(rgb: uint32, shift: uint32): int32 {
 }
 
 function pixelAt(view: CameraView, point: Vec3): uint32 {
-	let at: Vec3 = view.project(point, SCREEN_MAPPING, true);
+	const at: Vec3 = view.project(point, SCREEN_MAPPING, true);
 	return rgbOf(voidCapturePixel(0, at.x as int32, at.y as int32));
 }
 
 // The factor quad: COLOR_0 (1, 0.5, 0.5) times baseColorFactor (0.5, 0.5, 1), within one step.
 function isFactorColour(got: uint32): boolean {
-	let want: Vec<int32> = [188, 137, 188];
-	let shifts: Vec<uint32> = [16, 8, 0];
+	const want: Vec<int32> = [188, 137, 188];
+	const shifts: Vec<uint32> = [16, 8, 0];
 	for (let i = 0; i < 3; i++) {
-		let difference: int32 = channelOf(got, shifts[i]) - want[i];
+		const difference: int32 = channelOf(got, shifts[i]) - want[i];
 		if (difference < -1 || difference > 1) { return false; }
 	}
 	return true;
 }
 
 function expectAt(view: CameraView, point: Vec3, want: uint32, what: string): void {
-	let got: uint32 = pixelAt(view, point);
+	const got: uint32 = pixelAt(view, point);
 	if (got != want) { fail(`${what} is ${got}, not ${want}`); }
 }
 
 // Face on, at full light: every checked colour is exact. The double-sided quads are seen from
 // behind, where the textured one shows its texture mirrored, and the single-sided one is culled.
 function checkFaceOn(view: CameraView): void {
-	let cube: Vec<Vec3> = [
+	const cube: Vec<Vec3> = [
 		vec3((-1.4 - HALF) as float32, HALF, 0.6), vec3((-1.4 + HALF) as float32, HALF, 0.6),
 		vec3((-1.4 - HALF) as float32, -HALF, 0.6), vec3((-1.4 + HALF) as float32, -HALF, 0.6),
 	];
-	let mirrored: Vec<Vec3> = [
+	const mirrored: Vec<Vec3> = [
 		vec3(2.0 + HALF, HALF, -0.6), vec3(2.0 - HALF, HALF, -0.6),
 		vec3(2.0 + HALF, -HALF, -0.6), vec3(2.0 - HALF, -HALF, -0.6),
 	];
-	let texels: Vec<uint32> = [RED, GREEN, BLUE, YELLOW];
+	const texels: Vec<uint32> = [RED, GREEN, BLUE, YELLOW];
 	for (let i = 0; i < 4; i++) {
 		expectAt(view, cube[i], texels[i], `cube quadrant ${i}`);
 		expectAt(view, mirrored[i], texels[i], `the double-sided textured quad's quadrant ${i}`);
@@ -324,7 +324,7 @@ function checkFaceOn(view: CameraView): void {
 	if (!isFactorColour(pixelAt(view, vec3(-3.2, 0.0, 0.6)))) {
 		fail(`the factor quad is ${pixelAt(view, vec3(-3.2, 0.0, 0.6))}, not (188, 137, 188)`);
 	}
-	let background: uint32 = rgbOf(voidCapturePixel(0, 2, 2));
+	const background: uint32 = rgbOf(voidCapturePixel(0, 2, 2));
 	expectAt(view, vec3(3.6, 0.0, -0.6), background, "the single-sided quad's culled back");
 }
 
@@ -340,19 +340,19 @@ function rampLevelOf(channel: int32): int32 {
 // The pixel-art preset steps each lamp to the material's four ramp levels. A back face lit only
 // through its reversed normal shows at least two levels; unreversed, it faces away and is black.
 function checkStepped(view: CameraView, centreX: float32, textured: boolean): void {
-	let left: float32 = textured ? centreX : centreX - 2.0 * HALF;
-	let bottom: float32 = textured ? 0.0 : -(2.0 * HALF);
-	let topRight: Vec3 = vec3(centreX + 2.0 * HALF, 2.0 * HALF, -0.6);
-	let from: Vec3 = view.project(topRight, SCREEN_MAPPING, true);
-	let to: Vec3 = view.project(vec3(left, bottom, -0.6), SCREEN_MAPPING, true);
-	let x0: int32 = Math.min(from.x as int32, to.x as int32) + 2;
-	let x1: int32 = Math.max(from.x as int32, to.x as int32) - 2;
+	const left: float32 = textured ? centreX : centreX - 2.0 * HALF;
+	const bottom: float32 = textured ? 0.0 : -(2.0 * HALF);
+	const topRight: Vec3 = vec3(centreX + 2.0 * HALF, 2.0 * HALF, -0.6);
+	const from: Vec3 = view.project(topRight, SCREEN_MAPPING, true);
+	const to: Vec3 = view.project(vec3(left, bottom, -0.6), SCREEN_MAPPING, true);
+	const x0: int32 = Math.min(from.x as int32, to.x as int32) + 2;
+	const x1: int32 = Math.max(from.x as int32, to.x as int32) - 2;
 	let levels: Vec<int32> = [0, 0, 0, 0, 0];
 	for (let y = (from.y as int32) + 2; y < (to.y as int32) - 2; y++) {
 		for (let x = x0; x < x1; x++) {
-			let got: uint32 = rgbOf(voidCapturePixel(0, x, y));
-			let red: int32 = channelOf(got, 16);
-			let others: boolean = textured
+			const got: uint32 = rgbOf(voidCapturePixel(0, x, y));
+			const red: int32 = channelOf(got, 16);
+			const others: boolean = textured
 				? channelOf(got, 8) == 0 && channelOf(got, 0) == 0
 				: channelOf(got, 8) == red && channelOf(got, 0) == red;
 			const step: int32 = rampLevelOf(red);
@@ -363,16 +363,16 @@ function checkStepped(view: CameraView, centreX: float32, textured: boolean): vo
 			levels[step > 4 ? 4 : step] = 1;
 		}
 	}
-	let shown: int32 = levels[1] + levels[2] + levels[3] + levels[4];
+	const shown: int32 = levels[1] + levels[2] + levels[3] + levels[4];
 	if (shown < 2) { fail(`a lamp shows ${shown} lit levels on a back face at x ${centreX}`); }
 }
 
 function checkOnlyKnown(): void {
-	let background: uint32 = rgbOf(voidCapturePixel(0, 2, 2));
-	let known: Vec<uint32> = [background, RED, GREEN, BLUE, YELLOW, WHITE];
+	const background: uint32 = rgbOf(voidCapturePixel(0, 2, 2));
+	const known: Vec<uint32> = [background, RED, GREEN, BLUE, YELLOW, WHITE];
 	for (let y = 0; y < HEIGHT; y++) {
 		for (let x = 0; x < WIDTH; x++) {
-			let got: uint32 = rgbOf(voidCapturePixel(0, x, y));
+			const got: uint32 = rgbOf(voidCapturePixel(0, x, y));
 			let found: boolean = isFactorColour(got);
 			for (const colour of known) {
 				if (got == colour) { found = true; }
@@ -386,7 +386,7 @@ function checkOnlyKnown(): void {
 }
 
 function checkEmptied(): void {
-	let background: uint32 = rgbOf(voidCapturePixel(0, 2, 2));
+	const background: uint32 = rgbOf(voidCapturePixel(0, 2, 2));
 	for (let y = 0; y < HEIGHT; y++) {
 		for (let x = 0; x < WIDTH; x++) {
 			if (rgbOf(voidCapturePixel(0, x, y)) != background) {
@@ -420,7 +420,7 @@ function loseContext(): void {
 }
 
 function checkRemade(): void {
-	let remade: GpuTexture = context.textures[texture.index];
+	const remade: GpuTexture = context.textures[texture.index];
 	const remadeView: uint32 = textureViewAt(context, texture.index);
 	if (remadeView == viewBefore || remadeView == 0 || remade.sampler == samplerBefore ||
 		remade.sampler == 0 || remade.samplerGeneration != contextGeneration() ||
@@ -432,14 +432,14 @@ function checkRemade(): void {
 function drawn(view: CameraView): int32 {
 	if (pixelArt) {
 		setCameraView(preset.core, view);
-		let frame: Result<int32, PixelArtError> =
+		const frame: Result<int32, PixelArtError> =
 			renderPixelArt(preset, items, cameraBlock, lights, SCREEN_MAPPING);
 		if (frame.ok) { return frame.value; }
 		fail(`the pixel-art preset refused the model: ${frame.error.toString()}`);
 		return 0;
 	}
 	setCameraView(forward.core, view);
-	let frame: Result<int32, ForwardError> =
+	const frame: Result<int32, ForwardError> =
 		prepareFrame(forward, items, cameraBlock, lights, WIDTH, HEIGHT);
 	if (!frame.ok) {
 		fail(`the forward preset refused the model: ${frame.error.toString()}`);
@@ -462,11 +462,11 @@ export function frameGltf(frameIndex: int32): void {
 		if (remove(scene, model) != MODEL_NODES + 1) { fail("the model's group was not removed"); }
 	}
 	pose(frameIndex);
-	let expected: int32 = stage(frameIndex) == 3 ? 0 : MODEL_NODES;
+	const expected: int32 = stage(frameIndex) == 3 ? 0 : MODEL_NODES;
 	if (refresh(scene, items) != expected) { fail(`the scene does not draw ${expected} meshes`); }
-	let collected: Result<int32, LightError> = collectLights(scene, lights);
+	const collected: Result<int32, LightError> = collectLights(scene, lights);
 	if (!collected.ok) { unreachable; }
-	let view: CameraView = viewOf();
+	const view: CameraView = viewOf();
 	view.writeCameraBlock(cameraBlock);
 	if (drawn(view) != expected) { fail(`the frame did not draw ${expected} meshes`); }
 	if (frameIndex == rebuildAt) { checkRemade(); }

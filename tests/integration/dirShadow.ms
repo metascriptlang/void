@@ -94,22 +94,22 @@ const TO_LIGHT: Vec3 = { x: 1.0, y: 2.0, z: 0.0 };
 const SHADOW_SIZE: int32 = 512;
 const FRAMES: int32 = 3;
 const CARD_RED: uint32 = 0xFF0000FF;
-let pixelArt: boolean = voidCaptureEnvInt("VOID_DIR_SHADOW_PIXEL_ART", 0) != 0;
-let shadowCase: Case = voidCaptureEnvInt("VOID_DIR_SHADOW_CASE", 0) as Case;
-let perspective: boolean = voidCaptureEnvInt("VOID_DIR_SHADOW_PERSPECTIVE", 0) != 0;
-let context: DrawContext = DrawContext.withUniformCapacity(
+const pixelArt: boolean = voidCaptureEnvInt("VOID_DIR_SHADOW_PIXEL_ART", 0) != 0;
+const shadowCase: Case = voidCaptureEnvInt("VOID_DIR_SHADOW_CASE", 0) as Case;
+const perspective: boolean = voidCaptureEnvInt("VOID_DIR_SHADOW_PERSPECTIVE", 0) != 0;
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + DIR_SHADOW_UNIFORM_LENGTH +
 	2 * MATERIAL_UNIFORM_LENGTH + MOVING_MATERIAL_UNIFORM_LENGTH,
 );
-let scene: Scene3D = Scene3D.create(context);
-let forward: ForwardRenderer = makeForward();
-let preset: PixelArtRenderer = makePreset();
-let shadow: DirShadowMap = makeShadow();
+const scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = makeForward();
+const preset: PixelArtRenderer = makePreset();
+const shadow: DirShadowMap = makeShadow();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let stage: int32 = 0;
-let skinControl: int32 = voidCaptureEnvInt("VOID_DIR_SHADOW_SKIN_CONTROL", 0);
+const skinControl: int32 = voidCaptureEnvInt("VOID_DIR_SHADOW_SKIN_CONTROL", 0);
 let skinBones: Vec<NodeId3D> = [];
 let skinMeshes: Vec<MeshId> = [];
 let skinGeometries: Vec<SkinGeometry> = [];

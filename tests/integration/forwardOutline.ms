@@ -54,8 +54,8 @@ let rawCopy: MaterialId = { store:0,index:0,generation:0 };
 let seedBytes: Vec<uint8> = new Array(WIDTH*HEIGHT);
 let widthBytes: Vec<uint8> = new Array(WIDTH*HEIGHT);
 let referenceBytes: Vec<uint8> = new Array(WIDTH*HEIGHT);
-let referenceTarget: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8,true);
-let referencePipelines: PipelineCache = PipelineCache.empty();
+const referenceTarget: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8,true);
+const referencePipelines: PipelineCache = PipelineCache.empty();
 let material: MaterialId = { store: 0, index: 0, generation: 0 };
 let front: MeshId = { store: 0, index: 0, generation: 0 };
 let back: MeshId = { store: 0, index: 0, generation: 0 };
@@ -542,7 +542,7 @@ function frame(): void {
 			fail("flat faces not transparent, hidden back edge leaked, or silhouette absent");
 		}
 	}
-	const hidden: int64 = stage == 2 || stage == 5 ? hiddenProbe(current, width, height) : 0;
+	let hidden: int64 = stage == 2 || stage == 5 ? hiddenProbe(current, width, height) : 0;
 	if (stage == 2 && hidden != 0) { fail("back edge emitted through invisible front face"); }
 	if (stage == 5 && (mass == 0 || channel(hidden, 0) == 0)) {
 		fail("removing occluder did not expose pinned back edge");
@@ -593,7 +593,7 @@ function frame(): void {
 		if (flat != 0) { controlErrors++; console.log("CONTROL FAIL forward outline: flat identity"); }
 	}
 	if (stage == 59 || stage == 60) {
-		const hidden: int64 = hiddenProbe(current,width,height);
+		let hidden: int64 = hiddenProbe(current,width,height);
 		if ((stage == 59 && hidden != 0) || (stage == 60 && channel(hidden,0) == 0)) {
 			controlErrors++; console.log("CONTROL FAIL forward outline: wide hidden/removal control");
 		}

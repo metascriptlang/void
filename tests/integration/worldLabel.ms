@@ -76,13 +76,13 @@ const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 const NO_NODE: NodeId3D = { scene: 0, index: 0, generation: 0 };
 
-let context: DrawContext = DrawContext.withUniformCapacity(
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 4 * UNLIT_MATERIAL_UNIFORM_LENGTH +
 	MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH + 4 * MATERIAL_UNIFORM_LENGTH,
 );
-let scene: Scene3D = Scene3D.create(context);
-let forward: ForwardRenderer = makeForward();
-let preset: PixelArtRenderer = makePreset();
+const scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = makeForward();
+const preset: PixelArtRenderer = makePreset();
 let label: WorldLabel | null = null;
 let backdropNode: NodeId3D = NO_NODE;
 let backdropMesh: MeshId = { store: 0, index: 0, generation: 0 };
@@ -181,7 +181,7 @@ function init(): void {
 	setup2d();
 	pixelArt = env.get("VOID_WORLD_LABEL_PRESET").equals("pixelArt");
 	control = env.get("VOID_WORLD_LABEL_CONTROL");
-	const data: TextureData = {
+	let data: TextureData = {
 		pixels: [BACKDROP_TEXEL], width: 1, height: 1, filter: FilterMode.Nearest, wrap: Wrap.Clamp,
 	};
 	const uploaded: Result<TextureId, TextureUploadError> = addTexture(context, data);

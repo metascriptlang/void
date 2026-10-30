@@ -88,27 +88,27 @@ import {
 	voidCaptureExit,
 } from "../capture/capture.h";
 
-let WIDTH: int32 = 320;
-let HEIGHT: int32 = 240;
-let BACKGROUND: Vec4 = { x: 0.025, y: 0.05, z: 0.1, w: 1.0 };
-let WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
-let RED: uint32 = 0xFF0000FF;
-let GREEN: uint32 = 0xFF00FF00;
-let BLUE: uint32 = 0xFFFF0000;
-let YELLOW: uint32 = 0xFF00FFFF;
-let HALF: float32 = 0.6;
-let DEPTH_THRESHOLD: float32 = 0.006;
-let DEPTH_SHADE: float32 = 0.55;
-let SCREEN_MAPPING: LowResView = {
+const WIDTH: int32 = 320;
+const HEIGHT: int32 = 240;
+const BACKGROUND: Vec4 = { x: 0.025, y: 0.05, z: 0.1, w: 1.0 };
+const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
+const RED: uint32 = 0xFF0000FF;
+const GREEN: uint32 = 0xFF00FF00;
+const BLUE: uint32 = 0xFFFF0000;
+const YELLOW: uint32 = 0xFF00FFFF;
+const HALF: float32 = 0.6;
+const DEPTH_THRESHOLD: float32 = 0.006;
+const DEPTH_SHADE: float32 = 0.55;
+const SCREEN_MAPPING: LowResView = {
 	width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0,
 };
-let context: DrawContext = DrawContext.withUniformCapacity(
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + 2 * PIXEL_ART_UNIFORM_LENGTH + 3 * MATERIAL_UNIFORM_LENGTH,
 );
-let forward: ForwardRenderer = createForward();
-let preset: PixelArtRenderer = createPreset(false);
-let outlinedPreset: PixelArtRenderer = createPreset(true);
-let scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = createForward();
+const preset: PixelArtRenderer = createPreset(false);
+const outlinedPreset: PixelArtRenderer = createPreset(true);
+const scene: Scene3D = Scene3D.create(context);
 let items: Vec<DrawItem> = [];
 let cube: NodeId3D = NO_NODE_ID;
 let sun: NodeId3D = NO_NODE_ID;
@@ -123,15 +123,15 @@ let viewBefore: uint32 = 0;
 let samplerBefore: uint32 = 0;
 
 function createForward(): ForwardRenderer {
-	let created: Result<ForwardRenderer, ForwardError> =
+	const created: Result<ForwardRenderer, ForwardError> =
 		ForwardRenderer.create(context, BACKGROUND);
 	if (created.ok) { return created.value; }
 	unreachable;
 }
 
 function createPreset(postPass: boolean): PixelArtRenderer {
-	let settings: PixelArtSettings = { ...PixelArtSettings.full(), postPass: postPass };
-	let look: PixelArtLook = {
+	const settings: PixelArtSettings = { ...PixelArtSettings.full(), postPass: postPass };
+	const look: PixelArtLook = {
 		background: BACKGROUND,
 		outline: {
 			depthThreshold: DEPTH_THRESHOLD,
@@ -142,7 +142,7 @@ function createPreset(postPass: boolean): PixelArtRenderer {
 		fog: { start: 0.0, end: 1.0, strength: 0.0, color: BACKGROUND },
 		saturation: 0.0,
 	};
-	let created: Result<PixelArtRenderer, PixelArtError> =
+	const created: Result<PixelArtRenderer, PixelArtError> =
 		PixelArtRenderer.create(context, settings, look);
 	if (created.ok) { return created.value; }
 	unreachable;
@@ -175,14 +175,14 @@ function quadrants(): TextureData {
 }
 
 function texturedMaterial(image: TextureId): MaterialId {
-	let reserved: Result<UniformBlock, UniformError> =
+	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!reserved.ok) { unreachable; }
 	let levels: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (!writeUniforms(context, reserved.value, levels).ok) { unreachable; }
-	let plain: Material =
+	const plain: Material =
 		Material.plain(Program.LitTextured, RenderState.defaults(), Phase.Opaque);
-	let added: Result<MaterialId, MaterialError> =
+	const added: Result<MaterialId, MaterialError> =
 		addMaterial(context, { ...plain, texture: image, uniforms: reserved.value });
 	if (!added.ok) {
 		fail(`the textured material was refused: ${added.error.toString()}`);
@@ -198,14 +198,14 @@ function holders(result: Result<int32, HandleError>): int32 {
 }
 
 function made(data: TextureData): TextureId {
-	let added: Result<TextureId, TextureUploadError> = addTexture(context, data);
+	const added: Result<TextureId, TextureUploadError> = addTexture(context, data);
 	if (added.ok) { return added.value; }
 	fail(`the driver refused a two-by-two texture: ${added.error.toString()}`);
 	unreachable;
 }
 
 function releasedMaterial(material: MaterialId): int32 {
-	let freed: Result<int32, HandleError> = releaseMaterial(context, material);
+	const freed: Result<int32, HandleError> = releaseMaterial(context, material);
 	if (freed.ok) { return freed.value; }
 	fail(`a material release was refused: ${freed.error.toString()}`);
 	unreachable;
@@ -215,29 +215,29 @@ function checkLifetime(): void {
 	let images: int32 = liveImages();
 	let views: int32 = liveViews();
 	let samplers: int32 = liveSamplers();
-	let first: TextureId = made(quadrants());
-	let second: TextureId = made(quadrants());
+	const first: TextureId = made(quadrants());
+	const second: TextureId = made(quadrants());
 	if (liveImages() != images + 2 || liveViews() != views + 2 || liveSamplers() != samplers + 1) {
 		fail(
 			`two textures on one filter and wrap made images=${liveImages() - images} ` +
 			`views=${liveViews() - views} samplers=${liveSamplers() - samplers}, expected 2 2 1`,
 		);
 	}
-	let linear: TextureId = made({ ...quadrants(), filter: FilterMode.Linear, wrap: Wrap.Repeat });
-	let mirrored: TextureId = made({ ...quadrants(), wrap: Wrap.Mirror });
+	const linear: TextureId = made({ ...quadrants(), filter: FilterMode.Linear, wrap: Wrap.Repeat });
+	const mirrored: TextureId = made({ ...quadrants(), wrap: Wrap.Mirror });
 	if (liveSamplers() != samplers + 3) {
 		fail(`three filter and wrap settings made ${liveSamplers() - samplers} samplers, not 3`);
 	}
 	if (holders(retainTexture(context, first)) != 2) { fail("a retain added no holder"); }
 	if (holders(releaseTexture(context, first)) != 1) { fail("a release let none go"); }
-	let once: MaterialId = texturedMaterial(first);
+	const once: MaterialId = texturedMaterial(first);
 	if (context.texturePinned(first) != 1) { fail("the material does not pin its texture"); }
 	if (holders(releaseTexture(context, first)) != 1) { fail("the release took the pin"); }
-	let pinned: Result<int32, HandleError> = releaseTexture(context, first);
+	const pinned: Result<int32, HandleError> = releaseTexture(context, first);
 	if (pinned.ok || pinned.error != HandleError.OnlyPinned) {
 		fail("a release past the loader's hold was taken while the material pins the texture");
 	}
-	let twice: MaterialId = texturedMaterial(first);
+	const twice: MaterialId = texturedMaterial(first);
 	if (context.texturePinned(first) != 2) { fail("a second material did not pin the texture"); }
 	if (releasedMaterial(once) != 0 || !context.hasTexture(first)) {
 		fail("freeing one of two materials freed the texture both pin");
@@ -245,11 +245,11 @@ function checkLifetime(): void {
 	if (releasedMaterial(twice) != 0 || context.hasTexture(first)) {
 		fail("freeing the last material did not free the texture it pinned");
 	}
-	let stale: Result<int32, HandleError> = retainTexture(context, first);
+	const stale: Result<int32, HandleError> = retainTexture(context, first);
 	if (stale.ok || stale.error != HandleError.StaleTexture) {
 		fail("a freed texture's id was not refused as stale");
 	}
-	let held: MaterialId = texturedMaterial(second);
+	const held: MaterialId = texturedMaterial(second);
 	if (releasedMaterial(held) != 0 || !context.hasTexture(second)) {
 		fail("freeing a material freed the texture its caller still holds");
 	}
@@ -275,39 +275,39 @@ export function initTextured(): void {
 	}
 	gfxSetup();
 	checkLifetime();
-	let made: Result<TextureId, TextureUploadError> = addTexture(context, quadrants());
+	const made: Result<TextureId, TextureUploadError> = addTexture(context, quadrants());
 	if (!made.ok) {
 		fail("the driver refused the cube's texture");
 		return;
 	}
 	texture = made.value;
 	let data: MeshData = MeshData.withUvs();
-	let edge: float32 = 2.0 * HALF;
-	let built: Result<int32, MeshError> =
+	const edge: float32 = 2.0 * HALF;
+	const built: Result<int32, MeshError> =
 		addTexturedCube(data, vec3(edge, edge, edge), true, WHITE);
 	if (!built.ok) { unreachable; }
-	let mesh: Result<MeshId, MeshUploadError> = addMeshData(context, data);
+	const mesh: Result<MeshId, MeshUploadError> = addMeshData(context, data);
 	if (!mesh.ok) { unreachable; }
-	let material: MaterialId = texturedMaterial(texture);
-	let placed: Result<NodeId3D, SceneError> = addMeshNode(
+	const material: MaterialId = texturedMaterial(texture);
+	const placed: Result<NodeId3D, SceneError> = addMeshNode(
 		scene, scene.rootId(), Transform3D.identity(), mesh.value, material,
 	);
 	if (!placed.ok) { unreachable; }
 	cube = placed.value;
 	setPickable(scene, cube, true);
 	if (holders(releaseTexture(context, texture)) != 1) { fail("the loader's hold was not one"); }
-	let light: LightInstance = {
+	const light: LightInstance = {
 		kind: LightKind.Directional,
 		color: vec3(1.0, 1.0, 1.0),
 		radius: 0.0,
 		power: 0.0,
 		priority: 0,
 	};
-	let towardCamera: Transform3D = {
+	const towardCamera: Transform3D = {
 		...Transform3D.identity(), rotation: { x: 0.0, y: 1.0, z: 0.0, w: 0.0 },
 	};
 	sun = addLightNode(scene, scene.rootId(), towardCamera, light);
-	let point: LightInstance = { ...light, kind: LightKind.Point, radius: 2.5 };
+	const point: LightInstance = { ...light, kind: LightKind.Point, radius: 2.5 };
 	lamp = addLightNode(
 		scene, scene.rootId(), Transform3D.fromTranslation(vec3(0.0, 0.0, 1.6)), point,
 	);
@@ -316,7 +316,7 @@ export function initTextured(): void {
 // The outlined configuration looks orthographically: the pixel-art programs write clip z as their
 // depth, which is [0, 1] only when w is 1 (VOID3D.md, "M22 as built", still missing).
 function viewOf(): CameraView {
-	let perspective: Camera3D = {
+	const perspective: Camera3D = {
 		position: vec3(0.0, 0.0, 3.0),
 		yaw: 0.0,
 		pitch: 0.0,
@@ -324,13 +324,13 @@ function viewOf(): CameraView {
 		farPlane: 30.0,
 		projection: { kind: ProjectionKind.Perspective, fovY: 1.0471975512 },
 	};
-	let orthographic: Camera3D = {
+	const orthographic: Camera3D = {
 		...perspective,
 		farPlane: 6.0,
 		projection: { kind: ProjectionKind.Orthographic, worldPerTexel: 0.01, snap: false },
 	};
-	let camera: Camera3D = outlined ? orthographic : perspective;
-	let resolved: Result<CameraView, CameraError> = camera.resolve(WIDTH, HEIGHT);
+	const camera: Camera3D = outlined ? orthographic : perspective;
+	const resolved: Result<CameraView, CameraError> = camera.resolve(WIDTH, HEIGHT);
 	if (resolved.ok) { return resolved.value; }
 	unreachable;
 }
@@ -343,13 +343,13 @@ function stage(frameIndex: int32): int32 {
 }
 
 function pose(frameIndex: int32): void {
-	let turn: float32 = stage(frameIndex) == 1 || stage(frameIndex) == 2 ? 0.6 : 0.0;
-	let tip: float32 = stage(frameIndex) == 2 ? 0.5 : 0.0;
+	const turn: float32 = stage(frameIndex) == 1 || stage(frameIndex) == 2 ? 0.6 : 0.0;
+	const tip: float32 = stage(frameIndex) == 2 ? 0.5 : 0.0;
 	setLocal(scene, cube, { ...Transform3D.identity(), rotation: eulerQuat(tip, turn, 0.0) });
-	let lit: boolean = stage(frameIndex) == 3;
-	let lamplit: boolean = lit && pixelArt;
-	let sunlit: boolean = lit && !pixelArt;
-	let ambient: float32 = lamplit ? 0.0 : sunlit ? 0.25 : 1.0;
+	const lit: boolean = stage(frameIndex) == 3;
+	const lamplit: boolean = lit && pixelArt;
+	const sunlit: boolean = lit && !pixelArt;
+	const ambient: float32 = lamplit ? 0.0 : sunlit ? 0.25 : 1.0;
 	setAmbient(scene, vec3(ambient, ambient, ambient));
 	setLightPower(scene, sun, sunlit ? 0.25 : 0.0);
 	setLightPower(scene, lamp, lamplit ? 3.0 : 0.0);
@@ -368,34 +368,34 @@ function channelOf(rgb: uint32, shift: uint32): int32 {
 }
 
 function isSunlitTexel(got: uint32, texel: uint32): boolean {
-	let want: uint32 = rgbOfTexel(texel);
-	let shifts: Vec<uint32> = [16, 8, 0];
+	const want: uint32 = rgbOfTexel(texel);
+	const shifts: Vec<uint32> = [16, 8, 0];
 	const light: float32 = srgbToLinear(0.25) + 0.25;
 	for (const shift of shifts) {
 		const channel: float32 = (channelOf(want, shift) as float32) / 255.0;
 		const expected: int32 =
 			Math.round(linearToSrgb(srgbToLinear(channel) * light) * 255.0) as int32;
-		let difference: int32 = channelOf(got, shift) - expected;
+		const difference: int32 = channelOf(got, shift) - expected;
 		if (difference < -1 || difference > 1) { return false; }
 	}
 	return true;
 }
 
 function pixelAt(view: CameraView, point: Vec3): uint32 {
-	let at: Vec3 = view.project(point, SCREEN_MAPPING, true);
+	const at: Vec3 = view.project(point, SCREEN_MAPPING, true);
 	return rgbOf(voidCapturePixel(0, at.x as int32, at.y as int32));
 }
 
 function checkQuadrants(view: CameraView, lit: boolean): void {
-	let corner: float32 = HALF * 0.5;
-	let expected: Vec<uint32> = [RED, GREEN, BLUE, YELLOW];
-	let points: Vec<Vec3> = [
+	const corner: float32 = HALF * 0.5;
+	const expected: Vec<uint32> = [RED, GREEN, BLUE, YELLOW];
+	const points: Vec<Vec3> = [
 		vec3(-corner, corner, HALF), vec3(corner, corner, HALF),
 		vec3(-corner, -corner, HALF), vec3(corner, -corner, HALF),
 	];
 	for (let i = 0; i < 4; i++) {
-		let got: uint32 = pixelAt(view, points[i]);
-		let right: boolean = lit ? isSunlitTexel(got, expected[i]) : got == rgbOfTexel(expected[i]);
+		const got: uint32 = pixelAt(view, points[i]);
+		const right: boolean = lit ? isSunlitTexel(got, expected[i]) : got == rgbOfTexel(expected[i]);
 		if (!right) {
 			fail(`front quadrant ${i} is ${got}, not its texel ${rgbOfTexel(expected[i])}`);
 		}
@@ -440,13 +440,13 @@ function rampLevelOf(channel: int32): int32 {
 // The pixel-art preset steps a point light to the material's four ramp levels, where the core's
 // program lights smoothly: every pixel of the red quadrant is red at one of those levels.
 function checkStepped(view: CameraView): void {
-	let from: Vec3 = view.project(vec3(-HALF, HALF, HALF), SCREEN_MAPPING, true);
-	let to: Vec3 = view.project(vec3(0.0, 0.0, HALF), SCREEN_MAPPING, true);
+	const from: Vec3 = view.project(vec3(-HALF, HALF, HALF), SCREEN_MAPPING, true);
+	const to: Vec3 = view.project(vec3(0.0, 0.0, HALF), SCREEN_MAPPING, true);
 	let levels: Vec<int32> = [0, 0, 0, 0, 0];
 	for (let y = (from.y as int32) + 2; y < (to.y as int32) - 2; y++) {
 		for (let x = (from.x as int32) + 2; x < (to.x as int32) - 2; x++) {
-			let got: uint32 = rgbOf(voidCapturePixel(0, x, y));
-			let red: int32 = channelOf(got, 16);
+			const got: uint32 = rgbOf(voidCapturePixel(0, x, y));
+			const red: int32 = channelOf(got, 16);
 			const step: int32 = rampLevelOf(red);
 			if (channelOf(got, 8) != 0 || channelOf(got, 0) != 0 || step < 0) {
 				fail(`pixel (${x}, ${y}) is ${got}, not the red texel at a ramp level`);
@@ -462,14 +462,14 @@ function checkStepped(view: CameraView): void {
 
 // Nearest sampling and no MSAA: under full light every pixel is the background or a texel.
 function checkOnlyTexels(): void {
-	let background: uint32 = rgbOf(voidCapturePixel(0, 2, 2));
+	const background: uint32 = rgbOf(voidCapturePixel(0, 2, 2));
 	let seen: Vec<int32> = [0, 0, 0, 0];
-	let texels: Vec<uint32> = [
+	const texels: Vec<uint32> = [
 		rgbOfTexel(RED), rgbOfTexel(GREEN), rgbOfTexel(BLUE), rgbOfTexel(YELLOW),
 	];
 	for (let y = 0; y < HEIGHT; y++) {
 		for (let x = 0; x < WIDTH; x++) {
-			let got: uint32 = rgbOf(voidCapturePixel(0, x, y));
+			const got: uint32 = rgbOf(voidCapturePixel(0, x, y));
 			if (got == background) { continue; }
 			let found: int32 = -1;
 			for (let i = 0; i < 4; i++) {
@@ -488,7 +488,7 @@ function checkOnlyTexels(): void {
 }
 
 function isShadeOf(channel: int32, full: float32): boolean {
-	let difference: int32 = channel - ((full * 255.0 + 0.5) as int32);
+	const difference: int32 = channel - ((full * 255.0 + 0.5) as int32);
 	return difference >= -1 && difference <= 1;
 }
 
@@ -499,14 +499,14 @@ function checkOutline(silhouette: boolean): void {
 	let found: int32 = 0;
 	for (let y = 0; y < HEIGHT; y++) {
 		for (let x = 0; x < WIDTH; x++) {
-			let got: uint32 = rgbOf(voidCapturePixel(0, x, y));
+			const got: uint32 = rgbOf(voidCapturePixel(0, x, y));
 			let shaded: int32 = 0;
 			let clear: int32 = 0;
-			let shifts: Vec<uint32> = [16, 8, 0];
+			const shifts: Vec<uint32> = [16, 8, 0];
 			for (const shift of shifts) {
-				let channel: int32 = channelOf(got, shift);
-				let low: boolean = silhouette ? channel == 0 : isShadeOf(channel, 0.02);
-				let high: boolean = silhouette ? isShadeOf(channel, DEPTH_SHADE) : channel == 255;
+				const channel: int32 = channelOf(got, shift);
+				const low: boolean = silhouette ? channel == 0 : isShadeOf(channel, 0.02);
+				const high: boolean = silhouette ? isShadeOf(channel, DEPTH_SHADE) : channel == 255;
 				if (low) { clear = clear + 1; }
 				if (high) { shaded = shaded + 1; }
 			}
@@ -534,7 +534,7 @@ function loseContext(): void {
 }
 
 function checkRemade(): void {
-	let remade: GpuTexture = context.textures[texture.index];
+	const remade: GpuTexture = context.textures[texture.index];
 	const remadeView: uint32 = textureViewAt(context, texture.index);
 	if (remadeView == viewBefore || remadeView == 0 || remade.sampler == samplerBefore ||
 		remade.sampler == 0 || remade.samplerGeneration != contextGeneration() ||
@@ -545,7 +545,7 @@ function checkRemade(): void {
 
 function presetFrame(renderer: PixelArtRenderer, view: CameraView): int32 {
 	setCameraView(renderer.core, view);
-	let frame: Result<int32, PixelArtError> =
+	const frame: Result<int32, PixelArtError> =
 		renderPixelArt(renderer, items, cameraBlock, lights, SCREEN_MAPPING);
 	if (frame.ok) { return frame.value; }
 	fail(`the pixel-art preset refused the textured cube: ${frame.error.toString()}`);
@@ -556,7 +556,7 @@ function drawn(view: CameraView): int32 {
 	if (outlined) { return presetFrame(outlinedPreset, view); }
 	if (pixelArt) { return presetFrame(preset, view); }
 	setCameraView(forward.core, view);
-	let frame: Result<int32, ForwardError> =
+	const frame: Result<int32, ForwardError> =
 		prepareFrame(forward, items, cameraBlock, lights, WIDTH, HEIGHT);
 	if (!frame.ok) {
 		fail(`the forward preset refused the textured cube: ${frame.error.toString()}`);
@@ -574,16 +574,16 @@ export function frameTextured(frameIndex: int32): void {
 	if (frameIndex == rebuildAt) { loseContext(); }
 	pose(frameIndex);
 	if (refresh(scene, items) != 1) { fail("the scene does not draw exactly the cube"); }
-	let collected: Result<int32, LightError> = collectLights(scene, lights);
+	const collected: Result<int32, LightError> = collectLights(scene, lights);
 	if (!collected.ok) { unreachable; }
-	let view: CameraView = viewOf();
+	const view: CameraView = viewOf();
 	view.writeCameraBlock(cameraBlock);
 	if (drawn(view) != 1) { fail("the frame did not draw the cube"); }
 	if (frameIndex == rebuildAt) { checkRemade(); }
 	if (frameIndex == 1 || frameIndex == 6 || frameIndex == 11 || frameIndex == 16) {
 		if (voidCaptureGrab(0) == 0 || voidCaptureGrab(1) == 0) { fail("D3D11 readback failed"); }
 		if (voidCaptureSlotsDiffer() != 0) { fail("two readbacks of the same frame differ"); }
-		let lit: boolean = stage(frameIndex) == 3;
+		const lit: boolean = stage(frameIndex) == 3;
 		if (stage(frameIndex) == 0 || (lit && !pixelArt)) { checkQuadrants(view, lit); }
 		if (lit && pixelArt) { checkStepped(view); }
 		if (!lit && !outlined) { checkOnlyTexels(); }

@@ -80,19 +80,19 @@ const NOISE_HIGH: uint32 = 0xFF0000CC;
 const ELAPSED: float64 = 0.25;
 const SCROLL: float32 = 0.5;
 const LAST_FRAME: int32 = 8;
-let pixelArt: boolean = voidCaptureEnvInt("VOID_MOVING_PIXEL_ART", 0) != 0;
-let control: boolean = voidCaptureEnvInt("VOID_MOVING_CONTROL", 0) != 0;
-let context: DrawContext = DrawContext.withUniformCapacity(
+const pixelArt: boolean = voidCaptureEnvInt("VOID_MOVING_PIXEL_ART", 0) != 0;
+const control: boolean = voidCaptureEnvInt("VOID_MOVING_CONTROL", 0) != 0;
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH +
 	9 * MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_MATERIAL_UNIFORM_LENGTH,
 );
-let scene: Scene3D = Scene3D.create(context);
-let forward: ForwardRenderer = makeForward();
-let preset: PixelArtRenderer = makePreset();
+const scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = makeForward();
+const preset: PixelArtRenderer = makePreset();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-let positions: Vec<float32> = [-2.79, -2.17, -1.55, -0.93, -0.31, 0.31, 0.93, 1.55, 2.17, 2.79];
+const positions: Vec<float32> = [-2.79, -2.17, -1.55, -0.93, -0.31, 0.31, 0.93, 1.55, 2.17, 2.79];
 let frameIndex: int32 = 0;
 let failures: int32 = 0;
 

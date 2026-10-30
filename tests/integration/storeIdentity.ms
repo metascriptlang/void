@@ -165,9 +165,9 @@ function rendererOf(context: DrawContext): Renderer {
 }
 
 function twoStores(): void {
-	let a: DrawContext = DrawContext.withUniformCapacity(POOL);
-	let b: DrawContext = DrawContext.withUniformCapacity(POOL);
-	let rendererB: Renderer = rendererOf(b);
+	const a: DrawContext = DrawContext.withUniformCapacity(POOL);
+	const b: DrawContext = DrawContext.withUniformCapacity(POOL);
+	const rendererB: Renderer = rendererOf(b);
 	const _rendererA: Renderer = rendererOf(a);
 	const meshA: MeshId = meshOf(a);
 	const meshB: MeshId = meshOf(b);
@@ -253,11 +253,11 @@ function twoStores(): void {
 }
 
 function aliases(): void {
-	let a: DrawContext = DrawContext.withUniformCapacity(POOL);
+	const a: DrawContext = DrawContext.withUniformCapacity(POOL);
 	const texture: TextureId = textureOf(a);
 	const material: MaterialId = materialOf(a);
 	const view: uint32 = textureViewAt(a, texture.index);
-	let alias: DrawContext = a;
+	const alias: DrawContext = a;
 	check("the alias releases the texture", releaseTexture(alias, texture).ok);
 	check("the context sees the alias's release", !a.hasTexture(texture));
 	check("the release is buried once", buryDoomed(a, contextGeneration()) == 1 &&
@@ -272,7 +272,7 @@ function aliases(): void {
 		handleRefused(releaseTexture(a, texture), HandleError.StaleTexture));
 	check("the alias releases the material", releaseMaterial(alias, material).ok);
 	check("the context sees the material gone", !a.hasMaterial(material));
-	let pool: UniformPool = a.uniforms;
+	const pool: UniformPool = a.uniforms;
 	const block = reserveUniforms(a, 3, 8);
 	check("a block reserved by the context", block.ok);
 	if (block.ok) {
@@ -281,7 +281,7 @@ function aliases(): void {
 }
 
 function reuse(): void {
-	let a: DrawContext = DrawContext.withUniformCapacity(POOL);
+	const a: DrawContext = DrawContext.withUniformCapacity(POOL);
 	const first: MaterialId = materialOf(a);
 	check("the first material goes", releaseMaterial(a, first).ok);
 	const second: MaterialId = materialOf(a);
@@ -298,16 +298,16 @@ const GREEN: Vec4 = { x: 0.0, y: 1.0, z: 0.0, w: 1.0 };
 const VIEW: LowResView = { width: SIDE, height: SIDE, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 let NO_ITEMS: Vec<DrawItem> = [];
 
-let presetCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
-let presetLights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-let forwardContext: DrawContext =
+const presetCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+const presetLights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+const forwardContext: DrawContext =
 	DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH);
-let pixelContext: DrawContext =
+const pixelContext: DrawContext =
 	DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH);
-let survivorContext: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
-let forward: ForwardRenderer = forwardOf(forwardContext, BLACK);
-let survivor: ForwardRenderer = forwardOf(survivorContext, GREEN);
-let pixelArt: PixelArtRenderer = pixelArtOf(pixelContext);
+const survivorContext: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
+const forward: ForwardRenderer = forwardOf(forwardContext, BLACK);
+const survivor: ForwardRenderer = forwardOf(survivorContext, GREEN);
+const pixelArt: PixelArtRenderer = pixelArtOf(pixelContext);
 let frames: int32 = 0;
 
 function forwardOf(context: DrawContext, background: Vec4): ForwardRenderer {
@@ -350,7 +350,7 @@ function gpuObjects(context: DrawContext): int32 {
 function forwardReplaced(): void {
 	const spare: UniformBlock = spareOf(forwardContext);
 	const copy: int32 = forward.copyMaterial.index;
-	const own: UniformBlock = forwardContext.materials[copy].uniforms;
+	let own: UniformBlock = forwardContext.materials[copy].uniforms;
 	const objects: int32 = gpuObjects(forwardContext);
 	const generation: int32 = forward.core.generation;
 	forwardContext.materials[copy].uniforms = spare;
@@ -369,7 +369,7 @@ function forwardReplaced(): void {
 function pixelArtReplaced(post: boolean): void {
 	const spare: UniformBlock = spareOf(pixelContext);
 	const screen: int32 = post ? pixelArt.postMaterial.index : pixelArt.blitMaterial.index;
-	const own: UniformBlock = pixelContext.materials[screen].uniforms;
+	let own: UniformBlock = pixelContext.materials[screen].uniforms;
 	const objects: int32 = gpuObjects(pixelContext);
 	const generation: int32 = pixelArt.core.generation;
 	pixelContext.materials[screen].uniforms = spare;
