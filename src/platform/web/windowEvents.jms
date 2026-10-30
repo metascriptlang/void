@@ -251,12 +251,16 @@ export class WindowEvents {
 		let e = state.initEvent(AppEventType.MouseScroll);
 		e.modifiers = this.modifiers(event);
 		const mode = intField(event, "deltaMode");
-		const scale: float32 = match (mode) {
-			DOM_DELTA_PIXEL => -0.01,
-			DOM_DELTA_LINE => -1.33,
-			DOM_DELTA_PAGE => -10.0,
-			_ => this.window.platform.fail(`wheel event with delta mode ${mode}`),
-		};
+		let scale: float32 = 0;
+		if (mode == DOM_DELTA_PIXEL) {
+			scale = -0.01;
+		} else if (mode == DOM_DELTA_LINE) {
+			scale = -1.33;
+		} else if (mode == DOM_DELTA_PAGE) {
+			scale = -10.0;
+		} else {
+			this.window.platform.fail(`wheel event with delta mode ${mode}`);
+		}
 		e.scrollX = scale * (numberField(event, "deltaX") as float32);
 		e.scrollY = scale * (numberField(event, "deltaY") as float32);
 		this.window.windowEvent(e);
