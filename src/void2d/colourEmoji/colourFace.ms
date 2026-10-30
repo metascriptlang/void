@@ -839,12 +839,16 @@ function fixed1(v: float32): string {
 	return `${tenths / 10}.${tenths % 10}`;
 }
 
-export function colourGlyphBox(face: ColourFace, bytes: uint8[], glyph: int32, sizePx: float32, box: ColourBox): int32 {
+function reset(this box: ColourBox): void {
 	box.width = 0;
 	box.height = 0;
 	box.bearingX = 0;
 	box.bearingY = 0;
 	box.ppem = 0;
+}
+
+export function colourGlyphBox(face: ColourFace, bytes: uint8[], glyph: int32, sizePx: float32, box: ColourBox): int32 {
+	box.reset();
 	if (glyph <= 0 || glyph >= 0x10000 || !(sizePx > 0.0)) { return COLOUR_ABSENT; }
 	lastReason = "";
 	let status = COLOUR_ABSENT;
@@ -863,11 +867,7 @@ export function colourGlyphBox(face: ColourFace, bytes: uint8[], glyph: int32, s
 			fail(
 				`colour glyph ${glyph} is ${box.width}x${box.height} at ${fixed1(sizePx)} px, over the ${COLOUR_MAX_TEXELS} texel limit`,
 			);
-			box.width = 0;
-			box.height = 0;
-			box.bearingX = 0;
-			box.bearingY = 0;
-			box.ppem = 0;
+			box.reset();
 			status = COLOUR_REFUSED;
 		}
 	}
