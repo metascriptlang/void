@@ -203,9 +203,9 @@ function animFrame(s: Scene2D, i: int32): int32 {
 	return s.anims[s.payloads[i]].frameIndex();
 }
 
-function placedBounds(t: Tile, w: float32, h: float32): Bounds2D {
-	const dx: float32 = tileOffsetX(t, w);
-	const dy: float32 = tileOffsetY(t, h);
+function placedBounds(this t: Tile, w: float32, h: float32): Bounds2D {
+	const dx: float32 = t.tileOffsetX(w);
+	const dy: float32 = t.tileOffsetY(h);
 	return { xMin: dx, yMin: dy, xMax: dx + w, yMax: dy + h };
 }
 function showsEditing(s: Scene2D, i: int32): boolean {
@@ -214,11 +214,11 @@ function showsEditing(s: Scene2D, i: int32): boolean {
 	return text.selectionLength > 0 || text.cursorIndex != NO_CURSOR;
 }
 
-function tileOffsetX(t: Tile, width: float32): float32 {
+function tileOffsetX(this t: Tile, width: float32): float32 {
 	return t.w != 0.0 ? t.dx * width / t.w : t.dx;
 }
 
-function tileOffsetY(t: Tile, height: float32): float32 {
+function tileOffsetY(this t: Tile, height: float32): float32 {
 	return t.h != 0.0 ? t.dy * height / t.h : t.dy;
 }
 
@@ -332,8 +332,8 @@ function ownBounds(s: Scene2D, i: int32, query: boolean): Bounds2D {
 		},
 		DrawKind.Sprite | DrawKind.Anim | DrawKind.ScaleGrid => {
 			const frame: int32 = animFrame(s, i);
-			if (frame != NO_FRAME) { return placedBounds(s.anims[payload].frames[frame], w, h); }
-			return placedBounds(s.contents[i].tile, w, h);
+			if (frame != NO_FRAME) { return s.anims[payload].frames[frame].placedBounds(w, h); }
+			return s.contents[i].tile.placedBounds(w, h);
 		},
 		DrawKind.Group | DrawKind.Rect | DrawKind.Mask | DrawKind.Underline | DrawKind.Icon => {
 			return { xMin: 0.0, yMin: 0.0, xMax: w, yMax: h };
@@ -341,7 +341,7 @@ function ownBounds(s: Scene2D, i: int32, query: boolean): Bounds2D {
 	}
 }
 
-function fringeBounds(lb: Bounds2D, world: Transform2D): Bounds2D {
+function fringeBounds(this lb: Bounds2D, world: Transform2D): Bounds2D {
 	const det: float32 = world.a * world.d - world.b * world.c;
 	const scale: float32 = currentRenderScale();
 	if (det == 0.0 || !(scale > 0.0)) { return lb; }
@@ -353,7 +353,7 @@ function fringeBounds(lb: Bounds2D, world: Transform2D): Bounds2D {
 
 function boxRenderBounds(s: Scene2D, i: int32, world: Transform2D, lb: Bounds2D): Bounds2D {
 	if (s.kinds[i] === DrawKind.Graphics && s.meshes[s.payloads[i]].fringed) {
-		return fringeBounds(lb, world);
+		return lb.fringeBounds(world);
 	}
 	if (s.kinds[i] !== DrawKind.Rect) { return lb; }
 	let xMin: float32 = lb.xMin;
@@ -395,8 +395,8 @@ function drawScaleGrid(
 	const srcW: float32 = t.w;
 	const srcH: float32 = t.h;
 	if (srcW <= 0.0 || srcH <= 0.0) { return; }
-	const ox: float32 = tileOffsetX(t, grid.w);
-	const oy: float32 = tileOffsetY(t, grid.h);
+	const ox: float32 = t.tileOffsetX(grid.w);
+	const oy: float32 = t.tileOffsetY(grid.h);
 	const sx: float32[4] = [0.0, grid.borderL, srcW - grid.borderR, srcW];
 	const sy: float32[4] = [0.0, grid.borderT, srcH - grid.borderB, srcH];
 	const dx: float32[4] = [ox, ox + grid.borderL, ox + grid.w - grid.borderR, ox + grid.w];
@@ -1037,13 +1037,13 @@ function emitImage(
 	}
 }
 
-function fillFlags(f: BoxFill): float32 {
+function shaderFlags(this f: BoxFill): float32 {
 	const oklab: float32 = f.space == GradientSpace.Oklab ? 1.0 : 0.0;
 	const dither: float32 = f.dither ? 2.0 : 0.0;
 	return oklab + dither;
 }
 
-function fillParams(f: BoxFill): [float32, float32, float32, float32] {
+function shaderParams(this f: BoxFill): [float32, float32, float32, float32] {
 	match (f.kind) {
 		BoxFillKind.Linear => { return [f.angle, f.fromStop, f.toStop, 0.0]; },
 		BoxFillKind.Slash => { return [f.stripe, f.gap, 0.0, 0.0]; },
@@ -1184,8 +1184,8 @@ function emitBox(
 			filled ? fill.from.faded(na) : col),
 		uvRadii: radii,
 		borders: borders,
-		params: [dashed, (fill.kind as int32) as float32, fillFlags(fill)],
-		params1: fillParams(fill),
+		params: [dashed, (fill.kind as int32) as float32, fill.shaderFlags()],
+		params1: fill.shaderParams(),
 		border: insets > 0 ? TRANSPARENT : edge,
 		extra: filled ? fill.to.faded(na) : TRANSPARENT,
 	});
@@ -1448,7 +1448,7 @@ function drawOwn(s: Scene2D, i: int32, na: float32, vw: float32, vh: float32): v
 	const blank: boolean = s.kinds[i] === DrawKind.Group || s.kinds[i] === DrawKind.Mask
 		|| unpainted;
 	s.culls[i] = scoped || !clipped || blank ? emptyBounds() : reach;
-	const onscreen: boolean = (scoped || seenAt(reach, s.viewShift, vw, vh)) && clipped;
+	const onscreen: boolean = (scoped || reach.seenAt(s.viewShift, vw, vh)) && clipped;
 	if (onscreen && !blank) {
 		emitNode(
 			s, i, world, na, col, tl, tr, br, bl,
@@ -1457,7 +1457,7 @@ function drawOwn(s: Scene2D, i: int32, na: float32, vw: float32, vh: float32): v
 	}
 }
 
-function seenAt(b: Bounds2D, shift: Vec2, vw: float32, vh: float32): boolean {
+function seenAt(this b: Bounds2D, shift: Vec2, vw: float32, vh: float32): boolean {
 	return b.xMax >= 0.0 - shift.x && b.xMin <= vw - shift.x
 		&& b.yMax >= 0.0 - shift.y && b.yMin <= vh - shift.y;
 }
@@ -1479,11 +1479,11 @@ function panOrder(s: Scene2D, vw: float32, vh: float32): void {
 				}
 			},
 			PaintState.InLanes => {
-				if (seenAt(reach, was, vw, vh) != seenAt(reach, now, vw, vh)) { s.scanNeeded = true; }
+				if (reach.seenAt(was, vw, vh) != reach.seenAt(now, vw, vh)) { s.scanNeeded = true; }
 			},
 			PaintState.Painted => {
 				if (s.queued[i] != s.patchSerial
-					&& seenAt(reach, was, vw, vh) != seenAt(reach, now, vw, vh)) {
+					&& reach.seenAt(was, vw, vh) != reach.seenAt(now, vw, vh)) {
 					s.queued[i] = s.patchSerial;
 					s.repaint.push(i);
 				}
@@ -1587,7 +1587,7 @@ function reusable(s: Scene2D, i: int32, old: DrawContext2D): boolean {
 let overlapRows: Vec<int32> = [];
 let overlapBoxes: Vec<Bounds2D> = [];
 
-function keyOf(b: Bounds2D, alongX: boolean): float32 { return alongX ? b.xMin : b.yMin; }
+function keyOf(this b: Bounds2D, alongX: boolean): float32 { return alongX ? b.xMin : b.yMin; }
 
 when (debug) {
 	function checkNoOverlap(s: Scene2D, parent: int32): void {
@@ -1620,7 +1620,7 @@ when (debug) {
 			const row: int32 = overlapRows[a];
 			const box: Bounds2D = overlapBoxes[a];
 			let k: int32 = a - 1;
-			while (k >= 0 && keyOf(overlapBoxes[k], alongX) > keyOf(box, alongX)) {
+			while (k >= 0 && overlapBoxes[k].keyOf(alongX) > box.keyOf(alongX)) {
 				overlapRows[k + 1] = overlapRows[k];
 				overlapBoxes[k + 1] = overlapBoxes[k];
 				k = k - 1;
@@ -1631,7 +1631,7 @@ when (debug) {
 		for (let a: int32 = 0; a < m; a++) {
 			const ba: Bounds2D = overlapBoxes[a];
 			const reach: float32 = alongX ? ba.xMax : ba.yMax;
-			for (let b: int32 = a + 1; b < m && keyOf(overlapBoxes[b], alongX) < reach; b++) {
+			for (let b: int32 = a + 1; b < m && overlapBoxes[b].keyOf(alongX) < reach; b++) {
 				const bb: Bounds2D = overlapBoxes[b];
 				if (ba.xMin < bb.xMax && bb.xMin < ba.xMax && ba.yMin < bb.yMax && bb.yMin < ba.yMax) {
 					console.log(
