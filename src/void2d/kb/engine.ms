@@ -23,14 +23,8 @@ import {
 	KB_OP_KIND_NORMALIZE_HANGUL,
 	KB_OP_KIND_POST_GPOS_FIXUP,
 	KB_OP_KIND_PRE_NORMALIZE_DOTTED_CIRCLES,
-	KB_SHAPER_DEFAULT,
 	KB_UNICODE_FLAG_PART_OF_WORD,
 } from "./shapeTables";
-
-// A shaper other than DEFAULT shapes through clusters (kbts_ShapeDirect's complex path).
-export function kbShaperIsComplex(shaper: uint32): boolean {
-	return shaper != KB_SHAPER_DEFAULT;
-}
 
 function step(observe: ((s: KbScratch) => void) | null, s: KbScratch): void {
 	if (observe != null) {
@@ -49,7 +43,8 @@ function readOp(s: KbScratch, end: uint8): boolean {
 			let kind = ops[s.ip as int32];
 			s.ip += 1;
 
-			if (kind == KB_OP_KIND_GSUB_FEATURES_WITH_USER || kind == KB_OP_KIND_GSUB_FEATURES ||
+			if (kind == KB_OP_KIND_GSUB_FEATURES_WITH_USER ||
+				kind == KB_OP_KIND_GSUB_FEATURES ||
 				kind == KB_OP_KIND_GPOS_FEATURES) {
 				s.featureStagesRead += 1;
 
@@ -72,30 +67,22 @@ function executeOp(s: KbScratch, m: Span<uint8>): void {
 		return;
 	}
 
-	const kind = s.opKind;
-	if (kind == KB_OP_KIND_PRE_NORMALIZE_DOTTED_CIRCLES) {
-		kbPreNormalizeDottedCircles(s, config);
-	} else if (kind == KB_OP_KIND_NORMALIZE) {
-		kbNormalize(s, config);
-	} else if (kind == KB_OP_KIND_NORMALIZE_HANGUL) {
-		kbNormalizeHangul(s, config);
-	} else if (kind == KB_OP_KIND_BEGIN_GSUB) {
-		kbBeginGsub(s);
-	} else if (kind == KB_OP_KIND_GSUB_FEATURES) {
-		kbGsubFeatures(s, m, config);
-	} else if (kind == KB_OP_KIND_FLAG_JOINING_LETTERS) {
-		kbFlagJoiningLetters(s);
-	} else if (kind == KB_OP_KIND_GPOS_METRICS) {
-		kbGposMetrics(s, m, config);
-	} else if (kind == KB_OP_KIND_GPOS_FEATURES) {
-		kbGposFeatures(s, m, config);
-	} else if (kind == KB_OP_KIND_POST_GPOS_FIXUP) {
-		kbPostGposFixup(s, config);
+	match (s.opKind) {
+		KB_OP_KIND_PRE_NORMALIZE_DOTTED_CIRCLES => { kbPreNormalizeDottedCircles(s, config); },
+		KB_OP_KIND_NORMALIZE => { kbNormalize(s, config); },
+		KB_OP_KIND_NORMALIZE_HANGUL => { kbNormalizeHangul(s, config); },
+		KB_OP_KIND_BEGIN_GSUB => { kbBeginGsub(s); },
+		KB_OP_KIND_GSUB_FEATURES => { kbGsubFeatures(s, m, config); },
+		KB_OP_KIND_FLAG_JOINING_LETTERS => { kbFlagJoiningLetters(s); },
+		KB_OP_KIND_GPOS_METRICS => { kbGposMetrics(s, m, config); },
+		KB_OP_KIND_GPOS_FEATURES => { kbGposFeatures(s, m, config); },
+		KB_OP_KIND_POST_GPOS_FIXUP => { kbPostGposFixup(s, config); },
+		_ => {},
 	}
 }
 
-// kbts__ShapeDirect. The blob view is a parameter because the engine rewrites the scratch while it is
-// read, and the language refuses a view taken from the config inside the same function.
+// kbts__ShapeDirect. The blob view is a parameter because the engine rewrites the scratch while it
+// is read, and the language refuses a view taken from the config inside the same function.
 function shapeDirect(
 	s: KbScratch,
 	m: Span<uint8>,
@@ -136,8 +123,11 @@ function shapeDirect(
 		const beginClusterFeatureStagesRead = s.featureStagesRead;
 		let topLevelGlyph = g[KB_GLYPH_SENTINEL].next;
 
-		for (let lookupIndex = beginClusterSequentialLookupIndexIndex as int32; lookupIndex < s.sequentialLookupCount;
-			lookupIndex++) {
+		for (
+			let lookupIndex = beginClusterSequentialLookupIndexIndex as int32;
+			lookupIndex < s.sequentialLookupCount;
+			lookupIndex++
+		) {
 			kbFreeGlyphBucket(s, lookupIndex);
 		}
 
@@ -152,8 +142,9 @@ function shapeDirect(
 			const onePastLastClusterGlyph = kbBeginCluster(s, m, config, topLevelGlyph);
 			step(observe, s);
 
-			const wordBreak = (g[g[onePastLastClusterGlyph].prev].unicodeFlags & KB_UNICODE_FLAG_PART_OF_WORD) == 0;
-			s.cluster = kbPushGlyphList(storage, g[oneBeforeFirstClusterGlyph].next, g[onePastLastClusterGlyph].prev);
+			const lastClusterGlyph = g[onePastLastClusterGlyph].prev;
+			const wordBreak = (g[lastClusterGlyph].unicodeFlags & KB_UNICODE_FLAG_PART_OF_WORD) == 0;
+			s.cluster = kbPushGlyphList(storage, g[oneBeforeFirstClusterGlyph].next, lastClusterGlyph);
 
 			let glyph = g[KB_GLYPH_SENTINEL].next;
 			while (glyph != KB_GLYPH_SENTINEL) {
@@ -201,7 +192,8 @@ export function kbShapeDirect(
 	shapeDirect(s, m, runDirection, variationVectorNormalized, null);
 }
 
-// The same run, calling observe after every op and cluster step, so a test sees each intermediate state.
+// The same run, calling observe after every op and cluster step, so a test sees each intermediate
+// state.
 export function kbShapeDirectObserved(
 	s: KbScratch,
 	m: Span<uint8>,
