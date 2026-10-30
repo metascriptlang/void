@@ -3,7 +3,7 @@
 
 import { Buffer } from "std/core/buffer";
 import { byteAt, byteLength } from "std/core/string/bytes";
-import { mkdir, readFile, writeFile } from "std/fs";
+import { mkdir, readFile, writeFile, writeFileBytes } from "std/fs";
 import {
 	programModule,
 	programSource,
@@ -52,7 +52,7 @@ export function printedSpirv(m: ShaderModule, entry: int32, name: string): strin
 	if (!words.ok) { return words.error; }
 	const _out = mkdir("out");
 	const _folder = mkdir("out/spirvProbe");
-	const _written = writeFile("out/spirvProbe/" + name + ".spv",
+	const _written = writeFileBytes("out/spirvProbe/" + name + ".spv",
 		Buffer.fromString(wordsBase64(words.value), "base64"));
 	return "";
 }

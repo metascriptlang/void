@@ -3,7 +3,7 @@
 
 import { Buffer } from "std/core/buffer";
 import { sha256 } from "std/crypto/sha256";
-import { mkdir, readFile, writeFile } from "std/fs";
+import { mkdir, readFile, readFileBytes, writeFile, writeFileBytes } from "std/fs";
 import { argv, exit } from "std/process";
 import { glslIr, glslLinkedIr } from "../src/shader/emit";
 import {
@@ -370,7 +370,7 @@ class Dxbc {
 function blobReference(constants: Map<string, string>, prefix: string, key: string,
 	path: string): string {
 	if (!constants.has(key)) {
-		const blob = readFile(path);
+		const blob = readFileBytes(path);
 		if (!blob.ok) { fail("cannot read " + path); }
 		constants.set(key, blob.value.toBase64());
 	}
@@ -471,8 +471,9 @@ function blobPrefix(language: string): string {
 	fail("no blob prefix for " + language);
 }
 
-function spirvFile(words: uint32[]): string {
-	return Buffer.fromString(wordsBase64(words), "base64");
+function keepSpirv(path: string, words: uint32[]): void {
+	const bytes = Buffer.fromString(wordsBase64(words), "base64");
+	if (!writeFileBytes(path, bytes).ok) { fail("cannot write " + path); }
 }
 
 function textShared(texts: Map<string, string>, code: string, bytecode: string,
@@ -513,10 +514,15 @@ function moduleText(
 				fail(program.name + " " + language + ": " + printed.refusal);
 			}
 			const files = stageFiles(language);
-			keep("out/irPrograms/" + program.name + files[0],
-				language == "spirv" ? spirvFile(printed.vertexWords) : printed.vertexCode);
-			keep("out/irPrograms/" + program.name + files[1],
-				language == "spirv" ? spirvFile(printed.fragmentWords) : printed.fragmentCode);
+			const vertexPath = "out/irPrograms/" + program.name + files[0];
+			const fragmentPath = "out/irPrograms/" + program.name + files[1];
+			if (language == "spirv") {
+				keepSpirv(vertexPath, printed.vertexWords);
+				keepSpirv(fragmentPath, printed.fragmentWords);
+			} else {
+				keep(vertexPath, printed.vertexCode);
+				keep(fragmentPath, printed.fragmentCode);
+			}
 			counts.printed += 2;
 			row.push(printed);
 		}

@@ -34,7 +34,7 @@ import {
 	GPUTextureView,
 	GPUTextureViewDimension,
 } from "../webgpu/types.ms";
-import { mkdir, readFile, writeFile } from "std/fs";
+import { mkdir, readFileBytes, writeFile } from "std/fs";
 import { exec } from "std/process";
 import { getCurrentDepthTexture, getCurrentTexture, requestDevice } from "../webgpu/device.ms";
 import { bindStats, nativeQueue, nativeTexture } from "../webgpu/metal/backend.ms";
@@ -2386,7 +2386,7 @@ function metallibOf(name: string, msl: string): Vec<uint8> {
 	if (!writeFile(`${base}.metal`, msl).ok) { stopOnMetal(`cannot write ${base}.metal`); }
 	const run = exec(`xcrun -sdk macosx metal -c -std=macos-metal2.4 -mmacosx-version-min=12.0 ${base}.metal -o ${base}.air 2>&1 && xcrun -sdk macosx metallib ${base}.air -o ${base}.metallib 2>&1`);
 	if (!run.ok) { stopOnMetal(`metallib of ${name} failed`); }
-	const blob = readFile(`${base}.metallib`);
+	const blob = readFileBytes(`${base}.metallib`);
 	if (blob.ok) { return shaderBytecodeFromBase64(blob.value.toBase64()); }
 	stopOnMetal(`cannot read ${base}.metallib`);
 	return [];

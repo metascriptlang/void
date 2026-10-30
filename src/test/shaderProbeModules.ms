@@ -49,7 +49,7 @@ import {
 	vectorType,
 } from "../shader/ir";
 import { Buffer } from "std/core/buffer";
-import { mkdir, writeFile } from "std/fs";
+import { mkdir, writeFileBytes } from "std/fs";
 import { stageWords, wordsBase64 } from "../shader/descriptor";
 
 export const F32 = scalarType(ScalarKind.F32);
@@ -984,7 +984,7 @@ export function spirvProbe(m: ShaderModule, entry: int32, name: string): uint32[
 	const _out = mkdir("out");
 	const _folder = mkdir("out/spirvProbe");
 	const path = "out/spirvProbe/" + name + (entry == 0 ? "Vs" : "Fs") + ".spv";
-	const _written = writeFile(path, Buffer.fromString(wordsBase64(words), "base64"));
+	const _written = writeFileBytes(path, Buffer.fromString(wordsBase64(words), "base64"));
 	let out: uint32[][] = [];
 	let at = 5;
 	while (at < words.length) {
