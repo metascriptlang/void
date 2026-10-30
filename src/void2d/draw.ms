@@ -448,14 +448,22 @@ function openRun(reason: BreakReason): void {
 	ctx.runOpen = true;
 }
 
+function isPremultiplied(sampler: int32): boolean {
+	return sampler >= SOURCE_PREMULTIPLIED;
+}
+
+function withSource(sampler: int32, premultiplied: boolean): int32 {
+	const base: int32 = sampler % SOURCE_PREMULTIPLIED;
+	return premultiplied ? base + SOURCE_PREMULTIPLIED : base;
+}
+
 function viewOrWhite(view: uint32): uint32 {
 	return view == 0 ? void2dWhiteView() : view;
 }
 
 function useRun(pipeline: Pipeline, view: uint32, premultiplied: boolean, blend: BlendMode): void {
 	const ctx: DrawContext2D = currentContext();
-	const sampler: int32 = (ctx.curSampler % SOURCE_PREMULTIPLIED) +
-		(premultiplied ? SOURCE_PREMULTIPLIED : 0);
+	const sampler: int32 = withSource(ctx.curSampler, premultiplied);
 	if (ctx.runOpen && view == ctx.curView && sampler == ctx.curSampler && blend == ctx.curBlend
 		&& ctx.curPipeline == pipeline) { return; }
 	const reason: BreakReason = !ctx.runOpen ? BreakReason.First
@@ -1121,8 +1129,10 @@ export function sceneSmoothDefault(): boolean {
 export function setSampler(smooth: Smooth, tileWrap: boolean): void {
 	const ctx: DrawContext2D = currentContext();
 	const on: boolean = smooth == Smooth.Inherit ? ctx.sceneSmooth : smooth == Smooth.On;
-	const want: int32 = samplerIndex(on, tileWrap) +
-		(ctx.curSampler >= SOURCE_PREMULTIPLIED ? SOURCE_PREMULTIPLIED : 0);
+	const want: int32 = withSource(
+		samplerIndex(on, tileWrap),
+		isPremultiplied(ctx.curSampler),
+	);
 	if (want == ctx.curSampler) { return; }
 	closeRun();
 	ctx.curSampler = want;
