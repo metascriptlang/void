@@ -1,6 +1,6 @@
 // Compute through the door: a registered compute program runs on storage buffers the way a render
 // program draws, and the pass state refuses a draw call inside a compute pass and a compute call
-// outside one. The dispatch result is read back on d3d11, which executes it.
+// outside one. The dispatch result is read back on d3d11 and d3d12, which execute it.
 
 import { computeModule, programSource } from "../shader/descriptor";
 import { glslComputeIr } from "../shader/emit";
@@ -31,9 +31,13 @@ when (voidDummy || (windows && !voidVulkan)) {
 		registerComputePrograms,
 	} from "../gpu/doorCompute.ms";
 }
-when (windows && !voidDummy && !voidVulkan) {
+when (windows && !voidDummy && !voidVulkan && !voidD3d12) {
 	import { warpDevice, warpContext } from "./d3d11Warp.h";
 	@passL("-ld3d11");
+}
+when (voidD3d12) {
+	import { doorSetupWith } from "../gpu/doorGpu.ms";
+	import { drainDebugMessages } from "../webgpu/d3d12/backend.ms";
 }
 
 const WORKGROUP = 8;
@@ -111,9 +115,18 @@ when (voidDummy || (windows && !voidVulkan)) {
 	function openDoor(): void {
 		when (voidDummy) {
 			doorSetup(null, null, RGBA8, NO_DEPTH, 1);
+		} else when (voidD3d12) {
+			doorSetupWith({ device: null, context: null, colorFormat: "rgba8unorm", sampleCount: 1, warp: true, debug: true });
 		} else {
 			doorSetup(warpDevice(), warpContext(), RGBA8, NO_DEPTH, 1);
 		}
+	}
+
+	function closeDoor(): uint64 {
+		let messages: uint64 = 0;
+		when (voidD3d12) { messages = drainDebugMessages(); }
+		doorShutdown();
+		return messages;
 	}
 
 	function cellsOf(values: Vec<int32>): Cell[] {
@@ -137,7 +150,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 		openDoor();
 		const base = registerComputePrograms(doubleDescriptor, 1);
 		assert computeSlotMask(base) == 3;
-		doorShutdown();
+		assert closeDoor() == 0;
 	}
 
 	test "a compute pass dispatches a registered program over storage buffers and the pass state follows" {
@@ -167,7 +180,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 		}
 		let wrong: Vec<uint8> = new Array(WORKGROUP * 4 - 1);
 		assert doorReadBuffer(result, wrong) == 0;
-		doorShutdown();
+		assert closeDoor() == 0;
 	}
 
 	test "a ranged buffer update writes only its bytes and refuses a range outside the buffer" {
@@ -192,6 +205,6 @@ when (voidDummy || (windows && !voidVulkan)) {
 		const base = registerComputePrograms(doubleDescriptor, 1);
 		assert computePipelineFor(base) == computePipelineFor(base);
 		assert computePipelineFor(base) != 0;
-		doorShutdown();
+		assert closeDoor() == 0;
 	}
 }

@@ -25,9 +25,13 @@ when (voidDummy || (windows && !voidVulkan)) {
 	import { livePipelines } from "../gpu/door";
 	import { pipelineFor, prewarm, closePipelines } from "../gpu/pipeline";
 }
-when (windows && !voidDummy && !voidVulkan) {
+when (windows && !voidDummy && !voidVulkan && !voidD3d12) {
 	import { warpDevice, warpContext } from "./d3d11Warp.h";
 	@passL("-ld3d11");
+}
+when (voidD3d12) {
+	import { doorSetupWith, doorValid } from "../gpu/doorGpu.ms";
+	import { drainDebugMessages } from "../webgpu/d3d12/backend.ms";
 }
 
 const RGBA8 = 2;
@@ -173,9 +177,27 @@ when (voidDummy || (windows && !voidVulkan)) {
 	function openDoor(): void {
 		when (voidDummy) {
 			doorSetup(null, null, RGBA8, DEPTH_STENCIL, 1);
+		} else when (voidD3d12) {
+			if (doorValid() == 1) { doorShutdown(); }
+			doorSetupWith({
+				device: null,
+				context: null,
+				colorFormat: "rgba8unorm",
+				depthFormat: "depth24plus-stencil8",
+				sampleCount: 1,
+				warp: true,
+				debug: true,
+			});
 		} else {
 			doorSetup(warpDevice(), warpContext(), RGBA8, DEPTH_STENCIL, 1);
 		}
+	}
+
+	function closeDoor(): uint64 {
+		let messages: uint64 = 0;
+		when (voidD3d12) { messages = drainDebugMessages(); }
+		doorShutdown();
+		return messages;
 	}
 
 	function states(): RenderState[] {
@@ -207,7 +229,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 			assert cache.entries[i].pipeline == first[i];
 		}
 		closePipelines(cache);
-		doorShutdown();
+		assert closeDoor() == 0;
 	}
 
 	test "prewarm on a fresh cache builds each key once and the lookup that follows builds nothing" {
@@ -230,7 +252,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 		assert livePipelines() == afterWarm;
 		closePipelines(ran);
 		closePipelines(warmed);
-		doorShutdown();
+		assert closeDoor() == 0;
 	}
 
 	test "prewarm from the text a run kept builds the keys that run built" {
@@ -243,7 +265,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 		assert keysText(warmed.keysOf()) == text;
 		closePipelines(ran);
 		closePipelines(warmed);
-		doorShutdown();
+		assert closeDoor() == 0;
 	}
 
 	test "after a new context prewarm builds the keys the cache kept and drops no key" {
@@ -258,6 +280,6 @@ when (voidDummy || (windows && !voidVulkan)) {
 		for (let i = 0; i < 3; i++) { assert cache.entries[i].pipeline != 0; }
 		assert cache.keysOf().length == 3;
 		closePipelines(cache);
-		doorShutdown();
+		assert closeDoor() == 0;
 	}
 }

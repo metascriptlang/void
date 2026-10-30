@@ -38,6 +38,15 @@ import {
 	samplerDescriptor,
 	viewDescriptor,
 } from "../webgpu/d3d12/backend.ms";
+import {
+	doorBeginColorPass,
+	doorEndPass,
+	doorMakeTargetImage,
+	doorMakeTextureView,
+	doorReadTexture,
+	doorSetupWith,
+	doorShutdown,
+} from "../gpu/doorGpu.ms";
 import { splitTextureCopy } from "../webgpu/d3d12/resources.ms";
 import { PRESENT_MODE_IMMEDIATE, PRESENT_MODE_VSYNC, flipFormat, planPresent, presentCall } from "../webgpu/d3d12/surface.ms";
 import { newCursor, nextPair, serializeRootSignature, shaderLayout, tableEntries } from "../webgpu/d3d12/descriptor.ms";
@@ -1999,4 +2008,27 @@ test "a label reaches the native object as its D3D12 name" {
 	assert name[0] == 108 && name[9] == 116 && name[15] == 101;
 	assert drainDebugMessages() == 0;
 	device.destroy();
+}
+
+test "the door reads a cleared bgra8 target back as RGBA and refuses a buffer of the wrong size" {
+	doorSetupWith({
+		device: null,
+		context: null,
+		colorFormat: "rgba8unorm",
+		sampleCount: 1,
+		warp: true,
+		debug: true,
+	});
+	const image = doorMakeTargetImage(8, 8, 4);
+	const view = doorMakeTextureView(image);
+	doorBeginColorPass(view, 0.0, 0.0, 1.0, 1.0);
+	doorEndPass();
+	let out: Vec<uint8> = new Array(8 * 8 * 4);
+	assert doorReadTexture(image, 0, 0, 8, 8, out) == 1;
+	assert out[0] == 0 && out[1] == 0 && out[2] == 255 && out[3] == 255;
+	assert out[8 * 8 * 4 - 4] == 0 && out[8 * 8 * 4 - 2] == 255;
+	let wrong: Vec<uint8> = new Array(8 * 8 * 4 - 1);
+	assert doorReadTexture(image, 0, 0, 8, 8, wrong) == 0;
+	assert drainDebugMessages() == 0;
+	doorShutdown();
 }

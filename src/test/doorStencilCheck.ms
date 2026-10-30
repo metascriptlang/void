@@ -140,9 +140,13 @@ when (voidDummy || (windows && !voidVulkan)) {
 	} from "../gpu/target";
 	import { PipelineCache, closePipelines, pipelineFor } from "../gpu/pipeline";
 }
-when (windows && !voidDummy && !voidVulkan) {
+when (windows && !voidDummy && !voidVulkan && !voidD3d12) {
 	import { warpDevice, warpContext } from "./d3d11Warp.h";
 	@passL("-ld3d11");
+}
+when (voidD3d12) {
+	import { doorSetupWith } from "../gpu/doorGpu.ms";
+	import { drainDebugMessages } from "../webgpu/d3d12/backend.ms";
 }
 
 const RGBA8 = 2;
@@ -172,6 +176,8 @@ when (voidDummy || (windows && !voidVulkan)) {
 	function openScene(): Scene {
 		when (voidDummy) {
 			doorSetup(null, null, RGBA8, NO_DEPTH, 1);
+		} else when (voidD3d12) {
+			doorSetupWith({ device: null, context: null, colorFormat: "rgba8unorm", sampleCount: 1, warp: true, debug: true });
 		} else {
 			doorSetup(warpDevice(), warpContext(), RGBA8, NO_DEPTH, 1);
 		}
@@ -190,11 +196,14 @@ when (voidDummy || (windows && !voidVulkan)) {
 		};
 	}
 
-	function closeScene(scene: Scene): void {
+	function closeScene(scene: Scene): uint64 {
 		closePipelines(scene.cache);
 		scene.color.close();
 		scene.depth.close();
+		let messages: uint64 = 0;
+		when (voidD3d12) { messages = drainDebugMessages(); }
 		doorShutdown();
+		return messages;
 	}
 
 	// The color is cleared to black on every pass; the stencil is cleared to `stencilClear`, or kept
@@ -346,7 +355,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 		assert pipelineOf(scene, red, plain().withStencil(maskWriter(1, 0x0F))) != first;
 		assert pipelineOf(scene, red, plain()) != first;
 		assert livePipelines() == before + 3;
-		closeScene(scene);
+		assert closeScene(scene) == 0;
 	}
 }
 
@@ -398,7 +407,7 @@ when (windows && !voidDummy && !voidVulkan) {
 		endPass();
 		sides = leftAndRight(scene);
 		assert sides[0] == BLACK && sides[1] == BLACK;
-		closeScene(scene);
+		assert closeScene(scene) == 0;
 	}
 
 	test "a pass clears the stencil to the value it was given and loads it when it was given none" {
@@ -418,7 +427,7 @@ when (windows && !voidDummy && !voidVulkan) {
 		endPass();
 		sides = leftAndRight(scene);
 		assert sides[0] == BLACK && sides[1] == BLACK;
-		closeScene(scene);
+		assert closeScene(scene) == 0;
 	}
 
 	test "a write mask of zero keeps the stencil and a full one replaces it" {
@@ -441,6 +450,6 @@ when (windows && !voidDummy && !voidVulkan) {
 		endPass();
 		sides = leftAndRight(scene);
 		assert sides[0] == GREEN && sides[1] == GREEN;
-		closeScene(scene);
+		assert closeScene(scene) == 0;
 	}
 }

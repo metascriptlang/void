@@ -316,6 +316,10 @@ export function doorSetup(
 	if ((depthFormat as PixelFormat) != PixelFormat.None) {
 		environment.depthFormat = textureFormatOf(depthFormat as PixelFormat);
 	}
+	doorSetupWith(environment);
+}
+
+export function doorSetupWith(environment: GPUNativeEnvironment): void {
 	device = requestDevice(environment);
 	shaders.length = 0;
 	pipelines.length = 0;
