@@ -17,7 +17,7 @@ import {
 	uniformBlockLength,
 } from "../void3d/gpu3d";
 import { DrawContext, reserveBlock } from "../void3d/draw";
-import { movingDefaults } from "../void3d/material";
+import { UniformBlock, movingDefaults } from "../void3d/material";
 import {
 	movingEmissiveParams,
 	movingParams,
@@ -49,68 +49,57 @@ function todaysFloats(key: ProgramKey): Vec<float32> {
 	return values;
 }
 
-function floatsWritten(context: DrawContext, key: ProgramKey, at: int32): Vec<float32> {
-	let out: Vec<float32> = new Array(uniformBlockLength(key, MATERIAL_UNIFORM_SLOT));
-	for (let i = 0; i < out.length; i++) { out[i] = context.uniforms.values[at + i]; }
+function writtenFloats<T>(key: ProgramKey, params: T): Vec<float32> {
+	const length: int32 = uniformBlockLength(key, MATERIAL_UNIFORM_SLOT);
+	let context: DrawContext = DrawContext.withUniformCapacity(length);
+	const reserved = reserveBlock<T>(context, MATERIAL_UNIFORM_SLOT);
+	if (!reserved.ok) { throw new Error("internal: reserveBlock refused the block"); }
+	const block: UniformBlock = reserved.value.block;
+	const written = writeMaterialParams(context, block, params);
+	if (!written.ok) { throw new Error("internal: writeMaterialParams refused the value"); }
+	let out: Vec<float32> = new Array(length);
+	for (let i = 0; i < out.length; i++) { out[i] = context.uniforms.values[block.offset + i]; }
 	return out;
 }
 
 test "a lit dissolve with a UV transform writes the floats the MOVING_ offsets write" {
 	const key: ProgramKey = ProgramKey.of(Program.LitTextured).withUvTransform().withBackTexture()
 		.withDissolve();
-	const length: int32 = uniformBlockLength(key, MATERIAL_UNIFORM_SLOT);
-	let context: DrawContext = DrawContext.withUniformCapacity(length);
-	const block = reserveBlock<MovingMaterialParams>(context, MATERIAL_UNIFORM_SLOT);
-	assert block.ok;
-	if (!block.ok) { return; }
 	let params: MovingMaterialParams = movingParams();
 	params.uvMatrix = { x: 0.5, y: 0, z: 0, w: 2 };
 	params.uvMotion = { x: 0.25, y: 0.75, z: 0, w: 0 };
 	params.dissolve = { x: 0.4, y: 0.125, z: 0, w: 0 };
 	params.dissolveEdge = { x: 1, y: 0.45, z: 0.05, w: 1 };
-	assert writeMaterialParams(context, block.value.block, params).ok;
-	assert sameLanes(floatsWritten(context, key, block.value.block.offset), todaysFloats(key));
+	assert sameLanes(writtenFloats(key, params), todaysFloats(key)), "lit moving block lanes";
 }
 
 test "an unlit dissolve with a UV transform writes the floats the MOVING_ offsets write" {
 	const key: ProgramKey = ProgramKey.of(Program.UnlitTextured).withUvTransform().withBackTexture()
 		.withDissolve();
-	const length: int32 = uniformBlockLength(key, MATERIAL_UNIFORM_SLOT);
-	let context: DrawContext = DrawContext.withUniformCapacity(length);
-	const block = reserveBlock<MovingUnlitMaterialParams>(context, MATERIAL_UNIFORM_SLOT);
-	assert block.ok;
-	if (!block.ok) { return; }
 	let params: MovingUnlitMaterialParams = movingUnlitParams();
 	params.uvMatrix = { x: 0.5, y: 0, z: 0, w: 2 };
 	params.uvMotion = { x: 0.25, y: 0.75, z: 0, w: 0 };
 	params.dissolve = { x: 0.4, y: 0.125, z: 0, w: 0 };
 	params.dissolveEdge = { x: 1, y: 0.45, z: 0.05, w: 1 };
-	assert writeMaterialParams(context, block.value.block, params).ok;
-	assert sameLanes(floatsWritten(context, key, block.value.block.offset), todaysFloats(key));
+	assert sameLanes(writtenFloats(key, params), todaysFloats(key)), "unlit moving block lanes";
 }
 
 test "an emissive dissolve adds the emissive vec4 after the moving floats" {
 	const key: ProgramKey =
 		ProgramKey.of(Program.LitTextured).withDissolve().withEmissive();
-	const length: int32 = uniformBlockLength(key, MATERIAL_UNIFORM_SLOT);
-	let context: DrawContext = DrawContext.withUniformCapacity(length);
-	const block = reserveBlock<MovingEmissiveMaterialParams>(context, MATERIAL_UNIFORM_SLOT);
-	assert block.ok;
-	if (!block.ok) { return; }
 	let params: MovingEmissiveMaterialParams = movingEmissiveParams();
 	params.uvMatrix = { x: 0.5, y: 0, z: 0, w: 2 };
 	params.uvMotion = { x: 0.25, y: 0.75, z: 0, w: 0 };
 	params.dissolve = { x: 0.4, y: 0.125, z: 0, w: 0 };
 	params.dissolveEdge = { x: 1, y: 0.45, z: 0.05, w: 1 };
 	params.emissive = { x: 0.1, y: 0.2, z: 0.3, w: 5 };
-	assert writeMaterialParams(context, block.value.block, params).ok;
 	let expected: Vec<float32> = todaysFloats(key);
 	const at: int32 = emissiveBase(key);
 	expected[at + EMISSIVE_COLOR] = 0.1;
 	expected[at + EMISSIVE_COLOR + 1] = 0.2;
 	expected[at + EMISSIVE_COLOR + 2] = 0.3;
 	expected[at + EMISSIVE_STRENGTH] = 5.0;
-	assert sameLanes(floatsWritten(context, key, block.value.block.offset), expected);
+	assert sameLanes(writtenFloats(key, params), expected), "emissive moving block lanes";
 }
 
 test "a value of another block's struct is refused by length" {
@@ -119,7 +108,8 @@ test "a value of another block's struct is refused by length" {
 	let context: DrawContext =
 		DrawContext.withUniformCapacity(uniformBlockLength(key, MATERIAL_UNIFORM_SLOT));
 	const block = reserveBlock<MovingMaterialParams>(context, MATERIAL_UNIFORM_SLOT);
-	assert block.ok;
+	assert block.ok, "reserveBlock for the moving block";
 	if (!block.ok) { return; }
-	assert !writeMaterialParams(context, block.value.block, movingEmissiveParams()).ok;
+	const written = writeMaterialParams(context, block.value.block, movingEmissiveParams());
+	assert !written.ok, "a longer struct is refused by length";
 }
