@@ -341,3 +341,74 @@ test "one texture read, written and read again over three submits leaves the deb
 	assert drainDebugMessages() == 0;
 	device.destroy();
 }
+
+test "copyTextureToTexture copies mip 1 into a region of mip 0" {
+	const device = openDevice();
+	const texture = copyTexture(device, 8, 8, 1, 2, "rgba8unorm");
+	device.queue.writeTexture(
+		{ texture: texture },
+		texels(255, 0, 0, 64),
+		{ offset: 0, bytesPerRow: 32, rowsPerImage: 8 },
+		{ width: 8, height: 8, depthOrArrayLayers: 1 },
+	);
+	device.queue.writeTexture(
+		{ texture: texture, mipLevel: 1 },
+		texels(0, 255, 0, 16),
+		{ offset: 0, bytesPerRow: 16, rowsPerImage: 4 },
+		{ width: 4, height: 4, depthOrArrayLayers: 1 },
+	);
+	const destination = readbackBuffer(device, 256 * 8);
+	const encoder = device.createCommandEncoder();
+	encoder.copyTextureToTexture(
+		{ texture: texture, mipLevel: 1 },
+		{ texture: texture, mipLevel: 0, origin: { x: 2, y: 2, z: 0 } },
+		{ width: 4, height: 4, depthOrArrayLayers: 1 },
+	);
+	encoder.copyTextureToBuffer(
+		{ texture: texture },
+		{ buffer: destination, offset: 0, bytesPerRow: 256, rowsPerImage: 8 },
+		{ width: 8, height: 8, depthOrArrayLayers: 1 },
+	);
+	device.queue.submit(encoder.finish());
+	const read = readBack(destination);
+	assert texelAt(read, 256, 1, 1) == RED;
+	assert texelAt(read, 256, 2, 2) == GREEN;
+	assert texelAt(read, 256, 5, 5) == GREEN;
+	assert texelAt(read, 256, 6, 6) == RED;
+	assert texelAt(read, 256, 2, 6) == RED;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "copyTextureToTexture copies array layer 0 into a region of array layer 1 of the same texture" {
+	const device = openDevice();
+	const texture = copyTexture(device, 8, 8, 2, 1, "rgba8unorm");
+	device.queue.writeTexture(
+		{ texture: texture },
+		texels(0, 255, 0, 64),
+		{ offset: 0, bytesPerRow: 32, rowsPerImage: 8 },
+		{ width: 8, height: 8, depthOrArrayLayers: 1 },
+	);
+	device.queue.writeTexture(
+		{ texture: texture, origin: { x: 0, y: 0, z: 1 } },
+		texels(255, 0, 0, 64),
+		{ offset: 0, bytesPerRow: 32, rowsPerImage: 8 },
+		{ width: 8, height: 8, depthOrArrayLayers: 1 },
+	);
+	const encoder = device.createCommandEncoder();
+	encoder.copyTextureToTexture(
+		{ texture: texture },
+		{ texture: texture, origin: { x: 2, y: 2, z: 1 } },
+		{ width: 4, height: 4, depthOrArrayLayers: 1 },
+	);
+	device.queue.submit(encoder.finish());
+	const read = readTexture(device, texture, 0, 1, 8, 8);
+	assert texelAt(read, 256, 1, 1) == RED;
+	assert texelAt(read, 256, 2, 2) == GREEN;
+	assert texelAt(read, 256, 5, 5) == GREEN;
+	assert texelAt(read, 256, 6, 6) == RED;
+	assert texelAt(read, 256, 2, 6) == RED;
+	assert texelAt(readTexture(device, texture, 0, 0, 8, 8), 256, 6, 6) == GREEN;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
