@@ -21,11 +21,14 @@ import {
 	STATE_COPY_SOURCE,
 	STATE_GENERIC_READ,
 	StateTracker,
+	SubresourceRange,
 	Tracking,
 	flushTransitions,
 	newTracker,
 	track,
+	trackTexture,
 	transition,
+	transitionRange,
 	untrack,
 } from "./tracker.ms";
 import {
@@ -330,7 +333,8 @@ export function createTexture(ref r: Resources, texture: TextureRecord): Result<
 		textureFlags(texture, info),
 		native,
 	));
-	const tracked = track(r.tracker, native, STATE_COMMON, Tracking.Texture);
+	const layers = texture.volume ? 1 : texture.layers;
+	const tracked = trackTexture(r.tracker, native, texture.mipLevels, layers, info.stencil ? 2 : 1);
 	put(r.textures, texture.id, { native: native, info: info, tracked: tracked });
 	return Result.ok(null);
 }
@@ -342,8 +346,14 @@ export function destroyTexture(ref r: Resources, ref ring: FrameRing, id: uint32
 	vacate(r.textures, id);
 }
 
-function useTexture(ref r: Resources, index: int32, state: uint32): void {
-	transition(r.tracker, r.textures[index].tracked, state);
+function rangeOf(texture: TextureRecord, mipLevel: int32, z: int32, images: int32): SubresourceRange {
+	return texture.volume
+		? { baseMip: mipLevel, mips: 1, baseLayer: 0, layers: 1 }
+		: { baseMip: mipLevel, mips: 1, baseLayer: z, layers: images };
+}
+
+function useSubresources(ref r: Resources, texture: TextureRecord, range: SubresourceRange, state: uint32): void {
+	transitionRange(r.tracker, r.textures[slotOf(texture.id)].tracked, state, range);
 }
 
 function subresourceOf(texture: TextureRecord, mipLevel: int32, z: int32): uint32 {
@@ -402,7 +412,7 @@ export function writeTexture<T>(
 	const index = slotOf(texture.id);
 	const format = copyableFormat(info);
 	const footprint = try footprintOf(r, format, size.width, size.height);
-	useTexture(r, index, STATE_COPY_DEST);
+	useSubresources(r, texture, rangeOf(texture, mip, destination.origin.z, size.depthOrArrayLayers), STATE_COPY_DEST);
 	try checked(flushTransitions(r.tracker, ring.list));
 	for (let image: int32 = 0; image < size.depthOrArrayLayers; image++) {
 		const staged = try upload(r, ring.slot(), footprint.bytes, TEXTURE_DATA_PLACEMENT_ALIGNMENT);
@@ -572,7 +582,7 @@ export function copyBufferToTexture(
 	const bytesPerRow = checkedTexelBufferLayout("copyBufferToTexture source", info.bytesPerPixel, bufferRecords.slots[from].size, source, size);
 	const rowsPerImage = source.rowsPerImage == 0 ? size.height : source.rowsPerImage;
 	useBuffer(r, source.buffer.id, from, STATE_COPY_SOURCE);
-	useTexture(r, slotOf(texture.id), STATE_COPY_DEST);
+	useSubresources(r, texture, rangeOf(texture, destination.mipLevel, destination.origin.z, size.depthOrArrayLayers), STATE_COPY_DEST);
 	const native = r.buffers[from].native;
 	try copyBufferTexture(r, ring, true, native, source.offset, bytesPerRow, rowsPerImage, texture, info, destination, size);
 	r.buffers[from].lastUse = ring.recording();
@@ -597,7 +607,7 @@ export function copyTextureToBuffer(
 		size,
 	);
 	const rowsPerImage = destination.rowsPerImage == 0 ? size.height : destination.rowsPerImage;
-	useTexture(r, slotOf(texture.id), STATE_COPY_SOURCE);
+	useSubresources(r, texture, rangeOf(texture, source.mipLevel, source.origin.z, size.depthOrArrayLayers), STATE_COPY_SOURCE);
 	useBuffer(r, destination.buffer.id, target, STATE_COPY_DEST);
 	const native = r.buffers[target].native;
 	try copyBufferTexture(r, ring, false, native, destination.offset, bytesPerRow, rowsPerImage, texture, info, source, size);
@@ -612,17 +622,22 @@ export function copyTextureToTexture(
 	destination: GPUTexelCopyTextureInfo,
 	size: GPUExtent3D,
 ): Result<void, NativeError> {
-	if (source.texture.id == destination.texture.id) {
-		stop(`copyTextureToTexture within GPUTexture ${source.texture.id} is not built on d3d12: the tracker keeps one state per texture`);
-	}
 	const fromRecord = textureRecords.record(source.texture.id);
 	const toRecord = textureRecords.record(destination.texture.id);
 	const from = slotOf(fromRecord.id);
 	const to = slotOf(toRecord.id);
-	useTexture(r, from, STATE_COPY_SOURCE);
-	useTexture(r, to, STATE_COPY_DEST);
-	try checked(flushTransitions(r.tracker, ring.list));
 	const images = fromRecord.volume ? 1 : size.depthOrArrayLayers;
+	const read = rangeOf(fromRecord, source.mipLevel, source.origin.z, images);
+	const written = rangeOf(toRecord, destination.mipLevel, destination.origin.z, images);
+	if (
+		from == to && read.baseMip == written.baseMip
+			&& read.baseLayer < written.baseLayer + written.layers && written.baseLayer < read.baseLayer + read.layers
+	) {
+		stop(`copyTextureToTexture reads and writes one subresource of mip ${source.mipLevel} of GPUTexture ${source.texture.id}, which d3d12 holds in one state`);
+	}
+	useSubresources(r, fromRecord, read, STATE_COPY_SOURCE);
+	useSubresources(r, toRecord, written, STATE_COPY_DEST);
+	try checked(flushTransitions(r.tracker, ring.list));
 	const depth = fromRecord.volume ? size.depthOrArrayLayers : 1;
 	for (let image: int32 = 0; image < images; image++) {
 		try checked(dx12CopyTexture(
