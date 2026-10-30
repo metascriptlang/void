@@ -319,12 +319,16 @@ function doBreak(
 	if (!matched) { state.breakCount += 1; }
 }
 
-function doLineBreak(this ref state: KbBreakState, position: int32, effective: uint64): void {
-	if ((effective & LINE_BREAK_MASK) == 0) { return; }
+function lineBreakFlags(effective: uint64): uint32 {
 	let flags: uint32 = 0;
 	if ((effective & LINE_BREAK_ALLOWED_MASK) != 0) { flags |= KB_BREAK_FLAG_LINE_SOFT; }
 	if ((effective & LINE_BREAK_REQUIRED_MASK) != 0) { flags |= KB_BREAK_FLAG_LINE_HARD; }
-	state.doBreak(position, flags, 0, 0, 0);
+	return flags;
+}
+
+function doLineBreak(this ref state: KbBreakState, position: int32, effective: uint64): void {
+	if ((effective & LINE_BREAK_MASK) == 0) { return; }
+	state.doBreak(position, lineBreakFlags(effective), 0, 0, 0);
 }
 
 function startParagraph(this ref state: KbBreakState): void {
@@ -514,10 +518,7 @@ function lineBreakStage(
 			pending.positionOffset2 + pending.lineBreak2PositionOffset,
 			effective >> 32,
 		);
-		let flushed: uint32 = 0;
-		if (((effective >> 16) & LINE_BREAK_ALLOWED_MASK) != 0) { flushed |= KB_BREAK_FLAG_LINE_SOFT; }
-		if (((effective >> 16) & LINE_BREAK_REQUIRED_MASK) != 0) { flushed |= KB_BREAK_FLAG_LINE_HARD; }
-		pending.flagState |= flushed << 8;
+		pending.flagState |= lineBreakFlags(effective >> 16) << 8;
 	}
 	state.lineBreaks = lineBreaks;
 	state.lineUnbreaks = lineUnbreaks;
