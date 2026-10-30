@@ -197,7 +197,7 @@ test "a ray along a face's plane misses a box it passes beside and hits one it c
 // ---- h3d.col.PolygonBuffer.rayIntersection ---------------------------------------------------
 
 test "a triangle is hit from the side the material draws" {
-	const data: MeshData = facingPlusZ(0.0);
+	let data: MeshData = facingPlusZ(0.0);
 	const front: Ray = { origin: vec3(0.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0) };
 	const back: Ray = { origin: vec3(0.0, 0.0, -5.0), direction: vec3(0.0, 0.0, 1.0) };
 	assert approx(data.rayIntersection(front, Face.Back).distance, 5.0);
@@ -209,7 +209,7 @@ test "a triangle is hit from the side the material draws" {
 }
 
 test "a triangle beside the ray or behind its origin is missed" {
-	const data: MeshData = facingPlusZ(0.0);
+	let data: MeshData = facingPlusZ(0.0);
 	const beside: Ray = { origin: vec3(0.9, 0.9, 5.0), direction: vec3(0.0, 0.0, -1.0) };
 	assert data.rayIntersection(beside, Face.None).distance == -1.0;
 	const past: Ray = { origin: vec3(0.0, 0.0, -1.0), direction: vec3(0.0, 0.0, -1.0) };
@@ -251,8 +251,8 @@ test "every face addBox and addPlane build faces outward" {
 // ---- h3d.scene.Interactive and Scene.rayCastEventTargets -------------------------------------
 
 test "only meshes under a pickable node are hit, and the others do not stand in front" {
-	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(16, 16);
+	const scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const upper: NodeId3D = meshNode(
 		scene,
@@ -277,8 +277,8 @@ test "only meshes under a pickable node are hit, and the others do not stand in 
 }
 
 test "a hit on a mesh belongs to its nearest pickable ancestor" {
-	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(16, 16);
+	const scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const outer: NodeId3D = pickable(
 		scene,
@@ -299,8 +299,8 @@ test "a hit on a mesh belongs to its nearest pickable ancestor" {
 }
 
 test "a mesh under a hidden node is not picked" {
-	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(16, 16);
+	const scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const group: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
 	const _box: NodeId3D =
@@ -313,8 +313,8 @@ test "a mesh under a hidden node is not picked" {
 }
 
 test "a turned, scaled and moved node is picked where it is drawn, in world units" {
-	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(16, 16);
+	const scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const placed: Transform3D = {
 		position: vec3(4.0, 1.0, -2.0),
@@ -333,8 +333,8 @@ test "a turned, scaled and moved node is picked where it is drawn, in world unit
 }
 
 test "a node scaled to nothing and a mesh with no CPU geometry are never hit" {
-	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(16, 16);
+	const scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox(), MeshData.empty()];
 	const flat: Transform3D = { ...Transform3D.identity(), scale: vec3(0.0, 0.0, 0.0) };
 	const _gone: NodeId3D = pickable(scene, meshNode(scene, context, scene.rootId(), flat, 0));
@@ -347,10 +347,10 @@ test "a node scaled to nothing and a mesh with no CPU geometry are never hit" {
 }
 
 test "a scene picks the geometry of its own context, not another's at the same index" {
-	let near: DrawContext = contextOf(16, 16);
-	let far: DrawContext = contextOf(16, 16);
-	let nearScene: Scene3D = Scene3D.create(near);
-	let farScene: Scene3D = Scene3D.create(far);
+	const near: DrawContext = contextOf(16, 16);
+	const far: DrawContext = contextOf(16, 16);
+	const nearScene: Scene3D = Scene3D.create(near);
+	const farScene: Scene3D = Scene3D.create(far);
 	const _nearBox: NodeId3D = pickable(
 		nearScene,
 		meshNode(nearScene, near, nearScene.rootId(), Transform3D.identity(), 0),
@@ -370,8 +370,8 @@ test "a scene picks the geometry of its own context, not another's at the same i
 }
 
 test "the pick keeps the faces the material draws, turned over by a mirroring node" {
-	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(16, 16);
+	const scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [facingPlusZ(0.0)];
 	const front: Ray = { origin: vec3(0.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0) };
 	const plain: NodeId3D =
@@ -393,8 +393,8 @@ test "the pick keeps the faces the material draws, turned over by a mirroring no
 }
 
 test "a mirroring parent turns a child's faces over, and a second mirror turns them back" {
-	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(16, 16);
+	const scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [facingPlusZ(0.0)];
 	const front: Ray = { origin: vec3(0.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0) };
 	const behind: Ray = { origin: vec3(0.0, 0.0, -5.0), direction: vec3(0.0, 0.0, 1.0) };
@@ -422,8 +422,8 @@ test "a mirroring parent turns a child's faces over, and a second mirror turns t
 
 // Heaps never sets checkInside on a getCollider() shape, so it misses this ray.
 test "a ray starting inside a mesh's bounds still reaches its triangles" {
-	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(16, 16);
+	const scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const box: NodeId3D =
 		pickable(scene, meshNode(scene, context, scene.rootId(), Transform3D.identity(), 0));
@@ -436,8 +436,8 @@ test "a ray starting inside a mesh's bounds still reaches its triangles" {
 // Heaps sorts by distance from camera.pos. This camera's eye is its target, mid depth range,
 // so the farther mesh here would be the closer one to the eye.
 test "the nearest hit is measured from the ray's origin, not from the camera's eye" {
-	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(16, 16);
+	const scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [facingPlusZ(0.5), facingPlusZ(-0.3)];
 	const nearer: NodeId3D =
 		pickable(scene, meshNode(scene, context, scene.rootId(), Transform3D.identity(), 0));
@@ -450,8 +450,8 @@ test "the nearest hit is measured from the ray's origin, not from the camera's e
 }
 
 test "a hidden mesh under a visible pickable node is not picked" {
-	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(16, 16);
+	const scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const model: NodeId3D = pickable(
 		scene,
@@ -466,8 +466,8 @@ test "a hidden mesh under a visible pickable node is not picked" {
 }
 
 test "a baked frame swapped in by its animation is the geometry picked" {
-	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(16, 16);
+	const scene: Scene3D = Scene3D.create(context);
 	let moved: MeshData = MeshData.empty();
 	const _shifted: int32 = try addBox(moved, {
 		base: vec3(5.0, 0.0, 0.0),
@@ -491,7 +491,7 @@ test "a baked frame swapped in by its animation is the geometry picked" {
 		MeshFrameAnimation.forMeshes(context, clock.value, "body", frames);
 	assert made.ok;
 	if (!made.ok) { return; }
-	let animation: MeshFrameAnimation = made.value;
+	const animation: MeshFrameAnimation = made.value;
 	const _bound: int32 = try bindMeshFrames(animation, scene, scene.rootId()) catch -1;
 	const _first: int32 = try syncMeshFrame(animation, scene) catch -1;
 	assert sameId(pickOf(scene, meshes, down(0.0, 0.0)).owner, pet);
@@ -506,10 +506,10 @@ test "a baked frame swapped in by its animation is the geometry picked" {
 // ---- tap to object, end to end through the camera and the blit ---------------------------
 
 test "a framebuffer pixel a box is drawn at picks that box and not its neighbour" {
-	let context: DrawContext = contextOf(16, 16);
+	const context: DrawContext = contextOf(16, 16);
 	const blit: LowResView = try lowResView(1280, 720, 360, 1, 1) catch NO_LOW_RES;
 	const texel: float32 = (20.0 / 360.0) as float32;
-	let camera: Camera3D = {
+	const camera: Camera3D = {
 		position: vec3(0.3, 0.0, 0.2),
 		yaw: 0.785398,
 		pitch: 0.6,
@@ -519,7 +519,7 @@ test "a framebuffer pixel a box is drawn at picks that box and not its neighbour
 	};
 	const resolved: CameraView = try camera.resolve(blit.width, blit.height) catch NO_VIEW;
 	const shifted: LowResView = blit.withRemainder(resolved.remainderX, resolved.remainderY, true);
-	let scene: Scene3D = Scene3D.create(context);
+	const scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const left: NodeId3D =
 		pickable(
@@ -760,8 +760,8 @@ test "a detached pick owner misses until attached and keeps its hit UV after a m
 // ---- three.js Raycaster.layers ---------------------------------------------------------------
 
 test "a ray tests the layers it was given, layer 0 by default, and not the camera's" {
-	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(16, 16);
+	const scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const lower: NodeId3D = pickable(
 		scene,
@@ -790,8 +790,8 @@ test "a ray tests the layers it was given, layer 0 by default, and not the camer
 }
 
 test "a pick does not inherit layers: a group's layer neither hides nor shows its meshes" {
-	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(16, 16);
+	const scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const group: NodeId3D = pickable(
 		scene,

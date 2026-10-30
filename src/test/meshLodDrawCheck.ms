@@ -36,7 +36,7 @@ test "LOD draw ranges refuse negative overflow and out of bounds" {
 }
 
 test "LOD CPU-backed range survives unavailable GPU buffers without drawing" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh = addMesh(context, litShape());
 	const material = addMaterial(context,
 		Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque));
@@ -66,7 +66,7 @@ test "LOD CPU-backed range survives unavailable GPU buffers without drawing" {
 }
 
 test "LOD raw GPU mesh keeps its original logical element count" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh = addMesh(context, litShape());
 	assert mesh.ok;
 	const index: int32 = mesh.value.index;
@@ -75,7 +75,7 @@ test "LOD raw GPU mesh keeps its original logical element count" {
 }
 
 test "LOD invalid range refuses actual renderer before frame publication" {
-	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
 	const made = Renderer.create(context);
 	assert made.ok;
 	const renderer: Renderer = made.value;

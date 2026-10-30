@@ -17,7 +17,6 @@ import {
 	refresh,
 	remove,
 	setRenderOrder,
-	renderOrderOf,
 	setLocal,
 } from "../void3d/scene";
 import { Camera3D, ProjectionKind } from "../void3d/camera";
@@ -61,10 +60,10 @@ test "a node draws at order 0 until it is given one, and only that node changes"
 	const scene: Scene3D = Scene3D.create(context);
 	const a: NodeId3D = meshAt(scene, context, 0, 0.0);
 	const b: NodeId3D = meshAt(scene, context, 1, 0.0);
-	assert renderOrderOf(scene, a) == 0 && renderOrderOf(scene, b) == 0;
-	assert renderOrderOf(scene, scene.rootId()) == 0;
+	assert scene.renderOrderOf(a) == 0 && scene.renderOrderOf(b) == 0;
+	assert scene.renderOrderOf(scene.rootId()) == 0;
 	setRenderOrder(scene, a, -4);
-	assert renderOrderOf(scene, a) == -4 && renderOrderOf(scene, b) == 0;
+	assert scene.renderOrderOf(a) == -4 && scene.renderOrderOf(b) == 0;
 }
 
 test "the draw list carries each node's order, and a literal that leaves it out draws at 0" {
@@ -167,7 +166,7 @@ test "a second camera's list carries the order, and a reused slot starts at 0" {
 	assert second[0].order == -2;
 	assert remove(scene, a) == 1;
 	const reused: NodeId3D = meshAt(scene, context, 1, 0.0);
-	assert renderOrderOf(scene, reused) == 0;
+	assert scene.renderOrderOf(reused) == 0;
 }
 
 test "equal orders keep node order in the layer sort" {

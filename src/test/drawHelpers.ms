@@ -23,7 +23,7 @@ import {
 // `meshes` meshes and `materials` materials that draw nothing and make no GPU object, each held
 // once, at the index of its position, so a scene test tells its nodes apart by the mesh they draw.
 export function contextOf(meshes: int32, materials: int32): DrawContext {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	for (let i = 0; i < meshes; i++) {
 		const _mesh: MeshId = added(context, GpuMesh.fullscreen(0, 3));
 	}

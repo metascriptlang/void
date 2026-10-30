@@ -16,7 +16,6 @@ import {
 	movingBase,
 } from "../void3d/gpu3d";
 import { RenderState, BlendMode, Compare, Face } from "../gpu/state";
-import { MeshData } from "../void3d/meshData";
 import {
 	Material, MaterialKind, Phase, UniformBlock, alphaKillFor, passFor, DEFAULT_ALPHA_KILL,
 	ShadowCasting,
@@ -25,7 +24,6 @@ import {
 	DrawContext,
 	DrawItem,
 	GpuMesh,
-	addMesh,
 	addMaterial,
 	MaterialId,
 	MaterialError,
@@ -97,8 +95,8 @@ function view(
 // Levels in range always make a table.
 function table(levels: int32): PaletteLut {
 	const made: Result<PaletteLut, PaletteError> = PaletteLut.withLevels(levels);
-	if (made.ok) { return made.value; }
-	unreachable;
+	if (!made.ok) { unreachable; }
+	return made.value;
 }
 
 function sameStages(stages: Readonly<Span<Stage>>, expected: Readonly<Span<Stage>>): boolean {
@@ -116,7 +114,7 @@ function texelOf(pixel: int32, scale: int32, offset: float32): int32 {
 }
 
 function contextWith(phases: Readonly<Span<Phase>>): DrawContext {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	for (const phase of phases) {
 		const plain: Material = Material.plain(Program.Lit, RenderState.defaults(), phase);
 		const _added: Result<MaterialId, MaterialError> = addMaterial(context, plain);
@@ -262,7 +260,7 @@ test "an unfilled LUT keeps every color at its level" {
 }
 
 test "a filled LUT maps each cell to its nearest palette color" {
-	let lut: PaletteLut = table(DEFAULT_PALETTE_LEVELS);
+	const lut: PaletteLut = table(DEFAULT_PALETTE_LEVELS);
 	lut.dirty = false;
 	const palette: Vec<uint32> = [0x000000, 0xFFFFFF, 0xFF0000];
 	const written: Result<int32, PaletteError> = fill(lut, palette);
@@ -275,7 +273,6 @@ test "a filled LUT maps each cell to its nearest palette color" {
 	assert lut.pixels[cellIndex(16, 2, 2, 2)] == textureColor(0x000000);
 	// Green weighs most: dark green is nearer to black than a dark red of the same level.
 	assert nearestColor(palette, 0.0, 0.3, 0.0) == 0;
-	// A tie goes to the first color.
 	const twins: Vec<uint32> = [0x808080, 0x808080];
 	assert nearestColor(twins, 0.5, 0.5, 0.5) == 0;
 }
@@ -284,7 +281,7 @@ test "a LUT refuses an empty palette and levels it cannot address" {
 	assert !PaletteLut.withLevels(1).ok;
 	assert !PaletteLut.withLevels(33).ok;
 	assert PaletteLut.withLevels(32).ok;
-	let lut: PaletteLut = table(4);
+	const lut: PaletteLut = table(4);
 	const none: Vec<uint32> = [];
 	const refused: Result<int32, PaletteError> = fill(lut, none);
 	assert !refused.ok;
@@ -320,7 +317,6 @@ test "pass lists keep item order per phase and sort alpha back to front" {
 	camera[15] = 1.0;
 	sortBackToFront(alpha, items, camera);
 	assert alpha.indices[0] == 4;
-	// Items 1 and 5 share a depth and keep their order.
 	assert alpha.indices[1] == 1 && alpha.indices[2] == 5;
 }
 
@@ -343,7 +339,7 @@ function invalidFogLooks(): Vec<PixelArtLook> {
 test "pixel-art creation refuses undefined Fog ranges before reserving anything" {
 	for (const invalid of invalidFogLooks()) {
 		for (const hdr of [false, true]) {
-			let context = DrawContext.withUniformCapacity(PIXEL_ART_HDR_UNIFORM_LENGTH);
+			const context = DrawContext.withUniformCapacity(PIXEL_ART_HDR_UNIFORM_LENGTH);
 			const made = hdr
 				? PixelArtRenderer.createHdrWhere(context, PixelArtSettings.full(), invalid, true)
 				: PixelArtRenderer.create(context, PixelArtSettings.full(), invalid);
@@ -357,12 +353,12 @@ test "pixel-art creation refuses undefined Fog ranges before reserving anything"
 
 test "pixel-art frame refuses direct Fog mutations before changing context or output" {
 	for (const post of [false, true]) {
-		let context = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+		const context = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
 		const made = PixelArtRenderer.create(context,
 			{ ...PixelArtSettings.full(), postPass: post }, look());
 		assert made.ok;
 		if (!made.ok) { continue; }
-		let renderer = made.value;
+		const renderer = made.value;
 		let values: Vec<float32> = new Array(POST_UNIFORM_LENGTH);
 		for (let i = 0; i < values.length; i++) { values[i] = -77.0; }
 		for (const invalid of invalidFogLooks()) {
@@ -410,12 +406,12 @@ test "post parameters carry the look, the switches and the depth unpack" {
 }
 
 test "an HDR pixel-art preset is refused by name without Rgba16f, and tone maps before post" {
-	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_HDR_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_HDR_UNIFORM_LENGTH);
 	const refused: Result<PixelArtRenderer, PixelArtError> =
 		PixelArtRenderer.createHdrWhere(context, PixelArtSettings.full(), look(), false);
 	assert !refused.ok && refused.error == PixelArtError.HdrUnsupported;
 	assert context.uniforms.used == 0 && context.liveMaterials() == 0;
-	let small: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_HDR_UNIFORM_LENGTH - 1);
+	const small: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_HDR_UNIFORM_LENGTH - 1);
 	const tight: Result<PixelArtRenderer, PixelArtError> =
 		PixelArtRenderer.createHdrWhere(small, PixelArtSettings.full(), look(), true);
 	assert !tight.ok && tight.error == PixelArtError.UniformPoolFull;
@@ -424,7 +420,7 @@ test "an HDR pixel-art preset is refused by name without Rgba16f, and tone maps 
 		PixelArtRenderer.createHdrWhere(context, PixelArtSettings.full(), look(), true);
 	assert created.ok;
 	if (created.ok) {
-		let renderer: PixelArtRenderer = created.value;
+		const renderer: PixelArtRenderer = created.value;
 		assert renderer.toneMap !== null && renderer.core.linearOutput;
 		assert context.uniforms.used == PIXEL_ART_HDR_UNIFORM_LENGTH;
 		assert context.liveMaterials() == 6;
@@ -439,7 +435,7 @@ test "an HDR pixel-art preset is refused by name without Rgba16f, and tone maps 
 }
 
 test "an HDR pixel-art preset fits a pool whose blocks a closed one freed" {
-	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_HDR_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_HDR_UNIFORM_LENGTH);
 	for (let round = 0; round < 2; round++) {
 		const created: Result<PixelArtRenderer, PixelArtError> =
 			PixelArtRenderer.createHdrWhere(context, PixelArtSettings.full(), look(), true);
@@ -449,14 +445,14 @@ test "an HDR pixel-art preset fits a pool whose blocks a closed one freed" {
 }
 
 test "a renderer needs a frame until one is drawn, then only when something changed" {
-	let small: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH - 1);
+	const small: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH - 1);
 	const refused: Result<PixelArtRenderer, PixelArtError> = PixelArtRenderer.create(
 		small,
 		PixelArtSettings.full(),
 		look(),
 	);
 	assert !refused.ok;
-	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
 	const created: Result<PixelArtRenderer, PixelArtError> = PixelArtRenderer.create(
 		context,
 		PixelArtSettings.full(),
@@ -464,7 +460,7 @@ test "a renderer needs a frame until one is drawn, then only when something chan
 	);
 	assert created.ok;
 	if (created.ok) {
-		let renderer: PixelArtRenderer = created.value;
+		const renderer: PixelArtRenderer = created.value;
 		assert (context.materials.length as int32) == 2 && (context.meshes.length as int32) == 1;
 		assert context.uniforms.used == PIXEL_ART_UNIFORM_LENGTH;
 		const drawn: LowResView = view(1080, 2400, 360, 1, 0);
@@ -490,12 +486,12 @@ test "a renderer needs a frame until one is drawn, then only when something chan
 }
 
 test "a camera or light block of the wrong length refuses the frame before it adopts a context" {
-	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
 	const created: Result<PixelArtRenderer, PixelArtError> =
 		PixelArtRenderer.create(context, PixelArtSettings.full(), look());
 	assert created.ok;
 	if (created.ok) {
-		let renderer: PixelArtRenderer = created.value;
+		const renderer: PixelArtRenderer = created.value;
 		let items: Vec<DrawItem> = [];
 		const drawn: LowResView = view(1080, 2400, 360, 1, 0);
 		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
@@ -513,14 +509,14 @@ test "a camera or light block of the wrong length refuses the frame before it ad
 }
 
 test "the core reserves the camera, light and frame blocks and one screen mesh, nothing else" {
-	let small: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH - 1);
+	const small: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH - 1);
 	const refused: Result<Renderer, RendererError> = Renderer.create(small);
 	assert !refused.ok;
-	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
 	const created: Result<Renderer, RendererError> = Renderer.create(context);
 	assert created.ok;
 	if (created.ok) {
-		let core: Renderer = created.value;
+		const core: Renderer = created.value;
 		assert context.uniforms.used == RENDERER_UNIFORM_LENGTH;
 		assert (context.meshes.length as int32) == 1 && (context.materials.length as int32) == 0;
 		assert core.cameraBlock.offset == 0 && core.lightBlock.offset == core.cameraBlock.length;
@@ -546,7 +542,7 @@ function presetOver(context: DrawContext, program: Program, levels: float32): Pi
 		const block: Result<UniformBlock, UniformError> =
 			reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 		if (!block.ok) { unreachable; }
-		const values: Vec<float32> = [levels, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+		let values: Vec<float32> = [levels, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 		if (!writeUniforms(context, block.value, values).ok) { unreachable; }
 		material = { ...material, uniforms: block.value };
 	}
@@ -641,11 +637,11 @@ test "the pixel-art preset refuses a blended material in the opaque phase" {
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	const blended: RenderState = RenderState.defaults().withBlendMode(BlendMode.Alpha);
-	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
 	const created: Result<PixelArtRenderer, PixelArtError> =
 		PixelArtRenderer.create(context, PixelArtSettings.full(), look());
 	if (!created.ok) { unreachable; }
-	let renderer: PixelArtRenderer = created.value;
+	const renderer: PixelArtRenderer = created.value;
 	const made: Result<MaterialId, MaterialError> =
 		addMaterial(context, Material.plain(Program.Particle, blended, Phase.Opaque));
 	if (!made.ok) { unreachable; }
@@ -659,7 +655,7 @@ test "the pixel-art preset refuses a blended material in the opaque phase" {
 test "a decal pass neither writes nor tests depth, and the pixel-art preset draws no decal" {
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
 	const unwritten: RenderState = RenderState.defaults().withDepth(false, Compare.Always);
 	const states: Vec<RenderState> = [
 		RenderState.defaults(), RenderState.defaults().withDepth(true, Compare.Always),
@@ -675,7 +671,7 @@ test "a decal pass neither writes nor tests depth, and the pixel-art preset draw
 	const created: Result<PixelArtRenderer, PixelArtError> =
 		PixelArtRenderer.create(context, PixelArtSettings.full(), look());
 	if (!created.ok) { unreachable; }
-	let renderer: PixelArtRenderer = created.value;
+	const renderer: PixelArtRenderer = created.value;
 	const made: Result<MaterialId, MaterialError> =
 		addMaterial(context, Material.plain(Program.Particle, unwritten, Phase.Decal));
 	if (!made.ok) { unreachable; }
@@ -693,11 +689,11 @@ test "with the depth texture sampled, the pixel-art preset refuses a translucent
 	const settings: PixelArtSettings = {
 		...PixelArtSettings.full(), depthSource: DepthSource.DepthTexture,
 	};
-	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
 	const created: Result<PixelArtRenderer, PixelArtError> =
 		PixelArtRenderer.create(context, settings, look());
 	if (!created.ok) { unreachable; }
-	let renderer: PixelArtRenderer = created.value;
+	const renderer: PixelArtRenderer = created.value;
 	const made: Result<MaterialId, MaterialError> =
 		addMaterial(context, Material.plain(Program.Particle, blended, Phase.Alpha));
 	if (!made.ok) { unreachable; }
@@ -709,8 +705,8 @@ test "with the depth texture sampled, the pixel-art preset refuses a translucent
 }
 
 test "the pixel-art preset refuses a material naming a program it does not draw" {
-	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
-	let renderer: PixelArtRenderer = presetOver(context, Program.Copy, -1.0);
+	const context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	const renderer: PixelArtRenderer = presetOver(context, Program.Copy, -1.0);
 	let items: Vec<DrawItem> = [itemAt(context, (context.materials.length as int32) - 1, 0.0)];
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
@@ -726,28 +722,28 @@ test "a lit or textured lit material without ramp levels or its block refuses th
 	const shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	const drawn: LowResView = view(1080, 2400, 360, 1, 0);
-	let zero: DrawContext = DrawContext.withUniformCapacity(capacity);
-	let atZero: PixelArtRenderer = presetOver(zero, Program.Lit, 0.0);
+	const zero: DrawContext = DrawContext.withUniformCapacity(capacity);
+	const atZero: PixelArtRenderer = presetOver(zero, Program.Lit, 0.0);
 	let zeroItems: Vec<DrawItem> = [itemOnItsLayout(zero, zero.lastMaterial())];
 	const noLevels: Result<int32, PixelArtError> =
 		renderFrame(atZero, zeroItems, camera, lights, drawn);
 	assert !noLevels.ok && noLevels.error == PixelArtError.RampLevels;
-	let texturedZero: DrawContext = DrawContext.withUniformCapacity(capacity);
-	let texturedAtZero: PixelArtRenderer = presetOver(texturedZero, Program.LitTextured, 0.0);
+	const texturedZero: DrawContext = DrawContext.withUniformCapacity(capacity);
+	const texturedAtZero: PixelArtRenderer = presetOver(texturedZero, Program.LitTextured, 0.0);
 	let texturedItems: Vec<DrawItem> = [
 		itemOnItsLayout(texturedZero, texturedZero.lastMaterial()),
 	];
 	let texturedLevels: Result<int32, PixelArtError> =
 		renderFrame(texturedAtZero, texturedItems, camera, lights, drawn);
 	assert !texturedLevels.ok && texturedLevels.error == PixelArtError.RampLevels;
-	let bare: DrawContext = DrawContext.withUniformCapacity(capacity);
-	let withoutBlock: PixelArtRenderer = presetOver(bare, Program.Lit, -1.0);
+	const bare: DrawContext = DrawContext.withUniformCapacity(capacity);
+	const withoutBlock: PixelArtRenderer = presetOver(bare, Program.Lit, -1.0);
 	let bareItems: Vec<DrawItem> = [itemOnItsLayout(bare, bare.lastMaterial())];
 	const noBlock: Result<int32, PixelArtError> =
 		renderFrame(withoutBlock, bareItems, camera, lights, drawn);
 	assert !noBlock.ok && noBlock.error == PixelArtError.MaterialBlock;
-	let notANumber: DrawContext = DrawContext.withUniformCapacity(capacity);
-	let atNaN: PixelArtRenderer = presetOver(notANumber, Program.Lit, 4.0);
+	const notANumber: DrawContext = DrawContext.withUniformCapacity(capacity);
+	const atNaN: PixelArtRenderer = presetOver(notANumber, Program.Lit, 4.0);
 	const nanMaterial: int32 = (notANumber.materials.length as int32) - 1;
 	const levelsAt: int32 = notANumber.materials[nanMaterial].uniforms.offset;
 	notANumber.uniforms.values[levelsAt] = (0.0 / 0.0) as float32;
@@ -759,8 +755,8 @@ test "a lit or textured lit material without ramp levels or its block refuses th
 	const nanLevels: Result<int32, PixelArtError> =
 		renderFrame(atNaN, nanItems, camera, lights, drawn);
 	assert !nanLevels.ok && nanLevels.error == PixelArtError.RampLevels;
-	let four: DrawContext = DrawContext.withUniformCapacity(capacity);
-	let atFour: PixelArtRenderer = presetOver(four, Program.Lit, 4.0);
+	const four: DrawContext = DrawContext.withUniformCapacity(capacity);
+	const atFour: PixelArtRenderer = presetOver(four, Program.Lit, 4.0);
 	let fourItems: Vec<DrawItem> = [itemOnItsLayout(four, four.lastMaterial())];
 	const past: Result<int32, PixelArtError> =
 		renderFrame(atFour, fourItems, shortCamera, lights, drawn);
@@ -777,7 +773,7 @@ test "a lit billboard without ramp levels refuses the pixel-art frame; unlit, or
 	const lightSteps: Vec<float32> = [0.0, 1.0];
 	for (const levels of levelSteps) {
 		for (const light of lightSteps) {
-			let context: DrawContext = DrawContext.withUniformCapacity(capacity);
+			const context: DrawContext = DrawContext.withUniformCapacity(capacity);
 			const created: Result<PixelArtRenderer, PixelArtError> =
 				PixelArtRenderer.create(context, PixelArtSettings.full(), look());
 			assert created.ok;
@@ -785,7 +781,7 @@ test "a lit billboard without ramp levels refuses the pixel-art frame; unlit, or
 				reserveUniforms(context, BILLBOARD_UNIFORM_SLOT, BILLBOARD_UNIFORM_LENGTH);
 			assert block.ok;
 			if (created.ok && block.ok) {
-				let renderer: PixelArtRenderer = created.value;
+				const renderer: PixelArtRenderer = created.value;
 				const values: Vec<float32> = [0.2, 0.3, 0.5, 1.0, levels, light, 0.25, 0.0];
 				assert writeUniforms(context, block.value, values).ok;
 				const material: Result<MaterialId, MaterialError> = addMaterial(context, {
@@ -811,7 +807,7 @@ test "a lit billboard without ramp levels refuses the pixel-art frame; unlit, or
 test "a released material or mesh refuses the frame by name" {
 	let context: DrawContext =
 		DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH);
-	let renderer: PixelArtRenderer = presetOver(context, Program.Lit, 4.0);
+	const renderer: PixelArtRenderer = presetOver(context, Program.Lit, 4.0);
 	const material: MaterialId = context.lastMaterial();
 	const item: DrawItem = itemOnItsLayout(context, material);
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
@@ -832,8 +828,8 @@ test "a released material or mesh refuses the frame by name" {
 
 test "a material's block is its own, and a block put in by hand is refused" {
 	const capacity: int32 = PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH * 2;
-	let context: DrawContext = DrawContext.withUniformCapacity(capacity);
-	let renderer: PixelArtRenderer = presetOver(context, Program.Lit, 4.0);
+	const context: DrawContext = DrawContext.withUniformCapacity(capacity);
+	const renderer: PixelArtRenderer = presetOver(context, Program.Lit, 4.0);
 	const material: MaterialId = context.lastMaterial();
 	const block: UniformBlock = context.materials[material.index].uniforms;
 	const owned: Result<int32, UniformError> = releaseUniforms(context, block);
@@ -862,14 +858,14 @@ test "a material's block is its own, and a block put in by hand is refused" {
 
 test "a billboard block too short to hold the ramp levels is refused by the core" {
 	const short: int32 = BILLBOARD_UNIFORM_LENGTH / 2;
-	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH + short);
+	const context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH + short);
 	const created: Result<PixelArtRenderer, PixelArtError> =
 		PixelArtRenderer.create(context, PixelArtSettings.full(), look());
 	const block: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, BILLBOARD_UNIFORM_SLOT, short);
 	assert created.ok && block.ok;
 	if (created.ok && block.ok) {
-		let renderer: PixelArtRenderer = created.value;
+		const renderer: PixelArtRenderer = created.value;
 		const material: Result<MaterialId, MaterialError> = addMaterial(context, {
 			...Material.keyed(cutBillboard(), RenderState.defaults(), Phase.Opaque),
 			texture0: 1,

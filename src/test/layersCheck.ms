@@ -39,7 +39,6 @@ import {
 	LightInstance,
 	refresh,
 	refreshFor,
-	layersOf,
 	setLayers,
 	setLayer,
 	enableLayer,
@@ -126,17 +125,17 @@ test "a node starts on layer 0 and a layer call changes only that node" {
 	const scene: Scene3D = Scene3D.create(context);
 	const a: NodeId3D = meshUnder(scene, context, scene.rootId(), 0);
 	const b: NodeId3D = meshUnder(scene, context, scene.rootId(), 1);
-	assert layersOf(scene, a) == DEFAULT_LAYERS && layersOf(scene, scene.rootId()) == DEFAULT_LAYERS;
+	assert scene.layersOf(a) == DEFAULT_LAYERS && scene.layersOf(scene.rootId()) == DEFAULT_LAYERS;
 	enableLayer(scene, a, 4);
-	assert layersOf(scene, a) == 17 && layersOf(scene, b) == 1;
+	assert scene.layersOf(a) == 17 && scene.layersOf(b) == 1;
 	disableLayer(scene, a, 0);
-	assert layersOf(scene, a) == 16;
+	assert scene.layersOf(a) == 16;
 	toggleLayer(scene, a, 4);
-	assert layersOf(scene, a) == 0;
+	assert scene.layersOf(a) == 0;
 	setLayer(scene, a, 2);
-	assert layersOf(scene, a) == 4;
+	assert scene.layersOf(a) == 4;
 	setLayers(scene, a, ALL_LAYERS);
-	assert layersOf(scene, a) == ALL_LAYERS;
+	assert scene.layersOf(a) == ALL_LAYERS;
 }
 
 test "the draw list holds the nodes whose layers meet the camera's, and no camera means layer 0" {
@@ -288,7 +287,7 @@ test "a prepared frame the caller composites itself is ended, and the next prepa
 	const second: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(context, CLEAR);
 	assert second.ok;
 	if (!second.ok) { return; }
-	let overlay: ForwardRenderer = second.value;
+	const overlay: ForwardRenderer = second.value;
 	overlay.core.prepared = true;
 	endPrepared(overlay);
 	assert !overlay.core.prepared;
@@ -337,7 +336,9 @@ test "a layer-1 camera is lit by its own directional alone" {
 	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const sun: NodeId3D = lightOn(scene, scene.rootId(), LightKind.Directional, 0);
 	const lamp: NodeId3D = lightOn(scene, scene.rootId(), LightKind.Directional, 1);
-	const camera: NodeId3D = addCameraNode(scene, scene.rootId(), Transform3D.identity(), request());
+	const camera: NodeId3D = addCameraNode(
+		scene, scene.rootId(), Transform3D.identity(), request(),
+	);
 	let block: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	setLightPower(scene, sun, 0.25);
 	setLightPower(scene, lamp, 0.75);
@@ -364,14 +365,16 @@ test "a light on another layer does not stop its children being walked, or count
 
 test "setLayers on a camera node is the node's own mask and not what the camera draws" {
 	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
-	const camera: NodeId3D = addCameraNode(scene, scene.rootId(), Transform3D.identity(), request());
+	const camera: NodeId3D = addCameraNode(
+		scene, scene.rootId(), Transform3D.identity(), request(),
+	);
 	setLayers(scene, camera, layerBit(5));
-	assert layersOf(scene, camera) == layerBit(5);
+	assert scene.layersOf(camera) == layerBit(5);
 	assert cameraLayersOf(scene, camera) == DEFAULT_LAYERS;
 }
 
 test "a second view composites as a premultiplied textured material over; straight is refused" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const over: RenderState = RenderState.defaults().withBlendMode(BlendMode.AlphaAdd);
 	for (const program of [Program.UnlitTextured, Program.LitTextured]) {
 		const kept: Result<MaterialId, MaterialError> = addMaterial(context, Material.keyed(

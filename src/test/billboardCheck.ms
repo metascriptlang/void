@@ -114,7 +114,7 @@ test "the billboard program normal, right cross up, points back toward the camer
 	const pitches: Vec<float32> = [0.2, 0.6, 1.2];
 	for (const yaw of yaws) {
 		for (const pitch of pitches) {
-			let camera: Camera3D = {
+			const camera: Camera3D = {
 				position: vec3(0.0, 0.0, 0.0),
 				yaw: yaw,
 				pitch: pitch,

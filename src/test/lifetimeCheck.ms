@@ -29,7 +29,6 @@ import {
 	Scene3D,
 	NodeId3D,
 	SceneError,
-	NO_NODE_3D,
 	addGroup,
 	addMeshNode,
 	remove,
@@ -72,7 +71,7 @@ function handleError(result: Result<int32, HandleError>): HandleError {
 }
 
 test "a mesh lives until its last holder lets go, and its id then names nothing" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const id: MeshId = added(context, quad());
 	assert context.meshHolders[id.index] == 1;
 	assert holders(retainMesh(context, id)) == 2;
@@ -85,7 +84,7 @@ test "a mesh lives until its last holder lets go, and its id then names nothing"
 }
 
 test "a freed slot comes back a generation later, and the old id stays stale" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const first: MeshId = added(context, quad());
 	assert holders(releaseMesh(context, first)) == 0;
 	const next: MeshId = added(context, quad());
@@ -95,7 +94,7 @@ test "a freed slot comes back a generation later, and the old id stays stale" {
 }
 
 test "the buffers the context made for a freed mesh are doomed, a caller's never" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const stream: MeshId = added(context, GpuMesh.streamMesh(4, 77, 5));
 	const external: MeshId = added(context, GpuMesh.billboards(12, 1));
 	const neverMade: MeshId = added(context, GpuMesh.streamMesh(4, 0, 0));
@@ -108,7 +107,7 @@ test "the buffers the context made for a freed mesh are doomed, a caller's never
 }
 
 test "a doomed buffer of an older GPU context is dropped, not destroyed" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	for (const buffer of [31, 32, 77]) {
 		const id: MeshId = added(context, GpuMesh.streamMesh(4, buffer as uint32, 5));
 		assert holders(releaseMesh(context, id)) == 0;
@@ -119,7 +118,7 @@ test "a doomed buffer of an older GPU context is dropped, not destroyed" {
 }
 
 test "addMesh refuses a mesh made in a context that it could not remake" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const lit: Result<MeshId, MeshUploadError> =
 		addMesh(context, { ...MeshData.empty().meshFor(31, 0, 5), indexBuffer: 32 });
 	assert !lit.ok;
@@ -133,7 +132,7 @@ test "addMesh refuses a mesh made in a context that it could not remake" {
 }
 
 test "an upload refused before the driver frees its slot" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const refused: Result<MeshId, MeshUploadError> = addMeshData(context, MeshData.empty());
 	assert !refused.ok;
 	if (!refused.ok) { assert refused.error == MeshUploadError.EmptyMesh; }
@@ -143,7 +142,7 @@ test "an upload refused before the driver frees its slot" {
 }
 
 test "a material takes its uniform range with it when its last holder lets go" {
-	let context: DrawContext = DrawContext.withUniformCapacity(8);
+	const context: DrawContext = DrawContext.withUniformCapacity(8);
 	const block: UniformBlock = try reserveUniforms(context, 2, 4) catch NO_UNIFORMS;
 	const plain: Material = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);
 	const added: Result<MaterialId, MaterialError> =
@@ -165,10 +164,10 @@ test "a material takes its uniform range with it when its last holder lets go" {
 }
 
 test "a mesh node holds its mesh and material from addMeshNode until remove" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene3D = Scene3D.create(context);
+	const scene: Scene3D = Scene3D.create(context);
 	const node: NodeId3D =
 		try addMeshNode(scene, scene.rootId(), Transform3D.identity(), mesh, material)
 		catch NO_ID;
@@ -181,10 +180,10 @@ test "a mesh node holds its mesh and material from addMeshNode until remove" {
 }
 
 test "removing a group lets go once for every mesh node under it" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene3D = Scene3D.create(context);
+	const scene: Scene3D = Scene3D.create(context);
 	const group: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
 	for (let i = 0; i < 3; i++) {
 		const _node: NodeId3D =
@@ -197,10 +196,10 @@ test "removing a group lets go once for every mesh node under it" {
 }
 
 test "setMeshOf holds the new mesh before it lets go of the one shown, even when they are one" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const shown: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene3D = Scene3D.create(context);
+	const scene: Scene3D = Scene3D.create(context);
 	const node: NodeId3D =
 		try addMeshNode(scene, scene.rootId(), Transform3D.identity(), shown, material)
 		catch NO_ID;
@@ -213,10 +212,10 @@ test "setMeshOf holds the new mesh before it lets go of the one shown, even when
 }
 
 test "setMaterialOf holds the new material before it lets go of the shown one, even the same one" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, quad());
 	const shown: MaterialId = plainMaterial(context);
-	let scene: Scene3D = Scene3D.create(context);
+	const scene: Scene3D = Scene3D.create(context);
 	const node: NodeId3D =
 		try addMeshNode(scene, scene.rootId(), Transform3D.identity(), mesh, shown)
 		catch NO_ID;
@@ -241,19 +240,19 @@ test "setMaterialOf holds the new material before it lets go of the shown one, e
 }
 
 test "setMaterialOf refuses a released or foreign material and keeps the one shown" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, quad());
 	const shown: MaterialId = plainMaterial(context);
 	const gone: MaterialId = plainMaterial(context);
 	assert holders(releaseMaterial(context, gone)) == 0;
-	let scene: Scene3D = Scene3D.create(context);
+	const scene: Scene3D = Scene3D.create(context);
 	const node: NodeId3D =
 		try addMeshNode(scene, scene.rootId(), Transform3D.identity(), mesh, shown)
 		catch NO_ID;
 	const stale: Result<int32, SceneError> = setMaterialOf(scene, node, gone);
 	assert !stale.ok;
 	if (!stale.ok) { assert stale.error == SceneError.StaleMaterial; }
-	let other: DrawContext = DrawContext.withUniformCapacity(0);
+	const other: DrawContext = DrawContext.withUniformCapacity(0);
 	const _first: MaterialId = plainMaterial(other);
 	const _second: MaterialId = plainMaterial(other);
 	const elsewhere: MaterialId = plainMaterial(other);
@@ -265,14 +264,14 @@ test "setMaterialOf refuses a released or foreign material and keeps the one sho
 }
 
 test "a node refuses a released mesh or material, and holds nothing then" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
 	const goneMesh: MeshId = added(context, quad());
 	const goneMaterial: MaterialId = plainMaterial(context);
 	assert holders(releaseMesh(context, goneMesh)) == 0;
 	assert holders(releaseMaterial(context, goneMaterial)) == 0;
-	let scene: Scene3D = Scene3D.create(context);
+	const scene: Scene3D = Scene3D.create(context);
 	const noMesh: Result<NodeId3D, SceneError> =
 		addMeshNode(scene, scene.rootId(), Transform3D.identity(), goneMesh, material);
 	assert !noMesh.ok;
@@ -315,8 +314,8 @@ function loadRocks(
 }
 
 test "a loader that lets go of its own with defer leaves its meshes to the nodes, or to no one" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
+	const scene: Scene3D = Scene3D.create(context);
 	const level: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
 	const loaded: Result<int32, SceneError> = loadRocks(scene, context, level);
 	assert loaded.ok;
@@ -330,10 +329,10 @@ test "a loader that lets go of its own with defer leaves its meshes to the nodes
 }
 
 test "a caller that would take a mesh node's hold is refused, and the mesh stays" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene3D = Scene3D.create(context);
+	const scene: Scene3D = Scene3D.create(context);
 	const node: NodeId3D =
 		try addMeshNode(scene, scene.rootId(), Transform3D.identity(), mesh, material)
 		catch NO_ID;
@@ -349,10 +348,10 @@ test "a caller that would take a mesh node's hold is refused, and the mesh stays
 }
 
 test "removeChildren lets go of everything under a node and keeps the node" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene3D = Scene3D.create(context);
+	const scene: Scene3D = Scene3D.create(context);
 	const level: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
 	const _first: NodeId3D =
 		try addMeshNode(scene, level, Transform3D.identity(), mesh, material) catch NO_ID;
@@ -371,11 +370,11 @@ test "removeChildren lets go of everything under a node and keeps the node" {
 }
 
 test "a baked animation holds its frames, the ones off screen too, until it lets them go" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const first: MeshId = added(context, quad());
 	const second: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene3D = Scene3D.create(context);
+	const scene: Scene3D = Scene3D.create(context);
 	const node: NodeId3D =
 		try addMeshNode(scene, scene.rootId(), Transform3D.identity(), first, material)
 		catch NO_ID;
@@ -389,7 +388,7 @@ test "a baked animation holds its frames, the ones off screen too, until it lets
 		MeshFrameAnimation.forMeshes(context, clock.value, "pet", frames);
 	assert made.ok;
 	if (!made.ok) { return; }
-	let animation: MeshFrameAnimation = made.value;
+	const animation: MeshFrameAnimation = made.value;
 	assert holders(releaseMesh(context, first)) == 2;
 	assert holders(releaseMesh(context, second)) == 1;
 	assert context.hasMesh(second);
@@ -403,11 +402,11 @@ test "a baked animation holds its frames, the ones off screen too, until it lets
 }
 
 test "an over-release is refused while only pins hold a frame; an alias closes the frames once" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const shown: MeshId = added(context, quad());
 	const offScreen: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene3D = Scene3D.create(context);
+	const scene: Scene3D = Scene3D.create(context);
 	const node: NodeId3D =
 		try addMeshNode(scene, scene.rootId(), Transform3D.identity(), shown, material)
 		catch NO_ID;
@@ -420,10 +419,10 @@ test "an over-release is refused while only pins hold a frame; an alias closes t
 		MeshFrameAnimation.forMeshes(context, clock.value, "pet", frames);
 	assert made.ok;
 	if (!made.ok) { return; }
-	let animation: MeshFrameAnimation = made.value;
+	const animation: MeshFrameAnimation = made.value;
 	assert holders(releaseMesh(context, shown)) == 2;
 	assert handleError(releaseMesh(context, shown)) == HandleError.OnlyPinned;
-	let alias: MeshFrameAnimation = animation;
+	const alias: MeshFrameAnimation = animation;
 	closeMeshFrames(alias);
 	assert animation.isClosed() && (animation.meshes.length as int32) == 0;
 	assert context.meshPinned(shown) == 1 && context.meshPinned(offScreen) == 0;
@@ -435,21 +434,21 @@ test "an over-release is refused while only pins hold a frame; an alias closes t
 }
 
 test "a copy of a scene is the scene: a removal through it is seen by both" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene3D = Scene3D.create(context);
+	const scene: Scene3D = Scene3D.create(context);
 	const level: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
 	const _node: NodeId3D =
 		try addMeshNode(scene, level, Transform3D.identity(), mesh, material) catch NO_ID;
-	let copy: Scene3D = scene;
+	const copy: Scene3D = scene;
 	assert remove(copy, level) > 0;
 	assert !scene.isLive(level) && scene.nodeCount() == 1;
 	assert context.meshPinned(mesh) == 0 && context.meshHolders[mesh.index] == 1;
 }
 
 test "a material frees the range it was added with, whatever its uniforms field says later" {
-	let context: DrawContext = DrawContext.withUniformCapacity(8);
+	const context: DrawContext = DrawContext.withUniformCapacity(8);
 	const plain: Material = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);
 	const first: UniformBlock = try reserveUniforms(context, 2, 4) catch NO_UNIFORMS;
 	const second: UniformBlock = try reserveUniforms(context, 2, 4) catch NO_UNIFORMS;

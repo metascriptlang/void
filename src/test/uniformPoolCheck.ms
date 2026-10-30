@@ -17,7 +17,7 @@ function reserved(pool: UniformPool, length: int32): UniformBlock {
 }
 
 test "a released range goes to the next reserve of its length, a generation later" {
-	let pool: UniformPool = UniformPool.withCapacity(16);
+	const pool: UniformPool = UniformPool.withCapacity(16);
 	const first: UniformBlock = reserved(pool, 4);
 	const second: UniformBlock = reserved(pool, 4);
 	assert releaseRange(pool, first).ok;
@@ -28,7 +28,7 @@ test "a released range goes to the next reserve of its length, a generation late
 }
 
 test "a range of another length is not reused and the pool never compacts" {
-	let pool: UniformPool = UniformPool.withCapacity(16);
+	const pool: UniformPool = UniformPool.withCapacity(16);
 	const four: UniformBlock = reserved(pool, 4);
 	const eight: UniformBlock = reserved(pool, 8);
 	assert releaseRange(pool, four).ok;
@@ -40,7 +40,7 @@ test "a range of another length is not reused and the pool never compacts" {
 }
 
 test "a released block is refused where it is written and released again" {
-	let pool: UniformPool = UniformPool.withCapacity(8);
+	const pool: UniformPool = UniformPool.withCapacity(8);
 	const block: UniformBlock = reserved(pool, 4);
 	const values: Vec<float32> = [1.0, 2.0, 3.0, 4.0];
 	assert writeRange(pool, block, values).ok;
@@ -56,14 +56,14 @@ test "a released block is refused where it is written and released again" {
 }
 
 test "a block of no floats names no range and is always held" {
-	let pool: UniformPool = UniformPool.withCapacity(4);
+	const pool: UniformPool = UniformPool.withCapacity(4);
 	const empty: UniformBlock = reserved(pool, 0);
 	assert empty.length == 0 && pool.used == 0 && pool.holds(empty);
 	assert releaseRange(pool, empty).ok && pool.freeRanges() == 0;
 }
 
 test "a range whose generation would wrap is retired, not handed out again" {
-	let pool: UniformPool = UniformPool.withCapacity(8);
+	const pool: UniformPool = UniformPool.withCapacity(8);
 	const block: UniformBlock = reserved(pool, 4);
 	pool.generations[block.offset] = LAST_GENERATION;
 	const last: UniformBlock = { ...block, generation: LAST_GENERATION };
@@ -74,7 +74,7 @@ test "a range whose generation would wrap is retired, not handed out again" {
 }
 
 test "blocks fit from released ranges of their length first, then from the rest" {
-	let pool: UniformPool = UniformPool.withCapacity(12);
+	const pool: UniformPool = UniformPool.withCapacity(12);
 	const four: UniformBlock = reserved(pool, 4);
 	const eight: UniformBlock = reserved(pool, 8);
 	assert pool.unreserved() == 0;
@@ -88,7 +88,7 @@ test "blocks fit from released ranges of their length first, then from the rest"
 }
 
 test "an owned range is released only by its owner" {
-	let pool: UniformPool = UniformPool.withCapacity(8);
+	const pool: UniformPool = UniformPool.withCapacity(8);
 	const block: UniformBlock = reserved(pool, 4);
 	assert ownRange(pool, block).ok;
 	assert pool.isOwned(block);

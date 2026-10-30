@@ -73,8 +73,8 @@ function poolRefused(result: Result<int32, UniformError>, expected: UniformError
 }
 
 test "two contexts name the same slots and refuse each other's meshes and materials by name" {
-	let a: DrawContext = contextOf(2, 2);
-	let b: DrawContext = contextOf(2, 2);
+	const a: DrawContext = contextOf(2, 2);
+	const b: DrawContext = contextOf(2, 2);
 	const mesh: MeshId = a.meshAt(0);
 	const material: MaterialId = a.materialAt(0);
 	assert mesh.index == b.meshAt(0).index && mesh.generation == b.meshAt(0).generation;
@@ -97,15 +97,15 @@ test "two contexts name the same slots and refuse each other's meshes and materi
 }
 
 test "an alias of a context is the context, and a release through it counts once" {
-	let context: DrawContext = contextOf(1, 1);
-	let alias: DrawContext = context;
+	const context: DrawContext = contextOf(1, 1);
+	const alias: DrawContext = context;
 	const mesh: MeshId = context.meshAt(0);
 	assert alias.serial == context.serial;
 	assert releaseMesh(alias, mesh).ok;
 	assert !context.hasMesh(mesh) && context.liveMeshes() == 0;
 	assert refused(releaseMesh(context, mesh), HandleError.StaleMesh);
-	let held: DrawContext = DrawContext.withUniformCapacity(8);
-	let pool: UniformPool = held.uniforms;
+	const held: DrawContext = DrawContext.withUniformCapacity(8);
+	const pool: UniformPool = held.uniforms;
 	const block: Result<UniformBlock, UniformError> = reserveUniforms(held, 2, 4);
 	assert block.ok;
 	if (!block.ok) { return; }
@@ -114,8 +114,8 @@ test "an alias of a context is the context, and a release through it counts once
 }
 
 test "a uniform block names its pool, and another pool refuses it by name" {
-	let first: UniformPool = UniformPool.withCapacity(8);
-	let second: UniformPool = UniformPool.withCapacity(8);
+	const first: UniformPool = UniformPool.withCapacity(8);
+	const second: UniformPool = UniformPool.withCapacity(8);
 	const block: Result<UniformBlock, UniformError> = reserveRange(first, 2, 4);
 	const twin: Result<UniformBlock, UniformError> = reserveRange(second, 2, 4);
 	assert block.ok && twin.ok;
@@ -135,8 +135,8 @@ test "a uniform block names its pool, and another pool refuses it by name" {
 }
 
 test "a context refuses a material that names another context's texture or block" {
-	let a: DrawContext = DrawContext.withUniformCapacity(8);
-	let b: DrawContext = DrawContext.withUniformCapacity(8);
+	const a: DrawContext = DrawContext.withUniformCapacity(8);
+	const b: DrawContext = DrawContext.withUniformCapacity(8);
 	const block: Result<UniformBlock, UniformError> = reserveUniforms(a, 3, 4);
 	assert block.ok;
 	if (!block.ok) { return; }
@@ -157,14 +157,14 @@ test "a context refuses a material that names another context's texture or block
 }
 
 test "the core refuses another context's mesh or material by name before it writes" {
-	let a: DrawContext = contextOf(1, 1);
-	let b: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
+	const a: DrawContext = contextOf(1, 1);
+	const b: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
 	const created: Result<Renderer, RendererError> = Renderer.create(b);
 	assert created.ok;
 	if (!created.ok) { return; }
-	let core: Renderer = created.value;
-	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
-	let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const core: Renderer = created.value;
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	let foreignMesh: Vec<DrawItem> =
 		[{ mesh: a.meshAt(0), material: a.materialAt(0), world: identity() }];
 	const meshFrame: Result<boolean, RendererError> =
@@ -179,23 +179,23 @@ test "the core refuses another context's mesh or material by name before it writ
 }
 
 test "both presets draw the context they were made on and refuse another's item by name" {
-	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
-	let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-	let other: DrawContext = contextOf(1, 1);
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const other: DrawContext = contextOf(1, 1);
 	let foreign: Vec<DrawItem> =
 		[{ mesh: other.meshAt(0), material: other.materialAt(0), world: identity() }];
-	let background: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
-	let made: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
+	const background: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+	const made: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
 	const forward: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(made, background);
 	assert forward.ok;
 	if (!forward.ok) { return; }
-	let copy: ForwardRenderer = forward.value;
+	const copy: ForwardRenderer = forward.value;
 	assert copy.core.context.serial == made.serial;
 	const copied: Result<int32, ForwardError> =
 		renderFrame(copy, foreign, camera, lights, 640, 480);
 	assert !copied.ok && copied.error == ForwardError.ForeignMesh;
 	assert copy.core.generation == 0 && copy.colorTarget.image == 0;
-	let look: PixelArtLook = {
+	const look: PixelArtLook = {
 		background: background,
 		outline: {
 			depthThreshold: 0.006,
@@ -206,13 +206,13 @@ test "both presets draw the context they were made on and refuse another's item 
 		fog: { start: 0.5, end: 0.8, strength: 0.0, color: background },
 		saturation: 0.0,
 	};
-	let view: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
-	let pixelContext: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	const view: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
+	const pixelContext: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
 	const preset: Result<PixelArtRenderer, PixelArtError> =
 		PixelArtRenderer.create(pixelContext, PixelArtSettings.full(), look);
 	assert preset.ok;
 	if (!preset.ok) { return; }
-	let pixelArt: PixelArtRenderer = preset.value;
+	const pixelArt: PixelArtRenderer = preset.value;
 	assert pixelArt.core.context.serial == pixelContext.serial;
 	const drawn: Result<int32, PixelArtError> =
 		renderPixelArt(pixelArt, foreign, camera, lights, view);
@@ -221,9 +221,9 @@ test "both presets draw the context they were made on and refuse another's item 
 }
 
 test "a scene refuses another context's mesh or material by name and keeps its pins" {
-	let a: DrawContext = contextOf(2, 2);
-	let b: DrawContext = contextOf(2, 2);
-	let scene: Scene3D = Scene3D.create(b);
+	const a: DrawContext = contextOf(2, 2);
+	const b: DrawContext = contextOf(2, 2);
+	const scene: Scene3D = Scene3D.create(b);
 	const meshNode: Result<NodeId3D, SceneError> =
 		addMeshNode(scene, scene.rootId(), Transform3D.identity(), a.meshAt(0), b.materialAt(0));
 	assert !meshNode.ok && meshNode.error == SceneError.ForeignMesh;
@@ -240,8 +240,8 @@ test "a scene refuses another context's mesh or material by name and keeps its p
 }
 
 test "mesh frames refuse another context's meshes by name" {
-	let a: DrawContext = contextOf(2, 1);
-	let b: DrawContext = contextOf(2, 1);
+	const a: DrawContext = contextOf(2, 1);
+	const b: DrawContext = contextOf(2, 1);
 	const clock: Result<AnimationClock, AnimationError> =
 		AnimationClock.forFrames(1, 12.0, Interpolation.Step);
 	assert clock.ok;
@@ -259,22 +259,22 @@ test "mesh frames refuse another context's meshes by name" {
 }
 
 test "both presets refuse a frame whose own screen material's block was replaced, before any pass" {
-	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
-	let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	let none: Vec<DrawItem> = [];
-	let background: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
-	let made: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH + 4);
+	const background: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+	const made: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH + 4);
 	const forward: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(made, background);
 	const spare: Result<UniformBlock, UniformError> = reserveUniforms(made, 3, 4);
 	assert forward.ok && spare.ok;
 	if (!forward.ok || !spare.ok) { return; }
-	let copy: ForwardRenderer = forward.value;
+	const copy: ForwardRenderer = forward.value;
 	made.materials[copy.copyMaterial.index].uniforms = spare.value;
 	const copied: Result<int32, ForwardError> =
 		renderFrame(copy, none, camera, lights, 640, 480);
 	assert !copied.ok && copied.error == ForwardError.UniformsReplaced;
 	assert copy.core.generation == 0 && copy.colorTarget.image == 0;
-	let look: PixelArtLook = {
+	const look: PixelArtLook = {
 		background: background,
 		outline: {
 			depthThreshold: 0.006,
@@ -285,15 +285,15 @@ test "both presets refuse a frame whose own screen material's block was replaced
 		fog: { start: 0.5, end: 0.8, strength: 0.0, color: background },
 		saturation: 0.0,
 	};
-	let view: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
+	const view: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 	for (const post of [true, false]) {
-		let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH + 4);
+		const context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH + 4);
 		const preset: Result<PixelArtRenderer, PixelArtError> =
 			PixelArtRenderer.create(context, PixelArtSettings.full(), look);
 		const block: Result<UniformBlock, UniformError> = reserveUniforms(context, 3, 4);
 		assert preset.ok && block.ok;
 		if (!preset.ok || !block.ok) { return; }
-		let pixelArt: PixelArtRenderer = preset.value;
+		const pixelArt: PixelArtRenderer = preset.value;
 		const screen: MaterialId = post ? pixelArt.postMaterial : pixelArt.blitMaterial;
 		context.materials[screen.index].uniforms = block.value;
 		const drawn: Result<int32, PixelArtError> =

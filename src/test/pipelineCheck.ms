@@ -114,8 +114,10 @@ test "setBlendMode Alpha keeps the source alpha and blends the destination" {
 }
 
 test "color mask packs r g b a as bits 1 2 4 8" {
-	assert (RenderState.defaults().withColorMask(true, false, true, false).colorMask as uint32) == 5;
-	assert (RenderState.defaults().withColorMask(false, false, false, false).colorMask as uint32) == 0;
+	const some = RenderState.defaults().withColorMask(true, false, true, false);
+	assert (some.colorMask as uint32) == 5;
+	const none = RenderState.defaults().withColorMask(false, false, false, false);
+	assert (none.colorMask as uint32) == 0;
 }
 
 test "render state bits round-trip through fromBits" {
@@ -271,7 +273,9 @@ test "pipeline descriptor follows the key" {
 }
 
 test "the descriptor carries the index type, and only the index type, for an indexed mesh" {
-	const plain: Vec<uint32> = described(VertexLayout.Lit, NOT_INDEXED, sceneState(), sceneLayout());
+	const plain: Vec<uint32> = described(
+		VertexLayout.Lit, NOT_INDEXED, sceneState(), sceneLayout(),
+	);
 	const indexed: Vec<uint32> = described(VertexLayout.Lit, true, sceneState(), sceneLayout());
 	assert !sameWords(plain, indexed);
 	let differing: int32 = 0;
@@ -317,7 +321,7 @@ test "a sample count of sixteen keys apart from the render state" {
 }
 
 test "uniform pool hands out ranges once and refuses to overflow" {
-	let context: DrawContext = DrawContext.withUniformCapacity(8);
+	const context: DrawContext = DrawContext.withUniformCapacity(8);
 	const first: UniformBlock = try reserveUniforms(context, 0, 6) catch NO_UNIFORMS;
 	assert first.offset == 0 && first.length == 6;
 	const second: Result<UniformBlock, UniformError> = reserveUniforms(context, 1, 4);
@@ -394,7 +398,9 @@ test "screen layouts of two environments that differ only in samples key apart" 
 test "a layout that names its formats is left as it is" {
 	assert !sceneLayout().namesEnvironment();
 	assert sceneLayout().resolvedIn(environmentWith(4)) == sceneLayout();
-	const halfNamed: TargetLayout = { ...sceneLayout(), depth: PixelFormat.Default, sampleCount: 0 };
+	const halfNamed: TargetLayout = {
+		...sceneLayout(), depth: PixelFormat.Default, sampleCount: 0,
+	};
 	assert halfNamed.namesEnvironment();
 	const resolved: TargetLayout = halfNamed.resolvedIn(environmentWith(4));
 	assert resolved.color0 == PixelFormat.Rgba8 && resolved.color1 == PixelFormat.Rgba8;

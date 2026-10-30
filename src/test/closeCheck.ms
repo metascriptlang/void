@@ -1,6 +1,5 @@
 import { Vec4 } from "../math/math3d";
 import { contextGeneration } from "../gpu/door";
-import { identity } from "../math/math3d";
 import { Program } from "../void3d/gpu3d";
 import { RenderState } from "../gpu/state";
 import { Material, Phase, UniformBlock } from "../void3d/material";
@@ -84,14 +83,14 @@ function pixelArtOn(context: DrawContext): PixelArtRenderer {
 }
 
 test "closing the core gives its screen mesh and both blocks back, once" {
-	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
 	const made: Result<Renderer, RendererError> = Renderer.create(context);
 	assert made.ok;
 	if (!made.ok) { return; }
-	let core: Renderer = made.value;
+	const core: Renderer = made.value;
 	assert core.context.serial == context.serial && context.liveMeshes() == 1;
 	assert context.uniforms.isOwned(core.cameraBlock) && context.uniforms.isOwned(core.lightBlock);
-	let alias: Renderer = core;
+	const alias: Renderer = core;
 	closeRenderer(alias);
 	assert core.isClosed() && !core.needsFrame();
 	assert context.liveMeshes() == 0;
@@ -99,10 +98,10 @@ test "closing the core gives its screen mesh and both blocks back, once" {
 }
 
 test "closing a forward preset gives back its copy and over materials and closes its core" {
-	let context: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
-	let forward: ForwardRenderer = forwardOn(context);
+	const context: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
+	const forward: ForwardRenderer = forwardOn(context);
 	assert context.liveMeshes() == 1 && context.liveMaterials() == 2;
-	let alias: ForwardRenderer = forward;
+	const alias: ForwardRenderer = forward;
 	closeForward(alias);
 	assert forward.isClosed() && forward.core.isClosed();
 	assert context.liveMeshes() == 0 && context.liveMaterials() == 0;
@@ -111,9 +110,9 @@ test "closing a forward preset gives back its copy and over materials and closes
 }
 
 test "a forward preset skips a core an alias already closed" {
-	let context: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
-	let forward: ForwardRenderer = forwardOn(context);
-	let core: Renderer = forward.core;
+	const context: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
+	const forward: ForwardRenderer = forwardOn(context);
+	const core: Renderer = forward.core;
 	closeRenderer(core);
 	assert forward.core.isClosed() && !forward.isClosed();
 	closeForward(forward);
@@ -121,22 +120,22 @@ test "a forward preset skips a core an alias already closed" {
 }
 
 test "closing a pixel-art preset gives back both screen materials and closes its table and core" {
-	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
-	let pixelArt: PixelArtRenderer = pixelArtOn(context);
+	const context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	const pixelArt: PixelArtRenderer = pixelArtOn(context);
 	assert context.liveMeshes() == 1 && context.liveMaterials() == 2;
-	let palette: PaletteLut = pixelArt.palette;
+	const palette: PaletteLut = pixelArt.palette;
 	closePixelArt(pixelArt);
 	assert pixelArt.isClosed() && pixelArt.core.isClosed() && palette.isClosed();
 	assert context.liveMeshes() == 0 && context.liveMaterials() == 0;
 	assert !context.uniforms.holds(pixelArt.postBlock);
 	assert !context.uniforms.holds(pixelArt.blitBlock);
-	let view: LowResView = { width: 32, height: 24, scale: 1, offsetX: 0.0, offsetY: 0.0 };
+	const view: LowResView = { width: 32, height: 24, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 	assert !pixelArt.needsFrame(view);
 }
 
 test "a pixel-art preset's prepared frame ends with endPrepared and may be prepared again" {
-	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
-	let pixelArt: PixelArtRenderer = pixelArtOn(context);
+	const context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	const pixelArt: PixelArtRenderer = pixelArtOn(context);
 	pixelArt.core.prepared = true;
 	endPixelArt(pixelArt);
 	assert !pixelArt.core.prepared;
@@ -145,8 +144,8 @@ test "a pixel-art preset's prepared frame ends with endPrepared and may be prepa
 }
 
 test "a pixel-art preset skips a table an alias already closed" {
-	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
-	let pixelArt: PixelArtRenderer = pixelArtOn(context);
+	const context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	const pixelArt: PixelArtRenderer = pixelArtOn(context);
 	closePalette(pixelArt.palette);
 	closePixelArt(pixelArt);
 	assert pixelArt.isClosed() && context.liveMaterials() == 0;
@@ -156,8 +155,8 @@ test "a palette table made under an older GPU context forgets its image instead 
 	const made: Result<PaletteLut, PaletteError> = PaletteLut.withLevels(4);
 	assert made.ok;
 	if (!made.ok) { return; }
-	let lut: PaletteLut = made.value;
-	let alias: PaletteLut = lut;
+	const lut: PaletteLut = made.value;
+	const alias: PaletteLut = lut;
 	alias.image = 7;
 	alias.texture = 9;
 	alias.generation = contextGeneration() + 1;
@@ -172,11 +171,11 @@ test "a palette table made under an older GPU context forgets its image instead 
 }
 
 test "a renderer made under an older GPU context forgets its screen buffer, destroying nothing" {
-	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
 	const made: Result<Renderer, RendererError> = Renderer.create(context);
 	assert made.ok;
 	if (!made.ok) { return; }
-	let core: Renderer = made.value;
+	const core: Renderer = made.value;
 	const screen: int32 = core.screenMesh.index;
 	context.meshes[screen].vertexBuffer = 7;
 	core.generation = contextGeneration() + 1;
@@ -186,8 +185,8 @@ test "a renderer made under an older GPU context forgets its screen buffer, dest
 }
 
 test "closing a scene unpins every node's mesh and material, and its queries answer false" {
-	let context: DrawContext = contextOf(2, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(2, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const group: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
 	const node: Result<NodeId3D, SceneError> = addMeshNode(
 		scene, group, Transform3D.identity(), context.meshAt(0), context.materialAt(0),
@@ -195,7 +194,7 @@ test "closing a scene unpins every node's mesh and material, and its queries ans
 	assert node.ok;
 	if (!node.ok) { return; }
 	assert context.meshPinned(context.meshAt(0)) == 1;
-	let alias: Scene3D = scene;
+	const alias: Scene3D = scene;
 	closeScene(alias);
 	assert scene.isClosed() && scene.nodeCount() == 0 && !scene.isLive(node.value);
 	assert context.meshPinned(context.meshAt(0)) == 0;
@@ -204,9 +203,9 @@ test "closing a scene unpins every node's mesh and material, and its queries ans
 }
 
 test "a node id names its scene: another scene's id at a live index is not live" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
-	let first: Scene3D = Scene3D.create(context);
-	let second: Scene3D = Scene3D.create(context);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
+	const first: Scene3D = Scene3D.create(context);
+	const second: Scene3D = Scene3D.create(context);
 	const theirs: NodeId3D = addGroup(first, first.rootId(), Transform3D.identity());
 	const ours: NodeId3D = addGroup(second, second.rootId(), Transform3D.identity());
 	assert theirs.index == ours.index && theirs.generation == ours.generation;
@@ -216,7 +215,7 @@ test "a node id names its scene: another scene's id at a live index is not live"
 }
 
 test "a pool counts the ranges it handed out and has not had back" {
-	let context: DrawContext = DrawContext.withUniformCapacity(12);
+	const context: DrawContext = DrawContext.withUniformCapacity(12);
 	const first: Result<UniformBlock, UniformError> = reserveUniforms(context, 2, 4);
 	const second: Result<UniformBlock, UniformError> = reserveUniforms(context, 2, 4);
 	assert first.ok && second.ok;
@@ -229,7 +228,7 @@ test "a pool counts the ranges it handed out and has not had back" {
 }
 
 test "an emptied context closes with its pool and its pipeline cache, and answers false after" {
-	let context: DrawContext = DrawContext.withUniformCapacity(4);
+	const context: DrawContext = DrawContext.withUniformCapacity(4);
 	const mesh: Result<MeshId, MeshUploadError> = addMesh(context, GpuMesh.fullscreen(0, 3));
 	const plain: Material = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);
 	const material: Result<MaterialId, MaterialError> = addMaterial(context, plain);
@@ -237,7 +236,7 @@ test "an emptied context closes with its pool and its pipeline cache, and answer
 	if (!mesh.ok || !material.ok) { return; }
 	const meshLeft: Result<int32, HandleError> = releaseMesh(context, mesh.value);
 	assert meshLeft.ok;
-	let alias: DrawContext = context;
+	const alias: DrawContext = context;
 	assert context.liveMeshes() == 0 && context.liveMaterials() == 1;
 	closeContextOnceEmpty(alias, material.value);
 	assert context.isClosed() && context.uniforms.isClosed() && context.pipelines.closed;

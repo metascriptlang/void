@@ -35,8 +35,8 @@ function turnsQuadToCamera(basis: CameraBasis): boolean {
 
 function quadOf(anchor: Anchor, flipV: boolean): MeshData {
 	const made: Result<MeshData, MeshError> = labelQuad(anchor, flipV);
-	if (made.ok) { return made.value; }
-	unreachable;
+	if (!made.ok) { unreachable; }
+	return made.value;
 }
 
 function cornerOf(data: MeshData, corner: int32): Vec3 {
@@ -108,10 +108,8 @@ test "a world pose under a moved, turned, scaled parent comes back as its local 
 	const parent: Mat4 = composeTransform(
 		vec3(-4.0, 0.5, 2.0), eulerQuat(-0.3, 1.1, 0.2), vec3(2.0, 2.0, 2.0),
 	);
-	const local: Mat4 = composeTransform(
-		localFor(world, parent).position, localFor(world, parent).rotation,
-		localFor(world, parent).scale,
-	);
+	const pose = localFor(world, parent);
+	const local: Mat4 = composeTransform(pose.position, pose.rotation, pose.scale);
 	assert sameMatrix(local.multiplyAffine(parent), world);
 }
 

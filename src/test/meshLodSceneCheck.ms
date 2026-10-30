@@ -108,7 +108,7 @@ test "the camera block carries the projection diagonal, the eye and the near pla
 }
 
 function shadowedContext(): DrawContext {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, GpuMesh.fullscreen(0, 9));
 	context.meshData[mesh.index] = {
 		...context.meshData[mesh.index],
@@ -369,12 +369,12 @@ test "one walk lists what collect then filterFrustum leave, in every phase" {
 		Material.plain(Program.Lit, state, Phase.DecalAfterToneMap),
 		Material.plain(Program.Lit, state, Phase.Opaque).withShadows(ShadowCasting.Only, false),
 	];
-	let meshes: Vec<MeshData> = [{
+	const meshes: Vec<MeshData> = [{
 		vertices: [], indices: [], bounds: Bounds3D.fromValues(-0.25, -0.25, -0.25, 0.5, 0.5, 0.5),
 	}];
-	let culledPick = pickOf(-1);
+	const culledPick = pickOf(-1);
 	culledPick.culled = true;
-	let items: Vec<DrawItem> = [
+	const items: Vec<DrawItem> = [
 		placed(0, 0.0, 0, null), placed(1, 0.0, 3, null), placed(0, 99.0, 0, null),
 		placed(5, 0.0, 0, null), placed(2, 0.0, 0, culledPick), placed(3, 0.0, 1, null),
 		placed(4, 0.0, 2, null), placed(0, 0.0, 4, pickOf(-1)), placed(1, 99.0, 0, null),
@@ -392,7 +392,7 @@ test "one walk lists what collect then filterFrustum leave, in every phase" {
 	assert fused[0].count == 2 && fused[0].indices[1] == 7 && fused[0].orders[1] == 4;
 	assert fused[1].count == 1 && fused[1].layers[0] == 2 && fused[2].count == 0;
 	assert fused[3].indices[0] == 5 && fused[4].indices[0] == 6;
-	let fewer: Vec<DrawItem> = [items[7], items[1]];
+	const fewer: Vec<DrawItem> = [items[7], items[1]];
 	assert walked(fused, fewer, materials, meshes, frustum) == 0;
 	assert fused[0].count == 1 && fused[0].indices[0] == 0 && fused[0].orders[0] == 4;
 	assert fused[1].count == 1 && fused[1].indices[0] == 1 && fused[3].count == 0;

@@ -68,7 +68,7 @@ function oneMesh(scene: Scene3D, context: DrawContext, where: Vec3, mesh: int32)
 }
 
 test "a new scene is one root group and nothing else" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	assert scene.nodeCount() == 1;
 	assert scene.root != NO_NODE_3D;
 	assert scene.isLive(scene.rootId());
@@ -77,8 +77,8 @@ test "a new scene is one root group and nothing else" {
 }
 
 test "a child is parented both ways, and the structure is marked" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const child: NodeId3D = oneMesh(scene, context, vec3(1.0, 0.0, 0.0), 7);
 	assert scene.nodeCount() == 2;
 	assert scene.nodes[child.index].parent == scene.root;
@@ -88,8 +88,8 @@ test "a child is parented both ways, and the structure is marked" {
 }
 
 test "sync places a child at local times parent, in that order" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const group: NodeId3D =
 		addGroup(scene, scene.rootId(), Transform3D.fromTranslation(vec3(10.0, 0.0, 0.0)));
 	const child: Result<NodeId3D, SceneError> =
@@ -112,8 +112,8 @@ test "sync places a child at local times parent, in that order" {
 // Heaps' rule: the parent's rotation turns the child's offset, which is what `local * parent`
 // in row-vector order means and what `parent * local` would get backwards.
 test "a parent's rotation carries its child around, not the other way" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const quarter: float32 = 1.5707963;
 	const turned: Transform3D = {
 		position: vec3(0.0, 0.0, 0.0),
@@ -139,16 +139,16 @@ test "a parent's rotation carries its child around, not the other way" {
 }
 
 test "a synced tree is clean, and syncing again moves nothing" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const _child: NodeId3D = oneMesh(scene, context, vec3(1.0, 0.0, 0.0), 0);
 	assert syncWorld(scene) == 2;
 	assert syncWorld(scene) == 0;
 }
 
 test "a sync after no setter ran skips the walk, and the next setter brings it back" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const child: NodeId3D = oneMesh(scene, context, vec3(1.0, 0.0, 0.0), 0);
 	assert scene.posChanged && syncWorld(scene) == 2 && !scene.posChanged;
 	scene.nodes[child.index].flags = scene.nodes[child.index].flags.incl(NodeFlag.PosChanged);
@@ -161,8 +161,8 @@ test "a sync after no setter ran skips the walk, and the next setter brings it b
 }
 
 test "a move descends only into the subtrees a moved node is under" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const moved: NodeId3D = oneMesh(scene, context, vec3(1.0, 0.0, 0.0), 0);
 	const still: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
 	const below: Result<NodeId3D, SceneError> = addMeshNode(scene, still,
@@ -185,8 +185,8 @@ test "a move descends only into the subtrees a moved node is under" {
 }
 
 test "moving a parent re-syncs its children and nothing above it" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const group: NodeId3D =
 		addGroup(scene, scene.rootId(), Transform3D.identity());
 	const child: Result<NodeId3D, SceneError> =
@@ -201,7 +201,6 @@ test "moving a parent re-syncs its children and nothing above it" {
 	if (!child.ok) { return; }
 	assert syncWorld(scene) == 3;
 	setLocal(scene, group, Transform3D.fromTranslation(vec3(5.0, 0.0, 0.0)));
-	// The group and its one child, and not the root.
 	assert syncWorld(scene) == 2;
 	const world: Result<Mat4, SceneError> = scene.worldOf(child.value);
 	assert world.ok;
@@ -209,8 +208,8 @@ test "moving a parent re-syncs its children and nothing above it" {
 }
 
 test "collect emits one item per mesh node, in sibling order" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const _first: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
 	const _second: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 22);
 	const _third: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 33);
@@ -224,8 +223,8 @@ test "collect emits one item per mesh node, in sibling order" {
 }
 
 test "a group contributes no draw item but its children still do" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const group: NodeId3D =
 		addGroup(scene, scene.rootId(), Transform3D.identity());
 	const under: Result<NodeId3D, SceneError> =
@@ -244,8 +243,8 @@ test "a group contributes no draw item but its children still do" {
 }
 
 test "collect carries the synced world matrix onto the draw item" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const _mesh: NodeId3D = oneMesh(scene, context, vec3(3.0, 4.0, 5.0), 1);
 	let items: Vec<DrawItem> = [];
 	const _synced: int32 = syncWorld(scene);
@@ -254,8 +253,8 @@ test "collect carries the synced world matrix onto the draw item" {
 }
 
 test "an invisible node takes its whole subtree out of the draw list" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const group: NodeId3D =
 		addGroup(scene, scene.rootId(), Transform3D.identity());
 	assert addMeshNode(
@@ -282,8 +281,8 @@ test "an invisible node takes its whole subtree out of the draw list" {
 }
 
 test "refresh rewrites world matrices without rebuilding the list" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const moving: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 4);
 	let items: Vec<DrawItem> = [];
 	assert refresh(scene, items) == 1;
@@ -291,14 +290,13 @@ test "refresh rewrites world matrices without rebuilding the list" {
 	setLocal(scene, moving, Transform3D.fromTranslation(vec3(0.0, 8.0, 0.0)));
 	assert refresh(scene, items) == 1;
 	assert near(translationOf(items[0].world), 0.0, 8.0, 0.0);
-	// Still one item, still the same mesh: the structure never changed.
 	assert items[0].mesh.index == 4;
 	assert !scene.structureChanged;
 }
 
 test "a steady refresh fills a list the scene did not collect" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const _first: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
 	const _second: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 22);
 	let collected: Vec<DrawItem> = [];
@@ -309,8 +307,8 @@ test "a steady refresh fills a list the scene did not collect" {
 }
 
 test "removing a node takes its subtree with it and unlinks it from its parent" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const group: NodeId3D =
 		addGroup(scene, scene.rootId(), Transform3D.identity());
 	assert addMeshNode(
@@ -334,13 +332,12 @@ test "removing a node takes its subtree with it and unlinks it from its parent" 
 }
 
 test "an id that named a removed node is not live, and its slot's new id is" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const gone: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
 	assert scene.isLive(gone);
 	assert remove(scene, gone) > 0;
 	assert !scene.isLive(gone);
-	// The slot comes back under a new generation, and the old id still does not address it.
 	const fresh: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 2);
 	assert fresh.index == gone.index;
 	assert fresh.generation != gone.generation;
@@ -349,31 +346,27 @@ test "an id that named a removed node is not live, and its slot's new id is" {
 }
 
 test "the free list hands slots back in LIFO order" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const first: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
 	const second: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 2);
 	assert remove(scene, first) > 0;
 	assert remove(scene, second) > 0;
-	// `second` was freed last, so it is handed out first.
 	const next: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 3);
 	assert next.index == second.index;
 }
 
 test "an empty scene collects nothing and syncs only its root" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	let items: Vec<DrawItem> = [];
 	assert syncWorld(scene) == 1;
 	assert collectDrawList(scene, items) == 0;
 	assert (items.length as int32) == 0;
 }
 
-// The defect review found this armed and waiting: `refresh` used to return `items.length` and
-// never truncate, so a node culled after the list was collected left the previous frame's tail
-// in place and drew it again, and un-culling it wrote past the end.
 test "a node culled after collection leaves the list, and does not leave a ghost behind" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const first: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
 	const _second: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 22);
 	let items: Vec<DrawItem> = [];
@@ -385,8 +378,8 @@ test "a node culled after collection leaves the list, and does not leave a ghost
 }
 
 test "un-culling a node puts it back without writing past the end" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const first: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
 	const _second: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 22);
 	let items: Vec<DrawItem> = [];
@@ -399,8 +392,8 @@ test "un-culling a node puts it back without writing past the end" {
 }
 
 test "culling marks the list for a rebuild only when the flag changes" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const first: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
 	let items: Vec<DrawItem> = [];
 	assert refresh(scene, items) == 1;
@@ -413,10 +406,9 @@ test "culling marks the list for a rebuild only when the flag changes" {
 	assert !scene.structureChanged;
 }
 
-// setMeshOf runs on every campfire frame and had no test at all: its only evidence was pixels.
 test "a mesh node can swap which mesh it draws without the structure changing" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const node: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 5);
 	let items: Vec<DrawItem> = [];
 	assert refresh(scene, items) == 1;
@@ -428,8 +420,8 @@ test "a mesh node can swap which mesh it draws without the structure changing" {
 }
 
 test "a hidden subtree comes back when it is shown again" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const group: NodeId3D =
 		addGroup(scene, scene.rootId(), Transform3D.identity());
 	assert addMeshNode(
@@ -452,8 +444,8 @@ test "a hidden subtree comes back when it is shown again" {
 // Sibling order is draw order, so `detach` closes the gap rather than swapping the tail in.
 // Removing an only child never exercises that loop; removing the middle one does.
 test "removing a middle child keeps its siblings in order" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const _a: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 10);
 	const b: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 20);
 	const _c: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 30);
@@ -468,8 +460,8 @@ test "removing a middle child keeps its siblings in order" {
 }
 
 test "a removed subtree leaves the draw list" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const group: NodeId3D =
 		addGroup(scene, scene.rootId(), Transform3D.identity());
 	assert addMeshNode(
@@ -497,8 +489,8 @@ test "a removed subtree leaves the draw list" {
 }
 
 test "the questions answer a stale id with an error" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const gone: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
 	assert remove(scene, gone) > 0;
 	const world: Result<Mat4, SceneError> = scene.worldOf(gone);
@@ -516,7 +508,7 @@ test "the questions answer a stale id with an error" {
 // ---- names, in the role of h3d.scene.Object.name / getObjectByName ----
 
 test "findByName walks self first, then children in order" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const root: NodeId3D = scene.rootId();
 	const _a: NodeId3D = addGroup(scene, root, Transform3D.identity());
 	const b: NodeId3D = addGroup(scene, root, Transform3D.identity());
@@ -532,7 +524,7 @@ test "findByName walks self first, then children in order" {
 }
 
 test "a name given twice finds the first in walk order, not the last set" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const root: NodeId3D = scene.rootId();
 	const first: NodeId3D = addGroup(scene, root, Transform3D.identity());
 	const second: NodeId3D = addGroup(scene, root, Transform3D.identity());
@@ -547,7 +539,7 @@ test "a name given twice finds the first in walk order, not the last set" {
 }
 
 test "nameOf reads back what setName wrote, and a fresh node is unnamed" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const fresh: NodeId3D =
 		addGroup(scene, scene.rootId(), Transform3D.identity());
 	const before: Result<string, SceneError> = scene.nameOf(fresh);
@@ -585,7 +577,7 @@ function oneLight(
 }
 
 test "a light node is a node whose payload indexes the lights table" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const light: NodeId3D = oneLight(scene, vec3(1.0, 2.0, 3.0), {
 		kind: LightKind.Point,
 		color: vec3(1.0, 0.45, 0.16),
@@ -604,7 +596,7 @@ function nearAt(block: Vec<float32>, at: int32, x: float32, y: float32, z: float
 }
 
 test "collectLights writes a point light's world place, color and radius" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const _light: NodeId3D = oneLight(scene, vec3(1.0, 2.0, 3.0), {
 		kind: LightKind.Point,
 		color: vec3(1.0, 0.45, 0.16),
@@ -624,7 +616,7 @@ test "collectLights writes a point light's world place, color and radius" {
 }
 
 test "a point light under a moved parent carries the parent's place" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const group: NodeId3D =
 		addGroup(scene, scene.rootId(), Transform3D.fromTranslation(vec3(10.0, 0.0, 0.0)));
 	const added: NodeId3D = addLightNode(
@@ -645,7 +637,7 @@ test "a point light under a moved parent carries the parent's place" {
 }
 
 test "a directional light's direction is its front vector negated and normalized" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const quarter: float32 = 1.5707963;
 	const turned: Transform3D =
 		{ ...Transform3D.identity(), rotation: eulerQuat(0.0, quarter, 0.0) };
@@ -664,7 +656,7 @@ test "a directional light's direction is its front vector negated and normalized
 }
 
 test "every point light is a record, in the order the scene holds them, whatever its priority" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const _low: NodeId3D = oneLight(scene, vec3(1.0, 0.0, 0.0), {
 		kind: LightKind.Point, color: vec3(1.0, 0.0, 0.0), radius: 1.0, power: 1.0, priority: 0,
 	});
@@ -684,7 +676,7 @@ test "every point light is a record, in the order the scene holds them, whatever
 }
 
 test "light setters reach collectLights for that light alone" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const first: NodeId3D = oneLight(scene, vec3(1.0, 0.0, 0.0), {
 		kind: LightKind.Point, color: vec3(1.0, 0.0, 0.0), radius: 1.0, power: 1.0, priority: 5,
 	});
@@ -707,7 +699,7 @@ test "light setters reach collectLights for that light alone" {
 }
 
 test "a directional light's color setter reaches its block slot" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const sun: NodeId3D = addLightNode(scene, scene.rootId(), Transform3D.identity(), {
 		kind: LightKind.Directional, color: vec3(1.0, 1.0, 1.0), radius: 0.0, power: 0.5,
 		priority: 0,
@@ -719,7 +711,7 @@ test "a directional light's color setter reaches its block slot" {
 }
 
 test "lights past the old four slots are all collected, none dropped" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	for (let i = 0; i < 9; i++) {
 		const _each: NodeId3D = oneLight(scene, vec3(0.0, 0.0, 0.0), {
 			kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
@@ -733,7 +725,7 @@ test "lights past the old four slots are all collected, none dropped" {
 }
 
 test "a second directional light is an error" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const _first: NodeId3D = oneLight(scene, vec3(0.0, 0.0, 0.0), {
 		kind: LightKind.Directional,
 		color: vec3(1.0, 1.0, 1.0),
@@ -755,7 +747,7 @@ test "a second directional light is an error" {
 }
 
 test "an invisible light is not collected" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const light: NodeId3D = oneLight(scene, vec3(1.0, 0.0, 0.0), {
 		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
 	});
@@ -768,7 +760,7 @@ test "an invisible light is not collected" {
 }
 
 test "a light culled or added after a collect is seen by the next collect" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const first: NodeId3D = oneLight(scene, vec3(1.0, 0.0, 0.0), {
 		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
 	});
@@ -785,7 +777,7 @@ test "a light culled or added after a collect is seen by the next collect" {
 }
 
 test "ambient comes from the scene and zeroed slots mean unlit" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	setAmbient(scene, vec3(0.33, 0.36, 0.6));
 	let block: Vec<float32> = blockOf();
 	assert collectLights(scene, block).ok;
@@ -794,7 +786,7 @@ test "ambient comes from the scene and zeroed slots mean unlit" {
 }
 
 test "setLightPower moves what the flicker drives" {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const light: NodeId3D = oneLight(scene, vec3(0.0, 0.0, 0.0), {
 		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
 	});
@@ -807,8 +799,8 @@ test "setLightPower moves what the flicker drives" {
 // ---- side tables: remove gives rows back ----
 
 test "churning mesh and light nodes keeps both side tables at the live count" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const light: LightInstance = {
 		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
 	};
@@ -826,8 +818,8 @@ test "churning mesh and light nodes keeps both side tables at the live count" {
 }
 
 test "removing an early mesh node repoints the node whose row moved, and draws the same" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const a: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 10);
 	const b: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 20);
 	const c: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 30);
@@ -845,8 +837,8 @@ test "removing an early mesh node repoints the node whose row moved, and draws t
 }
 
 test "removing a subtree gives back every row under it and keeps the rest addressable" {
-	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
 	const group: NodeId3D =
 		addGroup(scene, scene.rootId(), Transform3D.identity());
 	assert addMeshNode(

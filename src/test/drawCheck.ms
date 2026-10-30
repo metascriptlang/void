@@ -112,7 +112,7 @@ test "an empty MeshData describes a mesh that draws nothing" {
 }
 
 test "addMesh keeps the two tables one index space" {
-	let context: DrawContext = DrawContext.withUniformCapacity(8);
+	const context: DrawContext = DrawContext.withUniformCapacity(8);
 	assert (context.meshes.length as int32) == 0 && (context.meshData.length as int32) == 0;
 	const first: MeshId = added(context, billboard());
 	const second: MeshId = added(context, billboard());
@@ -123,7 +123,7 @@ test "addMesh keeps the two tables one index space" {
 }
 
 test "a mesh whose buffers the caller keeps is not one the renderer can rebuild" {
-	let context: DrawContext = DrawContext.withUniformCapacity(8);
+	const context: DrawContext = DrawContext.withUniformCapacity(8);
 	assert added(context, billboard()).index == 0;
 	assert context.rebuildableMeshes() == 0;
 	// Not stale on any generation: the sentinel says the caller owns the buffers, and the
@@ -223,7 +223,7 @@ function streamError(result: Result<int32, StreamError>): StreamError {
 }
 
 test "a stream write is refused before the driver when it names the wrong mesh or too much" {
-	let context: DrawContext = DrawContext.withUniformCapacity(8);
+	const context: DrawContext = DrawContext.withUniformCapacity(8);
 	const plain: MeshId = added(context, billboard());
 	const stream: MeshId = added(context, GpuMesh.streamMesh(4, 12, 1));
 	const four: Vec<float32> = new Array(4 * STREAM_INSTANCE_STRIDE);
@@ -257,7 +257,7 @@ test "a mesh uploaded from data with uvs is drawn on the LitTextured layout, wit
 }
 
 test "particleVisual streams reject eight-float writes and overflowing capacity before GPU" {
-	let context = DrawContext.withUniformCapacity(8);
+	const context = DrawContext.withUniformCapacity(8);
 	const stream = added(context, GpuMesh.streamMesh(2, 12, 1, VertexLayout.ParticleVisual));
 	const oldRows: Vec<float32> = new Array(16);
 	assert streamError(writeStream(context, stream, oldRows, 2)) == StreamError.ShortInstances;
@@ -268,7 +268,7 @@ test "particleVisual streams reject eight-float writes and overflowing capacity 
 }
 
 test "a mesh program draws a run of a MeshInstances stream in place of its row, a skin none" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, {
 		layout: VertexLayout.LitTextured, vertexBuffer: 7, instanceBuffer: 0, indexBuffer: 0,
 		vertexCount: 3, indexCount: 0, instanceCount: 1, instanceCapacity: 0,
@@ -301,7 +301,7 @@ test "a mesh program draws a run of a MeshInstances stream in place of its row, 
 }
 
 test "neighbours batch when only their world matrices differ" {
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, billboard());
 	const other: MeshId = added(context, billboard());
 	const item: DrawItem = { mesh: mesh, material: NO_MATERIAL, world: identity() };
