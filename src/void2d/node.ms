@@ -503,7 +503,6 @@ export function liveRow(this n: NodeRef, call: string): int32 {
 		`the row ${now}`,
 	);
 	unreachable;
-	return i;
 }
 
 export function markChanged(this s: Scene2D, i: int32, what: Changed): void {
@@ -1338,7 +1337,7 @@ export function setScrollBounds(this n: NodeRef, bounds: Bounds2D | null): NodeR
 	if (bounds === null) {
 		n.scene.scrolls[row] = { ...now, bounded: false };
 	} else {
-		n.scene.scrolls[row] = { ...now, bounded: true, bounds: bounds as Bounds2D };
+		n.scene.scrolls[row] = { ...now, bounded: true, bounds };
 	}
 	return n;
 }
