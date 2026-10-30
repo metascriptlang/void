@@ -337,12 +337,18 @@ export function lineBreaks(codepoints: Readonly<Span<int32>>): Vec<boolean> {
 	}
 	let breaks: Vec<boolean> = new Array(0);
 	const unitCount: int32 = units.length as int32;
+	let afterZeroWidthSpace: boolean = false;
 	for (let i = 0; i < count; i++) {
 		if (i == 0) {
 			breaks.push(false);
 			continue;
 		}
 		const before: LineClass = original[i - 1];
+		if (before == LineClass.ZW) {
+			afterZeroWidthSpace = true;
+		} else if (before != LineClass.SP) {
+			afterZeroWidthSpace = false;
+		}
 		const after: LineClass = original[i];
 		if (before == LineClass.BK) {
 			breaks.push(true);
@@ -352,7 +358,7 @@ export function lineBreaks(codepoints: Readonly<Span<int32>>): Vec<boolean> {
 			breaks.push(true);
 		} else if (isHardBreak(after) || after == LineClass.SP || after == LineClass.ZW) {
 			breaks.push(false);
-		} else if (afterZeroWidthSpace(original, i)) {
+		} else if (afterZeroWidthSpace) {
 			breaks.push(true);
 		} else if (before == LineClass.ZWJ || absorbed[i]) {
 			breaks.push(false);
@@ -361,10 +367,4 @@ export function lineBreaks(codepoints: Readonly<Span<int32>>): Vec<boolean> {
 		}
 	}
 	return breaks;
-}
-
-function afterZeroWidthSpace(original: Readonly<Span<LineClass>>, i: int32): boolean {
-	let at: int32 = i - 1;
-	while (at >= 0 && original[at] == LineClass.SP) { at = at - 1; }
-	return at >= 0 && original[at] == LineClass.ZW;
 }

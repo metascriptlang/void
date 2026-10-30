@@ -168,3 +168,14 @@ test "Emoji_Presentation agrees with every range of emoji-data.txt at both ends"
 	console.log(`ucd oracle: Emoji_Presentation ${spans} ranges, ${wrong} wrong ends`);
 	assert spans > 0 && wrong == 0;
 }
+
+test "a break after a zero width space survives a long run of spaces" {
+	const spaces: int32 = 5000;
+	let text: Vec<int32> = [0x61, 0x200B];
+	for (let i = 0; i < spaces; i++) { text.push(0x20); }
+	text.push(0x62);
+	const breaks = lineBreaks(text);
+	assert breaks.length as int32 == spaces + 3;
+	for (let i = 1; i <= spaces + 1; i++) { assert !breaks[i]; }
+	assert breaks[spaces + 2];
+}
