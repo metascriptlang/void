@@ -1494,6 +1494,17 @@ function parseRect(p: Parser, attrs: Attr[]): void {
 	}
 }
 
+function addEllipse(p: Parser, cx: float32, cy: float32, rx: float32, ry: float32): void {
+	resetPath(p);
+	moveTo(p, cx + rx, cy);
+	cubicBezTo(p, cx + rx, cy + ry * NSVG_KAPPA90, cx + rx * NSVG_KAPPA90, cy + ry, cx, cy + ry);
+	cubicBezTo(p, cx - rx * NSVG_KAPPA90, cy + ry, cx - rx, cy + ry * NSVG_KAPPA90, cx - rx, cy);
+	cubicBezTo(p, cx - rx, cy - ry * NSVG_KAPPA90, cx - rx * NSVG_KAPPA90, cy - ry, cx, cy - ry);
+	cubicBezTo(p, cx + rx * NSVG_KAPPA90, cy - ry, cx + rx, cy - ry * NSVG_KAPPA90, cx + rx, cy);
+	addPath(p, true);
+	addShape(p);
+}
+
 function parseCircle(p: Parser, attrs: Attr[]): void {
 	let cx: float32 = 0.0;
 	let cy: float32 = 0.0;
@@ -1507,16 +1518,7 @@ function parseCircle(p: Parser, attrs: Attr[]): void {
 			if (name.eq("r")) { r = absf(parseCoordinate(p, value, 0.0, actualLength(p))); }
 		}
 	}
-	if (r > 0.0) {
-		resetPath(p);
-		moveTo(p, cx + r, cy);
-		cubicBezTo(p, cx + r, cy + r * NSVG_KAPPA90, cx + r * NSVG_KAPPA90, cy + r, cx, cy + r);
-		cubicBezTo(p, cx - r * NSVG_KAPPA90, cy + r, cx - r, cy + r * NSVG_KAPPA90, cx - r, cy);
-		cubicBezTo(p, cx - r, cy - r * NSVG_KAPPA90, cx - r * NSVG_KAPPA90, cy - r, cx, cy - r);
-		cubicBezTo(p, cx + r * NSVG_KAPPA90, cy - r, cx + r, cy - r * NSVG_KAPPA90, cx + r, cy);
-		addPath(p, true);
-		addShape(p);
-	}
+	if (r > 0.0) { addEllipse(p, cx, cy, r, r); }
 }
 
 function parseEllipse(p: Parser, attrs: Attr[]): void {
@@ -1534,16 +1536,7 @@ function parseEllipse(p: Parser, attrs: Attr[]): void {
 			if (name.eq("ry")) { ry = absf(parseCoordinate(p, value, 0.0, p.viewHeight)); }
 		}
 	}
-	if (rx > 0.0 && ry > 0.0) {
-		resetPath(p);
-		moveTo(p, cx + rx, cy);
-		cubicBezTo(p, cx + rx, cy + ry * NSVG_KAPPA90, cx + rx * NSVG_KAPPA90, cy + ry, cx, cy + ry);
-		cubicBezTo(p, cx - rx * NSVG_KAPPA90, cy + ry, cx - rx, cy + ry * NSVG_KAPPA90, cx - rx, cy);
-		cubicBezTo(p, cx - rx, cy - ry * NSVG_KAPPA90, cx - rx * NSVG_KAPPA90, cy - ry, cx, cy - ry);
-		cubicBezTo(p, cx + rx * NSVG_KAPPA90, cy - ry, cx + rx, cy - ry * NSVG_KAPPA90, cx + rx, cy);
-		addPath(p, true);
-		addShape(p);
-	}
+	if (rx > 0.0 && ry > 0.0) { addEllipse(p, cx, cy, rx, ry); }
 }
 
 function parseLine(p: Parser, attrs: Attr[]): void {
