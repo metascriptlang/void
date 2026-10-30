@@ -10,19 +10,73 @@ import {
 	uvSinus,
 } from "./shader3d";
 
-const EFFECTS: string[][] = [
-	["CORE", "litTexturedFs", "UV_TRANSFORM", glslSegmentIr(uvSinus)],
-	["CORE", "litTexturedFs", "UV_TRANSFORM", glslSegmentIr(flipbookFrames)],
-	["CORE", "litTexturedFs", "UV_TRANSFORM", glslSegmentIr(uvFlipbook)],
-	["CORE", "litTexturedFs", "UV_TRANSFORM", glslSegmentIr(uvColorKey)],
-	["CORE", "litTexturedFs", "DISSOLVE", glslSegmentIr(dissolveDiscard)],
-	["CORE", "shadowLitTexturedFs", "DISSOLVE", glslSegmentIr(dissolveDiscard)],
-	["CORE", "litTexturedFs", "EMISSIVE", glslSegmentIr(emissive)],
-	["CORE", "litTexturedFs", "DISSOLVE", glslSegmentIr(dissolveEdge)],
-	["CORE", "litTexturedFs", "UV_TRANSFORM", glslSegmentIr(uvDistanceFade)],
+struct EffectRow {
+	source: string;
+	fragment: string;
+	feature: string;
+	segmentIr: string;
+}
+
+const EFFECTS: EffectRow[] = [
+	{
+		source: "CORE",
+		fragment: "litTexturedFs",
+		feature: "UV_TRANSFORM",
+		segmentIr: glslSegmentIr(uvSinus),
+	},
+	{
+		source: "CORE",
+		fragment: "litTexturedFs",
+		feature: "UV_TRANSFORM",
+		segmentIr: glslSegmentIr(flipbookFrames),
+	},
+	{
+		source: "CORE",
+		fragment: "litTexturedFs",
+		feature: "UV_TRANSFORM",
+		segmentIr: glslSegmentIr(uvFlipbook),
+	},
+	{
+		source: "CORE",
+		fragment: "litTexturedFs",
+		feature: "UV_TRANSFORM",
+		segmentIr: glslSegmentIr(uvColorKey),
+	},
+	{
+		source: "CORE",
+		fragment: "litTexturedFs",
+		feature: "DISSOLVE",
+		segmentIr: glslSegmentIr(dissolveDiscard),
+	},
+	{
+		source: "CORE",
+		fragment: "shadowLitTexturedFs",
+		feature: "DISSOLVE",
+		segmentIr: glslSegmentIr(dissolveDiscard),
+	},
+	{
+		source: "CORE",
+		fragment: "litTexturedFs",
+		feature: "EMISSIVE",
+		segmentIr: glslSegmentIr(emissive),
+	},
+	{
+		source: "CORE",
+		fragment: "litTexturedFs",
+		feature: "DISSOLVE",
+		segmentIr: glslSegmentIr(dissolveEdge),
+	},
+	{
+		source: "CORE",
+		fragment: "litTexturedFs",
+		feature: "UV_TRANSFORM",
+		segmentIr: glslSegmentIr(uvDistanceFade),
+	},
 ];
 
 export function programEffects(source: string, fragment: string, features: string[]): string[] {
-	return EFFECTS.filter((effect) => effect[0] == source && effect[1] == fragment &&
-		features.includes(effect[2])).map((effect) => effect[3]);
+	return EFFECTS
+		.filter((row) => row.source == source && row.fragment == fragment &&
+			features.includes(row.feature))
+		.map((row) => row.segmentIr);
 }
