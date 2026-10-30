@@ -1528,32 +1528,32 @@ export function runCount(cmds: Readonly<Span<float32>>, base: int32): int32 {
 }
 
 function sameRun(
-	a: Readonly<Span<float32>>, ab: int32, b: Readonly<Span<float32>>, bb: int32,
+	a: Readonly<Span<float32>>, aBase: int32, b: Readonly<Span<float32>>, bBase: int32,
 ): boolean {
-	if (!isDraw(a, ab) || !isDraw(b, bb)) { return false; }
+	if (!isDraw(a, aBase) || !isDraw(b, bBase)) { return false; }
 	for (const f of RUN_FIELDS) {
-		if (a[ab + f] != b[bb + f]) { return false; }
+		if (a[aBase + f] != b[bBase + f]) { return false; }
 	}
 	return true;
 }
 
 function breakBetween(
-	prev: Readonly<Span<float32>>, pb: int32, next: Readonly<Span<float32>>, nb: int32,
+	prev: Readonly<Span<float32>>, prevBase: int32, next: Readonly<Span<float32>>, nextBase: int32,
 ): float32 {
-	if (prev[pb + CMD_PIPELINE] != next[nb + CMD_PIPELINE]) {
+	if (prev[prevBase + CMD_PIPELINE] != next[nextBase + CMD_PIPELINE]) {
 		return (BreakReason.Pipeline as int32) as float32;
 	}
-	if (prev[pb + CMD_VIEW] != next[nb + CMD_VIEW] ||
-			prev[pb + CMD_VIEW_HIGH] != next[nb + CMD_VIEW_HIGH]) {
+	if (prev[prevBase + CMD_VIEW] != next[nextBase + CMD_VIEW] ||
+			prev[prevBase + CMD_VIEW_HIGH] != next[nextBase + CMD_VIEW_HIGH]) {
 		return (BreakReason.View as int32) as float32;
 	}
-	if (prev[pb + CMD_BLEND] != next[nb + CMD_BLEND]) {
+	if (prev[prevBase + CMD_BLEND] != next[nextBase + CMD_BLEND]) {
 		return (BreakReason.Blend as int32) as float32;
 	}
-	if (prev[pb + CMD_SAMPLER] != next[nb + CMD_SAMPLER]) {
+	if (prev[prevBase + CMD_SAMPLER] != next[nextBase + CMD_SAMPLER]) {
 		return (BreakReason.Sampler as int32) as float32;
 	}
-	return next[nb + CMD_BREAK];
+	return next[nextBase + CMD_BREAK];
 }
 
 function floatsOf(pipeline: Pipeline): int32 {
@@ -2029,7 +2029,7 @@ test "drawCommandCount counts draws and not scissors" {
 	assert drawCommandCount() == 2;
 }
 
-test "a command carries the pipeline set the replay must bind" {
+test "a command carries the render-target scale it was recorded under" {
 	resetContext();
 	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	assert commandField(0, CMD_RT_MODE) == 0.0;
@@ -2040,25 +2040,6 @@ test "a command carries the pipeline set the replay must bind" {
 }
 
 test "every break reason and command kind has a name" {
-	assert breakReasonName(BreakReason.View as int32).equals("view");
-	assert breakReasonName(BreakReason.Sampler as int32).equals("sampler");
-	assert breakReasonName(BreakReason.Barrier as int32).equals("barrier");
-	assert commandKindName(CommandKind.Scissor as int32).equals("scissor");
-	assert commandKindName(CommandKind.TargetBegin as int32).equals("target-begin");
-}
-
-test "every break reason an emitter can produce is one this module still defines" {
-	// `BreakReason.Capacity` used to be here, produced by nothing and asserted only by a test
-	// that named it - a value that could never appear in a stream, with a test that could
-	// never fail. The recording side has no capacity limit at all: the streams are `Vec`s that
-	// grow, and the only cap is on the GPU buffer, which is the replay's business and reports
-	// itself by dropping the frame with an error.
-	//
-	// This is TESTING.md's "every command kind has a batch-break rule" cross-check in the one
-	// direction that is assertable here: every reason still named is one `draw.ms` passes to
-	// `recordDraw` or `startCommand`. If a reason is added and never emitted, the grep in that
-	// file's review catches it; if one is emitted and not named, `commandKindName`'s match is
-	// non-exhaustive and the compiler refuses to build.
 	assert breakReasonName(BreakReason.First as int32).equals("first");
 	assert breakReasonName(BreakReason.View as int32).equals("view");
 	assert breakReasonName(BreakReason.Blend as int32).equals("blend");
@@ -2067,4 +2048,9 @@ test "every break reason an emitter can produce is one this module still defines
 	assert breakReasonName(BreakReason.Clip as int32).equals("clip");
 	assert breakReasonName(BreakReason.Barrier as int32).equals("barrier");
 	assert breakReasonName(BreakReason.Pipeline as int32).equals("pipeline");
+	assert commandKindName(CommandKind.Draw as int32).equals("draw");
+	assert commandKindName(CommandKind.Scissor as int32).equals("scissor");
+	assert commandKindName(CommandKind.Blur as int32).equals("blur");
+	assert commandKindName(CommandKind.TargetBegin as int32).equals("target-begin");
+	assert commandKindName(CommandKind.TargetEnd as int32).equals("target-end");
 }
