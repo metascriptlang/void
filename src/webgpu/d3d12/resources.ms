@@ -15,6 +15,7 @@ import {
 	STATE_COPY_SOURCE,
 	STATE_GENERIC_READ,
 	StateTracker,
+	Tracking,
 	flushTransitions,
 	newTracker,
 	track,
@@ -107,7 +108,7 @@ export function createBuffer(ref r: Resources, id: uint32, descriptor: GPUBuffer
 	try checked(dx12BufferCreate(r.device, size, heap, state, unordered ? 1 : 0, native));
 	let address: uint64 = 0;
 	try checked(dx12ResourceAddress(native, address));
-	const tracked = heap == HEAP_DEFAULT ? track(r.tracker, native, state, true) : NO_TRACKING;
+	const tracked = heap == HEAP_DEFAULT ? track(r.tracker, native, state, Tracking.Buffer) : NO_TRACKING;
 	put(r.buffers, id, { native: native, address: address, heap: heap, tracked: tracked, lastUse: 0 });
 	return Result.ok(null);
 }
