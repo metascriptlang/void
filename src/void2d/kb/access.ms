@@ -404,29 +404,32 @@ export function kbGlyphClassFromTable(
 	id: int64,
 ): KbGlyphClassResult {
 	let result: KbGlyphClassResult = { found: false, classValue: 0 };
-	const format = m.kbU16(classDefinitionBase);
-	if (format == 1) {
-		const offset = id - m.kbU16(classDefinitionBase + 2);
-		if (offset >= 0 && offset < m.kbU16(classDefinitionBase + 4)) {
-			result.classValue = m.kbU16(classDefinitionBase + 6 + offset * 2);
-			result.found = true;
-		}
-	} else if (format == 2) {
-		let ranges = classDefinitionBase + 4;
-		let rangeCount = m.kbU16(classDefinitionBase + 2) as int64;
-		if (rangeCount != 0) {
-			while (rangeCount > 1) {
-				const halfCount = rangeCount / 2;
-				ranges = m.kbU16(ranges + (halfCount - 1) * 6 + 2) < id ?
-					ranges + halfCount * 6 :
-					ranges;
-				rangeCount -= halfCount;
-			}
-			if (id >= m.kbU16(ranges) && id <= m.kbU16(ranges + 2)) {
-				result.classValue = m.kbU16(ranges + 4);
+	match (m.kbU16(classDefinitionBase)) {
+		1 => {
+			const offset = id - m.kbU16(classDefinitionBase + 2);
+			if (offset >= 0 && offset < m.kbU16(classDefinitionBase + 4)) {
+				result.classValue = m.kbU16(classDefinitionBase + 6 + offset * 2);
 				result.found = true;
 			}
-		}
+		},
+		2 => {
+			let ranges = classDefinitionBase + 4;
+			let rangeCount = m.kbU16(classDefinitionBase + 2) as int64;
+			if (rangeCount != 0) {
+				while (rangeCount > 1) {
+					const halfCount = rangeCount / 2;
+					ranges = m.kbU16(ranges + (halfCount - 1) * 6 + 2) < id ?
+						ranges + halfCount * 6 :
+						ranges;
+					rangeCount -= halfCount;
+				}
+				if (id >= m.kbU16(ranges) && id <= m.kbU16(ranges + 2)) {
+					result.classValue = m.kbU16(ranges + 4);
+					result.found = true;
+				}
+			}
+		},
+		_ => {},
 	}
 	return result;
 }
@@ -439,35 +442,38 @@ export function kbCoverGlyph(
 	let result: KbCoverGlyphResult = { valid: false, index: 0 };
 	let count = m.kbU16(coverage + 2) as int64;
 	if (count != 0) {
-		const format = m.kbU16(coverage);
-		if (format == 1) {
-			const first = coverage + 4;
-			let glyphIds = first;
-			while (count > 1) {
-				const halfCount = count / 2;
-				glyphIds = m.kbU16(glyphIds + (halfCount - 1) * 2) < glyphId ?
-					glyphIds + halfCount * 2 :
-					glyphIds;
-				count -= halfCount;
-			}
-			if (glyphId == m.kbU16(glyphIds)) {
-				result.valid = true;
-				result.index = (glyphIds - first) / 2;
-			}
-		} else if (format == 2) {
-			let ranges = coverage + 4;
-			while (count > 1) {
-				const halfCount = count / 2;
-				ranges = m.kbU16(ranges + (halfCount - 1) * 6 + 2) < glyphId ?
-					ranges + halfCount * 6 :
-					ranges;
-				count -= halfCount;
-			}
-			const start = m.kbU16(ranges);
-			if (glyphId >= start && glyphId <= m.kbU16(ranges + 2)) {
-				result.valid = true;
-				result.index = (m.kbU16(ranges + 4) + glyphId - start) as int64;
-			}
+		match (m.kbU16(coverage)) {
+			1 => {
+				const first = coverage + 4;
+				let glyphIds = first;
+				while (count > 1) {
+					const halfCount = count / 2;
+					glyphIds = m.kbU16(glyphIds + (halfCount - 1) * 2) < glyphId ?
+						glyphIds + halfCount * 2 :
+						glyphIds;
+					count -= halfCount;
+				}
+				if (glyphId == m.kbU16(glyphIds)) {
+					result.valid = true;
+					result.index = (glyphIds - first) / 2;
+				}
+			},
+			2 => {
+				let ranges = coverage + 4;
+				while (count > 1) {
+					const halfCount = count / 2;
+					ranges = m.kbU16(ranges + (halfCount - 1) * 6 + 2) < glyphId ?
+						ranges + halfCount * 6 :
+						ranges;
+					count -= halfCount;
+				}
+				const start = m.kbU16(ranges);
+				if (glyphId >= start && glyphId <= m.kbU16(ranges + 2)) {
+					result.valid = true;
+					result.index = (m.kbU16(ranges + 4) + glyphId - start) as int64;
+				}
+			},
+			_ => {},
 		}
 	}
 	return result;
