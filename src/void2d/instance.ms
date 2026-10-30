@@ -1,17 +1,10 @@
-// The per-instance byte layout — P2's single stride, and the arithmetic that decides whether
-// one stride is enough.
-//
-// Two pipelines, as VOID2D.md "P2" states them. The sprite pipeline never runs SDF maths and
-// carries only what a textured quad needs. The UI pipeline carries every mode — box, shadow,
-// glyph, image, underline, selection — behind one stride and one `mode` field, so a UI subtree
-// in tree order is one draw instead of one draw per kind, and so P3 writes the glyph layer
-// against a layout that is already final.
+// The sprite pipeline carries only what a textured quad needs. The UI pipeline carries every
+// mode behind one stride and one `mode` field, so a UI subtree in tree order is one draw.
 
 import { Color, Transform2D, rgba } from "./types";
 import { UI_STRIDE, SPRITE_STRIDE } from "./instanceLayout";
 
-// One per-instance `mode`, read by the fragment stage to pick its branch. The order is the
-// order VOID2D.md "P2 — Lands" lists them in, so a reader can diff the two.
+// The fragment stage branches on these ordinals, so the order is shared with the shader.
 export enum InstanceMode {
 	Box,
 	Shadow,
@@ -23,10 +16,7 @@ export enum InstanceMode {
 
 export const UI_MODE_COUNT: int32 = 6;
 
-// WebGL2's per-buffer stride ceiling (MAKEPAD.md:23). Past it, P2's stated fallback is two
-// strides — a narrow box/glyph one and a wide one for gradients and shadows. `UI_STRIDE`
-// is 108, so the fallback is NOT taken; the test pins that as arithmetic rather than
-// leaving it as a thing someone remembers.
+// WebGL2's per-buffer stride ceiling (docs/MAKEPAD.md:23).
 export const MAX_WEB_STRIDE: int32 = 255;
 
 export struct UiInstance {
@@ -68,13 +58,11 @@ export const UI_PARAM_MODE: int32 = 0;
 
 export const SDF_GLYPH_FLAG: float32 = 1.0;
 
-// Today's path, kept so the T0 test can state the change as a ratio rather than a claim:
-// six vertices of eight floats, re-transformed on the CPU every frame.
+// What the vertex path writes per quad: six vertices of eight floats.
 export const LEGACY_QUAD_BYTES: int32 = 192;
 
 // A colour channel as the GPU will store it. Rounding, not truncation: truncation loses a
-// full level at every channel and turns 1.0 into 254. Guardrail 9 needs this to be the same
-// arithmetic everywhere, so it lives here and is tested rather than being open-coded in C.
+// full level at every channel and turns 1.0 into 254.
 export function packChannel(value: float32): int32 {
 	const scaled: float32 = value * 255.0 + 0.5;
 	if (scaled <= 0.0) { return 0; }
@@ -90,9 +78,8 @@ export function spriteInstanceBytes(instances: int32): int32 {
 	return instances * SPRITE_STRIDE;
 }
 
-// True when one stride serves every UI mode on the narrowest backend this ships on. False is
-// not a failure, it is the trigger for P2's two-stride fallback — so it is a function with a
-// reason, not an assertion buried in a comment.
+// False is not a failure: it triggers the two-stride fallback (a narrow box/glyph stride and a
+// wide one for gradients and shadows).
 export function oneStrideFitsWeb(): boolean {
 	return UI_STRIDE <= MAX_WEB_STRIDE;
 }
