@@ -1394,16 +1394,16 @@ export function drawMesh(
 // ===== arbitrary-corner quads =====
 
 function quad4(
-	view: uint32, premultiplied: boolean, blend: BlendMode, a: Vec2, b: Vec2, c: Vec2, d: Vec2,
+	view: uint32, premultiplied: boolean, blend: BlendMode, tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2,
 	u0: float32, v0: float32, u1: float32, v1: float32, color: Color,
 ): void {
 	useRun(Pipeline.Vertex, view, premultiplied, blend);
-	pushVertex(a.x, a.y, u0, v0, color.r, color.g, color.b, color.a);
-	pushVertex(b.x, b.y, u1, v0, color.r, color.g, color.b, color.a);
-	pushVertex(c.x, c.y, u1, v1, color.r, color.g, color.b, color.a);
-	pushVertex(a.x, a.y, u0, v0, color.r, color.g, color.b, color.a);
-	pushVertex(c.x, c.y, u1, v1, color.r, color.g, color.b, color.a);
-	pushVertex(d.x, d.y, u0, v1, color.r, color.g, color.b, color.a);
+	pushVertex(tl.x, tl.y, u0, v0, color.r, color.g, color.b, color.a);
+	pushVertex(tr.x, tr.y, u1, v0, color.r, color.g, color.b, color.a);
+	pushVertex(br.x, br.y, u1, v1, color.r, color.g, color.b, color.a);
+	pushVertex(tl.x, tl.y, u0, v0, color.r, color.g, color.b, color.a);
+	pushVertex(br.x, br.y, u1, v1, color.r, color.g, color.b, color.a);
+	pushVertex(bl.x, bl.y, u0, v1, color.r, color.g, color.b, color.a);
 }
 
 export function drawSpriteAffine(
