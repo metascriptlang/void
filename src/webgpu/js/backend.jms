@@ -589,20 +589,30 @@ const VERTEX_FORMATS: string[] = [
 	"uint32x3", "uint32x4", "sint32", "sint32x2", "sint32x3", "sint32x4",
 ];
 
-function compareFunction(compare: string | null, member: string): string { return compareNative(COMPARE_FUNCTIONS, compare, member, "js"); }
+function compareFunction(compare: string | null, member: string): string {
+	return compareNative(COMPARE_FUNCTIONS, compare, member, "js");
+}
 
-function blendFactor(factor: string | null, member: string): string { return blendFactorNative(BLEND_FACTORS, factor, member, "js"); }
+function blendFactor(factor: string | null, member: string): string {
+	return blendFactorNative(BLEND_FACTORS, factor, member, "js");
+}
 
 function destinationFactor(factor: string | null, member: string): string {
 	if (factor == null) { return "zero"; }
 	return blendFactor(factor, member);
 }
 
-function blendOperation(operation: string, member: string): string { return blendOperationNative(BLEND_OPERATIONS, operation, member, "js"); }
+function blendOperation(operation: string, member: string): string {
+	return blendOperationNative(BLEND_OPERATIONS, operation, member, "js");
+}
 
-function stencilOperation(operation: string, member: string): string { return stencilOperationNative(STENCIL_OPERATIONS, operation, member, "js"); }
+function stencilOperation(operation: string, member: string): string {
+	return stencilOperationNative(STENCIL_OPERATIONS, operation, member, "js");
+}
 
-function addressMode(mode: string, member: string): string { return addressModeNative(ADDRESS_MODES, mode, member, "js"); }
+function addressMode(mode: string, member: string): string {
+	return addressModeNative(ADDRESS_MODES, mode, member, "js");
+}
 
 function filterMode(filter: string, member: string): string {
 	return match (filter) {
