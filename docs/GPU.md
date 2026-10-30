@@ -305,6 +305,45 @@ Where it differs from Heaps, and why:
   (`DeviceD3D12.cpp:777-783`).
 - `dx12.cpp:886` passes `&data` to `CheckFeatureSupport`, so the caller's buffer is never
   written; the port passes `data`.
+- **Device removal.** Heaps treats every failed call as fatal (`dx12.cpp:57`) and Dawn loses the
+  device on any `DEVICE_REMOVED`. Void recovers only a removal that a submit reports after the
+  frame's fence signal was queued: the backend marks the device removed, the next Present
+  returns the code, and the host rebuilds through `deviceRemoved` in `host/bridgeWin.c` with the
+  action from `webgpu/dxgi/removal.ms`, as on D3D11. Any other removal stays fatal (`submitted`
+  in `d3d12/backend.ms`).
+- **Swapchains.** The window chain is Heaps' FLIP_DISCARD; a composition chain (host views)
+  keeps D3D11's FLIP_SEQUENTIAL with premultiplied alpha (`voidPlatformSurfaceCreate` in
+  `host/bridgeWin.c`). Both have 2 buffers, as Heaps on desktop (`DX12Driver.hx:845`); there is
+  no mailbox, which Dawn gives 3 (`d3d/SwapChainD3D.cpp:46-58`). Heaps sets ALLOW_TEARING on
+  every chain and on every Present at interval 0 (`dx12.cpp:522`, `:532`, `:1136`); Void sets it
+  as Dawn does, only under the immediate mode (`SwapChainD3D.cpp:72-80`, `:296-297`), and only
+  when DXGI reports `DXGI_FEATURE_PRESENT_ALLOW_TEARING`.
+- **The surface closes before `doorShutdown`.** The backend refuses to shut down with a surface
+  open, because a swapchain holds the queue and its back buffers; D3D11's `_cleanup` shut the
+  door first.
+
+Where it differs from Dawn, and why:
+- **One global UAV barrier after each dispatch**, as Heaps (`:1417-1421`, `:3693-3701`); Dawn
+  issues one per written resource (`BufferD3D12.cpp:395-397`, `TextureD3D12.cpp:510-512`).
+- **Occlusion queries count samples** (`D3D12_QUERY_TYPE_OCCLUSION`), the contract the D3D11
+  backend and its pins hold; Dawn uses `BINARY_OCCLUSION` (`CommandBufferD3D12.cpp:78-84`).
+  Heaps has no occlusion query (`:3471-3473`).
+- **Timestamps become nanoseconds on the CPU**, with Heaps' formula (`:3524`), after a blocking
+  wait; Dawn converts them in a compute pass on the GPU (`QueryHelper.cpp:193`). So
+  `resolveQuerySet` submits the encoder's work so far, waits for it, and writes the values into
+  the destination through `writeBuffer`, the same ceiling as D3D11's `resolveQuerySet`. The
+  upgrade, once a caller resolves every frame, is Dawn's `ResolveQueryData` into the destination
+  (`CommandBufferD3D12.cpp:1364`) followed by its conversion pass.
+
+Where it differs from D3D11, and why:
+- **A vertex shader that reads a binding visible only to the fragment stage fails PSO creation**,
+  where D3D11 reads zero (the second half of "a texture and sampler visible to vertex and
+  fragment are bound in both stages" in `test/webgpuD3d11Check.ms`). A root signature table
+  exists only for the stages its visibility names, so `webgpuD3d12Check.ms` does not port that
+  half.
+- **Views, samplers and shader modules carry no native name.** On D3D12 they are descriptors and
+  DXBC blobs, not `ID3D12Object`s, so labels reach only buffers, textures, pipelines and query
+  heaps.
 
 ## Coverage against sokol's pin
 
