@@ -1761,12 +1761,6 @@ function releaseGlyphs(this s: Scene2D, top: int32): void {
 	}
 }
 
-// Returns the CHILD, not the parent. It used to return the parent, which made
-// `const n = s.add(node); n.alpha = 0.5;` - the h2d idiom, `new Bitmap(tile, parent)` with
-// the handle kept - silently configure the scene root instead, and
-// `s.add(a).addChild(b)` silently make `b` a sibling of `a` rather than its child. Nothing
-// read the old return value, so nothing depended on the chaining it offered; what it cost was
-// that the obvious reading of `add(x)` was wrong and said nothing.
 export function addChild(this n: NodeRef, c: NodeRef): NodeRef {
 	const count: int32 = n.scene.children[n.liveRow("addChild")].length as int32;
 	return n.addChildAt(c, count);
