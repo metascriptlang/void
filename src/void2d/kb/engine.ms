@@ -92,12 +92,12 @@ function shapeDirect(
 ): void {
 	const config = s.config;
 	const storage = s.storage;
-	const g = storage.glyphs;
+	const glyphs = storage.glyphs;
 
 	s.variationVectorNormalized = variationVectorNormalized ?? [];
 	s.hasVariationVector = variationVectorNormalized != null;
 
-	if (config == null || g[KB_GLYPH_SENTINEL].next == KB_GLYPH_SENTINEL) {
+	if (config == null || glyphs[KB_GLYPH_SENTINEL].next == KB_GLYPH_SENTINEL) {
 		return;
 	}
 
@@ -121,7 +121,7 @@ function shapeDirect(
 		const beginClusterSequentialLookupIndexIndex = s.sequentialLookupIndexIndex;
 		const beginClusterIp = s.ip;
 		const beginClusterFeatureStagesRead = s.featureStagesRead;
-		let topLevelGlyph = g[KB_GLYPH_SENTINEL].next;
+		let topLevelGlyph = glyphs[KB_GLYPH_SENTINEL].next;
 
 		for (
 			let lookupIndex = beginClusterSequentialLookupIndexIndex as int32;
@@ -138,25 +138,25 @@ function shapeDirect(
 			s.featureStagesRead = beginClusterFeatureStagesRead;
 			s.sequentialLookupIndexIndex = beginClusterSequentialLookupIndexIndex;
 
-			const oneBeforeFirstClusterGlyph = g[topLevelGlyph].prev;
+			const oneBeforeFirstClusterGlyph = glyphs[topLevelGlyph].prev;
 			const onePastLastClusterGlyph = kbBeginCluster(s, m, config, topLevelGlyph);
 			step(observe, s);
 
-			const lastClusterGlyph = g[onePastLastClusterGlyph].prev;
+			const lastClusterGlyph = glyphs[onePastLastClusterGlyph].prev;
 			const wordBreak =
-				(g[lastClusterGlyph].unicodeFlags & KB_UNICODE_FLAG_PART_OF_WORD) == 0;
+				(glyphs[lastClusterGlyph].unicodeFlags & KB_UNICODE_FLAG_PART_OF_WORD) == 0;
 			s.cluster = kbPushGlyphList(
 				storage,
-				g[oneBeforeFirstClusterGlyph].next,
+				glyphs[oneBeforeFirstClusterGlyph].next,
 				lastClusterGlyph,
 			);
 
-			let glyph = g[KB_GLYPH_SENTINEL].next;
+			let glyph = glyphs[KB_GLYPH_SENTINEL].next;
 			while (glyph != KB_GLYPH_SENTINEL) {
 				if (!kbBucketGlyph(s, glyph, beginClusterSequentialLookupIndexIndex as int32)) {
 					kbUnbucketGlyph(s, glyph);
 				}
-				glyph = g[glyph].next;
+				glyph = glyphs[glyph].next;
 			}
 
 			while (readOp(s, KB_OP_KIND_END_CLUSTER)) {
@@ -172,8 +172,8 @@ function shapeDirect(
 				step(observe, s);
 			}
 
-			g[g[KB_GLYPH_SENTINEL].next].prev = s.cluster.oneBeforeFirst;
-			g[g[KB_GLYPH_SENTINEL].prev].next = s.cluster.onePastLast;
+			glyphs[glyphs[KB_GLYPH_SENTINEL].next].prev = s.cluster.oneBeforeFirst;
+			glyphs[glyphs[KB_GLYPH_SENTINEL].prev].next = s.cluster.onePastLast;
 			topLevelGlyph = s.cluster.onePastLast;
 
 			kbPopGlyphList(storage, s.cluster);

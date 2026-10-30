@@ -4,16 +4,16 @@
 
 export function kbSet32(members: uint8[]): uint32 {
 	let result: uint32 = 0;
-	for (let i = 0; i < members.length; i++) {
-		result |= (1 as uint32) << (members[i] as uint32);
+	for (const member of members) {
+		result |= (1 as uint32) << (member as uint32);
 	}
 	return result;
 }
 
 export function kbSet64(members: uint8[]): uint64 {
 	let result: uint64 = 0;
-	for (let i = 0; i < members.length; i++) {
-		result |= (1 as uint64) << (members[i] as uint64);
+	for (const member of members) {
+		result |= (1 as uint64) << (member as uint64);
 	}
 	return result;
 }
