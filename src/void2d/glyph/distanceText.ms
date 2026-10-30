@@ -47,6 +47,42 @@ function clear5(out: Span<int32>, op: string): void {
 	for (let i: int32 = 0; i < 5; i++) { out[i] = 0; }
 }
 
+function tileFault(
+	tile: string,
+	face: int32,
+	page: int32,
+	kind: int32,
+	x: int32,
+	y: int32,
+	w: int32,
+	h: int32,
+): int32 {
+	if (noTileKind(face) || !validPage(page) || w <= 0 || h <= 0) { return SDF_BAD_HANDLE; }
+	const p = state.pages[page];
+	if (p.kind != kind) {
+		console.error(`void2d: an ${tile} tile was aimed at a ${pageKindName(p.kind)} page`);
+		return SDF_WRONG_PAGE_KIND;
+	}
+	if (tileOutside(p, x, y, w, h)) {
+		console.error(
+			`void2d: ${tile} tile ${w}x${h} at (${x},${y}) falls outside its ${p.size} page`,
+		);
+		return SDF_OUTSIDE_PAGE;
+	}
+	return SDF_OK;
+}
+
+function boxFault(tile: string, box: GlyphBox, w: int32, h: int32): int32 {
+	if (box.x1 - box.x0 != w || box.y1 - box.y0 != h) {
+		console.error(
+			`void2d: ${tile} tile ${w}x${h} does not match the glyph's ` +
+				`${box.x1 - box.x0}x${box.y1 - box.y0} box`,
+		);
+		return SDF_BOX_MISMATCH;
+	}
+	return SDF_OK;
+}
+
 when (voidSdfText) {
 	export function void2dGlyphSdfGenerations(): uint32 {
 		return state.sdfGenerations;
@@ -73,28 +109,17 @@ when (voidSdfText) {
 	export function void2dGlyphSdfRasterize(
 		face: int32, glyph: int32, page: int32, x: int32, y: int32, w: int32, h: int32,
 	): int32 {
-		if (noTileKind(face) || !validPage(page) || w <= 0 || h <= 0) { return SDF_BAD_HANDLE; }
+		const tile = tileFault("SDF", face, page, PAGE_SDF, x, y, w, h);
+		if (tile != SDF_OK) { return tile; }
 		const p = state.pages[page];
-		if (p.kind != PAGE_SDF) {
-			console.error(`void2d: an SDF tile was aimed at a ${pageKindName(p.kind)} page`);
-			return SDF_WRONG_PAGE_KIND;
-		}
-		if (tileOutside(p, x, y, w, h)) {
-			console.error(`void2d: SDF tile ${w}x${h} at (${x},${y}) falls outside its ${p.size} page`);
-			return SDF_OUTSIDE_PAGE;
-		}
 		const f = faceAt(face);
 		const vertices = glyphShape(f, glyph);
 		let box: GlyphBox = EMPTY_BOX;
 		if (vertices.length > 0 && !hasCubic(vertices)) {
 			box = sdfBitmapBox(f, glyph, vertices, void2dGlyphScale(face, SDF_EM));
 		}
-		if (box.x1 - box.x0 != w || box.y1 - box.y0 != h) {
-			console.error(
-				`void2d: SDF tile ${w}x${h} does not match the glyph's ${box.x1 - box.x0}x${box.y1 - box.y0} box`,
-			);
-			return SDF_BOX_MISMATCH;
-		}
+		const fit = boxFault("SDF", box, w, h);
+		if (fit != SDF_OK) { return fit; }
 		const at: int32 = y * p.size + x;
 		distanceFill(
 			vertices, void2dGlyphScale(face, SDF_EM), 0.0, box, false, 0.0,
@@ -165,16 +190,9 @@ when (voidTextOutline) {
 		face: int32, glyph: int32, sizePx: float32, shiftX: float32, widthPx: float32,
 		page: int32, x: int32, y: int32, w: int32, h: int32,
 	): int32 {
-		if (noTileKind(face) || !validPage(page) || w <= 0 || h <= 0) { return SDF_BAD_HANDLE; }
+		const tile = tileFault("outline", face, page, PAGE_COVERAGE, x, y, w, h);
+		if (tile != SDF_OK) { return tile; }
 		const p = state.pages[page];
-		if (p.kind != PAGE_COVERAGE) {
-			console.error(`void2d: an outline tile was aimed at a ${pageKindName(p.kind)} page`);
-			return SDF_WRONG_PAGE_KIND;
-		}
-		if (tileOutside(p, x, y, w, h)) {
-			console.error(`void2d: outline tile ${w}x${h} at (${x},${y}) falls outside its ${p.size} page`);
-			return SDF_OUTSIDE_PAGE;
-		}
 		const f = faceAt(face);
 		const scale = void2dGlyphScale(face, sizePx);
 		const vertices = glyphShape(f, glyph);
@@ -182,12 +200,8 @@ when (voidTextOutline) {
 		if (vertices.length > 0) {
 			box = paddedBox(bitmapBox(f, glyph, vertices, scale, shiftX), outlinePad(widthPx));
 		}
-		if (box.x1 - box.x0 != w || box.y1 - box.y0 != h) {
-			console.error(
-				`void2d: outline tile ${w}x${h} does not match the glyph's ${box.x1 - box.x0}x${box.y1 - box.y0} box`,
-			);
-			return SDF_BOX_MISMATCH;
-		}
+		const fit = boxFault("outline", box, w, h);
+		if (fit != SDF_OK) { return fit; }
 		const at: int32 = y * p.size + x;
 		if (hasCubic(vertices)) {
 			const flat = flattenCubics(vertices, 0.35 / scale);
@@ -239,30 +253,17 @@ when (voidSdfText && voidTextOutline) {
 	export function void2dGlyphSdfOutlineRasterize(
 		face: int32, glyph: int32, biasTexels: float32, page: int32, x: int32, y: int32, w: int32, h: int32,
 	): int32 {
-		if (noTileKind(face) || !validPage(page) || w <= 0 || h <= 0) { return SDF_BAD_HANDLE; }
+		const tile = tileFault("SDF outline", face, page, PAGE_SDF, x, y, w, h);
+		if (tile != SDF_OK) { return tile; }
 		const p = state.pages[page];
-		if (p.kind != PAGE_SDF) {
-			console.error(`void2d: an SDF outline tile was aimed at a ${pageKindName(p.kind)} page`);
-			return SDF_WRONG_PAGE_KIND;
-		}
-		if (tileOutside(p, x, y, w, h)) {
-			console.error(
-				`void2d: SDF outline tile ${w}x${h} at (${x},${y}) falls outside its ${p.size} page`,
-			);
-			return SDF_OUTSIDE_PAGE;
-		}
 		const f = faceAt(face);
 		const vertices = glyphShape(f, glyph);
 		let box: GlyphBox = EMPTY_BOX;
 		if (vertices.length > 0 && !hasCubic(vertices)) {
 			box = sdfOutlineBox(f, glyph, vertices, void2dGlyphScale(face, SDF_EM), biasTexels);
 		}
-		if (box.x1 - box.x0 != w || box.y1 - box.y0 != h) {
-			console.error(
-				`void2d: SDF outline tile ${w}x${h} does not match the glyph's ${box.x1 - box.x0}x${box.y1 - box.y0} box`,
-			);
-			return SDF_BOX_MISMATCH;
-		}
+		const fit = boxFault("SDF outline", box, w, h);
+		if (fit != SDF_OK) { return fit; }
 		const at: int32 = y * p.size + x;
 		distanceFill(
 			vertices, void2dGlyphScale(face, SDF_EM), 0.0, box, false, biasTexels,
