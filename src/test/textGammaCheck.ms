@@ -49,3 +49,9 @@ test "at GPUI's defaults a half-covered edge of white text becomes 0.69" {
 	const edge = correctCoverage(0.5, 1.0, 1.0, 1.0, 1.0, gammaRatios(1.8));
 	assert edge > 0.69 && edge < 0.70;
 }
+
+test "gammaRatios still clamps a finite gamma to the table's rows" {
+	const low = gammaRatios(-5.0);
+	const row10 = gammaRatios(1.0);
+	assert approx(low.r0, row10.r0) && approx(low.r3, row10.r3);
+}

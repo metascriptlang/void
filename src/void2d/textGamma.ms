@@ -27,6 +27,10 @@ const GAMMA_ROWS: float32[52] = [
 export function gammaRatios(gamma: float32): GammaRatios {
 	const norm13: float32 = ((65536.0 / (255.0 * 255.0)) * 4.0) as float32;
 	const norm24: float32 = ((256.0 / 255.0) * 4.0) as float32;
+	if (!(Math.abs(gamma) <= 1000000.0)) {
+		console.log(`void2d: gammaRatios got gamma ${gamma}; give a finite number`);
+		unreachable;
+	}
 	const tenths: int32 = Math.floor(gamma * 10.0 + 0.5) as int32;
 	const row: int32 = (tenths < 10 ? 10 : (tenths > 22 ? 22 : tenths)) - 10;
 	const quarter: float32 = 0.25;
