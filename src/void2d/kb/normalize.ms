@@ -435,10 +435,10 @@ export function kbNormalize(s: KbScratch, config: KbShapeConfig): void {
 	recompose(s, config);
 	reorderMarks(s);
 
-	if (config.script == KB_SCRIPT_ARABIC) {
-		reorderArabicMarks(s);
-	} else if (config.script == KB_SCRIPT_THAI || config.script == KB_SCRIPT_LAO) {
-		decomposeSaraAms(s, config);
+	match (config.script) {
+		KB_SCRIPT_ARABIC => { reorderArabicMarks(s); },
+		KB_SCRIPT_THAI | KB_SCRIPT_LAO => { decomposeSaraAms(s, config); },
+		_ => {},
 	}
 }
 
