@@ -235,25 +235,39 @@ export function ditheredFill(this s: BoxStyle): BoxStyle {
 
 export let boxStyles: Vec<BoxStyle> = [];
 let freeBoxStyles: Vec<int32> = [];
+let liveBoxStyles: Vec<boolean> = [];
+
+function ownedStyle(style: BoxStyle): BoxStyle {
+	const list: BoxShadow[] = [];
+	for (const shadow of style.shadows) { list.push(shadow); }
+	return { ...style, shadows: list };
+}
 
 export function allocateBoxStyle(style: BoxStyle): int32 {
 	const freeCount: int32 = freeBoxStyles.length as int32;
 	if (freeCount > 0) {
 		const index: int32 = freeBoxStyles[freeCount - 1];
 		freeBoxStyles.pop();
-		boxStyles[index] = style;
+		boxStyles[index] = ownedStyle(style);
+		liveBoxStyles[index] = true;
 		return index;
 	}
 	const index: int32 = boxStyles.length as int32;
-	boxStyles.push(style);
+	boxStyles.push(ownedStyle(style));
+	liveBoxStyles.push(true);
 	return index;
 }
 
 export function updateBoxStyle(index: int32, style: BoxStyle): void {
-	boxStyles[index] = style;
+	boxStyles[index] = ownedStyle(style);
 }
 
 export function releaseBoxStyle(index: int32): void {
 	if (index == NO_BOX_STYLE) { return; }
+	if (!liveBoxStyles[index]) {
+		console.log(`void2d: releaseBoxStyle got slot ${index}, which is already released`);
+		unreachable;
+	}
+	liveBoxStyles[index] = false;
 	freeBoxStyles.push(index);
 }

@@ -8,7 +8,9 @@ import {
 } from "../void2d/types";
 import { BlendMode } from "../gpu/state";
 import { approx, fakeTexture } from "./helpers";
-import { BoxStyle, uniformRadii, uniformBorders, boxStyles } from "../void2d/boxStyle";
+import {
+	BoxStyle, BoxShadow, uniformRadii, uniformBorders, boxStyles, allocateBoxStyle, releaseBoxStyle,
+} from "../void2d/boxStyle";
 import { colorMatrixGrayscale, NO_COLOR_MATRIX } from "../void2d/effect";
 
 when (voidSvg) {
@@ -865,6 +867,28 @@ test "clearing a background returns the row to a group and frees its box style" 
 	assert n.kind() === DrawKind.Rect;
 	assert (boxStyles.length as int32) == rows;
 	assert marked(n, Changed.Content);
+}
+
+test "a stored box style owns its shadows, not the caller's array" {
+	const s = fresh();
+	const n = s.group();
+	const list: BoxShadow[] = [
+		{ color: white, blur: 2.0, offsetX: 1.0, offsetY: 1.0, spread: 0.0, inset: false },
+	];
+	const base = BoxStyle.create(uniformRadii(1.0), uniformBorders(0.0), white);
+	n.setBoxStyle({ ...base, shadows: list });
+	list.push({ color: white, blur: 9.0, offsetX: 0.0, offsetY: 0.0, spread: 0.0, inset: true });
+	list[0].blur = 7.0;
+	const stored = boxStyles[s.payloads[n.liveRow("test")]];
+	assert (stored.shadows.length as int32) == 1;
+	assert stored.shadows[0].blur == 2.0;
+}
+
+test "a released box style slot is reused by the next allocation" {
+	const base = BoxStyle.create(uniformRadii(1.0), uniformBorders(0.0), white);
+	const a: int32 = allocateBoxStyle(base);
+	releaseBoxStyle(a);
+	assert allocateBoxStyle(base) == a;
 }
 
 test "a plain rect with a transparent fill is blank like a group" {
