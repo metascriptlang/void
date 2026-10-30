@@ -1,9 +1,3 @@
-// Void 2D Graphics — h2d.Graphics-style vector drawing as a retained local-space mesh.
-// Each vertex is x/y, u/v and rgba; an operation list preserves fill order while selecting
-// texture, gradient or pattern state for contiguous vertex ranges.
-// fillPolygon handles concave shapes (ear-clip); strokePoly uses miter joins with a
-// bevel-style clamp at sharp angles (correct for any alpha — no overlapping geometry).
-
 import { NodeRef, GraphicsMesh, DrawKind, Changed } from "./node";
 import { Vec2, Color, Tile, vec2, rgba } from "./types";
 import { GradientSpace } from "./gradient";
@@ -362,7 +356,6 @@ function ellipsePoints(cx: float32, cy: float32, rx: float32, ry: float32, seg: 
 	return pts;
 }
 
-// left-hand unit normal of segment a→b (zero vector if degenerate).
 function segNormal(ax: float32, ay: float32, bx: float32, by: float32): Vec2 {
 	const dx: float32 = bx - ax;
 	const dy: float32 = by - ay;
@@ -522,8 +515,7 @@ function isEar(
 	return true;
 }
 
-// ear-clipping triangulation → flat index triples (handles CONCAVE simple polygons;
-// self-intersecting outlines are undefined).
+// Simple polygons only: a self-intersecting outline triangulates to an undefined result.
 function triangulate(pts: Readonly<Span<Vec2>>): int32[] {
 	const out: int32[] = [];
 	const n: int32 = pts.length as int32;
@@ -562,7 +554,6 @@ function triangulate(pts: Readonly<Span<Vec2>>): int32[] {
 	return out;
 }
 
-// h2d.Graphics arbitrary solid fill (convex shapes can use the cheaper fillConvex fan).
 export function fillPolygon(this g: NodeRef, pts: Vec2[], color: Color): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillPolygon");
 	contourFill(target, true, pts, [pts.length as int32], triangulate(pts), NO_UV, color,
@@ -777,7 +768,6 @@ export function fillCheckerRect(
 		a, b, cell, 0.0);
 }
 
-// h2d.Graphics.drawTile — textured rect (tile mapped to the rect). Sets the node's view.
 export function fillTexRect(
 	this g: NodeRef,
 	t: Tile,
@@ -799,8 +789,6 @@ export function fillTexRect(
 	return g;
 }
 
-// h2d.Graphics.beginTileFill — fill an arbitrary shape with a tile; UV maps the tile
-// across the shape from (originX,originY) over (tileW,tileH) px (REPEAT sampler tiles it).
 // One view per Graphics node: don't mix textured + solid fills on the same node.
 export function fillTexPolygon(
 	this g: NodeRef,
@@ -882,7 +870,6 @@ export function strokePoly(
 	const m: int32 = pts.length as int32;
 	if (m < 2) { return g; }
 	const hw: float32 = width * 0.5;
-	// per-vertex outer offsets: butt at open ends, miter (clamped) at joints.
 	const left: Corner[] = [];
 	const right: Corner[] = [];
 	for (let i: int32 = 0; i < m; i++) {
@@ -980,7 +967,6 @@ export function strokeRect(
 	return g.strokePoly(pts, width, color, true);
 }
 
-// h2d.Graphics.drawRoundedRect — convex perimeter (4 corner arcs + edges) → fan fill.
 export function fillRoundedRect(
 	this g: NodeRef,
 	x: float32,
@@ -1003,7 +989,6 @@ export function fillRoundedRect(
 	return g.fillConvex(pts, color);
 }
 
-// h2d.Graphics.drawEllipse — fan from centre with independent x/y radii.
 export function fillEllipse(
 	this g: NodeRef,
 	cx: float32,
@@ -1023,7 +1008,6 @@ function isFullTurn(angleLength: float32): boolean {
 	return angleLength >= TAU || angleLength <= -TAU;
 }
 
-// h2d.Graphics.drawPie — fan slice over [angleStart, angleStart+angleLength] (radians).
 export function fillPie(
 	this g: NodeRef,
 	cx: float32,
@@ -1047,7 +1031,6 @@ export function fillPie(
 	return g;
 }
 
-// h2d.Graphics.drawPieInner — annular sector (ring slice) between innerR and outerR.
 export function fillRing(
 	this g: NodeRef,
 	cx: float32,
@@ -1090,7 +1073,6 @@ export function fillRing(
 	return g;
 }
 
-// h2d.Graphics.curveTo — quadratic Bézier flattened to points (compose with stroke/fill).
 export function quadBezier(a: Vec2, ctrl: Vec2, b: Vec2, segments: int32): Vec2[] {
 	const seg: int32 = Math.max(segments, 1);
 	const pts: Vec2[] = [];
@@ -1104,7 +1086,6 @@ export function quadBezier(a: Vec2, ctrl: Vec2, b: Vec2, segments: int32): Vec2[
 	return pts;
 }
 
-// h2d.Graphics.cubicCurveTo — cubic Bézier flattened to points.
 export function cubicBezier(a: Vec2, c1: Vec2, c2: Vec2, b: Vec2, segments: int32): Vec2[] {
 	const seg: int32 = Math.max(segments, 1);
 	const pts: Vec2[] = [];
