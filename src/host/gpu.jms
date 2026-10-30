@@ -1,14 +1,22 @@
 // Void GPU on the browser's JS target: gpu.wms's surface over the backend this bundle selects
-// (-d:webgl2 or -d:webgpu, one of them required), and the device and door its two drivers share, as bridgeWeb.c drives
-// them. The window driver is gpuWindow.jms (one canvas, the AppWindow events, the frame timing),
-// the views driver gpuViews.jms (a root per canvas, no AppWindow); an entry imports the one it
-// runs, so its bundle carries no other. A document uses one of the two.
+// (-d:webgl2 or -d:webgpu, one of them required), and the device and door its two drivers
+// share, as bridgeWeb.c drives them. The window driver is gpuWindow.jms (one canvas, the
+// AppWindow events, the frame timing), the views driver gpuViews.jms (a root per canvas, no
+// AppWindow); an entry imports the one it runs, so its bundle carries no other. A document uses
+// one of the two.
 
 import { requireBrowserBackend } from "./requireBackend";
 import { CanvasView, publishRun } from "../platform/web/window";
-import { PixelFormat, doorMakeImage, doorMakeTextureView, doorSetup, doorShutdown } from "../gpu/doorGpu";
+import {
+	PixelFormat,
+	doorMakeImage,
+	doorMakeTextureView,
+	doorSetup,
+	doorShutdown,
+} from "../gpu/doorGpu";
 
-extern function thrownText(error: Error): string from "((e)=>''+(e&&e.message||e))(#)";
+extern function thrownText(error: Error): string
+	from "((e)=>''+(e&&e.message||e))(#)";
 
 when (!webgl2 && !webgpu) {
 	requireBrowserBackend();
@@ -41,11 +49,18 @@ when (webgl2) {
 when (webgl2) {
 	function canvasColor(): PixelFormat { return PixelFormat.Rgba8; }
 } else {
-	extern function prefersBgra(): boolean from "(navigator.gpu.getPreferredCanvasFormat()=='bgra8unorm')";
-	function canvasColor(): PixelFormat { return prefersBgra() ? PixelFormat.Bgra8 : PixelFormat.Rgba8; }
+	extern function prefersBgra(): boolean
+		from "(navigator.gpu.getPreferredCanvasFormat()=='bgra8unorm')";
+	function canvasColor(): PixelFormat {
+		return prefersBgra() ? PixelFormat.Bgra8 : PixelFormat.Rgba8;
+	}
 }
 
-export enum Driver { None, Window, Views }
+export enum Driver {
+	None,
+	Window,
+	Views,
+}
 
 export class Start {
 	canvas: CanvasView;
@@ -148,11 +163,15 @@ export function restoreStale(): void {
 }
 
 function driverFor(operation: string): HostDriver {
-	if (driver == Driver.None || (driver == Driver.Views && !viewsDriver.live())) {
+	if (driver == Driver.None ||
+		(driver == Driver.Views && !viewsDriver.live())) {
 		fail(`${operation} before voidRun or voidViewCreate chose a driver`);
 	}
 	if (driver == Driver.Window && !windowDriver.live()) {
-		fail(`${operation}: the window does not exist; call it from the event handler or after init`);
+		fail(
+			`${operation}: the window does not exist; ` +
+				"call it from the event handler or after init",
+		);
 	}
 	return driver == Driver.Window ? windowDriver : viewsDriver;
 }
@@ -180,7 +199,12 @@ when (webgl2) {
 			await acquireDevice(onLost);
 		} catch (error) {
 			if (epoch == gpuState.runEpoch) {
-				for (const start of starts.slice(0)) { start.onError(`void: the WebGPU device was lost and a new one could not be made: ${thrownText(error)}`); }
+				for (const start of starts.slice(0)) {
+					start.onError(
+						"void: the WebGPU device was lost and a new one could not be made: " +
+							thrownText(error),
+					);
+				}
 			}
 			return;
 		}
@@ -196,18 +220,32 @@ export async function acquire(canvas: CanvasView, start: Start): Promise<boolean
 			await acquireDevice(onLost);
 		}
 	} catch (error) {
-		if (!start.stopped) { start.onError(`void: this browser gave no GPU backend: ${thrownText(error)}`); }
+		if (!start.stopped) {
+			start.onError(`void: this browser gave no GPU backend: ${thrownText(error)}`);
+		}
 		return false;
 	}
 	return !start.stopped;
 }
 
-function noWindowRun(width: int32, height: int32, init: () => void, frame: () => void): void {
+function noWindowRun(
+	width: int32,
+	height: int32,
+	init: () => void,
+	frame: () => void,
+): void {
 	refuseBesideOther(Driver.Window);
 	windowDriver.absent("voidRun");
 }
 
-function noWindowRunConfigured(width: int32, height: int32, samples: int32, highDpi: int32, init: () => void, frame: () => void): void {
+function noWindowRunConfigured(
+	width: int32,
+	height: int32,
+	samples: int32,
+	highDpi: int32,
+	init: () => void,
+	frame: () => void,
+): void {
 	refuseBesideOther(Driver.Window);
 	windowDriver.absent("voidRunConfigured");
 }
@@ -226,7 +264,9 @@ export function gfxSetup(): void {
 export function fbWidth(): int32 { return driverFor("fbWidth").fbWidth(); }
 export function fbHeight(): int32 { return driverFor("fbHeight").fbHeight(); }
 export function dpiScale(): float32 { return driverFor("dpiScale").dpiScale(); }
-export function keyDown(code: int32): boolean { return driver == Driver.Window && windowDriver.keyDown(code); }
+export function keyDown(code: int32): boolean {
+	return driver == Driver.Window && windowDriver.keyDown(code);
+}
 
 export function makeImage(rgba: Readonly<Span<uint32>>, w: int32, h: int32): uint32 {
 	return doorMakeImage(rgba, w, h);
