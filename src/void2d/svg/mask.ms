@@ -43,25 +43,72 @@ export function maskReason(): string {
 	return reason;
 }
 
-function dotPath(x: float32, y: float32, radius: float32, round: boolean): Path {
+function dotPath(
+	x: float32,
+	y: float32,
+	radius: float32,
+	round: boolean,
+): Path {
 	const k: float32 = DOT_KAPPA * radius;
 	const r = radius;
 	const path = new Path();
 	if (round) {
 		path.pts = [
-			x + r, y,
-			x + r, y + k, x + k, y + r, x, y + r,
-			x - k, y + r, x - r, y + k, x - r, y,
-			x - r, y - k, x - k, y - r, x, y - r,
-			x + k, y - r, x + r, y - k, x + r, y,
+			x + r,
+			y,
+			x + r,
+			y + k,
+			x + k,
+			y + r,
+			x,
+			y + r,
+			x - k,
+			y + r,
+			x - r,
+			y + k,
+			x - r,
+			y,
+			x - r,
+			y - k,
+			x - k,
+			y - r,
+			x,
+			y - r,
+			x + k,
+			y - r,
+			x + r,
+			y - k,
+			x + r,
+			y,
 		];
 	} else {
 		path.pts = [
-			x - r, y - r,
-			x - r, y - r, x + r, y - r, x + r, y - r,
-			x + r, y - r, x + r, y + r, x + r, y + r,
-			x + r, y + r, x - r, y + r, x - r, y + r,
-			x - r, y + r, x - r, y - r, x - r, y - r,
+			x - r,
+			y - r,
+			x - r,
+			y - r,
+			x + r,
+			y - r,
+			x + r,
+			y - r,
+			x + r,
+			y - r,
+			x + r,
+			y + r,
+			x + r,
+			y + r,
+			x + r,
+			y + r,
+			x - r,
+			y + r,
+			x - r,
+			y + r,
+			x - r,
+			y + r,
+			x - r,
+			y - r,
+			x - r,
+			y - r,
 		];
 	}
 	path.npts = DOT_POINTS;
@@ -111,8 +158,13 @@ function dotShape(shape: Shape, cap: Path): Shape {
 function drawTinyPaths(image: SvgImage): int32 {
 	for (let s: int32 = 0; s < (image.shapes.length as int32); s++) {
 		const shape = image.shapes[s];
-		const stroked = shape.stroke.kind != PAINT_NONE && shape.strokeWidth > 0.0 && shape.visible;
-		if (!stroked) { continue; }
+		const stroked =
+			shape.stroke.kind != PAINT_NONE &&
+			shape.strokeWidth > 0.0 &&
+			shape.visible;
+		if (!stroked) {
+			continue;
+		}
 		let p: int32 = 0;
 		while (p < (shape.paths.length as int32)) {
 			const path = shape.paths[p];
@@ -129,7 +181,8 @@ function drawTinyPaths(image: SvgImage): int32 {
 				continue;
 			}
 			if (!round && !square) {
-				reason = "a stroked path much smaller than its stroke width without round joins";
+				reason =
+					"a stroked path much smaller than its stroke width without round joins";
 				return SVG_REFUSED;
 			}
 			if (shape.stroke.kind != PAINT_COLOR) {
@@ -178,10 +231,16 @@ function takeSlot(image: SvgImage): int32 {
 }
 
 function slotOf(handle: int32): int32 {
-	if (handle < 1) { return -1; }
+	if (handle < 1) {
+		return -1;
+	}
 	const slot = (handle & 0xffff) - 1;
-	if (slot < 0 || slot >= capacity) { return -1; }
-	if (slotImages[slot] == null || slotGenerations[slot] != (handle >> 16)) { return -1; }
+	if (slot < 0 || slot >= capacity) {
+		return -1;
+	}
+	if (slotImages[slot] == null || slotGenerations[slot] != handle >> 16) {
+		return -1;
+	}
 	return slot;
 }
 
@@ -197,7 +256,9 @@ export function maskParse(source: string): int32 {
 	const total = source.byteLength();
 	for (let i: int32 = 0; i < total; i++) {
 		const c = source.byteAt(i);
-		if (c == 0) { break; }
+		if (c == 0) {
+			break;
+		}
 		bytes.push(c as uint8);
 	}
 	const length = bytes.length as int32;
@@ -212,8 +273,14 @@ export function maskParse(source: string): int32 {
 	}
 	const image = nsvgParse(bytes, DPI);
 	parsedCount += 1;
-	if (!(image.width > 0.0 && image.height > 0.0 && image.width < MAX_PARSED_SIDE
-		&& image.height < MAX_PARSED_SIDE)) {
+	if (
+		!(
+			image.width > 0.0 &&
+			image.height > 0.0 &&
+			image.width < MAX_PARSED_SIDE &&
+			image.height < MAX_PARSED_SIDE
+		)
+	) {
 		reason = `size ${formatG(image.width as float64)}x${formatG(image.height as float64)}`;
 		releasedCount += 1;
 		return SVG_NO_SIZE;
@@ -233,17 +300,22 @@ export function maskParse(source: string): int32 {
 
 export function maskFree(handle: int32): int32 {
 	const slot = slotOf(handle);
-	if (slot < 0) { return SVG_BAD_HANDLE; }
+	if (slot < 0) {
+		return SVG_BAD_HANDLE;
+	}
 	releasedCount += 1;
 	slotImages[slot] = null;
-	slotGenerations[slot] = slotGenerations[slot] >= MAX_GENERATION ? 0 : slotGenerations[slot] + 1;
+	slotGenerations[slot] =
+		slotGenerations[slot] >= MAX_GENERATION ? 0 : slotGenerations[slot] + 1;
 	return 0;
 }
 
 export function maskLive(): int32 {
 	let live: int32 = 0;
 	for (let i: int32 = 0; i < capacity; i++) {
-		if (slotImages[i] != null) { live += 1; }
+		if (slotImages[i] != null) {
+			live += 1;
+		}
 	}
 	return live;
 }
@@ -257,7 +329,11 @@ export function maskReleased(): int32 {
 }
 
 // void2dSvgMaskRasterize: the image fitted into width x height, centred, as an alpha mask.
-export function maskRasterize(image: SvgImage, width: int32, height: int32): Vec<uint8> {
+export function maskRasterize(
+	image: SvgImage,
+	width: int32,
+	height: int32,
+): Vec<uint8> {
 	const scaleX: float32 = (width as float32) / image.width;
 	const scaleY: float32 = (height as float32) / image.height;
 	const scale: float32 = scaleX < scaleY ? scaleX : scaleY;

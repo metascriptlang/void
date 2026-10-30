@@ -13,16 +13,37 @@ import {
 	faceAt,
 	state,
 } from "./state";
-import { glyphShape, isSynthetic, needSlots, putBox, validFace, void2dGlyphScale } from "./faces";
+import {
+	glyphShape,
+	isSynthetic,
+	needSlots,
+	putBox,
+	validFace,
+	void2dGlyphScale,
+} from "./faces";
 import { pageKindName, markDirtyBox, tileOutside, validPage } from "./pages";
-import { SDF_DIST_SCALE, SDF_EDGE, SDF_EM, SDF_PAD, distanceFill, flattenCubics } from "./distance";
+import {
+	SDF_DIST_SCALE,
+	SDF_EDGE,
+	SDF_EM,
+	SDF_PAD,
+	distanceFill,
+	flattenCubics,
+} from "./distance";
 import { hasCubic, shapeBox } from "./outline";
 
 const EMPTY_BOX: GlyphBox = { x0: 0, y0: 0, x1: 0, y1: 0 };
 
 function paddedBox(box: GlyphBox, pad: int32): GlyphBox {
-	if (box.x0 == box.x1 || box.y0 == box.y1) { return EMPTY_BOX; }
-	return { x0: box.x0 - pad, y0: box.y0 - pad, x1: box.x1 + pad, y1: box.y1 + pad };
+	if (box.x0 == box.x1 || box.y0 == box.y1) {
+		return EMPTY_BOX;
+	}
+	return {
+		x0: box.x0 - pad,
+		y0: box.y0 - pad,
+		x1: box.x1 + pad,
+		y1: box.y1 + pad,
+	};
 }
 
 function bitmapBox(
@@ -32,12 +53,18 @@ function bitmapBox(
 	scale: float32,
 	shiftX: float32,
 ): GlyphBox {
-	if (isSynthetic(f)) { return shapeBox(vertices, scale, shiftX); }
+	if (isSynthetic(f)) {
+		return shapeBox(vertices, scale, shiftX);
+	}
 	return getGlyphBitmapBoxSubpixel(f.info, glyph, scale, scale, shiftX, 0.0);
 }
 
 function noTileKind(face: int32): boolean {
-	return !validFace(face) || state.faces[face].sprite || state.faces[face].platform != null;
+	return (
+		!validFace(face) ||
+		state.faces[face].sprite ||
+		state.faces[face].platform != null
+	);
 }
 
 function sdfBitmapBox(
@@ -51,7 +78,9 @@ function sdfBitmapBox(
 
 function clear5(out: Span<int32>, op: string): void {
 	needSlots(op, out.length as int64, 5);
-	for (let i: int32 = 0; i < 5; i++) { out[i] = 0; }
+	for (let i: int32 = 0; i < 5; i++) {
+		out[i] = 0;
+	}
 }
 
 function tileFault(
@@ -64,10 +93,14 @@ function tileFault(
 	w: int32,
 	h: int32,
 ): int32 {
-	if (noTileKind(face) || !validPage(page) || w <= 0 || h <= 0) { return SDF_BAD_HANDLE; }
+	if (noTileKind(face) || !validPage(page) || w <= 0 || h <= 0) {
+		return SDF_BAD_HANDLE;
+	}
 	const p = state.pages[page];
 	if (p.kind != kind) {
-		console.error(`void2d: an ${tile} tile was aimed at a ${pageKindName(p.kind)} page`);
+		console.error(
+			`void2d: an ${tile} tile was aimed at a ${pageKindName(p.kind)} page`,
+		);
 		return SDF_WRONG_PAGE_KIND;
 	}
 	if (tileOutside(p, x, y, w, h)) {

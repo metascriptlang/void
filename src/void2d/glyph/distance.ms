@@ -7,7 +7,11 @@ import {
 	truncInt,
 } from "../trueType/fontInfo";
 import { Point, tesselateCubic } from "../trueType/rasterize";
-import { computeCrossingsX, solveCubic, squaredDistance } from "../trueType/sdf";
+import {
+	computeCrossingsX,
+	solveCubic,
+	squaredDistance,
+} from "../trueType/sdf";
 import { shortOf } from "./outline";
 
 export const SDF_EM: float32 = 32.0;
@@ -59,7 +63,9 @@ function pointDistance(
 			const x1: float32 = (verts[i - 1].x as float32) * scaleX;
 			const y1: float32 = (verts[i - 1].y as float32) * scaleY;
 			const dist2 = squaredDistance(x0, y0, sx, sy);
-			if (dist2 < minDist * minDist) { minDist = sqrtF(dist2); }
+			if (dist2 < minDist * minDist) {
+				minDist = sqrtF(dist2);
+			}
 			const dist: float32 =
 				absF((x1 - x0) * (y0 - sy) - (y1 - y0) * (x0 - sx)) * precompute[i];
 			if (dist < minDist) {
@@ -68,7 +74,9 @@ function pointDistance(
 				const px: float32 = x0 - sx;
 				const py: float32 = y0 - sy;
 				const t: float32 = -(px * dx + py * dy) / (dx * dx + dy * dy);
-				if (t >= 0.0 && t <= 1.0) { minDist = dist; }
+				if (t >= 0.0 && t <= 1.0) {
+					minDist = dist;
+				}
 			}
 		} else if (v.kind == VERTEX_CURVE) {
 			const x2: float32 = (verts[i - 1].x as float32) * scaleX;
@@ -79,8 +87,12 @@ function pointDistance(
 			const boxY0 = minF(minF(y0, y1), y2);
 			const boxX1 = maxF(maxF(x0, x1), x2);
 			const boxY1 = maxF(maxF(y0, y1), y2);
-			if (sx > boxX0 - minDist && sx < boxX1 + minDist &&
-				sy > boxY0 - minDist && sy < boxY1 + minDist) {
+			if (
+				sx > boxX0 - minDist &&
+				sx < boxX1 + minDist &&
+				sy > boxY0 - minDist &&
+				sy < boxY1 + minDist
+			) {
 				let num: int32 = 0;
 				const ax: float32 = x1 - x0;
 				const ay: float32 = y1 - y0;
@@ -114,12 +126,15 @@ function pointDistance(
 					}
 				} else {
 					const b: float32 = 3 * (ax * bx + ay * by) * aInv;
-					const c: float32 = (2 * (ax * ax + ay * ay) + (mx * bx + my * by)) * aInv;
+					const c: float32 =
+						(2 * (ax * ax + ay * ay) + (mx * bx + my * by)) * aInv;
 					const d: float32 = (mx * ax + my * ay) * aInv;
 					num = solveCubic(b, c, d, res);
 				}
 				let dist2 = squaredDistance(x0, y0, sx, sy);
-				if (dist2 < minDist * minDist) { minDist = sqrtF(dist2); }
+				if (dist2 < minDist * minDist) {
+					minDist = sqrtF(dist2);
+				}
 				for (let r: int32 = 0; r < num; r++) {
 					if (res[r] >= 0.0 && res[r] <= 1.0) {
 						const t: float32 = res[r];
@@ -127,13 +142,17 @@ function pointDistance(
 						const px: float32 = it * it * x0 + 2 * t * it * x1 + t * t * x2;
 						const py: float32 = it * it * y0 + 2 * t * it * y1 + t * t * y2;
 						dist2 = squaredDistance(px, py, sx, sy);
-						if (dist2 < minDist * minDist) { minDist = sqrtF(dist2); }
+						if (dist2 < minDist * minDist) {
+							minDist = sqrtF(dist2);
+						}
 					}
 				}
 			}
 		}
 	}
-	if (winding == 0) { minDist = -minDist; }
+	if (winding == 0) {
+		minDist = -minDist;
+	}
 	return minDist;
 }
 
@@ -164,7 +183,9 @@ export function distanceFill(
 				const y0: float32 = (v.y as float32) * scaleY;
 				const x1: float32 = (verts[j].x as float32) * scaleX;
 				const y1: float32 = (verts[j].y as float32) * scaleY;
-				const dist: float32 = sqrtF((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+				const dist: float32 = sqrtF(
+					(x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0),
+				);
 				precompute[i] = (dist < eps) ? 0.0 : 1.0 / dist;
 			},
 			VERTEX_CURVE => {
@@ -182,18 +203,28 @@ export function distanceFill(
 			_ => {
 				precompute[i] = 0.0;
 			},
-		}
+		};
 		j = i;
 	}
 	for (let y: int32 = box.y0; y < box.y1; y++) {
 		for (let x: int32 = box.x0; x < box.x1; x++) {
 			const sx: float32 = (x as float32) + 0.5 - shiftX;
 			const sy: float32 = (y as float32) + 0.5;
-			const minDist = pointDistance(verts, precompute, scaleX, scaleY, sx, sy, hits, res);
+			const minDist = pointDistance(
+				verts,
+				precompute,
+				scaleX,
+				scaleY,
+				sx,
+				sy,
+				hits,
+				res,
+			);
 			let val: float32 = 0.0;
 			if (outline) {
 				const covered: float32 = 0.5 + minDist + bias;
-				val = covered <= 0.0 ? 0.0 : covered >= 1.0 ? 255.0 : covered * 255.0 + 0.5;
+				val =
+					covered <= 0.0 ? 0.0 : covered >= 1.0 ? 255.0 : covered * 255.0 + 0.5;
 			} else {
 				val = (SDF_EDGE as float32) + SDF_DIST_SCALE * (minDist + bias);
 			}
@@ -202,13 +233,16 @@ export function distanceFill(
 			} else if (val > 255) {
 				val = 255;
 			}
-			out[(y - box.y0) * stride + (x - box.x0)] = (truncInt(val as float64) & 0xFF) as uint8;
+			out[(y - box.y0) * stride + (x - box.x0)] = (truncInt(val as float64) &
+				0xFF) as uint8;
 		}
 	}
 }
 
 function outlineQuantise(value: float32, grid: int32): int16 {
-	return shortOf(Math.floor((value * (grid as float32) + 0.5) as float64) as float32);
+	return shortOf(
+		Math.floor((value * (grid as float32) + 0.5) as float64) as float32,
+	);
 }
 
 export struct Flattened {
@@ -216,31 +250,32 @@ export struct Flattened {
 	grid: int32;
 }
 
-export function flattenCubics(input: Vec<Vertex>, flatness: float32): Flattened {
+export function flattenCubics(
+	input: Vec<Vertex>,
+	flatness: float32,
+): Flattened {
 	let reach: float32 = 1.0;
 	const count = input.length as int32;
 	for (let i: int32 = 0; i < count; i++) {
 		const v = input[i];
 		const used: int32 = match (v.kind) {
-			VERTEX_CUBIC => 6,
-			VERTEX_CURVE => 4,
-			_ => 2,
+			VERTEX_CUBIC => 6,VERTEX_CURVE => 4,_ => 2,
 		};
 		for (let k: int32 = 0; k < used; k++) {
 			const coordinate: int16 = match (k) {
-				0 => v.x,
-				1 => v.y,
-				2 => v.cx,
-				3 => v.cy,
-				4 => v.cx1,
-				_ => v.cy1,
+				0 => v.x,1 => v.y,2 => v.cx,3 => v.cy,4 => v.cx1,_ => v.cy1,
 			};
 			const value = coordinate as float32;
-			if (absF(value) > reach) { reach = absF(value); }
+			if (absF(value) > reach) {
+				reach = absF(value);
+			}
 		}
 	}
 	let grid: int32 = 1;
-	while (grid < FLATTEN_GRID_LIMIT && reach * ((grid * 2) as float32) <= FLATTEN_REACH) {
+	while (
+		grid < FLATTEN_GRID_LIMIT &&
+		reach * ((grid * 2) as float32) <= FLATTEN_REACH
+	) {
 		grid *= 2;
 	}
 	const flatnessSquared: float32 = flatness * flatness;

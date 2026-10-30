@@ -67,8 +67,12 @@ when (emcc) {
 }
 
 export function needSlots(op: string, count: int64, need: int32): void {
-	if (count >= (need as int64)) { return; }
-	throw new Error(`void2d: ${op} writes ${need} values into a span of ${count}`);
+	if (count >= (need as int64)) {
+		return;
+	}
+	throw new Error(
+		`void2d: ${op} writes ${need} values into a span of ${count}`,
+	);
 }
 
 export function validFace(face: int32): boolean {
@@ -81,9 +85,13 @@ export function isSynthetic(face: GlyphFace): boolean {
 
 function readWholeFile(path: string): uint8[] | null {
 	const size = sfntSourceSize(path);
-	if (size <= 0) { return null; }
+	if (size <= 0) {
+		return null;
+	}
 	const bytes: uint8[] = new Array<uint8>(size as int32);
-	if (!sfntSourceRead(path, 0, bytes)) { return null; }
+	if (!sfntSourceRead(path, 0, bytes)) {
+		return null;
+	}
 	return bytes;
 }
 
@@ -101,8 +109,13 @@ function findTableSlice(face: GlyphFace, tag: string): TableSlice {
 	const tables = data.u16At(font + 4);
 	for (let table: int32 = 0; table < tables; table++) {
 		const record: int64 = font + 12 + 16 * (table as int64);
-		if (!data.hasTag(record, tag)) { continue; }
-		return { offset: data.u32At(record + 8), length: asInt32(data.u32At(record + 12)) };
+		if (!data.hasTag(record, tag)) {
+			continue;
+		}
+		return {
+			offset: data.u32At(record + 8),
+			length: asInt32(data.u32At(record + 12)),
+		};
 	}
 	return { offset: -1, length: 0 };
 }
@@ -138,7 +151,11 @@ function faceVMetrics(face: GlyphFace): VMetrics {
 		}
 	}
 	const vertical = getFontVMetrics(face.info);
-	return { ascent: vertical.ascent, descent: vertical.descent, lineGap: vertical.lineGap };
+	return {
+		ascent: vertical.ascent,
+		descent: vertical.descent,
+		lineGap: vertical.lineGap,
+	};
 }
 
 function advanceUnits(face: GlyphFace, glyph: int32): int32 {
@@ -176,15 +193,21 @@ function glyphInk(face: GlyphFace, glyph: int32): Ink {
 		}
 	}
 	const box = getGlyphBox(face.info, glyph);
-	if (box == null) { return { present: false, x0: 0, y0: 0, x1: 0, y1: 0 }; }
+	if (box == null) {
+		return { present: false, x0: 0, y0: 0, x1: 0, y1: 0 };
+	}
 	return { present: true, x0: box.x0, y0: box.y0, x1: box.x1, y1: box.y1 };
 }
 
 function glyphHeight(face: GlyphFace, codepoint: int32): float32 {
 	const glyph = findGlyph(face, codepoint);
-	if (glyph == 0) { return 0.0; }
+	if (glyph == 0) {
+		return 0.0;
+	}
 	const ink = glyphInk(face, glyph);
-	if (!ink.present) { return 0.0; }
+	if (!ink.present) {
+		return 0.0;
+	}
 	return (ink.y1 - ink.y0) as float32;
 }
 
@@ -199,13 +222,21 @@ function asciiExtent(face: GlyphFace): AsciiExtent {
 	let widest: int32 = 0;
 	for (let codepoint: int32 = 32; codepoint < 127; codepoint++) {
 		const glyph = findGlyph(face, codepoint);
-		if (glyph == 0) { continue; }
+		if (glyph == 0) {
+			continue;
+		}
 		const advance = advanceUnits(face, glyph);
-		if (advance > widest) { widest = advance; }
+		if (advance > widest) {
+			widest = advance;
+		}
 		const ink = glyphInk(face, glyph);
 		if (ink.present) {
-			if (ink.y1 > top) { top = ink.y1; }
-			if (ink.y0 < bottom) { bottom = ink.y0; }
+			if (ink.y1 > top) {
+				top = ink.y1;
+			}
+			if (ink.y0 < bottom) {
+				bottom = ink.y0;
+			}
 		}
 	}
 	return { height: (top - bottom) as float32, cellWidth: widest as float32 };
@@ -213,10 +244,14 @@ function asciiExtent(face: GlyphFace): AsciiExtent {
 
 function ideographWidth(face: GlyphFace): float32 {
 	const glyph = findGlyph(face, 0x6C34);
-	if (glyph == 0) { return 0.0; }
+	if (glyph == 0) {
+		return 0.0;
+	}
 	const advance = advanceUnits(face, glyph);
 	const ink = glyphInk(face, glyph);
-	if (ink.present && ink.x1 - ink.x0 > advance) { return 0.0; }
+	if (ink.present && ink.x1 - ink.x0 > advance) {
+		return 0.0;
+	}
 	return advance as float32;
 }
 
@@ -239,9 +274,12 @@ function measureHeights(face: GlyphFace): FaceHeights {
 	const exEstimate: float32 = ex > 0.0 ? ex : 0.75 * capEstimate;
 	const extent = asciiExtent(face);
 	let asciiHeight: float32 = extent.height;
-	if (asciiHeight <= 0.0) { asciiHeight = 1.5 * capEstimate; }
+	if (asciiHeight <= 0.0) {
+		asciiHeight = 1.5 * capEstimate;
+	}
 	const twoCells: float32 = 2.0 * extent.cellWidth;
-	const icEstimate: float32 = ic > 0.0 ? ic : (asciiHeight < twoCells ? asciiHeight : twoCells);
+	const icEstimate: float32 =
+		ic > 0.0 ? ic : asciiHeight < twoCells ? asciiHeight : twoCells;
 	return {
 		cap: cap,
 		ex: ex,
@@ -254,7 +292,9 @@ function measureHeights(face: GlyphFace): FaceHeights {
 }
 
 function measureFace(face: GlyphFace): void {
-	if (face.measured) { return; }
+	if (face.measured) {
+		return;
+	}
 	face.heights = measureHeights(face);
 	const post = findTableSlice(face, "post");
 	const os2 = findTableSlice(face, "OS/2");
@@ -264,19 +304,27 @@ function measureFace(face: GlyphFace): void {
 	const exHeight: float32 = face.heights.exEstimate;
 	const underlinePosition = hasPost ? data.i16At(post.offset + 8) : 0;
 	const underlineSize = hasPost ? data.i16At(post.offset + 10) : 0;
-	face.underlineThickness = underlineSize > 0 ? (underlineSize as float32) : 0.15 * exHeight;
-	face.underlineTop = hasPost && (underlineSize != 0 || underlinePosition != 0)
-		? (underlinePosition as float32) : -face.underlineThickness;
+	face.underlineThickness =
+		underlineSize > 0 ? (underlineSize as float32) : 0.15 * exHeight;
+	face.underlineTop =
+		hasPost && (underlineSize != 0 || underlinePosition != 0)
+			? (underlinePosition as float32)
+			: -face.underlineThickness;
 	const strikeSize = hasOs2 ? data.i16At(os2.offset + 26) : 0;
 	const strikePosition = hasOs2 ? data.i16At(os2.offset + 28) : 0;
-	face.strikeThickness = strikeSize > 0 ? (strikeSize as float32) : face.underlineThickness;
-	face.strikeTop = hasOs2 && (strikeSize != 0 || strikePosition != 0)
-		? (strikePosition as float32) : (exHeight + face.strikeThickness) * 0.5;
+	face.strikeThickness =
+		strikeSize > 0 ? (strikeSize as float32) : face.underlineThickness;
+	face.strikeTop =
+		hasOs2 && (strikeSize != 0 || strikePosition != 0)
+			? (strikePosition as float32)
+			: (exHeight + face.strikeThickness) * 0.5;
 	face.measured = true;
 }
 
 export function void2dGlyphScale(face: int32, sizePx: float32): float32 {
-	if (!validFace(face)) { return 0.0; }
+	if (!validFace(face)) {
+		return 0.0;
+	}
 	when (emcc) {
 		if (state.faces[face].browser) { return sizePx / BROWSER_UNITS_PER_EM; }
 	}
@@ -285,8 +333,12 @@ export function void2dGlyphScale(face: int32, sizePx: float32): float32 {
 
 export function void2dGlyphFaceHeights(face: int32, out: Span<float32>): void {
 	needSlots("void2dGlyphFaceHeights", out.length as int64, 7);
-	for (let i: int32 = 0; i < 7; i++) { out[i] = 0.0; }
-	if (!validFace(face)) { return; }
+	for (let i: int32 = 0; i < 7; i++) {
+		out[i] = 0.0;
+	}
+	if (!validFace(face)) {
+		return;
+	}
 	const f = faceAt(face);
 	measureFace(f);
 	const heights = f.heights;
@@ -300,13 +352,19 @@ export function void2dGlyphFaceHeights(face: int32, out: Span<float32>): void {
 	out[6] = heights.lineHeight * perEm;
 }
 
-export function void2dGlyphDecoration(face: int32, sizePx: float32, out: Span<float32>): void {
+export function void2dGlyphDecoration(
+	face: int32,
+	sizePx: float32,
+	out: Span<float32>,
+): void {
 	needSlots("void2dGlyphDecoration", out.length as int64, 4);
 	out[0] = 0.0;
 	out[1] = 0.0;
 	out[2] = 0.0;
 	out[3] = 0.0;
-	if (!validFace(face)) { return; }
+	if (!validFace(face)) {
+		return;
+	}
 	const f = faceAt(face);
 	measureFace(f);
 	const scale = void2dGlyphScale(face, sizePx);
@@ -342,7 +400,8 @@ export function void2dGlyphFaceLoad(path: string, index: int32): int32 {
 			colourHandle = colourRegister(opened.face);
 		}
 	}
-	let found: FontInfo | null = offset >= 0 ? initFont(holder.data, offset) : null;
+	let found: FontInfo | null =
+		offset >= 0 ? initFont(holder.data, offset) : null;
 	let colourOnly: boolean = false;
 	let glyphCount: int32 = 0;
 	let outlines: boolean = found != null;
@@ -426,14 +485,22 @@ function copyFace(base: GlyphFace): GlyphFace {
 	return face;
 }
 
-export function void2dGlyphFaceSynthetic(face: int32, bold: int32, italic: int32): int32 {
-	if (!validFace(face)) { return FACE_NO_BASE; }
+export function void2dGlyphFaceSynthetic(
+	face: int32,
+	bold: int32,
+	italic: int32,
+): int32 {
+	if (!validFace(face)) {
+		return FACE_NO_BASE;
+	}
 	const synthetic = copyFace(faceAt(face));
 	if (bold != 0) {
 		const vertical = faceVMetrics(synthetic);
 		synthetic.emboldenUnits = (vertical.lineUnits() as float32) / 32.0;
 	}
-	if (italic != 0) { synthetic.skew = ITALIC_SKEW; }
+	if (italic != 0) {
+		synthetic.skew = ITALIC_SKEW;
+	}
 	state.faces.push(synthetic);
 	return (state.faces.length as int32) - 1;
 }
@@ -485,20 +552,30 @@ when (emcc) {
 }
 
 export function glyphFaceBytes(face: int32): FaceBytes | null {
-	if (!validFace(face) || state.faces[face].sprite) { return null; }
+	if (!validFace(face) || state.faces[face].sprite) {
+		return null;
+	}
 	return state.faces[face].bytes;
 }
 
 export function void2dGlyphIndex(face: int32, codepoint: int32): int32 {
-	if (!validFace(face)) { return 0; }
+	if (!validFace(face)) {
+		return 0;
+	}
 	when (voidSprites) {
 		if (state.faces[face].sprite) { return spriteIndex(codepoint); }
 	}
 	return findGlyph(state.faces[face], codepoint);
 }
 
-export function void2dGlyphAdvance(face: int32, glyph: int32, sizePx: float32): float32 {
-	if (!validFace(face)) { return 0.0; }
+export function void2dGlyphAdvance(
+	face: int32,
+	glyph: int32,
+	sizePx: float32,
+): float32 {
+	if (!validFace(face)) {
+		return 0.0;
+	}
 	const f = faceAt(face);
 	when (voidSprites) {
 		if (f.sprite) {
@@ -506,33 +583,56 @@ export function void2dGlyphAdvance(face: int32, glyph: int32, sizePx: float32): 
 			return spriteAsciiUnits(f) * void2dGlyphScale(face, sizePx);
 		}
 	}
-	if ((f.colourOnly || f.platform != null) && (glyph < 0 || glyph >= f.glyphCount)) {
+	if (
+		(f.colourOnly || f.platform != null) && (glyph < 0 || glyph >= f.glyphCount)
+	) {
 		return 0.0;
 	}
-	return ((advanceUnits(f, glyph) as float32) + f.emboldenUnits) * void2dGlyphScale(face, sizePx);
+	return (
+		((advanceUnits(f, glyph) as float32) + f.emboldenUnits) *
+		void2dGlyphScale(face, sizePx)
+	);
 }
 
 export function void2dGlyphEmbolden(face: int32, sizePx: float32): float32 {
-	if (!validFace(face)) { return 0.0; }
+	if (!validFace(face)) {
+		return 0.0;
+	}
 	return state.faces[face].emboldenUnits * void2dGlyphScale(face, sizePx);
 }
 
-export function void2dGlyphKern(face: int32, left: int32, right: int32, sizePx: float32): float32 {
-	if (!validFace(face)) { return 0.0; }
+export function void2dGlyphKern(
+	face: int32,
+	left: int32,
+	right: int32,
+	sizePx: float32,
+): float32 {
+	if (!validFace(face)) {
+		return 0.0;
+	}
 	const f = faceAt(face);
-	if (f.sprite || f.browser) { return 0.0; }
-	const units = f.kernLookups.length > 0
-		? gposKern(f.info, f.kernLookups, left, right)
-		: getGlyphKernInfoAdvance(f.info, left, right);
+	if (f.sprite || f.browser) {
+		return 0.0;
+	}
+	const units =
+		f.kernLookups.length > 0
+			? gposKern(f.info, f.kernLookups, left, right)
+			: getGlyphKernInfoAdvance(f.info, left, right);
 	return (units as float32) * void2dGlyphScale(face, sizePx);
 }
 
-export function void2dGlyphFaceMetrics(face: int32, sizePx: float32, out: Span<float32>): void {
+export function void2dGlyphFaceMetrics(
+	face: int32,
+	sizePx: float32,
+	out: Span<float32>,
+): void {
 	needSlots("void2dGlyphFaceMetrics", out.length as int64, 3);
 	out[0] = 0.0;
 	out[1] = 0.0;
 	out[2] = 0.0;
-	if (!validFace(face)) { return; }
+	if (!validFace(face)) {
+		return;
+	}
 	const vertical = faceVMetrics(state.faces[face]);
 	const scale = void2dGlyphScale(face, sizePx);
 	out[0] = (vertical.ascent as float32) * scale;
@@ -670,14 +770,20 @@ when (voidSprites) {
 }
 
 export function void2dGlyphBox(
-	face: int32, glyph: int32, sizePx: float32, shiftX: float32, out: Span<int32>,
+	face: int32,
+	glyph: int32,
+	sizePx: float32,
+	shiftX: float32,
+	out: Span<int32>,
 ): void {
 	needSlots("void2dGlyphBox", out.length as int64, 4);
 	out[0] = 0;
 	out[1] = 0;
 	out[2] = 0;
 	out[3] = 0;
-	if (!validFace(face)) { return; }
+	if (!validFace(face)) {
+		return;
+	}
 	const scale = void2dGlyphScale(face, sizePx);
 	const f = faceAt(face);
 	when (voidSprites) {
@@ -699,5 +805,8 @@ export function void2dGlyphBox(
 		putBox(out, shapeBox(vertices, scale, shiftX));
 		return;
 	}
-	putBox(out, getGlyphBitmapBoxSubpixel(f.info, glyph, scale, scale, shiftX, 0.0));
+	putBox(
+		out,
+		getGlyphBitmapBoxSubpixel(f.info, glyph, scale, scale, shiftX, 0.0),
+	);
 }

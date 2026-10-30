@@ -17,19 +17,24 @@ const MAX_SUBR_DEPTH: int32 = 10;
 const MAX_STACK: int32 = 48;
 
 export function get8(this ref b: Buf): int32 {
-	if (b.cursor >= b.size) { return 0; }
+	if (b.cursor >= b.size) {
+		return 0;
+	}
 	const value = b.data.u8At(b.base + (b.cursor as int64));
 	b.cursor += 1;
 	return value;
 }
 
 function peek8(this b: Buf): int32 {
-	if (b.cursor >= b.size) { return 0; }
+	if (b.cursor >= b.size) {
+		return 0;
+	}
 	return b.data.u8At(b.base + (b.cursor as int64));
 }
 
 export function seekTo(this ref b: Buf, offset: int64): void {
-	b.cursor = (offset > (b.size as int64) || offset < 0) ? b.size : (offset as int32);
+	b.cursor =
+		(offset > (b.size as int64) || offset < 0) ? b.size : (offset as int32);
 }
 
 export function skip(this ref b: Buf, offset: int32): void {
@@ -53,7 +58,12 @@ export function range(this b: Buf, offset: int32, size: int32): Buf {
 	if (offset < 0 || size < 0 || offset > b.size || size > b.size - offset) {
 		return newBuf(b.data);
 	}
-	return { data: b.data, base: b.base + (offset as int64), size: size, cursor: 0 };
+	return {
+		data: b.data,
+		base: b.base + (offset as int64),
+		size: size,
+		cursor: 0,
+	};
 }
 
 export function readIndex(this ref b: Buf): Buf {
@@ -69,11 +79,21 @@ export function readIndex(this ref b: Buf): Buf {
 
 function readInt(this ref b: Buf): int32 {
 	const b0 = b.get8();
-	if (b0 >= 32 && b0 <= 246) { return b0 - 139; }
-	if (b0 >= 247 && b0 <= 250) { return (b0 - 247) * 256 + b.get8() + 108; }
-	if (b0 >= 251 && b0 <= 254) { return -(b0 - 251) * 256 - b.get8() - 108; }
-	if (b0 == 28) { return b.get16(); }
-	if (b0 == 29) { return asInt32(b.getBytes(4)); }
+	if (b0 >= 32 && b0 <= 246) {
+		return b0 - 139;
+	}
+	if (b0 >= 247 && b0 <= 250) {
+		return (b0 - 247) * 256 + b.get8() + 108;
+	}
+	if (b0 >= 251 && b0 <= 254) {
+		return -(b0 - 251) * 256 - b.get8() - 108;
+	}
+	if (b0 == 28) {
+		return b.get16();
+	}
+	if (b0 == 29) {
+		return asInt32(b.getBytes(4));
+	}
 	return 0;
 }
 
@@ -83,7 +103,9 @@ function skipOperand(this ref b: Buf): void {
 		b.skip(1);
 		while (b.cursor < b.size) {
 			const v = b.get8();
-			if ((v & 0xF) == 0xF || (v >> 4) == 0xF) { break; }
+			if ((v & 0xF) == 0xF || v >> 4 == 0xF) {
+				break;
+			}
 		}
 	} else {
 		b.readInt();
@@ -94,11 +116,17 @@ function dictGet(this ref b: Buf, key: int32): Buf {
 	b.seekTo(0);
 	while (b.cursor < b.size) {
 		const start = b.cursor;
-		while (b.peek8() >= 28) { b.skipOperand(); }
+		while (b.peek8() >= 28) {
+			b.skipOperand();
+		}
 		const end = b.cursor;
 		let op = b.get8();
-		if (op == 12) { op = b.get8() | 0x100; }
-		if (op == key) { return b.range(start, end - start); }
+		if (op == 12) {
+			op = b.get8() | 0x100;
+		}
+		if (op == key) {
+			return b.range(start, end - start);
+		}
 	}
 	return b.range(0, 0);
 }
@@ -106,7 +134,8 @@ function dictGet(this ref b: Buf, key: int32): Buf {
 // Fills out[0..] with the operands of `key`, leaving the entries the dict lacks untouched.
 export function dictGetInts(this ref b: Buf, key: int32, out: int32[]): void {
 	let operands = b.dictGet(key);
-	for (let i: int32 = 0; i < (out.length as int32) && operands.cursor < operands.size; i++) {
+	for (let i: int32 = 0; i < (out.length as int32) &&
+	operands.cursor < operands.size; i++) {
 		out[i] = operands.readInt();
 	}
 }
@@ -125,7 +154,9 @@ export function indexGet(index: Buf, i: int32): Buf {
 	const start = asInt32(b.getBytes(offsetSize));
 	const end = asInt32(b.getBytes(offsetSize));
 	return b.range(
-		asInt32(2 + ((count + 1) as int64) * (offsetSize as int64) + (start as int64)),
+		asInt32(
+			2 + ((count + 1) as int64) * (offsetSize as int64) + (start as int64),
+		),
 		asInt32((end as int64) - (start as int64)),
 	);
 }
@@ -134,13 +165,19 @@ export function getSubrs(cff: Buf, fontdict: Buf): Buf {
 	let dict = fontdict;
 	let privateLoc: int32[] = [0, 0];
 	dict.dictGetInts(18, privateLoc);
-	if (privateLoc[1] == 0 || privateLoc[0] == 0) { return newBuf(cff.data); }
+	if (privateLoc[1] == 0 || privateLoc[0] == 0) {
+		return newBuf(cff.data);
+	}
 	let privateDict = cff.range(privateLoc[1], privateLoc[0]);
 	let subrsOffset: int32[] = [0];
 	privateDict.dictGetInts(19, subrsOffset);
-	if (subrsOffset[0] == 0) { return newBuf(cff.data); }
+	if (subrsOffset[0] == 0) {
+		return newBuf(cff.data);
+	}
 	let source = cff;
-	source.seekTo(asInt32((privateLoc[1] as int64) + (subrsOffset[0] as int64)) as int64);
+	source.seekTo(
+		asInt32((privateLoc[1] as int64) + (subrsOffset[0] as int64)) as int64,
+	);
 	return source.readIndex();
 }
 
@@ -154,7 +191,9 @@ function getSubr(index: Buf, n: int32): Buf {
 		bias = 1131;
 	}
 	const biased: int64 = (n as int64) + bias;
-	if (biased < 0 || biased >= (count as int64)) { return newBuf(index.data); }
+	if (biased < 0 || biased >= (count as int64)) {
+		return newBuf(index.data);
+	}
 	return indexGet(index, biased as int32);
 }
 
@@ -181,8 +220,9 @@ function cidGetGlyphSubrs(info: FontInfo, glyphIndex: int32): Buf {
 				start = end;
 			}
 		},
-		_ => {},
-	}
+		_ => {
+		},
+	};
 	return getSubrs(info.cff, indexGet(info.fontdicts, fdselector));
 }
 
@@ -219,10 +259,18 @@ function newCtx(bounds: boolean): CsCtx {
 }
 
 function trackVertex(this ref c: CsCtx, x: int32, y: int32): void {
-	if (x > c.maxX || !c.started) { c.maxX = x; }
-	if (y > c.maxY || !c.started) { c.maxY = y; }
-	if (x < c.minX || !c.started) { c.minX = x; }
-	if (y < c.minY || !c.started) { c.minY = y; }
+	if (x > c.maxX || !c.started) {
+		c.maxX = x;
+	}
+	if (y > c.maxY || !c.started) {
+		c.maxY = y;
+	}
+	if (x < c.minX || !c.started) {
+		c.minX = x;
+	}
+	if (y < c.minY || !c.started) {
+		c.minY = y;
+	}
 	c.started = true;
 }
 
@@ -276,13 +324,29 @@ function rMoveTo(this ref c: CsCtx, dx: float32, dy: float32): void {
 	c.y = c.y + dy;
 	c.firstX = c.x;
 	c.firstY = c.y;
-	c.addVertex(VERTEX_MOVE, truncInt(c.x as float64), truncInt(c.y as float64), 0, 0, 0, 0);
+	c.addVertex(
+		VERTEX_MOVE,
+		truncInt(c.x as float64),
+		truncInt(c.y as float64),
+		0,
+		0,
+		0,
+		0,
+	);
 }
 
 function rLineTo(this ref c: CsCtx, dx: float32, dy: float32): void {
 	c.x += dx;
 	c.y += dy;
-	c.addVertex(VERTEX_LINE, truncInt(c.x as float64), truncInt(c.y as float64), 0, 0, 0, 0);
+	c.addVertex(
+		VERTEX_LINE,
+		truncInt(c.x as float64),
+		truncInt(c.y as float64),
+		0,
+		0,
+		0,
+		0,
+	);
 }
 
 function rCurveTo(
@@ -312,7 +376,11 @@ function rCurveTo(
 }
 
 // stbtt__run_charstring; false is every STBTT__CSERR (a charstring stb refuses).
-function runCharstring(info: FontInfo, glyphIndex: int32, ref c: CsCtx): boolean {
+function runCharstring(
+	info: FontInfo,
+	glyphIndex: int32,
+	ref c: CsCtx,
+): boolean {
 	let inHeader = true;
 	let maskbits: int32 = 0;
 	let subrStackHeight: int32 = 0;
@@ -328,7 +396,9 @@ function runCharstring(info: FontInfo, glyphIndex: int32, ref c: CsCtx): boolean
 		const b0 = b.get8();
 		match (b0) {
 			0x13 | 0x14 => {
-				if (inHeader) { maskbits += sp / 2; }
+				if (inHeader) {
+					maskbits += sp / 2;
+				}
 				inHeader = false;
 				b.skip((maskbits + 7) / 8);
 			},
@@ -337,47 +407,65 @@ function runCharstring(info: FontInfo, glyphIndex: int32, ref c: CsCtx): boolean
 			},
 			0x15 => {
 				inHeader = false;
-				if (sp < 2) { return false; }
+				if (sp < 2) {
+					return false;
+				}
 				c.rMoveTo(s[sp - 2], s[sp - 1]);
 			},
 			0x04 => {
 				inHeader = false;
-				if (sp < 1) { return false; }
+				if (sp < 1) {
+					return false;
+				}
 				c.rMoveTo(0, s[sp - 1]);
 			},
 			0x16 => {
 				inHeader = false;
-				if (sp < 1) { return false; }
+				if (sp < 1) {
+					return false;
+				}
 				c.rMoveTo(s[sp - 1], 0);
 			},
 			0x05 => {
-				if (sp < 2) { return false; }
+				if (sp < 2) {
+					return false;
+				}
 				while (i + 1 < sp) {
 					c.rLineTo(s[i], s[i + 1]);
 					i += 2;
 				}
 			},
 			0x06 | 0x07 => {
-				if (sp < 1) { return false; }
+				if (sp < 1) {
+					return false;
+				}
 				let vertical = b0 == 0x07;
 				while (true) {
 					if (!vertical) {
-						if (i >= sp) { break; }
+						if (i >= sp) {
+							break;
+						}
 						c.rLineTo(s[i], 0);
 						i++;
 					}
 					vertical = false;
-					if (i >= sp) { break; }
+					if (i >= sp) {
+						break;
+					}
 					c.rLineTo(0, s[i]);
 					i++;
 				}
 			},
 			0x1E | 0x1F => {
-				if (sp < 4) { return false; }
+				if (sp < 4) {
+					return false;
+				}
 				let horizontal = b0 == 0x1F;
 				while (true) {
 					if (!horizontal) {
-						if (i + 3 >= sp) { break; }
+						if (i + 3 >= sp) {
+							break;
+						}
 						c.rCurveTo(
 							0,
 							s[i],
@@ -389,7 +477,9 @@ function runCharstring(info: FontInfo, glyphIndex: int32, ref c: CsCtx): boolean
 						i += 4;
 					}
 					horizontal = false;
-					if (i + 3 >= sp) { break; }
+					if (i + 3 >= sp) {
+						break;
+					}
 					c.rCurveTo(
 						s[i],
 						0,
@@ -402,32 +492,44 @@ function runCharstring(info: FontInfo, glyphIndex: int32, ref c: CsCtx): boolean
 				}
 			},
 			0x08 => {
-				if (sp < 6) { return false; }
+				if (sp < 6) {
+					return false;
+				}
 				while (i + 5 < sp) {
 					c.rCurveTo(s[i], s[i + 1], s[i + 2], s[i + 3], s[i + 4], s[i + 5]);
 					i += 6;
 				}
 			},
 			0x18 => {
-				if (sp < 8) { return false; }
+				if (sp < 8) {
+					return false;
+				}
 				while (i + 5 < sp - 2) {
 					c.rCurveTo(s[i], s[i + 1], s[i + 2], s[i + 3], s[i + 4], s[i + 5]);
 					i += 6;
 				}
-				if (i + 1 >= sp) { return false; }
+				if (i + 1 >= sp) {
+					return false;
+				}
 				c.rLineTo(s[i], s[i + 1]);
 			},
 			0x19 => {
-				if (sp < 8) { return false; }
+				if (sp < 8) {
+					return false;
+				}
 				while (i + 1 < sp - 6) {
 					c.rLineTo(s[i], s[i + 1]);
 					i += 2;
 				}
-				if (i + 5 >= sp) { return false; }
+				if (i + 5 >= sp) {
+					return false;
+				}
 				c.rCurveTo(s[i], s[i + 1], s[i + 2], s[i + 3], s[i + 4], s[i + 5]);
 			},
 			0x1A | 0x1B => {
-				if (sp < 4) { return false; }
+				if (sp < 4) {
+					return false;
+				}
 				let f: float32 = 0;
 				if ((sp & 1) != 0) {
 					f = s[i];
@@ -445,22 +547,32 @@ function runCharstring(info: FontInfo, glyphIndex: int32, ref c: CsCtx): boolean
 			},
 			0x0A | 0x1D => {
 				if (b0 == 0x0A && !hasSubrs) {
-					if (info.fdselect.size != 0) { subrs = cidGetGlyphSubrs(info, glyphIndex); }
+					if (info.fdselect.size != 0) {
+						subrs = cidGetGlyphSubrs(info, glyphIndex);
+					}
 					hasSubrs = true;
 				}
-				if (sp < 1) { return false; }
+				if (sp < 1) {
+					return false;
+				}
 				sp -= 1;
 				const v = truncInt(s[sp] as float64);
-				if (subrStackHeight >= MAX_SUBR_DEPTH) { return false; }
+				if (subrStackHeight >= MAX_SUBR_DEPTH) {
+					return false;
+				}
 				subrStack[subrStackHeight] = b;
 				subrStackHeight += 1;
 				b = getSubr(b0 == 0x0A ? subrs : info.gsubrs, v);
-				if (b.size == 0) { return false; }
+				if (b.size == 0) {
+					return false;
+				}
 				b.cursor = 0;
 				clearStack = false;
 			},
 			0x0B => {
-				if (subrStackHeight <= 0) { return false; }
+				if (subrStackHeight <= 0) {
+					return false;
+				}
 				subrStackHeight -= 1;
 				b = subrStack[subrStackHeight];
 				clearStack = false;
@@ -473,22 +585,30 @@ function runCharstring(info: FontInfo, glyphIndex: int32, ref c: CsCtx): boolean
 				const b1 = b.get8();
 				match (b1) {
 					0x22 => {
-						if (sp < 7) { return false; }
+						if (sp < 7) {
+							return false;
+						}
 						c.rCurveTo(s[0], 0, s[1], s[2], s[3], 0);
 						c.rCurveTo(s[4], 0, s[5], -s[2], s[6], 0);
 					},
 					0x23 => {
-						if (sp < 13) { return false; }
+						if (sp < 13) {
+							return false;
+						}
 						c.rCurveTo(s[0], s[1], s[2], s[3], s[4], s[5]);
 						c.rCurveTo(s[6], s[7], s[8], s[9], s[10], s[11]);
 					},
 					0x24 => {
-						if (sp < 9) { return false; }
+						if (sp < 9) {
+							return false;
+						}
 						c.rCurveTo(s[0], s[1], s[2], s[3], s[4], 0);
 						c.rCurveTo(s[5], 0, s[6], s[7], s[8], -(s[1] + s[3] + s[7]));
 					},
 					0x25 => {
-						if (sp < 11) { return false; }
+						if (sp < 11) {
+							return false;
+						}
 						let dx6: float32 = s[10];
 						let dy6: float32 = s[10];
 						const dx: float32 = s[0] + s[2] + s[4] + s[6] + s[8];
@@ -504,10 +624,12 @@ function runCharstring(info: FontInfo, glyphIndex: int32, ref c: CsCtx): boolean
 					_ => {
 						return false;
 					},
-				}
+				};
 			},
 			_ => {
-				if (b0 != 255 && b0 != 28 && b0 < 32) { return false; }
+				if (b0 != 255 && b0 != 28 && b0 < 32) {
+					return false;
+				}
 				let f: float32 = 0;
 				if (b0 == 255) {
 					f = (asInt32(b.getBytes(4)) as float32) / 65536;
@@ -515,27 +637,38 @@ function runCharstring(info: FontInfo, glyphIndex: int32, ref c: CsCtx): boolean
 					b.skip(-1);
 					f = wrapInt16(b.readInt()) as float32;
 				}
-				if (sp >= MAX_STACK) { return false; }
+				if (sp >= MAX_STACK) {
+					return false;
+				}
 				s[sp] = f;
 				sp += 1;
 				clearStack = false;
 			},
+		};
+		if (clearStack) {
+			sp = 0;
 		}
-		if (clearStack) { sp = 0; }
 	}
 	return false;
 }
 
 // stbtt__GetGlyphShapeT2: the outline of a CFF glyph, empty when stb returns 0.
-export function getGlyphShapeT2(info: FontInfo, glyphIndex: int32): Vec<Vertex> {
+export function getGlyphShapeT2(
+	info: FontInfo,
+	glyphIndex: int32,
+): Vec<Vertex> {
 	let c = newCtx(false);
-	if (runCharstring(info, glyphIndex, c)) { return move c.vertices; }
+	if (runCharstring(info, glyphIndex, c)) {
+		return move c.vertices;
+	}
 	return [];
 }
 
 // stbtt__GetGlyphInfoT2: the control-point box of a CFF glyph, zeros when stb returns 0.
 export function getGlyphInfoT2(info: FontInfo, glyphIndex: int32): GlyphBox {
 	let c = newCtx(true);
-	if (!runCharstring(info, glyphIndex, c)) { return { x0: 0, y0: 0, x1: 0, y1: 0 }; }
+	if (!runCharstring(info, glyphIndex, c)) {
+		return { x0: 0, y0: 0, x1: 0, y1: 0 };
+	}
 	return { x0: c.minX, y0: c.minY, x1: c.maxX, y1: c.maxY };
 }
