@@ -69,7 +69,7 @@ import { KB_PARENT_DELTAS } from "./unicodeTables";
 const NO_GLYPH: int32 = -1;
 const REMAPPED_CCC_33: int32 = 27;
 
-export struct KbParent {
+struct KbParent {
 	codepoint: uint32;
 	codepoint1: uint32;
 }
