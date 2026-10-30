@@ -169,10 +169,12 @@ export const SIZE_QUANTA_MAX: int32 = 65535;
 export const OUTLINE_LANE_MAX: int32 = 255;
 export const COVERAGE_OUTLINE_PER_PX: float32 = 4.0;
 export const SDF_OUTLINE_PER_TEXEL: float32 = 8.0;
+const SIZE_QUANTA_PER_PX: float32 = 64.0;
+const SIZE_QUANTA_OVERFLOW: float32 = 2147483000.0;
 
 export function sizeQuanta(this key: GlyphKey): int32 {
-	const scaled: float32 = key.kind == PageKind.Mask ? key.sizePx : key.sizePx * 64.0;
-	if (!(scaled < 2147483000.0)) { return 2147483647; }
+	const scaled: float32 = key.kind == PageKind.Mask ? key.sizePx : key.sizePx * SIZE_QUANTA_PER_PX;
+	if (!(scaled < SIZE_QUANTA_OVERFLOW)) { return 2147483647; }
 	return Math.floor(scaled + 0.5) as int32;
 }
 
@@ -329,16 +331,16 @@ export function beginUploadFrame(): void {
 	void2dGlyphPagesFrameBegin();
 }
 
-function firstCoveragePage(atlas: GlyphAtlas): int32 {
+function firstCoveragePage(atlas: GlyphAtlas): int32 | null {
 	for (let p = 0; p < (atlas.pages.length as int32); p++) {
 		if (atlas.pages[p].kind == PageKind.Coverage) { return p; }
 	}
-	return -1;
+	return null;
 }
 
 export function ensurePage(this atlas: GlyphAtlas): GlyphPageHandle {
-	let first: int32 = firstCoveragePage(atlas);
-	if (first < 0 && (atlas.pages.length as int32) < atlas.maxPages) {
+	let first: int32 | null = firstCoveragePage(atlas);
+	if (first === null && (atlas.pages.length as int32) < atlas.maxPages) {
 		const handle: int32 = void2dGlyphPageCreate(atlas.pageSize, PageKind.Coverage as int32);
 		if (handle >= 0) {
 			atlas.pages.push({
@@ -351,7 +353,7 @@ export function ensurePage(this atlas: GlyphAtlas): GlyphPageHandle {
 			first = (atlas.pages.length as int32) - 1;
 		}
 	}
-	return first >= 0 ? atlas.pages[first].handle : NO_GLYPH_PAGE_HANDLE;
+	return first !== null ? atlas.pages[first].handle : NO_GLYPH_PAGE_HANDLE;
 }
 
 export function pagesOfKind(this atlas: GlyphAtlas, kind: PageKind): int32 {
