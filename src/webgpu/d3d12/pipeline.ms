@@ -1,6 +1,6 @@
-import { dx12RenderPipelineCreate } from "./d3d12.h";
+import { dx12CompileLog, dx12MemoryRead, dx12Release, dx12RenderPipelineCreate, dx12ShaderCompile } from "./d3d12.h";
 import { formatInfo } from "./conv.ms";
-import { NativeError, checked, stop } from "./frame.ms";
+import { DX12_OK, NativeError, checked, stop } from "./frame.ms";
 import {
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_SHADER_BINDINGS,
@@ -138,20 +138,35 @@ export const NO_PIPELINE: PipelineNative = { state: 0, topology: 0 };
 	stop(`${member} '${value}' is not supported`);
 }
 
+// A stage's precompiled bytes skip D3DCompile; no stage reaching it loads d3dcompiler_47.dll.
+function stageBytes(code: string, bytecode: Vec<uint8>, entryPoint: string, target: string, label: string | null): Vec<uint8> {
+	if (bytecode.length > 0) { return bytecode; }
+	return compileStage(code, entryPoint == "" ? "main" : entryPoint, target, label);
+}
+
+function compileStage(code: string, entryPoint: string, target: string, label: string | null): Vec<uint8> {
+	let blob: uint64 = 0;
+	let pointer: uint64 = 0;
+	let size: uint64 = 0;
+	if (dx12ShaderCompile(code, entryPoint, target, blob, pointer, size) != DX12_OK) {
+		const log: string = dx12CompileLog();
+		stop(`D3DCompile ${target} failed for ${labelOf(label)}:\n${log}`);
+	}
+	let bytes: Vec<uint8> = new Array(size as number);
+	dx12MemoryRead(pointer, bytes[0], size);
+	dx12Release(blob);
+	return bytes;
+}
+
 export function createShaderModule(ref shaders: Vec<ShaderNative>, id: uint32, descriptor: GPUShaderModuleDescriptor): void {
 	stopOnUnportedShaderBindings("d3d12", descriptor);
 	const compute = descriptor.computeCode != "" || descriptor.computeBytecode.length > 0;
-	if (compute && descriptor.computeBytecode.length == 0) {
-		stop(`createShaderModule ${labelOf(descriptor.label)}: d3d12 takes DXBC in computeBytecode; compiling HLSL text is not built`);
-	}
-	if (!compute && (descriptor.vertexBytecode.length == 0 || descriptor.fragmentBytecode.length == 0)) {
-		stop(`createShaderModule ${labelOf(descriptor.label)}: d3d12 takes DXBC in vertexBytecode and fragmentBytecode; compiling HLSL text is not built`);
-	}
+	const label = descriptor.label;
 	put(shaders, id, {
 		compute: compute,
-		vertex: descriptor.vertexBytecode,
-		pixel: descriptor.fragmentBytecode,
-		computeBytes: descriptor.computeBytecode,
+		vertex: compute ? [] : stageBytes(descriptor.vertexCode, descriptor.vertexBytecode, descriptor.vertexEntryPoint, "vs_5_0", label),
+		pixel: compute ? [] : stageBytes(descriptor.fragmentCode, descriptor.fragmentBytecode, descriptor.fragmentEntryPoint, "ps_5_0", label),
+		computeBytes: compute ? stageBytes(descriptor.computeCode, descriptor.computeBytecode, descriptor.computeEntryPoint, "cs_5_0", label) : [],
 		bindings: descriptor.bindings,
 		attributes: descriptor.attributes,
 	});
