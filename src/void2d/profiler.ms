@@ -2,7 +2,7 @@ export const RING_CAPACITY: int32 = 1000;
 export const NO_STAMP: int64 = -1;
 export const NS_PER_MS: int64 = 1000000;
 export const FRAME_COUNT_SATURATION: int32 = 99999;
-export const BUCKET_EDGES_MS: Vec<int32> = [4, 6, 8, 10, 12, 15, 18, 25, 40];
+const BUCKET_EDGES_MS: int32[9] = [4, 6, 8, 10, 12, 15, 18, 25, 40];
 
 export enum OverlayMode {
 	Hidden,
