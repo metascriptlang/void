@@ -975,7 +975,7 @@ function vertexSlot(): int32 {
 		return activeContext.vertexTotal;
 	}
 	const at: int32 = activeContext.spill.vertices;
-	activeContext.spill = { ...activeContext.spill, vertices: at + 1 };
+	activeContext.spill.vertices = at + 1;
 	return at;
 }
 
@@ -984,7 +984,7 @@ function uiSlot(): int32 {
 		return activeContext.uiInstanceTotal;
 	}
 	const at: int32 = activeContext.spill.uiInstances;
-	activeContext.spill = { ...activeContext.spill, uiInstances: at + 1 };
+	activeContext.spill.uiInstances = at + 1;
 	return at;
 }
 
@@ -994,7 +994,7 @@ function spriteSlot(): int32 {
 		return activeContext.spriteInstanceTotal;
 	}
 	const at: int32 = activeContext.spill.spriteInstances;
-	activeContext.spill = { ...activeContext.spill, spriteInstances: at + 1 };
+	activeContext.spill.spriteInstances = at + 1;
 	return at;
 }
 
@@ -1003,7 +1003,7 @@ function effectSlot(): int32 {
 		return activeContext.effectTotal;
 	}
 	const at: int32 = activeContext.spill.effects;
-	activeContext.spill = { ...activeContext.spill, effects: at + 1 };
+	activeContext.spill.effects = at + 1;
 	return at;
 }
 
@@ -1012,7 +1012,7 @@ function commandSlot(): int32 {
 		return activeContext.commandTotal;
 	}
 	const at: int32 = activeContext.spill.commands;
-	activeContext.spill = { ...activeContext.spill, commands: at + 1 };
+	activeContext.spill.commands = at + 1;
 	return at;
 }
 
