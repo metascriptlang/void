@@ -313,7 +313,9 @@ function doBreak(
 		}
 	}
 	if (state.breakCount >= BREAK_CAPACITY) {
-		throw new Error("kb break buffer is full: the caller must drain kbBreakNext after each codepoint");
+		throw new Error(
+			"kb break buffer is full: the caller must drain kbBreakNext after each codepoint",
+		);
 	}
 	state.breaks[state.breakCount as int32] = found;
 	if (!matched) { state.breakCount += 1; }
@@ -381,7 +383,9 @@ function flushDirection(
 		state.doBreak(positionOffset, KB_BREAK_FLAG_DIRECTION, direction, 0, 0);
 	}
 	if ((breakFlags & KB_BREAK_FLAG_PARAGRAPH_DIRECTION) != 0 && state.paragraphDirection == 0) {
-		const startOfParagraphOffset = int16Of(state.paragraphStartPosition - state.currentPosition);
+		const startOfParagraphOffset = int16Of(
+			state.paragraphStartPosition - state.currentPosition,
+		);
 		state.doBreak(startOfParagraphOffset, KB_BREAK_FLAG_PARAGRAPH_DIRECTION, 0, direction, 0);
 		state.paragraphDirection = (direction & 0xFF) as uint32;
 	}
@@ -553,7 +557,7 @@ function addCodepoint(
 	const matchingBracket = kbMirrorCodepoint(codepoint);
 	const graphemeBreakClass = kbGraphemeBreakClass(codepoint);
 	const lineBreakClass = kbLineBreakClass(codepoint);
-	let wordBreakClass = kbWordBreakClass(codepoint);
+	const wordBreakClass = kbWordBreakClass(codepoint);
 	const scriptExtension = kbScriptExtension(codepoint);
 	let codepointScriptCount = kbScriptExtensionCount(scriptExtension);
 	let codepointScriptOffset = kbScriptExtensionOffset(scriptExtension);
@@ -572,8 +576,8 @@ function addCodepoint(
 	let scriptCount = state.scriptCount;
 	const scriptCountAtBeginningOfUpdate = scriptCount;
 	const breakScript = state.scriptSet[0] as uint32;
-	let bidirectional1PositionOffset = state.bidirectional1PositionOffset;
-	let bidirectional2 = state.bidirectionalClass2;
+	const bidirectional1PositionOffset = state.bidirectional1PositionOffset;
+	const bidirectional2 = state.bidirectionalClass2;
 	let bidirectional1 = state.bidirectionalClass1;
 	let pending: Pending = {
 		flagState: state.flagState << 8,
@@ -652,8 +656,12 @@ function addCodepoint(
 		let newScriptCount: int32 = 0;
 		let codepointScriptIndex: int32 = 0;
 		let scriptIndex: int32 = 0;
-		while (scriptIndex < (scriptCount as int32) && codepointScriptIndex < (codepointScriptCount as int32)) {
-			const codepointScript = KB_SCRIPT_EXTENSIONS[(codepointScriptOffset as int32) + codepointScriptIndex];
+		while (
+			scriptIndex < (scriptCount as int32) &&
+			codepointScriptIndex < (codepointScriptCount as int32)
+		) {
+			const codepointScript =
+				KB_SCRIPT_EXTENSIONS[(codepointScriptOffset as int32) + codepointScriptIndex];
 			const script = state.scriptSet[scriptIndex];
 			if (codepointScript < script) {
 				codepointScriptIndex += 1;
@@ -684,7 +692,8 @@ function addCodepoint(
 		match (bidirectionalClass) {
 			BIDI_NSM => { bidirectionalClass = bidirectional1; },
 			BIDI_L => {
-				flags &= 0xFFFFFFFF ^ (BREAK_STATE_FLAG_SAW_R_AFTER_L | BREAK_STATE_FLAG_SAW_AL_AFTER_LR);
+				flags &= 0xFFFFFFFF ^
+					(BREAK_STATE_FLAG_SAW_R_AFTER_L | BREAK_STATE_FLAG_SAW_AL_AFTER_LR);
 			},
 			BIDI_R => {
 				flags |= BREAK_STATE_FLAG_SAW_R_AFTER_L;
@@ -699,10 +708,12 @@ function addCodepoint(
 					bidirectionalClass = BIDI_AN;
 					treatAsAn = true;
 				} else {
-					if (bidirectional2 == BIDI_EN && (bidirectional1 == BIDI_ES || bidirectional1 == BIDI_CS)) {
+					if (bidirectional2 == BIDI_EN &&
+						(bidirectional1 == BIDI_ES || bidirectional1 == BIDI_CS)) {
 						bidirectional1 = BIDI_EN;
 					}
-					if (state.paragraphDirection != 0 && (flags & BREAK_STATE_FLAG_SAW_R_AFTER_L) == 0) {
+					if (state.paragraphDirection != 0 &&
+						(flags & BREAK_STATE_FLAG_SAW_R_AFTER_L) == 0) {
 						bidirectionalClass = BIDI_L;
 					}
 				}
@@ -775,8 +786,10 @@ function addCodepoint(
 	if (
 		(wordBreakClass == KB_WORD_BREAK_CLASS_EX || wordBreakClass == KB_WORD_BREAK_CLASS_FO ||
 			wordBreakClass == KB_WORD_BREAK_CLASS_ZWJ) &&
-		!(lastWordBreakClass == KB_WORD_BREAK_CLASS_SOT || lastWordBreakClass == KB_WORD_BREAK_CLASS_CR ||
-			lastWordBreakClass == KB_WORD_BREAK_CLASS_LF || lastWordBreakClass == KB_WORD_BREAK_CLASS_NL)
+		!(lastWordBreakClass == KB_WORD_BREAK_CLASS_SOT ||
+			lastWordBreakClass == KB_WORD_BREAK_CLASS_CR ||
+			lastWordBreakClass == KB_WORD_BREAK_CLASS_LF ||
+			lastWordBreakClass == KB_WORD_BREAK_CLASS_NL)
 	) {
 		wordBreak2PositionOffset = wrapInt16(wordBreak2PositionOffset + positionOffset2);
 		state.wordBreak2PositionOffset = wordBreak2PositionOffset;
