@@ -159,7 +159,7 @@ export function roundClipCoverage(round: Vec4f, radii: Vec4f): float32 {
 	return coverageFromDistance(distance, 1.0);
 }
 
-// The flat sprite pipeline (VOID2D.md "P2"): one 64-byte instance per quad and no SDF maths, so a
+// The flat sprite pipeline: one 64-byte instance per quad and no SDF maths, so a
 // sprite-only scene never pays for the UI pipeline. The affine rides per instance instead of being
 // applied on the CPU, which keeps the instance bytes unchanged from frame to frame.
 export function spriteVs(input: SpriteAttributes, b: SpriteVertexBindings): SpriteVaryings {
@@ -598,7 +598,7 @@ function dilateStroke(width: float32, pixelsPerLocal: float32): float32 {
 	return max(width, 1.0 / pixelsPerLocal);
 }
 
-// The unified UI pipeline (VOID2D.md "P2"): one program, one 108-byte stride and a per-instance
+// The unified UI pipeline: one program, one 108-byte stride and a per-instance
 // mode, so a card, its label and its image batch together. The SDF is evaluated in local space
 // (GPUI.md:35-39), and the quad is inflated by one device pixel on every side before the affine,
 // or the coverage ramp would be clipped by the geometry it softens. One device pixel across an
@@ -1142,3 +1142,4 @@ function uiColor(input: UiInput, b: UiBindings, uvDx: Vec2f, uvDy: Vec2f): Vec4f
 	}
 	return withEffect(b, vec4f(rgb, alpha), vec3f(1.0));
 }
+
