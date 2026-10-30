@@ -2,10 +2,12 @@ import {
 	dx12AdapterDescribe,
 	dx12AdapterDescription,
 	dx12DeviceCreate,
+	dx12FormatSupport,
 	dx12InfoDrain,
 	dx12QueueCreate,
 	dx12Release,
 } from "./d3d12.h";
+import { formatInfo } from "./conv.ms";
 import { TextureRecord, ViewRecord } from "../pool.ms";
 import {
 	DX12_OK,
@@ -64,6 +66,7 @@ import {
 	GPUTextureFormat,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	featureBit,
 } from "../types.ms";
 
 export struct NativeEnvironment {
@@ -101,6 +104,10 @@ const MAX_WORKGROUP_INVOCATIONS = 1024;
 const MAX_DISPATCH_GROUPS = 65535;
 const UNIFORM_OFFSET_ALIGNMENT = 256;
 const STORAGE_OFFSET_ALIGNMENT = 256;
+const FORMAT_SUPPORT1_RENDER_TARGET: uint32 = 0x4000;
+const FORMAT_SUPPORT1_BLENDABLE: uint32 = 0x8000;
+const FORMAT_SUPPORT1_DEPTH_STENCIL: uint32 = 0x10000;
+const FORMAT_SUPPORT1_SHADER_SAMPLE: uint32 = 0x200;
 
 export const BACKEND = "d3d12";
 
@@ -153,8 +160,17 @@ export function adoptSwapchain(color: uint32, depth: uint32): void {
 	swapchainDepth = depth;
 }
 
+function formatSupport(format: int32): uint32 {
+	let support1: uint32 = 0;
+	let support2: uint32 = 0;
+	commanded(dx12FormatSupport(device, format, support1, support2));
+	return support1;
+}
+
 export function formatRenderable(format: GPUTextureFormat): boolean {
-	notBuilt("formatRenderable", "D2");
+	const info = formatInfo(format, "formatRenderable format");
+	if (info.depth) { return (formatSupport(info.depthStencil) & FORMAT_SUPPORT1_DEPTH_STENCIL) != 0; }
+	return (formatSupport(info.renderTarget) & FORMAT_SUPPORT1_RENDER_TARGET) != 0;
 }
 
 export function shutdown(): void {
@@ -443,8 +459,18 @@ export function limits(): GPUSupportedLimits {
 	};
 }
 
+function sampledSupport(format: GPUTextureFormat): uint32 {
+	return formatSupport(formatInfo(format, "features format").shaderResource);
+}
+
 export function features(): GPUSupportedFeatures {
-	return { bits: 0 };
+	let bits: uint32 = 0;
+	const float32 = sampledSupport("r32float") & sampledSupport("rg32float") & sampledSupport("rgba32float");
+	if ((float32 & FORMAT_SUPPORT1_SHADER_SAMPLE) != 0) { bits |= featureBit("float32-filterable"); }
+	if ((float32 & FORMAT_SUPPORT1_BLENDABLE) != 0) { bits |= featureBit("float32-blendable"); }
+	if ((sampledSupport("rg11b10ufloat") & FORMAT_SUPPORT1_RENDER_TARGET) != 0) { bits |= featureBit("rg11b10ufloat-renderable"); }
+	bits |= featureBit("indirect-first-instance");
+	return { bits: bits };
 }
 
 export function pushDebugGroup(label: string): void {
