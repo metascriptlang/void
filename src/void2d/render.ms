@@ -1018,6 +1018,9 @@ function quadTile(t: Borrow<Tile>, m: Transform2D, tint: Color, blend: BlendMode
 	);
 }
 
+// `t` is a copy, not a Borrow<Tile>: a Borrow parameter forwarded to emitStyledImage's Borrow
+// parameter does not compile in C
+// (~/metascript/.inbox/compiler/2026-10-30-borrow-param-forwarded-to-borrow-param-c-error.md).
 function emitImage(
 	s: Scene2D, i: int32, t: Tile, world: Transform2D, col: Color, blend: BlendMode,
 	instanced: boolean, tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2,
