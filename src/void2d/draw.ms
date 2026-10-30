@@ -448,6 +448,10 @@ function openRun(reason: BreakReason): void {
 	ctx.runOpen = true;
 }
 
+function viewOrWhite(view: uint32): uint32 {
+	return view == 0 ? void2dWhiteView() : view;
+}
+
 function useRun(pipeline: Pipeline, view: uint32, premultiplied: boolean, blend: BlendMode): void {
 	const ctx: DrawContext2D = currentContext();
 	const sampler: int32 = (ctx.curSampler % SOURCE_PREMULTIPLIED) +
@@ -1347,7 +1351,7 @@ export function drawMeshRange(
 	let upto: int32 = first + vertexTotal * VERTEX_FLOATS;
 	if (first < 0 || first >= (mesh.length as int32)) { return; }
 	if (upto > (mesh.length as int32)) { upto = mesh.length as int32; }
-	useRun(Pipeline.Vertex, view == 0 ? void2dWhiteView() : view, premultiplied, blend);
+	useRun(Pipeline.Vertex, viewOrWhite(view), premultiplied, blend);
 	const det: float32 = m.a * m.d - m.b * m.c;
 	const scale: float32 = currentRenderScale();
 	const extrudes: boolean = (edges.length as int32) > 0 && scale > 0.0 &&
@@ -1450,7 +1454,7 @@ export function rewriteSprite(
 }
 
 export function beginSprites(view: uint32, premultiplied: boolean, blend: BlendMode): void {
-	useRun(Pipeline.Sprite, view == 0 ? void2dWhiteView() : view, premultiplied, blend);
+	useRun(Pipeline.Sprite, viewOrWhite(view), premultiplied, blend);
 }
 
 export function appendSprite(
@@ -1481,12 +1485,12 @@ export function appendSprite(
 //
 // The modes that leave a lane unused pass zeros; `instance.ms` says which lane means what.
 export function drawUiInstance(view: uint32, blend: BlendMode, inst: UiInstance): void {
-	useRun(Pipeline.Ui, view == 0 ? void2dWhiteView() : view, false, blend);
+	useRun(Pipeline.Ui, viewOrWhite(view), false, blend);
 	pushUiInstance(inst, originXOffset(), originYOffset());
 }
 
 export function useGlyphRun(view: uint32, blend: BlendMode): void {
-	useRun(Pipeline.Ui, view == 0 ? void2dWhiteView() : view, false, blend);
+	useRun(Pipeline.Ui, viewOrWhite(view), false, blend);
 }
 
 export function uiInstancingAvailable(): boolean {
