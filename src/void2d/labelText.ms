@@ -815,19 +815,23 @@ function placedGlyph(
 }
 
 when (voidSdfText) {
-	function sdfPlacedGlyph(g: LaidGlyph, baseline: float32): Result<PlacedGlyph, AtlasError> {
-		const acquired = glyphAtlas.acquireSdf(g.face, g.glyph);
-		if (!acquired.ok) { return Result.err(acquired.error); }
-		const t: GlyphTile = glyphAtlas.tile(acquired.value);
+	function sdfPlacement(g: LaidGlyph, baseline: float32, tileIndex: int32): PlacedGlyph {
+		const t: GlyphTile = glyphAtlas.tile(tileIndex);
 		const [u0, v0, u1, v1] = t.uvRect();
 		const k: float32 = g.size / SDF_EM;
-		return Result.ok({
-			tile: acquired.value, page: t.page,
+		return {
+			tile: tileIndex, page: t.page,
 			x: g.x + g.offsetX + (t.left as float32) * k,
 			y: baseline + g.offsetY + (t.top as float32) * k,
 			w: (t.width as float32) * k, h: (t.height as float32) * k,
 			u0: u0, v0: v0, u1: u1, v1: v1, run: g.run,
-		});
+		};
+	}
+
+	function sdfPlacedGlyph(g: LaidGlyph, baseline: float32): Result<PlacedGlyph, AtlasError> {
+		const acquired = glyphAtlas.acquireSdf(g.face, g.glyph);
+		if (!acquired.ok) { return Result.err(acquired.error); }
+		return Result.ok(sdfPlacement(g, baseline, acquired.value));
 	}
 } else {
 	function sdfPlacedGlyph(g: LaidGlyph, baseline: float32): Result<PlacedGlyph, AtlasError> {
@@ -912,16 +916,7 @@ when (voidSdfText && voidTextOutline) {
 		if (!lane.ok) { return Result.err(lane.error); }
 		const acquired = glyphAtlas.acquireSdfOutline(g.face, g.glyph, lane.value);
 		if (!acquired.ok) { return Result.err(acquired.error); }
-		const t: GlyphTile = glyphAtlas.tile(acquired.value);
-		const [u0, v0, u1, v1] = t.uvRect();
-		const k: float32 = g.size / SDF_EM;
-		return Result.ok({
-			tile: acquired.value, page: t.page,
-			x: g.x + g.offsetX + (t.left as float32) * k,
-			y: baseline + g.offsetY + (t.top as float32) * k,
-			w: (t.width as float32) * k, h: (t.height as float32) * k,
-			u0: u0, v0: v0, u1: u1, v1: v1, run: g.run,
-		});
+		return Result.ok(sdfPlacement(g, baseline, acquired.value));
 	}
 } else {
 	function sdfOutlinePlacedGlyph(
