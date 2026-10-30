@@ -498,8 +498,10 @@ export function writeTexture<T>(
 }
 
 function viewDimensionOf(name: string): string {
-	if (name == "2d" || name == "2d-array" || name == "cube" || name == "cube-array" || name == "3d") { return name; }
-	return stopOnMember("GPUTextureViewDescriptor.dimension", name);
+	return match (name) {
+		"2d" | "2d-array" | "cube" | "cube-array" | "3d" => name,
+		_ => stopOnMember("GPUTextureViewDescriptor.dimension", name),
+	};
 }
 
 export function createView(view: ViewRecord, descriptor: GPUTextureViewDescriptor): void {
@@ -540,7 +542,7 @@ function ensureAttachment(format: string, width: int32, height: int32, sampleCou
 
 export function acquireSwapchain(swapchain: NativeSwapchain): void {
 	const surface = current;
-	if (surface === null) { stop("getCurrentTexture needs a surface: choose one with surfaceUse"); return; }
+	if (surface === null) { stop("getCurrentTexture needs a surface: choose one with surfaceUse"); }
 	const canvas = cachedCanvas();
 	const v = viewRecords.slotIndex(textureRecords.slots[textureRecords.slotIndex(swapchainColor)].swapchainView);
 	const texture = surface.context.getCurrentTexture().createView(jsNew());
@@ -751,10 +753,12 @@ function bindingType(binding: GPUShaderBinding, kind: BindingKind): string {
 }
 
 function storageCapable(format: string): boolean {
-	if (format == "bgra8unorm") { return hasFeature("bgra8unorm-storage"); }
-	return format == "rgba8unorm" || format == "rgba8uint" || format == "rgba8sint"
-		|| format == "rgba16uint" || format == "rgba16float" || format == "r32uint"
-		|| format == "r32float" || format == "rg32float" || format == "rgba32float";
+	return match (format) {
+		"bgra8unorm" => hasFeature("bgra8unorm-storage"),
+		"rgba8unorm" | "rgba8uint" | "rgba8sint" | "rgba16uint" | "rgba16float" => true,
+		"r32uint" | "r32float" | "rg32float" | "rgba32float" => true,
+		_ => false,
+	};
 }
 
 function storageFormatOf(format: GPUTextureFormat | null, member: string): string {
@@ -1142,8 +1146,9 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 			continue;
 		}
 		const v = viewRecords.slotIndex(attachment.view.id);
-		let resolve = views[v].swapchainResolve;
-		if (attachment.resolveTarget.id != 0) { resolve = views[viewRecords.slotIndex(attachment.resolveTarget.id)].native; }
+		const resolve = attachment.resolveTarget.id != 0 ?
+			views[viewRecords.slotIndex(attachment.resolveTarget.id)].native :
+			views[v].swapchainResolve;
 		const native = jsNew();
 		setObject(native, "view", views[v].native);
 		if (!isNone(resolve)) { setObject(native, "resolveTarget", resolve); }
@@ -1216,8 +1221,8 @@ export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffse
 }
 
 export function setScissorRect(x: int32, y: int32, width: int32, height: int32): void {
-	let left = x < 0 ? 0 : (x > passWidth - 1 ? passWidth - 1 : x);
-	let top = y < 0 ? 0 : (y > passHeight - 1 ? passHeight - 1 : y);
+	const left = x < 0 ? 0 : (x > passWidth - 1 ? passWidth - 1 : x);
+	const top = y < 0 ? 0 : (y > passHeight - 1 ? passHeight - 1 : y);
 	let w = width;
 	let h = height;
 	if (left + w > passWidth) { w = passWidth - left; }
