@@ -169,6 +169,8 @@ when (voidDummy) {
 	import * as backend from "./vulkan/backend.ms";
 } else when (webgpu) {
 	import * as backend from "./wgpu/backend.ms";
+} else when (voidD3d12) {
+	import * as backend from "./d3d12/backend.ms";
 } else when (windows && !voidGlCore) {
 	import * as backend from "./d3d11/backend.ms";
 } else when (voidGlCore || webgl2 || android || linux) {
