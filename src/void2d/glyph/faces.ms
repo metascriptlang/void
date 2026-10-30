@@ -82,7 +82,7 @@ export function isSynthetic(face: GlyphFace): boolean {
 function readWholeFile(path: string): uint8[] | null {
 	const size = sfntSourceSize(path);
 	if (size <= 0) { return null; }
-	let bytes: uint8[] = new Array<uint8>(size as int32);
+	const bytes: uint8[] = new Array<uint8>(size as int32);
 	if (!sfntSourceRead(path, 0, bytes)) { return null; }
 	return bytes;
 }
@@ -252,8 +252,8 @@ function measureHeights(face: GlyphFace): FaceHeights {
 function measureFace(face: GlyphFace): void {
 	if (face.measured) { return; }
 	face.heights = measureHeights(face);
-	let post = findTableSlice(face, "post");
-	let os2 = findTableSlice(face, "OS/2");
+	const post = findTableSlice(face, "post");
+	const os2 = findTableSlice(face, "OS/2");
 	const data = face.info.data;
 	const hasPost = post.offset >= 0 && post.length >= 12;
 	const hasOs2 = os2.offset >= 0 && os2.length >= 30;
@@ -622,7 +622,7 @@ when (voidSprites) {
 		out[2] = 0;
 		out[3] = 0;
 		if (void2dGlyphFaceIsSprite(face) == 0 || !(sizePx > 0.0)) { return; }
-		let cell: int32[] = [0, 0, 0, 0];
+		const cell: int32[] = [0, 0, 0, 0];
 		if (spriteCell(face, sizePx, cell)) {
 			for (let k: int32 = 0; k < 4; k++) { out[k] = cell[k]; }
 		}
@@ -636,7 +636,7 @@ when (voidSprites) {
 	}
 
 	export function spriteInk(face: int32, glyph: int32, sizePx: float32): SpriteRows | null {
-		let cell: int32[] = [0, 0, 0, 0];
+		const cell: int32[] = [0, 0, 0, 0];
 		if (!spriteCell(face, sizePx, cell)) {
 			console.error(
 				`void2d: sprite face ${face} has no cell at ${fixed(sizePx, 2)} px, its glyph is not drawn`,
