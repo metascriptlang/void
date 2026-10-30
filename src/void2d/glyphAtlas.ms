@@ -488,12 +488,12 @@ export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, At
 	}
 	const packedKey: uint64 = key.packed();
 	const hit = atlas.index.get(packedKey);
-	if (hit.present) {
-		atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
-		return Result.ok(hit.value);
+	if (hit !== null) {
+		atlas.tiles[hit].refs = atlas.tiles[hit].refs + 1;
+		return Result.ok(hit);
 	}
 	const known = atlas.refused.get(packedKey);
-	if (known.present) { return Result.err(known.value); }
+	if (known !== null) { return Result.err(known); }
 	const shift: float32 = (key.variant as float32) / (SUBPIXEL_VARIANTS as float32);
 	const box = glyphBox(key.face, key.glyph, key.sizePx, shift);
 	const left: int32 = box[0];
@@ -528,7 +528,7 @@ export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, At
 
 export function cached(this atlas: GlyphAtlas, key: GlyphKey): boolean {
 	if (!key.fitsKey()) { return false; }
-	return atlas.index.get(key.packed()).present;
+	return atlas.index.get(key.packed()) !== null;
 }
 
 export function acquireBlank(
@@ -552,9 +552,9 @@ export function acquireBlank(
 	}
 	const packedKey: uint64 = key.packed();
 	const hit = atlas.index.get(packedKey);
-	if (hit.present) {
-		atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
-		return Result.ok(hit.value);
+	if (hit !== null) {
+		atlas.tiles[hit].refs = atlas.tiles[hit].refs + 1;
+		return Result.ok(hit);
 	}
 	let page: GlyphPage = NO_GLYPH_PAGE;
 	let x: int32 = 0;
@@ -582,9 +582,9 @@ export function acquireBlank(
 export function retainMask(this atlas: GlyphAtlas, key: GlyphKey): int32 {
 	if (key.kind != PageKind.Mask || !key.fitsKey()) { return -1; }
 	const hit = atlas.index.get(key.packed());
-	if (!hit.present) { return -1; }
-	atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
-	return hit.value;
+	if (hit === null) { return -1; }
+	atlas.tiles[hit].refs = atlas.tiles[hit].refs + 1;
+	return hit;
 }
 
 function maskBlitRefusal(code: int32): AtlasError {
@@ -717,12 +717,12 @@ when (voidTextOutline) {
 		}
 		const packedKey: uint64 = key.packed();
 		const hit = atlas.index.get(packedKey);
-		if (hit.present) {
-			atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
-			return Result.ok(hit.value);
+		if (hit !== null) {
+			atlas.tiles[hit].refs = atlas.tiles[hit].refs + 1;
+			return Result.ok(hit);
 		}
 		const known = atlas.refused.get(packedKey);
-		if (known.present) { return Result.err(known.value); }
+		if (known !== null) { return Result.err(known); }
 		const box = glyphOutlineBox(key.face, key.glyph, key.sizePx, shift, widthPx);
 		if (box[4] != 0) { return Result.err(AtlasError.OutlineFaceRefused); }
 		const left: int32 = box[0];
@@ -792,12 +792,12 @@ when (voidSdfText) {
 	): Result<int32, AtlasError> {
 		const packedKey: uint64 = sdfKey(face, glyph).packed();
 		const hit = atlas.index.get(packedKey);
-		if (hit.present) {
-			atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
-			return Result.ok(hit.value);
+		if (hit !== null) {
+			atlas.tiles[hit].refs = atlas.tiles[hit].refs + 1;
+			return Result.ok(hit);
 		}
 		const known = atlas.refused.get(packedKey);
-		if (known.present) { return Result.err(known.value); }
+		if (known !== null) { return Result.err(known); }
 		const box = glyphSdfBox(face, glyph);
 		if (box[4] != 0) { return Result.err(AtlasError.SdfCubicOutline); }
 		const left: int32 = box[0];
@@ -845,12 +845,12 @@ when (voidSdfText && voidTextOutline) {
 		const key: GlyphKey = { ...sdfKey(face, glyph), outline: lane };
 		const packedKey: uint64 = key.packed();
 		const hit = atlas.index.get(packedKey);
-		if (hit.present) {
-			atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
-			return Result.ok(hit.value);
+		if (hit !== null) {
+			atlas.tiles[hit].refs = atlas.tiles[hit].refs + 1;
+			return Result.ok(hit);
 		}
 		const known = atlas.refused.get(packedKey);
-		if (known.present) { return Result.err(known.value); }
+		if (known !== null) { return Result.err(known); }
 		const texels: float32 = (lane as float32) / SDF_OUTLINE_PER_TEXEL;
 		const box = glyphSdfOutlineBox(face, glyph, texels);
 		if (box[4] != 0) { return Result.err(AtlasError.SdfCubicOutline); }
