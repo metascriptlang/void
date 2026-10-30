@@ -950,7 +950,9 @@ when (voidShaper) {
 		}
 	}
 
-	function advanceOf(this g: ShapedGlyph, perUnit: float32, bold: float32): float32 {
+	function advanceOf(
+		this g: ShapedGlyph, perUnit: float32, bold: float32,
+	): float32 {
 		const plain: float32 = (g.advanceX as float32) * perUnit;
 		return g.advanceX != 0 ? plain + bold : plain;
 	}
@@ -1381,9 +1383,9 @@ function lineWidthOf(glyphs: Readonly<Span<LaidGlyph>>, first: int32): float32 {
 	return width;
 }
 
-// GPUI's force_width (line_layout.rs:898-921), except that a base is a grapheme's first glyph
-// where GPUI finds it by x. A sprite always moves onto the grid: its tile fills the cell, and
-// a base left within a pixel of it would open a seam against its neighbour.
+// GPUI's force_width (line_layout.rs:898-921), except that a base is a grapheme's first
+// glyph where GPUI finds it by x. A sprite always moves onto the grid: its tile fills the
+// cell, and a base left within a pixel of it would open a seam against its neighbour.
 function forceCells(
 	glyphs: Span<LaidGlyph>, first: int32, cell: float32, cellWidths: Readonly<Span<uint8>>,
 ): float32 {
@@ -1582,7 +1584,9 @@ function pushTruncated(
 	const count: int32 = line.length as int32;
 	const content: float32 = room - dots;
 	const headBudget: float32 =
-		truncate == Truncate.Middle ? (content * MIDDLE_HEAD_SHARE) as float32 : content;
+		truncate == Truncate.Middle
+			? (content * MIDDLE_HEAD_SHARE) as float32
+			: content;
 	const tailBudget: float32 = truncate == Truncate.Middle ? content - headBudget : content;
 	let head: int32 = 0;
 	if (truncate != Truncate.Start) {
@@ -1891,7 +1895,7 @@ function wrapLine(
 	return rows;
 }
 
-// GPUI's WrappedLineLayout (line_layout.rs:277, cached per line at line_layout.rs:457-719).
+// GPUI's WrappedLineLayout (line_layout.rs:277), cached per line (line_layout.rs:457-719).
 export function wrapLines(
 	ref shapes: LineShapes,
 	style: TextStyle,
@@ -2260,7 +2264,8 @@ export function splitAt(this l: TextLayout, index: int32): [TextLayout, TextLayo
 	}
 	const leftWidth: float32 = lineWidthOf(left, 0);
 	const rightWidth: float32 = lineWidthOf(right, 0);
-	const leftBidi: LayoutBidi = bidi ? l.bidi.portion(line.firstGlyph, cut, 0.0) : l.bidi;
+	const leftBidi: LayoutBidi =
+		bidi ? l.bidi.portion(line.firstGlyph, cut, 0.0) : l.bidi;
 	const rightBidi: LayoutBidi = bidi ? l.bidi.portion(cut, total, origin) : l.bidi;
 	if (bidi) {
 		const paragraph: int32 = l.bidi.lineLevels[0];
