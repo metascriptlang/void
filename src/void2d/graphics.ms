@@ -15,7 +15,7 @@ const MESH_VERTEX_FLOATS: int32 = 8;
 const CIRCLE_MAX_SEG: int32 = 64;
 const DEGENERATE_LEN: float32 = 0.0001;
 const MITER_LIMIT: float32 = 4.0;
-const white: Color = rgba(1.0, 1.0, 1.0, 1.0);
+const WHITE: Color = rgba(1.0, 1.0, 1.0, 1.0);
 const NO_NORMAL: Vec2 = vec2(0.0, 0.0);
 
 export enum GraphicsOpKind {
@@ -327,14 +327,11 @@ function fanTris(count: int32): int32[] {
 
 function arcSegs(r: float32, sweep: float32): int32 {
 	const s: float32 = sweep < 0.0 ? -sweep : sweep;
-	let n: int32 = ((r * s * 0.3) as int32) + 3;
-	if (n > CIRCLE_MAX_SEG) { n = CIRCLE_MAX_SEG; }
-	return n;
+	return Math.min(((r * s * 0.3) as int32) + 3, CIRCLE_MAX_SEG);
 }
 
 function circleSegs(r: float32): int32 {
-	const seg: int32 = (r as int32) / 2 + 8;
-	return seg > CIRCLE_MAX_SEG ? CIRCLE_MAX_SEG : seg;
+	return Math.min((r as int32) / 2 + 8, CIRCLE_MAX_SEG);
 }
 
 function cornerArc(
@@ -599,7 +596,7 @@ export function fillGradientPolygonStops(
 		map = { ux: ax / span, uy: ay / span, uc: -minP / span, vx: 0.0, vy: 0.0, vc: 0.0 };
 	}
 	const start: int32 = target.vertexTotal();
-	contourFill(target, false, pts, [m], triangulate(pts), map, white, EdgeLimit.Convex);
+	contourFill(target, false, pts, [m], triangulate(pts), map, WHITE, EdgeLimit.Convex);
 	const count: int32 = target.vertexTotal() - start;
 	if (count > 0) {
 		appendOp(target, GraphicsOpKind.LinearGradient, start, count, space, true, middle,
@@ -688,7 +685,7 @@ export function fillRadialGradientStops(
 	const seg: int32 = circleSegs(r);
 	const map: UvMap = { ux: 1.0 / r, uy: 0.0, uc: -cx / r, vx: 0.0, vy: 1.0 / r, vc: -cy / r };
 	const start: int32 = target.vertexTotal();
-	contourFill(target, false, ellipsePoints(cx, cy, r, r, seg), [seg], fanTris(seg), map, white,
+	contourFill(target, false, ellipsePoints(cx, cy, r, r, seg), [seg], fanTris(seg), map, WHITE,
 		EdgeLimit.Convex);
 	const count: int32 = target.vertexTotal() - start;
 	appendOp(target, GraphicsOpKind.RadialGradient, start, count, space, true, middle,
@@ -733,7 +730,7 @@ function fillPatternRect(
 	const target: GraphicsMesh = meshOf(g, "fillPatternRect");
 	const map: UvMap = { ux: 1.0, uy: 0.0, uc: -x, vx: 0.0, vy: 1.0, vc: -y };
 	const start: int32 = target.vertexTotal();
-	contourFill(target, false, rectPoints(x, y, w, h), [4], RECT_TRIS, map, white,
+	contourFill(target, false, rectPoints(x, y, w, h), [4], RECT_TRIS, map, WHITE,
 		EdgeLimit.Parallel);
 	const count: int32 = target.vertexTotal() - start;
 	appendOp(target, kind, start, count, GradientSpace.Srgb, false, -1.0,
@@ -900,8 +897,7 @@ export function strokePoly(
 			if (ml < DEGENERATE_LEN) { mxn = n1.x; myn = n1.y; }
 			else { mxn = mxn / ml; myn = myn / ml; }
 			const d: float32 = mxn * n1.x + myn * n1.y;
-			let scale: float32 = d > 0.1 ? 1.0 / d : MITER_LIMIT;
-			if (scale > MITER_LIMIT) { scale = MITER_LIMIT; }
+			const scale: float32 = Math.min(d > 0.1 ? 1.0 / d : MITER_LIMIT, MITER_LIMIT);
 			nx = mxn * hw * scale;
 			ny = myn * hw * scale;
 		} else if (hasNext) {
@@ -1086,8 +1082,7 @@ export function fillRing(
 
 // h2d.Graphics.curveTo — quadratic Bézier flattened to points (compose with stroke/fill).
 export function quadBezier(a: Vec2, ctrl: Vec2, b: Vec2, segments: int32): Vec2[] {
-	let seg: int32 = segments;
-	if (seg < 1) { seg = 1; }
+	const seg: int32 = Math.max(segments, 1);
 	const pts: Vec2[] = [];
 	for (let i: int32 = 0; i <= seg; i++) {
 		const t: float32 = (i as float32) / (seg as float32);
@@ -1101,8 +1096,7 @@ export function quadBezier(a: Vec2, ctrl: Vec2, b: Vec2, segments: int32): Vec2[
 
 // h2d.Graphics.cubicCurveTo — cubic Bézier flattened to points.
 export function cubicBezier(a: Vec2, c1: Vec2, c2: Vec2, b: Vec2, segments: int32): Vec2[] {
-	let seg: int32 = segments;
-	if (seg < 1) { seg = 1; }
+	const seg: int32 = Math.max(segments, 1);
 	const pts: Vec2[] = [];
 	for (let i: int32 = 0; i <= seg; i++) {
 		const t: float32 = (i as float32) / (seg as float32);
