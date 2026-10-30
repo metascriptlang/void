@@ -1524,20 +1524,18 @@ function rowAdvance(this g: LaidGlyph, x: float32, stop: float32): float32 {
 	return next - x;
 }
 
-function ellipsisGlyph(shaped: ShapedText): LaidGlyph {
-	if ((shaped.ellipsis.length as int32) == 0) {
-		const style: TextStyle = shaped.style;
-		const source: CodepointFace = codepointFace(style.font, ELLIPSIS);
-		const size: float32 = style.size * source.scale;
-		const glyph: int32 = glyphIndex(source.face, ELLIPSIS);
-		shaped.ellipsis.push({
-			face: source.face, glyph: glyph, size: size, codepoint: ELLIPSIS, x: 0.0,
-			advance: glyphAdvance(source.face, glyph, size), line: 0, charIndex: 0, index: 0,
-			byteStart: 0, byteEnd: 0, run: NO_RUN, clusterStart: true, shapeStart: true,
-			offsetX: 0.0, offsetY: 0.0,
-		});
-	}
-	return shaped.ellipsis[0];
+function ensureEllipsis(shaped: ShapedText): void {
+	if ((shaped.ellipsis.length as int32) != 0) { return; }
+	const style: TextStyle = shaped.style;
+	const source: CodepointFace = codepointFace(style.font, ELLIPSIS);
+	const size: float32 = style.size * source.scale;
+	const glyph: int32 = glyphIndex(source.face, ELLIPSIS);
+	shaped.ellipsis.push({
+		face: source.face, glyph: glyph, size: size, codepoint: ELLIPSIS, x: 0.0,
+		advance: glyphAdvance(source.face, glyph, size), line: 0, charIndex: 0, index: 0,
+		byteStart: 0, byteEnd: 0, run: NO_RUN, clusterStart: true, shapeStart: true,
+		offsetX: 0.0, offsetY: 0.0,
+	});
 }
 
 function elided(
@@ -1549,7 +1547,7 @@ function elided(
 ): LaidGlyph {
 	const g: LaidGlyph = shaped.glyphs[at];
 	return {
-		...ellipsisGlyph(shaped), x: x, line: lineIndex, charIndex: g.charIndex, index: g.index,
+		...shaped.ellipsis[0], x: x, line: lineIndex, charIndex: g.charIndex, index: g.index,
 		byteStart: g.byteStart, byteEnd: g.byteStart, run: run,
 	};
 }
@@ -1583,7 +1581,8 @@ function pushTruncated(
 	let line: Vec<LaidGlyph> = new Array(0);
 	for (let k = first; k < (out.length as int32); k++) { line.push(out[k]); }
 	while ((out.length as int32) > first) { out.pop(); }
-	const dots: float32 = ellipsisGlyph(shaped).advance;
+	ensureEllipsis(shaped);
+	const dots: float32 = shaped.ellipsis[0].advance;
 	const count: int32 = line.length as int32;
 	const content: float32 = room - dots;
 	const headBudget: float32 =
@@ -1643,18 +1642,19 @@ function mismatchedCells(bytes: int32, cellWidths: Readonly<Span<uint8>>): boole
 function wrapsAt(
 	shaped: ShapedText, style: TextStyle, options: LineOptions, cellWidths: Readonly<Span<uint8>>,
 ): boolean {
-	const wrapping: boolean = style.maxWidth > 0.0 && options.truncate == Truncate.None &&
+	return style.maxWidth > 0.0 && options.truncate == Truncate.None &&
 		!fitsUnbroken(shaped, style.maxWidth, options.forceWidth, cellWidths);
+}
+
+function ensureBreaks(shaped: ShapedText): void {
 	const count: int32 = shaped.glyphs.length as int32;
-	if (wrapping && count > 0 && (shaped.breaks.length as int32) == 0) {
-		shaped.breaks = lineBreaks(shaped.values);
-		when (voidShaper) {
-			for (let k = 0; k < count; k++) {
-				if (!shaped.glyphs[k].shapeStart) { shaped.breaks[k] = false; }
-			}
+	if (count == 0 || (shaped.breaks.length as int32) != 0) { return; }
+	shaped.breaks = lineBreaks(shaped.values);
+	when (voidShaper) {
+		for (let k = 0; k < count; k++) {
+			if (!shaped.glyphs[k].shapeStart) { shaped.breaks[k] = false; }
 		}
 	}
-	return wrapping;
 }
 
 export struct WrapKey {
@@ -1696,7 +1696,7 @@ function emptyWrap(): LineWrap {
 	};
 }
 
-function rowInk(ref wrap: LineWrap): void {
+function rowInk(wrap: LineWrap): void {
 	for (let r: int32 = 0; r < (wrap.rows.length as int32); r++) {
 		wrap.ink.push(NO_INK);
 		wrap.ink.push(NO_INK);
@@ -1816,6 +1816,7 @@ export function wrapOnGrid(
 	if (mismatchedCells(shaped.bytes, cellWidths)) { return wrapText(shaped, style, options); }
 	const primary: int32 = fontFace(style.font);
 	const wrapping: boolean = wrapsAt(shaped, style, options, cellWidths);
+	if (wrapping) { ensureBreaks(shaped); }
 	const count: int32 = shaped.glyphs.length as int32;
 	let rows: LineWrap = emptyWrap();
 	let start: int32 = 0;
@@ -1880,6 +1881,7 @@ function wrapLine(
 	const source: ShapedText = bidi ? withBidi(shaped, direction) : shaped;
 	let rows: LineWrap = emptyWrap();
 	const wrapping: boolean = wrapsAt(source, style, options, cells);
+	if (wrapping) { ensureBreaks(source); }
 	wrapParagraph(
 		source, 0, paragraphEndFrom(source, 0), style, options, cells, wrapping, primary, rows,
 	);
