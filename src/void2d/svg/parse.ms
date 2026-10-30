@@ -18,6 +18,7 @@ import {
 	PAINT_UNDEF,
 	Gradient,
 	GradientStop,
+	Paint,
 	Path,
 	Shape,
 	SvgImage,
@@ -479,6 +480,23 @@ function getLocalBounds(bounds: float32[], shape: Shape, xform: float32[]): void
 	}
 }
 
+function setPaint(paint: Paint, has: int32, opacity: float32): void {
+	match (has) {
+		0 => {
+			paint.kind = PAINT_NONE;
+		},
+		1 => {
+			paint.kind = PAINT_COLOR;
+			const scaled: float32 = opacity * 255;
+			paint.alpha = floatToByte(scaled);
+		},
+		2 => {
+			paint.kind = PAINT_UNDEF;
+		},
+		_ => {},
+	}
+}
+
 function addShape(p: Parser): void {
 	const attr = curAttr(p);
 	if (p.plist.length == 0) { return; }
@@ -508,24 +526,8 @@ function addShape(p: Parser): void {
 		growBounds(shape.bounds, shape.paths[i].bounds);
 	}
 
-	if (attr.hasFill == 0) {
-		shape.fill.kind = PAINT_NONE;
-	} else if (attr.hasFill == 1) {
-		shape.fill.kind = PAINT_COLOR;
-		const scaled: float32 = attr.fillOpacity * 255;
-		shape.fill.alpha = floatToByte(scaled);
-	} else if (attr.hasFill == 2) {
-		shape.fill.kind = PAINT_UNDEF;
-	}
-	if (attr.hasStroke == 0) {
-		shape.stroke.kind = PAINT_NONE;
-	} else if (attr.hasStroke == 1) {
-		shape.stroke.kind = PAINT_COLOR;
-		const scaled: float32 = attr.strokeOpacity * 255;
-		shape.stroke.alpha = floatToByte(scaled);
-	} else if (attr.hasStroke == 2) {
-		shape.stroke.kind = PAINT_UNDEF;
-	}
+	setPaint(shape.fill, attr.hasFill, attr.fillOpacity);
+	setPaint(shape.stroke, attr.hasStroke, attr.strokeOpacity);
 	shape.visible = attr.visible;
 	p.shapes.push(shape);
 }
@@ -1945,6 +1947,25 @@ function scaleGradient(grad: Gradient, tx: float32, ty: float32, sx: float32, sy
 	xformMultiply(grad.xform, t);
 }
 
+function placeGradient(
+	paint: Paint,
+	tx: float32,
+	ty: float32,
+	sx: float32,
+	sy: float32,
+	t: float32[],
+): void {
+	const gradient = paint.gradient;
+	if (
+		(paint.kind == PAINT_LINEAR_GRADIENT || paint.kind == PAINT_RADIAL_GRADIENT) &&
+		gradient != null
+	) {
+		scaleGradient(gradient, tx, ty, sx, sy);
+		copySix(t, gradient.xform);
+		xformInverse(gradient.xform, t);
+	}
+}
+
 function scaleToViewbox(p: Parser): void {
 	const bounds: float32[] = [0, 0, 0, 0];
 	imageBounds(p, bounds);
@@ -2010,25 +2031,8 @@ function scaleToViewbox(p: Parser): void {
 			}
 		}
 
-		const fillGradient = shape.fill.gradient;
-		if (
-			(shape.fill.kind == PAINT_LINEAR_GRADIENT || shape.fill.kind == PAINT_RADIAL_GRADIENT) &&
-			fillGradient != null
-		) {
-			scaleGradient(fillGradient, tx, ty, sx, sy);
-			copySix(t, fillGradient.xform);
-			xformInverse(fillGradient.xform, t);
-		}
-		const strokeGradient = shape.stroke.gradient;
-		if (
-			(shape.stroke.kind == PAINT_LINEAR_GRADIENT ||
-				shape.stroke.kind == PAINT_RADIAL_GRADIENT) &&
-			strokeGradient != null
-		) {
-			scaleGradient(strokeGradient, tx, ty, sx, sy);
-			copySix(t, strokeGradient.xform);
-			xformInverse(strokeGradient.xform, t);
-		}
+		placeGradient(shape.fill, tx, ty, sx, sy, t);
+		placeGradient(shape.stroke, tx, ty, sx, sy, t);
 
 		shape.strokeWidth = shape.strokeWidth * avgs;
 		shape.strokeDashOffset = shape.strokeDashOffset * avgs;
@@ -2041,35 +2045,25 @@ function scaleToViewbox(p: Parser): void {
 function createGradients(p: Parser): void {
 	for (let k: int32 = 0; k < (p.shapes.length as int32); k++) {
 		const shape = p.shapes[k];
-		if (shape.fill.kind == PAINT_UNDEF) {
-			if (shape.fillGradient.length > 0) {
-				const inv: float32[] = [0, 0, 0, 0, 0, 0];
-				const localBounds: float32[] = [0, 0, 0, 0];
-				xformInverse(inv, shape.xform);
-				getLocalBounds(localBounds, shape, inv);
-				const grad = createGradient(p, shape.fillGradient, localBounds, shape.xform);
-				if (grad != null) {
-					shape.fill.gradient = grad;
-					shape.fill.kind = gradientKindOf(p, shape.fillGradient);
-				}
-			}
-			if (shape.fill.kind == PAINT_UNDEF) { shape.fill.kind = PAINT_NONE; }
-		}
-		if (shape.stroke.kind == PAINT_UNDEF) {
-			if (shape.strokeGradient.length > 0) {
-				const inv: float32[] = [0, 0, 0, 0, 0, 0];
-				const localBounds: float32[] = [0, 0, 0, 0];
-				xformInverse(inv, shape.xform);
-				getLocalBounds(localBounds, shape, inv);
-				const grad = createGradient(p, shape.strokeGradient, localBounds, shape.xform);
-				if (grad != null) {
-					shape.stroke.gradient = grad;
-					shape.stroke.kind = gradientKindOf(p, shape.strokeGradient);
-				}
-			}
-			if (shape.stroke.kind == PAINT_UNDEF) { shape.stroke.kind = PAINT_NONE; }
+		resolveGradient(p, shape, shape.fill, shape.fillGradient);
+		resolveGradient(p, shape, shape.stroke, shape.strokeGradient);
+	}
+}
+
+function resolveGradient(p: Parser, shape: Shape, paint: Paint, id: uint8[]): void {
+	if (paint.kind != PAINT_UNDEF) { return; }
+	if (id.length > 0) {
+		const inv: float32[] = [0, 0, 0, 0, 0, 0];
+		const localBounds: float32[] = [0, 0, 0, 0];
+		xformInverse(inv, shape.xform);
+		getLocalBounds(localBounds, shape, inv);
+		const grad = createGradient(p, id, localBounds, shape.xform);
+		if (grad != null) {
+			paint.gradient = grad;
+			paint.kind = gradientKindOf(p, id);
 		}
 	}
+	if (paint.kind == PAINT_UNDEF) { paint.kind = PAINT_NONE; }
 }
 
 function gradientKindOf(p: Parser, id: uint8[]): int32 {
