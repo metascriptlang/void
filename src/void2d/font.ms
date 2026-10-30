@@ -87,6 +87,7 @@ const DEFAULT_FAMILY: string = "Inter";
 const NO_FACE: int32 = -1;
 const NOT_LOADED: int32 = -1;
 const LOAD_FAILED: int32 = -2;
+const DEFAULT_WEIGHT: int32 = 400;
 const BOLD_WEIGHT: int32 = 600;
 const PRIMARY_SLOT: int32 = -1;
 const NO_DISCOVERY: int32 = -1;
@@ -131,8 +132,7 @@ struct FontEntry {
 	path: string;
 	kern: boolean;
 	sizeAdjust: SizeAdjust;
-	described: boolean;
-	description: Font;
+	description: Font | null;
 }
 
 struct Fallback {
@@ -261,15 +261,7 @@ function plainFont(face: int32, path: string): FontEntry {
 		path: path,
 		kern: true,
 		sizeAdjust: SizeAdjust.None,
-		described: false,
-		description: {
-			family: "",
-			weight: 0,
-			style: FontStyle.Normal,
-			features: [],
-			fallbacks: [],
-			sizeAdjust: SizeAdjust.None,
-		},
+		description: null,
 	};
 }
 
@@ -435,7 +427,8 @@ function isFeatureTag(tag: string): boolean {
 export function resolveFont(font: Font): Result<FontId, FontError> {
 	ensureDefaultFont();
 	for (let i = 0; i < (fonts.length as int32); i++) {
-		if (fonts[i].described && fonts[i].description.sameAs(font)) {
+		const description = fonts[i].description;
+		if (description !== null && description.sameAs(font)) {
 			return Result.ok(i as FontId);
 		}
 	}
@@ -504,7 +497,6 @@ export function resolveFont(font: Font): Result<FontId, FontError> {
 		path: registered[primary].path,
 		kern: kern,
 		sizeAdjust: font.sizeAdjust,
-		described: true,
 		description: { ...font, features: features, fallbacks: fallbackFamilies },
 	});
 	for (const m of fallbackMatches) {
@@ -550,9 +542,9 @@ function discoveredFace(font: FontId, codepoint: int32, want: Presentation): int
 	const resolver = faceResolver;
 	if (resolver === null) { return NO_DISCOVERY; }
 	const index: int32 = fontIndex(font);
-	const described: boolean = fonts[index].described;
-	const weight: int32 = described ? fonts[index].description.weight : 400;
-	const style: FontStyle = described ? fonts[index].description.style : FontStyle.Normal;
+	const description = fonts[index].description;
+	const weight: int32 = description !== null ? description.weight : DEFAULT_WEIGHT;
+	const style: FontStyle = description !== null ? description.style : FontStyle.Normal;
 	const key: uint64 = ((weight as uint64) << 32) | (((style as int32) as uint64) << 28) |
 		(((want as int32) as uint64) << 24) | (codepoint as uint64);
 	const hit = discovered.get(key);
@@ -617,7 +609,8 @@ export function fontFace(font: FontId): int32 {
 }
 
 export function fontFeatures(font: FontId): FontFeature[] {
-	return fonts[fontIndex(font)].description.features;
+	const description = fonts[fontIndex(font)].description;
+	return description !== null ? description.features : [];
 }
 
 export function fontKerns(font: FontId): boolean {
@@ -739,8 +732,9 @@ when (emcc) {
 			if (browserFallbacks[i].font == font) { return i; }
 		}
 		const entry: FontEntry = fonts[fontIndex(font)];
-		const weight: int32 = entry.described ? entry.description.weight : 400;
-		const italic: boolean = entry.described && entry.description.style == FontStyle.Italic;
+		const description = entry.description;
+		const weight: int32 = description !== null ? description.weight : DEFAULT_WEIGHT;
+		const italic: boolean = description !== null && description.style == FontStyle.Italic;
 		const face = browserFace(`${italic ? "italic " : ""}${weight}`, BROWSER_FAMILY);
 		if (!face.ok) {
 			console.log(
