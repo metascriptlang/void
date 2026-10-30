@@ -195,6 +195,8 @@ function fmax4(a: float32, b: float32, c: float32, d: float32): float32 {
 
 const SELECTION_RADIUS: float32 = 2.0;
 const SELECTION_GLOOP: float32 = 8.0;
+const TRANSPARENT: Color = rgba(0.0, 0.0, 0.0, 0.0);
+const WHITE: Color = rgba(1.0, 1.0, 1.0, 1.0);
 
 function animFrame(s: Scene2D, i: int32): int32 {
 	if (s.kinds[i] !== DrawKind.Anim) { return NO_FRAME; }
@@ -507,7 +509,7 @@ export function syncOrder(this s: Scene2D, view: Transform2D, viewChanged: boole
 		if (s.kinds[i] === DrawKind.Graphics) { meshBounds(s, i); }
 	}
 }
-const deviceGrid: Transform2D = trs2d(0.0, 0.0, 0.0, 1.0, 1.0);
+const DEVICE_GRID: Transform2D = trs2d(0.0, 0.0, 0.0, 1.0, 1.0);
 
 function sharedGlyphView(): uint32 {
 	return glyphPageView(firstGlyphPageHandle());
@@ -808,7 +810,7 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 	const exact: boolean = text.regime == TextRegime.PixelExact;
 	const space: GlyphSpace = {
 		world: world,
-		affine: exact ? deviceGrid : world,
+		affine: exact ? DEVICE_GRID : world,
 		exact: exact,
 		instanced: instanced,
 		originX: originX,
@@ -924,7 +926,7 @@ function emitIcon(s: Scene2D, i: int32, world: Transform2D, col: Color): void {
 	if (!placed.drawn) { return; }
 	const space: GlyphSpace = {
 		world: world,
-		affine: placed.exact ? deviceGrid : world,
+		affine: placed.exact ? DEVICE_GRID : world,
 		exact: placed.exact,
 		instanced: uiInstancingAvailable(),
 		originX: Math.floor(world.tx * scale) as float32,
@@ -976,10 +978,6 @@ function drawnEnd(s: Scene2D, p: int32): int32 {
 	return window >= total - first ? total : first + window;
 }
 
-function tileTint(c: Color, col: Color): Color {
-	return rgba(c.r * col.r, c.g * col.g, c.b * col.b, c.a * col.a);
-}
-
 function emitTiles(
 	s: Scene2D, i: int32, world: Transform2D, col: Color, blend: BlendMode, instanced: boolean,
 ): void {
@@ -990,7 +988,7 @@ function emitTiles(
 	let premultiplied: boolean = false;
 	for (let k: int32 = s.tileGroups[p].first; k < end; k++) {
 		const m: Transform2D = world * cellMatrix(s.tileCells[p][k]);
-		const tint: Color = tileTint(s.tileCells[p][k].color, col);
+		const tint: Color = s.tileCells[p][k].color.tinted(col);
 		if (instanced) {
 			const tileView: uint32 = s.tileCells[p][k].tile.source.view();
 			const cellPremultiplied: boolean = s.tileCells[p][k].tile.alphaPremultiplied;
@@ -1077,11 +1075,10 @@ function drawBoxShadow(
 	radii: [float32, float32, float32, float32], shadow: BoxShadow,
 	aligned: boolean, deviceAX: float32, deviceDX: float32, na: float32, blend: BlendMode,
 ): void {
-	const c: Color = shadow.color;
 	const smallest: float32 = half.x < half.y ? half.x : half.y;
 	const spread: float32 = !shadow.inset && shadow.spread < -smallest ? -smallest : shadow.spread;
 	drawUiInstance(sharedGlyphView(), blend, {
-		...uiInstance(InstanceMode.Shadow, world, at.x, at.y, w, h, transparent),
+		...uiInstance(InstanceMode.Shadow, world, at.x, at.y, w, h, TRANSPARENT),
 		uvRadii: radii,
 		borders: [half.x, half.y, shadow.blur, shadow.inset ? 1.0 : 0.0],
 		params1: [
@@ -1090,7 +1087,7 @@ function drawBoxShadow(
 			spread,
 			0.0,
 		],
-		extra: rgba(c.r, c.g, c.b, c.a * na),
+		extra: shadow.color.faded(na),
 	});
 }
 
@@ -1130,8 +1127,7 @@ function emitBox(
 			snapStroke(borders[3] * deviceDX) / deviceDX,
 		];
 	}
-	const source: Color = boxStyles[payload].borderColor;
-	const edge: Color = rgba(source.r, source.g, source.b, source.a * na);
+	const edge: Color = boxStyles[payload].borderColor.faded(na);
 	const dashed: float32 = boxStyles[payload].borderStyle === BorderStyle.Dashed ? 1.0 : 0.0;
 	let visible: int32 = 0;
 	let insets: int32 = 0;
@@ -1147,7 +1143,7 @@ function emitBox(
 		visible == 0 || (visible == 1 && boxStyles[payload].shadows[only].spread == 0.0);
 	if (!filled && oneCard) {
 		let params1: [float32, float32, float32, float32] = [0.0, 0.0, 0.0, 0.0];
-		let extra: Color = transparent;
+		let extra: Color = TRANSPARENT;
 		if (visible == 1) {
 			const shadow: BoxShadow = boxStyles[payload].shadows[only];
 			params1 = [
@@ -1156,7 +1152,7 @@ function emitBox(
 				shadow.blur,
 				shadow.inset ? 1.0 : 0.0,
 			];
-			extra = rgba(shadow.color.r, shadow.color.g, shadow.color.b, shadow.color.a * na);
+			extra = shadow.color.faded(na);
 		}
 		drawUiInstance(sharedGlyphView(), blend, {
 			...uiInstance(InstanceMode.Box, world, at.x, at.y, w, h, col),
@@ -1185,8 +1181,8 @@ function emitBox(
 		borders: borders,
 		params: [dashed, (fill.kind as int32) as float32, fillFlags(fill)],
 		params1: fillParams(fill),
-		border: insets > 0 ? transparent : edge,
-		extra: filled ? fill.to.faded(na) : transparent,
+		border: insets > 0 ? TRANSPARENT : edge,
+		extra: filled ? fill.to.faded(na) : TRANSPARENT,
 	});
 	if (insets == 0) { return; }
 	for (const shadow of boxStyles[payload].shadows) {
@@ -1196,7 +1192,7 @@ function emitBox(
 	}
 	if (edge.a > 0.0 && borders[0] + borders[1] + borders[2] + borders[3] > 0.0) {
 		drawUiInstance(sharedGlyphView(), blend, {
-			...uiInstance(InstanceMode.Box, world, boxAt.x, boxAt.y, bw, bh, transparent),
+			...uiInstance(InstanceMode.Box, world, boxAt.x, boxAt.y, bw, bh, TRANSPARENT),
 			uvRadii: radii,
 			borders: borders,
 			params: [dashed, 0.0, 0.0],
@@ -1260,7 +1256,7 @@ function emitNode(
 			const opTotal: int32 = ops.length as int32;
 			if (opTotal == 0) {
 				drawMesh(geometry.mesh, geometry.edges, geometry.source.view(),
-					geometry.alphaPremultiplied, blend, world, rgba(1.0, 1.0, 1.0, 1.0), na);
+					geometry.alphaPremultiplied, blend, world, WHITE, na);
 			} else {
 				const stride: int32 = GRAPHICS_OP_FLOATS;
 				for (let oi: int32 = 0; oi + stride <= opTotal; oi += stride) {
@@ -1274,7 +1270,7 @@ function emitNode(
 						drawMeshRange(
 							geometry.mesh, geometry.edges, offset, count, geometry.source.view(),
 							geometry.alphaPremultiplied, blend, world,
-							rgba(1.0, 1.0, 1.0, 1.0), na);
+							WHITE, na);
 					} else {
 						const c0: Color = rgba(
 							ops[oi + GFX_OP_COLOR0], ops[oi + GFX_OP_COLOR0 + 1],
@@ -1294,7 +1290,7 @@ function emitNode(
 							c0, c1, c2);
 						drawMeshRange(
 							geometry.mesh, geometry.edges, offset, count, 0, false, blend, world,
-							rgba(1.0, 1.0, 1.0, 1.0), na);
+							WHITE, na);
 					}
 				}
 			}
@@ -1308,9 +1304,6 @@ function emitNode(
 		DrawKind.Group | DrawKind.Mask => {},
 	}
 }
-
-// A filter target always starts empty: what is not drawn into it must not composite.
-const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
 
 let poolTargets: Vec<RenderTarget> = [];
 let poolOwner: Vec<int32> = [];
@@ -1381,7 +1374,7 @@ export function blurTargetPooled(
 		const dw: int32 = sw / 2;
 		const dh: int32 = sh / 2;
 		const dst: RenderTarget = acquireTarget(dw, dh);
-		beginTarget(dst, dw as float32, dh as float32, 1.0, 0.0, 0.0, transparent);
+		beginTarget(dst, dw as float32, dh as float32, 1.0, 0.0, 0.0, TRANSPARENT);
 		blitTarget(src, dw as float32, dh as float32);
 		endTarget();
 		src = dst;
@@ -1390,11 +1383,11 @@ export function blurTargetPooled(
 		r = r * 0.5;
 	}
 	const tmp: RenderTarget = acquireTarget(sw, sh);
-	beginTarget(tmp, sw as float32, sh as float32, 1.0, 0.0, 0.0, transparent);
+	beginTarget(tmp, sw as float32, sh as float32, 1.0, 0.0, 0.0, TRANSPARENT);
 	blurPass(src.asTexture(), 1.0 / (sw as float32), 0.0);
 	endTarget();
 	const out: RenderTarget = acquireTarget(sw, sh);
-	beginTarget(out, sw as float32, sh as float32, 1.0, 0.0, 0.0, transparent);
+	beginTarget(out, sw as float32, sh as float32, 1.0, 0.0, 0.0, TRANSPARENT);
 	blurPass(tmp.asTexture(), 0.0, 1.0 / (sh as float32));
 	endTarget();
 	return out;
@@ -1405,12 +1398,12 @@ export function blurTargetPooled(
 function blitTarget(src: RenderTarget, w: float32, h: float32): void {
 	// The target starts with no colour effect, but its sampler inherits the scene default.
 	// State both requirements explicitly: downsampling is linear-clamp and effect-free.
-	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
+	setEffect(NO_COLOR_MATRIX, TRANSPARENT, TRANSPARENT);
 	setSampler(Smooth.On, false);
 	imageQuad(
 		premultipliedTargetTile(src, w, h),
 		vec2(0.0, 0.0), vec2(w, 0.0), vec2(w, h), vec2(0.0, h),
-		rgba(1.0, 1.0, 1.0, 1.0), BlendMode.None);
+		WHITE, BlendMode.None);
 }
 
 function filtered(s: Scene2D, i: int32): boolean {
@@ -1432,8 +1425,7 @@ export function draw(this n: NodeRef, a: float32, vw: float32, vh: float32): voi
 
 function drawOwn(s: Scene2D, i: int32, na: float32, vw: float32, vh: float32): void {
 	const world = s.worlds[i];
-	const color: Color = s.paints[i].color;
-	const col = rgba(color.r, color.g, color.b, color.a * na);
+	const col = s.paints[i].color.faded(na);
 	const lb = localBounds(s, i, false);
 	const tl = vec2(lb.xMin, lb.yMin) * world;
 	const tr = vec2(lb.xMax, lb.yMin) * world;
@@ -1885,8 +1877,7 @@ function retileRow(s: Scene2D, i: int32): void {
 	const p: int32 = s.payloads[i];
 	const start: PaintIndex = paintStartOf(i);
 	const world: Transform2D = s.worlds[i];
-	const color: Color = s.paints[i].color;
-	const col: Color = rgba(color.r, color.g, color.b, color.a * s.alphas[i]);
+	const col: Color = s.paints[i].color.faded(s.alphas[i]);
 	const first: int32 = s.tileGroups[p].first;
 	const end: int32 = drawnEnd(s, p);
 	for (let e: int32 = 0; e < (s.tileEdits[p].length as int32); e++) {
@@ -1896,7 +1887,7 @@ function retileRow(s: Scene2D, i: int32): void {
 		const past: PaintIndex = { ...at, spriteInstances: at.spriteInstances + 1 };
 		const m: Transform2D = world * cellMatrix(s.tileCells[p][k]);
 		saveRange(at, past);
-		const tint: Color = tileTint(s.tileCells[p][k].color, col);
+		const tint: Color = s.tileCells[p][k].color.tinted(col);
 		rewriteTile(at.spriteInstances, s.tileCells[p][k].tile, m, tint);
 		noteRange(at, past);
 	}
@@ -2041,7 +2032,7 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	const rt: RenderTarget = acquireTarget(rtW, rtH);
 
 	// The subtree at alpha 1, in target space. One walk, one sync, no GPU call.
-	beginTarget(rt, logicalW, logicalH, plan.scale, xMin, yMin, transparent);
+	beginTarget(rt, logicalW, logicalH, plan.scale, xMin, yMin, TRANSPARENT);
 	drawContent(s, i, 1.0, 1.0, vw, vh);
 	endTarget();
 	s.culls[i] = reach;
@@ -2071,7 +2062,7 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	const rtTile: Tile = premultipliedTargetTile(src, rtW as float32, rtH as float32);
 	// A composite inheriting the previous sibling's colour matrix gets tinted, and one inheriting
 	// its sampler gets point-sampled.
-	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
+	setEffect(NO_COLOR_MATRIX, TRANSPARENT, TRANSPARENT);
 	setSampler(Smooth.On, false);
 	if (f.kind === FilterKind.Blur || f.kind === FilterKind.Outline || f.kind === FilterKind.Mask) {
 		imageQuad(rtTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
@@ -2079,13 +2070,13 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 		return;
 	}
 	setEffect(colorMatrixAlphaOnly(f.gain),
-		rgba(f.color.r, f.color.g, f.color.b, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
+		rgba(f.color.r, f.color.g, f.color.b, 0.0), TRANSPARENT);
 	const ox: float32 = f.kind === FilterKind.DropShadow ? f.offsetX : 0.0;
 	const oy: float32 = f.kind === FilterKind.DropShadow ? f.offsetY : 0.0;
 	const fblend: BlendMode = f.kind === FilterKind.Glow ? BlendMode.Add : BlendMode.Alpha;
 	imageQuad(rtTile, vec2(xMin + ox, yMin + oy), vec2(qx1 + ox, yMin + oy),
 		vec2(qx1 + ox, qy1 + oy), vec2(xMin + ox, qy1 + oy), rgba(1.0, 1.0, 1.0, na), fblend);
-	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
+	setEffect(NO_COLOR_MATRIX, TRANSPARENT, TRANSPARENT);
 	const sharpTile: Tile = premultipliedTargetTile(sharp, rtW as float32, rtH as float32);
 	imageQuad(sharpTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
 		rgba(1.0, 1.0, 1.0, na), blend);
