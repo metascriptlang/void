@@ -858,7 +858,7 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 		let viewPage: GlyphPage = NO_GLYPH_PAGE;
 		let view: uint32 = 0;
 		for (let li: int32 = 0; li < lineCount; li++) {
-			const line: PlacedLine = text.placedLines[li];
+			const line: Borrow<PlacedLine> = text.placedLines[li];
 			const kept: boolean = line.emitAt != NOT_EMITTED &&
 				(line.emitCount == 0 || line.emitPage != NO_GLYPH_PAGE);
 			const skipped: boolean = kept && skips && line.emitAt == uiInstanceCount();
@@ -1281,7 +1281,7 @@ function emitNode(
 			});
 		},
 		DrawKind.Selection => {
-			const band: Content2D = s.contents[i];
+			const band: Borrow<Content2D> = s.contents[i];
 			drawUiInstance(sharedGlyphView(), blend, {
 				...uiInstance(InstanceMode.Selection, world, tl.x, tl.y, sizeX, sizeY, col),
 				borders: [band.w * 0.5, band.h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP],
