@@ -749,6 +749,9 @@ cross-backend bound, 4 of them pending at delta 1.
 - Attribute order against the writers is only checked in the GL build (where modules carry
   names); the goldens catch a reorder on the other backends.
 - Android: GLES 3.2's `glColorMaski` is refused today (one mask for all targets); MSAA 2/8 untested.
+- A fresh texture's contents differ per backend: WebGPU reads zero (the spec's lazy clear),
+  D3D11 reads undefined memory, GL is unchecked. sokol gives no guarantee either, so main never had
+  one; a test must not read a texel it did not write (`d5e49aeb` stopped the D3D11 check doing so).
 - Android: the app driver from `main` (`86425bf1`) delivers `VoidAppEvent` through `appWindow.c` and
   links with NDK 28 (`msc build src/examples/androidEntry.ms --os=android --app=lib --cc=<ndk>/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android26-clang.exe`);
   it has never run on a device. Its window features other than `requestQuit` and `frameDuration` stop by name.
