@@ -110,9 +110,8 @@ export function kbIndicBeginCluster(s: KbScratch, m: Span<uint8>, config: KbShap
 		glyph = g[glyph].next;
 	}
 
-	let result = glyph;
 	if (nonCluster) {
-		return result;
+		return glyph;
 	}
 
 	const lookupList = kbGetLookupList(m, m.kbBlobTableData(KB_BLOB_TABLE_ID_GSUB));
@@ -122,7 +121,7 @@ export function kbIndicBeginCluster(s: KbScratch, m: Span<uint8>, config: KbShap
 	let state: int64 = 0;
 	let broken: uint64 = 1;
 	let brokenState: uint64 = 0;
-	let firstGlyphs: int32[] = [NO_GLYPH, NO_GLYPH, NO_GLYPH];
+	const firstGlyphs: int32[] = [NO_GLYPH, NO_GLYPH, NO_GLYPH];
 
 	while (glyph != KB_GLYPH_SENTINEL && state < stateCount) {
 		const classValue = g[glyph].syllabicClass as int64;
@@ -227,7 +226,7 @@ export function kbIndicBeginCluster(s: KbScratch, m: Span<uint8>, config: KbShap
 		baseGlyph = kbInsertGlyphBefore(storage, onePastReph, config.dottedCircle);
 		g[baseGlyph].userIdOrCodepointIndex = g[onePastReph].userIdOrCodepointIndex;
 	} else {
-		let scratch: KbGlyph[] = [config.virama, kbZeroGlyph(), config.virama];
+		const scratch: KbGlyph[] = [config.virama, kbZeroGlyph(), config.virama];
 
 		const locl = config.locl;
 		const vatu = config.vatu;
@@ -376,11 +375,11 @@ export function kbIndicBeginCluster(s: KbScratch, m: Span<uint8>, config: KbShap
 		const lastConsonantAttachPosition = (lastConsonantPosition << 4) & 0xFF;
 		const prebaseConsonantPosition = (KB_SYLLABIC_POSITION_PREBASE_CONSONANT as int32) << 4;
 
-		let currentPosition: int32[] = [rephAttachPosition, lastConsonantAttachPosition];
-		let lastPositionThatWasNotPreBaseMatra: int32[] = [rephAttachPosition, lastConsonantAttachPosition];
-		let lastClass: int32[] = [KB_INDIC_SYLLABIC_CLASS_COUNT, KB_INDIC_SYLLABIC_CLASS_COUNT];
+		const currentPosition: int32[] = [rephAttachPosition, lastConsonantAttachPosition];
+		const lastPositionThatWasNotPreBaseMatra: int32[] = [rephAttachPosition, lastConsonantAttachPosition];
+		const lastClass: int32[] = [KB_INDIC_SYLLABIC_CLASS_COUNT, KB_INDIC_SYLLABIC_CLASS_COUNT];
 		const lastConsonantNext = lastConsonant != NO_GLYPH ? g[lastConsonant].next : onePastLastSyllableGlyph;
-		let at: int32[] = [onePastReph, lastConsonantNext];
+		const at: int32[] = [onePastReph, lastConsonantNext];
 		const end: int32[] = [baseGlyph, onePastLastSyllableGlyph];
 
 		while (true) {
@@ -437,28 +436,20 @@ export function kbIndicBeginCluster(s: KbScratch, m: Span<uint8>, config: KbShap
 	}
 
 	{
-		let baseFlags: uint32 = 0;
-		if (config.indicScriptProperties.blwfPostOnly == 0) {
-			baseFlags = KB_GLYPH_FLAG_BLWF;
-		}
+		const baseFlags: uint32 = config.indicScriptProperties.blwfPostOnly == 0 ? KB_GLYPH_FLAG_BLWF : 0;
 
 		let lastClass: int32 = 0;
 		glyph = g[baseGlyph].prev;
 		while (glyph != oneBeforeSyllableGlyph) {
-			let flags = baseFlags;
-
-			if (lastClass != KB_INDIC_SYLLABIC_CLASS_ZWNJ) {
-				flags |= KB_GLYPH_FLAG_HALF;
-			}
-
-			g[glyph].flags |= flags;
+			const halfFlag: uint32 = lastClass != KB_INDIC_SYLLABIC_CLASS_ZWNJ ? KB_GLYPH_FLAG_HALF : 0;
+			g[glyph].flags |= baseFlags | halfFlag;
 			lastClass = g[glyph].syllabicClass as int32;
 			glyph = g[glyph].prev;
 		}
 	}
 
 	{
-		let scratch: KbGlyph[] = [kbZeroGlyph(), kbZeroGlyph()];
+		const scratch: KbGlyph[] = [kbZeroGlyph(), kbZeroGlyph()];
 		let lastGlyph = NO_GLYPH;
 		glyph = g[baseGlyph].next;
 		while (glyph != onePastLastSyllableGlyph) {
@@ -491,9 +482,8 @@ export function kbIndicBeginCluster(s: KbScratch, m: Span<uint8>, config: KbShap
 		}
 	}
 
-	result = onePastLastSyllableGlyph;
 	s.realCluster = true;
-	return result;
+	return onePastLastSyllableGlyph;
 }
 
 export function kbIndicEndCluster(s: KbScratch, config: KbShapeConfig): void {
