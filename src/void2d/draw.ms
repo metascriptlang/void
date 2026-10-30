@@ -866,8 +866,8 @@ export function pushRoundedClip(
 	const ey: float32 = tr.y - tl.y;
 	const fx: float32 = bl.x - tl.x;
 	const fy: float32 = bl.y - tl.y;
-	const exLen: float32 = Math.sqrt((ex * ex + ey * ey) as float64) as float32;
-	const fLen: float32 = Math.sqrt((fx * fx + fy * fy) as float64) as float32;
+	const exLen: float32 = sqrtf(ex * ex + ey * ey);
+	const fLen: float32 = sqrtf(fx * fx + fy * fy);
 	let supported: boolean = true;
 	const axisAligned: boolean = (absf(ey) < 0.0001 && absf(fx) < 0.0001)
 		|| (absf(ex) < 0.0001 && absf(fy) < 0.0001);
