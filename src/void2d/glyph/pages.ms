@@ -199,8 +199,8 @@ export function void2dGlyphRasterize(
 				return COVERAGE_RASTER_BOX_MISMATCH;
 			}
 			for (let row: int32 = 0; row < h; row++) {
-				for (let k: int32 = 0; k < w; k++) {
-					p.texels[at + row * p.size + k] = ink.pixels[ink.origin + row * ink.stride + k];
+				for (let col: int32 = 0; col < w; col++) {
+					p.texels[at + row * p.size + col] = ink.pixels[ink.origin + row * ink.stride + col];
 				}
 			}
 		}
