@@ -312,3 +312,44 @@ test "forwardOutline RGBA8 partial coverage interval rejects old four-pixel widt
 	assert 380 >= low && 380 <= high;
 	assert fullLow == 127 && fullHigh == 128;
 }
+
+import { ForwardOutlinePass, FORWARD_OUTLINE_PASS_UNIFORM_LENGTH } from "../void3d/forwardOutline";
+import { sameLanes } from "./helpers";
+
+const UNWRITTEN: float32 = -7.0;
+
+function outlineLanes(
+	settings: ForwardOutlineSettings,
+	blend: float32,
+	zeroToOne: boolean,
+): Vec<float32> {
+	const context: DrawContext =
+		DrawContext.withUniformCapacity(FORWARD_OUTLINE_PASS_UNIFORM_LENGTH);
+	for (let i = 0; i < FORWARD_OUTLINE_PASS_UNIFORM_LENGTH; i++) {
+		context.uniforms.values[i] = UNWRITTEN;
+	}
+	const pass: ForwardOutlinePass = ForwardOutlinePass.reserve(context);
+	pass.writeSettings(context, settings, blend, zeroToOne);
+	return context.uniforms.values;
+}
+
+test "forwardOutline writes the mask, mix and width blocks lane for lane, every lane written" {
+	const color: Vec4 = { x: 0.3, y: 0.6, z: 0.9, w: 0.5 };
+	const narrow: ForwardOutlineSettings =
+		{ color: color, pixelWidth: 1.0, depthThreshold: 0.002, normalThreshold: 0.8 };
+	assert sameLanes(outlineLanes(narrow, 0.75, true), [
+		2, 0.002, 0.8, 1, 0, 0.75, 0, 0,
+		0.15, 0.3, 0.45, 0.5, 0.75, 0, 0, 0,
+		0.5, 1, 0, 0,
+	]);
+	assert sameLanes(outlineLanes({ ...narrow, pixelWidth: 2.0 }, 0.75, false), [
+		2, 0.002, 0.8, 2, -1, 0.75, 0, 0,
+		0.15, 0.3, 0.45, 0.5, 0.75, 0, 0, 0,
+		0, 0, 0, 0,
+	]);
+	assert sameLanes(outlineLanes({ ...narrow, pixelWidth: 3.5 }, 0.0, true), [
+		2, 0.002, 0.8, 1, 0, 0, 0, 0,
+		0.15, 0.3, 0.45, 0.5, 0, 0, 0, 0,
+		0.75, 0, 0, 0,
+	]);
+}

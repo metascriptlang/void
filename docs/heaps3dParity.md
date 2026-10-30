@@ -131,7 +131,7 @@ verified until those tests run; no component may lift an importer refusal or reg
 | Component owner | Exclusive files | Contract at the integration boundary |
 |---|---|---|
 | Accessor | `gltfAccessor.ms`, `gltfColour.ms`, dedicated checks | Owned decoded values from validated caller-supplied byte tables; stride/sparse/normalization and RGBA preservation. No URI policy or index-width GPU change. |
-| Direct PBR | `pbrResponse.ms`, `pbrResponse.glsl`, dedicated check | Heaps direct response and separate glTF map interpretation in linear space. No legacy look change, view-slot choice or invented zero-roughness floor. |
+| Direct PBR | `pbrResponse.ms`, `shader3d.ms` `pbrDirect`, dedicated check | Heaps direct response and separate glTF map interpretation in linear space. No legacy look change, view-slot choice or invented zero-roughness floor. |
 | Mip data | `textureMip.ms`, dedicated check | Explicit supplied mip chains and complete supported sampler identity. No automatic generation, GPU door, cube target or environment approximation. |
 | Light shape | `lightShape.ms`, dedicated check | Spot angular evaluation/camera data; rectangle/capsule closest-point math. No scene enum, attenuation replacement or unsafe culling copied by convenience. |
 | Clip composition | `animationCompose.ms`, dedicated check | Staged TRS composition, captured-rest fallback and source-index exclusive masks; glTF intra-track SLERP and legacy sampling unchanged. |

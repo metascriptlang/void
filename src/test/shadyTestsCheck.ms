@@ -239,7 +239,7 @@ export struct TileBindings {
 
 // es3SamplerFrag and desktopSamplerFrag: a uint texel fetched, and a layer of an array sampled.
 export function tileFs(input: Pixel, b: TileBindings): Vec4f {
-	const tile = textureLoad(b.tileData, b.tileSampler, vec2i(0, 0), 0);
+	const tile = textureLoad(b.tileData, vec2i(0, 0), 0);
 	const layer = textureSample(b.tileAtlas, b.tileSampler, vec2f(0.5, 0.5), 1);
 	return vec4f(tile.x as float32, layer.y, 0.0, 1.0);
 }
@@ -468,13 +468,14 @@ test "silkyVertTest" {
 
 test "es3SamplerFrag" {
 	assert glsl(tileFs) ==
+		"#extension GL_EXT_samplerless_texture_functions : require\n" +
 		"@image_sample_type tileData uint\n" +
 		"layout(binding=0) uniform utexture2D tileData;\n" +
 		"layout(binding=1) uniform texture2DArray tileAtlas;\n" +
 		"layout(binding=0) uniform sampler tileSampler;\n" +
 		"layout(location=0) out vec4 fragColor;\n" +
 		"void main() {\n" +
-		"    uvec4 tile = texelFetch(usampler2D(tileData, tileSampler), ivec2(0, 0), 0);\n" +
+		"    uvec4 tile = texelFetch(tileData, ivec2(0, 0), 0);\n" +
 		"    vec4 layer = texture(sampler2DArray(tileAtlas, tileSampler), vec3(vec2(0.5, 0.5), float(1)));\n" +
 		"    fragColor = vec4(float(tile.x), layer.y, 0.0, 1.0);\n" +
 		"    return;\n" +

@@ -1,0 +1,8 @@
+extern class Js {}
+
+extern function makeCell(): Js from "(()=>{const f=new Float32Array(1);return [f,new Uint32Array(f.buffer)];})()";
+extern function bitsThrough(cell: Js, value: float32): uint32 from "((c,v)=>{c[0][0]=v;return c[1][0];})(#,#)";
+
+const cell: Js = makeCell();
+
+export function floatBits(value: float32): uint32 { return bitsThrough(cell, value); }

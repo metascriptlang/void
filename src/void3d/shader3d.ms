@@ -1,5 +1,5 @@
-// void3d's programs written as MetaScript shader functions. tools/genShaders.ms writes their GLSL
-// into shader3dGen.glsl for scripts/regen-shaders.sh; the native gate runs them on the CPU.
+// void3d's programs written as MetaScript shader functions. tools/irPrograms.ms prints them
+// into programModules.ms for scripts/regen-shaders.sh; the native gate runs them on the CPU.
 
 import {
 	Mat4x4f,
@@ -42,7 +42,6 @@ import {
 	pow,
 	reflect,
 	sampleType,
-	samplerType,
 	sin,
 	textureDimensions,
 	textureLoad,
@@ -86,14 +85,13 @@ export struct CopyInput {
 
 export struct CopyBindings {
 	@binding(0) sourceTexture: Texture2d;
-	@binding(0) pointSampler: Sampler;
 }
 
 // h3d.pass.Copy: the scene target onto the swapchain, one texel per pixel.
 export function copyFs(input: CopyInput, b: CopyBindings): Vec4f {
-	const size = textureDimensions(b.sourceTexture, b.pointSampler, 0);
+	const size = textureDimensions(b.sourceTexture, 0);
 	const p = clamp(vec2i(input.position.xy), vec2i(0, 0), size - vec2i(1, 1));
-	return textureLoad(b.sourceTexture, b.pointSampler, p, 0);
+	return textureLoad(b.sourceTexture, p, 0);
 }
 
 export const PARTICLE_CORNERS: Vec2f[6] = [
@@ -357,9 +355,7 @@ export struct LitBindings {
 	@binding(6) frameParams: FrameParams;
 	@binding(5) shadowParams: ShadowParams;
 	@binding(4) @sampleType(unfilterable_float) shadowMap: Texture2dArray;
-	@binding(2) @samplerType(nonfiltering) shadowSampler: Sampler;
 	@binding(6) @sampleType(unfilterable_float) spotShadowMap: Texture2dArray;
-	@binding(3) @samplerType(nonfiltering) spotShadowSampler: Sampler;
 	@binding(12) @sampleType(unfilterable_float) cubeShadowMap: Texture2dArray;
 	@binding(13) cookieTexture: Texture2d;
 	@binding(6) cookieSampler: Sampler;
@@ -378,7 +374,6 @@ export struct LitBindings {
 	@binding(9) @sampleType(unfilterable_float) lightRecords: Texture2d;
 	@binding(10) clusterRecords: Texture2dU32;
 	@binding(11) clusterIndices: Texture2dU32;
-	@binding(5) @samplerType(nonfiltering) clusterSampler: Sampler;
 }
 
 export struct UnlitBindings {
@@ -683,7 +678,6 @@ export struct BillboardBindings {
 	@binding(9) @sampleType(unfilterable_float) lightRecords: Texture2d;
 	@binding(10) clusterRecords: Texture2dU32;
 	@binding(11) clusterIndices: Texture2dU32;
-	@binding(5) @samplerType(nonfiltering) clusterSampler: Sampler;
 }
 
 export struct BillboardKey {
@@ -1516,7 +1510,7 @@ export function cascadeShadowAt(
 	const scale = b.shadowParams.cascadeFilter.x;
 	let lit: float32 = 0.0;
 	if (texel.w < 0.5 || scale <= 0.0) {
-		const stored = textureLoad(b.shadowMap, b.shadowSampler, vec2i(texel.xy), cascade, 0).x;
+		const stored = textureLoad(b.shadowMap, vec2i(texel.xy), cascade, 0).x;
 		lit = cascadeLitOf(texel, stored, b.shadowParams.cascadeInfo);
 	} else {
 		const uv = mapCoord(at, b.shadowParams.cascadeMatrices[cascade]);
@@ -1524,7 +1518,7 @@ export function cascadeShadowAt(
 		const rotation = poissonRotation(at);
 		for (let tap = 0; tap < PCF_SAMPLES; tap++) {
 			const at = pcfTexelOf(uv, size, poissonOffset(tap, rotation, scale));
-			const stored = textureLoad(b.shadowMap, b.shadowSampler, at, cascade, 0).x;
+			const stored = textureLoad(b.shadowMap, at, cascade, 0).x;
 			lit = lit + cascadeLitOf(texel, stored, b.shadowParams.cascadeInfo);
 		}
 		lit = lit / (PCF_SAMPLES as float32);
@@ -1542,15 +1536,14 @@ export function spotShadowAt(position: Vec3f, normal: Vec3f, b: LitBindings): fl
 	const size = (b.shadowParams.spotShadow.z + 0.5) as int32;
 	const scale = b.shadowParams.spotShadow.w;
 	if (scale <= 0.0) {
-		const depth = textureLoad(b.spotShadowMap, b.spotShadowSampler,
-			pcfTexelOf(p, size, vec2f(0.0)), 0, 0).x;
+		const depth = textureLoad(b.spotShadowMap, pcfTexelOf(p, size, vec2f(0.0)), 0, 0).x;
 		return mapLit(p.z, depth, b.shadowParams.spotShadow.x, b.shadowParams.spotShadow.y);
 	}
 	const rotation = poissonRotation(biased);
 	let lit: float32 = 0.0;
 	for (let tap = 0; tap < PCF_SAMPLES; tap++) {
 		const at = pcfTexelOf(p, size, poissonOffset(tap, rotation, scale));
-		const depth = textureLoad(b.spotShadowMap, b.spotShadowSampler, at, 0, 0).x;
+		const depth = textureLoad(b.spotShadowMap, at, 0, 0).x;
 		lit = lit + mapLit(p.z, depth, b.shadowParams.spotShadow.x, b.shadowParams.spotShadow.y);
 	}
 	return lit / (PCF_SAMPLES as float32);
@@ -1577,8 +1570,7 @@ function cubeTapAt(position: Vec3f, b: LitBindings): float32 {
 		return 1.0;
 	}
 	const size = (b.shadowParams.cubeShadow.z + 0.5) as int32;
-	const depth = textureLoad(b.cubeShadowMap, b.spotShadowSampler,
-		pcfTexelOf(p, size, vec2f(0.0)), face, 0).x;
+	const depth = textureLoad(b.cubeShadowMap, pcfTexelOf(p, size, vec2f(0.0)), face, 0).x;
 	const near = b.shadowParams.cubeRange.x;
 	const far = b.shadowParams.cubeRange.y;
 	const axes = abs(toPosition);
@@ -1638,31 +1630,31 @@ export function recordShadowAt(
 export function litClusterOf(frag: Vec2f, position: Vec3f, b: LitBindings): Vec4i {
 	const cluster = fragmentClusterOf(frag, position, b.lightParams.clusterGrid,
 		b.lightParams.clusterFactors, b.lightParams.clusterView, b.lightParams.clusterScreen);
-	return vec4i(textureLoad(b.clusterRecords, b.clusterSampler, dataTexelOf(cluster), 0));
+	return vec4i(textureLoad(b.clusterRecords, dataTexelOf(cluster), 0));
 }
 
 export function litLightOf(b: LitBindings, cluster: Vec4i, k: int32): int32 {
 	const j = cluster.x + k;
-	return indexOfWord(textureLoad(b.clusterIndices, b.clusterSampler, indexTexelOf(j), 0), j);
+	return indexOfWord(textureLoad(b.clusterIndices, indexTexelOf(j), 0), j);
 }
 
 export function litTexelOf(b: LitBindings, light: int32, texel: int32): Vec4f {
-	return textureLoad(b.lightRecords, b.clusterSampler, recordTexelOf(light, texel), 0);
+	return textureLoad(b.lightRecords, recordTexelOf(light, texel), 0);
 }
 
 export function billboardClusterOf(frag: Vec2f, position: Vec3f, b: BillboardBindings): Vec4i {
 	const cluster = fragmentClusterOf(frag, position, b.lightParams.clusterGrid,
 		b.lightParams.clusterFactors, b.lightParams.clusterView, b.lightParams.clusterScreen);
-	return vec4i(textureLoad(b.clusterRecords, b.clusterSampler, dataTexelOf(cluster), 0));
+	return vec4i(textureLoad(b.clusterRecords, dataTexelOf(cluster), 0));
 }
 
 export function billboardLightOf(b: BillboardBindings, cluster: Vec4i, k: int32): int32 {
 	const j = cluster.x + k;
-	return indexOfWord(textureLoad(b.clusterIndices, b.clusterSampler, indexTexelOf(j), 0), j);
+	return indexOfWord(textureLoad(b.clusterIndices, indexTexelOf(j), 0), j);
 }
 
 export function billboardTexelOf(b: BillboardBindings, light: int32, texel: int32): Vec4f {
-	return textureLoad(b.lightRecords, b.clusterSampler, recordTexelOf(light, texel), 0);
+	return textureLoad(b.lightRecords, recordTexelOf(light, texel), 0);
 }
 
 // h3d.shader.pbr.Direct (Lighting.hx:125-145) for one light, in linear light: Cook-Torrance GGX
@@ -2337,7 +2329,6 @@ export struct DecalBindings {
 	@binding(0) decalTexture: Texture2d;
 	@binding(0) decalSampler: Sampler;
 	@binding(14) @sampleType(unfilterable_float) sceneDepth: Texture2d;
-	@binding(7) @samplerType(nonfiltering) sceneDepthSampler: Sampler;
 }
 
 export function decalVs(input: LitAttributes, b: VertexBindings): DecalVaryings {
@@ -2366,7 +2357,7 @@ export function ndcDepthOf(stored: float32, zeroToOne: float32): float32 {
 }
 
 function decalLocalAtPixel(b: DecalBindings, pixel: Vec2i, ndc: Vec2f, toLocal: Mat4x4f): Vec3f {
-	const stored = textureLoad(b.sceneDepth, b.sceneDepthSampler, pixel, 0).x;
+	const stored = textureLoad(b.sceneDepth, pixel, 0).x;
 	return decalLocalAt(ndc, ndcDepthOf(stored, b.frameParams.cameraPosition.w), toLocal);
 }
 
@@ -2390,7 +2381,7 @@ export function decalFs(input: DecalFragmentInput, b: DecalBindings): Vec4f {
 	const normalFade = b.decalParams.decalNormalFade;
 	if (normalFade.z == 1.0) {
 		const world = mat4x4f(input.boxWorld0, input.boxWorld1, input.boxWorld2, input.boxWorld3);
-		const last = textureDimensions(b.sceneDepth, b.sceneDepthSampler, 0) - vec2i(1, 1);
+		const last = textureDimensions(b.sceneDepth, 0) - vec2i(1, 1);
 		const right = clamp(pixel + vec2i(1, 0), vec2i(0, 0), last);
 		const below = clamp(pixel + vec2i(0, 1), vec2i(0, 0), last);
 		const alongX = decalLocalAtPixel(b, right, ndc + ndcDx, toLocal);

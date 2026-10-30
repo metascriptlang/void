@@ -1,5 +1,7 @@
 # sokol — Void's GPU layer, and how we treat it (2026-09-20)
 
+**Superseded on `wt/gpu-ms`:** Void's GPU layer is its own (`docs/GPU.md`), and sokol at pin `2e75443d` is the reference it ports. This doc records the sokol period and how Void treated sokol upstream.
+
 Void's GPU layer is [sokol](https://github.com/floooh/sokol): `sokol_gfx` is the driver, `sokol-shdc` is the shader compiler, and `sokol_app` provides the window where Void does not bring its own host glue. This doc records why it stays after a deliberate review against the alternatives, and how Void relates to it: **we are ready to hack sokol and to contribute upstream, not only consume it.**
 
 ## Stance: hack it, and send it upstream
@@ -15,7 +17,7 @@ sokol is a dependency we own a stake in, not a black box.
 
 1. **Before touching the header,** check upstream master and the changelog. The need may already be solved, or be on the way.
 2. **Reach the need through sokol's public API first.** `sokol_gfx` takes any externally provided `sg_swapchain` and `sg_environment`, and `sokol_app` can run without a graphics API (`SOKOL_NOAPI`), so a need around the device or the swapchain belongs in Void's own layer (see "The Windows window owns its swapchain" below). Only a real sokol bug or a missing feature goes upstream.
-3. **An upstream patch is written in a clone of floooh/sokol, `~/projects/sokol`,** on a branch cut from `upstream/master`, and sent as a PR once the person agrees: a PR is outward-facing. `deps/sokol` is a git checkout of floooh/sokol pinned by `setup.sh` (`SOKOL_REV`); the pin always names an upstream commit, so a fresh clone needs nothing but GitHub. `deps/` stays gitignored and fetched by `setup.sh`, not a submodule. On macOS `setup.sh` ends with `scripts/build-sokol-macos.sh`, because `gpu.ms` links `src/sokol/sokol.o` as built and msc never recompiles it: a pin bump without the rebuild runs the old sokol under the new headers.
+3. **An upstream patch is written in a clone of floooh/sokol, `~/projects/sokol`,** on a branch cut from `upstream/master`, and sent as a PR once the person agrees: a PR is outward-facing. `deps/sokol` is a git checkout of floooh/sokol pinned by `setup.sh` (`SOKOL_REV`); the pin always names an upstream commit, so a fresh clone needs nothing but GitHub. `deps/` stays gitignored and fetched by `setup.sh`, not a submodule.
 4. **A local patch is the person's decision, never a default.** Until 2026-10-20 the pin named a fork commit (`sapp_skip_present`, below), and every fresh clone of the public repo failed in `setup.sh`. If a patch is ever needed again, the decision records why neither sokol's API nor upstream serves, and `setup.sh` must still work without the patch's machine.
 5. **When upstream merges a PR Void needs, move the pin** to a commit that contains it.
 6. **Never edit `deps/sokol`.** An uncommitted change in `deps/` is lost on the next `setup.sh`.
@@ -26,7 +28,7 @@ Neon's canvas skips idle frames: a frame that made no `voidCommit` draws nothing
 
 - **Rejected: the fork patch `sapp_skip_present()`** (fork commits `7b7a84d5` D3D11 and `68bd4de8` WGL on `2e75443d`). It worked, but pinned a commit floooh/sokol lacks.
 - **Rejected: render into a Void-owned texture and blit it into sokol_app's back buffer every frame.** It follows sokol_app's contract, but an idle frame still costs a fullscreen copy and a present.
-- **Chosen: `sokol_app` with `SOKOL_NOAPI`** (`src/sokol/sokolAppWin.c`), which keeps the window, events, DPI and resize and never presents. Void owns the device and swapchain (`src/sokol/windowSurface.h`; D3D11 in `bridgeWin.c`, GL core in `windowGl.c`), the way macOS, iOS, Android and the host views already do, presents at the end of a frame that called `voidCommit` (as `sokol_app` did, so a readback after `voidCommit` still sees that frame; a present inside `voidCommit` read back zeros from the discarded `FLIP_DISCARD` buffer, gate 2026-10-21), and waits an undrawn frame on `DwmFlush`. A side effect: `-d:voidGlCore` now runs on `bridgeWin.c`, so it gains the IME path.
+- **Chosen: `sokol_app` with `SOKOL_NOAPI`** (`src/host/sokolAppWin.c`), which keeps the window, events, DPI and resize and never presents. Void owns the device and swapchain (`src/host/windowSurface.h`; D3D11 in `bridgeWin.c`, GL core in `windowGl.c`), the way macOS, iOS, Android and the host views already do, presents at the end of a frame that called `voidCommit` (as `sokol_app` did, so a readback after `voidCommit` still sees that frame; a present inside `voidCommit` read back zeros from the discarded `FLIP_DISCARD` buffer, gate 2026-10-21), and waits an undrawn frame on `DwmFlush`. A side effect: `-d:voidGlCore` now runs on `bridgeWin.c`, so it gains the IME path.
 - **What the no-API backend changes:** with `high_dpi` off the process is DPI-unaware and Windows scales the window (sokol_app's GL behaviour), where the D3D11 backend stretched a smaller swapchain; the framebuffer is the requested size either way.
 
 Measured 2026-10-20 with a throwaway probe on `voidRun` that clears 3 red and 3 green frames at 640x480, MSAA 4, then idles 5 s, reporting wakeups per second, process CPU, and the centre pixel read through `PrintWindow` once a second; 165 Hz display, two runs each, the box at 25-49% CPU under a recompiler gate. The fork rows ran on tree `c1196936`, the Void-owned rows on tree `1f66803b` (the upstream pin; the probe binary predates a comment move only):
@@ -47,7 +49,7 @@ Ordered by how soon Void hits them. None is started; each waits for the Void nee
 | Sub-rect texture updates that persist across frames | Glyph atlas: VOID2D.md P3 | Pinned rev: `sg_update_image` replaces a whole mip level, once per frame. Upstream `sg_write_image_transient` writes sub-rects but does not survive the frame. `write_persistent` is announced. Coordinate on that. |
 | GPU→CPU readback | Golden-image tests on every backend | No API. `out/tmp/capture/capture.c` does it for D3D11 through native handles. Async `read-buffer`/`read-image` is announced. |
 | Android host-owned EGL: context loss, preview and live side by side | Hibernal V6 (`hibernal/docs/ROADMAP.md`) | `sokol_gfx` works on an external GL context (`SOKOL_EXTERNAL_GL_LOADER`, hand-filled `sg_environment`/`sg_swapchain`), but has no context-loss rebuild. `sokol_app` on Android is NativeActivity only. |
-| Embedding `sokol_app` in a host view | Neon hosts, host views (docs/EMBED.md) | No embed mode (issues #520, #335, per the 2026-09 research; not re-read). Void keeps its own host glue: `views.c` and a `voidPlatform*` half per OS. |
+| Embedding `sokol_app` in a host view | Neon hosts, host views (docs/EMBED.md) | No embed mode (issues #520, #335, per the 2026-09 research; not re-read). Void keeps its own host glue: `src/host/views.ms` and a `voidPlatform*` half per OS. |
 | Async pipeline creation on WebGPU | Only if first-frame hitches show up on the web | The pin calls synchronous `wgpuDeviceCreateRenderPipeline`, forwarded by emdawn to Browser `device.createRenderPipeline`. Current startup is `batcher.c` `void2dSetup`; D1's cache/creation decision is in VOID2D.md "D1 direction agreed for the fresh session". No Browser hitch measurement or async implementation is claimed. |
 
 ## Why sokol stays
@@ -122,5 +124,5 @@ None of these holds today.
 - [GPUI.md](GPUI.md): the void2d frame shape (display list, instanced UI pipeline) that the sokol upgrade lands with.
 - [VOID2D.md](VOID2D.md): the 2026-06-20 decision to own the batcher on `sokol_gfx` instead of vendoring sokol_gp.
 - [HEAPS.md](HEAPS.md): sokol replacing the Heaps driver and hxsl layers.
-- `setup.sh`: the pins. `scripts/regen-shaders.sh`: sokol-shdc outputs.
+- `setup.sh`: the pins. `scripts/regen-shaders.sh --oracle-shdc`: the sokol-shdc reflection oracle.
 - sokol changelog: https://github.com/floooh/sokol/blob/master/CHANGELOG.md

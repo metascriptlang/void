@@ -1,4 +1,4 @@
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3, eulerQuat, srgbToLinear, linearToSrgb } from "../../src/math/math3d";
 import { RenderState, FilterMode, Wrap } from "../../src/gpu/state";
 import { beginScreenPass } from "../../src/gpu/target";
@@ -269,8 +269,8 @@ function checkLifetime(): void {
 }
 
 export function initTextured(): void {
-	if (voidCaptureBackend() != 1) {
-		console.log("SKIP textured frame: this consumer requires D3D11 readback");
+	if (voidCaptureBackend() != 1 && voidCaptureBackend() != 5) {
+		console.log("SKIP textured frame: this consumer requires D3D11 or Metal readback");
 		voidCaptureExit(3);
 	}
 	gfxSetup();

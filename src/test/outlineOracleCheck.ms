@@ -1,4 +1,3 @@
-import "../void2d/textOutlineSwitch";
 import { readFile } from "std/fs";
 import { JsonValue } from "std/serialize/json/types";
 import { loadFace, glyphIndex, pageTexel } from "../void2d/face";

@@ -16,6 +16,7 @@ import {
 	contextGeneration,
 } from "./door";
 import { DepthAttachment } from "./target";
+import { stop } from "./stop";
 
 export interface ArrayTarget {
 	size: int32;
@@ -29,9 +30,8 @@ export interface ArrayTarget {
 	closed: boolean;
 }
 
-function stopOnClosedArray(call: string): void {
-	console.log(`gpu door: ${call} on an array target that was closed`);
-	unreachable;
+function stopOnClosedArray(call: string): never {
+	stop(`${call} on an array target that was closed`);
 }
 
 export function unallocated(
@@ -64,11 +64,10 @@ function destroyHandles(target: ArrayTarget): void {
 	target.generation = 0;
 }
 
-function stopOnRefusedArray(target: ArrayTarget, what: string): void {
+function stopOnRefusedArray(target: ArrayTarget, what: string): never {
 	destroyHandles(target);
-	console.log(`gpu door: allocate refused a ${target.size}x${target.size} array of ` +
+	stop(`allocate refused a ${target.size}x${target.size} array of ` +
 		`${target.layers} layers in ${target.format.toString()}: ${what}`);
-	unreachable;
 }
 
 // Whether the GPU objects belong to the current context; false before the first allocate and
@@ -77,8 +76,7 @@ export function isCurrent(this target: ArrayTarget): boolean {
 	if (target.closed) { stopOnClosedArray("isCurrent"); }
 	if (target.image == 0 || target.generation != contextGeneration()) { return false; }
 	if (!imageAlive(target.image)) {
-		console.log("gpu door: isCurrent on an array target whose image was released");
-		unreachable;
+		stop("isCurrent on an array target whose image was released");
 	}
 	return true;
 }
@@ -105,9 +103,8 @@ export function allocate(this target: ArrayTarget): void {
 
 function requireCurrentArray(target: ArrayTarget, call: string): void {
 	if (!target.isCurrent()) {
-		console.log(`gpu door: ${call} on an array target with no GPU objects of this context; ` +
+		stop(`${call} on an array target with no GPU objects of this context; ` +
 			"allocate makes them");
-		unreachable;
 	}
 }
 
@@ -121,8 +118,7 @@ export function asDepth(
 ): DepthAttachment {
 	requireCurrentArray(target, "asDepth");
 	if (layer < 0 || layer >= target.layers) {
-		console.log(`gpu door: asDepth on layer ${layer} of an array with ${target.layers} layers`);
-		unreachable;
+		stop(`asDepth on layer ${layer} of an array with ${target.layers} layers`);
 	}
 	return {
 		view: target.views[layer],

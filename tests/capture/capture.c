@@ -1,14 +1,5 @@
 // Void capture — see capture.h. Moved out of the gitignored out/tmp/capture/capture.c, which
 // is the reason no gate of the last three sessions can be re-run by anyone (docs/TESTING.md).
-//
-// The D3D11 path is that file's, unchanged in mechanism: reach the resolved swapchain buffer
-// through sokol's native-handle getters, clone its desc as STAGING | CPU_ACCESS_READ,
-// CopyResource, Map. It runs after sg_commit(), by which point sokol_gfx has resolved the
-// swapchain pass into that buffer, so the bytes are the frame that was just drawn.
-//
-// The BGRA -> RGBA swizzle below is hand-written and nothing in the renderer checks it.
-// What checks it is tests/golden/scenes.ms "harness/solid", whose expected pixels are
-// arithmetic rather than a capture.
 
 #include "capture.h"
 #include <stdio.h>
@@ -19,34 +10,33 @@
 	#include <emscripten.h>
 #endif
 
-#if defined(__APPLE__)
-	#include <TargetConditionals.h>
-#endif
-
-#if defined(SOKOL_GLES3) || defined(SOKOL_GLCORE)
+#if defined(VOID_GLES3) || defined(VOID_GLCORE)
 	#define VOID_CAPTURE_GL 1
+#elif defined(VOID_VULKAN)
+	#define VOID_CAPTURE_VULKAN 1
 #elif defined(_WIN32)
 	#define VOID_CAPTURE_D3D11 1
-#elif defined(__APPLE__) && TARGET_OS_OSX
+#elif defined(__APPLE__)
+	#include <TargetConditionals.h>
 	#define VOID_CAPTURE_METAL 1
-	int voidWindowReadRgba(uint8_t *out, int width, int height);
-	int voidFbWidth(void);
-	int voidFbHeight(void);
+	#if TARGET_OS_IPHONE
+		#include <errno.h>
+		#include <sys/stat.h>
+	#endif
 #endif
 
 #if defined(VOID_CAPTURE_D3D11)
 	#define COBJMACROS
 	#include <d3d11.h>
 	#include <dxgi.h>
-	const void *sg_d3d11_device(void);
-	const void *sg_d3d11_device_context(void);
-	void *voidWindowSwapChain(void);
+	void *voidD3d11Device(void);
+	void *voidD3d11Context(void);
 	static const GUID VOID_TEXTURE2D_IID =
 		{0x6f15aaf2, 0xd208, 0x4e89, {0x9a, 0xb4, 0x48, 0x95, 0x35, 0xd3, 0x4f, 0x9c}};
 #endif
 
 #if defined(VOID_CAPTURE_GL)
-	#if defined(SOKOL_GLCORE)
+	#if defined(VOID_GLCORE)
 		#if defined(_WIN32)
 			#include <windows.h>
 		#endif
@@ -54,8 +44,6 @@
 	#else
 		#include <GLES3/gl3.h>
 	#endif
-	int sapp_width(void);
-	int sapp_height(void);
 #endif
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -93,21 +81,29 @@ int voidCaptureBackend(void) {
 	return 1;
 #elif defined(VOID_CAPTURE_GL) && defined(__EMSCRIPTEN__)
 	return 3;
-#elif defined(SOKOL_GLCORE)
+#elif defined(VOID_GLCORE)
 	return 4;
-#elif defined(VOID_CAPTURE_GL)
-	return 2;
 #elif defined(VOID_CAPTURE_METAL)
 	return 5;
+#elif defined(VOID_CAPTURE_VULKAN)
+	return 6;
+#elif defined(VOID_CAPTURE_GL)
+	return 2;
 #else
 	return 0;
 #endif
 }
 
+#if defined(VOID_CAPTURE_D3D11) || defined(VOID_CAPTURE_GL) || defined(VOID_CAPTURE_METAL) || defined(VOID_CAPTURE_VULKAN)
+int32_t doorReadScreen(uint8_t *out, int64_t outLength);
+int32_t voidSwapchainWidth(void);
+int32_t voidSwapchainHeight(void);
+#endif
+
 #if defined(VOID_CAPTURE_D3D11)
 static int grabD3D11(int slot, IDXGISwapChain *swapChain, int buffer) {
-	ID3D11Device *device = (ID3D11Device *)sg_d3d11_device();
-	ID3D11DeviceContext *context = (ID3D11DeviceContext *)sg_d3d11_device_context();
+	ID3D11Device *device = (ID3D11Device *)voidD3d11Device();
+	ID3D11DeviceContext *context = (ID3D11DeviceContext *)voidD3d11Context();
 	if (!swapChain || !device || !context) return 0;
 	ID3D11Texture2D *back = NULL;
 	if (FAILED(IDXGISwapChain_GetBuffer(swapChain, (UINT)buffer, &VOID_TEXTURE2D_IID, (void **)&back))) return 0;
@@ -153,22 +149,17 @@ static int grabD3D11(int slot, IDXGISwapChain *swapChain, int buffer) {
 }
 #endif
 
-extern int sapp_width(void);
 extern void voidRequestedSize(int *w, int *h);
-extern int sapp_height(void);
+extern int voidFbWidth(void);
+extern int voidFbHeight(void);
 static void stopOnClampedWindow(void) {
 	int reqW = 0, reqH = 0;
 	voidRequestedSize(&reqW, &reqH);
 	if (reqW <= 0 || reqH <= 0) return;
-#if defined(VOID_CAPTURE_METAL)
-	int fbW = voidFbWidth(), fbH = voidFbHeight();
-#else
-	int fbW = sapp_width(), fbH = sapp_height();
-#endif
-	if (reqW == fbW && reqH == fbH) return;
+	if (reqW == voidFbWidth() && reqH == voidFbHeight()) return;
 	fprintf(stderr, "capture: the window was asked for %dx%d but the framebuffer is %dx%d; "
 		"a pixel test must read the size it asked for or use fbWidth/fbHeight\n",
-		reqW, reqH, fbW, fbH);
+		reqW, reqH, voidFbWidth(), voidFbHeight());
 	exit(1);
 }
 
@@ -187,32 +178,13 @@ int voidCaptureGrab(int slot) {
 		exit(1);
 	}
 	stopOnClampedWindow();
-#if defined(VOID_CAPTURE_D3D11)
-	return grabD3D11(slot, (IDXGISwapChain *)voidWindowSwapChain(), 0);
-#elif defined(VOID_CAPTURE_GL)
-	int width = sapp_width();
-	int height = sapp_height();
+#if defined(VOID_CAPTURE_D3D11) || defined(VOID_CAPTURE_GL) || defined(VOID_CAPTURE_METAL) || defined(VOID_CAPTURE_VULKAN)
+	int width = voidSwapchainWidth();
+	int height = voidSwapchainHeight();
 	if (width <= 0 || height <= 0) return 0;
 	uint8_t *out = slotResize(slot, width, height);
 	if (out == NULL) return 0;
-	uint8_t *flip = (uint8_t *)malloc((size_t)width * (size_t)height * 4u);
-	if (!flip) return 0;
-	glPixelStorei(GL_PACK_ALIGNMENT, 1);
-	glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, flip);
-	for (int y = 0; y < height; y++) {
-		memcpy(out + (size_t)y * (size_t)width * 4u,
-		       flip + (size_t)(height - 1 - y) * (size_t)width * 4u,
-		       (size_t)width * 4u);
-	}
-	free(flip);
-	return 1;
-#elif defined(VOID_CAPTURE_METAL)
-	int width = voidFbWidth();
-	int height = voidFbHeight();
-	if (width <= 0 || height <= 0) return 0;
-	uint8_t *out = slotResize(slot, width, height);
-	if (out == NULL) return 0;
-	return voidWindowReadRgba(out, width, height);
+	return doorReadScreen(out, (int64_t)width * (int64_t)height * 4);
 #else
 	(void)slot;
 	return 0;
@@ -289,6 +261,25 @@ int voidCaptureWritePng(int slot, const char *path) {
 		rgb[i * 3u + 1] = s->rgba[i * 4u + 1];
 		rgb[i * 3u + 2] = s->rgba[i * 4u + 2];
 	}
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	// The app bundle is read-only, so a relative path lands under the container's Documents,
+	// which `devicectl device copy from --domain-type appDataContainer` reads back.
+	char full[1024];
+	const char *home = getenv("HOME");
+	if (!home || path[0] == '/'
+		|| snprintf(full, sizeof full, "%s/Documents/%s", home, path) >= (int)sizeof full) {
+		free(rgb);
+		return 0;
+	}
+	for (char *p = full + strlen(home) + 1; *p; p++) {
+		if (*p != '/') continue;
+		*p = 0;
+		int made = mkdir(full, 0755) == 0 || errno == EEXIST;
+		*p = '/';
+		if (!made) { free(rgb); return 0; }
+	}
+	path = full;
+#endif
 	int ok = stbi_write_png(path, s->width, s->height, 3, rgb, s->width * 3) != 0 ? 1 : 0;
 	free(rgb);
 	return ok;

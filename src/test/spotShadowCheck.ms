@@ -231,7 +231,6 @@ function spotLights(values: Vec<float32>): LitBindings {
 		lightRecords: lights.lightRecords,
 		clusterRecords: lights.clusterRecords,
 		clusterIndices: lights.clusterIndices,
-		clusterSampler: lights.clusterSampler,
 		frameParams: {
 			frame: vec4f(0.0, 1.0, 0.0, 0.0),
 			cameraPosition: vec4f(0.0, 5.0, 1.0, 1.0),
@@ -244,9 +243,7 @@ function spotLights(values: Vec<float32>): LitBindings {
 			cubeLight: NONE,
 		},
 		shadowMap: oneLayer(depthTexture(1.0)),
-		shadowSampler: { nearest: true },
 		spotShadowMap: oneLayer(depthTexture(1.0)),
-		spotShadowSampler: { nearest: true },
 		cubeShadowMap: oneLayer(depthTexture(1.0)),
 		cookieTexture: { width: 0, height: 0, texels: [] },
 		baseTexture: depthTexture(1.0),

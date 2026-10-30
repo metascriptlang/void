@@ -15,7 +15,9 @@ import {
 	imageAlive,
 	contextGeneration,
 } from "./door";
+import { fullMipChain } from "./doorGpu.ms";
 import { ColorAttachment } from "./target";
+import { stop } from "./stop";
 
 export interface CubeTarget {
 	size: int32;
@@ -33,14 +35,11 @@ export const CUBE_FACES: int32 = 6;
 
 // The mip count of a full chain down to 1x1 (h3d Texture.mipLevels).
 export function cubeFullLevels(size: int32): int32 {
-	let levels: int32 = 1;
-	for (let largest = size; largest > 1; largest = largest >> 1) { levels = levels + 1; }
-	return levels;
+	return fullMipChain(size);
 }
 
-function stopOnClosedCube(call: string): void {
-	console.log(`gpu door: ${call} on a cube target that was closed`);
-	unreachable;
+function stopOnClosedCube(call: string): never {
+	stop(`${call} on a cube target that was closed`);
 }
 
 export function unallocated(
@@ -73,11 +72,10 @@ function destroyHandles(target: CubeTarget): void {
 	target.generation = 0;
 }
 
-function stopOnRefusedCube(target: CubeTarget, what: string): void {
+function stopOnRefusedCube(target: CubeTarget, what: string): never {
 	destroyHandles(target);
-	console.log(`gpu door: allocate refused a ${target.size}x${target.size} cube of ` +
+	stop(`allocate refused a ${target.size}x${target.size} cube of ` +
 		`${target.levels} mips in ${target.format.toString()}: ${what}`);
-	unreachable;
 }
 
 // Whether the GPU objects belong to the current context; false before the first allocate and
@@ -86,8 +84,7 @@ export function isCurrent(this target: CubeTarget): boolean {
 	if (target.closed) { stopOnClosedCube("isCurrent"); }
 	if (target.image == 0 || target.generation != contextGeneration()) { return false; }
 	if (!imageAlive(target.image)) {
-		console.log("gpu door: isCurrent on a cube target whose image was released");
-		unreachable;
+		stop("isCurrent on a cube target whose image was released");
 	}
 	return true;
 }
@@ -116,9 +113,8 @@ export function allocate(this target: CubeTarget): void {
 
 function requireCurrentCube(target: CubeTarget, call: string): void {
 	if (!target.isCurrent()) {
-		console.log(`gpu door: ${call} on a cube target with no GPU objects of this context; ` +
+		stop(`${call} on a cube target with no GPU objects of this context; ` +
 			"allocate makes them");
-		unreachable;
 	}
 }
 
@@ -132,9 +128,8 @@ export function asColor(
 ): ColorAttachment {
 	requireCurrentCube(target, "asColor");
 	if (face < 0 || face >= CUBE_FACES || level < 0 || level >= target.levels) {
-		console.log(`gpu door: asColor on face ${face} mip ${level} of a cube with ` +
+		stop(`asColor on face ${face} mip ${level} of a cube with ` +
 			`${target.levels} mips`);
-		unreachable;
 	}
 	return {
 		view: target.faces[face * target.levels + level],

@@ -1,6 +1,6 @@
 // The gate's churn stage runs this, releasing (churnBench) and not releasing (churnControl).
 
-import { gfxSetup } from "../sokol/gpu";
+import { gfxSetup } from "../host/gpu";
 import { vec3, identityQuat } from "../math/math3d";
 import {
 	Program,

@@ -1,5 +1,5 @@
 import { env } from "std/process";
-import { gfxSetup } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/host/gpu";
 import { endPass, commit } from "../../src/gpu/door";
 import { beginScreenPass } from "../../src/gpu/target";
 import { Scene2D, NodeRef } from "../../src/void2d/node";
@@ -11,7 +11,7 @@ import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,
@@ -21,8 +21,8 @@ const WIDTH: int32 = 128;
 const HEIGHT: int32 = 96;
 const GREEN_PIXEL: int64 = 0x009900FF;
 const BLUE_PIXEL: int64 = 0x0000FFFF;
-const CLEAR_PIXEL: int64 = 0x191933FF;
-const CLEAR = rgba(0.1, 0.1, 0.2, 1.0);
+const CLEAR_PIXEL: int64 = 0x333366FF;
+const CLEAR = rgba(0.2, 0.2, 0.4, 1.0);
 const GREEN = rgba(0.0, 0.6, 0.0, 1.0);
 const BLUE = rgba(0.0, 0.0, 1.0, 1.0);
 const subject: Scene2D = Scene2D.create(CLEAR);

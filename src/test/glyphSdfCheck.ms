@@ -1,11 +1,10 @@
-import "../void2d/textSdfSwitch";
 import {
 	void2dGlyphSdfRasterize,
 	void2dGlyphSdfGenerations,
 	void2dGlyphSdfStbDiff,
 	void2dGlyphPageCreate,
 	void2dGlyphPageTexel,
-} from "../void2d/glyph.h";
+} from "../void2d/glyph";
 import { glyphBox, glyphSdfBox } from "../void2d/glyphBoxes";
 import { loadFace, syntheticFace, glyphIndex } from "../void2d/face";
 import { SDF_EDGE, SDF_PAD } from "../void2d/textSdf";

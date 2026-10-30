@@ -1,0 +1,107 @@
+// The window's app-facing half on --target=js: appWindow.ms over the browser window, as
+// appWindowPlatform.c drives it over src/platform/web/window.c. A voidRun gives the window a
+// state and the canvas's listeners; its quit takes them back, and the AppWindow with its handler
+// outlives both, as the C one does.
+
+import { AppEventType } from "../platform/appEvent";
+import { advanceTo } from "../platform/frameTiming";
+import { ImeInput } from "../platform/web/imeInput";
+import { CanvasSize, CanvasView } from "../platform/web/window";
+import { WindowState } from "../platform/web/windowCore";
+import { WindowEvents } from "../platform/web/windowEvents";
+import { AppWindow, AppWindowPlatform } from "./appWindow";
+
+extern function setDocumentTitle(title: string): void from "(document.title=#)";
+extern function writeClipboard(text: string): void from "((text)=>{const ta=document.createElement('textarea');for(const [name,value] of [['autocomplete','off'],['autocorrect','off'],['autocapitalize','off'],['spellcheck','false']]){ta.setAttribute(name,value);}ta.style.left='-100px';ta.style.top='-100px';ta.style.height='1px';ta.style.width='1px';ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);})(#)";
+
+class BrowserWindow extends AppWindowPlatform {
+	live: WindowEvents | null = null;
+	ime: ImeInput = new ImeInput();
+
+	fail(message: string): never { throw new Error(`void: ${message}`); }
+
+	running(operation: string): WindowEvents {
+		const live = this.live;
+		if (live === null) { return this.fail(`${operation}: the window does not exist yet`); }
+		return live;
+	}
+
+	begin(canvas: CanvasView): void {
+		if (this.live !== null) { this.fail("the browser window already runs"); }
+		const live = new WindowEvents(new WindowState(canvas.size), canvas.canvas, appWindow, this.ime);
+		if (appWindow.titleSet) { setDocumentTitle(appWindow.title); }
+		live.open();
+		this.live = live;
+	}
+
+	initDone(): void { this.running("initDone").state.initCalled = true; }
+
+	resized(size: CanvasSize): void {
+		const live = this.running("resized");
+		live.state.resize(size);
+		live.emit(AppEventType.Resized);
+	}
+
+	beginFrame(time: float64): void { this.running("beginFrame").state.timing.advanceTo(time / 1000); }
+
+	endFrame(ran: boolean): boolean {
+		const live = this.running("endFrame");
+		if (ran) { live.state.frameCount++; }
+		if (live.state.quitRequested) { live.askQuit(); }
+		return live.state.quitOrdered;
+	}
+
+	end(): void {
+		this.running("end").close();
+		this.live = null;
+	}
+
+	valid(): boolean { return this.live !== null; }
+	frameCount(): uint64 { return this.running("frameCount").state.frameCount; }
+	framebufferWidth(): int32 { return this.running("framebufferWidth").state.framebufferWidth; }
+	framebufferHeight(): int32 { return this.running("framebufferHeight").state.framebufferHeight; }
+	profileInput(): void {}
+	setTitle(title: string): void { setDocumentTitle(title); }
+	requestQuit(): void { this.running("requestQuit").state.quitRequested = true; }
+	cancelQuit(): void { this.running("cancelQuit").state.quitRequested = false; }
+	frameDuration(): float64 { return this.running("frameDuration").state.timing.smoothDt; }
+	setClipboard(text: string): void { writeClipboard(text); }
+	clipboard(): string { return this.running("clipboard").state.clipboard; }
+
+	setCursor(cursor: int32): void {
+		const live = this.running("setCursor");
+		live.state.mouse.cursor = cursor;
+		live.showCursor();
+	}
+
+	cursor(): int32 { return this.running("cursor").state.mouse.cursor; }
+
+	showMouse(shown: boolean): void {
+		const live = this.running("showMouse");
+		live.state.mouse.shown = shown;
+		live.showCursor();
+	}
+
+	mouseShown(): boolean { return this.running("mouseShown").state.mouse.shown; }
+	lockMouse(locked: boolean): void { this.running("lockMouse").lockMouse(locked); }
+	mouseLocked(): boolean { return this.running("mouseLocked").state.mouse.locked; }
+	toggleFullscreen(): void { this.running("toggleFullscreen").toggleFullscreen(); }
+	isFullscreen(): boolean { return this.running("isFullscreen").state.fullscreen; }
+	droppedCount(): int32 { return this.running("droppedCount").state.droppedPaths.length as int32; }
+	droppedPath(index: int32): string { return this.running("droppedPath").state.droppedPaths[index]; }
+
+	setTextInput(on: boolean): void {
+		this.ime.setTextInput(on ? 1 : 0);
+		const live = this.live;
+		if (live !== null) { live.ime.applyFocus(); }
+	}
+
+	setImeRect(x: int32, y: int32, w: int32, h: int32): void {
+		this.ime.setRect(x, y, w, h);
+		const live = this.live;
+		if (live !== null) { live.ime.applyRect(); }
+	}
+}
+
+export const browserWindow = new BrowserWindow();
+export const appWindow = new AppWindow(browserWindow);

@@ -7,7 +7,7 @@ set -e
 EMSCRIPTEN_VERSION="$(cat "$(dirname "$0")/../.emscripten-version")"
 EMSDK_DIR="${EMSDK_DIR:-$HOME/projects/emsdk}"
 MSC="${MSC:-msc}"
-ENTRY="${VOID_WEB_ENTRY:-src/examples/mainSokol2d.ms}"
+ENTRY="${VOID_WEB_ENTRY:-src/examples/main2d.ms}"
 DEST="${VOID_WEB_DEST:-web}"
 EXTRA_PASSC="${VOID_WEB_PASSC:-}"
 MSC_FLAGS="${VOID_WEB_MSCFLAGS:-}"
@@ -16,7 +16,6 @@ LOG_DIR="${VOID_WEB_LOGDIR:-/tmp}"
 mkdir -p "$LOG_DIR"
 
 cd "$(dirname "$0")/.."
-sh scripts/ensureShaders.sh || exit 1
 
 case "$(uname -s)" in
 MINGW*|MSYS*|CYGWIN*)

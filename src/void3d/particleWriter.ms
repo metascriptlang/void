@@ -1,5 +1,5 @@
-// Writes a particle system's live particles as Program.ParticleVisual instances, in the order
-// its renderer sorts them (docs/PARTICLES.md, tier T0's CPU writer; the layout is gpu3d.c's
+// Writes a particle system's live particles as Program.ParticleVisual instances, in the order its
+// renderer sorts them (docs/PARTICLES.md, tier T0's CPU writer; the layout is vertexLayouts.ms's
 // ParticleVisual: position, width, height, anchor, clockwise rotation, uv rect, colour, world
 // velocity, then the system's render mode, which shader3d.ms particleVisualPoint reads).
 // Trails write the same instances, one view-facing quad per trail segment.
@@ -16,7 +16,7 @@ import {
 	COLOR_A, FRAME, AGE, DRAW_FLIP_U, DRAW_FLIP_V, MOVE_X, MOVE_Y, MOVE_Z,
 } from "../particles/system";
 import { AtlasTile } from "./billboard";
-import { sortKeyOf } from "./sortKey.h";
+import { sortKeyOf } from "./sortKey";
 
 // Floats per instance of the Particle layout (position, size, rgba) and of ParticleVisual
 // (position, width, height, anchor, rotation, uv rect, rgba, velocity, look, scale, pull and the

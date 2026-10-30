@@ -1,4 +1,4 @@
-// Compute entries: shady's compute1 example (examples/compute1.nim) as a WGSL-style compute stage,
+// Compute entries as a WGSL-style compute stage,
 // a storage buffer read and a storage texture written, run on the CPU and pinned as GLSL.
 
 import { glslCompute } from "../shader/emit";
@@ -19,7 +19,6 @@ export struct CommandInput {
 	@builtin(globalInvocationId) id: Vec3u;
 }
 
-// shdc's storage buffer is one flexible array of structs.
 export struct Command {
 	value: float32;
 }
@@ -74,4 +73,9 @@ test "a compute entry is emitted with its workgroup size, storage buffer and sto
 		"        imageStore(image, ivec2(x, y), vec4(0.5, 0.0, (value / 255.0), 1.0));\n" +
 		"    }\n" +
 		"}\n";
+}
+
+test "a workgroup of 16 invocations prints, no target needs a multiple of 32" {
+	assert glslCompute(commandsToImage, [4, 4, 1]).startsWith(
+		"layout(local_size_x=4, local_size_y=4, local_size_z=1) in;\n");
 }

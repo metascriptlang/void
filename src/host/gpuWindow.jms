@@ -1,0 +1,127 @@
+// The window driver on the browser's JS target, as bridgeWeb.c's voidRun drives it: one canvas,
+// the AppWindow events, the frame timing. An entry that calls voidRun imports this module, which
+// publishes voidRun and voidRunConfigured; gpu.jms holds the device and the door it shares with
+// the views driver.
+
+import { AppEventType } from "../platform/appEvent";
+import { CanvasSize, CanvasView, detach, enter, leave, pageCanvas, publishRun } from "../platform/web/window";
+import { doorShutdown } from "../gpu/doorGpu";
+import { appWindow, browserWindow } from "./appWindowBrowser";
+import {
+	Driver,
+	GpuSurface,
+	HostDriver,
+	Start,
+	acquire,
+	claimDriver,
+	fail,
+	framesStopWhenLost,
+	gpuState,
+	restoreStale,
+	starts,
+	surfaceBind,
+	surfaceClose,
+	surfaceOpen,
+	surfaceReconfigure,
+	useWindowDriver,
+} from "./gpu";
+
+const WINDOW_CANVAS = "#canvas";
+let windowSamples: int32 = 1;
+
+class WindowRun extends Start {
+	init: () => void;
+	frame: () => void;
+	inited: boolean = false;
+	surface: GpuSurface | null = null;
+
+	constructor(canvas: CanvasView, onError: (message: string) => void, init: () => void, frame: () => void) {
+		super(canvas, onError);
+		this.init = init;
+		this.frame = frame;
+	}
+
+	suspend(): void { emitApp(AppEventType.Suspended); }
+	resume(): void { emitApp(AppEventType.Resumed); }
+
+	release(): void {
+		if (!browserWindow.valid()) { return; }
+		leave(this.canvas);
+		browserWindow.end();
+		const surface = this.surface;
+		if (surface !== null) { surfaceClose(surface); }
+		doorShutdown();
+		detach(this.canvas);
+	}
+
+	tick(time: float64): void {
+		browserWindow.beginFrame(time);
+		let ran = false;
+		if (!(gpuState.lost && framesStopWhenLost())) {
+			if (!this.inited) {
+				this.init();
+				browserWindow.initDone();
+				this.inited = true;
+			}
+			restoreStale();
+			const surface = this.surface;
+			if (surface !== null) { surfaceBind(surface); }
+			this.frame();
+			ran = true;
+		}
+		if (browserWindow.endFrame(ran)) { this.stop(); }
+	}
+}
+
+class WindowDriver extends HostDriver {
+	live(): boolean { return browserWindow.valid(); }
+	sampleCount(): int32 { return windowSamples; }
+	fbWidth(): int32 { return browserWindow.framebufferWidth(); }
+	fbHeight(): int32 { return browserWindow.framebufferHeight(); }
+	dpiScale(): float32 { return browserWindow.running("dpiScale").state.dpiScale; }
+	keyDown(code: int32): boolean { return appWindow.keysHeld.isDown(code); }
+}
+
+useWindowDriver(new WindowDriver("window driver"));
+
+function emitApp(type: AppEventType): void {
+	const live = browserWindow.live;
+	if (live !== null) { live.emit(type); }
+}
+
+async function beginWindow(canvas: CanvasView, run: WindowRun): Promise<void> {
+	if (!(await acquire(canvas, run))) { return; }
+	run.surface = surfaceOpen(canvas.selector);
+	browserWindow.begin(canvas);
+	enter(
+		canvas,
+		(resized: CanvasSize): void => {
+			browserWindow.resized(resized);
+			const surface = run.surface;
+			if (surface !== null) { surfaceReconfigure(surface); }
+		},
+		(time: float64): void => { run.tick(time); },
+	);
+}
+
+function fatal(message: string): void { throw new Error(message); }
+
+function voidRunConfigured(width: int32, height: int32, samples: int32, highDpi: int32, init: () => void, frame: () => void): void {
+	claimDriver(Driver.Window);
+	if (starts.length > 0) { fail("voidWebRun: the browser window already runs"); }
+	const canvas = pageCanvas(WINDOW_CANVAS, highDpi != 0);
+	if (canvas === null) { return fail(`no canvas ${WINDOW_CANVAS}: the page has no ${WINDOW_CANVAS}`); }
+	windowSamples = samples <= 0 ? 1 : samples;
+	const run = new WindowRun(canvas, fatal, init, frame);
+	starts.push(run);
+	gpuState.runEpoch++;
+	gpuState.lost = false;
+	gpuState.doorStale = false;
+	beginWindow(canvas, run);
+}
+
+function voidRun(width: int32, height: int32, init: () => void, frame: () => void): void {
+	voidRunConfigured(width, height, 4, 1, init, frame);
+}
+
+publishRun(voidRun, voidRunConfigured);

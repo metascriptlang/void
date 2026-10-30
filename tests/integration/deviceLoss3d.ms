@@ -3,7 +3,7 @@ import { contextGeneration, loseContext } from "../../src/gpu/door";
 import { initTextured, frameTextured, configureTextured } from "./texturedFrame";
 import { voidCaptureBackend, voidCaptureExit } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,

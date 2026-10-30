@@ -1,5 +1,5 @@
 // The signed distance functions the UI pipeline's fragment stage evaluates, written once here
-// as arithmetic and mirrored in `shader2d.glsl`.
+// as arithmetic and mirrored in `shader2d.ms`.
 //
 // They are in MetaScript rather than only in GLSL because a distance function is the kind of
 // thing that is checked by reasoning until it is wrong. Here it is T0, and

@@ -4,7 +4,7 @@
 
 import { benchInit, benchFrame, BenchKind } from "../../src/examples/bench2d";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 
 extern function voidRunConfigured(
 	w: int32,

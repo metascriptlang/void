@@ -1,19 +1,13 @@
-// Void Math — C float32 math for MetaScript
-
-import {
-	void_math_sinf,
-	void_math_cosf,
-	void_math_sqrtf
-} from "./mat4.h";
+// Void Math — float32 sin, cos, sqrt
 
 export function sinf(x: float32): float32 {
-	return void_math_sinf(x);
+	return Math.sin(x as float64) as float32;
 }
 
 export function cosf(x: float32): float32 {
-	return void_math_cosf(x);
+	return Math.cos(x as float64) as float32;
 }
 
 export function sqrtf(x: float32): float32 {
-	return void_math_sqrtf(x);
+	return Math.sqrt(x as float64) as float32;
 }

@@ -1,0 +1,37 @@
+// The text-input decisions on the wasm window: imeInput.ms under the names imeInput.h declares.
+
+import { AppEventType } from "../appEvent";
+import { ImeInput } from "./imeInput";
+
+const ime = new ImeInput();
+
+@exportName("voidImeSetTextInput")
+export function exportSetTextInput(on: int32): void { ime.setTextInput(on); }
+
+@exportName("voidImeSetRect")
+export function exportSetRect(x: int32, y: int32, w: int32, h: int32): void { ime.setRect(x, y, w, h); }
+
+@exportName("voidImeMarkReady")
+export function exportMarkReady(): void { ime.ready = true; }
+
+@exportName("voidImeReady")
+export function exportReady(): int32 { return ime.ready ? 1 : 0; }
+
+@exportName("voidImeFocus")
+export function exportFocus(): int32 { return ime.focus(); }
+
+@exportName("voidImeCssRect")
+export function exportCssRect(scale: float64, out: Ptr<float64>): void {
+	const rect = ime.cssRect(scale);
+	for (let i: int32 = 0; i < 4; i++) { out[i] = rect[i]; }
+}
+
+@exportName("voidImeTookKey")
+export function exportTookKey(composing: int32, type: int32): int32 {
+	return ime.tookKey(composing != 0, type as AppEventType) ? 1 : 0;
+}
+
+@exportName("voidImeKeepsFromBrowser")
+export function exportKeepsFromBrowser(type: int32, keyCode: int32): int32 {
+	return ime.keepsFromBrowser(type as AppEventType, keyCode) ? 1 : 0;
+}

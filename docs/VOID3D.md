@@ -2,7 +2,7 @@
 
 The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a renderer for any game, ported from Heaps `h3d` (`~/projects/heaps`): Heaps owns the shape, and where Heaps has no answer, a reference engine does (Bevy first, read from its source). Hibernal is one customer. M1–M11 were taken in the order it needed them; from M16 the order is what any game needs.
 
-**Status (2026-10-07):** M1–M36 are built and reviewed; M35, M36 and M37 passed native acceptance below. From M33 the rows build toward a URG-class game ("Roadmap from M33"). Their as-built sections own the evidence. The gate is `sh scripts/gate3d.sh`; web/device coverage and deployment remain separate.
+**Status (2026-10-07):** M1–M36 are built and reviewed; M35, M36 and M37 passed native acceptance below. From M33 the rows build toward a URG-class game ("Roadmap from M33"). Their as-built sections own the evidence. The 3D gate is `sh scripts/gate3d.sh`, run beside `sh scripts/gate.sh`; web/device coverage and deployment remain separate.
 
 Earlier as-built sections record the APIs at their milestone. Current names and ownership
 are mapped in "M19 as built", "M20 as built", "M21 as built" and "M35a as built"; old `pass.ms`,
@@ -812,7 +812,7 @@ The control fails where the fire lights the ground and holds elsewhere, which is
   `src/gpu/door.{c,h,ms}`, `state.ms`, `target.ms` and `pipeline.ms`.
   The old void3d `pass.ms`, `target.ms` and `pipelineCache.ms` imports are gone.
   `src/void3d/gpu3d.c` remains the layer's registration/upload/draw unit; platform
-  device, swapchain, host views and commit remain under `src/sokol`.
+  device, swapchain, host views and commit remain under `src/host`.
   This is Heaps' shared engine/texture/pass boundary: `h2d.RenderContext` inherits
   h3d's context and uses its `pass` and `engine.pushTarget` (`h2d/RenderContext.hx`).
   Bevy's [RenderDevice](https://github.com/bevyengine/bevy/blob/0f38358f/crates/bevy_render/src/renderer/render_device.rs)
@@ -1116,7 +1116,7 @@ further. Timing is report-only.
 
 **The spike is gone.** After the M22 reviews the human asked for it to be deleted: the textured
 cube demo (`rendererSokol.ms`, `cubedata.ms`, `mainSokol.ms`, `androidCubeEntry.ms`), its shader
-(`src/sokol/shader.glsl`), the cube-only bridge calls in `bridge.c`, `bridgeEmbed.m`,
+(`src/host/shader.glsl`), the cube-only bridge calls in `bridge.c`, `bridgeEmbed.m`,
 `bridge.h`, `gpu.ms` and `gpu.wms` (vertex and index buffers, the cube shader and pipeline, the
 sampler, bindings, the MVP upload, the draw), the global MVP matrices in `src/math/mat4`, and
 `web/index.html`, which loaded it. `build-android.sh` now builds the campfire entry by default.
@@ -1960,7 +1960,7 @@ Yoga's web linker gap remains the migration's external land blocker.
 ### Android lifecycle (V6), alongside from M3
 
 - The shell already renders one engine at a time through one shared EGL context (`VoidRenderer.show/hide`), so preview and live never draw concurrently; the preview uses `PixelArtSettings.preview()`.
-- **Context loss, done in M3 without a device.** A view's present checks `eglSwapBuffers` (`bridgeAndroid.c` `voidPlatformSurfacePresent`); on `EGL_CONTEXT_LOST` the next frame calls `sg_shutdown`, destroys every view's surface and the context, makes new ones on the same windows (or pbuffers), runs `sg_setup` again and bumps a generation (`voidGpuGeneration`, read through `gpu3d contextGeneration`). `voidEmbedLoseContext()` forces the same path, to exercise it on a device. After `sg_setup` sokol hands out ids from fresh pools, so an old handle can name a new object: the renderer **drops** its handles without destroying them (`RenderTarget.forgotten`, `forgetGpu`, `forgetPipelines`) and rebuilds targets, sampler, screen triangle, pipelines and the palette LUT from CPU data on the frame that sees the new generation.
+- **Context loss, done in M3 without a device.** A view's present checks `eglSwapBuffers` (`bridgeAndroid.c` `voidPlatformSurfacePresent`); on `EGL_CONTEXT_LOST` the next frame calls `sg_shutdown`, destroys every view's surface and the context, makes new ones on the same windows (or pbuffers), runs `sg_setup` again and bumps a generation (today the door's `doorContextGeneration`, after `bridge.c` `voidRestoreContextIfLost`). `voidEmbedLoseContext()` forces the same path, to exercise it on a device. After `sg_setup` sokol hands out ids from fresh pools, so an old handle can name a new object: the renderer **drops** its handles without destroying them (`RenderTarget.forgotten`, `forgetGpu`, `forgetPipelines`) and rebuilds targets, sampler, screen triangle, pipelines and the palette LUT from CPU data on the frame that sees the new generation.
 - **Meshes, done in M5.** A mesh added through `addMeshData` keeps its vertex and index arrays in `DrawContext.meshData`, and the core's `beginFrame` re-uploads every mesh whose `GpuMesh.generation` is older than the current context. The campfire's lit geometry is one such mesh. Since M17 a freed or re-uploaded mesh's buffers are doomed with the generation they were made in, and `beginFrame` drops those of an older context instead of destroying them.
 - **Still missing:** void2d's own resources, and any of this on a device. The campfire's billboards and generated textures now rebuild from kept CPU copies (M7 as built) — that path is simulated on D3D11 by destroy-and-remake, since `contextGeneration()` never changes there; on GLES3 only the mesh half of the rebuild has ever run for real.
 - `EGL_DEPTH_SIZE` stays 0: the scene renders offscreen with its own depth attachment, and the swapchain only receives the blit.
@@ -2270,8 +2270,9 @@ before the app runs. `src/void3d/programKeys.txt` therefore declares only the sh
 the same 23 keys, in the same door order. Premultiplied + cutout is nameable but not declared
 until a consumer needs it; `addMaterial` refuses it with `UndeclaredProgram`, and a direct
 door lookup stops naming the key. No `src/gpu` change: the door id remains the pipeline key.
-`scripts/regen-shaders.sh` writes the shader headers and `programTable.h` from the same rows,
-including layout/block assertions; its `--check` covers all three. A row whose stages never
+`scripts/regen-shaders.sh` writes `programModules.ms` and `programTableData.ms` from the same
+rows and refuses rows that disagree on a layout's attribute slots or a shared block's size and
+slot (`tools/irPrograms.ms` `agree`); its `--check` covers both files. A row whose stages never
 read its declared feature is refused rather than compiling a plain shader under that key.
 
 **One source per base and preset.** The shader sources use sokol-shdc's `--defines` and
@@ -3189,8 +3190,8 @@ change is the count: a vertex whose triangles disagree on its tangent is split, 
 `vertexCount()` may exceed the vertices built, and the index list is re-pointed.
 
 **References.** The algorithm is the reference implementation itself, vendored like stb and
-nanosvg: `mmikk/MikkTSpace` pinned in `setup.sh` (zlib), compiled through
-`src/void3d/mikkTangents.c`, which only reads the flat interleaved vertices and writes one tangent
+nanosvg: `mmikk/MikkTSpace` (zlib), since 2026-10-27 transliterated to `src/void3d/mikkTangents.ms`
+(see "Mikk zero-shift UB"), which only reads the flat interleaved vertices and writes one tangent
 per triangle corner. Its header (`mikktspace.h`, `m_setTSpaceBasic`) says the results are per
 corner and that overwriting them through an existing index list gives incorrect results. Godot
 (`SurfaceTool::generate_tangents`, `scene/resources/surface_tool.cpp`) and Bevy
@@ -3214,10 +3215,10 @@ and after: `gate3d.sh` GREEN, 339 PASS with the 3 known skips (tests 1429/1429; 
 `map-material` and `card-table` stages hold their captures, so the flat board did not move);
 `gate.sh` GREEN (golden 107/107, 7 known skips). A first pair is not counted: msc synced from
 `99a851d7` during its `gate.sh` (its `gate3d.sh`, wholly on `99a851d7`, was also GREEN).
-**Web.** `build-web.sh`'s default entry (`mainSokol2d.ms`) imports no `meshData`, and on
+**Web.** `build-web.sh`'s default entry (`main2d.ms`) imports no `meshData`, and on
 `1090f789` it stops in void2d's `textLayout.ms` (routed to void2d). A void3d-only probe that
 calls `addTangents` (`VOID_WEB_ENTRY=out/tmp/mikkWeb/mikkWeb.ms`) built, compiled and linked
-`mikktspace.c` for both the WebGPU and the WebGL2 build, and each wasm run under node printed
+`mikktspace.c` (the C, before the port) for both the WebGPU and the WebGL2 build, and each wasm run under node printed
 `ok, tangent x 1 w 1`, as native. Not run: a browser page, GLES3 and Android.
 
 ### Follow-up stack (2026-10-08), as built
@@ -3321,9 +3322,9 @@ byte-identical; `gate.sh` GREEN (golden d3d11 120/120).
 
 ### void3d on GL core (glsl430), as built
 
-**What changes for the author.** void3d builds for `SOKOL_GLCORE`, the desktop GL 4.3 backend Void's
+**What changes for the author.** void3d builds for `VOID_GLCORE`, the desktop GL 4.3 backend Void's
 platform table gives Linux, where every such build used to stop at `src/void3d/shaderBackends.h`.
-Build with void2d's flags, `-d:voidGlCore --passC=-DSOKOL_GLCORE` (`scripts/golden.sh --backend gl`).
+Build with void2d's flags, `-d:voidGlCore --passC=-DVOID_GLCORE` (`scripts/golden.sh --backend gl`).
 
 **Mechanism: the existing one.** `scripts/regen-shaders.sh` adds `glsl430` to void3d's language
 list (`LANGS`, read from `SHDC_LANGUAGES` in `src/shader/program.ms`), so `shader3d.glsl.h`, `pixelArt3d.glsl.h` and `gpuCopy.glsl.h` carry a GL core
@@ -3347,7 +3348,7 @@ reflection always read the D3D11 desc, which a GL core build does not carry ("pr
 D3D11 shader desc"). `dba64872` reflects the compiled backend's desc instead (only stages and block
 sizes are read, the same on every backend; no `SOKOL_*` define is a compile error), a D3D11 build
 reading the same desc as before. Rerun on `dba64872`, BUILD `1090f789`: `gl-core` GREEN, 22 readback
-runs of 12 checks on `SOKOL_GLCORE`, headless 1452/1452.
+runs of 12 checks on `VOID_GLCORE`, headless 1452/1452.
 
 ### M45 as built: exposure and a linear tone map
 
@@ -3419,7 +3420,7 @@ NEW MECHANISM, its own commit). The scene programs stay one set: the frame block
 skipping M45's per-fragment exposure, so no key bit was added; `Renderer.linearOutput` writes it,
 set by the preset. The tone map is the core's `(Post, Core)` key (`programKeys.txt` row `toneMap`,
 `toneMapFs` in `shader3d.glsl`), drawn by `drawScreen` like the pixel-art Post stage, with its own
-4-float block (`TONE_MAP_UNIFORM_SLOT`, the exposure multiplier at `TONE_MAP_EXPOSURE`) and the hdr
+4-float block (`TONE_MAP_UNIFORM_SLOT`, the exposure multiplier in `ToneMapParams.toneMap.x`) and the hdr
 target bound as its texture. The HDR target clears to the background decoded
 (`linearBackground`). The encode is ColorSpaces' exact sRGB pair, as everywhere in void3d, not
 Heaps' `pow(1/gamma)`, so at exposure 0 an opaque scene reads as the LDR preset does, within the
@@ -3470,7 +3471,7 @@ a..e = 2.51, 0.03, 2.43, 0.59, 0.14 (its constructor), 3 Khronos PBR Neutral (st
 **As built.** One `toneCurve` block (`shader3dBlocks.glsl`) holds the switch, shared by the
 per-fragment `toneMap` block and `toneMapFs`. The core's `toneMode` reaches the scene programs at
 `FRAME_TONE_MODE` (`frame.w`, the frame block's free lane, no length change) and the tone map pass at
-`TONE_MAP_MODE` in its own block. `ToneMode`'s members are ToneMapping's mode numbers, pinned by
+`ToneMapParams.toneMap.y` in its own block. `ToneMode`'s members are ToneMapping's mode numbers, pinned by
 `programKeyCheck.ms`. The per-fragment fast path returns the colour untouched only at exposure 0 and
 the linear curve, so every capture is expected byte-identical.
 
@@ -3554,7 +3555,7 @@ one texture per mip on WebGL :286-312, the mip count and size :326-340, `compute
 alpha :86); `settings.rs` (`NATURAL` :132-145, the threshold precomputations :243-251).
 
 **As built.** `src/void3d/bloom.ms` holds `BloomSettings`, the CPU halves (`bloomMipCount`,
-`bloomMipWidth`, `bloomBlendFactor`, `writeThreshold`, `upsampleState`) and `BloomPass`, which
+`bloomMipWidth`, `bloomBlendFactor`, `thresholdOf`, `upsampleState`) and `BloomPass`, which
 `ToneMapPass` owns, so both presets have it from one place and it runs in `ToneMapPass.draw`
 before the tone map. Three screen programs (`BloomDownsampleFirst`, `BloomDownsample`,
 `BloomUpsample`, core preset, fullscreen layout; `shader3d.glsl`) each read one 12-float block:
@@ -3763,9 +3764,14 @@ Elapsed gate time is not a benchmark; other workspace CPU activity overlapped pa
 ### Scene3D picks the LOD level itself (2026-10-26)
 
 `addLodMeshNode` takes a `MeshLod`, its `MeshLodRanges` and the material slot, and the node's
-item carries a `MeshLodPick` (`DrawItem.lod`). `beginFrame` picks every such item before it
-writes anything, from the camera block it is given: the eye and, in the block's otherwise unused
-w slots, projection `_11`, `_22` and the near plane (`CAMERA_PROJECTION_X/Y`, `CAMERA_NEAR`).
+item carries a `MeshLodPick` (`DrawItem.lod`). Each preset's `prepareFrame` picks every such
+item (`pickMeshLods`) before `beginFrame`, from the camera block it is given: the eye and, in the
+block's otherwise unused w slots, projection `_11`, `_22` and the near plane
+(`CAMERA_PROJECTION_X/Y`, `CAMERA_NEAR`). The pick writes the level's range into the item's
+`range` and a culled pick sets `lodCulled`, so `prepareFrame` and `renderFrame` take the items as a
+writable `Span<DrawItem>` (a list held in a `const` is refused), while the pick itself stays
+the scene's and is only read: `Readonly` is deep, so a frame that wrote the result into the shared
+`MeshLodPick` through its read-only items did not compile (2026-10-28).
 A culled pick leaves the pass lists through `filterFrustum`, and the shadow casters run the same
 filter on the same items, so a shadow follows the main camera's level as Heaps' `emit` does
 (`Mesh.hx` 86-166 calls `getLodIndex` once, with the main camera). `setForcedLod` is Heaps'
@@ -5176,8 +5182,8 @@ Sphere geometry is CPU-proven; full Mikk, rendered and whole-stack acceptance re
 
 ### Mikk zero-shift UB, root and ownership boundary
 
-Void pins mmikk/MikkTSpace `3e895b49d05ea07e4c2133156cfa94369e19e409` in `setup.sh`;
-`mikkTangents.c` includes its C source. Both `QuickSort` (line 1460) and `QuickSortEdges`
+Before the port, Void pinned mmikk/MikkTSpace `3e895b49d05ea07e4c2133156cfa94369e19e409` in `setup.sh`;
+`mikkTangents.c` included its C source. Both `QuickSort` (line 1460) and `QuickSortEdges`
 (line 1667) contain `(uSeed << t) | (uSeed >> (32 - t))` after `t = uSeed & 31`.
 When t is zero, the right shift is 32: undefined in C. Both sphere sizes actually reached
 the latter site; the former is the same expression by source, not a separately executed crash.
@@ -5206,6 +5212,11 @@ includes it and `setup.sh` no longer fetches MikkTSpace. Red: on BUILD 4b5816aea
 aborted at vendor line 1667 (`shift exponent 32`). Green: `sphereTangentsCheck` 2/2, after the
 check read the tangent at its real offset 12 (it read the colour at 8, never reached before the
 abort); `meshDataCheck`, `skinTangentCheck`, `gltfMaterialCheck`, `skinMeshCheck` unchanged green.
+
+**Ported 2026-10-27 (arc void-js).** The tracked copy and `mikkTangents.c` are replaced by
+`src/void3d/mikkTangents.ms`, the triangle path of the same algorithm with the masked rotation and
+the seeded sorts kept, so it runs on C and `--target=js`. `src/test/mikkTangentsPortCheck.ms` pins
+the digest of 177 meshes that were bit-equal to the C before it was deleted.
 
 ### Bounds intersection, Heaps capability acceptance
 
@@ -5880,7 +5891,7 @@ a few dozen.
   `getCubeMatrix`); Hammersley is the unit radical inverse, not Heaps' signed one. Cubes are
   Rgba16f, Bevy's format and Heaps' `DEFAULT_FORMAT`; a device that cannot draw into Rgba16f gets
   `EnvironmentError.NotRenderable`. The bake programs register with the GPU door apart from the
-  scene's (`environmentBake.c`), since `ProgramKey` has 4 bits for a program and 15 are taken.
+  scene's (`shaderProgram` in `environment.ms`), since `ProgramKey` has 4 bits for a program and 15 are taken.
 - **Bindings.** The cubes sit at views 7 and 8 and sampler 4, past the shadow maps; with no
   environment attached the scene binds a 1x1 black cube.
 
@@ -6681,7 +6692,7 @@ What the tools say about the entries above (measured 2026-09-20): the Borrow cop
 - msc 0.2.55 rejects two things 0.2.53 accepted, both rightly: `.value` on an unnarrowed `Result`, and a float literal in a `float32` match arm (the float-literal card has the sighting). It also broke every `--os=android --app=lib` build until recompiler `3a1a2e6e`, which splits `--cc` into the executable and its arguments.
 - `Math.min` / `Math.max` on two `int32` return `int32` on 0.2.55 (re-checked); on 0.2.53 they returned `float64`. The `as int32` casts in void3d are harmless and stay until their lines are touched.
 - A function cannot return a `Span`, still on 0.2.55 (re-checked: `cannot return Span<int32>: a Span borrows memory owned by its source`), though CODE-STYLE lists it as measured. `passList.ms` draws its own entries (`drawPassList`) instead of handing out a `Span<int32>` of them.
-- An `extern function` gets no C prototype from msc: the call compiles only if an imported header (or `@include`) declares it. On the Android clang an extern inside `when (android)` with no header was `call to undeclared function` (`-Wimplicit-function-declaration` is an error there). `gpu3d.c` wraps the Android-only `voidGpuGeneration` behind `#if defined(__ANDROID__)` instead.
+- An `extern function` gets no C prototype from msc: the call compiles only if an imported header (or `@include`) declares it. On the Android clang an extern inside `when (android)` with no header was `call to undeclared function` (`-Wimplicit-function-declaration` is an error there). The sokol-era `gpu3d.c` wrapped its Android-only generation getter behind `#if defined(__ANDROID__)` instead.
 - **A write through a `const` binding is refused since msc `c54a8671`** (synced 2026-09-27; recompiler `21bafd7e`, pinned by its `bug210_const_binding_write`). That is the language rule, not a bug. `const col: Vec<int32> = [10, 20]; const hoisted = col; hoisted[0] = 99;` is `cannot write 'hoisted[…]' — 'hoisted' is const (use 'let')`, and `fill(col)` into a `ref` parameter is `cannot pass 'col' to a 'ref' parameter` (measured on a scratch file). Every binding void writes is `let` since *refactor: written bindings are let under the deep-const rule*. CODE-STYLE §5's copy-trap example (`const hoisted = col; hoisted[0] = 99;`) no longer compiles.
 - **`assert` on a `Result` passes the checker and fails in clang** (card `~/metascript/.inbox/compiler/2026-09-29-assert-accepts-a-result.md`, repro `out/tmp/assertResult`): `assert check()` for a `Result<int32, E>` is `OK` from `msc check` and `invalid argument type 'Result_…' to unary expression` from clang. Hit in M17 when `UniformPool.fits` began answering a `Result`; the tests read `.ok`.
 - **`try … catch` on a call that answers no `Result` passes the checker** (card `2026-09-29-try-on-a-non-result-passes-the-checker.md`, repro `out/tmp/tryNonResult`): C fails in clang (`no member named 'ok'`), and JS takes the fallback silently. Hit in M19, when `addGroup` stopped answering a `Result`; the callers drop the `try`.
@@ -6696,7 +6707,7 @@ Re-checked on 0.2.55 on 2026-09-24 (`out/tmp/auditProbes`). Two have arrived and
 - `distinct`: **arrived, not adopted.** `type BufferId = distinct uint32` builds and casts both ways. The handles for buffers, images, views, samplers and pipelines are still `uint32`, so a view passed where a buffer is expected (`draw.ms` `bindItem`) still compiles.
 - A generic `ref` parameter: **works for the probed shape, not adopted.** `run<T>(ref p: T)` calling an extension on `p` builds and runs on 0.2.55. The two-parameter shape a core-driven renderer needs, `runFrame<P>(ref core: Core, ref preset: P)`, has not been re-run; on 0.2.53 it failed with `cannot instantiate: 'P'`.
 - A `ref` receiver, still a parse error on 0.2.55 (re-checked: `ref this c: T` is `Expected ')' after the parameters`): `pipelineFor`, `addMesh`, `addMaterial`, `reserveUniforms` and `writeUniforms` would become methods on the cache and the context, and `renderFrame`, `setSettings`, `setLook`, `setPalette`, `markChanged`, `beginFrame`, `drawPassLists`, `drawScreen`, `endFrame`, `collect`, `sortBackToFront`, `fill` and `upload` methods on the renderers, pass list and LUT.
-- A bare `import "path"` now keeps its module and the module's `@compile` (recompiler `9815a716`, BUILD `cf69e040`, card `2026-09-20-unused-module-drops-compile.md` closed). A named import still keeps nothing by itself, and a read exported `const` is folded into its use, so reading one keeps nothing either. `gpu3d.c` calls `sg_*`, so `src/void3d/gpu3d.ms` imports `../sokol/gpu` bare, and anything that reaches void3d links sokol. The oracle's four case files lost their `KEY_W` keepalive with it.
+- A bare `import "path"` now keeps its module and the module's `@compile` (recompiler `9815a716`, BUILD `cf69e040`, card `2026-09-20-unused-module-drops-compile.md` closed). A named import still keeps nothing by itself, and a read exported `const` is folded into its use, so reading one keeps nothing either. `gpu3d.c` calls `sg_*`, so `src/void3d/gpu3d.ms` imports `../host/gpu` bare, and anything that reaches void3d links sokol. The oracle's four case files lost their `KEY_W` keepalive with it.
 
 ## Deferred from void2d: 3D text + SDF
 

@@ -22,22 +22,18 @@ export const MAX_SVG_MASK_SIDE: int32 = 8192;
 
 when (voidSvg) {
 	import {
-		void2dSvgMaskParse,
-		void2dSvgMaskReason,
-		void2dSvgMaskWidth,
-		void2dSvgMaskHeight,
-		void2dSvgMaskFree,
-		void2dSvgMaskLive,
-		void2dSvgMaskParsed,
-		void2dSvgMaskReleased,
-	} from "./svgMask.h";
-
-	extern function void2dSvgMaskRasterize(
-		handle: int32, width: int32, height: int32, alpha: Span<uint8>,
-	): int32;
+		maskFree,
+		maskImageOf,
+		maskLive,
+		maskParse,
+		maskParsed,
+		maskRasterize,
+		maskReason,
+		maskReleased,
+	} from "./svg/mask";
 
 	function refusalOf(code: int32): SvgMaskRefusal {
-		const what: string = void2dSvgMaskReason();
+		const what: string = maskReason();
 		const error: SvgMaskError = match (code) {
 			-1 => SvgMaskError.Unparsable,
 			-2 => SvgMaskError.Unsupported,
@@ -62,13 +58,14 @@ when (voidSvg) {
 	export function svgMaskCompiled(): boolean { return true; }
 
 	export function svgMaskParse(source: string): Result<SvgMaskSource, SvgMaskRefusal> {
-		const code: int32 = void2dSvgMaskParse(source);
+		const code: int32 = maskParse(source);
 		if (code < 0) { return Result.err(refusalOf(code)); }
-		return Result.ok({
-			handle: code,
-			width: void2dSvgMaskWidth(code),
-			height: void2dSvgMaskHeight(code),
-		});
+		const image = maskImageOf(code);
+		if (image == null) {
+			staleHandle("svgMaskParse", code);
+			unreachable;
+		}
+		return Result.ok({ handle: code, width: image.width, height: image.height });
 	}
 
 	export function svgMaskRasterize(
@@ -80,22 +77,23 @@ when (voidSvg) {
 				what: `mask size ${width}x${height}, sides run 1 to ${MAX_SVG_MASK_SIDE}`,
 			});
 		}
-		let alpha: Vec<uint8> = new Array(width * height);
-		const code: int32 = void2dSvgMaskRasterize(source.handle, width, height, alpha);
-		if (code == -5) { staleHandle("svgMaskRasterize", source.handle); }
-		if (code < 0) { return Result.err(refusalOf(code)); }
-		return Result.ok(alpha);
+		const image = maskImageOf(source.handle);
+		if (image == null) {
+			staleHandle("svgMaskRasterize", source.handle);
+			unreachable;
+		}
+		return Result.ok(maskRasterize(image, width, height));
 	}
 
 	export function svgMaskFree(source: SvgMaskSource): void {
-		if (void2dSvgMaskFree(source.handle) < 0) { staleHandle("svgMaskFree", source.handle); }
+		if (maskFree(source.handle) < 0) { staleHandle("svgMaskFree", source.handle); }
 	}
 
-	export function svgMaskLive(): int32 { return void2dSvgMaskLive(); }
+	export function svgMaskLive(): int32 { return maskLive(); }
 
-	export function svgMaskParsed(): int32 { return void2dSvgMaskParsed(); }
+	export function svgMaskParsed(): int32 { return maskParsed(); }
 
-	export function svgMaskReleased(): int32 { return void2dSvgMaskReleased(); }
+	export function svgMaskReleased(): int32 { return maskReleased(); }
 } else {
 	function svgMaskOff(what: string): void {
 		console.log(`void2d svg: ${what} needs the SVG module; build with -d:voidSvg`);

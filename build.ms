@@ -1,7 +1,7 @@
 import { BuildConfig } from "std/build";
 
 const config: BuildConfig = {
-	entry: "./src/examples/mainSokol2d.ms",
+	entry: "./src/examples/main2d.ms",
 	fmt: {
 		useTabs: true,
 	},

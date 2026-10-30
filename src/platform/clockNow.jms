@@ -1,0 +1,3 @@
+// Nanoseconds from the browser's performance clock; clockNow.cms is the C targets'.
+
+export function clockNow(): int64 { return (performance.now() * 1000000.0) as int64; }

@@ -1,10 +1,13 @@
 import { Texture } from "../gpu/texture";
+import { bitcastF32toU32 } from "../shader/std";
 
 let fakeTextures: Vec<Texture> = [];
 
 export function fakeTexture(view: uint32): Texture {
-	for (const texture of fakeTextures) {
-		if (texture.view == view) { return texture; }
+	for (let i = 0; i < fakeTextures.length; i++) {
+		if (fakeTextures[i].view != view) { continue; }
+		if (fakeTextures[i].isLost()) { fakeTextures[i] = Texture.adopt(0, view, 1, 1); }
+		return fakeTextures[i];
 	}
 	const texture: Texture = Texture.adopt(0, view, 1, 1);
 	fakeTextures.push(texture);
@@ -15,6 +18,17 @@ export function approx(a: float32, b: float32): boolean {
 	let d: float32 = a - b;
 	if (d < 0.0) { d = -d; }
 	return d < 0.005;
+}
+
+export function sameLanes(
+	made: Readonly<Span<float32>>,
+	expected: Readonly<Span<float32>>,
+): boolean {
+	if (made.length != expected.length) { return false; }
+	for (let i = 0; i < expected.length; i++) {
+		if (bitcastF32toU32(made[i]) != bitcastF32toU32(expected[i])) { return false; }
+	}
+	return true;
 }
 
 export function approxRel(a: float32, b: float32, tolPct: float32): boolean {

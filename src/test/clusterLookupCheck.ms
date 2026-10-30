@@ -4,7 +4,7 @@
 
 import { glsl } from "../shader/emit";
 import {
-	Sampler, Texture2dU32, Vec2f, Vec4f, builtin, binding, textureLoad, vec2f, vec4f, vec4i,
+	Texture2dU32, Vec2f, Vec4f, builtin, binding, textureLoad, vec2f, vec4f, vec4i,
 } from "../shader/std";
 import { vec3 } from "../math/math3d";
 import { Camera3D, CameraView, ProjectionKind } from "../void3d/camera";
@@ -30,18 +30,17 @@ struct ProbeBindings {
 	@binding(5) clusterParams: ClusterParams;
 	@binding(6) clusterRecords: Texture2dU32;
 	@binding(7) clusterIndices: Texture2dU32;
-	@binding(6) dataSampler: Sampler;
 }
 
 // 1 when the cluster of a fragment at `frag` pixels and `depth` lists light `light`.
 function clusterHolds(frag: Vec2f, depth: float32, light: int32, b: ProbeBindings): float32 {
 	const cluster = clusterIndexOf(frag, depth, b.clusterParams.clusterGrid,
 		b.clusterParams.clusterFactors);
-	const record = vec4i(textureLoad(b.clusterRecords, b.dataSampler, dataTexelOf(cluster), 0));
+	const record = vec4i(textureLoad(b.clusterRecords, dataTexelOf(cluster), 0));
 	const count = record.y + record.z;
 	for (let k = 0; k < count; k++) {
 		const j = record.x + k;
-		const texel = textureLoad(b.clusterIndices, b.dataSampler, indexTexelOf(j), 0);
+		const texel = textureLoad(b.clusterIndices, indexTexelOf(j), 0);
 		if (indexOfWord(texel, j) == light) {
 			return 1.0;
 		}
@@ -96,7 +95,6 @@ function bound(a: ClusterAssignment, orthographic: boolean): ProbeBindings {
 		clusterParams: clusterParamsOf(a, WIDTH, HEIGHT, orthographic),
 		clusterRecords: asTexture(clusterTexture(a)),
 		clusterIndices: asTexture(indexTexture(a)),
-		dataSampler: {},
 	};
 }
 
@@ -153,6 +151,6 @@ test "record i sits at texel (i % 256, i / 256), and index j in channel j % 4 of
 test "the lookup's GLSL fetches the cluster record and the index list as unsigned texels" {
 	const source: string = glsl(probeClusterFs);
 	assert source.includes("uniform utexture2D clusterRecords;");
-	assert source.includes("texelFetch(usampler2D(clusterIndices, dataSampler), ");
+	assert source.includes("texelFetch(clusterIndices, ");
 	assert source.includes("log(");
 }

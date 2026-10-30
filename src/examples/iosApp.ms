@@ -1,7 +1,7 @@
 // Void — the iOS and Android app driver demo: a full-screen scene that logs every window event.
 
-import { gfxSetup, dpiScale } from "../sokol/gpu";
-import { onAppEvent, AppEvent, AppEventType, setTextInput, setImeRect, safeArea, keyboardHeight } from "../sokol/window";
+import { gfxSetup, dpiScale } from "../host/gpu";
+import { onAppEvent, AppEvent, AppEventType, setTextInput, setImeRect, safeArea, keyboardHeight } from "../host/window";
 import { Scene2D, NodeRef } from "../void2d/node";
 import { create, presentAt } from "../void2d/scene";
 import { setup2d } from "../void2d/draw";
@@ -12,10 +12,10 @@ when (ios) {
 }
 
 when (android) {
-	@compile("../sokol/androidAppEntry.c");
+	@compile("../host/androidAppEntry.c");
 }
 
-@include("../sokol/bridge.h");
+@include("../host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 const scene: Scene2D = Scene2D.create(rgba(0.08, 0.09, 0.12, 1.0));

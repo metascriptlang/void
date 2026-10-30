@@ -1,13 +1,13 @@
 // The macOS window readback: a grab after commit() reads the frame, and VOID_READBACK_OPEN=1
-// grabs before it, which stops with the named error instead of waiting forever.
-import { gfxSetup } from "../../src/sokol/gpu";
+// also grabs before it, which reads the same frame.
+import { gfxSetup } from "../../src/host/gpu";
 import { endPass, commit } from "../../src/gpu/door";
 import { beginScreenPass } from "../../src/gpu/target";
 import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit, voidCaptureEnvInt,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,
@@ -16,21 +16,24 @@ extern function voidRunConfigured(
 const grabOpen: boolean = voidCaptureEnvInt("VOID_READBACK_OPEN", 0) != 0;
 
 function init(): void { gfxSetup(); }
-function frame(): void {
-	beginScreenPass({ x: 0.0, y: 0.0, z: 1.0, w: 1.0 });
-	endPass();
-	if (grabOpen) { voidCaptureGrab(0); }
-	commit();
+function readBlue(when: string): void {
 	if (voidCaptureGrab(0) == 0) {
-		console.log("FAIL metal readback: the grab after commit returned nothing");
+		console.log(`FAIL metal readback: the grab ${when} commit returned nothing`);
 		voidCaptureExit(1);
 	}
 	const pixel: int64 = voidCapturePixel(0, 10, 10);
 	if (pixel != 0x0000FFFF) {
-		console.log(`FAIL metal readback: pixel ${pixel}, expected the blue clear`);
+		console.log(`FAIL metal readback: pixel ${pixel} ${when} commit, expected the blue clear`);
 		voidCaptureExit(1);
 	}
-	console.log("PASS metal readback: a grab after commit reads the cleared frame");
+	console.log(`PASS metal readback: a grab ${when} commit reads the cleared frame`);
+}
+function frame(): void {
+	beginScreenPass({ x: 0.0, y: 0.0, z: 1.0, w: 1.0 });
+	endPass();
+	if (grabOpen) { readBlue("before"); }
+	commit();
+	readBlue("after");
 	voidCaptureExit(0);
 }
 if (voidCaptureBackend() == 0) { voidCaptureExit(3); }

@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -21,40 +22,27 @@ typedef struct {
 	float color[4];
 } void2dSpriteInstance;
 
+static const size_t void2dUiInstanceOffsets[9] = {
+	offsetof(void2dUiInstance, affine),
+	offsetof(void2dUiInstance, originSize),
+	offsetof(void2dUiInstance, uvRadii),
+	offsetof(void2dUiInstance, borders),
+	offsetof(void2dUiInstance, params0),
+	offsetof(void2dUiInstance, params1),
+	offsetof(void2dUiInstance, colorFill),
+	offsetof(void2dUiInstance, colorBorder),
+	offsetof(void2dUiInstance, colorExtra),
+};
+
+static const size_t void2dSpriteInstanceOffsets[4] = {
+	offsetof(void2dSpriteInstance, affine),
+	offsetof(void2dSpriteInstance, originSize),
+	offsetof(void2dSpriteInstance, uv),
+	offsetof(void2dSpriteInstance, color),
+};
+
 #define VOID2D_UI_REC_FLOATS 36
 #define VOID2D_SPRITE_REC_FLOATS 16
-
-#define VOID2D_UI_ATTRIBUTES(desc) \
-	(desc).layout.attrs[ATTR_ui_iAffine].format = SG_VERTEXFORMAT_FLOAT4; \
-	(desc).layout.attrs[ATTR_ui_iAffine].buffer_index = 1; \
-	(desc).layout.attrs[ATTR_ui_iOriginSize].format = SG_VERTEXFORMAT_FLOAT4; \
-	(desc).layout.attrs[ATTR_ui_iOriginSize].buffer_index = 1; \
-	(desc).layout.attrs[ATTR_ui_iUvRadii].format = SG_VERTEXFORMAT_FLOAT4; \
-	(desc).layout.attrs[ATTR_ui_iUvRadii].buffer_index = 1; \
-	(desc).layout.attrs[ATTR_ui_iBorders].format = SG_VERTEXFORMAT_FLOAT4; \
-	(desc).layout.attrs[ATTR_ui_iBorders].buffer_index = 1; \
-	(desc).layout.attrs[ATTR_ui_iParams0].format = SG_VERTEXFORMAT_FLOAT4; \
-	(desc).layout.attrs[ATTR_ui_iParams0].buffer_index = 1; \
-	(desc).layout.attrs[ATTR_ui_iParams1].format = SG_VERTEXFORMAT_FLOAT4; \
-	(desc).layout.attrs[ATTR_ui_iParams1].buffer_index = 1; \
-	(desc).layout.attrs[ATTR_ui_iColorFill].format = SG_VERTEXFORMAT_UBYTE4N; \
-	(desc).layout.attrs[ATTR_ui_iColorFill].buffer_index = 1; \
-	(desc).layout.attrs[ATTR_ui_iColorBorder].format = SG_VERTEXFORMAT_UBYTE4N; \
-	(desc).layout.attrs[ATTR_ui_iColorBorder].buffer_index = 1; \
-	(desc).layout.attrs[ATTR_ui_iColorExtra].format = SG_VERTEXFORMAT_UBYTE4N; \
-	(desc).layout.attrs[ATTR_ui_iColorExtra].buffer_index = 1; \
-	(void)0
-
-#define VOID2D_SPRITE_ATTRIBUTES(desc) \
-	(desc).layout.attrs[ATTR_sprite_iAffine].format = SG_VERTEXFORMAT_FLOAT4; \
-	(desc).layout.attrs[ATTR_sprite_iAffine].buffer_index = 1; \
-	(desc).layout.attrs[ATTR_sprite_iOriginSize].format = SG_VERTEXFORMAT_FLOAT4; \
-	(desc).layout.attrs[ATTR_sprite_iOriginSize].buffer_index = 1; \
-	(desc).layout.attrs[ATTR_sprite_iUv].format = SG_VERTEXFORMAT_FLOAT4; \
-	(desc).layout.attrs[ATTR_sprite_iUv].buffer_index = 1; \
-	(desc).layout.attrs[ATTR_sprite_iColor].format = SG_VERTEXFORMAT_FLOAT4; \
-	(desc).layout.attrs[ATTR_sprite_iColor].buffer_index = 1; \
-	(void)0
 
 static inline void void2dPackUiInstance(
 	void2dUiInstance *dst, const float *rec, uint32_t (*packColor)(const float *)) {

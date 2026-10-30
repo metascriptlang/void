@@ -13,35 +13,41 @@ import {
 } from "../gpu/pipeline";
 import { RenderState } from "../gpu/state";
 import { TargetLayout } from "../gpu/target";
+import { gpu3dShaderModule } from "./programModules.ms";
+import { GPU3D_PROGRAM_TABLE_LENGTH, PROGRAM_KEYS, PROGRAM_LAYOUTS } from "./programTableData.ms";
+import { LAYOUT_COUNT, gpu3dVertexLayout } from "./vertexLayouts.ms";
+
 import {
-	gpu3dProgramBase,
-	gpu3dLayoutBase,
-	gpu3dProgramCount,
-	gpu3dProgramKey,
-	gpu3dMakeDynamicImage,
-	gpu3dMakeStreamBuffer,
-	gpu3dDestroyBuffer,
-	gpu3dDestroyImage,
-	gpu3dApplyPipeline,
-	gpu3dDraw,
-} from "./gpu3d.h";
+	DoorLayout,
+	doorDestroyImage,
+	doorImageAlive,
+	doorMakeImage,
+	doorMakeTexture,
+	doorRegisterLayouts,
+	doorRegisterPrograms,
+	doorTextureHeight,
+	doorTextureWidth,
+	doorUpdateTextureOf,
+} from "../gpu/doorGpu.ms";
+import { PixelFormat } from "../gpu/door";
 
-// The functions that take arrays are declared here instead: an `extern` Span<T> parameter
-// lowers to the (pointer, int64 length) pair gpu3d.h declares. Importing them from the header
-// maps the pointer to Borrow<T>, and on msc 0.2.53 `span[0]` passed there is the address of a
-// one-element copy (docs/VOID3D.md, Compiler notes).
-extern function gpu3dMakeVertexBuffer(data: Readonly<Span<float32>>): uint32;
-extern function gpu3dMakeIndexBuffer(data: Readonly<Span<uint16>>): uint32;
-extern function gpu3dMakeIndexBuffer32(data: Readonly<Span<uint32>>): uint32;
-extern function gpu3dMakeImage(rgba: Readonly<Span<uint32>>, width: int32, height: int32): uint32;
-extern function gpu3dUpdateImage(image: uint32, rgba: Readonly<Span<uint32>>): void;
-extern function gpu3dUpdateBuffer(buffer: uint32, data: Readonly<Span<float32>>): int32;
-extern function gpu3dAppendBuffer(buffer: uint32, data: Readonly<Span<float32>>): int32;
-extern function gpu3dApplyBindings(bindings: Readonly<Span<uint32>>): void;
-extern function gpu3dApplyUniforms(slot: int32, data: Readonly<Span<float32>>): void;
+function registerLayouts(): int32 {
+	let entries: Vec<DoorLayout> = [];
+	for (let i = 0; i < LAYOUT_COUNT; i++) { entries.push({ buffers: gpu3dVertexLayout(i) }); }
+	return doorRegisterLayouts(entries);
+}
 
-const programBase: int32 = gpu3dProgramBase();
-const layoutBase: int32 = gpu3dLayoutBase();
+let layoutBase: int32 = registerLayouts();
+
+function registerPrograms(): int32 {
+	let layouts: Vec<int32> = [];
+	for (let i = 0; i < GPU3D_PROGRAM_TABLE_LENGTH; i++) {
+		layouts.push(layoutBase + PROGRAM_LAYOUTS[i]);
+	}
+	return doorRegisterPrograms(gpu3dShaderModule, layouts);
+}
+
+let programBase: int32 = registerPrograms();
 
 // A program's base: what a material names. Its preset and features complete its key.
 export enum Program {
@@ -74,9 +80,6 @@ export enum Program {
 	ColorMatrix,
 }
 
-// Heaps adds a pass's output shaders to a material's (h3d.pass.Output); sokol-shdc programs
-// cannot compose, so a preset is the key's: the pixel-art preset's own source (pixelArt3d.ms),
-// and Shadow, the depth h3d.pass.Shadows writes (dirShadowMap.ms).
 export enum Preset {
 	Core,
 	PixelArt,
@@ -236,7 +239,7 @@ export function withPreset(this key: ProgramKey, preset: Preset): ProgramKey {
 	return { ...key, preset: preset };
 }
 
-// GPU3D_PROGRAM_KEY in gpu3d.c packs the same bits.
+// programTableData.ms's PROGRAM_KEYS are packed with the same bits.
 export function bits(this key: ProgramKey): int32 {
 	return (key.program as int32) | ((key.preset as int32) << 5) |
 		((key.premultiplied ? 1 : 0) << 7) | ((key.cutout ? 1 : 0) << 8) |
@@ -268,15 +271,15 @@ export function describe(this key: ProgramKey): string {
 }
 
 function stopOnTable(message: string): Vec<int32> {
-	console.log(`void3d: programTable.h ${message}`);
+	console.log(`void3d: programTableData.ms ${message}`);
 	unreachable;
 }
 
 function indexPrograms(): Vec<int32> {
 	let index: Vec<int32> = [];
 	for (let bits = 0; bits < KEY_LIMIT; bits++) { index.push(-1); }
-	for (let i = 0; i < gpu3dProgramCount(); i++) {
-		const bits: int32 = gpu3dProgramKey(i);
+	for (let i = 0; i < GPU3D_PROGRAM_TABLE_LENGTH; i++) {
+		const bits: int32 = PROGRAM_KEYS[i];
 		if (bits < 0 || bits >= KEY_LIMIT) { return stopOnTable(`declares key ${bits}`); }
 		if (index[bits] >= 0) { return stopOnTable(`declares key ${bits} twice`); }
 		index[bits] = i;
@@ -359,7 +362,7 @@ export function castIn(key: ProgramKey): Result<ProgramKey, ProgramError> {
 	return Result.ok(cast);
 }
 
-// Vertex buffer layouts gpu3d.c describes (describeLayout), then MeshInstances: a stream of the
+// Vertex buffer layouts vertexLayouts.ms describes, then MeshInstances: a stream of the
 // instance rows a mesh layout reads in slot 1, which no program reads as its mesh.
 export enum VertexLayout {
 	Lit,
@@ -400,8 +403,8 @@ export function drawsQuads(layout: VertexLayout): boolean {
 	};
 }
 
-// The mesh layouts, whose draws read one instance row each from slot 1 (gpu3d.c
-// describeInstanceRow).
+// The mesh layouts, whose draws read one instance row each from slot 1 (vertexLayouts.ms
+// mesh).
 export function readsInstanceRows(layout: VertexLayout): boolean {
 	return match (layout) {
 		VertexLayout.Lit | VertexLayout.LitTextured | VertexLayout.LitTexturedTangent => true,
@@ -704,7 +707,7 @@ export function samplerSlotMask(program: ProgramKey): uint32 {
 	return doorSamplerSlotMask(doorProgram(program));
 }
 
-// Floats per element of vertex buffer `buffer` of `layout`, as gpu3d.c registered it.
+// Floats per element of vertex buffer `buffer` of `layout`, as vertexLayouts.ms describes it.
 export function layoutFloats(layout: VertexLayout, buffer: int32): int32 {
 	return doorLayoutFloats(doorLayout(layout), buffer);
 }
@@ -734,60 +737,38 @@ export function pipelineFor(
 	);
 }
 
-export function makeVertexBuffer(data: Readonly<Span<float32>>): uint32 {
-	return gpu3dMakeVertexBuffer(data);
-}
 
-// Three uint16 per triangle. sokol copies the data, so the Vec it came from may move after.
-export function makeIndexBuffer(data: Readonly<Span<uint16>>): uint32 {
-	return gpu3dMakeIndexBuffer(data);
-}
-
-export function makeIndexBuffer32(data: Readonly<Span<uint32>>): uint32 {
-	return gpu3dMakeIndexBuffer32(data);
-}
+export {
+	makeVertexBuffer,
+	makeIndexBuffer,
+	makeIndexBuffer32,
+	makeStreamBuffer,
+	updateBuffer,
+	appendBuffer,
+	destroyBuffer,
+	applyPipeline,
+	applyBindings,
+	applyUniforms,
+	uniformStamp,
+	draw,
+} from "../gpu/draw";
 
 export function makeImage(rgba: Readonly<Span<uint32>>, width: int32, height: int32): uint32 {
-	return gpu3dMakeImage(rgba, width, height);
+	return doorMakeImage(rgba, width, height);
 }
 
 // An RGBA8 image the CPU rewrites with updateImage; its pixels start undefined.
 export function makeDynamicImage(width: int32, height: int32): uint32 {
-	return gpu3dMakeDynamicImage(width, height);
+	return doorMakeTexture(width, height, PixelFormat.Rgba8 as int32, []);
 }
 
-// sokol allows one update per image per frame, before any pass samples it.
+// One update per image per frame, before any pass samples it, as sokol allows; `rgba` shorter
+// than the image is ignored.
 export function updateImage(image: uint32, rgba: Readonly<Span<uint32>>): void {
-	gpu3dUpdateImage(image, rgba);
+	if (doorImageAlive(image) == 0) { return; }
+	const texels = (doorTextureWidth(image) as int64) * (doorTextureHeight(image) as int64);
+	if ((rgba.length as int64) < texels) { return; }
+	doorUpdateTextureOf(image, rgba[0..texels]);
 }
 
-export function makeStreamBuffer(length: int32): uint32 {
-	return gpu3dMakeStreamBuffer(length as int64);
-}
-
-// sokol takes one update per buffer per frame, before the pass that draws it.
-export function updateBuffer(buffer: uint32, data: Readonly<Span<float32>>): boolean {
-	return gpu3dUpdateBuffer(buffer, data) != 0;
-}
-
-// The byte offset `data` landed at in `buffer`, or -1 when it was refused (gpu3d.h).
-export function appendBuffer(buffer: uint32, data: Readonly<Span<float32>>): int32 {
-	return gpu3dAppendBuffer(buffer, data);
-}
-
-export function destroyBuffer(buffer: uint32): void { gpu3dDestroyBuffer(buffer); }
-export function destroyImage(image: uint32): void { gpu3dDestroyImage(image); }
-
-export function applyPipeline(pipeline: uint32): void { gpu3dApplyPipeline(pipeline); }
-
-export function applyBindings(bindings: Readonly<Span<uint32>>): void {
-	gpu3dApplyBindings(bindings);
-}
-
-export function applyUniforms(slot: int32, data: Readonly<Span<float32>>): void {
-	gpu3dApplyUniforms(slot, data);
-}
-
-export function draw(base: int32, count: int32, instances: int32): void {
-	gpu3dDraw(base, count, instances);
-}
+export function destroyImage(image: uint32): void { doorDestroyImage(image); }

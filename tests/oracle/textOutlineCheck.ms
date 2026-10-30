@@ -1,4 +1,3 @@
-import "../../src/void2d/textSdfSwitch";
 import { env } from "std/process";
 import { readFile } from "std/fs";
 import { sha256, toHex } from "std/crypto/sha256";

@@ -1,0 +1,11 @@
+// The frame's screen target as the C window drivers own it (swapchain.h); swapchainFrame.jms is
+// the browser's.
+
+@include("swapchain.h");
+
+export extern function voidSwapchainWidth(): int32;
+export extern function voidSwapchainHeight(): int32;
+export extern function voidSwapchainSampleCount(): int32;
+export extern function voidSwapchainRenderView(): Ptr<void> | null;
+export extern function voidSwapchainResolveView(): Ptr<void> | null;
+export extern function voidSwapchainDepthStencilView(): Ptr<void> | null;

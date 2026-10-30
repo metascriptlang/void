@@ -27,7 +27,7 @@ sokol picks its backend at compile time, so the web ships two wasm artifacts and
 ## Layout
 
 ```
-src/sokol/      GPU bridge — sokol_gfx + sokol_app primitives
+src/host/      GPU bridge — sokol_gfx + sokol_app primitives
 src/void2d/     2D layer — batcher, Node2D tree, text
 src/void3d/     3D layer — camera, mesh, fixed pipelines
 src/examples/   thin entries: voidRun(w, h, init, frame)
@@ -39,7 +39,7 @@ android/        Kotlin shell — sample app and live wallpaper
 Needs `msc`, the MetaScript compiler.
 
 ```sh
-msc build src/examples/mainSokol2d.ms   # native
+msc build src/examples/main2d.ms   # native
 scripts/build-web.sh                    # both web backends → web/wgpu/, web/gl/
 scripts/build-android.sh                # arm64 .so for android/; ENTRY= picks the demo
 ```

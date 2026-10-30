@@ -10,8 +10,8 @@ import {
 	Mat4, Quat, Vec3, vec3, identity, quatBetween, quatOfRotation, rotationX, rotationZ,
 	identityQuat,
 } from "../../src/math/math3d";
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
-import { PresentMode, setPresentMode } from "../../src/sokol/window";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
+import { PresentMode, setPresentMode } from "../../src/host/window";
 import { RenderState } from "../../src/gpu/state";
 import { MeshData, MeshError, Rgba, addQuad } from "../../src/void3d/meshData";
 import { Material, Phase, UniformBlock, pbrBlock } from "../../src/void3d/material";
@@ -35,7 +35,7 @@ import {
 	ForwardRenderer, ForwardError, FORWARD_UNIFORM_LENGTH, renderFrame,
 } from "../../src/void3d/forwardRenderer";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,

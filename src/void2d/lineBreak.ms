@@ -1,4 +1,5 @@
-import { void2dLineBreakClass } from "./lineBreak.h";
+import { LINE_BREAK_PACKED } from "./lineBreakTable";
+import { rangeValue, unpackRanges } from "./unicodeRanges";
 
 export enum LineClass {
 	AL,
@@ -62,8 +63,30 @@ struct Unit {
 
 const DOTTED_CIRCLE: int32 = 0x25CC;
 
+const HANGUL_FIRST: int32 = 0xAC00;
+const HANGUL_LAST: int32 = 0xD7A3;
+const HANGUL_T_COUNT: int32 = 28;
+const EAST_ASIAN: int32 = 1 << 6;
+
+let lineBreakRangesCache: uint32[] = new Array(0);
+
+function lineBreakRanges(): uint32[] {
+	if (lineBreakRangesCache.length == 0) { lineBreakRangesCache = unpackRanges(LINE_BREAK_PACKED, 11); }
+	return lineBreakRangesCache;
+}
+
+export function lineBreakPacked(codepoint: int32): int32 {
+	if (codepoint < 0 || codepoint > 0x10FFFF) { return 0; }
+	if (codepoint >= HANGUL_FIRST && codepoint <= HANGUL_LAST) {
+		const syllable: LineClass = (codepoint - HANGUL_FIRST) % HANGUL_T_COUNT == 0 ?
+			LineClass.H2 : LineClass.H3;
+		return (syllable as int32) | EAST_ASIAN;
+	}
+	return rangeValue(lineBreakRanges(), 11, 0x7FF, codepoint);
+}
+
 export function lineProperty(codepoint: int32): LineProperty {
-	const packed: int32 = void2dLineBreakClass(codepoint);
+	const packed: int32 = lineBreakPacked(codepoint);
 	return {
 		cls: (packed & 63) as LineClass,
 		eastAsian: (packed & 64) != 0,

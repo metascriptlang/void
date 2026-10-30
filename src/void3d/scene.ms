@@ -290,6 +290,7 @@ export interface Scene3D {
 	// item's slot, so a frame rewrites only the queued items. LOD items are rewritten every frame.
 	dirtySlots: Vec<int32>;
 	lodSlots: Vec<int32>;
+	stackSources: Vec<int32>;
 	root: int32;
 	structureChanged: boolean;
 	// Counts structural changes, so a list kept beside the draw list knows when it is stale.
@@ -406,6 +407,7 @@ function newSlot(scene: Scene3D, node: Object3D): NodeId3D {
 	if (index == (scene.nodes.length as int32)) {
 		scene.nodes.push(node);
 		scene.stack.push(NO_NODE_3D);
+		scene.stackSources.push(NO_RATIO_SOURCE);
 	} else {
 		scene.nodes[index] = node;
 	}
@@ -441,6 +443,7 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 		drawNodes: [],
 		dirtySlots: [],
 		lodSlots: [],
+		stackSources: [],
 		root: NO_NODE_3D,
 		structureChanged: true,
 		structureRevision: 1,
@@ -632,9 +635,10 @@ export function addLodMeshNode(
 	scene.requireOpen("addLodMeshNode");
 	scene.context.requireOpen("addLodMeshNode");
 	const pick: MeshLodPick = try lodPickOf(scene.context, mesh, config, ranges, slot);
+	const first = try firstRange(pick);
 	const node: NodeId3D = try addMeshNode(scene, parent, local, mesh, material);
 	const row: int32 = scene.nodes[node.index].payload;
-	scene.meshes[row].range = { base: pick.range.base, count: pick.range.count };
+	scene.meshes[row].range = first;
 	scene.meshes[row].lod = pick;
 	return Result.ok(node);
 }
@@ -649,10 +653,17 @@ export function addLodSkinMeshNode(
 	const pick: MeshLodPick = try lodPickOf(scene.context, mesh, config, ranges, slot);
 	const _valid: int32 =
 		try validateSkinNode(scene, mesh, material, geometry, palette, null, pick);
-	const node: NodeId3D = try addSkinMeshNode(scene, parent, local, mesh, material, geometry,
-		palette, { base: pick.range.base, count: pick.range.count });
+	const first = try firstRange(pick);
+	const node: NodeId3D =
+		try addSkinMeshNode(scene, parent, local, mesh, material, geometry, palette, first);
 	scene.meshes[scene.nodes[node.index].payload].lod = pick;
 	return Result.ok(node);
+}
+
+function firstRange(pick: Readonly<MeshLodPick>): Result<DrawRange, SceneError> {
+	const first = pick.ranges.rangeAt(pick.material, 0);
+	if (!first.ok) { return Result.err(SceneError.MeshLod); }
+	return Result.ok({ base: first.value.base, count: first.value.count });
 }
 
 function lodPickOf(
@@ -683,12 +694,7 @@ function lodPickOf(
 		material: slot,
 		localOriginRadius: context.meshData[mesh.index].bounds.boundingRadius(),
 		forcedLod: -1,
-		range: first.value,
-		culled: false,
 		inheritLod: false,
-		screenRatio: 0.0,
-		ratioSource: null,
-		pickedPass: 0,
 	});
 }
 
@@ -707,20 +713,21 @@ export function setInheritLod(
 	const lod = scene.meshes[scene.nodes[node].payload].lod;
 	if (lod === null) { return Result.err(SceneError.MeshLod); }
 	lod.inheritLod = inherit;
+	scene.structureChanged = true;
 	return Result.ok(null);
 }
 
-function ratioSourceOf(scene: Scene3D, node: int32, layers: uint32): MeshLodPick | null {
-	let source: MeshLodPick | null = null;
-	let at: int32 = scene.nodes[node].parent;
-	while (at != NO_NODE_3D) {
-		if (scene.nodes[at].kind == NodeKind.Mesh && layersTest(scene.nodes[at].layers, layers)) {
-			const lod = scene.meshes[scene.nodes[at].payload].lod;
-			if (lod !== null && lod.passesRatioDown()) { source = lod; }
-		}
-		at = scene.nodes[at].parent;
-	}
-	return source;
+const NO_RATIO_SOURCE: int32 = -1;
+
+function lodSourceOf(scene: Scene3D, payload: int32, inherited: int32): int32 | null {
+	if (inherited == NO_RATIO_SOURCE || scene.meshes[payload].lod === null) { return null; }
+	return inherited;
+}
+
+function ratioSourceBelow(scene: Scene3D, payload: int32, item: int32, inherited: int32): int32 {
+	if (inherited != NO_RATIO_SOURCE) { return inherited; }
+	const lod = scene.meshes[payload].lod;
+	return lod !== null && lod.passesRatioDown() ? item : NO_RATIO_SOURCE;
 }
 
 export function addSkinMeshNode(
@@ -1536,20 +1543,21 @@ function fillDrawList(
 	if (scene.root == NO_NODE_3D) { return 0; }
 	let top: int32 = 0;
 	scene.stack[top] = scene.root;
+	scene.stackSources[top] = NO_RATIO_SOURCE;
 	top = top + 1;
 	while (top > 0) {
 		top = top - 1;
 		const index: int32 = scene.stack[top];
+		let source: int32 = scene.stackSources[top];
 		if (!scene.nodes[index].isVisible()) { continue; }
 		const shown: boolean = layersTest(scene.nodes[index].layers, layers);
 		if (shown && scene.nodes[index].kind == NodeKind.Mesh) {
 			const payload: int32 = scene.nodes[index].payload;
-			const pick = scene.meshes[payload].lod;
-			if (pick !== null) {
-				pick.ratioSource = ratioSourceOf(scene, index, layers);
-				if (keep) { scene.lodSlots.push(items.length as int32); }
+			const at: int32 = items.length as int32;
+			if (keep) {
+				if (scene.meshes[payload].lod !== null) { scene.lodSlots.push(at); }
+				scene.meshes[payload].drawSlot = at;
 			}
-			if (keep) { scene.meshes[payload].drawSlot = items.length as int32; }
 			items.push({
 				mesh: scene.meshes[payload].mesh,
 				material: scene.meshes[payload].material,
@@ -1557,9 +1565,10 @@ function fillDrawList(
 				order: scene.nodes[index].renderOrder,
 				skin: null, skinGeometry: scene.meshes[payload].skinGeometry,
 				skinPalette: scene.meshes[payload].skinPalette, range: scene.meshes[payload].range,
-				lod: scene.meshes[payload].lod,
+				lod: scene.meshes[payload].lod, lodSource: lodSourceOf(scene, payload, source),
 			});
 			if (keep) { scene.drawNodes.push(index); }
+			source = ratioSourceBelow(scene, payload, at, source);
 		}
 		// Children are pushed in reverse so the stack pops them in declaration order: sibling
 		// order is draw order, and the draw list is what decides overdraw.
@@ -1572,6 +1581,7 @@ function fillDrawList(
 		const count: int32 = scene.nodes[index].children.length as int32;
 		for (let i = count - 1; i >= 0; i--) {
 			scene.stack[top] = scene.nodes[index].children[i];
+			scene.stackSources[top] = source;
 			top = top + 1;
 		}
 	}
@@ -1697,14 +1707,7 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 		scene.rewriteItem(items, at);
 	}
 	while ((scene.dirtySlots.length as int32) > 0) { scene.dirtySlots.pop(); }
-	if ((scene.lodSlots.length as int32) == 0) { return count; }
-	const layers: uint32 = activeLayers(scene);
-	for (const at of scene.lodSlots) {
-		const index: int32 = scene.drawNodes[at];
-		const pick = scene.meshes[scene.nodes[index].payload].lod;
-		if (pick !== null) { pick.ratioSource = ratioSourceOf(scene, index, layers); }
-		scene.rewriteItem(items, at);
-	}
+	for (const at of scene.lodSlots) { scene.rewriteItem(items, at); }
 	return count;
 }
 
@@ -1730,6 +1733,7 @@ function rewriteItem(this scene: Scene3D, ref items: Vec<DrawItem>, at: int32): 
 	}
 	items[at].skinPalette = scene.meshes[payload].skinPalette;
 	items[at].range = scene.meshes[payload].range;
+	items[at].lodCulled = false;
 	if (items[at].lod !== scene.meshes[payload].lod) {
 		items[at].lod = scene.meshes[payload].lod;
 	}

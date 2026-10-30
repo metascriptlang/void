@@ -73,6 +73,7 @@ import {
 	closeRenderer,
 	drawShadowPass,
 	exposureMultiplier,
+	pickMeshLods,
 } from "./renderer";
 import { CameraView } from "./camera";
 
@@ -418,6 +419,8 @@ export function prepareFrame(
 		(clusterView.texelWidth != width || clusterView.texelHeight != height)) {
 		return Result.err(ForwardError.ClusterViewSize);
 	}
+	const picked: Result<void, RendererError> = pickMeshLods(renderer.core, items, camera);
+	if (!picked.ok) { return Result.err(fromCore(picked.error)); }
 	const began: Result<boolean, RendererError> =
 		beginFrame(renderer.core, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }
@@ -637,7 +640,7 @@ function drawSceneDecals(
 	renderer: ForwardRenderer,
 	phase: Phase,
 	items: Readonly<Span<DrawItem>>,
-	colors: Vec<ColorAttachment>,
+	colors: Readonly<Span<ColorAttachment>>,
 	depthView: uint32,
 ): void {
 	const core: Renderer = renderer.core;

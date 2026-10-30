@@ -22,6 +22,7 @@ import {
 	applyPipeline,
 	applyBindings,
 	applyUniforms,
+	uniformStamp,
 	draw,
 	makeVertexBuffer,
 	makeIndexBuffer,
@@ -32,7 +33,6 @@ import {
 	destroyBuffer,
 	destroyImage,
 	textureSlotMask,
-	samplerSlotMask,
 	uniformBlockLength,
 	ProgramKey,
 	Preset,
@@ -67,6 +67,7 @@ import {
 	destroyView,
 	destroySampler,
 	passState,
+	UNIFORM_SLOTS,
 } from "../gpu/door";
 import { FilterMode, Wrap, BlendMode, RenderState, Compare } from "../gpu/state";
 import { Texture, TextureError, DetachedHandles } from "../gpu/texture";
@@ -101,17 +102,18 @@ export struct DoomedTexture {
 	generation: int32;
 }
 import {
-	GPU3D_BINDING_VERTEX_BUFFER,
-	GPU3D_BINDING_VERTEX_OFFSET,
-	GPU3D_BINDING_INDEX_BUFFER,
-	GPU3D_BINDING_VIEW,
-	GPU3D_BINDING_SAMPLER,
-	GPU3D_BINDING_LENGTH,
-} from "./gpu3d.h";
+	BINDING_VERTEX_BUFFER as GPU3D_BINDING_VERTEX_BUFFER,
+	BINDING_VERTEX_OFFSET as GPU3D_BINDING_VERTEX_OFFSET,
+	BINDING_INDEX_BUFFER as GPU3D_BINDING_INDEX_BUFFER,
+	BINDING_VIEW as GPU3D_BINDING_VIEW,
+	BINDING_SAMPLER as GPU3D_BINDING_SAMPLER,
+	BINDING_LENGTH as GPU3D_BINDING_LENGTH,
+} from "../gpu/draw";
 import {
 	Material,
 	isDecalPhase,
 	UniformBlock,
+	TypedBlock,
 	NO_UNIFORMS,
 	MATERIAL_TEXTURE_ROLES,
 	viewSlotOf,
@@ -131,6 +133,9 @@ import {
 	closeUniformPool,
 	disownRange,
 	writeRange,
+	uniformWrites,
+	reserveBlock as reserveTypedBlock,
+	writeBlock as writeTypedBlock,
 } from "./uniformPool";
 import { Slots, LAST_GENERATION, claim, vacate } from "./slots";
 
@@ -216,6 +221,9 @@ export struct DrawItem {
 	range: DrawRange | null;
 	instances: InstanceRun | null;
 	lod: MeshLodPick | null;
+	lodCulled: boolean;
+	lodSource: int32 | null;
+	lodRatio: float64;
 }
 
 // The instance rows a mesh item draws its mesh once each for, in place of the one row its world
@@ -227,14 +235,8 @@ export struct InstanceRun {
 	count: int32;
 }
 
-export function drawnRange(this item: Readonly<DrawItem>): DrawRange | null {
-	const pick = item.lod;
-	if (pick === null) { return item.range; }
-	return { base: pick.range.base, count: pick.range.count };
-}
-
 export function validRange(this item: Readonly<DrawItem>, total: int32): boolean {
-	const range = item.drawnRange();
+	const range = item.range;
 	return range === null || (range.base >= 0 && range.count >= 0 &&
 		range.base <= total && range.count <= total - range.base);
 }
@@ -395,6 +397,16 @@ let contextSerials: int32 = 0;
 
 // The uniform pool is sized here, once; reserveUniforms only hands out ranges of it.
 export function withUniformCapacity(this typeof DrawContext, capacity: int32): DrawContext {
+	return contextOf(UniformPool.withCapacity(capacity));
+}
+
+// The uniform pool starts at `initial` floats and grows when a reserve needs more, keeping every
+// reserved block's offset (uniformPool.ms).
+export function withGrowingUniforms(this typeof DrawContext, initial: int32): DrawContext {
+	return contextOf(UniformPool.growing(initial));
+}
+
+function contextOf(uniforms: UniformPool): DrawContext {
 	let bindings: Vec<uint32> = new Array(GPU3D_BINDING_LENGTH);
 	for (let i = 0; i < GPU3D_BINDING_LENGTH; i++) {
 		bindings[i] = 0;
@@ -404,7 +416,7 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 		samplers[i] = 0;
 	}
 	if (contextSerials == LAST_GENERATION) {
-		console.log("void3d: DrawContext.withUniformCapacity has no serial left for a new context");
+		console.log("void3d: a DrawContext has no serial left for a new context");
 		unreachable;
 	}
 	contextSerials = contextSerials + 1;
@@ -436,7 +448,7 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 		samplerGeneration: 0,
 		textureMips: [],
 		mipSamplers: [],
-		uniforms: UniformPool.withCapacity(capacity),
+		uniforms: uniforms,
 		doomed: [],
 		pipelines: PipelineCache.empty(),
 		bindings: bindings,
@@ -1112,7 +1124,7 @@ export function slotBit(slot: int32): uint32 {
 }
 
 // A context texture the material names in `role`: not also a raw view or sampler at its slots,
-// sampled there by the program, live in this context, and, for a colour role, of the program's
+// read there by the program, live in this context, and, for a colour role, of the program's
 // alpha.
 function textureFits(
 	context: DrawContext,
@@ -1125,9 +1137,7 @@ function textureFits(
 	if (material.rawView(view) != 0 || (sampler >= 0 && material.rawSampler(sampler) != 0)) {
 		return Result.err(MaterialError.TextureNamedTwice);
 	}
-	const read: int32 = sampler >= 0 ? sampler : 0;
-	if ((textureSlotMask(material.program) & slotBit(view)) == 0 ||
-		(samplerSlotMask(material.program) & slotBit(read)) == 0) {
+	if ((textureSlotMask(material.program) & slotBit(view)) == 0) {
 		return Result.err(MaterialError.TextureNotSampled);
 	}
 	if (!context.hasTexture(texture)) {
@@ -1703,8 +1713,63 @@ export function writeUniforms(
 	return writeRange(context.uniforms, block, values);
 }
 
+export function reserveBlock<T>(
+	context: DrawContext,
+	slot: int32,
+): Result<TypedBlock<T>, UniformError> {
+	if (context.closed) { stopOnClosedContext("reserveBlock"); }
+	return reserveTypedBlock<T>(context.uniforms, slot);
+}
+
+export function releaseBlock<T>(
+	context: DrawContext,
+	handle: TypedBlock<T>,
+): Result<int32, UniformError> {
+	if (context.closed) { stopOnClosedContext("releaseBlock"); }
+	return releaseRange(context.uniforms, handle.block);
+}
+
+export function writeBlock<T>(
+	context: DrawContext,
+	handle: TypedBlock<T>,
+	value: T,
+): Result<int32, UniformError> {
+	if (context.closed) { stopOnClosedContext("writeBlock"); }
+	return writeTypedBlock<T>(context.uniforms, handle, value);
+}
+
 function applyBlock(this context: DrawContext, block: UniformBlock): void {
 	applyUniforms(block.slot, context.uniforms.values[block.offset..block.offset + block.length]);
+}
+
+// What the last global apply to a slot was, as the door numbered it and as the pool stood. The
+// record is the module's, like the door's bound state: any context's apply replaces it.
+struct GlobalApply { block: UniformBlock; stamp: int32; writes: int64; }
+
+let globalApplies: Vec<GlobalApply> = [];
+
+// A global block is applied once for as long as the door keeps the pipeline: while the slot's
+// stamp is the one its apply got, the block is the same range and no pool write came since, it
+// is still bound.
+function applyGlobal(context: DrawContext, block: UniformBlock): void {
+	while ((globalApplies.length as int32) < UNIFORM_SLOTS) {
+		globalApplies.push({ block: NO_UNIFORMS, stamp: 0, writes: 0 });
+	}
+	const slot: int32 = block.slot;
+	if (slot < 0 || slot >= UNIFORM_SLOTS) {
+		context.applyBlock(block);
+		return;
+	}
+	const stamp: int32 = uniformStamp(slot);
+	const last: GlobalApply = globalApplies[slot];
+	if (
+		stamp != 0 && stamp == last.stamp && last.block == block &&
+		last.writes == uniformWrites()
+	) {
+		return;
+	}
+	context.applyBlock(block);
+	globalApplies[slot] = { block: block, stamp: uniformStamp(slot), writes: uniformWrites() };
 }
 
 // The first `declared` floats of a block: a program that reads less than its material's block
@@ -1954,8 +2019,8 @@ export function drawBatchWith(
 // Whether `item` can share an instanced draw with `first`: the same mesh, material and range,
 // and nothing but a world matrix of its own.
 export function sameBatch(this first: Readonly<DrawItem>, item: Readonly<DrawItem>): boolean {
-	const range = item.drawnRange();
-	const firstRange = first.drawnRange();
+	const range = item.range;
+	const firstRange = first.range;
 	const sameRange: boolean = range === null ? firstRange === null :
 		firstRange !== null && range.base == firstRange.base && range.count == firstRange.count;
 	return item.mesh.index == first.mesh.index && item.mesh.generation == first.mesh.generation &&
@@ -2111,7 +2176,7 @@ function drawStaged(
 	if (pose !== null) { applyUniforms(SKIN_UNIFORM_SLOT, pose.blocks[item.skinPalette]); }
 	for (const block of globals) {
 		if (context.pipelines.declaresBlock(globalProgram, block.slot)) {
-			context.applyBlock(block);
+			applyGlobal(context, block);
 		}
 	}
 	// A caster that does not cut reads none of its material's block.
@@ -2120,7 +2185,7 @@ function drawStaged(
 		const declared: int32 = uniformBlockLength(program, material.uniforms.slot);
 		context.applyBlockHead(material.uniforms, program, declared);
 	}
-	const range = item.drawnRange();
+	const range = item.range;
 	if (range === null) {
 		draw(0, mesh.elementCount(), instanceCount);
 	} else {

@@ -1,6 +1,6 @@
 // Real-renderer RGBA/visibility/width/motion/lifetime pins, never a phone performance claim.
 import { prepareOutlineOutput } from "./forwardOutlineOutput";
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3, identity, translation } from "../../src/math/math3d";
 import { endPass, commit } from "../../src/gpu/door";
 import { PipelineCache, pipelineFor, closePipelines } from "../../src/gpu/pipeline";
@@ -34,7 +34,7 @@ import {
 	voidCaptureWritePng,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,
@@ -374,7 +374,7 @@ function widthProfile(view: CameraView, width: int32, height: int32, variant: in
 	}
 	if (stage == 56) {
 		const corrupted: Vec<float32> = [radius+1.0,0.0,0.0,0.0];
-		if (!writeUniforms(context,pass.widthBlock,corrupted).ok) { unreachable; }
+		if (!writeUniforms(context,pass.widthBlock.block,corrupted).ok) { unreachable; }
 		pass.drawWidth(renderer.core);
 		copyCapture(pass.width.asTexture());
 		let negative: int32 = 0;
@@ -384,7 +384,7 @@ function widthProfile(view: CameraView, width: int32, height: int32, variant: in
 			}
 		}
 		if (negative == 0) { fail("production-only radius fault escaped independent reference"); }
-		if (!writeUniforms(context,pass.widthBlock,pass.widthValues).ok) { unreachable; }
+		if (!writeUniforms(context,pass.widthBlock.block,[radius,requested<2.0?1.0:0.0,0.0,0.0]).ok) { unreachable; }
 		pass.drawWidth(renderer.core);
 		copyCapture(pass.width.asTexture());
 		for (let y=0;y<HEIGHT;y++) {

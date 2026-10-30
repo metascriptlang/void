@@ -16,7 +16,7 @@ PORT="${VOID_WEB_PORT:-8731}"
 SHOTS=out/webshot
 CHROME="${CHROME:-/c/Program Files/Google/Chrome/Application/chrome.exe}"
 
-[ -f web/gl/mainSokol2d.wasm ] || { echo "SKIP web liveness: run scripts/build-web.sh first"; exit 0; }
+[ -f web/gl/main2d.wasm ] || { echo "SKIP web liveness: run scripts/build-web.sh first"; exit 0; }
 [ -x "$CHROME" ] || { echo "SKIP web liveness: no Chrome at $CHROME"; exit 0; }
 command -v python >/dev/null || { echo "SKIP web liveness: no python to serve web/"; exit 0; }
 node --test scripts/webPresent.test.mjs > out/webPresent.test.log 2>&1 \

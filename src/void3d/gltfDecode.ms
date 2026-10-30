@@ -1,8 +1,7 @@
-@include("gltfDecode.h");
-@compile("./gltfDecode.c");
-
-extern function gltfDecodeFloat32At(bytes: Readonly<Span<uint8>>, at: int32): float32;
+const scratch = Buffer.alloc(4);
 
 export function float32At(bytes: Readonly<Span<uint8>>, at: int32): float32 {
-	return gltfDecodeFloat32At(bytes, at);
+	if (at < 0 || (at as int64) + 4 > (bytes.length as int64)) { return 0.0; }
+	for (let i = 0; i < 4; i++) { scratch.set(i, bytes[at + i]); }
+	return scratch.readFloatLE(0) as float32;
 }

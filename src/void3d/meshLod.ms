@@ -12,7 +12,6 @@ export enum MeshLodError {
 	InvalidRange,
 	InvalidMaterial,
 	InvalidLod,
-	InheritedBeforeSource,
 }
 
 // Use Bounds.getBoundingRadius (sphere radius + center offset), matrix translation distance,
@@ -218,19 +217,7 @@ export interface MeshLodPick {
 	material: int32;
 	localOriginRadius: float64;
 	forcedLod: int32;
-	range: MeshLodRange;
-	culled: boolean;
 	inheritLod: boolean;
-	screenRatio: float64;
-	ratioSource: MeshLodPick | null;
-	pickedPass: int64;
-}
-
-let pickPasses: int64 = 0;
-
-export function nextPickPass(): int64 {
-	pickPasses += 1;
-	return pickPasses;
 }
 
 export function passesRatioDown(this pick: Readonly<MeshLodPick>): boolean {
@@ -243,31 +230,21 @@ function rowLength(x: float32, y: float32, z: float32): float64 {
 }
 
 export function pickFor(
-	this pick: MeshLodPick,
+	this pick: Readonly<MeshLodPick>,
 	world: Mat4,
 	eye: Vec3,
 	projectionX: float32,
 	projectionY: float32,
 	nearPlane: float32,
 	meshLodScale: float64,
-	pass: int64,
-): Result<void, MeshLodError> {
-	const source = pick.ratioSource;
-	if (source !== null && source.pickedPass != pass) {
-		return Result.err(MeshLodError.InheritedBeforeSource);
-	}
-	const ratio: float64 = source !== null ? source.screenRatio
-		: try ownScreenRatio(pick, world, eye, projectionX, projectionY, nearPlane, meshLodScale);
-	const chosen = try pick.config.select(ratio, pick.forcedLod);
-	pick.screenRatio = ratio;
-	pick.pickedPass = pass;
-	pick.culled = chosen.culled;
-	if (!chosen.culled) { pick.range = try pick.ranges.rangeAt(pick.material, chosen.lod); }
-	return Result.ok(null);
+): Result<MeshLodRange | null, MeshLodError> {
+	const ratio: float64 =
+		try pick.screenRatioFor(world, eye, projectionX, projectionY, nearPlane, meshLodScale);
+	return pick.rangeFor(ratio);
 }
 
-function ownScreenRatio(
-	pick: Readonly<MeshLodPick>,
+export function screenRatioFor(
+	this pick: Readonly<MeshLodPick>,
 	world: Mat4,
 	eye: Vec3,
 	projectionX: float32,
@@ -291,4 +268,13 @@ function ownScreenRatio(
 		meshLodScale: meshLodScale,
 	};
 	return size.referenceScreenRatioHeuristic();
+}
+
+export function rangeFor(
+	this pick: Readonly<MeshLodPick>, ratio: float64,
+): Result<MeshLodRange | null, MeshLodError> {
+	const chosen = try pick.config.select(ratio, pick.forcedLod);
+	if (chosen.culled) { return Result.ok(null); }
+	const range: MeshLodRange | null = try pick.ranges.rangeAt(pick.material, chosen.lod);
+	return Result.ok(range);
 }

@@ -1,0 +1,11 @@
+import { sfntSourceRead, sfntSourceSize } from "../void2d/sfntSource";
+
+export function fontFileBytes(path: string): uint8[] {
+	const size = sfntSourceSize(path);
+	if (size <= 0) { throw new Error(`fontFile: ${path} did not read`); }
+	let bytes: uint8[] = new Array<uint8>(size as int32);
+	if (!sfntSourceRead(path, 0, bytes)) { throw new Error(`fontFile: ${path} did not read`); }
+	return bytes;
+}
+
+export function holdFontFile(path: string): void {}

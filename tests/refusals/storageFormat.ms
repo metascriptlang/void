@@ -1,4 +1,4 @@
-// expect: 8:14 storage texture format 'bgra8unorm' has no GLSL form yet
+// expect: 13:25 printGlsl450: bgra8unorm has no GLSL image format
 import { glslCompute } from "../../src/shader/emit";
 import { StorageTexture2d, Vec3u, binding, builtin, format, textureStore, vec2i, vec4f } from "../../src/shader/std";
 struct Id {

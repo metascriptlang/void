@@ -3,7 +3,7 @@
 // swap which uploaded mesh a node draws. docs/VOID3D.md "M9 as built" lists what is not ported.
 import { vec3 } from "../math/math3d";
 import { PassState, passState } from "../gpu/door";
-import { MeshData } from "./meshData";
+import { MeshData, copy } from "./meshData";
 import {
 	DrawContext,
 	MeshId,

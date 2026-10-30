@@ -8,7 +8,7 @@ import { PipelineCache, pipelineFor } from "../../src/gpu/pipeline";
 import { SWAPCHAIN_LAYOUT } from "../../src/gpu/target";
 import { screenState } from "../../src/void3d/screenFx";
 import { openScreen } from "../../src/void3d/renderer";
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import {
 	setup2d,
 	begin2d,
@@ -80,7 +80,7 @@ import {
 	voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 
 extern function voidRunConfigured(
 	w: int32,

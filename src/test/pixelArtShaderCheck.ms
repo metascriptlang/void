@@ -64,11 +64,10 @@ function plainLit(): LitBindings {
 		lightRecords: lights.lightRecords,
 		clusterRecords: lights.clusterRecords,
 		clusterIndices: lights.clusterIndices,
-		clusterSampler: lights.clusterSampler,
 		frameParams: { frame: vec4f(0, 1, 0, 0) },
 		shadowParams: oneCascade(identity(), none(), identity(), none(), 1.0),
-		shadowMap: oneLayer(white), shadowSampler: { nearest: true },
-		spotShadowMap: oneLayer(white), spotShadowSampler: { nearest: true },
+		shadowMap: oneLayer(white),
+		spotShadowMap: oneLayer(white),
 		cubeShadowMap: oneLayer(white),
 		cookieTexture: { width: 0, height: 0, texels: [] },
 		baseTexture: white, baseSampler: { nearest: true },
@@ -97,8 +96,6 @@ function plainPost(): PostBindings {
 		normalTexture: grid(3, 3, vec4f(0.5, 1.0, 0.5, 0.5)),
 		depthTexture: grid(3, 3, none()),
 		paletteTexture: grid(4, 2, none()),
-		pointSampler: { nearest: true },
-		depthSampler: { nearest: true },
 	};
 }
 
@@ -151,7 +148,6 @@ test "pixel-art billboard lights by distance and writes cutout alpha 0" {
 		lightRecords: lights.lightRecords,
 		clusterRecords: lights.clusterRecords,
 		clusterIndices: lights.clusterIndices,
-		clusterSampler: lights.clusterSampler,
 		frameParams: { frame: vec4f(0, 1, 0, 0) },
 		billboardTexture: grid(1, 1, vec4f(1, 1, 1, 1)),
 		billboardSampler: { nearest: true },
@@ -209,7 +205,6 @@ test "blit reads the scene texel under the scaled fragment, clamped, alpha 1" {
 	}
 	let b: BlitBindings = {
 		blitParams: { pixel: vec4f(2, 2, 0, 0) }, sceneTexture: scene,
-		pointSampler: { nearest: true },
 	};
 	const texel = blitFs({ position: vec4f(5.5, 3.5, 0.5, 1.0) }, b);
 	assert texel.x == 0.5 && texel.y == 0.25 && texel.w == 1.0;

@@ -4,7 +4,8 @@
 import { glsl, glslLinked } from "../shader/emit";
 import {
 	Sampler, Texture2d, Texture2dArray, TextureCube, Vec2f, Vec4f, binding, builtin, feature,
-	location, sampleType, samplerType, textureLoad, textureSampleLevel, vec2i, vec3f, discard,
+	location, sampleType, samplerType, textureLoad, textureSample, textureSampleLevel, vec2i, vec3f,
+	discard,
 } from "../shader/std";
 
 struct Attributes {
@@ -51,7 +52,7 @@ function probeVs(input: Attributes, b: ProbeBindings): Varyings {
 function probeFs(input: Varyings, b: ProbeBindings, key: ProbeKey): ProbeOutput {
 	const shade = input.tint;
 	if (key.shadowed) {
-		const s = textureLoad(b.shadowMap, b.shadowSampler, vec2i(0, 0), 0);
+		const s = textureSample(b.shadowMap, b.shadowSampler, input.uv);
 		return { color: s, normal: b.shadowParams.shadow };
 	}
 	return { color: shade, normal: input.tint };
@@ -116,7 +117,7 @@ test "a fragment entry declares each binding and output under the features that 
 		"void main() {\n" +
 		"    vec4 shade = tint;\n" +
 		"#ifdef SHADOWED\n" +
-		"    vec4 s = texelFetch(sampler2D(shadowMap, shadowSampler), ivec2(0, 0), 0);\n" +
+		"    vec4 s = texture(sampler2D(shadowMap, shadowSampler), uv);\n" +
 		"    color = s;\n" +
 		"#ifdef NORMAL_MRT\n" +
 		"    normal = shadow;\n" +
@@ -192,7 +193,7 @@ struct LayeredBindings {
 }
 
 function layeredFs(b: LayeredBindings): Vec4f {
-	const layer = textureLoad(b.layers, b.layerSampler, vec2i(0, 0), 1, 0);
+	const layer = textureLoad(b.layers, vec2i(0, 0), 1, 0);
 	const face = textureSampleLevel(b.faces, b.layerSampler, vec3f(1.0), 0.0);
 	return layer + face;
 }

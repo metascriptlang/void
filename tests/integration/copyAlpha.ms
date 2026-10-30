@@ -1,5 +1,5 @@
 // Program.Copy is a data-preserving RGBA copy, not an opaque presentation policy.
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { FilterMode, Wrap } from "../../src/gpu/state";
 import { endPass, commit } from "../../src/gpu/door";
 import { SWAPCHAIN_LAYOUT, beginScreenPass } from "../../src/gpu/target";
@@ -18,7 +18,7 @@ import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,
@@ -57,11 +57,11 @@ function init(): void {
 		width: 4, height: 1, filter: FilterMode.Nearest, wrap: Wrap.Clamp,
 	};
 	const uploaded: Result<TextureId, TextureUploadError> = addTexture(context, data);
-	if (!uploaded.ok) { fail("source texture refused"); unreachable; }
+	if (!uploaded.ok) { fail(`source texture refused: ${uploaded.error.toString()}`); unreachable; }
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.plain(Program.Copy, screenState(), Phase.Opaque), texture: uploaded.value,
 	});
-	if (!added.ok) { fail("copy material refused"); unreachable; }
+	if (!added.ok) { fail(`copy material refused: ${added.error.toString()}`); unreachable; }
 	copy = added.value;
 	camera[0] = 1.0; camera[5] = 1.0; camera[10] = 1.0; camera[15] = 1.0;
 }

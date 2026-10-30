@@ -13,7 +13,7 @@ import {
 	void2dGlyphRasterize,
 	void2dGlyphPageCreate,
 	void2dGlyphPageTexel,
-} from "../../src/void2d/glyph.h";
+} from "../../src/void2d/glyph";
 import { glyphBox } from "../../src/void2d/glyphBoxes";
 import {
 	DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST, gammaRatios, correctCoverage,

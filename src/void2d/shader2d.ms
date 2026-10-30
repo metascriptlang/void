@@ -1,6 +1,5 @@
-// void2d's programs written as MetaScript shader functions. tools/genShaders2d.ms writes their GLSL
-// into shader2dGen.glsl, which shader2d.glsl includes; src/test/shader2dCheck.ms runs them on the
-// CPU.
+// void2d's programs written as MetaScript shader functions. tools/irPrograms.ms prints them into
+// shader2dModules.ms; src/test/shader2dCheck.ms runs them on the CPU.
 
 import {
 	Mat4x4f,
@@ -83,11 +82,16 @@ export function blurFs(input: BlurInput, b: BlurBindings): Vec4f {
 }
 
 // viewport.xy the framebuffer size in pixels, .z flipV, .w a source already premultiplied;
-// clipU/clipV an edge axis in xy and its accepted projection interval in zw, off when w <= z.
+// clipU/clipV an edge axis in xy and its accepted projection interval in zw, off when w <= z;
+// clipRoundU/V a rounded clip's axis, offset and half extent in device pixels and clipRadii its
+// corners TL TR BR BL, off when all four are zero.
 export struct SpriteParams {
 	viewport: Vec4f;
 	clipU: Vec4f;
 	clipV: Vec4f;
+	clipRoundU: Vec4f;
+	clipRoundV: Vec4f;
+	clipRadii: Vec4f;
 	shift: Vec4f;
 }
 
@@ -110,6 +114,8 @@ export struct SpriteVaryings {
 	color: Vec4f;
 	srcPremult: float32;
 	clipDistance: Vec4f;
+	clipRound: Vec4f;
+	clipCorners: Vec4f;
 	@builtin(position) clip: Vec4f;
 }
 
@@ -118,11 +124,39 @@ export struct SpriteInput {
 	color: Vec4f;
 	srcPremult: float32;
 	clipDistance: Vec4f;
+	clipRound: Vec4f;
+	clipCorners: Vec4f;
 }
 
 export struct SpriteBindings {
 	@binding(0) spriteTex: Texture2d;
 	@binding(0) spriteSmp: Sampler;
+}
+
+export function clipEdgeDistance(world: Vec2f, clipU: Vec4f, clipV: Vec4f): Vec4f {
+	if (clipU.w > clipU.z) {
+		const cu = dot(world, clipU.xy);
+		const cv = dot(world, clipV.xy);
+		return vec4f(cu - clipU.z, clipU.w - cu, cv - clipV.z, clipV.w - cv);
+	}
+	return vec4f(1.0);
+}
+
+// xy the point from the rounded clip's centre, zw its half extents, all in device pixels.
+export function roundClipPoint(world: Vec2f, roundU: Vec4f, roundV: Vec4f, radii: Vec4f): Vec4f {
+	if (dot(radii, vec4f(1.0)) <= 0.0) {
+		return vec4f(0.0);
+	}
+	return vec4f(dot(world, roundU.xy) - roundU.z, dot(world, roundV.xy) - roundV.z, roundU.w,
+		roundV.w);
+}
+
+export function roundClipCoverage(round: Vec4f, radii: Vec4f): float32 {
+	if (dot(radii, vec4f(1.0)) <= 0.0) {
+		return 1.0;
+	}
+	const distance = roundedRectDistance(round.xy, round.zw, cornerRadius(round.xy, radii));
+	return coverageFromDistance(distance, 1.0);
 }
 
 // The flat sprite pipeline (VOID2D.md "P2"): one 64-byte instance per quad and no SDF maths, so a
@@ -136,14 +170,10 @@ export function spriteVs(input: SpriteAttributes, b: SpriteVertexBindings): Spri
 	);
 	const viewport = b.sprite_params.viewport;
 	const moved = world + b.sprite_params.shift.xy;
-	const clipU = b.sprite_params.clipU;
-	const clipV = b.sprite_params.clipV;
-	let clipDistance = vec4f(1.0);
-	if (clipU.w > clipU.z) {
-		const cu = dot(world, clipU.xy);
-		const cv = dot(world, clipV.xy);
-		clipDistance = vec4f(cu - clipU.z, clipU.w - cu, cv - clipV.z, clipV.w - cv);
-	}
+	const clipDistance = clipEdgeDistance(world, b.sprite_params.clipU, b.sprite_params.clipV);
+	const clipRadii = b.sprite_params.clipRadii;
+	const clipRound = roundClipPoint(
+		world, b.sprite_params.clipRoundU, b.sprite_params.clipRoundV, clipRadii);
 	const ndc = vec2f(moved.x / viewport.x * 2.0 - 1.0, 1.0 - moved.y / viewport.y * 2.0);
 	const t = mix(input.iUv.xy, input.iUv.zw, input.corner);
 	return {
@@ -151,6 +181,8 @@ export function spriteVs(input: SpriteAttributes, b: SpriteVertexBindings): Spri
 		color: input.iColor,
 		srcPremult: viewport.w,
 		clipDistance: clipDistance,
+		clipRound: clipRound,
+		clipCorners: clipRadii,
 		clip: vec4f(ndc, 0.0, 1.0),
 	};
 }
@@ -160,10 +192,14 @@ export function spriteFs(input: SpriteInput, b: SpriteBindings): Vec4f {
 	if (min(min(d.x, d.y), min(d.z, d.w)) < 0.0) {
 		discard();
 	}
+	const clipCoverage = roundClipCoverage(input.clipRound, input.clipCorners);
+	if (clipCoverage <= 0.0) {
+		discard();
+	}
 	const c = textureSample(b.spriteTex, b.spriteSmp, input.uv) * input.color;
 	const straight = vec4f(mix(c.xyz, c.xyz * input.color.w, input.srcPremult), c.w);
 	const premult = vec4f(straight.xyz * straight.w, straight.w);
-	return mix(premult, straight, input.srcPremult);
+	return mix(premult, straight, input.srcPremult) * clipCoverage;
 }
 
 export const PATTERN_TIE_BIAS: float32 = 1.0 / 64.0;
@@ -294,6 +330,9 @@ export struct BatchParams {
 	globalColor: Vec4f;
 	clipU: Vec4f;
 	clipV: Vec4f;
+	clipRoundU: Vec4f;
+	clipRoundV: Vec4f;
+	clipRadii: Vec4f;
 	shift: Vec4f;
 }
 
@@ -313,6 +352,8 @@ export struct BatchVaryings {
 	srcPremult: float32;
 	coverageTexture: float32;
 	clipDistance: Vec4f;
+	clipRound: Vec4f;
+	clipCorners: Vec4f;
 	pixel: Vec2f;
 	@builtin(position) clip: Vec4f;
 }
@@ -323,6 +364,8 @@ export struct BatchInput {
 	srcPremult: float32;
 	coverageTexture: float32;
 	clipDistance: Vec4f;
+	clipRound: Vec4f;
+	clipCorners: Vec4f;
 	pixel: Vec2f;
 }
 
@@ -360,14 +403,10 @@ export function vs(input: BatchAttributes, b: BatchVertexBindings): BatchVarying
 		model0.y * input.pos.x + model0.w * input.pos.y + model1.y,
 	);
 	const moved = world + b.void2d_params.shift.xy;
-	const clipU = b.void2d_params.clipU;
-	const clipV = b.void2d_params.clipV;
-	let clipDistance = vec4f(1.0);
-	if (clipU.w > clipU.z) {
-		const cu = dot(world, clipU.xy);
-		const cv = dot(world, clipV.xy);
-		clipDistance = vec4f(cu - clipU.z, clipU.w - cu, cv - clipV.z, clipV.w - cv);
-	}
+	const clipDistance = clipEdgeDistance(world, b.void2d_params.clipU, b.void2d_params.clipV);
+	const clipRadii = b.void2d_params.clipRadii;
+	const clipRound = roundClipPoint(
+		world, b.void2d_params.clipRoundU, b.void2d_params.clipRoundV, clipRadii);
 	const ndc = vec2f(moved.x / viewport.x * 2.0 - 1.0, 1.0 - moved.y / viewport.y * 2.0);
 	return {
 		uv: viewport.z > 0.5 ? vec2f(input.uv0.x, 1.0 - input.uv0.y) : input.uv0,
@@ -375,6 +414,8 @@ export function vs(input: BatchAttributes, b: BatchVertexBindings): BatchVarying
 		srcPremult: viewport.w,
 		coverageTexture: model1.z,
 		clipDistance: clipDistance,
+		clipRound: clipRound,
+		clipCorners: clipRadii,
 		pixel: moved * model1.w,
 		clip: vec4f(ndc, 0.0, 1.0),
 	};
@@ -404,6 +445,14 @@ export function fs(input: BatchInput, b: BatchBindings): Vec4f {
 	if (min(min(d.x, d.y), min(d.z, d.w)) < 0.0) {
 		discard();
 	}
+	const clipCoverage = roundClipCoverage(input.clipRound, input.clipCorners);
+	if (clipCoverage <= 0.0) {
+		discard();
+	}
+	return batchColor(input, b, uvDx, uvDy) * clipCoverage;
+}
+
+function batchColor(input: BatchInput, b: BatchBindings, uvDx: Vec2f, uvDy: Vec2f): Vec4f {
 	const meta = b.void2d_fx.gradientMeta;
 	const params = b.void2d_fx.gradientParams;
 	const gradientKind = (meta.x + 0.5) as int32;
@@ -435,7 +484,7 @@ export function fs(input: BatchInput, b: BatchBindings): Vec4f {
 		if (input.coverageTexture > 0.5) {
 			let coverage = texel.x;
 			if (input.coverageTexture > 1.5) {
-				const pageSize = vec2f(textureDimensions(b.tex, b.smp, 0));
+				const pageSize = vec2f(textureDimensions(b.tex, 0));
 				coverage = sdfCoverage(coverage, sdfTexelsPerPixel(uvDx, uvDy, pageSize));
 			}
 			const gamma = applyContrastAndGamma(coverage, input.color.xyz,
@@ -466,6 +515,9 @@ export struct UiParams {
 	viewport: Vec4f;
 	clipU: Vec4f;
 	clipV: Vec4f;
+	clipRoundU: Vec4f;
+	clipRoundV: Vec4f;
+	clipRadii: Vec4f;
 	shift: Vec4f;
 }
 
@@ -502,6 +554,8 @@ export struct UiVaryings {
 	vBorder: Vec4f;
 	vExtra: Vec4f;
 	clipDistance: Vec4f;
+	clipRound: Vec4f;
+	clipCorners: Vec4f;
 	vPixel: Vec2f;
 	@builtin(position) clip: Vec4f;
 }
@@ -517,6 +571,8 @@ export struct UiInput {
 	vBorder: Vec4f;
 	vExtra: Vec4f;
 	clipDistance: Vec4f;
+	clipRound: Vec4f;
+	clipCorners: Vec4f;
 	vPixel: Vec2f;
 }
 
@@ -563,14 +619,10 @@ export function uiVs(input: UiAttributes, b: UiVertexBindings): UiVaryings {
 		input.iAffine.y * local.x + input.iAffine.w * local.y + input.iOriginSize.y,
 	);
 	const moved = world + b.ui_params.shift.xy;
-	const clipU = b.ui_params.clipU;
-	const clipV = b.ui_params.clipV;
-	let clipDistance = vec4f(1.0);
-	if (clipU.w > clipU.z) {
-		const cu = dot(world, clipU.xy);
-		const cv = dot(world, clipV.xy);
-		clipDistance = vec4f(cu - clipU.z, clipU.w - cu, cv - clipV.z, clipV.w - cv);
-	}
+	const clipDistance = clipEdgeDistance(world, b.ui_params.clipU, b.ui_params.clipV);
+	const clipRadii = b.ui_params.clipRadii;
+	const clipRound = roundClipPoint(
+		world, b.ui_params.clipRoundU, b.ui_params.clipRoundV, clipRadii);
 	const ndc = vec2f(moved.x / viewport.x * 2.0 - 1.0, 1.0 - moved.y / viewport.y * 2.0);
 	const clip = vec4f(ndc, 0.0, 1.0);
 	const t = mix(input.iUvRadii.xy, input.iUvRadii.zw,
@@ -598,6 +650,8 @@ export function uiVs(input: UiAttributes, b: UiVertexBindings): UiVaryings {
 		vBorder: input.iColorBorder,
 		vExtra: oklabFill ? vec4f(linearToOklab(srgbToLinear(extra.xyz)), extra.w) : extra,
 		clipDistance: clipDistance,
+		clipRound: clipRound,
+		clipCorners: clipRadii,
 		vPixel: moved * viewport.w,
 		clip,
 	};
@@ -944,6 +998,14 @@ export function uiFs(input: UiInput, b: UiBindings): Vec4f {
 	if (min(min(d.x, d.y), min(d.z, d.w)) < 0.0) {
 		discard();
 	}
+	const clipCoverage = roundClipCoverage(input.clipRound, input.clipCorners);
+	if (clipCoverage <= 0.0) {
+		discard();
+	}
+	return uiColor(input, b, uvDx, uvDy) * clipCoverage;
+}
+
+function uiColor(input: UiInput, b: UiBindings, uvDx: Vec2f, uvDy: Vec2f): Vec4f {
 	const p = input.vLocalHalf.xy;
 	const half = input.vLocalHalf.zw;
 	const aa = input.vUvAa.z;
@@ -1052,7 +1114,7 @@ export function uiFs(input: UiInput, b: UiBindings): Vec4f {
 	if (mode == 2) {
 		let coverage = textureSample(b.uiTex, b.uiSmp, input.vUvAa.xy).x;
 		if (input.vParams0.x > 0.5) {
-			const pageSize = vec2f(textureDimensions(b.uiTex, b.uiSmp, 0));
+			const pageSize = vec2f(textureDimensions(b.uiTex, 0));
 			coverage = sdfCoverage(coverage, sdfTexelsPerPixel(uvDx, uvDy, pageSize));
 		}
 		fill.w = fill.w * applyContrastAndGamma(coverage, fill.xyz, b.ui_fx.textParams.x,

@@ -27,10 +27,10 @@ import {
 	PipelineKey,
 	PipelineCache,
 	pipelineKey,
-	describePipeline,
 	releasePipelines,
 	closePipelines,
 	IndexType,
+	record,
 } from "../gpu/pipeline";
 import { UniformBlock, NO_UNIFORMS } from "../void3d/material";
 import { DrawContext, reserveUniforms, writeUniforms } from "../void3d/draw";
@@ -204,34 +204,7 @@ test "target layout of a pass reads its attachment formats" {
 	assert layoutOf(post, NO_DEPTH).formatBits() != layout.formatBits();
 }
 
-// Enough for any descriptor; the exact length lives in door.h, which this directory must not
-// import (msc 0.2.53 would compile door.c a second time, see docs/VOID3D.md).
-const DESCRIPTOR_ROOM: int32 = 32;
-
-function described(
-	layout: VertexLayout,
-	indexed: boolean,
-	state: RenderState,
-	targets: TargetLayout,
-): Vec<uint32> {
-	let descriptor: Vec<uint32> = new Array(DESCRIPTOR_ROOM);
-	for (let i = 0; i < DESCRIPTOR_ROOM; i++) {
-		descriptor[i] = 0;
-	}
-	describePipeline(descriptor, 7, doorLayout(layout), indexed, state, targets);
-	return descriptor;
-}
-
-function sameWords(a: Readonly<Span<uint32>>, b: Readonly<Span<uint32>>): boolean {
-	for (let i = 0; i < (a.length as int32); i++) {
-		if (a[i] != b[i]) { return false; }
-	}
-	return true;
-}
-
-test "uint32 width participates in keys while legacy ordinals and descriptor words stay fixed" {
-	assert (IndexType.None as int32) == 0 && (IndexType.Uint16 as int32) == 1;
-	assert (IndexType.Uint32 as int32) == 2;
+test "uint32 width participates in keys" {
 	const program: int32 = doorProgram(ProgramKey.of(Program.Lit));
 	const layout: int32 = doorLayout(VertexLayout.Lit);
 	const state = sceneState();
@@ -242,47 +215,6 @@ test "uint32 width participates in keys while legacy ordinals and descriptor wor
 	assert narrow != wide;
 	assert pipelineKey(program, layout, false, state, targets, IndexType.Uint32).indexType ==
 		IndexType.None;
-	let legacy: Vec<uint32> = new Array(19);
-	let explicit16: Vec<uint32> = new Array(19);
-	let explicit32: Vec<uint32> = new Array(19);
-	describePipeline(legacy, 7, layout, true, state, targets);
-	describePipeline(explicit16, 7, layout, true, state, targets, IndexType.Uint16);
-	describePipeline(explicit32, 7, layout, true, state, targets, IndexType.Uint32);
-	assert sameWords(legacy, explicit16);
-	for (let word = 0; word < 19; word++) {
-		assert word == 18 ? explicit32[word] == 2 : explicit32[word] == legacy[word];
-	}
-	assert legacy[18] == 1;
-}
-
-test "pipeline descriptor follows the key" {
-	const rebuilt: RenderState = RenderState.defaults()
-		.withBlendMode(BlendMode.Alpha)
-		.withBlendMode(BlendMode.None)
-		.withCulling(Face.None)
-		.withDepth(true, Compare.LessEqual);
-	const a: Vec<uint32> = described(VertexLayout.Lit, NOT_INDEXED, sceneState(), sceneLayout());
-	const b: Vec<uint32> = described(VertexLayout.Lit, NOT_INDEXED, rebuilt, sceneLayout());
-	assert sameWords(a, b);
-	assert a[0] == 7;
-	const added: RenderState = sceneState().withBlendMode(BlendMode.Add);
-	assert !sameWords(a, described(VertexLayout.Lit, NOT_INDEXED, added, sceneLayout()));
-	const unmasked: RenderState = sceneState().withColorMask(true, true, true, false);
-	assert !sameWords(a, described(VertexLayout.Lit, NOT_INDEXED, unmasked, sceneLayout()));
-	assert !sameWords(a, described(VertexLayout.Lit, NOT_INDEXED, sceneState(), SWAPCHAIN_LAYOUT));
-}
-
-test "the descriptor carries the index type, and only the index type, for an indexed mesh" {
-	const plain: Vec<uint32> = described(
-		VertexLayout.Lit, NOT_INDEXED, sceneState(), sceneLayout(),
-	);
-	const indexed: Vec<uint32> = described(VertexLayout.Lit, true, sceneState(), sceneLayout());
-	assert !sameWords(plain, indexed);
-	let differing: int32 = 0;
-	for (let i = 0; i < DESCRIPTOR_ROOM; i++) {
-		if (plain[i] != indexed[i]) { differing = differing + 1; }
-	}
-	assert differing == 1;
 }
 
 test "the indexed flag keys apart from every layout id" {
@@ -409,7 +341,7 @@ test "a layout that names its formats is left as it is" {
 
 test "releasing a cache of another GPU context drops its handles without destroying them" {
 	const cache: PipelineCache = PipelineCache.empty();
-	cache.entries.push({ key: litKey(false, sceneState()), pipeline: 7 });
+	record(cache, litKey(false, sceneState()), 7);
 	cache.shaders.push(9);
 	cache.generation = contextGeneration() + 1;
 	releasePipelines(cache);
@@ -418,7 +350,7 @@ test "releasing a cache of another GPU context drops its handles without destroy
 
 test "closing a cache of another GPU context empties it and answers false after" {
 	const cache: PipelineCache = PipelineCache.empty();
-	cache.entries.push({ key: litKey(false, sceneState()), pipeline: 7 });
+	record(cache, litKey(false, sceneState()), 7);
 	cache.shaders.push(9);
 	cache.blockSlots.push(1);
 	cache.generation = contextGeneration() + 1;
@@ -427,6 +359,6 @@ test "closing a cache of another GPU context empties it and answers false after"
 	closePipelines(cache);
 	assert cache.isClosed();
 	assert cache.entries.length == 0 && cache.shaders.length == 0;
-	assert cache.blockSlots.length == 0 && cache.descriptor.length == 0;
+	assert cache.blockSlots.length == 0;
 	assert !cache.contains(litKey(false, sceneState())) && !cache.declaresBlock(0, 0);
 }

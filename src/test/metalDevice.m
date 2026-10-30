@@ -1,0 +1,58 @@
+#import <Metal/Metal.h>
+#include <string.h>
+#include "metalDevice.h"
+
+void *metalSystemDevice(void) {
+	static id<MTLDevice> device;
+	if (device == nil) device = MTLCreateSystemDefaultDevice();
+	return device;
+}
+
+int32_t metalReadback(
+	void *queue,
+	void *texture,
+	int32_t level,
+	int32_t slice,
+	int32_t plane,
+	void *pixels,
+	int32_t width,
+	int32_t height,
+	int32_t bytesPerPixel) {
+	@autoreleasepool {
+		id<MTLCommandQueue> q = (id<MTLCommandQueue>)queue;
+		id<MTLTexture> source = (id<MTLTexture>)texture;
+		NSUInteger rowBytes = (NSUInteger)width * (NSUInteger)bytesPerPixel;
+		id<MTLBuffer> staging = [q.device newBufferWithLength:rowBytes * (NSUInteger)height options:MTLResourceStorageModeShared];
+		if (staging == nil) return 0;
+		id<MTLCommandBuffer> commandBuffer = [q commandBuffer];
+		id<MTLBlitCommandEncoder> blit = [commandBuffer blitCommandEncoder];
+		MTLBlitOption options = source.pixelFormat == MTLPixelFormatDepth32Float_Stencil8 ? MTLBlitOptionDepthFromDepthStencil : MTLBlitOptionNone;
+		[blit copyFromTexture:source
+			sourceSlice:(NSUInteger)slice
+			sourceLevel:(NSUInteger)level
+			sourceOrigin:MTLOriginMake(0, 0, (NSUInteger)plane)
+			sourceSize:MTLSizeMake((NSUInteger)width, (NSUInteger)height, 1)
+			toBuffer:staging
+			destinationOffset:0
+			destinationBytesPerRow:rowBytes
+			destinationBytesPerImage:rowBytes * (NSUInteger)height
+			options:options];
+		[blit endEncoding];
+		[commandBuffer commit];
+		[commandBuffer waitUntilCompleted];
+		int32_t ok = commandBuffer.status == MTLCommandBufferStatusCompleted ? 1 : 0;
+		if (ok) memcpy(pixels, [staging contents], rowBytes * (NSUInteger)height);
+		[staging release];
+		return ok;
+	}
+}
+
+int32_t metalLabel(void *object, void *text, int32_t capacity) {
+	NSString *label = [(id)object label];
+	if (label == nil) return 0;
+	const char *bytes = [label UTF8String];
+	int32_t length = (int32_t)strlen(bytes);
+	if (length > capacity) length = capacity;
+	memcpy(text, bytes, (size_t)length);
+	return length;
+}

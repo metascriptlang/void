@@ -1,9 +1,8 @@
-import "../void2d/textSdfSwitch";
 import {
 	void2dGlyphRasterize,
 	void2dGlyphPageCreate,
 	void2dGlyphPageTexel,
-} from "../void2d/glyph.h";
+} from "../void2d/glyph";
 import { glyphBox } from "../void2d/glyphBoxes";
 import { loadFace, glyphIndex } from "../void2d/face";
 import { GlyphAtlas, GlyphTile, acquireSdf } from "../void2d/glyphAtlas";

@@ -5,7 +5,7 @@ import { Material, Phase, ShadowCasting } from "../void3d/material";
 import { TextureData, TextureId, TextureAlpha } from "../void3d/texture";
 import { claim } from "../void3d/slots";
 import { contextGeneration } from "../gpu/door";
-import { MeshData } from "../void3d/meshData";
+import { MeshData, copy } from "../void3d/meshData";
 import { PassList } from "../void3d/passList";
 import {
 	DrawContext,

@@ -1,4 +1,4 @@
-import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../src/host/gpu";
 import { beginScreenPass } from "../../src/gpu/target";
 import { endPass, commit } from "../../src/gpu/door";
 import {
@@ -16,7 +16,7 @@ when (voidProfiler) {
 	} from "../../src/void2d/profilerOverlay";
 }
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 function init(): void {

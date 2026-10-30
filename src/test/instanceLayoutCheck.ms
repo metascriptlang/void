@@ -2,9 +2,8 @@
 //
 // The stride decides the phase's stated fallback: past WebGL2's 255-byte ceiling, P2 splits
 // into two strides. That decision is arithmetic, so it is asserted here rather than recalled
-// from a comment. `uiInstanceStride()` and `spriteInstanceStride()` come from `sizeof` in
-// batcher.c, so these tests compare the emitter's claim against the bytes sokol is handed —
-// change either side alone and this file goes red before a pixel is drawn.
+// from a comment. The stride the door is handed is the registered layout's arrayStride,
+// compared with the emitter's claim in instanceAttributeCheck.ms.
 
 import {
 	InstanceMode, UI_MODE_COUNT, MAX_WEB_STRIDE, LEGACY_QUAD_BYTES,
@@ -20,18 +19,9 @@ import {
 	REC_UI_FLOATS, REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV,
 	REC_SPRITE_COLOR, REC_SPRITE_FLOATS,
 } from "../void2d/instanceLayout";
-import { uiInstanceStride, spriteInstanceStride, packChannelC } from "../void2d/draw";
 
 const FLOAT4: int32 = 16;
 const UBYTE4N: int32 = 4;
-
-test "the UI stride the emitter claims is the stride sokol is handed" {
-	assert UI_STRIDE == uiInstanceStride();
-}
-
-test "the sprite stride the emitter claims is the stride sokol is handed" {
-	assert SPRITE_STRIDE == spriteInstanceStride();
-}
 
 test "UI fields are laid out end to end with no gap and no overlap" {
 	assert UI_AFFINE == 0;
@@ -165,18 +155,3 @@ test "packChannel never loses the top level the way truncation does" {
 	assert packChannel((1.0 / 255.0) as float32) == 1;
 }
 
-// The UI instance packs its three colours in C, on the way into the GPU buffer, because a
-// Vec<float32> cannot hold a packed RGBA8. That makes two copies of one piece of arithmetic,
-// which guardrail 9 does not allow to rest on them looking alike - so they are compared
-// across the boundary, over the values where rounding and clamping actually differ.
-test "the C pack and the MetaScript pack are the same arithmetic" {
-	assert packChannelC(0.0 as float32) == packChannel(0.0 as float32);
-	assert packChannelC(1.0 as float32) == packChannel(1.0 as float32);
-	assert packChannelC(0.5 as float32) == packChannel(0.5 as float32);
-	assert packChannelC(0.999 as float32) == packChannel(0.999 as float32);
-	assert packChannelC((1.0 / 255.0) as float32) == packChannel((1.0 / 255.0) as float32);
-	assert packChannelC(-1.0 as float32) == packChannel(-1.0 as float32);
-	assert packChannelC(2.0 as float32) == packChannel(2.0 as float32);
-	// And the pair is not vacuously equal: both say 255 where truncation would say 254.
-	assert packChannelC(1.0 as float32) == 255;
-}

@@ -1,4 +1,4 @@
-import "../../src/sokol/gpu";
+import "../../src/host/gpu";
 import { NodeRef, Scene2D, NO_SLOT, NO_NODE_2D } from "../../src/void2d/node";
 import { add } from "../../src/void2d/scene";
 import { syncOrder } from "../../src/void2d/render";

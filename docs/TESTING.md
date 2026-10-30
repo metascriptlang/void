@@ -204,8 +204,8 @@ Where ground truth can come from outside void, it should, because a hand-written
 |---|---|---|---|
 | Shaping: glyph ids, clusters, advances, offsets, OpenType features | **HarfBuzz** (`hb-shape --output-format=json`) over (font, size, text, features) rows | `tests/oracle/shape.json` | **Subset wired at P3 step 7**: 10 rows over Inter and the Noto Sans SC subset, uharfbuzz 0.56.2 / HarfBuzz 14.5.0 with every GSUB feature off and `kern` on, glyph ids and pen x at size = unitsPerEm: **268 / 268 agree**. **Full version wired at P6** (`tests/oracle/shape.rows` rows as data, `tests/oracle/shapeFull.json` written by `python tests/oracle/fonts.py regen`, `src/test/shapeOracleCheck.ms` over the `kb_text_shape` bridge, in the all-modules T0 stage): 75 rows (empty text, a codepoint above U+FFFF, an explicit `ltr` on Arabic, a missing glyph, a ZWJ and a ZWNJ with no glyph, and Latin mixed with Arabic among them; no Hebrew face and no colour-bitmap face are loaded through `loadFace`, so those are not rows) over the shape fixture, Inter, the Noto Sans SC subset, a Cascadia Code ligature subset and Noto Sans Devanagari, Thai (kept variable), Khmer and Arabic (right to left) subsets, default features plus per-row overrides, compared as glyph count, glyph id, cluster, x and y advance, x and y offset and run direction. **55 / 75 agree on every field, 72 / 75 on glyphs, advances and offsets**; the other 20 are `shape:` and `shape-cluster:` rows in `tests/PENDING.md` (one composition HarfBuzz does and kb does not, 16 rows where kb reports a glyph's own codepoint index and HarfBuzz its base's, and three rows where the two engines treat direction or a joiner differently); a cluster divergence is compared on its own, so a row listed only under `shape:` cannot hide one. A listed row that agrees fails the run, and a planted wrong id, cluster or offset is caught row by row |
 | Font metrics: `unitsPerEm`, ascent/descent/lineGap, underline and strikethrough position and thickness, broken-table fallbacks (GHOSTTY.md:62) | **fontTools**, reading `head`/`hhea`/`OS_2`/`post` directly | `tests/oracle/metrics.json` | **Wired at P3 step 7**: fontTools 4.65.0 reads the raw tables and the generator re-implements Ghostty's decoration and height fallbacks on its own, over Inter, the Noto subset and the two broken-table fixtures — 14 values per font, **56 / 56 agree**. It covers a GPUI weakness (GPUI ignores the font's underline metric, GPUI.md:54) |
-| Grapheme clusters, line-break opportunities | **The Unicode UCD conformance files** `GraphemeBreakTest.txt`, `LineBreakTest.txt` | the data rows, vendored as `tests/oracle/ucd/*-18.0.0.txt` | **Wired at P4**: `python tests/oracle/ucd.py regen` vendors the UCD 18.0.0 rows and generates `src/void2d/graphemeTable.h` from `GraphemeBreakProperty.txt`, `emoji-data.txt` and `DerivedCoreProperties.txt`. `src/test/ucdOracleCheck.ms` agrees on **853 / 853** grapheme rows and **19 346 / 19 346** line-break rows |
-| Bidirectional text: paragraph level, embedding levels, per-line visual order | **The Unicode UCD conformance files** `BidiTest.txt` (770 241 cases over class sequences) and `BidiCharacterTest.txt` (91 707 rows over codepoints, with paired brackets) | fetched, not vendored: `setup.sh` writes them to `deps/ucd/` at the sha256 in `tests/oracle/ucd/bidiConformance.sha256`; the class, bracket and mirror tables come from `python tests/oracle/ucd.py regen` into `src/void2d/bidiTable.h` | **Wired at P7** (`src/test/bidiOracleCheck.ms`, in the all-modules T0 stage with `-d:voidBidi`): **770 241 / 770 241** cases and **91 707 / 91 707** rows agree on levels, paragraph level and order. A missing file, or a file whose sha256 differs from its pin, fails by name ("run setup.sh"): it is never a skip. Planted controls, each red on the oracle and green again once restored: N0's content rule off, X5c's FSI direction inverted, max_depth 124 for 125, the BD16 stack 62 for 63, W4's ES rule off |
+| Grapheme clusters, line-break opportunities | **The Unicode UCD conformance files** `GraphemeBreakTest.txt`, `LineBreakTest.txt` | the data rows, vendored as `tests/oracle/ucd/*-18.0.0.txt` | **Wired at P4**: `python tests/oracle/ucd.py regen` vendors the UCD 18.0.0 rows and generates `src/void2d/graphemeTable.ms` from `GraphemeBreakProperty.txt`, `emoji-data.txt` and `DerivedCoreProperties.txt`. `src/test/ucdOracleCheck.ms` agrees on **853 / 853** grapheme rows and **19 346 / 19 346** line-break rows |
+| Bidirectional text: paragraph level, embedding levels, per-line visual order | **The Unicode UCD conformance files** `BidiTest.txt` (770 241 cases over class sequences) and `BidiCharacterTest.txt` (91 707 rows over codepoints, with paired brackets) | fetched, not vendored: `setup.sh` writes them to `deps/ucd/` at the sha256 in `tests/oracle/ucd/bidiConformance.sha256`; the class, bracket and mirror tables come from `python tests/oracle/ucd.py regen` into `src/void2d/bidiTable.ms` | **Wired at P7** (`src/test/bidiOracleCheck.ms`, in the all-modules T0 stage with `-d:voidBidi`): **770 241 / 770 241** cases and **91 707 / 91 707** rows agree on levels, paragraph level and order. A missing file, or a file whose sha256 differs from its pin, fails by name ("run setup.sh"): it is never a skip. Planted controls, each red on the oracle and green again once restored: N0's content rule off, X5c's FSI direction inverted, max_depth 124 for 125, the BD16 stack 62 for 63, W4's ES rule off |
 | Analytic coverage of the SDF primitives | **A CPU reference**: exact rounded-rect geometry supersampled 16×16 per device pixel, and a numerical Gaussian integral for the `erf` shadow | `tests/oracle/coverage.ms`, `tests/oracle/captureCheck.ms` | **Wired at P2 in T0 and against captures.** The T0 controls reject `smoothstep` by 0.09375 and a blur one fifth wrong; the accepted arithmetic measures 0 on a straight edge and 0.0078 on the tested shadow. The capture check independently judges the committed or freshly captured shader output: rotated AA measures 0.0502 against 0.06, and the shadow 0.0251 against 0.035. Since P6 `prim/aaNonUniformBox` holds the one-width AA of a non-uniformly scaled Rect to `0.5 * (1 - sqrt(min/max))` per box, from 0.0 above to 0.05 below the prediction (the capture is owed; T0 reads the same boxes at 0.1405 to 0.2271). Since P6 `prim/aaGraphics` judges the `Graphics` vertex fringe on the same geometry: edges 0.0467 against 0.06, miter corners 0.2459 against their own 0.26; antialias off reads 0.5 on both. |
 | h2d semantics: `getBounds`, `localToGlobal`/`globalToLocal`, mask intersection, scale modes, text metrics | **Heaps compiled to JS**, which SCENE-SCALE.md:204 records as already runnable here | `tests/oracle/h2d.json`, from `tests/oracle/h2d/Oracle.hx` by `sh tests/oracle/h2d.sh` | **Wired at P5 step 13**, the mechanical check that every h2d meaning void2d keeps (VOID2D.md "The rule") is still h2d's. The Haxe program builds fifteen trees of `h2d.Object`, `Bitmap` and `Mask` (transforms, tile offsets, a mirror, nesting, hidden children, scrolled, nested, rotated and clamped Masks) and reads `getBounds`, `localToGlobal` and `globalToLocal` from Heaps itself; the scale modes come from h2d's own `checkResize` on an engine and a scene made with `Type.createEmptyInstance`, over four window sizes. `src/test/h2dOracleCheck.ms` builds the same trees in void2d in T0: **15 / 15 cases and 4 / 4 scale modes agree**; `Zoom` and `AutoZoom` are void2d's own (HEAPS.md "Do not copy from h2d") and not compared. Text metrics are not compared: h2d's font pipeline is one of the things void2d does not copy (HEAPS.md "Do not copy from h2d") |
 | SVG icons rasterized to an 8-bit alpha mask: coverage of strokes, fills, evenodd, transforms, round and square dots | **resvg** (0.48.1 through `resvg-py` 0.5.0, the engine GPUI uses) over `tests/oracle/svg.rows` rows (id, file under `tests/oracle/svg/`, side in pixels) | `tests/oracle/svg.json`, written by `python tests/oracle/svg.py regen` | **Wired at P6** (`src/test/svgOracleCheck.ms` over the `svgMask` module, in the all-modules T0 stage): 38 rows over 29 hand-written icons at 24 px and nine of them again at 48 px, compared as the mean and the worst absolute alpha error (bounds 3.5 and 70 of 255, set from the first measurement and not loosened since). **31 / 38 agree**; the other 7 are `svg:` rows in `tests/PENDING.md`: four the module refuses by name (`<use>`, `clip-path`, `<mask>`, `<pattern>`), one group opacity nanosvg applies per shape, one many-arc gear that draws 2.9% less ink, one dash edge on another pixel. A listed row that agrees fails the run, and a planted wrong pixel or a snapshot shifted by 64 is caught row by row. The icons are written for the oracle, not copied from an icon set; a run over Lucide 1.52.0, Heroicons 2.2.0 and Tabler 3.49.0 is recorded in VOID2D.md and is not committed |
@@ -214,7 +214,7 @@ Where ground truth can come from outside void, it should, because a hand-written
 | Procedural sprite glyphs: blocks, box-drawing lines, braille | **Ghostty's own sprite font**, 36 reference PNGs (one 16x16 grid of padded cells per 256 codepoints at four cell sizes) | `tests/oracle/ghostty/sprite/*.png`, copied from Ghostty `a3010543` with its MIT licence and a README | **Wired at P6** (`src/test/spriteOracleCheck.ms`, in the T0 stage): the exact subset, U+2500-256C, U+2574-259F, U+2800-28FF, U+1CD00-1CDE5 (octants), U+1FB00-1FB3B (sextants) and U+1FB70-1FB97 without 1FB93, is compared byte for byte over the padded cell at 18x36+4, 12x24+3, 11x21+2 and 9x17+1: **2952 / 2952 cells equal**. The 33 anti-aliased sprites (arcs, diagonals, corner triangles, powerline) are compared under the per-family budget of a `sprite-aa:` row in `tests/PENDING.md` (pixels past one 1/16 step of the reference's supersampling, and the worst delta, set from the first measurement: at most 4, 2, 0 and 36 pixels, worst delta 26, 17, 16 and 33 of 255). A cell of another glyph, another line weight or another shape is caught, a box line meets a powerline cap with no gap and no double edge, and the test ties both lists to the sprite table so a codepoint added without a class fails |
 | Oklab / sRGB interpolation, the gamma/contrast table | the published matrices; GPUI's 13-row `gamma_ratios` (`gpui/src/platform.rs:1344-1378`) is itself the source constant | — | **T0, not an oracle.** Our table equals theirs, or it does not |
 | Text coverage in the SDF regime | **A CPU reference**: the glyph outline rasterized at 4x the exact device size and averaged 4x4 per device pixel, through the label's own rotation and zoom, then the gamma and contrast of `textGamma.ms` | `tests/oracle/textSdfCheck.ms`, scenes from `sdfLabelCases` in `tests/golden/table.ms` | **Written at P6, not yet run on a capture.** It judges `text/sdfRotated`, `sdfZoom4` and `sdfScaleDown` by mean absolute error, 99th percentile and total ink, with the T0 figures (`src/test/sdfOracleCheck.ms`) as provisional bounds; run on an all-background capture it fails every label. T5 owes the look at 0.5x to 0.95x |
-| Colour glyph tiles (CBDT/CBLC, sbix, COLR v0 over CPAL palette 0) | **fontTools** for the table fields (strike, bearings, advance, layers, palette) and **Pillow** for the PNG pixels, then the integer premultiply `(c * a + 127) / 255` | `tests/oracle/colour.json`, written by `python tests/oracle/colour.py`, read by `src/test/colourFaceCheck.ms` (module on) | **Wired at P6** over the Noto Color Emoji subset, the synthetic CBDT, sbix and COLR faces and `cbdtFormats.ttf`; the premultiplied area-average tiles and the layer composite are compared with the oracle's pixels at every listed size, and each fixture is truncated and stamped with 0xFFFFFFFF at every 4th byte (every 16th for the Noto subset) by `src/test/colourSweep.c`, test build only, which must name an error and never crash. sbix has no real face: Apple Color Emoji is proprietary (`tests/PENDING.md font-sbix-apple`) |
+| Colour glyph tiles (CBDT/CBLC, sbix, COLR v0 over CPAL palette 0) | **fontTools** for the table fields (strike, bearings, advance, layers, palette) and **Pillow** for the PNG pixels, then the integer premultiply `(c * a + 127) / 255` | `tests/oracle/colour.json`, written by `python tests/oracle/colour.py`, read by `src/test/colourFaceCheck.ms` (module on) | **Wired at P6** over the Noto Color Emoji subset, the synthetic CBDT, sbix and COLR faces and `cbdtFormats.ttf`; the premultiplied area-average tiles and the layer composite are compared with the oracle's pixels at every listed size, and each fixture is truncated and stamped with 0xFFFFFFFF at every 4th byte (every 16th for the Noto subset) by `digestMutants` in `src/test/colourFaceDigest.ms`, pinned by `src/test/colourFacePortCheck.ms` against digests recorded from the C sweep, which must name an error and never crash. sbix has no real face: Apple Color Emoji is proprietary (`tests/PENDING.md font-sbix-apple`) |
 | Text outline coverage (`-d:voidTextOutline`) | **Pillow 12.3.0 over FreeType 2.14.3**: `ImageDraw.text` with `stroke_width` and the same ink as the fill (the union is the round-join dilation), drawn at 8x and averaged 8x8, over Inter, a Noto Sans SC subset and a CFF face, 13 and 26 px, quarter-pixel shifts, widths 0.5 to 3.5 px, plus a width-0 floor | `tests/oracle/outline.py regen` writes `tests/oracle/outline.json` (90 cases, 60 KB); `src/test/outlineOracleCheck.ms` reads it | Bounds written as numbers: mean error 0.05, p99 0.5 (0.8 for the 13 px 3.5 px counters FreeType's stroker leaves open), ink 0.95 to 1.04, against a harness floor of 0.08 and 0.4 measured on the plain fill at width 0; a plain fill held against the outline fails all 36 wide cases (the control). `glyphOutlineCheck.ms` adds the exact rectangle distance of an `I` stem. **Judged on captures since 2026-10-22** (gate T3): `tests/oracle/textOutlineCheck.ms` paints the 11 labels of `outlineSdfLabelCases` in `tests/golden/table.ms` from Pillow masks requested by the check itself (`VOID_OUTLINE_REQUESTS=1`, then `python tests/oracle/outline.py capture requests.txt tests/oracle/outlineCapture.json`; a stale mask set fails by name) and holds `text/outlineSdf*` to mean error 0.075, p99 0.40, ink 0.94 to 1.07. On the committed D3D11 goldens the worst label is `fn main()` at zoom 4, p99 0.196 (zoom 2: 0.129). The check must call `setSdfRegime(true)`, as `draw.ms` does for the renderer: without it a uniform zoom reads as pixel-exact, the reference snaps the baseline the SDF path does not, and zoom 4 measured p99 0.459 from a 0.43 px vertical offset that was the check's alone. Blank, fill-only, missing and wrong-size captures fail |
 | Text outline in the SDF regime | **The coverage outline above**, rendered at 4x the exact device size and averaged 4x4, against a pre-biased SDF tile sampled and ramped as the shader does | `src/test/sdfOutlineOracleCheck.ms` (5 zooms x 4 turns) | mean error 0.04 and p99 0.30 at zoom 0.5, 0.016 and 0.14 from zoom 1, ink 0.96 to 1.02; the field without its bias fails (mean error 0.62). A judge on the captured `text/outlineSdf*` rows is owed (`outline:capture-oracle`) |
 | Glyph rasterization | FreeType, unhinted, same size and offset | — | **Not ground truth.** void2d deliberately does not match FreeType: stb_truetype in the pixel-exact regime with its own four x-variants. Usable as a shape smoke check with a loose coverage bound — is the outline right? — and never as a gate on pixels. Say so rather than implying otherwise |
@@ -237,7 +237,7 @@ The interesting number was the UAX #14 one, and it decided the rule. The U+0020 
 - **Gates, hard, against the committed baseline:** draw calls, instances, uploaded bytes, GPU buffers/images/pipelines alive, glyph rasterizations per frame, atlas pages and bytes, and wasm size per backend and per compile-time module. All of these are deterministic for a given build.
 - **Reports, with a warn threshold, and never fails a commit:** milliseconds. SCENE-SCALE.md:197 records its own numbers being taken with the machine at load average 14–17; a wall-clock gate on a shared developer box produces flakes and then gets disabled, which is worse than a number nobody gates.
 
-**How a millisecond comparison is taken.** Only by `sh scripts/bench-ab.sh <tree A> <tree B> [pairs]`: the release bench binaries of two trees, interleaved pair by pair, each run bracketed by a CPU-load sample before and after it. A pair with any sample above 25 % (`AB_LOAD_LIMIT`) is NOISY and left out, and a run that printed no number is BROKEN and left out; the verdict gives the median and range of the clean pairs and refuses to give one below five (`AB_MIN_CLEAN`). The gate's single run is a REPORT line and nothing more. Interleaving protects the difference between the arms, not their absolute: the same binaries read about 1.5 ms higher at 23-38 % load than at 13-25 %, so an absolute number is quoted with its window. Why both samples: on 2026-09-25 the same binaries read 12.8 to 13.4 ms on a quiet box and 14.5 to 24 ms beside other sessions' compiles, and a sample taken only before a run had read 26 % for a run that came out at 24.3 ms. That is what minted P3's 2.2× (VOID2D.md P3 "Measured").
+**How a millisecond comparison is taken.** Only by `sh scripts/bench-ab.sh <tree A> <tree B> [pairs]`: the release bench binaries of two trees, interleaved pair by pair, each run bracketed by a CPU-load sample before and after it. A pair with any sample above 25 % (`AB_LOAD_LIMIT`) is NOISY and left out, and a run that printed no number is BROKEN and left out; the verdict gives the median and range of the clean pairs and refuses to give one below five (`AB_MIN_CLEAN`). The gate's single run is a REPORT line and nothing more. Interleaving protects the difference between the arms, not their absolute: the same binaries read about 1.5 ms higher at 23-38 % load than at 13-25 %, so an absolute number is quoted with its window. Why both samples: on 2026-09-25 the same binaries read 12.8 to 13.4 ms on a quiet box and 14.5 to 24 ms beside other sessions' compiles, and a sample taken only before a run had read 26 % for a run that came out at 24.3 ms. That is what minted P3's 2.2× (VOID2D.md P3 "Measured"). `AB_RAW=<file>` also keeps every bench row of every run and prints the all-row table (median of the clean pairs, a `.ms` row RED above `AB_TOL` 3 % slower, a differing counter DIFF), `AB_DIR_A`/`AB_DIR_B` name another exe directory per side and `AB_RUN` a command prefix; `scripts/abBench.sh` uses them for main against `wt/gpu-ms` per backend (docs/GPU-MS.md "A/B against main").
 
 Most of the gating half is assertable with no GPU at all, in T1. That is the point of putting the display list first.
 
@@ -250,14 +250,13 @@ msc build tests/bench/benchParticles.ms --release --danger --cc=clang "--passC=-
 sh scripts/bench-ab.sh . . 6 Particles
 ```
 
-**wasm.** Keep object growth separate from linked entry size. `scripts/wasmModuleDelta.sh`
-uses the pre-link code-plus-data records in `tests/bench/wasm.json` (`tool` and `meaning`),
-not final wasm bytes. `scripts/experiment-modulesWeb.sh` isolates text cost with its default
+**wasm.** `src/void2d` has no C unit left, so a module's cost is its linked row in
+`tests/bench/wasmBudget.txt`. `scripts/experiment-modulesWeb.sh` isolates text cost with its default
 `tests/experiments/modulesWeb.ms` entry, avoiding `node.ms` and its Yoga dependency; the demo
-entry `src/examples/mainSokol2d.ms` includes that retained-scene path. Their linked budgets
+entry `src/examples/main2d.ms` includes that retained-scene path. Their linked budgets
 and measured conditions are in "Linked wasm text modules" below and `tests/bench/wasmBudget.txt`.
 The experiment enforces artifact sizes; the native gate validates those declarations, not a
-fresh link. Neither replaces the object-growth checks.
+fresh link.
 
 ## T5 — judgement
 
@@ -306,36 +305,71 @@ Concrete mechanisms, because the phrase on its own does nothing:
   shader declares agrees with the one the emitter writes; every shader `mode` is reachable
   from an emitter; production T1 scenes reach every `BreakReason` including view, effect and
   pipeline, while a target bracket reaches barrier; every command kind has a batch-break rule.
-- **The build trap is part of the gate.** `msc build` answers "Up to date" after a header that a compiled `.c` includes has changed, and the global object cache is keyed on the `.c` and not its includes — `--force` does not bypass it (`~/metascript/.inbox/compiler/2026-09-20-object-cache-ignores-headers.md`). Every shader regeneration hits this. The gate's first step, and `scripts/golden.sh` before each build, delete the output binaries and `out/{debug,release}/.cache`, and both set `MSC_NO_GLOBAL_CACHE=1`, msc's own opt-out, so no build of theirs reads or writes the machine-wide `~/.metascript/cache/objects`. A gate that silently tests the previous binary is worse than no gate. Until P3.5's land the gate deleted that machine-wide directory instead: it wiped every other session's objects, and while another session's `msc` wrote there the deletion failed with "Directory not empty" and the gate went RED.
+- **The build trap is closed in the compiler, not in the gate.** `msc` used to answer "Up to date" after a header that a compiled `.c` includes had changed, and its object cache was keyed on the `.c` alone (`~/metascript/.inbox/compiler/2026-09-20-object-cache-ignores-headers.md`), so the gates deleted every binary and `out/{debug,release}/.cache` and switched the machine-wide cache off. msc `32b8ce353` sees a change two includes deep, and a `--passC=-D` or `-d:` change, with the global cache on (probed 2026-10-26), so the gates keep the caches and the binaries: a cold all-off T0 had cost 11.2 min against 1.7 min warm. What still guards a stale binary is the build's own exit status: a check runs a program only after its build succeeded.
 
 ## The gate
 
-`scripts/gate.sh`, the first one this repo has had. Each step prints PASS, FAIL or SKIP
-**with a reason**; a SKIP is loud and counted, and nothing may report PASS for a backend it
-did not run — the conformance line for a backend is the comparator's own output, never a
-number typed into the script.
+`scripts/gate.sh` is the gate every land runs. `scripts/gate3d.sh` runs beside it when a change
+reaches void3d, never instead of it: it holds only what `gate.sh` does not, so the test index,
+the shader freshness check, `mixedFrame` and `targetOwner` run once, in `gate.sh`. Each step
+prints PASS, FAIL or SKIP **with a reason**; a SKIP is loud and counted, and nothing may report
+PASS for a backend it did not run — the conformance line for a backend is the comparator's own
+output, never a number typed into the script.
+
+Both gates and `scripts/golden.sh` export `VOID_QUIET_WINDOW=1`: every window they open is
+invisible, takes no focus and puts no icon in the Dock. Every section header prints the seconds
+since the gate started (`=== 3. T2 — golden images === at N s`), so what a section costs is
+read from the log.
 
 0. Name the compiler: `msc --version`, its path, and the `BUILD` file beside the binary. A gate
    that cannot name what it certified fails.
-1. Evict the caches (above): the output binaries and `out/{debug,release}/.cache`; the
-   machine-wide object cache is switched off for the run, not deleted.
-2. `msc test src/test/index.ms` — T0 and T1; then each `tests/isolated/*.ms` in a process of its
-   own, for a test that exhausts process-wide state (the glyph page table) and would starve the
-   tests after it. Then `msc test --target=js tests/js/targetCheck.ms` with every module flag off
-   and on: Void compiles on JS, and what needs C (decoding images, loading fonts) answers with a
-   named error there, because JS has no C to call.
-3. The demo entry builds.
-4. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
+1. `msc test src/test/index.ms` — T0 and T1, with every module flag off and then on; then each
+   `tests/isolated/*.ms` in a process of its own, for a test that exhausts process-wide state
+   (the glyph page table) and would starve the tests after it. Then `msc test --target=js
+   tests/js/targetCheck.ms` with every module flag off and on: Void compiles on JS, and what needs
+   C (decoding images, loading fonts) answers with a named error there, because JS has no C to call.
+   `-d:voidCff` is one of the flags: off, `tests/fonts/cffSynthetic.otf` is refused by name; on, the CFF tests run.
+   Then `msc check src/examples/main2d.ms` for every backend the host does not run (D3D11, GL
+   on Windows, Linux and Android, Metal on iOS, both web builds, the dummy), about 15 s in all, so
+   a function one backend lacks is red on any host rather than on the first machine that builds it.
+2. The demo entry builds and runs, then the integration programs, each with its named misuse
+   runs; `mixedFrame` with its controls and both registration orders. Then the backend checks of
+   the host: `webgpuD3d11Check` and `doorZeroHandleCheck` on WARP and `webgpuGlCheck`
+   (`-d:voidGlCore`) on the system device on Windows, `webgpuMetalCheck` on a Mac.
+3. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
    twice, compare the two, gate per-scene counters, write the PNG, then
-   `tests/golden/compare.ms` judges all **82** against `tests/golden/d3d11/` and prints
-   `N px differ, max delta M, bbox` and a pass rate.
-5. The three coverage oracles and the two font oracles, plus two named SKIPs for oracles not wired yet.
-6. `tests/bench/check.ms` — counters gated against `tests/bench/baseline.json`, milliseconds
-   reported with a warn threshold. Object-growth checks and linked wasm budget declarations
-   also gate; declaration validation does not re-link the measured entries.
-7. Guardrail 9: the D3D11 conformance line, then one named SKIP per backend that has no
-   readback. With `--web`, also `scripts/build-web.sh` and `scripts/web-liveness.sh`.
+   `tests/golden/compare.ms` judges every scene against `tests/golden/d3d11/` and prints
+   `N px differ, max delta M, bbox` and a pass rate. Then the bare build, every module flag off,
+   on D3D11 on Windows and on Metal on a Mac. A Mac has no D3D11, so there the D3D11 suite is
+   a SKIP that names the host.
+4. The three coverage oracles and the two font oracles, plus two named SKIPs for oracles not wired yet;
+   then the shader modules' freshness (`regen-shaders.sh --check`) and every printed stage through
+   fxc, naga and, on a Mac, `xcrun metal`, which also compiles the shader checks' `out/mslProbe/`;
+   GLSL is a named SKIP, as is MSL off a Mac (docs/SHADER-IR.md "Validators").
+5. `tests/bench/check.ms` — counters gated against `tests/bench/baseline.json`, milliseconds
+   reported with a warn threshold; a bench program that does not build fails by name. Object-growth
+   checks and linked wasm budget declarations also gate; declaration validation does not re-link
+   the measured entries.
+6. Guardrail 9: the D3D11 and GL core conformance lines on Windows, the Metal line on a Mac, each
+   absent backend a SKIP that names the host, then one named SKIP per backend that has no readback.
+   With `--web`, also `scripts/build-web.sh` and `scripts/web-liveness.sh`.
+7. The record against the code: `tests/record/check.ms`, the style checks, and the conformance
+   rows of this file against this run's logs (the D3D11 row is a SKIP on a Mac).
 8. The tier table, the PENDING count, and the SKIP and FAIL totals.
+
+Flags:
+
+- `--quick` skips the golden suites.
+- `--web` adds the two web builds, the WebGL2 goldens and the headless-Chrome liveness check.
+- `--window` runs `framePacing`, `macWindow`, `macWindowEscape` and `macWindowFps` in a visible,
+  focused window (`VOID_QUIET_WINDOW` unset for them). They need focus, vsync and real full
+  screen, which `macWindow` toggles, and flake about one run in four, so without the flag they
+  are one SKIP line. Pass it when a change touches `src/platform/macos/*`,
+  `src/host/bridgeEmbed.m` or `tests/capture/capture.c`. `gpuTimer` runs on every Mac gate,
+  in the quiet window.
+- `--ios` runs the Metal goldens and view samples on an attached iPhone or iPad
+  (`scripts/iosDevice.sh`); without it they are one SKIP line. The device must be paired and
+  unlocked, or every iOS line fails by name.
 
 `tests/integration/sceneTarget.ms` holds the caller-owned target boundary in a native process:
 prepared replay inside the 3D prepare phase, full-RGBA comparisons against direct screen replay,
@@ -345,7 +379,7 @@ unprepared, consumed, expired, open-pass, wrong-size/DPI, empty, closed/destroye
 foreign-context and non-Rgba8 targets; the same gate stage runs each mode in a separate process
 and requires both a nonzero exit and its diagnostic.
 
-`tests/integration/targetOwner.ms` holds the shared reference-owner lifecycle in both gates:
+`tests/integration/targetOwner.ms` holds the shared reference-owner lifecycle in `gate.sh`:
 real sampled pixels through a value holder after in-place resize, same-size storage reuse,
 exact image/view retirement on terminal close, and an independent owner's surviving pixels.
 Its older-epoch adoption and `targetPresetEpoch.ms`'s all-target preset rebuild are generation-write
@@ -367,29 +401,24 @@ consumers must be rejected by the missing identifiers. An unavailable compiler o
 header graph fails the positive control, not the negative pins. This is a published-header
 boundary, not a linker permission claim about C clients declaring private symbols themselves.
 
-Measured 2026-09-20: **GATE GREEN, 13 loud skips, about 40 seconds** on this box, starting
-from a tree with no `out/` directory at all.
-`--quick` skips the golden suite; `--web` adds the two web builds and the headless-Chrome
-liveness check.
-
 Green before every commit, as in rexa (`AGENTS.md:301-302`). A bug gets its regression case
 in the same change as the fix.
 
 ## Guardrail 9 — how "same pixels on every platform" is actually checked
 
-**Current status, 2026-10-22: four backends of seven measured, and all four numbers are printed (D3D11, GL core 4.3 desktop (glsl430), WebGL2 and Metal on macOS). WebGPU is P6's; Metal iOS and Android wait on the human's devices.**
+**Current status, 2026-10-24: five backends of seven measured (D3D11, GL core 4.3 desktop (glsl430), WebGL2, Metal on macOS and Metal on iOS devices); the gate prints the first four and runs the fifth on an attached iPhone or iPad. WebGPU is P6's; Android waits on the human's device.**
 
 | Backend | Conformance | Runs |
 |---|---|---|
-| D3D11 | **121 / 121 scenes byte-identical** | every full gate, this box |
-| GL core 4.3 desktop (glsl430) | **121 / 121**: 95 byte-identical, 26 within the cross-backend bound, 0 structural failures, 0 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
-| Metal macOS | **102 / 120** on an Apple GPU, 2026-10-22: 15 byte-identical, 87 within the cross-backend bound, 18 over it by delta 2 to 4 spread over many pixels with no shape moved (`conformance:metal-gpu-rounding`). The readback blits the window's drawable into a shared `MTLBuffer` on sokol's own command queue, so it is ordered after the committed frame | `sh scripts/golden.sh --backend metal`, and every full gate on a Mac |
-| Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |
+| D3D11 | **123 / 123 scenes byte-identical** | every full gate, this box |
+| GL core 4.3 desktop (glsl430) | **123 / 123**: 96 byte-identical, 27 within the cross-backend bound, 0 structural failures, 0 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
+| Metal macOS | **120 / 120** on an Apple GPU, 2026-10-23: 15 byte-identical, 87 within the cross-backend bound, 18 within their measured `@metal` budgets (`tests/PENDING.md`, delta 2 to 4 spread over many pixels with no shape moved). The readback is `doorReadScreen`, the door's swapchain copy, as on D3D11 and GL; it stops by name rather than wait behind a command buffer that is not committed | `sh scripts/golden.sh --backend metal`, and every full gate on a Mac |
+| Metal iOS | **120 / 120** on an iPhone 13 Pro (iOS 27.0.1) and an iPad Pro 12.9-inch 5th generation (iPadOS 26.6.1), 2026-10-24, BUILD `6b8655024`: the same verdict as Metal macOS (15 byte-identical, 87 within the bound, 18 within their `@metal` budgets). The two device sets are byte-identical to each other, and 116 of 120 to the Mac's (`prim/boxFills`, `dashedBorder`, `gradientOklab`, `textModes` differ, inside their bounds). Same `doorReadScreen` readback; on iOS the PNGs land in the app's Documents and are copied off with `devicectl` | `bash scripts/iosDevice.sh golden auto`, and the gate on a Mac with `--ios`: it picks the first paired, reachable device (`VOID_IOS_DEVICE` names one, `VOID_IOS_PROFILE` a profile) and fails by name when there is none, the device is locked, or the install is refused |
 | GLES3 Android | shares the `glReadPixels` path; needs the human's device | SKIP |
 | WebGPU | no readback in the wasm build. P6. Headless Chrome does hand it the real adapter here (2026-10-20); liveness only, below | SKIP |
 | WebGL2 | **120 / 120**: 88 byte-identical, 32 within the cross-backend bound, 0 structural failures; measured 2026-10-19, BUILD `4fe2a5eec`, with the runner built on the same module defines as D3D11 (`scripts/goldenDefines.sh`). Before that the web runner carried only `voidProfiler`, so 37 scenes of the text, SVG, emoji and sprite modules failed for want of their module, not for WebGL2; `conformance:webgl2-pixel-centre` is deleted, its four scenes passing. ANGLE on D3D11 on the same GPU proves the GLSL ES path and GL conventions, not a second driver | `sh scripts/golden-web.sh`, and the gate with `--web` |
 
-So guardrail 9 is a number now, and the number is **4 of 7 surfaces measured**. The WebGL2 path is the golden runner itself compiled with `--os=emcc`: `tests/golden/web/runner.html` passes the scene in the query, `tests/capture/capture.c` reads the frame with `glReadPixels` into the in-memory file system and sets `window.voidDone`, and `scripts/webGolden.mjs` drives headless Chrome over the DevTools protocol (node's own `WebSocket`) and copies each PNG out; `tests/golden/compare.ms` judges it against the D3D11 goldens with `VOID_CONFORM=webgl2`. Its first run found a real cross-backend bug, not a tolerance: the Bayer dither was indexed by `gl_FragCoord`, whose origin is bottom-left on GL, so the 4x4 pattern flipped and every dithered pixel moved by up to 5 levels (gradients, `prim/ditherBand`, all four demo frames). The mesh pipeline now carries the fragment's device pixel as a varying and D3D11 stayed byte-identical. The first run also taught one harness lesson: `golden-web.sh` reused a stale `goldenCompare.exe`, which compared the D3D11 captures with themselves and printed 100 %; the script now always rebuilds the comparator. What exists
+So guardrail 9 is a number now, and the number is **5 of 7 surfaces measured**; the full gate runs D3D11 and GL core on Windows, Metal on macOS on a Mac, Metal on iOS with `--ios`, and WebGL2 with `--web`. The WebGL2 path is the golden runner itself compiled with `--os=emcc`: `tests/golden/web/runner.html` passes the scene in the query, `tests/capture/capture.c` reads the frame with `glReadPixels` into the in-memory file system and sets `window.voidDone`, and `scripts/webGolden.mjs` drives headless Chrome over the DevTools protocol (node's own `WebSocket`) and copies each PNG out; `tests/golden/compare.ms` judges it against the D3D11 goldens with `VOID_CONFORM=webgl2`. Its first run found a real cross-backend bug, not a tolerance: the Bayer dither was indexed by `gl_FragCoord`, whose origin is bottom-left on GL, so the 4x4 pattern flipped and every dithered pixel moved by up to 5 levels (gradients, `prim/ditherBand`, all four demo frames). The mesh pipeline now carries the fragment's device pixel as a varying and D3D11 stayed byte-identical. The first run also taught one harness lesson: `golden-web.sh` reused a stale `goldenCompare.exe`, which compared the D3D11 captures with themselves and printed 100 %; the script now always rebuilds the comparator. What exists
 for WebGPU today is liveness, not conformance: `scripts/webPresent.mjs` loads a built page in
 headless Chrome over DevTools, counts the frames it presents (WebGPU: a rAF tick that took the
 canvas texture and submitted; WebGL2: a draw or clear on the default framebuffer), and screenshots
@@ -413,17 +442,17 @@ What each readback costs:
 |---|---|---|---|
 | D3D11 | staging texture + `CopyResource` + `Map` | this Windows box | exists; needs moving into the repo |
 | GL / GLES3 | `glReadPixels` | this box (desktop GL), the Android device | ~30 lines, and it is shared with WebGL2 |
-| Metal | blit to a shared `MTLBuffer` (`voidWindowReadRgba`, `bridgeEmbed.m`) | the Mac; the iOS device still needs it | exists on macOS |
-| WebGPU | `copyTextureToBuffer` + `mapAsync`; `-sASYNCIFY` is already on for the emdawnwebgpu build (`src/sokol/sokolWeb.c`) | headless Chrome on this box | ~60 lines plus a JS hand-off |
+| Metal | `doorReadScreen`: the swapchain copied to a mapped buffer through the door | the Mac, and iOS devices through `scripts/iosDevice.sh` | exists on macOS and iOS |
+| WebGPU | `copyTextureToBuffer` + `mapAsync`; `-sASYNCIFY` is already on for the emdawnwebgpu build (`src/host/sokolWeb.c`) | headless Chrome on this box | ~60 lines plus a JS hand-off |
 | WebGL2 | the GLES3 path | headless Chrome on this box | shared |
 
 **What browser conformance would take**, written down rather than attempted at P0, because
 the missing piece is the readback and not the driver:
 
 1. A wasm-side capture: `glReadPixels` for WebGL2 (the same code already in
-   `tests/capture/capture.c`, which compiles under `SOKOL_GLES3`), and
+   `tests/capture/capture.c`, which compiles under `VOID_GLES3`), and
    `copyTextureToBuffer` + `mapAsync` for WebGPU, where `-sASYNCIFY` is already on for the
-   emdawnwebgpu build (`src/sokol/sokolWeb.c`).
+   emdawnwebgpu build (`src/host/sokolWeb.c`).
 2. A hand-off out of the sandbox: the module writes the RGBA bytes to a JS-visible buffer
    and the page exposes them, or writes into emscripten's virtual FS and the driver reads
    them through `FS.readFile`.
@@ -438,7 +467,7 @@ the missing piece is the readback and not the driver:
 The comparator does not change: `tests/golden/compare.ms` reads two PNGs and knows nothing
 about where they came from.
 
-**Cadence**, because three of the five backends are not this machine: D3D11 runs in every gate, WebGL2 with `--web` since P3, and WebGPU once it has a readback (P6). Metal (macOS and iOS) and GLES3 on the Android device run **once per phase**, and additionally at every change that touches a shader, the snapping rules or the atlas — the three places where backends actually diverge. The conformance report carries the date and the commit it was taken at, so a stale one is visible rather than assumed.
+**Cadence**, because not every backend is on this machine: D3D11 runs in every gate, WebGL2 with `--web` since P3, and WebGPU once it has a readback (P6). Metal on macOS runs in every full gate on a Mac, and on iOS devices in a gate with `--ios`; GLES3 on the Android device runs **once per phase**, and additionally at every change that touches a shader, the snapping rules or the atlas — the three places where backends actually diverge. The conformance report carries the date and the commit it was taken at, so a stale one is visible rather than assumed.
 
 **Cross-backend tolerance is not the same as within-backend tolerance.** Different GPUs round rasterization and interpolation differently. The starting bound is: delta ≤ 1 ignored, fail at max delta ≥ 4 or above 0.05% of pixels at delta 2–3; every scene that cannot meet it gets a PENDING entry naming the backend and the cause. A scene that differs **structurally** between backends — a glyph one pixel over, a border one device pixel wide instead of two, a gradient banded on one backend and dithered on another — is not a tolerance question and never gets a budget. That is the class of bug guardrail 9 exists to catch, and it is the class that hand-ported shaders produce in all three references (GPUI's gradients and dither, Ghostty's cursor colour, Makepad's `modf` — VOID2D.md "Frame shape").
 
@@ -485,7 +514,7 @@ Reproduce from the repository root, with the normal buildslot/native-window admi
 
 ```sh
 msc build -d:voidSdfText -d:voidShaper tests/integration/fontPanel.ms --release --output=out/fontPanelD3d.exe
-msc build -d:voidSdfText -d:voidShaper -d:voidGlCore --passC=-DSOKOL_GLCORE tests/integration/fontPanel.ms --release --output=out/fontPanelGl.exe
+msc build -d:voidSdfText -d:voidShaper -d:voidGlCore --passC=-DVOID_GLCORE tests/integration/fontPanel.ms --release --output=out/fontPanelGl.exe
 for dpi in 100 150 200 300; do FONT_PANEL_BACKEND=1 FONT_PANEL_DPI100=$dpi out/fontPanelD3d.exe; done
 for dpi in 100 150 200 300; do FONT_PANEL_BACKEND=4 FONT_PANEL_DPI100=$dpi out/fontPanelGl.exe; done
 ```
@@ -506,7 +535,7 @@ colour 1 page/4 MiB, 40 sweep rasterizations and 0 steady; SDF 1 page/1 MiB, 40 
 `tests/integration/colourSampler.ms`, working-source tree
 `09d651d1eaa2dad47ad0d7721357500c30725b20`, binary/support BUILD `4fe2a5eec`: Windows,
 D3D11 and GL core (`NVIDIA GeForce RTX 5090/PCIe/SSE2`), MSAA 1, high-DPI off,
-`--release -d:voidColourEmoji`; GL adds `-d:voidGlCore --passC=-DSOKOL_GLCORE`.
+`--release -d:voidColourEmoji`; GL adds `-d:voidGlCore --passC=-DVOID_GLCORE`.
 Noto Color Emoji's checked-in grin at 16 logical px, zooms 1.37 and 0.63, DPI 1 and 2,
 over black with scene smoothing off. These are correctness captures, not timings.
 
@@ -557,7 +586,7 @@ measured. Unused-import diagnostics were retained, not asserted baseline-equal.
 
 The continuation, working-source tree `20ad6d286fcf45c668c55600c05a909a13d5081c` on the same
 BUILD/toolchain/profile, built colour/sprites/outline for that entry and all six modules one at
-a time for the demo (`VOID_WEB_ENTRY=src/examples/mainSokol2d.ms`). Twenty new compiler calls
+a time for the demo (`VOID_WEB_ENTRY=src/examples/main2d.ms`). Twenty new compiler calls
 succeeded on their first attempts. The initial experiment's off bundles were reused only after
 hashing the unchanged entry/runtime/assets/compiler inputs; they were not compiled for a new
 timestamp. Demo all-off was a new consumer: 974297 B WebGPU, 869347 B WebGL2.

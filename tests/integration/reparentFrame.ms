@@ -1,4 +1,4 @@
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3, eulerQuat } from "../../src/math/math3d";
 import { RenderState, BlendMode, Face, FilterMode, Wrap } from "../../src/gpu/state";
 import { Material, Phase, UniformBlock } from "../../src/void3d/material";
@@ -158,8 +158,8 @@ export function configureReparent(throughPixelArt: boolean): void { pixelArt = t
 
 export function initReparent(): void {
 	gfxSetup();
-	if (voidCaptureBackend() != 1) {
-		console.log("SKIP reparent frame: this consumer requires D3D11 readback");
+	if (voidCaptureBackend() != 1 && voidCaptureBackend() != 5) {
+		console.log("SKIP reparent frame: this consumer requires D3D11 or Metal readback");
 		voidCaptureExit(3);
 	}
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("unexpected framebuffer size"); }

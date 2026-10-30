@@ -1,0 +1,6 @@
+// The DOM key names on the wasm window: keyNames.ms under the name keyNames.h declares.
+
+import { translateKey } from "./keyNames";
+
+@exportName("voidWebTranslateKey")
+export function exportTranslateKey(name: cstring): int32 { return translateKey(name as string); }

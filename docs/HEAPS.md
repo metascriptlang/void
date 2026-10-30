@@ -102,7 +102,7 @@ sokol gives us pipelines, render passes, bindings, buffers — but the orchestra
 
 ## ~~Shader System (hxsl/) — Crown Jewel~~
 
-~~33 files. Custom shader DSL that compiles to GLSL/HLSL at build time.~~ — Not needed for Void. We author annotated GLSL (`@vs`/`@fs`, separate `texture`+`sampler`); `sokol-shdc` cross-compiles offline to GLSL/GLES/HLSL/MSL/WGSL + a generated shader-desc header. See `src/sokol/shader.glsl`, `src/void2d/shader2d.glsl` and `docs/SHADER.md`.
+~~33 files. Custom shader DSL that compiles to GLSL/HLSL at build time.~~ — Not needed for Void. We author annotated GLSL (`@vs`/`@fs`, separate `texture`+`sampler`); `sokol-shdc` cross-compiles offline to GLSL/GLES/HLSL/MSL/WGSL + a generated shader-desc header. See `src/host/shader.glsl`, `src/void2d/shader2d.glsl` and `docs/SHADER.md`.
 
 ### ~~Architecture~~
 
@@ -138,7 +138,7 @@ For Void: the `h2d.Drawable` color pipeline (`color` multiply, `colorAdd`, `colo
 
 BaseMesh, Texture, ~~SpecularTexture~~, NormalMap, ~~ColorAdd/Mult/Matrix~~, ~~Bloom~~, ~~Blur~~, ~~DeferredLight~~, ~~CascadeShadow~~, ~~DefaultShadowMap~~, ScreenShader, ~~PBR variants~~...
 
-Void currently ships: a 3D cube shader (`src/sokol/shader.glsl`) and a void2d über-shader (`src/void2d/shader2d.glsl`, tint + texture + gradient). 3D NormalMap / PBR / shadows / post-process are later void3d work.
+Void currently ships: a 3D cube shader (`src/host/shader.glsl`) and a void2d über-shader (`src/void2d/shader2d.glsl`, tint + texture + gradient). 3D NormalMap / PBR / shadows / post-process are later void3d work.
 
 ## Materials (h3d/mat/)
 
@@ -181,11 +181,11 @@ A Material has one or more Passes. Each Pass has render state + a list of shader
 
 ```typescript
 // Void approach: direct loading, no VFS abstraction
-const tex = loadImageSync("assets/player.png", 4);   // stb_image via C bridge — DONE
+const tex = loadImageFile("assets/player.png");      // shared MetaScript PNG/JPEG decoder — DONE
 const mesh = loadMesh("assets/level.gltf");            // TODO — mesh loaders not yet built
 ```
 
-Direct file loading is the current path (`src/assets/image.{h,c,ms}`). Add a VFS abstraction only when prod packaging needs it (embed, pak archives).
+Direct file loading is the current path (`src/assets/imageFile.ms` over `image.ms`). Add a VFS abstraction only when prod packaging needs it (embed, pak archives).
 
 ### Supported formats — CURRENT STATE
 

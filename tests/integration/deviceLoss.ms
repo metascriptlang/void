@@ -1,5 +1,5 @@
 import { env } from "std/process";
-import { gfxSetup } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/host/gpu";
 import { contextGeneration, loseContext } from "../../src/gpu/door";
 import { Texture, TextureError } from "../../src/gpu/texture";
 import { Scene2D } from "../../src/void2d/node";
@@ -15,7 +15,7 @@ import {
 	voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,

@@ -91,7 +91,6 @@ function plainBillboard(): BillboardBindings {
 		lightRecords: lights.lightRecords,
 		clusterRecords: lights.clusterRecords,
 		clusterIndices: lights.clusterIndices,
-		clusterSampler: lights.clusterSampler,
 		frameParams: { frame: vec4f(0, 1, 0, 0) },
 		billboardTexture: { width: 1, height: 1, texels: [1.0, 1.0, 1.0, 1.0] },
 		billboardSampler: { nearest: true },

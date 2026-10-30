@@ -25,9 +25,8 @@ import {
 	PageKind,
 	NO_GLYPH_PAGE_HANDLE,
 } from "../void2d/glyphAtlas";
-import { void2dGlyphPageTexelRgba } from "../void2d/glyph.h";
+import { void2dGlyphPageTexelRgba } from "../void2d/glyph";
 import { colourEmojiReason } from "../void2d/colourEmoji/colourEmoji";
-import { colourSweepRun, colourSweepRefused } from "./colourSweep.h";
 
 const ORACLE_PATH: string = "tests/oracle/colour.json";
 const PAGE_SIZE: int32 = 1024;
@@ -447,15 +446,4 @@ test "a tile aimed at the wrong place or with the wrong size is refused" {
 	assert colourRasterize(face, id, 16.0, handle, tile.x, tile.y, 16, 16) == 0;
 	assert colourRasterize(face, 60000, 16.0, handle, tile.x, tile.y, 16, 16) == 4;
 	assert colourRasterize(face, id, 16.0, NO_GLYPH_PAGE_HANDLE, 0, 0, 16, 16) == 1;
-}
-
-test "truncating a colour font and stamping 0xFFFFFFFF into it never crashes" {
-	assert colourSweepRun("tests/fonts/cbdtSynthetic.ttf", 4) > 600;
-	assert colourSweepRefused() > 0;
-	assert colourSweepRun("tests/fonts/NotoColorEmoji-subset.ttf", 16) > 2000;
-	assert colourSweepRefused() > 0;
-	assert colourSweepRun("tests/fonts/colrSynthetic.ttf", 4) > 300;
-	assert colourSweepRun("tests/fonts/sbixSynthetic.ttf", 4) > 600;
-	assert colourSweepRefused() > 0;
-	assert colourSweepRun("tests/fonts/cbdtFormats.ttf", 4) > 600;
 }

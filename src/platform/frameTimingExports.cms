@@ -1,0 +1,20 @@
+// The frame timing on the C targets: frameTiming.ms over the VoidFrameTiming that frameTiming.h
+// declares, under the names its static inline wrappers call.
+
+import { FrameTiming, startFrameTiming, clampedDelta, addDelta, advanceTo } from "./frameTiming";
+
+@exportName("voidFrameTimingReset")
+export function exportReset(t: Ptr<FrameTiming>): void { t[0] = startFrameTiming(); }
+
+@exportName("voidFrameTimingClamp")
+export function exportClamp(t: Ptr<FrameTiming>, dt: float64): float64 {
+	return t[0].clampedDelta(dt);
+}
+
+@exportName("voidFrameTimingDelta")
+export function exportDelta(t: Ptr<FrameTiming>, dt: float64): void { t[0].addDelta(dt); }
+
+@exportName("voidFrameTimingStep")
+export function exportStep(t: Ptr<FrameTiming>, nowSeconds: float64): void {
+	t[0].advanceTo(nowSeconds);
+}

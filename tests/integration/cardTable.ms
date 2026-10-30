@@ -1,4 +1,4 @@
-import { fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, vec3 } from "../../src/math/math3d";
 import { LowResView } from "../../src/void3d/blit";
 import { CameraView, CameraError } from "../../src/void3d/camera";
@@ -25,7 +25,7 @@ import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureEnvInt, voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,

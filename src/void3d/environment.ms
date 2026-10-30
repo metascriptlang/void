@@ -26,11 +26,20 @@ import { CUBE_FACES, CubeTarget, cubeFullLevels } from "../gpu/cubeTarget";
 import { Texture } from "../gpu/texture";
 import { TextureMipFilter } from "./textureMip";
 import { makeScreenTriangle, screenState } from "./screenFx";
+import { shaderProgram } from "../shader/program";
+import { programLayout } from "../gpu/door";
+import { fullscreenVs } from "./post3d";
 import {
-	ENVIRONMENT_PARAMS_FLOATS,
-	environmentBakeLayout,
-	environmentBakeProgramBase,
-} from "./environmentBake.h";
+	environmentIrradianceFs,
+	environmentPanoramaFs,
+	environmentRadianceFs,
+	environmentResampleFs,
+} from "./environmentShader";
+
+shaderProgram(environmentPanorama, fullscreenVs, environmentPanoramaFs);
+shaderProgram(environmentResample, fullscreenVs, environmentResampleFs);
+shaderProgram(environmentRadiance, fullscreenVs, environmentRadianceFs);
+shaderProgram(environmentIrradiance, fullscreenVs, environmentIrradianceFs);
 
 enum EnvironmentProgram {
 	Panorama,
@@ -38,6 +47,18 @@ enum EnvironmentProgram {
 	Radiance,
 	Irradiance,
 }
+
+function programOf(program: EnvironmentProgram): int32 {
+	return match (program) {
+		EnvironmentProgram.Panorama => environmentPanorama,
+		EnvironmentProgram.Resample => environmentResample,
+		EnvironmentProgram.Radiance => environmentRadiance,
+		EnvironmentProgram.Irradiance => environmentIrradiance,
+	};
+}
+
+// shader EnvironmentParams: five vec4.
+const ENVIRONMENT_PARAMS_FLOATS: int32 = 20;
 
 export enum EnvironmentError {
 	NotPanorama,
@@ -174,8 +195,8 @@ function bakeFace(
 	writeFace(environment, face);
 	const colors: ColorAttachment[] = [target.asColor(face, level, LoadAction.DontCare, CLEAR)];
 	beginPass(colors, NO_DEPTH);
-	const pipeline: uint32 = pipelineFor(environment.pipelines,
-		environmentBakeProgramBase() + (program as int32), environmentBakeLayout(), false,
+	const id: int32 = programOf(program);
+	const pipeline: uint32 = pipelineFor(environment.pipelines, id, programLayout(id), false,
 		screenState(), layoutOf(colors, NO_DEPTH));
 	applyPipeline(pipeline);
 	for (let i = 0; i < BINDING_LENGTH; i++) { environment.bindings[i] = 0; }

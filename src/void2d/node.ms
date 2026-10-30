@@ -5,6 +5,8 @@ import {
 	Transform2D,
 	Bounds2D,
 	Filter,
+	FilterChain,
+	FilterKind,
 	Smooth,
 	Camera,
 	ScaleMode,
@@ -16,9 +18,11 @@ import {
 	inverse2d,
 	trs2d,
 	vec2,
-	noFilter,
+	noFilters,
+	maskFilter,
 	emptyBounds,
 } from "./types";
+import { checkFilterChain } from "./filterPlan";
 import { BlendMode } from "../gpu/state";
 when (voidProfiler) {
 	import { profilerInvalidated } from "./frameMarks";
@@ -29,6 +33,7 @@ import { NO_COLOR_MATRIX } from "./effect";
 import { FlexStyle, YGNode, freeLayoutTree } from "../../../yoga/src/index";
 import {
 	BoxStyle,
+	CornerRadii,
 	NO_BOX_STYLE,
 	allocateBoxStyle,
 	checkFill,
@@ -182,10 +187,12 @@ export struct Scroll2D {
 	y: float32;
 	bounded: boolean;
 	bounds: Bounds2D;
+	radii: CornerRadii;
 }
 
 const NO_SCROLL: Scroll2D = {
 	x: 0.0, y: 0.0, bounded: false, bounds: { xMin: 0.0, yMin: 0.0, xMax: 0.0, yMax: 0.0 },
+	radii: { topLeft: 0.0, topRight: 0.0, bottomRight: 0.0, bottomLeft: 0.0 },
 };
 
 export struct AnimFrames {
@@ -246,7 +253,7 @@ export interface Scene2D {
 	locals: Vec<Local2D>;
 	paints: Vec<Paint2D>;
 	contents: Vec<Content2D>;
-	filters: Vec<Filter>;
+	filters: Vec<FilterChain>;
 	orders: Vec<Order2D>;
 	layouts: Vec<Layout2D>;
 	parents: Vec<int32>;
@@ -413,7 +420,7 @@ export function newRow(this s: Scene2D, kind: DrawKind, payload: int32): int32 {
 		s.locals[i] = defaultLocal();
 		s.paints[i] = defaultPaint();
 		s.contents[i] = defaultContent();
-		s.filters[i] = noFilter();
+		s.filters[i] = noFilters();
 		s.orders[i] = order;
 		s.layouts[i] = noLayout();
 		s.parents[i] = NO_NODE_2D;
@@ -444,7 +451,7 @@ export function newRow(this s: Scene2D, kind: DrawKind, payload: int32): int32 {
 	s.locals.push(defaultLocal());
 	s.paints.push(defaultPaint());
 	s.contents.push(defaultContent());
-	s.filters.push(noFilter());
+	s.filters.push(noFilters());
 	s.orders.push(order);
 	s.layouts.push(noLayout());
 	s.parents.push(NO_NODE_2D);
@@ -569,7 +576,9 @@ export function paint(this n: NodeRef): Paint2D { return n.scene.paints[n.liveRo
 export function content(this n: NodeRef): Content2D {
 	return n.scene.contents[n.liveRow("content")];
 }
-export function filter(this n: NodeRef): Filter { return n.scene.filters[n.liveRow("filter")]; }
+export function filterChain(this n: NodeRef): FilterChain {
+	return n.scene.filters[n.liveRow("filterChain")];
+}
 export function order(this n: NodeRef): Order2D { return n.scene.orders[n.liveRow("order")]; }
 
 function putLocal(this s: Scene2D, i: int32, l: Local2D): void {
@@ -613,14 +622,31 @@ export function setContent(this n: NodeRef, c: Content2D): NodeRef {
 	return n;
 }
 
-function putFilter(this s: Scene2D, i: int32, f: Filter): void {
-	if (s.filters[i] == f) { return; }
-	s.filters[i] = f;
+function putFilter(this s: Scene2D, i: int32, c: FilterChain): void {
+	checkFilterChain(c);
+	if (s.filters[i] == c) { return; }
+	s.filters[i] = c;
 	s.markChanged(i, Changed.Filter);
 }
 
 export function setFilter(this n: NodeRef, f: Filter): NodeRef {
-	n.scene.putFilter(n.liveRow("setFilter"), f);
+	const steps: Vec<Filter> = f.kind === FilterKind.None ? [] : [f];
+	n.scene.putFilter(n.liveRow("setFilter"), { steps: steps });
+	return n;
+}
+
+// The Mask filter step whose mask is this node's subtree (h2d.filter.Mask, `Mask.hx:54`):
+// `host.setFilter(maskNode.asMaskFilter(false))`. The node must be in the host's scene, hidden,
+// before the host in the tree and not one of its ancestors; the draw stops on a node that is not.
+export function asMaskFilter(this mask: NodeRef, smoothAlpha: boolean): Filter {
+	const i: int32 = mask.liveRow("asMaskFilter");
+	return maskFilter(i, mask.id.generation, smoothAlpha);
+}
+
+export function setFilters(this n: NodeRef, steps: Readonly<Span<Filter>>): NodeRef {
+	let chain: Vec<Filter> = [];
+	for (let k: int32 = 0; k < (steps.length as int32); k++) { chain.push(steps[k]); }
+	n.scene.putFilter(n.liveRow("setFilters"), { steps: chain });
 	return n;
 }
 
@@ -1239,12 +1265,38 @@ export function scrollScope(this s: Scene2D, i: int32): boolean {
 	if (s.kinds[i] !== DrawKind.Mask || s.payloads[i] == NO_PAYLOAD) { return false; }
 	let up: int32 = i;
 	while (up != NO_NODE_2D) {
-		if (s.kinds[up] === DrawKind.Mask && (s.worlds[up].b != 0.0 || s.worlds[up].c != 0.0)) {
+		if (s.kinds[up] === DrawKind.Mask && (s.worlds[up].b != 0.0 || s.worlds[up].c != 0.0
+				|| s.maskRounded(up))) {
 			return false;
 		}
 		up = s.parents[up];
 	}
 	return true;
+}
+
+export function maskRounded(this s: Scene2D, i: int32): boolean {
+	if (s.kinds[i] !== DrawKind.Mask || s.payloads[i] == NO_PAYLOAD) { return false; }
+	const r: CornerRadii = s.scrolls[s.payloads[i]].radii;
+	return r.topLeft > 0.0 || r.topRight > 0.0 || r.bottomRight > 0.0 || r.bottomLeft > 0.0;
+}
+
+// CSS `overflow: hidden` with `border-radius`: the Mask clips its children to its rect with these
+// corners, antialiased as a UI box with the same radii is.
+export function setMaskRadii(this n: NodeRef, radii: CornerRadii): NodeRef {
+	const i: int32 = n.liveRow("setMaskRadii");
+	requireKind(n, i, DrawKind.Mask, "setMaskRadii", "corner radii");
+	if (radii.topLeft < 0.0 || radii.topRight < 0.0 || radii.bottomRight < 0.0
+			|| radii.bottomLeft < 0.0) {
+		console.log(`void2d: setMaskRadii takes radii of zero or more, not ${radii.topLeft}, ` +
+			`${radii.topRight}, ${radii.bottomRight}, ${radii.bottomLeft}`);
+		unreachable;
+	}
+	const s: Scene2D = n.scene;
+	if (n.scroll().radii == radii) { return n; }
+	const row: int32 = scrollRow(s, i);
+	s.scrolls[row] = { ...s.scrolls[row], radii: radii };
+	s.markChanged(i, Changed.Local);
+	return n;
 }
 
 export function setScrollX(this n: NodeRef, x: float32): NodeRef {

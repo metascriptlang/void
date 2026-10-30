@@ -1,4 +1,4 @@
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3, srgbToLinear, linearToSrgb } from "../../src/math/math3d";
 import { RenderState, BlendMode, FilterMode, Wrap } from "../../src/gpu/state";
 import { PipelineCache, declaresBlock } from "../../src/gpu/pipeline";
@@ -135,8 +135,8 @@ function madeMaterial(image: TextureId, lit: boolean, tinted: boolean): Material
 }
 
 export function initUnlit(): void {
-	if (voidCaptureBackend() != 1) {
-		console.log("SKIP unlit frame: this consumer requires D3D11 readback");
+	if (voidCaptureBackend() != 1 && voidCaptureBackend() != 5) {
+		console.log("SKIP unlit frame: this consumer requires D3D11 or Metal readback");
 		voidCaptureExit(3);
 	}
 	gfxSetup();

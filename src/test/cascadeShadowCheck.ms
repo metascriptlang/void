@@ -4,7 +4,7 @@
 
 import { glsl } from "../shader/emit";
 import {
-	Mat4x4f, Sampler, Texture2dArray, Vec3f, Vec4f, binding, builtin, mat4x4f, mix, textureLoad,
+	Mat4x4f, Texture2dArray, Vec3f, Vec4f, binding, builtin, mat4x4f, mix, textureLoad,
 	vec2i, vec3f, vec4f,
 } from "../shader/std";
 import {
@@ -21,7 +21,6 @@ struct ProbeInput {
 struct ProbeBindings {
 	@binding(5) cascadeParams: CascadeParams;
 	@binding(4) cascadeMap: Texture2dArray;
-	@binding(4) cascadeSampler: Sampler;
 }
 
 function layerLit(position: Vec3f, cascade: int32, b: ProbeBindings): float32 {
@@ -30,7 +29,7 @@ function layerLit(position: Vec3f, cascade: int32, b: ProbeBindings): float32 {
 	if (texel.w < 0.5) {
 		return 1.0;
 	}
-	const stored = textureLoad(b.cascadeMap, b.cascadeSampler, vec2i(texel.xy), cascade, 0).x;
+	const stored = textureLoad(b.cascadeMap, vec2i(texel.xy), cascade, 0).x;
 	return cascadeLitOf(texel, stored, b.cascadeParams.cascadeInfo);
 }
 
@@ -83,7 +82,6 @@ function bound(p: CascadeParams, depths: float32[]): ProbeBindings {
 	return {
 		cascadeParams: p,
 		cascadeMap: { width: SIZE, height: SIZE, layers: depths.length as int32, texels },
-		cascadeSampler: {},
 	};
 }
 
@@ -128,6 +126,6 @@ test "one cascade with no overlap answers as the single sun map does" {
 test "the lookup's GLSL fetches a texel of the cascade's layer of the depth array" {
 	const source: string = glsl(probeCascadeFs);
 	assert source.includes("uniform texture2DArray cascadeMap;");
-	assert source.includes("texelFetch(sampler2DArray(cascadeMap, cascadeSampler), ivec3(");
+	assert source.includes("texelFetch(cascadeMap, ivec3(");
 	assert source.includes("mat4 cascadeMatrices[4];");
 }

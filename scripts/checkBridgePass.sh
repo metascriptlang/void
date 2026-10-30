@@ -13,10 +13,10 @@ fi
 compile() {
 	rm -f "$work/probe.o"
 	if [ -n "$zig" ]; then
-		"$zig" cc -std=c11 -c -Isrc/sokol -Isrc/gpu "$@" tests/compile/bridgePass.c \
+		"$zig" cc -std=c11 -c -Isrc/host -Isrc/gpu "$@" tests/compile/bridgePass.c \
 			-o "$work/probe.o"
 	else
-		${CC:-cc} -std=c11 -c -Isrc/sokol -Isrc/gpu "$@" tests/compile/bridgePass.c \
+		${CC:-cc} -std=c11 -c -Isrc/host -Isrc/gpu "$@" tests/compile/bridgePass.c \
 			-o "$work/probe.o"
 	fi
 }

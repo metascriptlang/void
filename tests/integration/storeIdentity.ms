@@ -1,4 +1,4 @@
-import { gfxSetup } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/host/gpu";
 import {
 	PassState,
 	contextGeneration,
@@ -73,11 +73,11 @@ import {
 	voidCapturePixel,
 } from "../capture/capture.h";
 
-@compile("./storeIdentity.c");
-@include("./storeIdentity.h");
-@include("../../src/sokol/bridge.h");
-extern function storeViewLive(view: uint32): int32;
-extern function storeBufferLive(buffer: uint32): int32;
+import {
+	doorBufferAlive as storeBufferLive,
+	doorViewAlive as storeViewLive,
+} from "../../src/gpu/doorGpu.ms";
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,

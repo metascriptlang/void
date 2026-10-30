@@ -1,0 +1,4 @@
+@noinline export function stop(message: string): never {
+	console.error("gpu door: " + message);
+	unreachable;
+}

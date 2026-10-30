@@ -2,7 +2,7 @@
 // + a graphics node (circle/line/triangle). No disk assets (no image/font) so it drops
 // into any host (incl. the React-Native VoidView pod) without bundling concerns.
 
-import { gfxSetup } from "../sokol/gpu";
+import { gfxSetup } from "../host/gpu";
 import { setup2d } from "../void2d/draw";
 import { NodeRef, Scene2D } from "../void2d/node";
 import { fillCircle, strokeLine, fillConvex } from "../void2d/graphics";

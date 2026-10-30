@@ -3,7 +3,7 @@
 // and the occlusion copied over it with Multiply. A box on a floor: the floor at the box's foot
 // darkens, the open floor and the box's top keep their colour.
 
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3, translation } from "../../src/math/math3d";
 import { RenderState, BlendMode, Face, FilterMode, Wrap } from "../../src/gpu/state";
 import { PixelFormat, LoadAction, StoreAction, endPass, commit } from "../../src/gpu/door";
@@ -62,7 +62,7 @@ import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,

@@ -1,64 +1,84 @@
 import "./door";
+import { stop } from "./stop";
 import {
-	drawMakeStreamBuffer,
-	drawDestroyBuffer,
-	drawApplyPipeline,
-	drawElements,
-	DRAW_BINDING_VERTEX_BUFFER,
-	DRAW_BINDING_INDEX_BUFFER,
-	DRAW_BINDING_VIEW,
-	DRAW_BINDING_SAMPLER,
-	DRAW_BINDING_LENGTH,
-} from "./draw.h";
+	DOOR_BUFFER_INDEX,
+	DOOR_BUFFER_VERTEX,
+	doorApplyBindings,
+	doorApplyPipeline,
+	doorApplyUniformsOf,
+	doorAppendBufferOf,
+	doorUniformStamp,
+	doorBufferAlive,
+	doorDestroyBuffer,
+	doorDraw,
+	doorMakeBuffer,
+	doorMakeBufferOf,
+	doorUpdateBufferOf,
+} from "./doorGpu.ms";
+import {
+	DOOR_BINDING_INDEX_BUFFER,
+	DOOR_BINDING_LENGTH,
+	DOOR_BINDING_SAMPLER,
+	DOOR_BINDING_VERTEX_BUFFER,
+	DOOR_BINDING_VIEW,
+} from "./doorWords.ms";
 
-// Declared, not imported from draw.h, for the reason door.ms gives its Span functions.
-extern function drawMakeVertexBuffer(data: Readonly<Span<float32>>): uint32;
-extern function drawMakeIndexBuffer(data: Readonly<Span<uint16>>): uint32;
-extern function drawMakeIndexBuffer32(data: Readonly<Span<uint32>>): uint32;
-extern function drawUpdateBuffer(buffer: uint32, data: Readonly<Span<float32>>): int32;
-extern function drawApplyBindings(bindings: Readonly<Span<uint32>>): void;
-extern function drawApplyUniforms(slot: int32, data: Readonly<Span<float32>>): void;
-
-export const BINDING_VERTEX_BUFFER: int32 = DRAW_BINDING_VERTEX_BUFFER;
-export const BINDING_INDEX_BUFFER: int32 = DRAW_BINDING_INDEX_BUFFER;
-export const BINDING_VIEW: int32 = DRAW_BINDING_VIEW;
-export const BINDING_SAMPLER: int32 = DRAW_BINDING_SAMPLER;
-export const BINDING_LENGTH: int32 = DRAW_BINDING_LENGTH;
+export const BINDING_VERTEX_BUFFER: int32 = DOOR_BINDING_VERTEX_BUFFER;
+export const BINDING_INDEX_BUFFER: int32 = DOOR_BINDING_INDEX_BUFFER;
+export const BINDING_VIEW: int32 = DOOR_BINDING_VIEW;
+export const BINDING_SAMPLER: int32 = DOOR_BINDING_SAMPLER;
+// The second vertex buffer's offset in bytes, after the door's words.
+export const BINDING_VERTEX_OFFSET: int32 = DOOR_BINDING_LENGTH;
+export const BINDING_LENGTH: int32 = DOOR_BINDING_LENGTH + 1;
 
 export function makeVertexBuffer(data: Readonly<Span<float32>>): uint32 {
-	return drawMakeVertexBuffer(data);
+	return doorMakeBufferOf(DOOR_BUFFER_VERTEX, data);
 }
 
 export function makeIndexBuffer(data: Readonly<Span<uint16>>): uint32 {
-	return drawMakeIndexBuffer(data);
+	return doorMakeBufferOf(DOOR_BUFFER_INDEX, data);
 }
 
 // The pipeline that draws it selects uint32 indices.
 export function makeIndexBuffer32(data: Readonly<Span<uint32>>): uint32 {
-	return drawMakeIndexBuffer32(data);
+	return doorMakeBufferOf(DOOR_BUFFER_INDEX, data);
 }
 
 export function makeStreamBuffer(floats: int32): uint32 {
-	return drawMakeStreamBuffer(floats as int64);
+	return doorMakeBuffer(DOOR_BUFFER_VERTEX, [], (floats as int64) * 4);
 }
 
-// sokol accepts one update per buffer per frame (sokol_gfx.h VALIDATE_UPDATEBUF_ONCE).
+// One update per buffer per frame, from its start, as sokol's sg_update_buffer allows.
 export function updateBuffer(buffer: uint32, data: Readonly<Span<float32>>): boolean {
-	return drawUpdateBuffer(buffer, data) != 0;
+	return doorUpdateBufferOf(buffer, data) != 0;
 }
 
-export function destroyBuffer(buffer: uint32): void { drawDestroyBuffer(buffer); }
+// The byte offset `data` landed at in `buffer`, after this frame's earlier appends, as sokol's
+// sg_append_buffer places it; -1 when it is empty, the buffer is gone or it does not fit.
+export function appendBuffer(buffer: uint32, data: Readonly<Span<float32>>): int32 {
+	if (data.length == 0 || doorBufferAlive(buffer) == 0) { return -1; }
+	return doorAppendBufferOf(buffer, data) as int32;
+}
 
-export function applyPipeline(pipeline: uint32): void { drawApplyPipeline(pipeline); }
+export function destroyBuffer(buffer: uint32): void { doorDestroyBuffer(buffer); }
+
+export function applyPipeline(pipeline: uint32): void { doorApplyPipeline(pipeline); }
 
 export function applyBindings(bindings: Readonly<Span<uint32>>): void {
-	drawApplyBindings(bindings);
+	if (bindings.length < BINDING_LENGTH) {
+		stop("applyBindings descriptor holds " + String(bindings.length) +
+			" of " + String(BINDING_LENGTH) + " words");
+	}
+	const offsets: int32[2] = [0, bindings[BINDING_VERTEX_OFFSET] as int32];
+	doorApplyBindings(bindings[0..DOOR_BINDING_LENGTH], offsets);
 }
 
 export function applyUniforms(slot: int32, data: Readonly<Span<float32>>): void {
-	drawApplyUniforms(slot, data);
+	doorApplyUniformsOf(slot, data);
 }
 
+export function uniformStamp(slot: int32): int32 { return doorUniformStamp(slot); }
+
 export function draw(base: int32, count: int32, instances: int32): void {
-	drawElements(base, count, instances);
+	doorDraw(base, count, instances);
 }

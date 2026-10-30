@@ -1,4 +1,4 @@
-import "../../src/sokol/gpu";
+import "../../src/host/gpu";
 import { NodeRef, Scene2D } from "../../src/void2d/node";
 import { add } from "../../src/void2d/scene";
 import { rgba } from "../../src/void2d/types";

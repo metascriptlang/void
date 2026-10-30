@@ -1,7 +1,6 @@
 // void3d's fullscreen passes written as MetaScript shader functions: tone map, bloom, outline,
-// ambient occlusion, blur, FXAA and the colour matrix.
-// tools/genShaders.ms writes their GLSL into shader3dGen.glsl; src/test/post3dCheck.ms runs them on
-// the CPU.
+// ambient occlusion, blur, FXAA and the colour matrix. tools/irPrograms.ms prints them into
+// programModules.ms; src/test/post3dCheck.ms runs them on the CPU.
 
 import {
 	Mat4x4f,
@@ -28,7 +27,6 @@ import {
 	pow,
 	round,
 	sampleType,
-	samplerType,
 	saturate,
 	sin,
 	textureDimensions,
@@ -109,14 +107,13 @@ export struct SaoBindings {
 	@binding(0) @sampleType(unfilterable_float) saoDepth: Texture2d;
 	@binding(1) saoNormal: Texture2d;
 	@binding(2) saoNoiseTexture: Texture2d;
-	@binding(0) @samplerType(nonfiltering) saoPointSampler: Sampler;
 	@binding(1) saoNoiseSampler: Sampler;
 	@binding(0) saoParams: SaoParams;
 }
 
 // SAO.getPosition on the stored depth under `pixel`, whose NDC is `ndc`.
 function saoPositionAt(b: SaoBindings, pixel: Vec2i, ndc: Vec2f): Vec3f {
-	const stored = textureLoad(b.saoDepth, b.saoPointSampler, pixel, 0).x;
+	const stored = textureLoad(b.saoDepth, pixel, 0).x;
 	const depth = ndcDepthOf(stored, b.saoParams.saoNoise.z);
 	const world = b.saoParams.saoInverseViewProj * vec4f(ndc.x, ndc.y, depth, 1.0);
 	return world.xyz / world.w;
@@ -130,13 +127,13 @@ function saoViewDepthOf(b: SaoBindings, at: Vec3f): float32 {
 // reads the depth at the nearest pixel, as the depth is unfilterable here, and finds its NDC
 // along dpdx and dpdy, which run the way the pixel rows do on every backend.
 export function saoFs(input: SaoInput, b: SaoBindings): Vec4f {
-	const size = textureDimensions(b.saoDepth, b.saoPointSampler, 0);
+	const size = textureDimensions(b.saoDepth, 0);
 	const pixel = vec2i(input.position.xy);
 	const ndc = input.ndc.xy;
 	const ndcDx = dpdx(ndc);
 	const ndcDy = dpdy(ndc);
 	const origin = saoPositionAt(b, pixel, ndc);
-	const normal = textureLoad(b.saoNormal, b.saoPointSampler, pixel, 0).xyz * 2.0 - vec3f(1.0);
+	const normal = textureLoad(b.saoNormal, pixel, 0).xyz * 2.0 - vec3f(1.0);
 	const height = size.y as float32;
 	const noiseUv = input.position.xy / height * b.saoParams.saoNoise.xy;
 	const noise = textureSample(b.saoNoiseTexture, b.saoNoiseSampler, noiseUv).x;
@@ -178,7 +175,7 @@ export struct BlurBindings {
 // h3d.shader.Blur's plain branch: one direction of the separable blur over a source the target's
 // size, each tap weighted and placed by Blur.calcValues.
 export function blurFs(input: PostInput, b: BlurBindings): Vec4f {
-	const size = textureDimensions(b.blurSource, b.blurSampler, 0);
+	const size = textureDimensions(b.blurSource, 0);
 	const uv = input.position.xy / vec2f(size.x as float32, size.y as float32);
 	const count = b.blurParams.blurPixel.z as int32;
 	let color = vec4f(0.0, 0.0, 0.0, 0.0);
@@ -202,7 +199,7 @@ function lumaOf(rgb: Vec3f): float32 {
 // h3d.pass.FXAA over a source the target's size, its delta one texel of it: the colour along the
 // edge the four diagonal neighbours' luma finds, with the centre's alpha.
 export function fxaaFs(input: PostInput, b: FxaaBindings): Vec4f {
-	const size = textureDimensions(b.fxaaSource, b.fxaaSampler, 0);
+	const size = textureDimensions(b.fxaaSource, 0);
 	const delta = vec2f(1.0 / (size.x as float32), 1.0 / (size.y as float32));
 	const uv = input.position.xy * delta;
 	const nw = textureSample(b.fxaaSource, b.fxaaSampler, uv + vec2f(-1.0, -1.0) * delta).xyz;
@@ -258,7 +255,7 @@ function colorMatrixApplied(color: Vec4f, matrix: Mat4x4f, useAlpha: boolean): V
 // reads it: with no mask, the matrix; with one, the mask texel's channel weight raised to the
 // power mixes the matrix's colour toward the second matrix's, or toward the source's.
 export function colorMatrixFs(input: PostInput, b: ColorMatrixBindings): Vec4f {
-	const size = textureDimensions(b.colorSource, b.colorSampler, 0);
+	const size = textureDimensions(b.colorSource, 0);
 	const uv = input.position.xy / vec2f(size.x as float32, size.y as float32);
 	const flags = b.colorMatrixParams.colorMatrixFlags;
 	const useAlpha = flags.x > 0.5;
@@ -314,7 +311,6 @@ export struct ToneMapParams {
 
 export struct ToneMapBindings {
 	@binding(0) hdrTexture: Texture2d;
-	@binding(0) pointSampler: Sampler;
 	@binding(0) toneMapParams: ToneMapParams;
 }
 
@@ -325,9 +321,9 @@ export struct ToneMapBindings {
 // presets store it; the alpha passes through for a caller compositing the target. An Rgba8 target
 // saturates alpha at 1 (an additive layer adds to it); the HDR one does not, hence the clamp.
 export function toneMapFs(input: PostInput, b: ToneMapBindings): Vec4f {
-	const size = textureDimensions(b.hdrTexture, b.pointSampler, 0);
+	const size = textureDimensions(b.hdrTexture, 0);
 	const p = clamp(vec2i(input.position.xy), vec2i(0, 0), size - vec2i(1, 1));
-	const texel = textureLoad(b.hdrTexture, b.pointSampler, p, 0);
+	const texel = textureLoad(b.hdrTexture, p, 0);
 	const alpha = clamp(texel.w, 0.0, 1.0);
 	if (alpha <= 0.0) {
 		return vec4f(0.0);
@@ -449,8 +445,6 @@ export struct OutlineMaskParams {
 export struct OutlineMaskBindings {
 	@binding(0) outlineNormal: Texture2d;
 	@binding(1) @sampleType(unfilterable_float) outlineDepth: Texture2d;
-	@binding(0) outlinePointSampler: Sampler;
-	@binding(1) @samplerType(nonfiltering) outlineDepthSampler: Sampler;
 	@binding(0) outlineMaskParams: OutlineMaskParams;
 }
 
@@ -461,19 +455,19 @@ function outlinePixel(p: Vec2i, size: Vec2i): Vec2i {
 }
 
 function outlineDepthAt(b: OutlineMaskBindings, p: Vec2i, size: Vec2i): float32 {
-	return textureLoad(b.outlineDepth, b.outlineDepthSampler, outlinePixel(p, size), 0).x *
+	return textureLoad(b.outlineDepth, outlinePixel(p, size), 0).x *
 		b.outlineMaskParams.outlineEdge.w + b.outlineMaskParams.outlineDepthMap.x;
 }
 
 function outlineNormalAt(b: OutlineMaskBindings, p: Vec2i): Vec4f {
-	return textureLoad(b.outlineNormal, b.outlinePointSampler, p, 0);
+	return textureLoad(b.outlineNormal, p, 0);
 }
 
 // Visible opaque normal/depth only, so no discarded face can expose a second depth layer. A
 // silhouette is inside the nearest surface; a crease straddles two visible normals.
 export function outlineMaskFs(input: PostInput, b: OutlineMaskBindings): Vec4f {
 	const edge = b.outlineMaskParams.outlineEdge;
-	const size = textureDimensions(b.outlineNormal, b.outlinePointSampler, 0);
+	const size = textureDimensions(b.outlineNormal, 0);
 	const p = vec2i(input.position.xy);
 	const center = outlineNormalAt(b, p);
 	let coverage: float32 = 0.0;
@@ -507,7 +501,6 @@ export struct OutlineMixParams {
 export struct OutlineMixBindings {
 	@binding(0) outlineLit: Texture2d;
 	@binding(1) outlineMask: Texture2d;
-	@binding(0) outlineLitSampler: Sampler;
 	@binding(1) outlineLinearSampler: Sampler;
 	@binding(0) outlineMixParams: OutlineMixParams;
 }
@@ -518,7 +511,7 @@ function maskTap(b: OutlineMixBindings, uv: Vec2f): Vec3f {
 
 // Heaps pass/FXAA.hx's direction, taps and range selection, unchanged, on grayscale coverage.
 export function outlineMixFs(input: PostInput, b: OutlineMixBindings): Vec4f {
-	const size = textureDimensions(b.outlineMask, b.outlineLinearSampler, 0);
+	const size = textureDimensions(b.outlineMask, 0);
 	const delta = 1.0 / vec2f(size);
 	const tuv = input.position.xy * delta;
 	const nw = maskTap(b, tuv + vec2f(-1.0, -1.0) * delta);
@@ -544,7 +537,7 @@ export function outlineMixFs(input: PostInput, b: OutlineMixBindings): Vec4f {
 	const lumB = dot(rgbB, lumA);
 	const inRange: float32 = lumB > lumMin && -lumB > -lumMax ? 1.0 : 0.0;
 	const filtered = mix(rgbA, rgbB, inRange);
-	const lit = textureLoad(b.outlineLit, b.outlineLitSampler, vec2i(input.position.xy), 0);
+	const lit = textureLoad(b.outlineLit, vec2i(input.position.xy), 0);
 	return mix(lit, b.outlineMixParams.outlineColor * filtered.x, b.outlineMixParams.outlineMix.x);
 }
 
@@ -561,7 +554,7 @@ export struct OutlineWidthBindings {
 
 export function outlineWidthFs(input: PostInput, b: OutlineWidthBindings): Vec4f {
 	const width = b.outlineWidthParams.outlineWidth;
-	const delta = 1.0 / vec2f(textureDimensions(b.outlineWidthMask, b.outlineWidthSampler, 0));
+	const delta = 1.0 / vec2f(textureDimensions(b.outlineWidthMask, 0));
 	const uv = input.position.xy * delta;
 	const own = textureSample(b.outlineWidthMask, b.outlineWidthSampler, uv).x;
 	let maximum = width.y > 0.5 ? 1.0 - own : own;

@@ -2,7 +2,7 @@ import { Mat4, vec3, identity, scaling, translation } from "../math/math3d";
 import { Camera3D, CameraView, CameraError, ProjectionKind, CAMERA_BLOCK_LENGTH,
 	CAMERA_PROJECTION_X, CAMERA_PROJECTION_Y, CAMERA_EYE, CAMERA_NEAR } from "../void3d/camera";
 import {
-	MeshLod, MeshLodRange, MeshLodRanges, MeshLodPick, MeshLodError, pickFor, nextPickPass,
+	MeshLod, MeshLodRange, MeshLodRanges, MeshLodPick, MeshLodError, pickFor,
 } from "../void3d/meshLod";
 import { Bounds3D } from "../void3d/bounds";
 import { MeshData } from "../void3d/meshData";
@@ -13,10 +13,10 @@ import {
 import { Material, Phase, ShadowCasting } from "../void3d/material";
 import { RenderState } from "../gpu/state";
 import {
-	Program, VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH, MATERIAL_UNIFORM_SLOT,
+	Program, VERTEX_UNIFORM_LENGTH, MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
-import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame } from "../void3d/renderer";
+import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, pickMeshLods } from "../void3d/renderer";
 import {
 	Scene3D, NodeId3D, SceneError, Transform3D, addMeshNode, addLodMeshNode, setForcedLod,
 	setInheritLod, setMeshOf, refresh,
@@ -43,39 +43,34 @@ function nineElements(lodCount: int32, elementCount: int64): MeshLodRanges {
 function pickOf(forcedLod: int32): MeshLodPick {
 	return {
 		config: twoLevels(), ranges: nineElements(2, 9), material: 0, localOriginRadius: 1.0,
-		forcedLod: forcedLod, range: { base: 0, count: 6 }, culled: false,
-		inheritLod: false, screenRatio: 0.0, ratioSource: null, pickedPass: 0,
+		forcedLod: forcedLod,
 	};
 }
 
-function pickedAt(
-	pick: MeshLodPick, world: Mat4, pass: int64 = nextPickPass(),
-): Result<void, MeshLodError> {
-	return pick.pickFor(world, vec3(0.0, 0.0, 0.0), 1.0, 1.0, 0.1, 1.0, pass);
+function pickedAt(pick: MeshLodPick, world: Mat4): Result<MeshLodRange | null, MeshLodError> {
+	return pick.pickFor(world, vec3(0.0, 0.0, 0.0), 1.0, 1.0, 0.1, 1.0);
+}
+
+function rangeAt(forcedLod: int32, world: Mat4): MeshLodRange | null {
+	const picked = pickedAt(pickOf(forcedLod), world);
+	if (!picked.ok) { unreachable; }
+	return picked.value;
 }
 
 test "a pick chooses the level by screen ratio, scaled by the world, and culls below the floor" {
-	const near = pickOf(-1);
-	assert pickedAt(near, translation(0.0, 0.0, -1.0)).ok;
-	assert !near.culled && near.range.base == 0 && near.range.count == 6;
-	const far = pickOf(-1);
-	assert pickedAt(far, translation(0.0, 0.0, -3.0)).ok;
-	assert !far.culled && far.range.base == 6 && far.range.count == 3;
-	const scaled = pickOf(-1);
-	assert pickedAt(scaled, { ...scaling(2.0, 2.0, 2.0), m43: -3.0 }).ok;
-	assert !scaled.culled && scaled.range.base == 0;
-	const tiny = pickOf(-1);
-	assert pickedAt(tiny, translation(0.0, 0.0, -20.0)).ok;
-	assert tiny.culled;
+	const near = rangeAt(-1, translation(0.0, 0.0, -1.0));
+	assert near !== null && near.base == 0 && near.count == 6;
+	const far = rangeAt(-1, translation(0.0, 0.0, -3.0));
+	assert far !== null && far.base == 6 && far.count == 3;
+	const scaled = rangeAt(-1, { ...scaling(2.0, 2.0, 2.0), m43: -3.0 });
+	assert scaled !== null && scaled.base == 0;
+	assert rangeAt(-1, translation(0.0, 0.0, -20.0)) === null;
 }
 
 test "a forced level overrides the distance and a level past the count hides the mesh" {
-	const forced = pickOf(1);
-	assert pickedAt(forced, translation(0.0, 0.0, -1.0)).ok;
-	assert !forced.culled && forced.range.base == 6;
-	const past = pickOf(2);
-	assert pickedAt(past, translation(0.0, 0.0, -1.0)).ok;
-	assert past.culled;
+	const forced = rangeAt(1, translation(0.0, 0.0, -1.0));
+	assert forced !== null && forced.base == 6;
+	assert rangeAt(2, translation(0.0, 0.0, -1.0)) === null;
 }
 
 test "a mirrored world is refused by the pick" {
@@ -108,7 +103,7 @@ test "the camera block carries the projection diagonal, the eye and the near pla
 }
 
 function shadowedContext(): DrawContext {
-	const context: DrawContext = DrawContext.withUniformCapacity(0);
+	const context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
 	const mesh: MeshId = added(context, GpuMesh.fullscreen(0, 9));
 	context.meshData[mesh.index] = {
 		...context.meshData[mesh.index],
@@ -122,26 +117,38 @@ function shadowedContext(): DrawContext {
 }
 
 function lodNode(scene: Scene3D, depth: float32, parent: NodeId3D | null = null): NodeId3D {
-	const node = addLodMeshNode(scene, parent === null ? scene.rootId() : parent,
-		Transform3D.fromTranslation(vec3(0.0, 0.0, depth)), scene.context.meshAt(0),
-		scene.context.materialAt(0), twoLevels(), nineElements(2, 9), 0);
+	const node = addLodMeshNode(scene, parent ?? scene.rootId(), Transform3D.fromTranslation(
+		vec3(0.0, 0.0, depth)), scene.context.meshAt(0), scene.context.materialAt(0),
+		twoLevels(), nineElements(2, 9), 0);
 	if (!node.ok) { unreachable; }
 	return node.value;
 }
 
-test "a LOD node's item carries its pick and draws level zero until picked" {
+function pickerOf(context: DrawContext): Renderer {
+	const made = Renderer.create(context);
+	if (!made.ok) { unreachable; }
+	return made.value;
+}
+
+function pickedFrom(renderer: Renderer, items: Span<DrawItem>): Result<void, RendererError> {
+	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	viewOf({ ...perspective(), position: vec3(0.0, 0.0, 0.0) }).writeCameraBlock(camera);
+	return pickMeshLods(renderer, items, camera);
+}
+
+test "a LOD node's item draws level zero until a frame picks its level" {
 	const scene = Scene3D.create(shadowedContext());
 	const _node = lodNode(scene, -3.0);
 	let items: Vec<DrawItem> = [];
 	const _count = refresh(scene, items);
 	assert items.length == 1;
+	const before = items[0].range;
+	assert before !== null && before.base == 0 && before.count == 6;
+	assert pickedFrom(pickerOf(scene.context), items).ok;
+	const after = items[0].range;
+	assert after !== null && after.base == 6 && after.count == 3 && !items[0].lodCulled;
 	const pick = items[0].lod;
 	assert pick !== null && approx(pick.localOriginRadius as float32, 1.0);
-	const before = items[0].drawnRange();
-	assert before !== null && before.base == 0 && before.count == 6;
-	assert pickedAt(pick, items[0].world).ok;
-	const after = items[0].drawnRange();
-	assert after !== null && after.base == 6 && after.count == 3;
 }
 
 test "a LOD node refuses a table that does not fit its mesh" {
@@ -165,74 +172,6 @@ test "a LOD node refuses a table that does not fit its mesh" {
 	assert !shorter.ok && shorter.error == SceneError.MeshLod;
 }
 
-function pickedInOrder(items: Vec<DrawItem>): boolean {
-	const pass: int64 = nextPickPass();
-	for (let i = 0; i < (items.length as int32); i++) {
-		const pick = items[i].lod;
-		if (pick !== null && !pickedAt(pick, items[i].world, pass).ok) { return false; }
-	}
-	return true;
-}
-
-function nearChildLevel(inherit: boolean, forcedParent: boolean): MeshLodRange | null {
-	const scene = Scene3D.create(shadowedContext());
-	const parent = lodNode(scene, -3.0);
-	const child = lodNode(scene, 2.0, parent);
-	const grandchild = addMeshNode(scene, child, Transform3D.identity(),
-		scene.context.meshAt(0), scene.context.materialAt(0));
-	if (!grandchild.ok || !setInheritLod(scene, parent, inherit).ok) { unreachable; }
-	if (forcedParent && !setForcedLod(scene, parent, 1).ok) { unreachable; }
-	let items: Vec<DrawItem> = [];
-	const _count = refresh(scene, items);
-	const pick = items[1].lod;
-	if (items.length != 3 || items[2].lod !== null || pick === null || !pickedInOrder(items)) {
-		return null;
-	}
-	return pick.culled ? null : pick.range;
-}
-
-test "a mesh that inherits its LOD hands its screen ratio to the LOD meshes below it" {
-	const own = nearChildLevel(false, false);
-	assert own !== null && own.base == 0 && own.count == 6;
-	const inherited = nearChildLevel(true, false);
-	assert inherited !== null && inherited.base == 6 && inherited.count == 3;
-	const forcedParent = nearChildLevel(true, true);
-	assert forcedParent !== null && forcedParent.base == 6;
-}
-
-test "an inheriting mesh keeps its own ratio and the topmost inheriting mesh wins" {
-	const scene = Scene3D.create(shadowedContext());
-	const top = lodNode(scene, -3.0);
-	const middle = lodNode(scene, 2.0, top);
-	const _bottom = lodNode(scene, 0.0, middle);
-	assert setInheritLod(scene, top, true).ok && setInheritLod(scene, middle, true).ok;
-	let items: Vec<DrawItem> = [];
-	const _count = refresh(scene, items);
-	assert pickedInOrder(items);
-	const topPick = items[0].lod;
-	const middlePick = items[1].lod;
-	const bottomPick = items[2].lod;
-	assert topPick !== null && middlePick !== null && bottomPick !== null;
-	assert middlePick.screenRatio == topPick.screenRatio;
-	assert bottomPick.screenRatio == topPick.screenRatio && bottomPick.range.base == 6;
-}
-
-test "an inherited pick taken before its source is refused" {
-	const scene = Scene3D.create(shadowedContext());
-	const parent = lodNode(scene, -3.0);
-	const _child = lodNode(scene, 2.0, parent);
-	assert setInheritLod(scene, parent, true).ok;
-	let items: Vec<DrawItem> = [];
-	const _count = refresh(scene, items);
-	const source = items[0].lod;
-	const pick = items[1].lod;
-	assert source !== null && pick !== null;
-	const pass: int64 = nextPickPass();
-	assert pickedAt(source, items[0].world).ok;
-	const early = pickedAt(pick, items[1].world, pass);
-	assert !early.ok && early.error == MeshLodError.InheritedBeforeSource;
-}
-
 test "a forced level is refused on a plain node and below minus one" {
 	const scene = Scene3D.create(shadowedContext());
 	const plain = addMeshNode(scene, scene.rootId(), Transform3D.identity(),
@@ -248,6 +187,62 @@ test "a forced level is refused on a plain node and below minus one" {
 	assert setForcedLod(scene, node, 1).ok;
 }
 
+function nearChildBase(inherit: boolean, forcedParent: boolean, steady: boolean): int32 {
+	const scene = Scene3D.create(shadowedContext());
+	const parent = lodNode(scene, -3.0);
+	const child = lodNode(scene, 2.0, parent);
+	const grandchild = addMeshNode(scene, child, Transform3D.identity(),
+		scene.context.meshAt(0), scene.context.materialAt(0));
+	if (!grandchild.ok || !setInheritLod(scene, parent, inherit).ok) { unreachable; }
+	if (forcedParent && !setForcedLod(scene, parent, 1).ok) { unreachable; }
+	let items: Vec<DrawItem> = [];
+	const _count = refresh(scene, items);
+	if (steady) { const _again = refresh(scene, items); }
+	if (items.length != 3 || items[2].lod !== null || items[2].lodSource !== null) { return -1; }
+	if (!pickedFrom(pickerOf(scene.context), items).ok) { return -1; }
+	const range = items[1].range;
+	return items[1].lodCulled || range === null ? -1 : range.base;
+}
+
+test "a mesh that inherits its LOD hands its screen ratio to the LOD meshes below it" {
+	assert nearChildBase(false, false, false) == 0;
+	assert nearChildBase(true, false, false) == 6;
+	assert nearChildBase(true, true, false) == 6;
+	assert nearChildBase(true, false, true) == 6;
+}
+
+test "an inheriting mesh keeps its own ratio and the topmost inheriting mesh wins" {
+	const scene = Scene3D.create(shadowedContext());
+	const top = lodNode(scene, -3.0);
+	const middle = lodNode(scene, 2.0, top);
+	const _bottom = lodNode(scene, 0.0, middle);
+	assert setInheritLod(scene, top, true).ok && setInheritLod(scene, middle, true).ok;
+	let items: Vec<DrawItem> = [];
+	const _count = refresh(scene, items);
+	assert items[0].lodSource === null && items[1].lodSource == 0 && items[2].lodSource == 0;
+	assert pickedFrom(pickerOf(scene.context), items).ok;
+	assert items[1].lodRatio == items[0].lodRatio && items[2].lodRatio == items[0].lodRatio;
+	const bottom = items[2].range;
+	assert bottom !== null && bottom.base == 6;
+}
+
+test "a pick whose source is not picked before it in the same list is refused" {
+	const scene = Scene3D.create(shadowedContext());
+	const parent = lodNode(scene, -3.0);
+	const _child = lodNode(scene, 2.0, parent);
+	assert setInheritLod(scene, parent, true).ok;
+	let items: Vec<DrawItem> = [];
+	const _count = refresh(scene, items);
+	assert items[1].lodSource == 0;
+	const renderer = pickerOf(scene.context);
+	let reordered: Vec<DrawItem> = [items[1], items[0]];
+	const early = pickedFrom(renderer, reordered);
+	assert !early.ok && early.error == RendererError.MeshLod;
+	let orphan: Vec<DrawItem> = [items[1]];
+	const missing = pickedFrom(renderer, orphan);
+	assert !missing.ok && missing.error == RendererError.MeshLod;
+}
+
 function excludedBy(list: PassList, items: Vec<DrawItem>, context: DrawContext): int32 {
 	let kept: PassList = list;
 	const frustum = Frustum3D.fromMatrix(viewOf({ ...perspective(), position: vec3(0.0, 0.0, 0.0) })
@@ -260,11 +255,11 @@ test "a culled pick leaves both the colour and the shadow pass lists" {
 	const node = lodNode(scene, -3.0);
 	let items: Vec<DrawItem> = [];
 	const _count = refresh(scene, items);
-	const pick = items[0].lod;
-	assert pick !== null;
+	const renderer: Renderer = pickerOf(scene.context);
 	for (const level of [-1, 2]) {
 		assert setForcedLod(scene, node, level).ok;
-		assert pickedAt(pick, items[0].world).ok;
+		assert pickedFrom(renderer, items).ok;
+		assert items[0].lodCulled == (level == 2);
 		let colour: PassList = PassList.forPhase(Phase.Opaque);
 		collect(colour, items, scene.context.materials);
 		let casters: PassList = PassList.forPhase(Phase.Opaque);
@@ -277,11 +272,11 @@ test "a culled pick leaves both the colour and the shadow pass lists" {
 }
 
 struct LitFrame {
-	began: Result<boolean, RendererError>;
+	began: Result<void, RendererError>;
 	published: boolean;
 }
 
-function litFrame(world: Mat4, source: MeshLodPick | null = null): LitFrame {
+function litFrame(world: Mat4): LitFrame {
 	let context: DrawContext =
 		DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH);
 	const made = Renderer.create(context);
@@ -299,16 +294,14 @@ function litFrame(world: Mat4, source: MeshLodPick | null = null): LitFrame {
 	if (!ranges.ok) { unreachable; }
 	const pick: MeshLodPick = {
 		config: twoLevels(), ranges: ranges.value, material: 0, localOriginRadius: 1.0,
-		forcedLod: -1, range: { base: 0, count: 0 }, culled: false,
-		inheritLod: false, screenRatio: 0.0, ratioSource: source, pickedPass: 0,
+		forcedLod: -1,
 	};
 	const item: DrawItem = { mesh: mesh.value, material: material.value, world: world, lod: pick };
 	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	viewOf(perspective()).writeCameraBlock(camera);
-	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-	if (source !== null && !pickedAt(source, world).ok) { unreachable; }
 	const before: int32 = renderer.generation;
-	const began = beginFrame(renderer, [item], camera, lights);
+	let items: Vec<DrawItem> = [item];
+	const began = pickMeshLods(renderer, items, camera);
 	return { began: began, published: renderer.generation != before };
 }
 
@@ -316,12 +309,6 @@ test "a frame with a mirrored LOD item is refused before it is published" {
 	const mirrored = litFrame(scaling(-1.0, 1.0, 1.0));
 	assert !mirrored.began.ok && mirrored.began.error == RendererError.MeshLod;
 	assert !mirrored.published;
-}
-
-test "a frame refuses an inherited pick whose source it does not pick" {
-	const orphan = litFrame(translation(0.0, 0.0, -3.0), pickOf(-1));
-	assert !orphan.began.ok && orphan.began.error == RendererError.MeshLod;
-	assert !orphan.published;
 }
 
 function placed(material: int32, x: float32, order: int32, lod: MeshLodPick | null): DrawItem {
@@ -372,11 +359,9 @@ test "one walk lists what collect then filterFrustum leave, in every phase" {
 	const meshes: Vec<MeshData> = [{
 		vertices: [], indices: [], bounds: Bounds3D.fromValues(-0.25, -0.25, -0.25, 0.5, 0.5, 0.5),
 	}];
-	const culledPick = pickOf(-1);
-	culledPick.culled = true;
 	const items: Vec<DrawItem> = [
 		placed(0, 0.0, 0, null), placed(1, 0.0, 3, null), placed(0, 99.0, 0, null),
-		placed(5, 0.0, 0, null), placed(2, 0.0, 0, culledPick), placed(3, 0.0, 1, null),
+		placed(5, 0.0, 0, null), { ...placed(2, 0.0, 0, pickOf(-1)), lodCulled: true }, placed(3, 0.0, 1, null),
 		placed(4, 0.0, 2, null), placed(0, 0.0, 4, pickOf(-1)), placed(1, 99.0, 0, null),
 	];
 	const frustum: Frustum3D = Frustum3D.fromMatrix(identity());

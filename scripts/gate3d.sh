@@ -1,12 +1,13 @@
 #!/bin/sh
-# The void3d gate: everything a void3d commit has to survive, in one command.
+# The void3d gate: what a void3d commit has to survive beyond scripts/gate.sh, which every land
+# runs too and which alone runs the test index, the shader freshness check, the mixed frame and
+# the target owner.
 #
 #     sh scripts/gate3d.sh
 #
 # Stages, each printing one PASS / FAIL / SKIP line:
 #
 #   prepare   regenerate out/tmp/campfireScene.ms and the capture entries
-#   tests     msc test out/tmp/test2d.ms
 #   capture   build + run each capture entry, cmp every frame against its baseline
 #   manifest  check the baselines against the committed SHA-256 list
 #   android   build the arm64 .so
@@ -28,9 +29,8 @@
 #   ANDROID_NDK=<path>     NDK root (default: the Windows SDK location)
 set -u
 cd "$(dirname "$0")/.."
-sh scripts/ensureShaders.sh || exit 1
 . scripts/capturePending.sh
-export MSC_NO_GLOBAL_CACHE=1
+export VOID_QUIET_WINDOW=1
 
 FAILURES=0
 SKIPPED=0
@@ -38,6 +38,9 @@ pass() { echo "PASS     $*"; }
 fail() { echo "FAIL     $*"; FAILURES=$((FAILURES + 1)); }
 skip() { echo "SKIP     $*"; SKIPPED=$((SKIPPED + 1)); }
 note() { echo "         $*"; }
+gate_start=$(date +%s)
+section() { echo "=== $1 === at $(( $(date +%s) - gate_start )) s"; }
+stage() { section "${1#run_}"; "$1"; }
 
 TMP=out/tmp
 CAPTURE=$TMP/capture
@@ -105,10 +108,11 @@ write_entry() {
 		fi
 		echo "} from \"../campfireScene\";"
 		echo "import { PixelArtSettings$extra } from \"../../../src/void3d/pixelArtRenderer\";"
-		echo "@include(\"../../../src/sokol/bridge.h\");"
-		echo "@include(\"capture.h\");"
-		echo "@compile(\"./capture.c\");"
+		echo "@include(\"../../../src/host/bridge.h\");"
+		echo "@include(\"capture3d.h\");"
+		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
+		echo "extern function voidRunConfigured(w: int32, h: int32, sampleCount: int32, highDpi: int32, init: () => void, frame: () => void): void;"
 		echo "extern function captureSwapchain(frame: int32): void;"
 		echo "extern function captureQuit(): void;"
 		echo ""
@@ -128,23 +132,25 @@ write_entry() {
 		echo "$config"
 		[ -n "$extraConfig" ] && echo "$extraConfig"
 		echo "configureCampfireCamera(false, 0.0);"
-		echo "voidRun(1280, 720, initCampfire, frame);"
+		echo "when (macos) {"
+		echo "	voidRunConfigured(1280, 720, 1, 0, initCampfire, frame);"
+		echo "} else {"
+		echo "	voidRun(1280, 720, initCampfire, frame);"
+		echo "}"
 	} > "$WORK/$outName.new"
 	replace_if_changed "$WORK/$outName.new" "$CAPTURE/$outName.ms"
 }
 
 # Everything else the stages read from out/tmp: the readback harness (tracked in tests/capture3d),
-# the test entry and the arm64 entry, whose imports are relative to out/tmp.
+# and the arm64 entry, whose imports are relative to out/tmp.
 prepare_harness() {
 	mkdir -p "$TMP/android"
-	for file in capture.c capture.h; do
+	for file in capture3d.c capture3d.h; do
 		cp "tests/capture3d/$file" "$WORK/$file.new"
 		replace_if_changed "$WORK/$file.new" "$CAPTURE/$file"
 	done
-	echo 'import "../../src/test/index";' > "$WORK/test2d.new"
-	replace_if_changed "$WORK/test2d.new" "$TMP/test2d.ms"
 	sed -e 's|from "./campfireScene"|from "../campfireScene"|' \
-		-e 's|@include("../sokol/|@include("../../../src/sokol/|' \
+		-e 's|@include("../host/|@include("../../../src/host/|' \
 		src/examples/androidCampfireEntry.ms > "$WORK/androidEntry.new"
 	replace_if_changed "$WORK/androidEntry.new" "$TMP/android/campfireEntry.ms"
 }
@@ -152,9 +158,9 @@ prepare_harness() {
 write_perspective_entry() {
 	{
 		echo 'import { initPerspective, framePerspective } from "../../../tests/integration/perspectiveFrame";'
-		echo '@include("../../../src/sokol/bridge.h");'
-		echo '@include("capture.h");'
-		echo '@compile("./capture.c");'
+		echo '@include("../../../src/host/bridge.h");'
+		echo '@include("capture3d.h");'
+		echo '@compile("./capture3d.c");'
 		echo 'extern function voidRunConfigured('
 		echo '	w: int32,'
 		echo '	h: int32,'
@@ -184,9 +190,9 @@ write_perspective_entry() {
 write_frame_entry() {
 	{
 		echo "import { $4, $5, $6 } from \"../../../tests/integration/$3\";"
-		echo '@include("../../../src/sokol/bridge.h");'
-		echo '@include("capture.h");'
-		echo '@compile("./capture.c");'
+		echo '@include("../../../src/host/bridge.h");'
+		echo '@include("capture3d.h");'
+		echo '@compile("./capture3d.c");'
 		echo 'extern function voidRunConfigured('
 		echo '	w: int32,'
 		echo '	h: int32,'
@@ -307,38 +313,11 @@ configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 	note "prepare: capture entries written to $CAPTURE"
 }
 
-# msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
-# stale code is then linked into the binary with no diagnostic (docs/VOID3D.md, Compiler
-# notes). gpu3d.c includes the two shader headers, programTable.h and gpu3d.h; the gate hashes
-# them and evicts what was built from them in this checkout's build cache. The machine-wide
-# cache is off for the run.
-purge_stale_shader_objects() {
-	stamp=$WORK/shaderStamp
-	headers="src/gpu/door.h src/void3d/shader3d.glsl.h src/void3d/pixelArt3d.glsl.h src/void3d/gpu3d.h
-		src/void3d/programTable.h
-		tests/integration/gpuCopy.glsl.h tests/integration/gpuRegistrationFixture.h"
-	current=$(cat $headers 2>/dev/null | md5sum | cut -d' ' -f1)
-	if [ ! -f src/void3d/shader3d.glsl.h ] || [ ! -f src/void3d/pixelArt3d.glsl.h ] ||
-		[ ! -f src/void3d/programTable.h ] ||
-		[ ! -f src/void3d/gpu3d.h ] || [ ! -f src/gpu/door.h ] ||
-		[ ! -f tests/integration/gpuCopy.glsl.h ] || [ ! -f tests/integration/gpuRegistrationFixture.h ]; then
-		note "capture: a shader or GPU bridge header is missing"
-		return 0
-	fi
-	if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$current" ]; then
-		return 0
-	fi
-	note "capture: a header gpu3d.c or door.c includes changed since the last gate — evicting the objects built from it"
-	rm -f out/debug/.cache/*gpu3d* out/debug/.cache/*shader3d* out/debug/.cache/*pixelArt3d* \
-		out/debug/.cache/*door* out/debug/.cache/*gpuRegistrationFixture* 2>/dev/null
-	echo "$current" > "$stamp"
-}
-
 # ---- entries ------------------------------------------------------------------------------
 
 # msc 0.2.53 on Windows does not call main(): a module that only declares `function main()`
 # builds into a binary that exits at once, and under --os=emcc it links the renderer out
-# entirely. It has now been the same bug five times — mainSokol2d (fixed in ef1de70), and the
+# entirely. It has now been the same bug five times — main2d (fixed in ef1de70), and the
 # four void3d entries mainSokol, mainCampfire, iosEntryAnim and iosEmbedEntry. A recurring bug
 # class is infrastructure, not a fifth spot fix, so the sixth one fails here instead of
 # shipping. Compiler card: 2026-09-20-main-not-called-windows.md.
@@ -363,7 +342,7 @@ run_entries() {
 	for entry in src/examples/*.ms; do
 		grep -qE '^(export )?function main\(' "$entry" || continue
 		case "$(basename "$entry")" in
-			ios*|android*) continue ;;
+			ios*|android*|main2d.ms) continue ;;
 		esac
 		msc build "$entry" > "$WORK/entry-build.log" 2>&1 || broken="$broken $(basename "$entry")"
 	done
@@ -372,37 +351,7 @@ run_entries() {
 		tail -4 "$WORK/entry-build.log" | sed 's/^/         /'
 		return
 	fi
-	pass "entries: $checked entry points declare main() and call it; the host ones build"
-}
-
-# ---- shaders ------------------------------------------------------------------------------
-#
-# REVIEWS-3D M6 defect 12: nothing checked that a .glsl.h was regenerated from its .glsl, and
-# the M7 light block made the generated header load-bearing. The regeneration and the
-# comparison are scripts/regen-shaders.sh --check, so the gate cannot drift from the script.
-run_shaders() {
-	case "$(uname -s)-$(uname -m)" in
-		Darwin-arm64)  SHDC="deps/sokol-tools-bin/bin/osx_arm64/sokol-shdc" ;;
-		Darwin-*)      SHDC="deps/sokol-tools-bin/bin/osx/sokol-shdc" ;;
-		Linux-aarch64) SHDC="deps/sokol-tools-bin/bin/linux_arm64/sokol-shdc" ;;
-		Linux-*)       SHDC="deps/sokol-tools-bin/bin/linux/sokol-shdc" ;;
-		*)             SHDC="deps/sokol-tools-bin/bin/win32/sokol-shdc.exe" ;;
-	esac
-	if [ ! -f "$SHDC" ]; then
-		skip "shaders: sokol-shdc not found — .glsl.h freshness not checked"
-		return
-	fi
-	if ! bash scripts/regen-shaders.sh --check > "$WORK/shaders.log" 2>&1 && ! grep -q "^stale " "$WORK/shaders.log"; then
-		fail "shaders: scripts/regen-shaders.sh --check failed"
-		cat "$WORK/shaders.log"
-		return
-	fi
-	while read -r state header; do
-		case "$state" in
-			fresh) pass "shaders: $header is a fresh regeneration of its .glsl" ;;
-			stale) fail "shaders: $header is stale — run scripts/regen-shaders.sh and commit it" ;;
-		esac
-	done < "$WORK/shaders.log"
+	pass "entries: $checked entry points declare main() and call it; the host ones build (main2d in scripts/gate.sh)"
 }
 
 # The bench entry: warm up, measure, print machine-readable rows, quit. It reuses the capture
@@ -421,9 +370,9 @@ write_bench_entry() {
 		echo "	CampfireStats,"
 		echo "} from \"../campfireScene\";"
 		echo "import { PixelArtSettings } from \"../../../src/void3d/pixelArtRenderer\";"
-		echo "@include(\"../../../src/sokol/bridge.h\");"
-		echo "@include(\"capture.h\");"
-		echo "@compile(\"./capture.c\");"
+		echo "@include(\"../../../src/host/bridge.h\");"
+		echo "@include(\"capture3d.h\");"
+		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
 		echo "extern function captureQuit(): void;"
 		echo ""
@@ -487,9 +436,9 @@ write_churn_entry() {
 		echo "	ChurnStats,"
 		echo "	ChurnError,"
 		echo "} from \"../../../src/examples/churnScene\";"
-		echo "@include(\"../../../src/sokol/bridge.h\");"
-		echo "@include(\"capture.h\");"
-		echo "@compile(\"./capture.c\");"
+		echo "@include(\"../../../src/host/bridge.h\");"
+		echo "@include(\"capture3d.h\");"
+		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
 		echo "extern function captureQuit(): void;"
 		echo ""
@@ -582,14 +531,15 @@ import { CampfireError } from "../campfireScene";
 import { beginScreenPass } from "../../../src/gpu/target";
 import { endPass, commit } from "../../../src/gpu/door";
 import { Vec4 } from "../../../src/math/math3d";
-import { fbWidth, fbHeight } from "../../../src/sokol/gpu";
+import { fbWidth, fbHeight } from "../../../src/host/gpu";
 import { setup2d, begin2d, flushTargets, end2d, fillQuad } from "../../../src/void2d/draw";
 import { Color, vec2, rgba } from "../../../src/void2d/types";
 import { BlendMode } from "../../../src/gpu/state";
-@include("../../../src/sokol/bridge.h");
-@include("capture.h");
-@compile("./capture.c");
+@include("../../../src/host/bridge.h");
+@include("capture3d.h");
+@compile("./capture3d.c");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
+extern function voidRunConfigured(w: int32, h: int32, sampleCount: int32, highDpi: int32, init: () => void, frame: () => void): void;
 extern function captureSwapchain(frame: int32): void;
 extern function captureQuit(): void;
 
@@ -636,7 +586,11 @@ function frame(): void {
 
 configureCampfire(PixelArtSettings.full(), false);
 configureCampfireCamera(false, 0.0);
-voidRun(1280, 720, initHud, frame);
+when (macos) {
+	voidRunConfigured(1280, 720, 1, 0, initHud, frame);
+} else {
+	voidRun(1280, 720, initHud, frame);
+}
 EOF
 	replace_if_changed "$WORK/$1.new" "$CAPTURE/$1.ms"
 }
@@ -663,9 +617,9 @@ write_pick_entry() {
 		echo "import { NodeId3D } from \"../../../src/void3d/scene\";"
 		echo "import { PickHit, PickError } from \"../../../src/void3d/pick\";"
 		echo "import { Vec3 } from \"../../../src/math/math3d\";"
-		echo "@include(\"../../../src/sokol/bridge.h\");"
-		echo "@include(\"capture.h\");"
-		echo "@compile(\"./capture.c\");"
+		echo "@include(\"../../../src/host/bridge.h\");"
+		echo "@include(\"capture3d.h\");"
+		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
 		echo "extern function captureQuit(): void;"
 		echo ""
@@ -718,11 +672,11 @@ write_pick_entry() {
 # ---- pick ---------------------------------------------------------------------------------
 
 run_pick() {
-	if [ ! -f "$CAPTURE/capture.c" ] || [ ! -f "$CAPTURE/capture.h" ]; then
-		skip "pick: $CAPTURE/capture.c and capture.h are missing (gitignored out/tmp harness)"
+	if [ ! -f "$CAPTURE/capture3d.c" ] || [ ! -f "$CAPTURE/capture3d.h" ]; then
+		skip "pick: $CAPTURE/capture3d.c and capture3d.h are missing (gitignored out/tmp harness)"
 		return
 	fi
-	if ! msc build "$CAPTURE/campfirePick.ms" > "$WORK/pick-build.log" 2>&1; then
+	if ! msc build "$CAPTURE/campfirePick.ms" --output=out/debug/campfirePick.exe > "$WORK/pick-build.log" 2>&1; then
 		fail "pick: the pick entry did not build"
 		tail -5 "$WORK/pick-build.log" | sed 's/^/         /'
 		return
@@ -762,7 +716,7 @@ run_bench() {
 		skip "bench: $CAPTURE/campfireBench.ms is missing"
 		return
 	fi
-	if ! msc build "$CAPTURE/campfireBench.ms" --release > "$WORK/bench-build.log" 2>&1; then
+	if ! msc build "$CAPTURE/campfireBench.ms" --release --output=out/release/campfireBench.exe > "$WORK/bench-build.log" 2>&1; then
 		fail "bench: the bench entry did not build"
 		tail -5 "$WORK/bench-build.log" | sed 's/^/         /'
 		return
@@ -819,7 +773,7 @@ run_churn() {
 			skip "churn: $CAPTURE/$entry.ms is missing"
 			return
 		fi
-		if ! msc build "$CAPTURE/$entry.ms" > "$WORK/$entry-build.log" 2>&1; then
+		if ! msc build "$CAPTURE/$entry.ms" --output="out/debug/$entry.exe" > "$WORK/$entry-build.log" 2>&1; then
 			fail "churn: $entry did not build"
 			tail -5 "$WORK/$entry-build.log" | sed 's/^/         /'
 			return
@@ -858,9 +812,9 @@ run_churn() {
 	controlFrames=$(churn_rows churnControl frames)
 	controlStop=$(churn_rows churnControl stopped)
 	case "$controlStop" in
-		MeshRefused|StreamRefused|TextureRefused) ;;
+		MeshRefused|StreamRefused|TextureRefused|no) ;;
 		*)
-			fail "churn: the control never released and still did not run out of buffers (stopped: $controlStop after $controlFrames frames)"
+			fail "churn: the control stopped by '${controlStop:-missing}' after $controlFrames frames, not a pool refusal or a full run"
 			return
 			;;
 	esac
@@ -879,7 +833,7 @@ run_churn() {
 	images=$(churn_rows churnBench liveImages)
 	samplers=$(churn_rows churnBench liveSamplers)
 	pass "churn: $total frames loading and unloading a level, tables, uniform pool, $buffers live sokol buffers, $images images and $samplers samplers flat; every second stream write refused"
-	note "churn: the control, never releasing, ran out of sokol's pools after $controlFrames frames ($controlStop)"
+	note "churn: the control, never releasing, ran $controlFrames frames (pool refusal: $controlStop) and grew every control row"
 }
 
 # ---- device -------------------------------------------------------------------------------
@@ -993,7 +947,8 @@ run_style() {
 		for path in $STYLE_PATHS; do
 			find "$path" -name '*.ms' 2>/dev/null
 		done | while read -r file; do
-			expand -t 4 "$file" | LC_ALL=C.UTF-8 awk -v f="$file" 'length($0) > 100 { print f ":" FNR " (" length($0) " cols)" }'
+			head -1 "$file" | grep -q '^// Generated by ' && continue
+			expand -t 4 "$file" | LC_ALL=C.UTF-8 awk -v f="$file" '!/^\/\/ expect / && length($0) > 100 { print f ":" FNR " (" length($0) " cols)" }'
 		done
 	)
 	if [ -n "$long" ]; then
@@ -1077,7 +1032,7 @@ SHADOW_PATH_FUNCTIONS="dirShadowMap:drawShadows dirShadowMap:castsAll dirShadowM
 WORLD_LABEL_PATH_FUNCTIONS="worldLabel:faceCamera worldLabel:facingRotation camera:rotationOfBasis
 	worldLabel:refreshLabel worldLabel:setLabelTint worldLabel:setLabelText
 	worldLabel:redraw worldLabel:place worldLabel:transformOf worldLabel:localFor
-	worldLabel:writeBlock worldLabel:uvOfSubRect worldLabel:grown
+	worldLabel:writeParams worldLabel:uvOfSubRect worldLabel:grown
 	scene:setLocal scene:liveRow scene:syncWorld"
 CARD_TABLE_PATH_FUNCTIONS="cardTableScene:frameCardTable cardTableScene:writeOrders
 	cardTableScene:writeDissolve cardTableScene:flicker cardTableScene:stepTorches
@@ -1186,7 +1141,6 @@ run_exposure() {
 		return
 	fi
 	exe="$WORK/exposure.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/exposure.ms --output="$exe" > "$WORK/exposure.build.log" 2>&1; then
 		fail "exposure: tests/integration/exposure.ms does not build — see $WORK/exposure.build.log"
 		return
@@ -1212,7 +1166,6 @@ run_environment_light() {
 		return
 	fi
 	exe="$WORK/environmentLight.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/environmentLight.ms --output="$exe" > "$WORK/environmentLight.build.log" 2>&1; then
 		fail "environment-light: tests/integration/environmentLight.ms does not build — see $WORK/environmentLight.build.log"
 		return
@@ -1236,7 +1189,6 @@ run_mesh_lod() {
 		return
 	fi
 	exe="$WORK/meshLod.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/meshLod.ms --output="$exe" \
 		> "$WORK/meshLod.build.log" 2>&1; then
 		fail "mesh-lod: build refused — see $WORK/meshLod.build.log"
@@ -1290,10 +1242,8 @@ run_particle_fade() {
 	case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) backends="native gl-core" ;; esac
 	for backend in $backends; do
 		exe="$WORK/particleFade.$backend.exe"
-		rm -f "$exe"
-		rm -rf out/debug/.cache
 		flags=""
-		[ "$backend" = gl-core ] && flags="-d:voidGlCore --passC=-DSOKOL_GLCORE"
+		[ "$backend" = gl-core ] && flags="-d:voidGlCore --passC=-DVOID_GLCORE"
 		if ! msc build $flags tests/integration/particleFade.ms --output="$exe" \
 			> "$WORK/particleFade.$backend.build.log" 2>&1; then
 			fail "particle-fade: $backend build refused — see $WORK/particleFade.$backend.build.log"
@@ -1329,7 +1279,6 @@ run_particle_fade() {
 			done
 		done
 	done
-	rm -rf out/debug/.cache
 }
 
 run_particle_mesh() {
@@ -1338,7 +1287,6 @@ run_particle_mesh() {
 		return
 	fi
 	exe="$WORK/particleMesh.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/particleMesh.ms --output="$exe" \
 		> "$WORK/particleMesh.build.log" 2>&1; then
 		fail "particle-mesh: tests/integration/particleMesh.ms does not build — see $WORK/particleMesh.build.log"
@@ -1373,7 +1321,6 @@ run_bloom() {
 		return
 	fi
 	exe="$WORK/bloom.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/bloom.ms --output="$exe" > "$WORK/bloom.build.log" 2>&1; then
 		fail "bloom: tests/integration/bloom.ms does not build — see $WORK/bloom.build.log"
 		return
@@ -1399,7 +1346,6 @@ run_hdr() {
 		return
 	fi
 	exe="$WORK/hdr.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/hdr.ms --output="$exe" > "$WORK/hdr.build.log" 2>&1; then
 		fail "hdr: tests/integration/hdr.ms does not build — see $WORK/hdr.build.log"
 		return
@@ -1518,7 +1464,7 @@ run_graphics_line() {
 # ---- gl core -------------------------------------------------------------------------------
 
 # The readback checks, each judged by its own thresholds rather than D3D11's bytes, built for
-# SOKOL_GLCORE (glsl430) as void2d's golden.sh --backend gl builds: name, then the env that
+# VOID_GLCORE (glsl430) as void2d's golden.sh --backend gl builds: name, then the env that
 # selects the pixel-art preset, or - when the check has only the core run.
 GL_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_BLEND_PIXEL_ART=1
 	cardTable:- dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1 mapMaterial:VOID_MAP_PIXEL_ART=1
@@ -1536,9 +1482,7 @@ run_gl_core() {
 		MINGW*|MSYS*|CYGWIN*) ;;
 		*) skip "gl-core: this runner builds the GL core variant on Windows only"; return ;;
 	esac
-	rm -rf out/debug/.cache
 	run_gl_checks
-	rm -rf out/debug/.cache
 }
 
 run_gl_checks() {
@@ -1547,8 +1491,7 @@ run_gl_checks() {
 		name=${entry%%:*}
 		pixel=${entry#*:}
 		exe="$WORK/gl_$name.exe"
-		rm -f "$exe"
-		if ! msc build -d:voidGlCore --passC=-DSOKOL_GLCORE tests/integration/$name.ms --output="$exe" \
+		if ! msc build -d:voidGlCore --passC=-DVOID_GLCORE tests/integration/$name.ms --output="$exe" \
 			> "$WORK/gl_$name.build.log" 2>&1; then
 			fail "gl-core: tests/integration/$name.ms does not build for GL core — see $WORK/gl_$name.build.log"
 			return
@@ -1573,7 +1516,7 @@ run_gl_checks() {
 			runs=$((runs + 1))
 		done
 	done
-	pass "gl-core: $runs readback runs of $(echo $GL_CHECKS | wc -w) void3d checks pass on SOKOL_GLCORE (glsl430)"
+	pass "gl-core: $runs readback runs of $(echo $GL_CHECKS | wc -w) void3d checks pass on VOID_GLCORE (glsl430)"
 }
 
 # ---- pending ------------------------------------------------------------------------------
@@ -1647,30 +1590,6 @@ run_pending() {
 	pass "pending: $count rows in $PENDING, every sentinel present and every sentinel listed"
 }
 
-# ---- tests --------------------------------------------------------------------------------
-
-run_tests() {
-	if [ ! -f "$TMP/test2d.ms" ]; then
-		skip "tests: $TMP/test2d.ms is missing (one line: import \"../../src/test/index\")"
-		return
-	fi
-	if msc test "$TMP/test2d.ms" > "$WORK/tests.log" 2>&1; then
-		summary=$(grep -E '^ *Tests ' "$WORK/tests.log" | tail -1 | tr -s ' ')
-		if [ -z "$summary" ]; then
-			fail "tests: no summary line; msc test exits 0 when the test binary crashes"
-			grep -nE 'terminated|Assertion|×' "$WORK/tests.log" | head -10
-		elif grep -qE 'failed' "$WORK/tests.log"; then
-			fail "tests:$summary"
-			grep -nE 'failed|FAIL' "$WORK/tests.log" | head -20
-		else
-			pass "tests:$summary"
-		fi
-	else
-		fail "tests: msc test exited nonzero"
-		tail -30 "$WORK/tests.log"
-	fi
-}
-
 run_gltf_cpu() {
 	printf '%s\n' \
 		'import { loadGltf, loadGlb } from "../../../src/void3d/gltf";' \
@@ -1678,8 +1597,7 @@ run_gltf_cpu() {
 		'console.log(loaded.ok);' \
 		'console.log(loadGlb([]).ok);' \
 		> "$WORK/gltfCpu.ms"
-	rm -f out/debug/gltfCpu.exe
-	if ! msc build "$WORK/gltfCpu.ms" > "$WORK/gltfCpu.build.log" 2>&1; then
+	if ! msc build "$WORK/gltfCpu.ms" --output=out/debug/gltfCpu.exe > "$WORK/gltfCpu.build.log" 2>&1; then
 		fail "gltf-cpu: the decoder does not build without sokol"
 		tail -20 "$WORK/gltfCpu.build.log"
 		return
@@ -1700,8 +1618,6 @@ run_gltf_cpu() {
 # One configuration: rebuild the entry, run it, and hash all four frames against the baseline
 # it claims to reproduce. The committed docs/baselines3d.sha256 *is* the baseline set, so a
 # clean checkout has everything the comparison needs, and a frame with no hash there fails.
-# The binary is deleted first so the link is always redone; the object eviction above is what
-# makes a stale shader impossible.
 #
 # A frame that matches is also kept as out/tmp/capture/<baseline>_<frame>.ppm. That copy is
 # only ever read to measure a later difference (AE, PAE); it decides nothing.
@@ -1742,8 +1658,8 @@ build_and_capture() {
 		fail "capture $name: the entry is missing"
 		return 1
 	fi
-	rm -f "out/debug/$name.exe" "$CAPTURE/gate/${name}_"*.ppm
-	if ! msc build "$entry" > "$WORK/$name.build.log" 2>&1; then
+	rm -f "$CAPTURE/gate/${name}_"*.ppm
+	if ! msc build "$entry" --output="out/debug/$name.exe" > "$WORK/$name.build.log" 2>&1; then
 		fail "capture $name: build failed"
 		tail -30 "$WORK/$name.build.log"
 		return 1
@@ -1761,11 +1677,61 @@ build_and_capture() {
 	return 0
 }
 
+# A backend other than D3D11 renders other bytes, so its frames are judged against the committed
+# D3D11 images by tests/capture3d/compare3d.ms, golden 2D's policy with `golden3d:` budget rows.
+case "$(uname -s)" in
+	Darwin) CROSS3D=metal ;;
+	*) CROSS3D="" ;;
+esac
+GOLDEN3D=tests/golden3d/d3d11
+COMPARE3D=out/compare3d.exe
+
+run_capture_cross() {
+	name=$1
+	baseline=$2
+	what=$3
+	if [ -z "${COMPARE3D_BUILT:-}" ]; then
+		if ! msc build tests/capture3d/compare3d.ms --output="$COMPARE3D" > "$WORK/compare3d.build.log" 2>&1; then
+			fail "capture $name: the comparator did not build — see $WORK/compare3d.build.log"
+			return
+		fi
+		COMPARE3D_BUILT=1
+	fi
+	list=$WORK/$name.compare3d
+	: > "$list"
+	for frame in $FRAMES; do
+		key=${baseline}_$frame
+		golden=$GOLDEN3D/$key.png
+		verdict=$(capture_pending_verdict "$PENDING" "$key.ppm" "$(expected_hash "$key.ppm")" "") ||
+			verdict=invalid
+		case "$verdict" in
+			listed) golden=$GOLDEN3D/$key.held.png ;;
+			normal) ;;
+			*) fail "capture $name: invalid PENDING3D record for $key.ppm"; return ;;
+		esac
+		echo "$key $CAPTURE/gate/${name}_$frame.ppm $golden" >> "$list"
+	done
+	if ! VOID_COMPARE3D_LIST="$list" VOID_COMPARE3D_BACKEND="$CROSS3D" "$COMPARE3D" \
+		> "$WORK/$name.compare3d.log" 2>&1; then
+		grep -v '^PASS\|^PENDING' "$WORK/$name.compare3d.log" | tail -12
+		fail "capture $name ($what): $CROSS3D frames outside their bound against $GOLDEN3D/${baseline}_*.png"
+		return
+	fi
+	for frame in $FRAMES; do
+		cp "$CAPTURE/gate/${name}_$frame.ppm" "$CAPTURE/${baseline}_$frame.ppm"
+	done
+	pass "capture $name ($what): $(tail -1 "$WORK/$name.compare3d.log")"
+}
+
 run_capture() {
 	name=$1
 	baseline=$2
 	what=$3
 	build_and_capture "$name" || return
+	if [ -n "$CROSS3D" ]; then
+		run_capture_cross "$@"
+		return
+	fi
 	missing=0
 	differing=0
 	adopted=0
@@ -1837,6 +1803,17 @@ run_capture() {
 # and frame 1 is before any of it: both have to be the palette-on image, byte for byte. A swap
 # that left the LUT or the post block anywhere but where it was fails here.
 run_look_restored() {
+	if [ -n "$CROSS3D" ]; then
+		for frame in 1 16; do
+			if ! cmp -s "$CAPTURE/gate/campfireLookCapture_$frame.ppm" \
+				"$CAPTURE/gate/campfirePaletteCapture_$frame.ppm"; then
+				fail "capture look: frame $frame is not this backend's palette-on image after the swap and back"
+				return
+			fi
+		done
+		pass "capture look: frames 1 and 16 byte-identical to campfirePaletteCapture around the swap"
+		return
+	fi
 	for frame in 1 16; do
 		got=$CAPTURE/gate/campfireLookCapture_$frame.ppm
 		expected=$(expected_hash "m3palette_$frame.ppm")
@@ -2078,7 +2055,6 @@ run_captures() {
 		skip "capture: GATE_SKIP_CAPTURE=1 — the ortho captures and HUD were not built, run or compared"
 		return
 	fi
-	purge_stale_shader_objects
 	run_capture campfireCapture        before     "palette off"
 	run_capture campfirePaletteCapture m3palette  "palette on"
 	run_capture campfirePreviewCapture m3preview  "preview"
@@ -2099,80 +2075,6 @@ run_captures() {
 	run_capture campfireAnchorCapture      m16anchor      "forward preset, the flame anchored at its bottom left"
 	run_anchor_moves_flame
 	run_hud_over_campfire
-}
-
-# A 3D preset and void2d in one screen pass and one commit (tests/integration/mixedFrame.ms, also
-# in void2d's gate); the same run with the 3D drawn over void2d, which must fail; and runs preparing
-# twice and drawing after a commit, which must stop and say so. It exits 3 with no readback.
-run_compose() {
-	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
-		skip "compose: GATE_SKIP_CAPTURE=1 — the mixed frame was not run"
-		return
-	fi
-	rm -f out/tmp/mixedFrame.exe
-	if ! msc build tests/integration/mixedFrame.ms --release --output=out/tmp/mixedFrame.exe \
-		> "$WORK/compose.build.log" 2>&1; then
-		fail "compose: tests/integration/mixedFrame.ms does not build"
-		tail -30 "$WORK/compose.build.log"
-		return
-	fi
-	status=0
-	out/tmp/mixedFrame.exe > "$WORK/compose.run.log" 2> "$WORK/compose.run.err" || status=$?
-	if [ "$status" -eq 3 ]; then
-		skip "compose: $(grep -E '^SKIP' "$WORK/compose.run.log" | head -1)"
-		return
-	fi
-	summary=$(grep -E '^mixed frame:' "$WORK/compose.run.log" | sed 's/^mixed frame: //')
-	if [ "$status" -ne 0 ] || [ -z "$summary" ]; then
-		fail "compose: the mixed frame failed (exit $status) — see $WORK/compose.run.log and .err"
-		grep -E '^FAIL' "$WORK/compose.run.log" | sed 's/^/      /'
-		return
-	fi
-	pass "compose: $summary"
-	status=0
-	VOID_MIXED_3D_OVER_2D=1 out/tmp/mixedFrame.exe > "$WORK/compose.swapped.log" \
-		2> "$WORK/compose.swapped.err" || status=$?
-	if [ "$status" -ne 0 ] && grep -q '^FAIL mixed frame: .* inside the quad' "$WORK/compose.swapped.log"; then
-		pass "compose: the control, the 3D drawn over void2d, fails: $(grep -E '^FAIL' \
-			"$WORK/compose.swapped.log" | head -1 | sed 's/^FAIL mixed frame: //')"
-	else
-		fail "compose: the control, the 3D drawn over void2d, passed (exit $status) — see $WORK/compose.swapped.log and .err"
-	fi
-	status=0
-	VOID_MIXED_PREPARE_TWICE=1 out/tmp/mixedFrame.exe > "$WORK/compose.twice.log" 2>&1 || status=$?
-	if [ "$status" -ne 0 ] && grep -q 'prepareFrame on a frame no drawToScreen or endPrepared ended' \
-		"$WORK/compose.twice.log"; then
-		pass "compose: a second prepareFrame before drawToScreen stops and names the call"
-	else
-		fail "compose: a second prepareFrame did not stop (exit $status)"
-	fi
-	status=0
-	VOID_MIXED_SCREEN_NEXT_FRAME=1 out/tmp/mixedFrame.exe > "$WORK/compose.next.log" 2>&1 || status=$?
-	if [ "$status" -ne 0 ] && grep -q 'drawToScreen in a later sokol frame' "$WORK/compose.next.log"; then
-		pass "compose: a drawToScreen after a commit stops and names the call"
-	else
-		fail "compose: a drawToScreen after a commit did not stop (exit $status)"
-	fi
-	for order in 1 2; do
-		status=0
-		VOID_GPU_REGISTRATION=$order out/tmp/mixedFrame.exe \
-			> "$WORK/registration-$order.log" 2> "$WORK/registration-$order.err" || status=$?
-		if [ "$status" -eq 0 ] && grep -q '^PASS mixed frame:' "$WORK/registration-$order.log"; then
-			pass "registration: order $order, foreign shader draws the same lit frame past the old 16/8 registry widths"
-		else
-			fail "registration: order $order failed (exit $status) — see $WORK/registration-$order.log and .err"
-		fi
-		status=0
-		VOID_GPU_REGISTRATION=$order VOID_GPU_REGISTRATION_ORDER_CONTROL=1 \
-			out/tmp/mixedFrame.exe > "$WORK/registration-$order.control.log" 2>&1 || status=$?
-		if [ "$status" -ne 0 ] &&
-			grep -q '^FAIL mixed frame: the foreign consumer overlaps or misses' \
-				"$WORK/registration-$order.control.log"; then
-			pass "registration: order $order, reversed range expectation fails at the registry bound"
-		else
-			fail "registration: order $order, reversed range expectation was not caught"
-		fi
-	done
 }
 
 run_perspective() {
@@ -2243,7 +2145,6 @@ run_unlit_textured() {
 		skip "unlit-textured: GATE_SKIP_CAPTURE=1 — light-independent textures were not drawn"
 		return
 	fi
-	purge_stale_shader_objects
 	for entry in unlitCapture unlitPixelArtCapture; do
 		if ! msc build "$CAPTURE/$entry.ms" --output="$WORK/$entry.exe" \
 			> "$WORK/$entry.build.log" 2>&1; then
@@ -2282,7 +2183,6 @@ run_target_texture() {
 		skip "target-texture: GATE_SKIP_CAPTURE=1 — no render target was sampled"
 		return
 	fi
-	purge_stale_shader_objects
 	exe="$WORK/targetTexture.exe"
 	if ! msc build tests/integration/targetTexture.ms --output="$exe" \
 		> "$WORK/targetTexture.build.log" 2>&1; then
@@ -2335,7 +2235,6 @@ run_world_label() {
 		skip "world-label: GATE_SKIP_CAPTURE=1 — no label was read back"
 		return
 	fi
-	purge_stale_shader_objects
 	exe="$WORK/worldLabel.exe"
 	if ! msc build tests/integration/worldLabel.ms --output="$exe" \
 		> "$WORK/worldLabel.build.log" 2>&1; then
@@ -2400,9 +2299,7 @@ run_card_table() {
 		skip "card-table: GATE_SKIP_CAPTURE=1 — the sample was not read back"
 		return
 	fi
-	purge_stale_shader_objects
 	exe="$WORK/cardTable.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/cardTable.ms --output="$exe" \
 		> "$WORK/cardTable.build.log" 2>&1; then
 		fail "card-table: tests/integration/cardTable.ms does not build — see $WORK/cardTable.build.log"
@@ -2563,7 +2460,6 @@ run_render_order() {
 		return
 	fi
 	exe="$WORK/renderOrder.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/renderOrder.ms --output="$exe" \
 		> "$WORK/renderOrder.build.log" 2>&1; then
 		fail "render-order: tests/integration/renderOrder.ms does not build — see $WORK/renderOrder.build.log"
@@ -2598,7 +2494,6 @@ run_moving_material() {
 		return
 	fi
 	exe="$WORK/movingMaterial.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/movingMaterial.ms --output="$exe" \
 		> "$WORK/movingMaterial.build.log" 2>&1; then
 		fail "moving-material: tests/integration/movingMaterial.ms does not build — see $WORK/movingMaterial.build.log"
@@ -2637,7 +2532,6 @@ run_map_material() {
 		return
 	fi
 	exe="$WORK/mapMaterial.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/mapMaterial.ms --output="$exe" \
 		> "$WORK/mapMaterial.build.log" 2>&1; then
 		fail "map-material: tests/integration/mapMaterial.ms does not build — see $WORK/mapMaterial.build.log"
@@ -2772,7 +2666,6 @@ run_dir_shadow() {
 		return
 	fi
 	exe="$WORK/dirShadow.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/dirShadow.ms --output="$exe" > "$WORK/dirShadow.build.log" 2>&1; then
 		fail "dir-shadow: tests/integration/dirShadow.ms does not build — see $WORK/dirShadow.build.log"
 		return
@@ -2980,7 +2873,6 @@ run_stores() {
 		skip "stores: GATE_SKIP_CAPTURE=1 — the store identity consumer was not run"
 		return
 	fi
-	rm -f out/tmp/storeIdentity.exe
 	if ! msc build tests/integration/storeIdentity.ms --release --output=out/tmp/storeIdentity.exe \
 		> "$WORK/stores.build.log" 2>&1; then
 		fail "stores: tests/integration/storeIdentity.ms does not build"
@@ -3006,7 +2898,6 @@ run_views() {
 		skip "views: GATE_SKIP_CAPTURE=1 — the view teardown consumer was not run"
 		return
 	fi
-	rm -f out/tmp/viewTeardown.exe
 	if ! msc build tests/integration/viewTeardown.ms --release --output=out/tmp/viewTeardown.exe \
 		> "$WORK/views.build.log" 2>&1; then
 		fail "views: tests/integration/viewTeardown.ms does not build"
@@ -3027,65 +2918,9 @@ run_views() {
 	pass "views: six views drawn by both presets and closed beside a surviving context; buffers, images, views, samplers, shaders and pipelines back at the first's counts after each of the other five"
 }
 
-run_target_owner() {
-	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
-		skip "target owner: GATE_SKIP_CAPTURE=1 — the shared owner consumer was not run"
-		return
-	fi
-	rm -f out/tmp/targetOwner.exe
-	if ! msc build tests/integration/targetOwner.ms --release --output=out/tmp/targetOwner.exe \
-		> "$WORK/targetOwner.build.log" 2>&1; then
-		fail "target owner: tests/integration/targetOwner.ms does not build"
-		return
-	fi
-	status=0
-	out/tmp/targetOwner.exe > "$WORK/targetOwner.run.log" 2> "$WORK/targetOwner.run.err" || status=$?
-	if [ "$status" -eq 3 ]; then
-		skip "target owner: no readback backend — the shared owner consumer was not run"
-		return
-	fi
-	if [ "$status" -ne 0 ] || ! grep -q '^PASS target owner:' "$WORK/targetOwner.run.log"; then
-		fail "target owner: shared alias/resize/close consumer failed (exit $status)"
-		return
-	fi
-	pass "target owner: aliases keep one owner through resize and terminal close; independent sampled pixels survive"
-	for misuse in closed-empty color depth begin-closed refused-zero refused-pool; do
-		case "$misuse" in
-			closed-empty) expected='gpu door: resize on a render target that was closed' ;;
-			color) expected='gpu door: asColor on a render target that was closed' ;;
-			depth) expected='gpu door: asDepth on a render target that was closed' ;;
-			begin-closed) expected='gpu door: beginTarget on a render target that was closed' ;;
-			refused-zero) expected='gpu door: resize refused a 0x8 Rgba8 target image' ;;
-			refused-pool) expected='gpu door: resize refused a 8x8 Rgba8 target' ;;
-		esac
-		status=0
-		VOID_TARGET_OWNER_MISUSE="$misuse" out/tmp/targetOwner.exe \
-			> "$WORK/targetOwner-$misuse.run.log" 2>&1 || status=$?
-		if [ "$status" -ne 0 ] && grep -qF "$expected" "$WORK/targetOwner-$misuse.run.log"; then
-			pass "target owner: $misuse stops by name"
-		else
-			fail "target owner: $misuse did not name its owner error"
-		fi
-	done
-	rm -f out/tmp/targetPresetEpoch.exe
-	if ! msc build tests/integration/targetPresetEpoch.ms --release --output=out/tmp/targetPresetEpoch.exe \
-		> "$WORK/targetPresetEpoch.build.log" 2>&1; then
-		fail "target preset epoch: the generation-write control does not build"
-		return
-	fi
-	status=0
-	out/tmp/targetPresetEpoch.exe > "$WORK/targetPresetEpoch.run.log" 2>&1 || status=$?
-	if [ "$status" -ne 0 ] || ! grep -q '^PASS target preset epoch:' "$WORK/targetPresetEpoch.run.log"; then
-		fail "target preset epoch: generation-write control failed (exit $status)"
-	else
-		pass "target preset epoch: every same-size target in both presets adopts the epoch through one owner"
-	fi
-}
-
 # A file that imports both layers: every function name void2d and void3d both export resolves to
 # its own layer's (tests/integration/bothLayers.ms). Headless; the GPU calls are compiled only.
 run_both_layers() {
-	rm -f out/tmp/bothLayers.exe
 	if ! msc build tests/integration/bothLayers.ms --output=out/tmp/bothLayers.exe \
 		> "$WORK/both.build.log" 2>&1; then
 		fail "both layers: tests/integration/bothLayers.ms does not build"
@@ -3101,19 +2936,20 @@ run_both_layers() {
 }
 
 # The tests/aborts protocol of void2d's gate: the first line names what the program must say as it
-# stops, and a program that runs to the end fails.
+# stops, and a program that runs to the end fails. A `// flags:` line adds msc build flags.
 run_aborts() {
 	for program in tests/aborts3d/*.ms; do
 		name=$(basename "$program" .ms)
 		expected=$(sed -n '1s#^// expect: ##p' "$program" | tr -d '\r')
+		flags=$(sed -n 's#^// flags: ##p' "$program" | tr -d '\r')
 		log="$WORK/abort-$name.log"
 		status=0
 		rm -f "out/tmp/abort-$name.exe"
-		if ! msc build "$program" --output="out/tmp/abort-$name.exe" > "$WORK/abort-$name.build.log" 2>&1; then
+		if ! msc build "$program" $flags --output="out/tmp/abort-$name.exe" > "$WORK/abort-$name.build.log" 2>&1; then
 			fail "aborts: $name does not build — see $WORK/abort-$name.build.log"
 			continue
 		fi
-		"out/tmp/abort-$name.exe" > "$log" 2>&1 || status=$?
+		VOID_QUIET_WINDOW=1 "out/tmp/abort-$name.exe" > "$log" 2>&1 || status=$?
 		if [ -n "$expected" ] && [ "$status" -ne 0 ] && grep -qF "$expected" "$log"; then
 			pass "aborts: $name stops and says: $expected"
 		else
@@ -3137,8 +2973,8 @@ run_aborts() {
 			expected=$(sed -n "s#^// expect $pattern: ##p" "$program" | tr -d '\r')
 			log="$WORK/abort-$name-$case.log"
 			status=0
-			"out/tmp/abort-$name.exe" "$case" > "$log" 2>&1 || status=$?
-			if [ "$status" -ne 0 ] && grep -qF "$expected" "$log"; then
+			VOID_QUIET_WINDOW=1 "out/tmp/abort-$name.exe" "$case" > "$log" 2>&1 || status=$?
+			if [ -n "$expected" ] && [ "$status" -ne 0 ] && grep -qF "$expected" "$log"; then
 				pass "aborts: $name $case stops and says: $expected"
 			else
 				fail "aborts: $name $case did not stop with '$expected' (exit $status) — see $log"
@@ -3223,6 +3059,7 @@ fi
 echo "  commit   $(git rev-parse --short HEAD 2>/dev/null) on $(git rev-parse --abbrev-ref HEAD 2>/dev/null)$dirty"
 echo
 
+section prepare
 if prepare_scene; then
 	prepare_harness
 	prepare_entries
@@ -3230,61 +3067,58 @@ if prepare_scene; then
 else
 	fail "prepare: the capture entries were not written"
 fi
-run_entries
-run_shaders
-run_pending
-run_tests
-run_gltf_cpu
-run_captures
-run_compose
-run_perspective
-run_textured
-run_unlit_textured
-run_target_texture
-run_mrt_blend
-run_alpha_kill
-run_billboard_blend
-run_sort_layer
-run_render_order
-run_dir_shadow
-run_moving_material
-run_map_material
-run_light_shadows
-run_parallax
-run_spot_cookie
-run_camera_rig
-run_reparent
-run_gltf
-run_both_layers
-run_world_label
-run_card_table
-run_exposure
-run_environment_light
-run_hdr
-run_bloom
-run_decal
-run_sao
-run_screen_colour
-run_graphics_line
-run_particle_fade
-run_particle_mesh
-run_mesh_lod
-run_gl_core
-run_stores
-run_views
-run_target_owner
-run_aborts
-run_manifest
-run_allocation
-run_oracle
-run_style
-run_device
-run_pick
-run_bench
-run_churn
-run_android
+stage run_entries
+stage run_pending
+stage run_gltf_cpu
+stage run_captures
+stage run_perspective
+stage run_textured
+stage run_unlit_textured
+stage run_target_texture
+stage run_mrt_blend
+stage run_alpha_kill
+stage run_billboard_blend
+stage run_sort_layer
+stage run_render_order
+stage run_dir_shadow
+stage run_moving_material
+stage run_map_material
+stage run_light_shadows
+stage run_parallax
+stage run_spot_cookie
+stage run_camera_rig
+stage run_reparent
+stage run_gltf
+stage run_both_layers
+stage run_world_label
+stage run_card_table
+stage run_exposure
+stage run_environment_light
+stage run_hdr
+stage run_bloom
+stage run_decal
+stage run_sao
+stage run_screen_colour
+stage run_graphics_line
+stage run_particle_fade
+stage run_particle_mesh
+stage run_mesh_lod
+stage run_gl_core
+stage run_stores
+stage run_views
+stage run_aborts
+stage run_manifest
+stage run_allocation
+stage run_oracle
+stage run_style
+stage run_device
+stage run_pick
+stage run_bench
+stage run_churn
+stage run_android
 
 echo
+section summary
 if [ "$FAILURES" -gt 0 ]; then
 	echo "GATE FAILED — $FAILURES failing stage(s), $SKIPPED skipped"
 	exit 1

@@ -131,7 +131,7 @@ import {
 } from "./draw";
 import { UniformError, ownRange, disownRange } from "./uniformPool";
 import {
-	PassList, collectVisible, sortBackToFront, sortByLayer, drawPassList,
+	PassList, collectVisible, sortBackToFront, sortByLayer, sortByMaterial, drawPassList,
 } from "./passList";
 import { screenMesh, screenItem, makeScreenTriangle } from "./screenFx";
 import { Mat4 } from "../math/math3d";
@@ -146,7 +146,7 @@ import { CubeShadowError, cubeCaster, cubeShadowViews } from "./cubeShadow";
 import {
 	CameraView, CAMERA_EYE, CAMERA_NEAR, CAMERA_PROJECTION_X, CAMERA_PROJECTION_Y,
 } from "./camera";
-import { pickFor, nextPickPass } from "./meshLod";
+import { screenRatioFor, rangeFor } from "./meshLod";
 import { ClusterAssignment, ClusterConfig } from "./clusters";
 import {
 	ClusterFrame,
@@ -619,6 +619,43 @@ export function needsFrame(this renderer: Renderer): boolean {
 	return renderer.changed || moving || renderer.generation != contextGeneration();
 }
 
+// Gives each item that carries a LOD pick the range of the level `camera` sees it at, or marks it
+// culled when it is smaller on screen than the pick's floor. Runs before beginFrame, which then
+// checks the picked range as it checks any other.
+export function pickMeshLods(
+	renderer: Renderer,
+	items: Span<DrawItem>,
+	camera: Readonly<Span<float32>>,
+): Result<void, RendererError> {
+	if (renderer.closed) { stopOnClosed("pickMeshLods"); }
+	if ((camera.length as int32) != renderer.cameraBlock.length) {
+		return Result.err(RendererError.CameraBlockLength);
+	}
+	const eye: Vec3 = vec3(camera[CAMERA_EYE], camera[CAMERA_EYE + 1], camera[CAMERA_EYE + 2]);
+	for (let i = 0; i < (items.length as int32); i++) {
+		const pick = items[i].lod;
+		if (pick === null) { continue; }
+		const source = items[i].lodSource;
+		if (source !== null) {
+			if (source >= i || items[source].lod === null) {
+				return Result.err(RendererError.MeshLod);
+			}
+			items[i].lodRatio = items[source].lodRatio;
+		} else {
+			const own = pick.screenRatioFor(items[i].world, eye, camera[CAMERA_PROJECTION_X],
+				camera[CAMERA_PROJECTION_Y], camera[CAMERA_NEAR], renderer.meshLodScale);
+			if (!own.ok) { return Result.err(RendererError.MeshLod); }
+			items[i].lodRatio = own.value;
+		}
+		const picked = pick.rangeFor(items[i].lodRatio);
+		if (!picked.ok) { return Result.err(RendererError.MeshLod); }
+		const range = picked.value;
+		items[i].lodCulled = range === null;
+		if (range !== null) { items[i].range = { base: range.base, count: range.count }; }
+	}
+	return Result.ok(null);
+}
+
 // Starts a frame: uploads the camera and lights, adopts a new GPU context if there is one and fills
 // the pass lists from `items`. A camera or light span that is not its block's length, an item whose
 // material names a program this renderer does not draw, a material whose block is not the one that
@@ -633,7 +670,7 @@ export function needsFrame(this renderer: Renderer): boolean {
 // rebuildTextures); what is left is whatever the caller uploaded from buffers only it keeps.
 export function beginFrame(
 	renderer: Renderer,
-	items: Span<DrawItem>,
+	items: Readonly<Span<DrawItem>>,
 	camera: Readonly<Span<float32>>,
 	lights: Readonly<Span<float32>>,
 ): Result<boolean, RendererError> {
@@ -653,7 +690,6 @@ export function beginFrame(
 	let checkedMaterial: MaterialId = NO_MATERIAL;
 	let checked: ProgramKey = ProgramKey.of(Program.Lit);
 	let checkedTotal: int32 = 0;
-	let lodItems: int32 = 0;
 	let readsTime: boolean = false;
 	let decal: boolean = false;
 	let decalAfterToneMap: boolean = false;
@@ -669,7 +705,6 @@ export function beginFrame(
 			checkedTotal = context.logicalElementCount(mesh.index);
 		}
 		if (!items[i].validRange(checkedTotal)) { return Result.err(RendererError.DrawRange); }
-		if (items[i].lod !== null) { lodItems += 1; }
 		if (!known) {
 			const pair: Result<ProgramKey, RendererError> =
 				pairProgram(renderer, mesh, material, shadowed);
@@ -705,16 +740,6 @@ export function beginFrame(
 	}
 	if ((camera.length as int32) != renderer.cameraBlock.length) {
 		return Result.err(RendererError.CameraBlockLength);
-	}
-	const lodEye: Vec3 = vec3(camera[CAMERA_EYE], camera[CAMERA_EYE + 1], camera[CAMERA_EYE + 2]);
-	const lodPass: int64 = nextPickPass();
-	for (let i = 0; lodItems > 0 && i < (items.length as int32); i++) {
-		const pick = items[i].lod;
-		if (pick === null) { continue; }
-		if (!pick.pickFor(items[i].world, lodEye, camera[CAMERA_PROJECTION_X],
-			camera[CAMERA_PROJECTION_Y], camera[CAMERA_NEAR], renderer.meshLodScale, lodPass).ok) {
-			return Result.err(RendererError.MeshLod);
-		}
 	}
 	const counted: Result<int32, ClusterFrameError> = recordCountOf(lights);
 	if (!counted.ok) { return Result.err(RendererError.LightBlockLength); }
@@ -837,7 +862,7 @@ export function beginFrame(
 		renderer.opaque, renderer.alpha, renderer.additive, renderer.decal,
 		renderer.decalAfterToneMap, items, context.materials, context.meshData, frustum,
 	);
-	sortByLayer(renderer.opaque);
+	sortByMaterial(renderer.opaque, items, renderer.drawn, context.materials);
 	sortBackToFront(renderer.alpha, items, camera);
 	sortByLayer(renderer.additive);
 	sortByLayer(renderer.decal);
@@ -959,20 +984,20 @@ export function drawPhase(
 	match (phase) {
 		Phase.Opaque => {
 			drawPassList(
-				context, renderer.opaque, items, renderer.drawn, targets, renderer.sceneGlobals,
-				scene,
+				context, renderer.opaque.indices[0..renderer.opaque.count], items, renderer.drawn,
+				targets, renderer.sceneGlobals, scene,
 			);
 		},
 		Phase.Alpha => {
 			drawPassList(
-				context, renderer.alpha, items, renderer.drawn, targets, renderer.sceneGlobals,
-				scene,
+				context, renderer.alpha.indices[0..renderer.alpha.count], items, renderer.drawn,
+				targets, renderer.sceneGlobals, scene,
 			);
 		},
 		Phase.Additive => {
 			drawPassList(
-				context, renderer.additive, items, renderer.drawn, targets, renderer.sceneGlobals,
-				scene,
+				context, renderer.additive.indices[0..renderer.additive.count], items,
+				renderer.drawn, targets, renderer.sceneGlobals, scene,
 			);
 		},
 		Phase.Decal => stopOnDecalPhase(phase),
@@ -1020,7 +1045,8 @@ export function drawDecals(
 	};
 	const list: PassList = phase == Phase.Decal ? renderer.decal : renderer.decalAfterToneMap;
 	drawPassList(
-		renderer.context, list, items, renderer.drawn, targets, renderer.sceneGlobals, scene,
+		renderer.context, list.indices[0..list.count], items, renderer.drawn, targets,
+		renderer.sceneGlobals, scene,
 	);
 }
 

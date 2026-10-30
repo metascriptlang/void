@@ -1,5 +1,5 @@
 import { readFile } from "std/fs";
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3 } from "../../src/math/math3d";
 import { RenderState } from "../../src/gpu/state";
 import { beginScreenPass } from "../../src/gpu/target";
@@ -67,7 +67,7 @@ import {
 	voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,
@@ -329,8 +329,8 @@ function report(): void {
 }
 
 function init(): void {
-	if (voidCaptureBackend() != 1) {
-		console.log("SKIP view teardown: this consumer requires D3D11 readback");
+	if (voidCaptureBackend() != 1 && voidCaptureBackend() != 5) {
+		console.log("SKIP view teardown: this consumer requires D3D11 or Metal readback");
 		voidCaptureExit(3);
 	}
 	gfxSetup();

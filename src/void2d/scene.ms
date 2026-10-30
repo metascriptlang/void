@@ -12,7 +12,7 @@ import {
 	enterCamera,
 } from "./draw";
 import { DrawContext2D, NO_REPAINT, PaintState, useContext, retireContext } from "./displayList";
-import { void2dReleaseList } from "./batcher.h";
+import { void2dReleaseList } from "./batcher";
 when (voidProfiler) {
 	import { profilerPolledDirty } from "./frameMarks";
 	import { profilerPrepare, profilerDraw } from "./profilerOverlay";
@@ -29,7 +29,7 @@ import {
 	trs2d,
 	vec2,
 } from "./types";
-import { fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
+import { fbWidth, fbHeight, dpiScale } from "../host/gpu";
 import {
 	PassState, passState, beginScreenPassWith, endPass, commit, contextGeneration,
 } from "../gpu/door";

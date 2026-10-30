@@ -1,8 +1,9 @@
 # src/shader — shaders written in MetaScript
 
-**Goal.** A shader is an ordinary MetaScript function. A macro `glsl(fn)` reads its typed body and emits
-Vulkan-style GLSL 450 for sokol-shdc, which emits every backend. The same function runs on the CPU as a
-logic oracle in the native gate. Shader-tier context: [docs/SHADER.md](../../docs/SHADER.md) Tier 3.
+**Goal.** A shader is an ordinary MetaScript function. A macro reads its typed body and lowers it into
+the shader IR, which this module prints for every backend. The same function runs on the CPU as a
+logic oracle in the native gate. Shader-tier context: [docs/SHADER.md](../../docs/SHADER.md) Tier 3;
+what the IR fixes before its printers: [docs/SHADER-IR.md](../../docs/SHADER-IR.md).
 
 **Why now.** void3d hand-writes one program per feature combination (`Program` in `src/void3d/gpu3d.ms`),
 and `ProgramMap` packs at most 24 of them. void3d's feature-bit ProgramKey keys the variants, and this module
@@ -10,15 +11,31 @@ later replaces the hand-written GLSL source of each base.
 
 ## Design
 
-- **One GPU target: sokol-shdc GLSL 450.** Metal, D3D11, GL, GLES3/WebGL2 and WebGPU all come from shdc.
-  A feature sokol cannot express gets a native door and a hand-written per-backend shader for that
-  program only (`sg_shader_desc` takes raw per-backend source).
+- **Macro → IR → one printer per target** (the person's decision 2026-10-23: Void stops using
+  sokol-shdc). The `glsl` macro family lowers the typed body into the shader IR of `ir.ms`, plain
+  data with no `Node`: a Heaps-style typed expression tree (`hxsl/Ast.hx` `TExprDef`) over
+  Mach-style resolved globals (`sysgpu/shader/Air.zig` `Inst.Var` with binding, group, access;
+  `Builtin`, `Interpolate`, `TextureType`). Printers write GLSL 450 (today's text, the regression
+  oracle), GLSL 430, GLSL ES 300, HLSL SM5, WGSL and MSL from it, one file each, as Mach's
+  `codegen/*.zig`. Slots and uniform buffer layout are fixed on the IR before any printer, and that
+  pass produces the `GPUShaderModuleDescriptor` reflection (Heaps `Flatten`). A program key is a
+  `FeatureCondition` over feature names; per key, the IR is specialized and its unread declarations
+  dropped (Heaps `Eval` + `Dce`). Own backends, once rejected because shdc wrote every target, are
+  chosen because sokol is being replaced ([docs/GPU.md](../../docs/GPU.md)). sokol-shdc is on no
+  build or regeneration path. Its reflection matched the committed modules on all three while
+  fetches still took a sampler (2026-10-23, BUILD `4b5816aea`); it refuses every stage that
+  fetches without one (see "No fetch without a sampler" below), so the goldens replaced it as the
+  oracle.
+  `irErrors` names each broken invariant; `src/test/shaderIrCheck.ms` builds modules by hand, also
+  inside a macro.
 - **Emitter = macro library, not a compiler backend.** On msc `244ef48c`, `getImpl(bindSym("frag"))`
   inside a macro returned the `FunctionDecl` with checker types on every expression (`typeKind` Float32
   on `uv.x * t`).
 - **The emitter enforces the shdc dialect at the MetaScript source**, so the error points at the
   author's code: textures and samplers are separate; uniform block members are only float, int,
-  vec2–4, ivec2–4, mat3, mat4, and arrays only vec4, ivec4 or mat4; no recursion. The emitter packs an
+  vec2–4, ivec2–4, every matrix shape, and arrays only vec4, ivec4 or mat4; no recursion. A two-row
+  matrix keeps WGSL's 8-byte column stride on every target, printed as vec2 columns where std140
+  would stride 16. The emitter packs an
   author's struct into those types, so a uniform block's layout comes from one MetaScript struct.
 - **Vocabulary is TypeGPU's** ([docs/VOCABULARY.md](../../docs/VOCABULARY.md)): `Vec3f`/`vec3f`,
   `Mat4x4f`, `textureLoad`, `select`, `@builtin(position)`, `@binding(n)`. `std.ms` declares it with
@@ -105,48 +122,81 @@ later replaces the hand-written GLSL source of each base.
   suffix, where TypeGPU refuses the key: TypeGPU's struct is also the host's buffer layout, and a
   value struct here never reaches the interface. A struct is no attribute, varying or block member,
   and holds no texture or sampler. An integer varying is `flat` on both sides (glslang refuses it
-  otherwise). Measured 2026-10-15, `out/stmtProbe/shdc/`: array varyings pass all five shdc
-  outputs, an array vertex attribute fails GLES3 (SPIRV-Cross "OpenGL ES doesn't support array input
-  variables in vertex shader"), so the emitter refuses it.
-- **Generated GLSL lives on disk.** `tools/genShaders.ms` prints the core's stages and
-  `scripts/regen-shaders.sh` writes them to `src/void3d/shader3dGen.glsl`, the source of every core
-  and shadow program key; `tools/genShadersPixelArt.ms` writes the pixel-art preset's to
-  `src/void3d/pixelArt3dGen.glsl` under the stage names `programKeys.txt` gives them;
-  `tools/genShaders2d.ms` writes void2d's to
-  `src/void2d/shader2dGen.glsl`, which `shader2d.glsl` `@include`s under its `@program` lines;
-  `--check` reports a stale file. No derivative runs on the CPU, so a fragment that takes `dpdx`
+  otherwise). An attribute, varying or fragment output is no array, refused at the field and by
+  `irErrors`: WGSL's user-defined IO is a numeric scalar or vector (TypeGPU's `BaseIOData`,
+  `packages/typegpu/src/core/function/fnTypes.ts:58`; naga refuses an array at `@location`, "Only
+  numeric scalars and vectors are allowed"), and GLSL ES 3.00 declares no array vertex input
+  (SPIRV-Cross "OpenGL ES doesn't support array input variables in vertex shader"). naga's GLSL
+  front end splits an array input into one location per element; WGSL has no such source to
+  accept, so the author declares one field each (2026-10-23, BUILD `4b5816aea`).
+- **Generated modules live on disk.** `tools/irPrograms.ms` lowers every stage while it compiles,
+  specializes it per program (the rows of `src/void3d/programKeys.txt`, its `VOID2D_PROGRAMS` and
+  `GPU_COPY_PROGRAMS`) and prints each target; `scripts/regen-shaders.sh` writes the results to
+  `src/void3d/programModules.ms`, `src/void2d/shader2dModules.ms` and
+  `tests/integration/gpuCopyModules.ms`, and `src/void2d/shader2dSlots.h` from the void2d stages'
+  GLSL 450, with each HLSL stage's DXBC from `src/shader/dxbc/` (docs/SHADER-IR.md "The DXBC
+  cache"); `--check` reports a stale file. The tool refuses a row whose stages never read one of
+  its features, rows of one layout that read different attribute slots, a block shared by name
+  with two sizes or slots, and an emissive dissolve block that is not the caster's block and then
+  `emissive` (`src/void3d/draw.ms` `applyBlockHead`); each refusal was run by breaking its input
+  (2026-10-23). No derivative runs on the CPU, so a fragment that takes `dpdx`
   (void2d's `fs` and `uiFs`) is checked through its helpers and pixel goldens, not as a whole. Runtime modules never
   call `glsl`, so no binary carries GLSL text.
 - **An app's own program is built while msc compiles it** (`shaderProgram` in `program.ms`, the
-  person's "viết → chạy", 2026-10-18). The statement splices three declarations: an `@emit` that
-  includes the generated header, the extern `<name>ShaderProgram()` defined in it, and `const
-  <name>: int32` initialized by `shaderBuild`, which writes `<name>.glsl` and runs sokol-shdc into
-  `.shaders/` beside the caller (gitignored, rewritten on every compile), then appends the door
-  registration. Its limits, each refused or stated: one program, so no `@feature` field in either
-  entry (`tests/refusals/programFeature.ms`); one per-vertex buffer, attributes packed in
-  declaration order with no padding, `@builtin` inputs skipped; `float32`, `int32`, `uint32` and
-  their `./std` vectors only. A fragment without an input links to a vertex entry that writes no
-  varyings. A sokol-shdc that refuses or does not start stops the compile at the program's name,
-  never skips it: shdc's own message follows "shaderProgram '<name>': sokol-shdc exited N"
-  (`tests/refusals/shdcRefused.ms`, a block at `@binding(9)`); a missing binary says "did not
-  start" with the path it looked at (measured 2026-10-18, BUILD `4fe2a5eec`, a copy of `program.ms`
-  under `out/missingShdc/`, whose deps path does not exist; no pin, since it needs shdc gone).
-  Its first consumer is `tests/integration/forwardOutlineReference.ms`, drawn through
-  `src/gpu/draw.ms` (measured 2026-10-18, BUILD `4fe2a5eec`): D3D11 `forwardOutline` PASS at
-  framebuffer factor 1 and 2, 33 of 33 reference comparisons with 0 errors each; both emcc
-  backends build on attempt 1, so `std/process`'s module init links for the web, and
-  `scripts/web3d.sh` passes 27 of 27 on WebGL2 with the same partial and motion numbers as
-  native. WebGPU is built, not captured.
+  person's "viết → chạy", 2026-10-18). The statement splices one declaration, `const <name>:
+  int32`, initialized by `shaderBuild`: in the macro VM it joins the two lowered stages
+  (`programModule`), prints and reflects them for the build's target (`programSource`), and
+  returns a call of `shaderProgramRegister` on two literals, the target's
+  `GPUShaderModuleDescriptor` (built as `shaderModule` builds it) and a one-buffer `DoorLayout`,
+  which registers them through `doorRegisterLayouts` and `doorRegisterPrograms` of
+  `src/gpu/doorGpu.ms`; no C, no `@emit`. Each stage's DXBC or metallib is read from
+  `shaders/` or `out/shaders/` and, when missing and the tool exists, compiled into `out/shaders/`
+  (`stageBlob`; `docs/SHADER-IR.md` "A program the app builds"), and that stage's text is dropped.
+  Attribute locations come from the `glsl430` reflection, matched by field name. Printing runs in
+  the macro, not ahead of time into a generated module, by measurement (2026-10-23, BUILD
+  `4b5816aea`, Windows, `msc check src/test/shaderProgramCheck.ms` against a copy without its two
+  programs): the two IR programs cost 1.9 s of compile, where sokol-shdc's cost 1.6 s; one
+  program written ahead of time by `msc run` of a generator costs 5.6 to 7.3 s and a step the
+  author runs. A module only a macro reaches stays out of the binary only while its top level
+  runs nothing: a module `const` initialized by an array literal or a call is module init, which
+  every program runs, so the printers' reserved-word tables are built per printer
+  (`Printer.reserved`). With them at module level, `forwardOutlineReference.exe` (`--release`)
+  was 759,808 B and the printers were emitted as C; with them per printer it is 701,440 B and no
+  printer module is emitted (2026-10-24, BUILD `4b5816aea`). Its
+  limits, each refused or stated: one program, so no `@feature` field in either entry
+  (`tests/refusals/programFeature.ms`); one per-vertex buffer, attributes packed in declaration
+  order with no padding, `@builtin` inputs skipped; `float32` and its `./std` vectors only, since
+  `GPUVertexFormat` has no integer format (an `int32` or `uint32` field is refused at the statement,
+  `tests/refusals/programIntAttribute.ms`). A
+  fragment without an input links to a vertex entry that writes no varyings. A program the IR
+  refuses stops the compile at the program's name, never skips it: the reason follows
+  "shaderProgram '<name>': " (`tests/refusals/programBindingRange.ms`, a block at `@binding(9)`).
+  `src/test/shaderProgramCheck.ms` reads the registered layout and masks back through
+  `src/gpu/door.ms`. Its first consumer, `tests/integration/forwardOutlineReference.ms`, builds
+  on the door path (2026-10-22, BUILD `afcd22f19`) and has not been drawn since; on the C path it
+  passed D3D11 `forwardOutline` at framebuffer factor 1 and 2, 33 of 33 reference comparisons,
+  and `scripts/web3d.sh` 27 of 27 on WebGL2 (2026-10-18, BUILD `4fe2a5eec`).
+- **`shaderCompute(name, kernel, [x, y, z])` is `shaderProgram` for one compute entry.** It splices
+  `const <name>: int32` initialized by `shaderBuild`, which lowers with `glslComputeIr` (the
+  workgroup size is written beside the kernel because the entry has nowhere to carry it), prints,
+  reflects and precompiles for the build's target (`cs_5_0` for DXBC), and returns a call of
+  `shaderComputeRegister` on the descriptor. A vertex or fragment entry is refused by
+  `glslStage` ("a compute entry returns nothing", `tests/refusals/computeVertexEntry.ms`), and a
+  `@feature` field by `oneProgram` (`tests/refusals/computeFeature.ms`). `shaderComputeRegister`
+  registers the descriptor through `registerComputePrograms` of `src/gpu/doorCompute.ms`.
+  `src/test/shaderComputeProgramCheck.ms` reads the descriptor
+  through `shaderBuild`'s `shaderComputeModule` product, since a registered program cannot be
+  read back.
 - **A helper call costs a copy of each argument.** glslang passes every argument through a
   variable, and SPIRV-Cross prints it at each call (`highp vec4 param_1 = ui_params[1];`), where
   a GLSL builtin or code at the call site costs none. Neither shady nor TypeGPU inlines, so the
   emitter keeps a helper a function. void2d's shader text counts against the default-layer size
-  budget (`tests/bench/wasm.json` "delta"), so its vertex entries compute the clip distance where
+  budget (the `off` column of `tests/bench/wasmBudget.txt`), so its vertex entries compute the clip distance where
   they use it, as the hand-written stages did. Measured 2026-10-18 against the hand-written
   stages: the port first grew the text by 2438 B (GLSL ES) and 1150 B (HLSL), past the budget.
 - **CPU oracle within a tolerance, never pixel-exact.** GLSL allows contraction and looser ULP bounds,
   and `sin`/`exp` are implementation-defined. shady's own tests use `1e-4`. Pixel truth is
-  the readback in `tests/capture3d/capture.c`.
+  the readback in `tests/capture3d/capture3d.c`.
 
 ## Compiler surface the emitter relies on
 
@@ -212,8 +262,11 @@ Measured 2026-10-08 on installed msc BUILD `99a851d7`, C and `--target=js` ident
 - **No fetch without a sampler** (measured 2026-10-13, same shdc). `texelFetch(texture2D, …)` and
   `textureSize(texture2D, …)` need `GL_EXT_samplerless_texture_functions`, and with it shdc stops at
   `SPIRVCross exception: texelFetch without sampler was found, but no dummy sampler has been created
-  with build_dummy_sampler_for_combined_images()`. So `textureLoad` and `textureDimensions` take a
-  sampler here, where WGSL's take none; the parameter goes when shdc builds the dummy sampler.
+  with build_dummy_sampler_for_combined_images()` (again 2026-10-23, win32 shdc, on hlsl5, wgsl
+  and metal_macos too). `textureLoad` and `textureDimensions` take no sampler, as WGSL's, so
+  printGlsl450 writes them through that extension and only the IR printers compile them. On GL
+  `bindingSlots` pairs the fetched texture with a sampler its stage already samples it through,
+  else with `DUMMY_SAMPLER`, which the GL backend binds itself.
 - **Walls neither shdc nor self-emitting can pass**: sokol API (spec constants compile, but sokol has
   no field for them, so the default always wins; push constants; framebuffer fetch degrades to a
   texture read; bindless; indirect) and platform floors (WebGL2, WebGPU core, D3D11 SM5).
@@ -286,7 +339,11 @@ shader-toy and compute examples (`circle`, `colors`, `flare`, `mandelbrot`, `com
 as a Void stage in `src/test/shadyTestsCheck.ms`, `shadyExamplesCheck.ms` and `shaderComputeCheck.ms`:
 its GLSL pinned, run on the CPU where it computes something, and the 14 programs plus the compute
 one compiled by sokol-shdc to `glsl430:glsl300es:hlsl5:metal_macos:wgsl` (compute without
-`glsl300es`, which has none). Where a case is written differently:
+`glsl300es`, which has none). Since 2026-10-23 (BUILD `4b5816aea`) `src/test/shadyPortsCheck.ms`
+prints the 19 programs and compute1 through `descriptor.ms` on every target into
+`out/shadyPrograms/`: fxc accepts 39 HLSL stages, naga 39 WGSL and 77 GLSL 430 / ES 300 stages
+(rewritten to Vulkan 450 for its front end); GLSL ES 3.00 refuses compute1 for its storage
+resources. Where a case is written differently:
 
 | shady | Void |
 |---|---|
@@ -295,16 +352,14 @@ one compiled by sokol-shdc to `glsl430:glsl300es:hlsl5:metal_macos:wgsl` (comput
 | `SamplerBuffer` + `texelFetch`, `ImageBuffer` + `imageStore` | a storage buffer of structs, a storage texture and `textureStore` (shdc has no buffer textures) |
 | `fmod` (GLSL's floored `mod`) | `x - y * floor(x / y)`; Void's `%` is WGSL's truncated one |
 | `c[i] = …` on a vector | a component write (`c.x = …`) per index |
-| `array[2, uint16]` vertex attribute | refused: shdc's GLES3 output has no array vertex inputs |
+| `array[2, uint16]` vertex attribute | refused: neither WGSL nor GLSL ES 3.00 takes an array vertex input |
 | `gl_VertexID mod 2`, `div 2` | `@builtin(vertexIndex)` (uint32) with uint `%` and `/` |
 | `USampler2d`, `Sampler2dArray` | `Texture2dU32`, `Texture2dArray` (WGSL's `texture_2d<u32>`, `texture_2d_array`) |
 | a varying named as an attribute (`color` in, `color` out) | renamed on both sides (`color_1`), `glslLinked` passing the vertex entry |
-| GLSL 4.10 / 3.30 / ES 3.0, HLSL, MSL backends | one GLSL 450 for shdc, which writes every backend and WGSL |
+| GLSL 4.10 / 3.30 / ES 3.0, HLSL, MSL backends | one IR, printed as GLSL 430, GLSL ES 300, HLSL SM5, MSL and WGSL |
 
 ## Rejected
 
-- **Own HLSL/MSL/GLSL backends, as shady has.** About 1000 of the 1817 lines of shady's `shared.nim` are
-  per-backend layout, and it has no WGSL. Every wall above is in sokol or the platform, not in shdc.
 - **A GLSL backend inside msc** (docs/SHADER.md Tier 3's first plan). The macro already reads the
   typed body, so only the callee gap needs the compiler.
 

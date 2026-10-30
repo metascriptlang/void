@@ -81,7 +81,6 @@ export enum GltfError {
 	UnsupportedSampler,
 	UnsupportedMaterial,
 	MissingTexCoord,
-	NoImageDecoderOnJs,
 }
 
 export struct GltfDiagnostic {
@@ -119,7 +118,6 @@ function gltfCause(code: GltfError): string {
 		GltfError.UnsupportedMaterial => "material property or texture combination is unsupported",
 		GltfError.MissingTexCoord =>
 			"textured material requires a valid attribute for each TEXCOORD_n it samples",
-		GltfError.NoImageDecoderOnJs => "embedded images cannot be decoded on the JS target",
 	};
 }
 
@@ -1653,9 +1651,6 @@ function loadTexture(
 	}
 	const decoded: Result<Pixels, ImageError> = decodeImage(bytes);
 	if (!decoded.ok) {
-		if (decoded.error == ImageError.NoDecoderOnJs) {
-			return Result.err(GltfError.NoImageDecoderOnJs);
-		}
 		return Result.err(GltfError.BadImage);
 	}
 	return Result.ok({

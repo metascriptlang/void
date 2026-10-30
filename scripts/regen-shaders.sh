@@ -1,50 +1,27 @@
 #!/bin/bash
-# Regenerate sokol-shdc shader headers from GLSL sources.
-# Run this after editing any .glsl file or src/void3d/programKeys.txt — the .glsl.h headers are
-# #included by C bridges, and a stale header produces silent visual bugs (old shader code
-# compiled into the binary).
-#
-# --ifdef keeps only the build's backend in each binary. A wrapped program compiles away
-# silently when no SOKOL_<backend> is defined, so every header is made to refuse an
-# includer that did not go through src/sokol/backend.h first.
+# Regenerate the shader modules and tables from the MetaScript shader stages (tools/irPrograms.ms)
+# and src/void3d/programKeys.txt. Run this after editing any of them: a stale module compiles the
+# old shader into the binary.
 set -e
 cd "$(dirname "$0")/.."
 
 # --check regenerates into a scratch directory and compares instead of writing; the gate runs it.
 CHECK=0
-[ "$1" = "--check" ] && CHECK=1
+case "$1" in
+	--check) CHECK=1 ;;
+	"") ;;
+	*) echo "usage: regen-shaders.sh [--check]"; exit 2 ;;
+esac
 STALE=0
 SCRATCH=$(mktemp -d)
 trap 'rm -rf "$SCRATCH"' EXIT
-
-case "$(uname -s)-$(uname -m)" in
-	Darwin-arm64)            SHDC="deps/sokol-tools-bin/bin/osx_arm64/sokol-shdc" ;;
-	Darwin-*)                SHDC="deps/sokol-tools-bin/bin/osx/sokol-shdc" ;;
-	Linux-aarch64)           SHDC="deps/sokol-tools-bin/bin/linux_arm64/sokol-shdc" ;;
-	Linux-*)                 SHDC="deps/sokol-tools-bin/bin/linux/sokol-shdc" ;;
-	MINGW*|MSYS*|CYGWIN*)    SHDC="deps/sokol-tools-bin/bin/win32/sokol-shdc.exe" ;;
-	*) echo "no sokol-shdc for $(uname -s)-$(uname -m)"; exit 1 ;;
-esac
-
-# Every shader carries every target, iOS device and simulator included; src/shader/program.ms
-# compiles its programs with the same list, so this reads it from there.
-LANGS=$(sed -n 's/^const SHDC_LANGUAGES = "\(.*\)";$/\1/p' src/shader/program.ms)
-[ -n "$LANGS" ] || { echo "no SHDC_LANGUAGES line in src/shader/program.ms"; exit 1; }
-
-guard() {
-	guard="#if !defined(VOID_SOKOL_BACKEND_H)\n#error \"include src/sokol/backend.h before $2\"\n#endif"
-	awk -v guard="$guard" '{ print } /^#if !defined\(SOKOL_GFX_INCLUDED\)/ { open = 1 } open && /^#endif/ { print guard; open = 0 }' \
-		"$1" > "$1.tmp" && mv "$1.tmp" "$1"
-	grep -q "include src/sokol/backend.h before" "$1" || { echo "no backend guard in $1"; exit 1; }
-}
 
 settle() {
 	if [ "$CHECK" = 0 ]; then
 		mv "$1" "$2"
 		return 0
 	fi
-	if cmp -s <(grep -v "^        sokol-shdc " "$1" | tr -d "\r") \
-		<(grep -v "^        sokol-shdc " "$2" | tr -d "\r"); then
+	if cmp -s <(tr -d "\r" < "$1") <(tr -d "\r" < "$2"); then
 		echo "fresh $2"
 	else
 		echo "stale $2"
@@ -52,220 +29,136 @@ settle() {
 	fi
 }
 
-regen() {
-	dest="$2"
-	[ "$CHECK" = 1 ] && dest="$SCRATCH/$(basename "$2")"
-	"$SHDC" -i "$1" -o "$dest" -l "$3" -f sokol --ifdef >/dev/null
-	guard "$dest" "$(basename "$2")"
-	[ "$CHECK" = 1 ] || return 0
-	settle "$dest" "$2"
-}
-
-# ---- void3d: one program per declared key ----
-
 KEYS=src/void3d/programKeys.txt
 
-sourceOf() {
-	case "$1" in
-		CORE)      echo "$GENERATED" ;;
-		SHADOW)    echo "$GENERATED" ;;
-		PIXEL_ART) echo "$GENERATED_PIXEL_ART" ;;
-		*) echo "programKeys.txt: unknown preset $1" >&2; return 1 ;;
-	esac
+# The position of $2 (programKeys.txt's LIT_TEXTURED) in gpu3d.ms's enum $1 (LitTextured).
+ordinal() {
+	tr -d "\r" < src/void3d/gpu3d.ms | awk -v head="export enum $1 {" '
+		$0 == head { open = 1; next }
+		open && /^}/ { exit }
+		open { sub(/\/\/.*/, ""); gsub(/[\t ,]/, ""); if ($0 != "") print }
+	' | sed -E 's/([a-z0-9])([A-Z])/\1_\2/g' | tr a-z A-Z |
+		awk -v name="$2" '$0 == name { print NR - 1; found = 1 } END { exit !found }' ||
+		{ echo "src/void3d/gpu3d.ms enum $1 has no $2" >&2; return 1; }
 }
 
-headerOf() {
-	case "$1" in
-		PIXEL_ART) echo pixelArt3d.glsl.h ;;
-		*)         echo shader3d.glsl.h ;;
-	esac
+# The bits of a programKeys.txt feature list, read from gpu3d.ms's ProgramKey.bits.
+featureBits() {
+	bits=0
+	[ "$1" = "-" ] && { echo 0; return; }
+	for feature in $(echo "$1" | tr ':' ' '); do
+		at=$(tr -d "\r" < src/void3d/gpu3d.ms |
+			grep -oE 'key\.[a-zA-Z]+ \? 1 : 0\) << [0-9]+' |
+			sed -E 's/key\.([a-zA-Z]+) \? 1 : 0\) << ([0-9]+)/\1 \2/; s/([a-z0-9])([A-Z])/\1_\2/g' |
+			tr a-z A-Z | awk -v name="$feature" '$1 == name { print $2; found = 1 } END { exit !found }') ||
+			{ echo "programKeys.txt: unknown feature $feature" >&2; return 1; }
+		bits=$((bits | 1 << at))
+	done
+	echo "$bits"
 }
 
-attributesOf() {
-	case "$1" in
-		LIT)          echo "position normal color instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
-		PARTICLE)     echo "root color" ;;
-		PARTICLE_VISUAL) echo "root shape tile color velocity look scale pull emitterRight emitterUp" ;;
-		BILLBOARD)    echo "position size anchor tile color" ;;
-		LIT_TEXTURED) echo "position normal uv color instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
-		LIT_TEXTURED_TANGENT) echo "position normal uv color tangent instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
-		SKIN_LIT) echo "position normal color skinJoints skinWeights instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
-		SKIN_LIT_TEXTURED) echo "position normal uv color skinJoints skinWeights instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
-		SKIN_LIT_TEXTURED_TANGENT) echo "position normal uv color tangent skinJoints skinWeights instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
-		LIT_TEXTURED_UV_B) echo "position normal uv color uvB instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
-		LIT_TEXTURED_TANGENT_UV_B) echo "position normal uv color tangent uvB instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
-		SKIN_LIT_TEXTURED_UV_B) echo "position normal uv color uvB skinJoints skinWeights instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
-		SKIN_LIT_TEXTURED_TANGENT_UV_B) echo "position normal uv color tangent uvB skinJoints skinWeights instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
-		FULLSCREEN)   echo "position" ;;
-		*) echo "programKeys.txt: unknown layout $1" >&2; return 1 ;;
-	esac
-}
-
-# sokol-shdc embeds every stage it is given, used or not: keep the key's two stages.
-stagesOf() {
-	awk -v vs="$2" -v fs="$3" '
-		{ sub(/\r$/, "") }
-		/^@(vs|fs) / { skip = ($2 != vs && $2 != fs) }
-		!skip { print }
-		skip && /^@end/ { skip = 0 }
-	' "$1"
-}
-
-regenKeys() {
+programTable() {
 	work="$SCRATCH/keys"
 	mkdir -p "$work"
-	: > "$work/shader3d.glsl.h"
-	: > "$work/pixelArt3d.glsl.h"
-	: > "$work/descs"
-	: > "$work/layouts"
-	: > "$work/keys"
-	: > "$work/asserts"
-	: > "$work/blocks"
+	: > "$work/dataLayouts"
+	: > "$work/dataKeys"
 	count=0
+	presetShift=$(tr -d "\r" < src/void3d/gpu3d.ms |
+		grep -oE 'key\.preset as int32\) << [0-9]+' | grep -oE '[0-9]+$') ||
+		{ echo "src/void3d/gpu3d.ms ProgramKey.bits has no preset shift"; exit 1; }
 	while read -r module program preset features vs fs layout extra; do
 		case "$module" in ''|'#'*) continue ;; esac
 		if [ -z "$layout" ] || [ -n "$extra" ]; then
 			echo "programKeys.txt: row $module does not have seven columns"; exit 1
 		fi
-		src=$(sourceOf "$preset")
-		attributes=$(attributesOf "$layout")
-		premultiplied=0
-		cutout=0
-		shadowed=0
-		uvTransform=0
-		backTexture=0
-		dissolve=0
-		emissive=0
-		normalMap=0
-		skinned=0
-		normalMrt=0
-		pbr=0
-		pbrMaps=0
-		occlusionUvB=0
-		parallax=0
-		defines=""
-		if [ "$features" != "-" ]; then
-			for feature in $(echo "$features" | tr ':' ' '); do
-				case "$feature" in
-					PREMULTIPLIED) premultiplied=1 ;;
-					CUTOUT)        cutout=1 ;;
-					SHADOWED)      shadowed=1 ;;
-					UV_TRANSFORM)  uvTransform=1 ;;
-					BACK_TEXTURE)  backTexture=1 ;;
-					DISSOLVE)      dissolve=1 ;;
-					EMISSIVE)      emissive=1 ;;
-					NORMAL_MAP)    normalMap=1 ;;
-					SKINNED)       skinned=1 ;;
-					NORMAL_MRT)    normalMrt=1 ;;
-					PBR)           pbr=1 ;;
-					PBR_MAPS)      pbrMaps=1 ;;
-					OCCLUSION_UV_B) occlusionUvB=1 ;;
-					PARALLAX)      parallax=1 ;;
-					*) echo "programKeys.txt: row $module names unknown feature $feature"; exit 1 ;;
-				esac
-			done
-			defines="--defines=$features"
-		fi
-		input="$work/$module.glsl"
-		{
-			stagesOf "$src" "$vs" "$fs"
-			echo "@program program $vs $fs"
-		} > "$input"
-		for feature in $(echo "$features" | tr ':' ' '); do
-			[ "$feature" = "-" ] && continue
-			grep -qE "^#ifdef $feature\$|^#if .*defined\($feature\)" "$input" ||
-				{ echo "programKeys.txt: row $module asks for $feature, which $vs and $fs never read"; exit 1; }
-		done
-		"$SHDC" -i "$input" -o "$work/$module.h" -l "$LANGS" -f sokol --ifdef --no-log-cmdline \
-			-m "$module" $defines >/dev/null
-		header=$(headerOf "$preset")
-		guard "$work/$module.h" "$header"
-		cat "$work/$module.h" >> "$work/$header"
-
-		printf '\t%s_program_shader_desc,\n' "$module" >> "$work/descs"
-		printf '\tLAYOUT_%s,\n' "$layout" >> "$work/layouts"
-		key='\tGPU3D_PROGRAM_KEY(GPU3D_PROGRAM_%s, GPU3D_PRESET_%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s),\n'
-		printf "$key" "$program" "$preset" "$premultiplied" "$cutout" "$shadowed" \
-			"$uvTransform" "$backTexture" "$dissolve" "$emissive" "$normalMap" "$skinned" \
-			"$normalMrt" "$pbr" "$pbrMaps" "$occlusionUvB" "$parallax" >> "$work/keys"
-		first=$(tr -d "\r" < "$KEYS" | awk -v l="$layout" '$1 !~ /^#/ && $7 == l { print $1; exit }')
-		if [ "$first" != "$module" ]; then
-			same=""
-			for a in $attributes; do
-				same="$same${same:+ && }ATTR_${module}_program_$a == ATTR_${first}_program_$a"
-			done
-			printf '_Static_assert(%s,\n\t"%s must take the %s layout as %s does");\n' \
-				"$same" "$module" "$layout" "$first" >> "$work/asserts"
-		fi
-		for block in $(grep -oE "typedef struct ${module}_[A-Za-z0-9]+_t" "$work/$module.h" |
-			sed "s/typedef struct ${module}_//; s/_t\$//"); do
-			owner=$(awk -v b="$block" '$1 == b { print $2; exit }' "$work/blocks")
-			if [ -z "$owner" ]; then
-				echo "$block $module" >> "$work/blocks"
-			else
-				printf '_Static_assert(sizeof(%s_%s_t) == sizeof(%s_%s_t) && UB_%s_%s == UB_%s_%s,\n\t"%s must take %s as %s does");\n' \
-					"$module" "$block" "$owner" "$block" "$module" "$block" "$owner" "$block" \
-					"$module" "$block" "$owner" >> "$work/asserts"
-			fi
-		done
+		bits=$(featureBits "$features") || { echo "programKeys.txt: row $module"; exit 1; }
+		echo "	$(ordinal VertexLayout "$layout")," >> "$work/dataLayouts"
+		programOrdinal=$(ordinal Program "$program")
+		presetOrdinal=$(ordinal Preset "$preset")
+		echo "	$(( programOrdinal | presetOrdinal << presetShift | bits ))," >> "$work/dataKeys"
 		count=$((count + 1))
 	done < <(tr -d "\r" < "$KEYS")
 
 	{
 		echo "// Generated by scripts/regen-shaders.sh from src/void3d/programKeys.txt; do not edit."
-		echo "// The programs gpu3d.c registers with the GPU door, in door order, with their keys."
-		echo "#define GPU3D_PROGRAM_TABLE_LENGTH $count"
+		echo "// The programs gpu3d.ms registers with the GPU door, in door order: layouts and keys."
 		echo
-		echo "static const ShaderDescription PROGRAMS[GPU3D_PROGRAM_TABLE_LENGTH] = {"
-		cat "$work/descs"
-		echo "};"
+		echo "export const GPU3D_PROGRAM_TABLE_LENGTH: int32 = $count;"
 		echo
-		echo "static const int32_t PROGRAM_LAYOUTS[GPU3D_PROGRAM_TABLE_LENGTH] = {"
-		cat "$work/layouts"
-		echo "};"
+		echo "export const PROGRAM_LAYOUTS: int32[$count] = ["
+		cat "$work/dataLayouts"
+		echo "];"
 		echo
-		echo "static const int32_t PROGRAM_KEYS[GPU3D_PROGRAM_TABLE_LENGTH] = {"
-		cat "$work/keys"
-		echo "};"
-		echo
-		cat "$work/asserts"
-		# A dissolve caster takes the head of an emissive dissolve's block (draw.ms applyBlockHead).
-		moving=shadowLitTexturedDissolve_movingMaterialParams_t
-		emissive=litTexturedDissolveEmissive_movingEmissiveMaterialParams_t
-		echo "#include <stddef.h>"
-		echo "_Static_assert(sizeof($emissive) == sizeof($moving) + 4 * sizeof(float) &&"
-		for member in material uvMatrix uvMotion backUvMatrix backUvOffset dissolve dissolveEdge; do
-			echo "	offsetof($emissive, $member) == offsetof($moving, $member) &&"
-		done
-		echo '	offsetof('$emissive', emissive) == sizeof('$moving'),'
-		echo '	"an emissive dissolve block must start with the dissolve caster block");'
-	} > "$work/programTable.h"
-
-	settle "$work/shader3d.glsl.h" src/void3d/shader3d.glsl.h
-	settle "$work/pixelArt3d.glsl.h" src/void3d/pixelArt3d.glsl.h
-	settle "$work/programTable.h" src/void3d/programTable.h
+		echo "export const PROGRAM_KEYS: int32[$count] = ["
+		cat "$work/dataKeys"
+		echo "];"
+	} > "$work/programTableData.ms"
+	settle "$work/programTableData.ms" src/void3d/programTableData.ms
 }
 
-# Every void3d stage is written in MetaScript: the core's in src/void3d/shader3d.ms and
-# post3d.ms, the pixel-art preset's in pixelArt3d.ms.
-GENERATED=src/void3d/shader3dGen.glsl
-GENERATED_PIXEL_ART=src/void3d/pixelArt3dGen.glsl
-generate() {
+# The tools are native binaries that cannot open an MSYS /tmp path, so they write under out/.
+IR=out/irModules
+DXBC=src/shader/dxbc
+METALLIB=src/shader/metallib
+FXC="${FXC-/c/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/fxc.exe}"
+irModules() {
+	rm -rf "$IR"
+	fxc=()
+	if [ -n "$FXC" ] && [ -x "$FXC" ]; then
+		fxc=(--fxc "$(cygpath -m "$FXC" 2>/dev/null || echo "$FXC")")
+	fi
+	"${MSC:-msc}" run tools/irPrograms.ms -- "$IR" "$DXBC" "$METALLIB" "${fxc[@]}" > "$SCRATCH/ir.log" 2>&1 ||
+		{ cat "$SCRATCH/ir.log"; echo "irPrograms failed"; exit 1; }
+	grep -e "^dxbc miss" -e "^metallib miss" "$SCRATCH/ir.log" || true
+}
+
+# Without fxc (macOS, Linux) a missing blob is reported, not stale, so a regen there stays usable:
+# the stage keeps no bytecode and the D3D11 backend compiles its HLSL at load. Without xcrun
+# (Windows, Linux) a missing metallib is the same, and Metal compiles its MSL at load.
+blobCache() {
+	cache=$1
+	extension=$2
+	for blob in "$IR/$extension"/*."$extension"; do
+		[ -e "$blob" ] || continue
+		if [ "$CHECK" = 1 ]; then
+			echo "stale $cache/$(basename "$blob") (missing)"
+			STALE=1
+		else
+			mkdir -p "$cache"
+			mv "$blob" "$cache/"
+		fi
+	done
+	for blob in "$cache"/*."$extension"; do
+		[ -e "$blob" ] || continue
+		grep -qx "$(basename "$blob" ."$extension")" "$IR/$extension.used" && continue
+		if [ "$CHECK" = 1 ]; then
+			echo "stale $blob (unused)"
+			STALE=1
+		else
+			rm "$blob"
+		fi
+	done
+}
+
+slots() {
 	out="$SCRATCH/$(basename "$2")"
-	"${MSC:-msc}" run "$1" > "$out" 2> "$SCRATCH/generate.log" ||
-		{ cat "$SCRATCH/generate.log"; echo "$1 failed"; exit 1; }
+	"${MSC:-msc}" run tools/shaderSlots.ms -- "$1" > "$out" 2> "$SCRATCH/slots.log" ||
+		{ cat "$SCRATCH/slots.log"; echo "shaderSlots $1 failed"; exit 1; }
 	settle "$out" "$2"
 }
 
-[ "$CHECK" = 1 ] || echo "Regenerating shader headers..."
-generate tools/genShaders.ms "$GENERATED"
-generate tools/genShadersPixelArt.ms "$GENERATED_PIXEL_ART"
-generate tools/genShaders2d.ms src/void2d/shader2dGen.glsl
-regen src/void2d/shader2d.glsl src/void2d/shader2d.glsl.h "$LANGS"
-generate tools/genShadersEnvironment.ms src/void3d/environmentGen.glsl
-regen src/void3d/environment.glsl src/void3d/environment.glsl.h "$LANGS"
-regenKeys
-regen tests/integration/gpuCopy.glsl tests/integration/gpuCopy.glsl.h "$LANGS"
+[ "$CHECK" = 1 ] || echo "Regenerating shader modules..."
+irModules
+programTable
+for module in programModules shader2dModules gpuCopyModules; do
+	cp "$IR/$module.ms" "$SCRATCH/$module.ms"
+done
+settle "$SCRATCH/programModules.ms" src/void3d/programModules.ms
+settle "$SCRATCH/shader2dModules.ms" src/void2d/shader2dModules.ms
+settle "$SCRATCH/gpuCopyModules.ms" tests/integration/gpuCopyModules.ms
+blobCache "$DXBC" dxbc
+blobCache "$METALLIB" metallib
+slots "$IR/shader2d.glsl" src/void2d/shader2dSlots.ms
 
 [ "$CHECK" = 1 ] && exit "$STALE"
-echo "OK: shader headers regenerated"
+echo "OK: shader modules regenerated"

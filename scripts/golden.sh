@@ -9,6 +9,7 @@
 #   sh scripts/golden.sh --backend gl    the GL core 4.3 desktop build (glsl430), judged against
 #                                        the D3D11 goldens under the cross-backend bound
 #   sh scripts/golden.sh --backend metal the macOS Metal window, judged the same way
+#   sh scripts/golden.sh --backend vulkan the Windows Vulkan window, judged the same way
 #   sh scripts/golden.sh prim/ snap/x    only the rows whose name starts with one of these
 #
 # --update is never automatic. A golden changes only inside a commit that says why, and the
@@ -19,7 +20,7 @@
 # targets from another row or hide a leak behind resources that row already allocated.
 set -e
 cd "$(dirname "$0")/.."
-sh scripts/ensureShaders.sh || exit 1
+export VOID_QUIET_WINDOW=1
 
 MSC="${MSC:-msc}"
 BACKEND_DIR=d3d11
@@ -51,13 +52,18 @@ case "$backend" in
 	gl)
 		BACKEND_DIR=gl430
 		RUNNER=out/goldenRunnerGl.exe
-		BACKEND_FLAGS="-d:voidGlCore --passC=-DSOKOL_GLCORE"
+		BACKEND_FLAGS="-d:voidGlCore --passC=-DVOID_GLCORE"
 		;;
 	metal)
 		BACKEND_DIR=metal
 		RUNNER=out/goldenRunnerMetal.exe
 		;;
-	*) echo "golden.sh: --backend is d3d11, gl or metal, not '$backend'" >&2; exit 2 ;;
+	vulkan)
+		BACKEND_DIR=vulkan
+		RUNNER=out/goldenRunnerVulkan.exe
+		BACKEND_FLAGS="-d:voidVulkan --passC=-DVOID_VULKAN"
+		;;
+	*) echo "golden.sh: --backend is d3d11, gl, metal or vulkan, not '$backend'" >&2; exit 2 ;;
 esac
 # The D3D11 set is the one authored golden set; another backend is only judged against it.
 if [ "$mode" = update ] && [ "$backend" != d3d11 ]; then
@@ -65,18 +71,7 @@ if [ "$mode" = update ] && [ "$backend" != d3d11 ]; then
 	exit 2
 fi
 
-# The object cache is keyed on the .c and not on the headers it includes, and --force does
-# not bypass it, so a changed capture.c or shader header would otherwise link stale objects
-# (~/metascript/.inbox/compiler/2026-09-20-object-cache-ignores-headers.md). The machine-wide
-# cache is left alone and not read (scripts/gate.sh step 1 says why).
-export MSC_NO_GLOBAL_CACHE=1
-evict() {
-	rm -f "$RUNNER" "$COMPARE"
-	rm -rf out/debug/.cache out/release/.cache
-}
-
 build() {
-	evict
 	# Release, for two reasons. VOID2D.md's baseline and tests/bench/ are release, so one
 	# build mode covers both; and sokol's validation layer, which a debug build links,
 	# aborts the process on two of the defects this suite exists to record —

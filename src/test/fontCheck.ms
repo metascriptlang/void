@@ -1,4 +1,5 @@
 import {
+	FaceError,
 	loadFace,
 	glyphIndex,
 	glyphAdvance,
@@ -34,7 +35,7 @@ import {
 	addFontBytes,
 	registerFaceBytes,
 } from "../void2d/font";
-import { readFile } from "std/fs";
+import { fontFileBytes, holdFontFile } from "./fontFile";
 
 when (voidSprites) {
 	import { isSpriteFace } from "../void2d/face";
@@ -58,14 +59,27 @@ const COLOUR_ONLY: string = "tests/fonts/cbdtSynthetic.ttf";
 const COLOUR_DRAWABLE: string = "tests/fonts/sbixSynthetic.ttf";
 const COLLECTION: string = "tests/fonts/symbolCollection.ttc";
 const JOINERS: string = "tests/fonts/cmap/joiners.ttf";
+const CFF_FACE: string = "tests/fonts/cffSynthetic.otf";
 const UNLOADABLE: string = "tests/fonts/cmap/coversButUnloadable.otf";
 const NO_OUTLINES: string = "tests/fonts/cmap/noOutlines.ttf";
+
+let fixturesHeld: boolean = false;
+
+function holdFixtures(): void {
+	if (fixturesHeld) { return; }
+	fixturesHeld = true;
+	for (const path of [
+		LATIN, CJK, LIGHT, HEAVY, NO_LINE_HEIGHT, TEXT_SYMBOL, COLOUR_ONLY, COLOUR_DRAWABLE,
+		JOINERS, UNLOADABLE, NO_OUTLINES, COLLECTION,
+	]) { holdFontFile(path); }
+}
 
 let registeredFamilies: boolean = false;
 
 function registerFamilies(): void {
 	if (registeredFamilies) { return; }
 	registeredFamilies = true;
+	holdFixtures();
 	registerFace(LATIN, "Test Sans", 400, FontStyle.Normal);
 	registerFace(LIGHT, "Weights", 300, FontStyle.Normal);
 	registerFace(LATIN, "Weights", 400, FontStyle.Normal);
@@ -86,6 +100,7 @@ function font(family: string, weight: int32, style: FontStyle): Font {
 }
 
 function added(path: string): FontId {
+	holdFixtures();
 	const r = addFont(path);
 	if (r.ok) { return r.value; }
 	console.log(`fontCheck: ${path} did not load (${r.error.toString()})`);
@@ -125,6 +140,7 @@ function layoutWith(fontId: FontId, text: string): TextLayout {
 }
 
 test "the primary face lacks a hanzi the fallback has" {
+	holdFixtures();
 	const primary = try loadFace(LATIN) catch -1;
 	assert glyphIndex(primary, 0x4F60) == 0;
 	const cjk = try loadFace(CJK) catch -1;
@@ -324,10 +340,7 @@ test "the resolver's first candidate Void can draw, cover and present wins, in o
 }
 
 function bytesOf(path: string): uint8[] {
-	const read = readFile(path);
-	if (read.ok) { return read.value.asBytes().slice(0); }
-	console.log(`fontCheck: ${path} did not read`);
-	unreachable;
+	return fontFileBytes(path);
 }
 
 test "a font given as bytes draws under a name no file has, and the same bytes again are accepted" {
@@ -346,6 +359,7 @@ test "a font given as bytes draws under a name no file has, and the same bytes a
 }
 
 test "bytes under a name already read from its file are refused" {
+	holdFixtures();
 	assert addFont(TEXT_SYMBOL).ok;
 	const taken = addFontBytes(TEXT_SYMBOL, bytesOf(CJK));
 	assert !taken.ok;
@@ -443,6 +457,19 @@ test "a fallback that covers a codepoint but will not load is skipped, and only 
 	assert faceSlotFor(keeper, 0x1F600, Presentation.Default) >= 0;
 	assert codepointFaceFor(broken, 0x1F600, Presentation.Default).face == fontFace(broken);
 	assert fallbackProbes() == probes;
+}
+
+when (voidCff) {
+} else {
+	test "a CFF face is refused by name when the CFF module is not built" {
+		holdFontFile(CFF_FACE);
+		const loaded = loadFace(CFF_FACE);
+		assert !loaded.ok;
+		if (!loaded.ok) { assert loaded.error == FaceError.NotAFont; }
+		const font = addFont(CFF_FACE);
+		assert !font.ok;
+		if (!font.ok) { assert font.error == FontError.NotLoaded; }
+	}
 }
 
 test "a selector or joiner takes the face before it and loads no face of its own" {

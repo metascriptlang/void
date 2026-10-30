@@ -34,13 +34,19 @@ import { rgba } from "../void2d/types";
 import { approx } from "./helpers";
 import { laid, laidRuns, shapedOf, widthOf } from "./layoutHelpers";
 import { glyphLookups } from "../void2d/face";
+import { holdFontFile } from "./fontFile";
+
+function held(path: string): string {
+	holdFontFile(path);
+	return path;
+}
 
 let loadedFont: FontId = DEFAULT_FONT;
 let fontLoaded: boolean = false;
 
 function style(): TextStyle {
 	if (!fontLoaded) {
-		loadedFont = try addFont("assets/font.ttf") catch DEFAULT_FONT;
+		loadedFont = try addFont(held("assets/font.ttf")) catch DEFAULT_FONT;
 		fontLoaded = true;
 	}
 	return {
@@ -282,14 +288,14 @@ const SYMBOL_COLOUR: string = "tests/fonts/sbixSynthetic.ttf";
 const BARE_PRIMARY: string = "tests/fonts/zeroLineHeight.ttf";
 
 function symbolStyle(): TextStyle {
-	const primary: FontId = try addFont(BARE_PRIMARY) catch DEFAULT_FONT;
-	addFallbackFont(primary, SYMBOL_COLOUR);
-	addFallbackFont(primary, SYMBOL_TEXT);
+	const primary: FontId = try addFont(held(BARE_PRIMARY)) catch DEFAULT_FONT;
+	addFallbackFont(primary, held(SYMBOL_COLOUR));
+	addFallbackFont(primary, held(SYMBOL_TEXT));
 	return { ...style(), font: primary };
 }
 
 function faceAt(path: string): int32 {
-	return fontFace(try addFont(path) catch DEFAULT_FONT);
+	return fontFace(try addFont(held(path)) catch DEFAULT_FONT);
 }
 
 test "a selector steers its base to the face of that presentation, whatever the fallback order" {
@@ -336,7 +342,7 @@ test "a tab already on a stop moves a whole stop, and a trailing one adds no wid
 }
 
 test "control characters never probe the fallback faces" {
-	const id: FontId = try addFont("assets/font.ttf") catch DEFAULT_FONT;
+	const id: FontId = try addFont(held("assets/font.ttf")) catch DEFAULT_FONT;
 	assert id != DEFAULT_FONT;
 	const fresh: TextStyle = { ...style(), font: id };
 	laid("x", fresh);
@@ -493,16 +499,60 @@ test "under force_width a row one cell too long breaks at the space its cells re
 	assert l.lines[0].width == 912.0;
 }
 
-test "under force_width a glyph wider than its cell and a quarter shrinks to that width" {
+test "under force_width a primary-face glyph wider than its cell keeps its size" {
 	const l = laidInCells("Wi");
-	const room: float32 = 8.0 * 1.25;
 	const wide = l.glyphs[0];
 	const box = glyphInkBox(wide.face, wide.glyph, wide.size);
-	assert wide.size < 20.0;
-	assert box[2] - box[0] <= room + 1.0;
-	assert box[2] - box[0] > room - 2.0;
+	assert wide.face == fontFace(cellRow().font);
+	assert box[2] - box[0] > 8.0 * 1.25 + 2.0;
+	assert wide.size == 20.0;
 	assert l.glyphs[1].size == 20.0 && l.glyphs[1].x == 8.0;
 	assert l.lines[0].width == 16.0;
+}
+
+when (voidShaper) {
+	test "under force_width a ligature keeps its size across the cells of the graphemes it consumed" {
+		const fixture: FontId = try addFont("tests/fonts/shapeFixture.ttf") catch DEFAULT_FONT;
+		const row: TextStyle = { ...cellRow(), font: fixture, size: 25.0 };
+		const noRuns: TextRun[] = [];
+		const noBreaks: int32[] = [];
+		const cells: LineOptions = { ...PLAIN_LINES, forceWidth: 8.0 };
+		const l = wrapText(shapedOf("fi", row, noRuns, noBreaks), row, cells);
+		const lig = l.glyphs[0];
+		const box = glyphInkBox(lig.face, lig.glyph, lig.size);
+		assert l.glyphs[1].glyph == NO_GLYPH;
+		assert box[2] - box[0] > 8.0 * 1.25 + 1.0;
+		assert lig.size == 25.0;
+	}
+}
+
+test "under force_width a fallback-face glyph wider than its cell and a quarter shrinks to that width" {
+	addFallbackFont(cellRow().font, "tests/fonts/NotoSansSC-subset.ttf");
+	const l = laidInCells("\u4F60");
+	const wide = l.glyphs[0];
+	const box = glyphInkBox(wide.face, wide.glyph, wide.size);
+	assert wide.face != fontFace(cellRow().font);
+	assert wide.size < 20.0;
+	assert box[2] - box[0] <= 8.0 * 1.25 + 1.0;
+	assert box[2] - box[0] > 8.0 * 1.25 - 2.0;
+}
+
+test "under force_width a row holding a taller fallback face keeps the primary face's baseline and height" {
+	addFallbackFont(cellRow().font, "tests/fonts/NotoSansSC-subset.ttf");
+	const own = faceMetrics(fontFace(cellRow().font), 20.0);
+	const noRuns: TextRun[] = [];
+	const noBreaks: int32[] = [];
+	const cells: LineOptions = { ...PLAIN_LINES, forceWidth: 20.0 };
+	const l = wrapText(shapedOf("ab\n\u4F60b", cellRow(), noRuns, noBreaks), cellRow(), cells);
+	const fallback = faceMetrics(l.glyphs[2].face, l.glyphs[2].size);
+	const height: float32 = own.ascent + own.descent + own.lineGap;
+	assert l.glyphs[2].face != fontFace(cellRow().font);
+	assert fallback.ascent > own.ascent;
+	for (let k = 0; k < 2; k++) {
+		assert approx(l.lines[k].height, height);
+		assert approx(l.lines[k].baseline - l.lines[k].top, own.ascent);
+	}
+	assert approx(l.lines[1].top, height);
 }
 
 test "splitAt cuts one line without shaping it again" {

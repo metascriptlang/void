@@ -14,17 +14,16 @@
 import {
 	void2dSetup, void2dWhiteView, void2dSetDpiScale, void2dFrameBegin,
 	void2dGlyphPageView, void2dGlyphUploadCount, void2dGlyphUploadBytes, void2dSetTextGamma,
-	void2dReplay, void2dReplayTargets, void2dReplayList, void2dLayoutCheck, void2dSetScopes,
+	void2dReplay, void2dReplayTargets, void2dReplayList,
 	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
-	void2dVertexBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
+	void2dVertexBufferBytes, void2dDroppedFrames,
 	void2dAtlasImagesAlive, void2dFrameEnd, void2dFrameSerial, void2dFailPendingTargets,
 	void2dRememberContext, void2dActivateContext,
-	void2dScissorMin, void2dScissorMax,
-	void2dUiInstanceStride, void2dSpriteInstanceStride,
-	void2dPackChannel,
-	void2dProgramBase, void2dLayoutBase, void2dSetPipeline,
-} from "./batcher.h";
-import { void2dGlyphPageCount } from "./glyph.h";
+	void2dSetPipeline,
+} from "./batcher";
+import { scissorMin, scissorMax, growthTarget as growthTargetOf } from "./coverage";
+import { setCommitHook } from "../gpu/frameCommit";
+import { void2dGlyphPageCount } from "./glyph";
 import { beginGlyphFrame, setSdfRegime } from "./labelText";
 import { GlyphPageHandle } from "./glyphAtlas";
 import { gammaRatios, DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST } from "./textGamma";
@@ -34,7 +33,7 @@ import {
 	COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS, NO_EFFECT,
 	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_VIEW_HIGH, CMD_BLEND,
 	CMD_SAMPLER, CMD_EFFECT, CMD_CLIP_X, CMD_CLIP_U_X, CMD_ARG0, CMD_RT_MODE, CMD_CLEAR_R,
-	CMD_PIPELINE,
+	CMD_PIPELINE, CMD_CLIP_ROUND_U,
 	EFFECT_GRADIENT_META, EFFECT_GRADIENT_PARAMS, EFFECT_GRADIENT_COLOR0,
 	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
 	SAMPLER_COUNT, SOURCE_PREMULTIPLIED, samplerIndex,
@@ -46,29 +45,30 @@ import {
 	targetDepth, renderTargetScaleNow, beginTargetList, endTargetList,
 	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
 	Pipeline, NO_CLIP, Clip, MaskClip, NO_MASK_CLIP, NO_MASK, PaintIndex, pushMaskClip, maskClipAt,
+	RoundClip, NO_ROUND_CLIP,
 	ScopeRecord, NO_SCOPE, pushScope, scopeRow, resolveScopes,
 	pushSpriteInstance, putSpriteInstance, recordSpriteDraw, pipelineAt, runOffset, commandView,
 	Program2D, PROGRAMS_2D, BLEND_MODES, PIPELINE_SLOTS, pipelineWanted, noPipelines,
 	pipelineSlot, wantPipelineSlot,
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, Smooth, rgba } from "./types";
+import { CornerRadii } from "./boxStyle";
+import { roundedRectDistance } from "./sdf";
 import { Mat4 } from "../math/math3d";
 import { sqrtf } from "../math/mat4";
 import { NO_COLOR_MATRIX } from "./effect";
 import {
 	PassState, PixelFormat, passState, frameIndex, contextGeneration, endPass, imageAlive, viewAlive,
 } from "../gpu/door";
-import { doorBeginColorPass } from "../gpu/door.h";
+import { doorBeginColorPass } from "../gpu/doorGpu.ms";
+import { programBase, layoutBase } from "./programs.ms";
 when (voidProfiler) {
 	import { profilerSetup, profilerCollect, profilerFrameOpened } from "./frameMarks";
 }
 import { PipelineCache, pipelineFor } from "../gpu/pipeline";
 import { RenderState, Face, Compare, Blend, BlendMode } from "../gpu/state";
 import { RenderTarget, TargetLayout, SWAPCHAIN_LAYOUT } from "../gpu/target";
-import { fbWidth, fbHeight } from "../sokol/gpu";
-
-const programBase: int32 = void2dProgramBase();
-const layoutBase: int32 = void2dLayoutBase();
+import { fbWidth, fbHeight } from "../host/gpu";
 
 const OFFSCREEN_LAYOUT: TargetLayout = {
 	color0: PixelFormat.Rgba8,
@@ -157,10 +157,10 @@ export function currentRenderScale(): float32 {
 }
 
 export function scissorMinDevice(edge: float32, scale: float32): int32 {
-	return void2dScissorMin(edge, scale);
+	return scissorMin(edge, scale);
 }
 export function scissorMaxDevice(edge: float32, scale: float32): int32 {
-	return void2dScissorMax(edge, scale);
+	return scissorMax(edge, scale);
 }
 
 export function atlasImagesAlive(): int32 { return void2dAtlasImagesAlive(); }
@@ -181,7 +181,7 @@ export function setTextGamma(gamma: float32, contrast: float32): void {
 export function frameEnd(): void { void2dFrameEnd(); }
 
 export function growthTarget(have: int32, need: int32): int32 {
-	return void2dGrowthTarget(have, need);
+	return growthTargetOf(have, need);
 }
 
 // Counted from the stream rather than from the GPU, so T1 can read them with no GPU at all.
@@ -468,34 +468,12 @@ function useRun(pipeline: Pipeline, view: uint32, premultiplied: boolean, blend:
 }
 
 export function setup2d(): void {
+	setCommitHook(void2dFrameEnd);
 	void2dSetup();
 	when (voidProfiler) { profilerSetup(); }
 	when (voidSdfText) { setSdfRegime(true); }
 	setTextGamma(DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST);
-	// The emitter and the replay are two hand-written readers of one byte layout, so they
-	// are made to agree out loud rather than by inspection.
-	if (void2dLayoutCheck(
-		COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS,
-		CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT,
-		CMD_VIEW, CMD_VIEW_HIGH, CMD_BLEND, CMD_SAMPLER, CMD_EFFECT, SAMPLER_COUNT,
-		CMD_CLEAR_R,
-		CMD_CLIP_X, CMD_CLIP_U_X, CMD_ARG0, CMD_RT_MODE,
-		CommandKind.Draw as int32, CommandKind.Scissor as int32, CommandKind.Blur as int32,
-		CommandKind.TargetBegin as int32, CommandKind.TargetEnd as int32,
-		Program2D.Vertex as int32, Program2D.Sprite as int32, Program2D.Ui as int32,
-		Program2D.Blur as int32, PROGRAMS_2D, BLEND_MODES,
-	) == 0) {
-		console.log("void2d: the display-list layout in displayList.ms and batcher.c disagree");
-		unreachable;
-	}
 }
-
-export function uiInstanceStride(): int32 { return void2dUiInstanceStride(); }
-
-// The colour pack as C does it on the way into the GPU buffer, re-exported so T0 can hold it
-// against `instance.ms`'s `packChannel`: guardrail 9 must not rest on two copies that look alike.
-export function packChannelC(value: float32): int32 { return void2dPackChannel(value); }
-export function spriteInstanceStride(): int32 { return void2dSpriteInstanceStride(); }
 
 
 // h2d has no DPI concept; void2d needs one because snapping and the pixel-exact text regime
@@ -560,28 +538,29 @@ export function flushTargets(): void {
 	resolveScopes();
 	resolvePipelines();
 	void2dSetDpiScale(l.frameDpi);
-	void2dSetScopes(l.scopeValues[0], l.scopeTotal);
 	const targets: int32 = l.targetsPending ? targetCommandCount() : 0;
 	l.targetsPending = false;
 	if (isDefaultContext(l)) {
 		ctx.frameLive = void2dReplayTargets(
-			l.targetCommands[0], targets,
-			l.effects[0], effectCount(),
-			l.vertices[0], vertexCount(),
-			l.spriteInstances[0], spriteInstanceCount(),
-			l.uiInstances[0], uiInstanceCount(),
-		) != 0;
+			l.targetCommands, targets,
+			l.effects, effectCount(),
+			l.scopeValues, l.scopeTotal,
+			l.vertices, vertexCount(),
+			l.spriteInstances, spriteInstanceCount(),
+			l.uiInstances, uiInstanceCount(),
+		);
 	} else {
 		ctx.frameLive = void2dReplayList(
-			l.id, l.targetCommands[0], targets,
-			l.effects[0], effectCount(),
-			l.vertices[0], vertexCount(), (l.uploadAll || l.dirtyVertices) ? 1 : 0,
-			l.spriteInstances[0], spriteInstanceCount(), (l.uploadAll || l.dirtySprites) ? 1 : 0,
-			l.uiInstances[0], uiInstanceCount(),
-			l.dirtyUi[0], l.uploadAll ? -1 : l.dirtyUiTotal,
-		) != 0;
+			l.id, l.targetCommands, targets,
+			l.effects, effectCount(),
+			l.scopeValues, l.scopeTotal,
+			l.vertices, vertexCount(), l.uploadAll || l.dirtyVertices,
+			l.spriteInstances, spriteInstanceCount(), l.uploadAll || l.dirtySprites,
+			l.uiInstances, uiInstanceCount(),
+			l.dirtyUi, l.uploadAll ? -1 : l.dirtyUiTotal,
+		);
 	}
-	void2dRememberContext(l.id, l.frameLive ? 1 : 0);
+	void2dRememberContext(l.id, l.frameLive);
 	uploaded();
 	ctx.targetsFlushed = true;
 }
@@ -710,11 +689,12 @@ export function end2d(): void {
 function replayScreen(l: DrawContext2D, from: int32, to: int32): void {
 	if (to <= from) { return; }
 	void2dSetDpiScale(l.frameDpi);
-	void2dSetScopes(l.scopeValues[0], l.scopeTotal);
-	if (void2dActivateContext(l.id) == 0) { return; }
+	if (!void2dActivateContext(l.id)) { return; }
 	void2dReplay(
-		l.commands[from * COMMAND_FLOATS], to - from,
-		l.effects[0], effectCount(),
+		l.commands[from * COMMAND_FLOATS..to * COMMAND_FLOATS], to - from,
+		l.effects, effectCount(),
+		l.scopeValues, l.scopeTotal,
+		l.vertices, l.spriteInstances, l.uiInstances,
 		l.fbW, l.fbH,
 	);
 }
@@ -745,10 +725,16 @@ function clipOf(c: MaskClip): Clip {
 	if (ih < 0.0) { ih = 0.0; }
 	const uShift: float32 = ctx.originX * c.ux + ctx.originY * c.uy;
 	const vShift: float32 = ctx.originX * c.vx + ctx.originY * c.vy;
+	const r: RoundClip = c.round;
 	return {
 		x: ix - ctx.originX, y: iy - ctx.originY, w: iw, h: ih,
 		ux: c.ux, uy: c.uy, uMin: c.uMin - uShift, uMax: c.uMax - uShift,
 		vx: c.vx, vy: c.vy, vMin: c.vMin - vShift, vMax: c.vMax - vShift,
+		round: {
+			...r,
+			uOffset: r.uOffset - (ctx.originX * r.ux + ctx.originY * r.uy),
+			vOffset: r.vOffset - (ctx.originX * r.vx + ctx.originY * r.vy),
+		},
 	};
 }
 
@@ -783,7 +769,85 @@ export function clipIntersectsQuad(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): bool
 		&& minFour(v0, v1, v2, v3) < c.vMax;
 }
 
+// A point's fraction along each edge is its cross product with the other edge over the
+// determinant, which stays exact under shear, where projecting on a normalised axis does not.
+export function roundClipOf(
+	tl: Vec2, tr: Vec2, bl: Vec2, w: float32, h: float32, radii: CornerRadii,
+): RoundClip {
+	const ex: float32 = tr.x - tl.x;
+	const ey: float32 = tr.y - tl.y;
+	const fx: float32 = bl.x - tl.x;
+	const fy: float32 = bl.y - tl.y;
+	const det: float32 = ex * fy - ey * fx;
+	if (det == 0.0 || w <= 0.0 || h <= 0.0) { return NO_ROUND_CLIP; }
+	const scale: float32 = Math.sqrt(
+		(Math.sqrt((ex * ex + ey * ey) as float64) / (w as float64))
+		* (Math.sqrt((fx * fx + fy * fy) as float64) / (h as float64))) as float32;
+	const su: float32 = w * scale / det;
+	const sv: float32 = h * scale / det;
+	return {
+		ux: fy * su, uy: -fx * su, uOffset: (tl.x * fy - tl.y * fx) * su + 0.5 * w * scale,
+		uHalf: 0.5 * w * scale,
+		vx: -ey * sv, vy: ex * sv, vOffset: (tl.y * ex - tl.x * ey) * sv + 0.5 * h * scale,
+		vHalf: 0.5 * h * scale,
+		topLeft: radii.topLeft * scale, topRight: radii.topRight * scale,
+		bottomRight: radii.bottomRight * scale, bottomLeft: radii.bottomLeft * scale,
+	};
+}
+
+function rounded(r: RoundClip): boolean {
+	return r.topLeft > 0.0 || r.topRight > 0.0 || r.bottomRight > 0.0 || r.bottomLeft > 0.0;
+}
+
+const ROUND_TOLERANCE: float32 = 0.001;
+
+function roundDistance(r: RoundClip, p: Vec2): float32 {
+	return roundedRectDistance(
+		p.x * r.ux + p.y * r.uy - r.uOffset, p.x * r.vx + p.y * r.vy - r.vOffset, r.uHalf, r.vHalf,
+		maxFour(r.topLeft, r.topRight, r.bottomRight, r.bottomLeft));
+}
+
+function sameRoundFrame(a: RoundClip, b: RoundClip): boolean {
+	return absf(a.ux - b.ux) < 0.0001 && absf(a.uy - b.uy) < 0.0001
+		&& absf(a.vx - b.vx) < 0.0001 && absf(a.vy - b.vy) < 0.0001;
+}
+
+function cornerDiskInside(
+	inner: RoundClip, sx: float32, sy: float32, radius: float32, outer: RoundClip,
+): boolean {
+	const limit: float32 = inner.uHalf < inner.vHalf ? inner.uHalf : inner.vHalf;
+	const r: float32 = radius < limit ? radius : limit;
+	const px: float32 = sx * (inner.uHalf - r) + inner.uOffset - outer.uOffset;
+	const py: float32 = sy * (inner.vHalf - r) + inner.vOffset - outer.vOffset;
+	return roundedRectDistance(px, py, outer.uHalf, outer.vHalf,
+		maxFour(outer.topLeft, outer.topRight, outer.bottomRight, outer.bottomLeft)) + r
+		<= ROUND_TOLERANCE;
+}
+
+// A rounded rect is the hull of its four corner disks, so it lies inside a convex shape when
+// each disk does; `outer` is judged with its largest radius, which can only shrink it.
+function roundInside(inner: RoundClip, outer: RoundClip): boolean {
+	return sameRoundFrame(inner, outer)
+		&& cornerDiskInside(inner, -1.0, -1.0, inner.topLeft, outer)
+		&& cornerDiskInside(inner, 1.0, -1.0, inner.topRight, outer)
+		&& cornerDiskInside(inner, 1.0, 1.0, inner.bottomRight, outer)
+		&& cornerDiskInside(inner, -1.0, 1.0, inner.bottomLeft, outer);
+}
+
+function quadInside(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2, outer: RoundClip): boolean {
+	return roundDistance(outer, tl) <= ROUND_TOLERANCE
+		&& roundDistance(outer, tr) <= ROUND_TOLERANCE
+		&& roundDistance(outer, br) <= ROUND_TOLERANCE
+		&& roundDistance(outer, bl) <= ROUND_TOLERANCE;
+}
+
 export function pushClip(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
+	return pushRoundedClip(tl, tr, br, bl, NO_ROUND_CLIP);
+}
+
+export function pushRoundedClip(
+	tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2, round: RoundClip,
+): boolean {
 	const ctx: DrawContext2D = currentContext();
 	let x0: float32 = minFour(tl.x, tr.x, br.x, bl.x);
 	let y0: float32 = minFour(tl.y, tr.y, br.y, bl.y);
@@ -811,7 +875,18 @@ export function pushClip(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
 	let supported: boolean = true;
 	const axisAligned: boolean = (absf(ey) < 0.0001 && absf(fx) < 0.0001)
 		|| (absf(ex) < 0.0001 && absf(fy) < 0.0001);
-	if (!axisAligned && exLen > 0.0 && fLen > 0.0) {
+	if (rounded(round)) {
+		if (!rounded(next.round) || roundInside(round, next.round)
+				|| quadInside(tl, tr, br, bl, next.round)) {
+			next = { ...next, round: round };
+		} else if (!roundInside(next.round, round)) {
+			console.log("void2d: nested rounded Masks cross at a corner, " +
+				"so no one rounded rect is their intersection");
+			x1 = x0;
+			y1 = y0;
+			supported = false;
+		}
+	} else if (!axisAligned && exLen > 0.0 && fLen > 0.0) {
 		const ux: float32 = fy / fLen;
 		const uy: float32 = -fx / fLen;
 		const vx: float32 = -ey / exLen;

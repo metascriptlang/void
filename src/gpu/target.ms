@@ -10,7 +10,6 @@ import {
 	LoadAction,
 	StoreAction,
 	makeTargetImage,
-	makeAttachmentView,
 	makeTextureView,
 	makeSampler,
 	destroyImage,
@@ -26,19 +25,13 @@ import {
 	environmentColorFormat,
 	environmentDepthFormat,
 	environmentSampleCount,
+	MAX_COLOR_ATTACHMENTS,
 } from "./door";
+import { ColorAttachment, DepthAttachment, TargetLayout } from "./doorGpu.ms";
+import { stop } from "./stop";
 import { FilterMode, Wrap } from "./state";
-import {
-	DOOR_MAX_COLOR_ATTACHMENTS,
-	DOOR_PASS_COLOR_VIEW,
-	DOOR_PASS_COLOR_LOAD,
-	DOOR_PASS_DEPTH_VIEW,
-	DOOR_PASS_DEPTH_LOAD,
-	DOOR_PASS_DEPTH_STORE,
-	DOOR_PASS_LENGTH,
-	DOOR_PASS_CLEAR_DEPTH,
-	DOOR_PASS_CLEAR_LENGTH,
-} from "./door.h";
+
+export { ColorAttachment, DepthAttachment, TargetLayout } from "./doorGpu.ms";
 
 export interface RenderTarget {
 	width: int32;
@@ -50,34 +43,6 @@ export interface RenderTarget {
 	texture: uint32;
 	generation: int32;
 	closed: boolean;
-}
-
-export struct ColorAttachment {
-	view: uint32;
-	format: PixelFormat;
-	load: LoadAction;
-	clear: Vec4;
-	generation: int32;
-}
-
-export struct DepthAttachment {
-	view: uint32;
-	format: PixelFormat;
-	load: LoadAction;
-	store: StoreAction;
-	clear: float32;
-	generation: int32;
-}
-
-// The attachment formats a pipeline is built for (the render-target half of Heaps'
-// PipelineBuilder signature). A pipeline only draws into a pass with the same layout.
-export struct TargetLayout {
-	color0: PixelFormat;
-	color1: PixelFormat;
-	color2: PixelFormat;
-	color3: PixelFormat;
-	depth: PixelFormat;
-	sampleCount: int32;
 }
 
 // A sampler keeps its settings for the same reason a target does.
@@ -94,14 +59,7 @@ export const NO_DEPTH: DepthAttachment = {
 	load: LoadAction.DontCare,
 	store: StoreAction.DontCare,
 	clear: 1.0,
-	generation: 0,
-};
-
-const UNUSED_COLOR: ColorAttachment = {
-	view: 0,
-	format: PixelFormat.None,
-	load: LoadAction.DontCare,
-	clear: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 },
+	stencilClear: null,
 	generation: 0,
 };
 
@@ -117,9 +75,6 @@ export const SWAPCHAIN_LAYOUT: TargetLayout = {
 
 const FORMAT_BITS: int32 = 4;
 
-let passDescriptor: Vec<uint32> = new Array(DOOR_PASS_LENGTH);
-let passClear: Vec<float32> = new Array(DOOR_PASS_CLEAR_LENGTH);
-
 // A `sampled` target also gets a texture view, for a later pass to read it.
 export function allocate(
 	this typeof RenderTarget,
@@ -133,25 +88,26 @@ export function allocate(
 	return target;
 }
 
-function stopOnOtherContext(call: string, what: string, generation: int32, remedy: string): void {
-	console.log(`gpu door: ${call} on a ${what} of GPU context ${generation}; the context is now ` +
+function stopOnOtherContext(
+	call: string,
+	what: string,
+	generation: int32,
+	remedy: string,
+): never {
+	stop(`${call} on a ${what} of GPU context ${generation}; the context is now ` +
 		`${contextGeneration()}, and ${remedy}`);
-	unreachable;
 }
 
-function stopOnReleased(call: string, what: string): void {
-	console.log(`gpu door: ${call} on a ${what} that was released`);
-	unreachable;
+function stopOnReleased(call: string, what: string): never {
+	stop(`${call} on a ${what} that was released`);
 }
 
-function stopOnClosedTarget(call: string): void {
-	console.log(`gpu door: ${call} on a render target that was closed`);
-	unreachable;
+function stopOnClosedTarget(call: string): never {
+	stop(`${call} on a render target that was closed`);
 }
 
-function stopOnDestroyedView(call: string, view: uint32): void {
-	console.log(`gpu door: ${call} on a render target whose view ${view} was destroyed`);
-	unreachable;
+function stopOnDestroyedView(call: string, view: uint32): never {
+	stop(`${call} on a render target whose view ${view} was destroyed`);
 }
 
 function holdsLive(this target: RenderTarget, call: string): boolean {
@@ -218,14 +174,13 @@ function forgetHandles(target: RenderTarget): void {
 	target.generation = 0;
 }
 
-function stopOnRefusedTarget(target: RenderTarget, what: string): void {
+function stopOnRefusedTarget(target: RenderTarget, what: string): never {
 	if (target.texture != 0) { destroyView(target.texture); }
 	if (target.attachment != 0) { destroyView(target.attachment); }
 	if (target.image != 0) { destroyImage(target.image); }
 	forgetHandles(target);
-	console.log(`gpu door: resize refused a ${target.width}x${target.height} ` +
+	stop(`resize refused a ${target.width}x${target.height} ` +
 		`${target.format.toString()} target ${what}`);
-	unreachable;
 }
 
 export function resize(this target: RenderTarget, width: int32, height: int32): void {
@@ -239,7 +194,7 @@ export function resize(this target: RenderTarget, width: int32, height: int32): 
 	target.height = height;
 	target.image = makeTargetImage(width, height, target.format);
 	if (target.image == 0) { stopOnRefusedTarget(target, "image"); }
-	target.attachment = makeAttachmentView(target.image, target.format);
+	target.attachment = makeTextureView(target.image);
 	if (target.attachment == 0) { stopOnRefusedTarget(target, "attachment view"); }
 	target.texture = target.sampled ? makeTextureView(target.image) : 0;
 	if (target.sampled && target.texture == 0) { stopOnRefusedTarget(target, "texture view"); }
@@ -266,6 +221,7 @@ export function asDepth(
 	load: LoadAction,
 	clear: float32,
 	store: StoreAction,
+	stencilClear: uint8 | null = null,
 ): DepthAttachment {
 	target.requireLive("asDepth", target.attachment);
 	return {
@@ -274,19 +230,18 @@ export function asDepth(
 		load: load,
 		store: store,
 		clear: clear,
+		stencilClear: stencilClear,
 		generation: target.generation,
 	};
 }
 
-function stopOnEmptyTarget(): void {
-	console.log("gpu door: asTexture on a render target with no GPU objects; " +
+function stopOnEmptyTarget(): never {
+	stop("asTexture on a render target with no GPU objects; " +
 		"resize allocates it");
-	unreachable;
 }
 
-function stopOnUnsampledTarget(): void {
-	console.log("gpu door: asTexture on a render target allocated without a texture view");
-	unreachable;
+function stopOnUnsampledTarget(): never {
+	stop("asTexture on a render target allocated without a texture view");
 }
 
 export function asTexture(this target: RenderTarget): uint32 {
@@ -319,8 +274,7 @@ export function released(this sampler: Sampler): Sampler {
 
 export function asHandle(this sampler: Sampler): uint32 {
 	if (sampler.handle == 0) {
-		console.log("gpu door: asHandle on a sampler with no handle; Sampler.create makes one");
-		unreachable;
+		stop("asHandle on a sampler with no handle; Sampler.create makes one");
 	}
 	if (sampler.generation != contextGeneration()) {
 		stopOnOtherContext("asHandle", "sampler", sampler.generation,
@@ -335,13 +289,12 @@ function formatAt(colors: Readonly<Span<ColorAttachment>>, index: int32): PixelF
 }
 
 function stopOnTooManyColors(call: string, colors: Readonly<Span<ColorAttachment>>): void {
-	if ((colors.length as int32) <= DOOR_MAX_COLOR_ATTACHMENTS) { return; }
-	console.log(`gpu door: ${call} takes at most ${DOOR_MAX_COLOR_ATTACHMENTS} color ` +
+	if ((colors.length as int32) <= MAX_COLOR_ATTACHMENTS) { return; }
+	stop(`${call} takes at most ${MAX_COLOR_ATTACHMENTS} color ` +
 		`attachments, given ${colors.length}`);
-	unreachable;
 }
 
-// Offscreen targets are single-sampled (door.c makes them with sample_count 1).
+// Offscreen targets are single-sampled (doorGpu.ms makes them with sampleCount 1).
 export function layoutOf(
 	colors: Readonly<Span<ColorAttachment>>, depth: DepthAttachment,
 ): TargetLayout {
@@ -435,17 +388,15 @@ export function toString(this layout: TargetLayout): string {
 	return `colors=${colors} depth=${layout.depth.toString()} sampleCount=${layout.sampleCount}`;
 }
 
-function stopOnEmptyAttachment(index: int32): void {
+function stopOnEmptyAttachment(index: int32): never {
 	const what: string = index < 0 ? "the depth attachment" : `color attachment ${index}`;
-	console.log(`gpu door: beginPass on ${what}, which has no view; resize allocates its target`);
-	unreachable;
+	stop(`beginPass on ${what}, which has no view; resize allocates its target`);
 }
 
-function stopOnStaleAttachment(index: int32, generation: int32): void {
+function stopOnStaleAttachment(index: int32, generation: int32): never {
 	const what: string = index < 0 ? "the depth attachment" : `color attachment ${index}`;
-	console.log(`gpu door: beginPass on ${what} of GPU context ${generation}; the context is now ` +
+	stop(`beginPass on ${what} of GPU context ${generation}; the context is now ` +
 		`${contextGeneration()}`);
-	unreachable;
 }
 
 export function beginPass(colors: Readonly<Span<ColorAttachment>>, depth: DepthAttachment): void {
@@ -459,20 +410,7 @@ export function beginPass(colors: Readonly<Span<ColorAttachment>>, depth: DepthA
 	if (depth.view != 0 && depth.generation != generation) {
 		stopOnStaleAttachment(-1, depth.generation);
 	}
-	for (let i = 0; i < DOOR_MAX_COLOR_ATTACHMENTS; i++) {
-		const color: ColorAttachment = i < (colors.length as int32) ? colors[i] : UNUSED_COLOR;
-		passDescriptor[DOOR_PASS_COLOR_VIEW + i] = color.view;
-		passDescriptor[DOOR_PASS_COLOR_LOAD + i] = (color.load as int32) as uint32;
-		passClear[i * 4] = color.clear.x;
-		passClear[i * 4 + 1] = color.clear.y;
-		passClear[i * 4 + 2] = color.clear.z;
-		passClear[i * 4 + 3] = color.clear.w;
-	}
-	passDescriptor[DOOR_PASS_DEPTH_VIEW] = depth.view;
-	passDescriptor[DOOR_PASS_DEPTH_LOAD] = (depth.load as int32) as uint32;
-	passDescriptor[DOOR_PASS_DEPTH_STORE] = (depth.store as int32) as uint32;
-	passClear[DOOR_PASS_CLEAR_DEPTH] = depth.clear;
-	beginPassWith(passDescriptor, passClear);
+	beginPassWith(colors, depth);
 }
 
 // The host's swapchain, color cleared to `clear` and depth to 1; pipelines use SWAPCHAIN_LAYOUT.

@@ -17,7 +17,7 @@ function source(): Texture2d {
 
 function copyAt(x: float32, y: float32): Vec4f {
 	const input: CopyInput = { position: { x, y, z: 0.5, w: 1.0 } };
-	return copyFs(input, { sourceTexture: source(), pointSampler: { nearest: true } });
+	return copyFs(input, { sourceTexture: source() });
 }
 
 test "copy reads the texel under the pixel centre, alpha included" {

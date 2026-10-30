@@ -1,5 +1,5 @@
 import { env } from "std/process";
-import { gfxSetup } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/host/gpu";
 import { beginScreenPassWith, endPass, commit } from "../../src/gpu/door";
 import {
 	setup2d, begin2d, finishRecording, frameEnd, glyphPageView, setTextGamma,
@@ -15,14 +15,14 @@ import {
 	void2dGlyphPageCreate, void2dGlyphPageRelease, void2dGlyphPageKind,
 	void2dGlyphPageTexel, void2dGlyphPageTexelRgba,
 	void2dGlyphPageBlitMask, void2dGlyphPageBlitRgba,
-} from "../../src/void2d/glyph.h";
+} from "../../src/void2d/glyph";
 import {
 	voidCaptureBackend, voidCaptureRenderer, voidCaptureEnvInt, voidCapturePixel,
 	voidCaptureGrab, voidCaptureWidth, voidCaptureHeight, voidCaptureSlotsDiffer,
 	voidCaptureWritePng, voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, samples: int32, highDpi: int32,
 	init: () => void, frame: () => void,
@@ -58,8 +58,8 @@ function makePages(): void {
 		alpha.push(255);
 		pixels.push(0x80204080);
 	}
-	if (void2dGlyphPageBlitMask(maskPage, 0, 0, 32, 32, alpha[0], 1024, 32) != 0 ||
-		void2dGlyphPageBlitRgba(rgbaPage, 0, 0, 32, 32, pixels[0], 32) != 0) {
+	if (void2dGlyphPageBlitMask(maskPage, 0, 0, 32, 32, alpha, 32) != 0 ||
+		void2dGlyphPageBlitRgba(rgbaPage, 0, 0, 32, 32, pixels, 32) != 0) {
 		fail("page fill refused");
 	}
 	if (void2dGlyphPageKind(maskPage) != PageKind.Mask as int32 ||

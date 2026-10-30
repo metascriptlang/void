@@ -1,7 +1,3 @@
-import "./textSdfSwitch";
-import "./textOutlineSwitch";
-import "./textColourSwitch";
-import "./svgMaskSwitch";
 import {
 	void2dGlyphRasterize,
 	void2dGlyphPageCreate,
@@ -12,14 +8,11 @@ import {
 	void2dGlyphPageUploaded,
 	void2dGlyphPageTakeUpload,
 	void2dGlyphPagesFrameBegin,
-} from "./glyph.h";
+} from "./glyph";
 import { glyphBox } from "./glyphBoxes";
 
 when (voidSvg) {
-	extern function void2dGlyphPageBlitMask(
-		page: int32, x: int32, y: int32, width: int32, height: int32,
-		alpha: Readonly<Span<uint8>>, stride: int32,
-	): int32;
+	import { void2dGlyphPageBlitMask } from "./glyph";
 }
 
 export const SUBPIXEL_VARIANTS: int32 = 4;
@@ -109,6 +102,7 @@ struct AtlasPage {
 	handle: GlyphPageHandle;
 	top: int32;
 	drawnFrame: int32;
+	placedArea: int32;
 }
 
 export interface GlyphAtlas {
@@ -330,6 +324,7 @@ export function ensurePage(this atlas: GlyphAtlas): GlyphPageHandle {
 				handle: handle as GlyphPageHandle,
 				top: 0,
 				drawnFrame: -1,
+				placedArea: 0,
 			});
 			first = (atlas.pages.length as int32) - 1;
 		}
@@ -343,6 +338,11 @@ export function pagesOfKind(this atlas: GlyphAtlas, kind: PageKind): int32 {
 		if (page.kind == kind) { pages = pages + 1; }
 	}
 	return pages;
+}
+
+export function occupancy(this atlas: GlyphAtlas, page: GlyphPage): float32 {
+	const side: float32 = atlas.pageSize as float32;
+	return (atlas.pages[page as int32].placedArea as float32) / (side * side);
 }
 
 export function bytesOfKind(this atlas: GlyphAtlas, kind: PageKind): int32 {
@@ -404,6 +404,7 @@ function placeOnPage(
 			height * 4 >= shelf.height * 3 && shelf.cursor + width <= size;
 		if (fits) {
 			atlas.shelves[s].cursor = shelf.cursor + width;
+			atlas.pages[page as int32].placedArea += width * height;
 			return Result.ok([shelf.cursor, shelf.y]);
 		}
 	}
@@ -411,6 +412,7 @@ function placeOnPage(
 	if (top + height > size || width > size) { return Result.err(AtlasError.Full); }
 	atlas.shelves.push({ page: page, y: top, height: height, cursor: width });
 	atlas.pages[page as int32].top = top + height;
+	atlas.pages[page as int32].placedArea += width * height;
 	return Result.ok([0, top]);
 }
 
@@ -434,6 +436,7 @@ function reclaimPage(atlas: GlyphAtlas, kind: PageKind): Result<GlyphPage, Atlas
 		}
 		atlas.shelves = kept;
 		atlas.pages[p].top = 0;
+		atlas.pages[p].placedArea = 0;
 		void2dGlyphPageClear(atlas.pages[p].handle as int32);
 		atlas.reclaims = atlas.reclaims + 1;
 		return Result.ok(page);
@@ -461,7 +464,7 @@ function allocate(
 		? void2dGlyphPageCreate(atlas.pageSize, kind as int32)
 		: -1;
 	if (handle >= 0) {
-		atlas.pages.push({ kind: kind, handle: handle as GlyphPageHandle, top: 0, drawnFrame: -1 });
+		atlas.pages.push({ kind: kind, handle: handle as GlyphPageHandle, top: 0, drawnFrame: -1, placedArea: 0 });
 		page = ((atlas.pages.length as int32) - 1) as GlyphPage;
 	} else {
 		const reclaimed = try reclaimPage(atlas, kind);
@@ -680,7 +683,7 @@ function record(this atlas: GlyphAtlas, packedKey: uint64, tile: GlyphTile): int
 }
 
 when (voidTextOutline) {
-	import { void2dGlyphOutlineRasterize } from "./glyph.h";
+	import { void2dGlyphOutlineRasterize } from "./glyph";
 	import { glyphOutlineBox } from "./glyphBoxes";
 
 	function outlineRasterRefusal(code: int32): AtlasError {
@@ -757,7 +760,7 @@ when (voidTextOutline) {
 when (voidSdfText) {
 	import {
 		void2dGlyphSdfRasterize,
-	} from "./glyph.h";
+	} from "./glyph";
 	import { glyphSdfBox } from "./glyphBoxes";
 
 	const SDF_RASTER_BAD_HANDLE: int32 = 1;
@@ -829,7 +832,7 @@ when (voidSdfText) {
 }
 
 when (voidSdfText && voidTextOutline) {
-	import { void2dGlyphSdfOutlineRasterize } from "./glyph.h";
+	import { void2dGlyphSdfOutlineRasterize } from "./glyph";
 	import { glyphSdfOutlineBox } from "./glyphBoxes";
 
 	export function acquireSdfOutline(
@@ -883,7 +886,7 @@ when (voidSdfText && voidTextOutline) {
 }
 
 when (voidColourEmoji) {
-	import { void2dGlyphColourRasterize } from "./glyph.h";
+	import { void2dGlyphColourRasterize } from "./glyph";
 
 	export function colourKey(face: int32, glyph: int32, sizePx: float32): GlyphKey {
 		return {

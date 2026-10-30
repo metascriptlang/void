@@ -40,10 +40,10 @@ function gpuBytes(kind: LaneKind): int32 {
 	}
 }
 
-function cFormat(kind: LaneKind): string {
+function vertexFormat(kind: LaneKind): string {
 	match (kind) {
-		LaneKind.Float4 => { return "SG_VERTEXFORMAT_FLOAT4"; },
-		LaneKind.Color => { return "SG_VERTEXFORMAT_UBYTE4N"; },
+		LaneKind.Float4 => { return "float32x4"; },
+		LaneKind.Color => { return "unorm8x4"; },
 	}
 }
 
@@ -53,6 +53,9 @@ function cField(l: Lane): string {
 		LaneKind.Color => { return `\tuint32_t ${l.field};\n`; },
 	}
 }
+
+// The per-vertex corner owns location 0 in every instanced program; lanes follow it.
+const cornerLocation: int32 = 0;
 
 function msConstants(prefix: string, lanes: Lane[]): string {
 	let out: string = "";
@@ -69,6 +72,15 @@ function msConstants(prefix: string, lanes: Lane[]): string {
 		floats += 4;
 	}
 	out += `export const REC_${prefix}_FLOATS: int32 = ${floats};\n`;
+	out += `export const ${prefix}_FORMATS: GPUVertexFormat[${lanes.length}] = [`;
+	for (const l of lanes) { out += `"${vertexFormat(l.kind)}", `; }
+	out += "];\n";
+	out += `export const ${prefix}_LOCATIONS: int32[${lanes.length}] = [`;
+	for (let i = 0; i < lanes.length; i++) { out += `${cornerLocation + 1 + i}, `; }
+	out += "];\n";
+	out += `export const ${prefix}_NAMES: string[${lanes.length}] = [`;
+	for (const l of lanes) { out += `"${l.attribute}", `; }
+	out += "];\n";
 	return out;
 }
 
@@ -78,13 +90,10 @@ function cStruct(name: string, lanes: Lane[]): string {
 	return out + `} ${name};\n`;
 }
 
-function cAttributes(macro: string, program: string, lanes: Lane[]): string {
-	let out: string = `#define ${macro}(desc) \\\n`;
-	for (const l of lanes) {
-		out += `\t(desc).layout.attrs[ATTR_${program}_${l.attribute}].format = ${cFormat(l.kind)}; \\\n`;
-		out += `\t(desc).layout.attrs[ATTR_${program}_${l.attribute}].buffer_index = 1; \\\n`;
-	}
-	return out + "\t(void)0\n";
+function cOffsets(name: string, lanes: Lane[]): string {
+	let out: string = `static const size_t ${name}Offsets[${lanes.length}] = {\n`;
+	for (const l of lanes) { out += `\toffsetof(${name}, ${l.field}),\n`; }
+	return out + "};\n";
 }
 
 function cPack(name: string, instance: string, lanes: Lane[]): string {
@@ -110,16 +119,19 @@ function recFloats(lanes: Lane[]): int32 { return (lanes.length as int32) * 4; }
 const dirSetting: string = env.get("INSTANCE_LAYOUT_DIR");
 const dir: string = dirSetting.length > 0 ? dirSetting : "src/void2d";
 
-let ms: string = msConstants("UI", uiLanes);
+let ms: string = "import { GPUVertexFormat } from \"../webgpu/types.ms\";\n\n";
+ms += `export const INSTANCE_CORNER_LOCATION: int32 = ${cornerLocation};
+`;
+ms += msConstants("UI", uiLanes);
 ms += msConstants("SPRITE", spriteLanes);
 writeFile(`${dir}/instanceLayout.ms`, ms);
 
-let h: string = "#pragma once\n#include <stdint.h>\n#include <string.h>\n\n";
+let h: string = "#pragma once\n#include <stddef.h>\n#include <stdint.h>\n#include <string.h>\n\n";
 h += cStruct("void2dUiInstance", uiLanes) + "\n";
 h += cStruct("void2dSpriteInstance", spriteLanes) + "\n";
+h += cOffsets("void2dUiInstance", uiLanes) + "\n";
+h += cOffsets("void2dSpriteInstance", spriteLanes) + "\n";
 h += `#define VOID2D_UI_REC_FLOATS ${recFloats(uiLanes)}\n`;
 h += `#define VOID2D_SPRITE_REC_FLOATS ${recFloats(spriteLanes)}\n\n`;
-h += cAttributes("VOID2D_UI_ATTRIBUTES", "ui", uiLanes) + "\n";
-h += cAttributes("VOID2D_SPRITE_ATTRIBUTES", "sprite", spriteLanes) + "\n";
 h += cPack("void2dPackUiInstance", "void2dUiInstance", uiLanes);
 writeFile(`${dir}/instanceLayout.h`, h);

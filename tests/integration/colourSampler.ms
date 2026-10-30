@@ -1,5 +1,5 @@
 import { env } from "std/process";
-import { gfxSetup } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/host/gpu";
 import { beginScreenPassWith, endPass, commit } from "../../src/gpu/door";
 import { Texture } from "../../src/gpu/texture";
 import { Scene2D, NodeRef } from "../../src/void2d/node";
@@ -14,14 +14,14 @@ import {
 	COMMAND_FLOATS, CMD_KIND, CMD_SAMPLER, CommandKind, SOURCE_PREMULTIPLIED,
 } from "../../src/void2d/displayList";
 import { rgba, tile } from "../../src/void2d/types";
-import { void2dGlyphPageTexelRgba } from "../../src/void2d/glyph.h";
+import { void2dGlyphPageTexelRgba } from "../../src/void2d/glyph";
 import {
 	voidCaptureBackend, voidCaptureRenderer, voidCaptureEnvInt, voidCapturePixel,
 	voidCaptureGrab, voidCaptureWidth, voidCaptureHeight, voidCaptureSlotsDiffer,
 	voidCaptureWritePng, voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, samples: int32, highDpi: int32,
 	init: () => void, frame: () => void,

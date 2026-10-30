@@ -1,4 +1,4 @@
-import { Sampler, Texture2d, Texture2dU32, Vec4f, vec4f } from "../shader/std";
+import { Texture2d, Texture2dU32, Vec4f, vec4f } from "../shader/std";
 import { ClusterAssignment } from "../void3d/clusters";
 import { clusterTexture, indexTexture, recordTexture } from "../void3d/clusterTextures";
 import { LIGHT_RECORD_LENGTH, LIGHT_RECORD_TEXELS, LIGHT_UNIFORM_LENGTH } from "../void3d/gpu3d";
@@ -20,7 +20,6 @@ export struct SceneLights {
 	lightRecords: Texture2d;
 	clusterRecords: Texture2dU32;
 	clusterIndices: Texture2dU32;
-	clusterSampler: Sampler;
 }
 
 function zero(): Vec4f {
@@ -104,7 +103,6 @@ export function sceneLights(
 		clusterIndices: {
 			width: indexData.width, height: indexData.height, texels: wordTexels(indexData.words),
 		},
-		clusterSampler: { nearest: true },
 	};
 }
 
