@@ -32,6 +32,8 @@ when (voidSvg) {
 		maskReleased,
 	} from "./svg/mask";
 
+	const STALE_HANDLE_CODE: int32 = -5;
+
 	function refusalOf(code: int32): SvgMaskRefusal {
 		const what: string = maskReason();
 		const error: SvgMaskError = match (code) {
@@ -43,7 +45,7 @@ when (voidSvg) {
 			-7 => SvgMaskError.TooLarge,
 			_ => SvgMaskError.Unparsable,
 		};
-		if (code == -5 || code < -7 || code >= 0) {
+		if (code == STALE_HANDLE_CODE || code < -7 || code >= 0) {
 			console.log(`void2d svg: unexpected status ${code}`);
 			unreachable;
 		}
