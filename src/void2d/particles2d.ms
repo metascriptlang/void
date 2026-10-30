@@ -193,12 +193,12 @@ function redraw(this ref e: ParticleEmitter2D, emitter: Transform2D, viewportWid
 	const nodeTurned: float32 = nodeTurn(e.node);
 	const emitterTurned: float32 = Math.atan2(emitter.b as float64, emitter.a as float64) as float32;
 	for (let k = 0; k < (e.effect.systems.length as int32); k++) {
-		const sys: ParticleSystem = e.effect.systems[k];
+		const sys: Borrow<ParticleSystem> = e.effect.systems[k];
 		if (sys.asset.renderer.renderMode == RenderMode.None) { continue; }
 		const cap: int32 = sys.capacity;
-		const frames: Vec<Tile> = e.frames[k];
+		const frames: Borrow<Vec<Tile>> = e.frames[k];
 		const last: int32 = (frames.length as int32) - 1;
-		const renderer = sys.asset.renderer;
+		const renderer: Borrow<RendererModule> = sys.asset.renderer;
 		const flip = renderer.flip;
 		const pivot = renderer.pivot;
 		const lo: float32 = renderer.minParticleSize * viewportWidth;
@@ -207,7 +207,7 @@ function redraw(this ref e: ParticleEmitter2D, emitter: Transform2D, viewportWid
 		const stretch: boolean = renderer.renderMode == RenderMode.Stretch && !freeform;
 		const worldSpace: boolean = sys.asset.main.simulationSpace == SimulationSpace.World;
 		const alongVelocity: boolean = renderer.renderMode == RenderMode.Billboard && renderer.alignment == RenderAlignment.Velocity;
-		const sheet = sys.asset.textureSheetAnimation;
+		const sheet: Borrow<TextureSheetAnimationModule> = sys.asset.textureSheetAnimation;
 		const flipU: float32 = sheet.enabled ? flip.x + sheet.flipU - flip.x * sheet.flipU : flip.x;
 		const flipV: float32 = sheet.enabled ? flip.y + sheet.flipV - flip.y * sheet.flipV : flip.y;
 		for (let i = 0; i < sys.count; i++) {
