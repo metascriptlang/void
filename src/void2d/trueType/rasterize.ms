@@ -1,4 +1,13 @@
-import { FontInfo, GlyphBox, Vertex, VERTEX_CUBIC, VERTEX_CURVE, VERTEX_LINE, VERTEX_MOVE, truncInt } from "./fontInfo";
+import {
+	FontInfo,
+	GlyphBox,
+	Vertex,
+	VERTEX_CUBIC,
+	VERTEX_CURVE,
+	VERTEX_LINE,
+	VERTEX_MOVE,
+	truncInt,
+} from "./fontInfo";
 import { getGlyphBox, getGlyphShape } from "../trueType";
 
 export struct Point {
@@ -67,8 +76,28 @@ function tesselateCurve(
 	const dy: float32 = (y0 + y2) / 2 - my;
 	if (n > MAX_TESSELLATION_DEPTH) { return; }
 	if (dx * dx + dy * dy > flatnessSquared) {
-		tesselateCurve(points, x0, y0, (x0 + x1) / 2.0, (y0 + y1) / 2.0, mx, my, flatnessSquared, n + 1);
-		tesselateCurve(points, mx, my, (x1 + x2) / 2.0, (y1 + y2) / 2.0, x2, y2, flatnessSquared, n + 1);
+		tesselateCurve(
+			points,
+			x0,
+			y0,
+			(x0 + x1) / 2.0,
+			(y0 + y1) / 2.0,
+			mx,
+			my,
+			flatnessSquared,
+			n + 1,
+		);
+		tesselateCurve(
+			points,
+			mx,
+			my,
+			(x1 + x2) / 2.0,
+			(y1 + y2) / 2.0,
+			x2,
+			y2,
+			flatnessSquared,
+			n + 1,
+		);
 	} else {
 		addCurvePoint(points, x2, y2);
 	}
@@ -339,7 +368,14 @@ function fillActiveEdges(
 				if (x0 >= 0) {
 					handleClippedEdge(buf, 0, truncInt(x0 as float64), e, x0, yTop, x0, yBottom);
 					handleClippedEdge(
-						buf, fillBase - 1, truncInt(x0 as float64) + 1, e, x0, yTop, x0, yBottom,
+						buf,
+						fillBase - 1,
+						truncInt(x0 as float64) + 1,
+						e,
+						x0,
+						yTop,
+						x0,
+						yBottom,
 					);
 				} else {
 					handleClippedEdge(buf, fillBase - 1, 0, e, x0, yTop, x0, yBottom);
@@ -368,7 +404,8 @@ function fillActiveEdges(
 				xBottom = xb;
 				sy1 = yBottom;
 			}
-			if (xTop >= 0 && xBottom >= 0 && xTop < (len as float32) && xBottom < (len as float32)) {
+			if (xTop >= 0 && xBottom >= 0 &&
+				xTop < (len as float32) && xBottom < (len as float32)) {
 				if (truncInt(xTop as float64) == truncInt(xBottom as float64)) {
 					const x = truncInt(xTop as float64);
 					const height: float32 = (sy1 - sy0) * e.direction;
@@ -411,7 +448,11 @@ function fillActiveEdges(
 					}
 					const rightEdge = (x2 as float32) + 1.0;
 					buf[x2] += area + sign * positionTrapezoidArea(
-						sy1 - yFinal, x2 as float32, rightEdge, xBottom, rightEdge,
+						sy1 - yFinal,
+						x2 as float32,
+						rightEdge,
+						xBottom,
+						rightEdge,
 					);
 					const filledEnd = fillBase + x2;
 					buf[filledEnd] += sign * (sy1 - sy0);
@@ -589,7 +630,18 @@ export function rasterize(
 	const flat = flattenCurves(vertices, flatnessInPixels / scale);
 	if (flat.lengths.length == 0) { return; }
 	rasterizeContours(
-		pixels, width, height, stride, flat, scaleX, scaleY, shiftX, shiftY, offX, offY, invert,
+		pixels,
+		width,
+		height,
+		stride,
+		flat,
+		scaleX,
+		scaleY,
+		shiftX,
+		shiftY,
+		offX,
+		offY,
+		invert,
 	);
 }
 
@@ -610,8 +662,19 @@ export function makeGlyphBitmapSubpixel(
 	const box = getGlyphBitmapBoxSubpixel(info, glyph, scaleX, scaleY, shiftX, shiftY);
 	if (outWidth != 0 && outHeight != 0) {
 		rasterize(
-			pixels, outWidth, outHeight, outStride, FLATNESS_IN_PIXELS, vertices,
-			scaleX, scaleY, shiftX, shiftY, box.x0, box.y0, true,
+			pixels,
+			outWidth,
+			outHeight,
+			outStride,
+			FLATNESS_IN_PIXELS,
+			vertices,
+			scaleX,
+			scaleY,
+			shiftX,
+			shiftY,
+			box.x0,
+			box.y0,
+			true,
 		);
 	}
 }

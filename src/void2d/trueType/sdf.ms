@@ -105,8 +105,10 @@ function lineCrossing(x: float32, y: float32, a: Vertex, b: Vertex): int32 {
 	const y0 = a.y as int32;
 	const x1 = b.x as int32;
 	const y1 = b.y as int32;
-	if (y > (minI(y0, y1) as float32) && y < (maxI(y0, y1) as float32) && x > (minI(x0, x1) as float32)) {
-		const xInter: float32 = (y - (y0 as float32)) / ((y1 - y0) as float32) * ((x1 - x0) as float32) +
+	if (y > (minI(y0, y1) as float32) && y < (maxI(y0, y1) as float32) &&
+		x > (minI(x0, x1) as float32)) {
+		const xInter: float32 =
+			(y - (y0 as float32)) / ((y1 - y0) as float32) * ((x1 - x0) as float32) +
 			(x0 as float32);
 		if (xInter < x) { return y0 < y1 ? 1 : -1; }
 	}
@@ -306,10 +308,13 @@ export function getGlyphSDF(
 					const y1: float32 = (verts[i - 1].y as float32) * scaleY;
 
 					const dist2 = squaredDistance(x0, y0, sx, sy);
-					if (dist2 < minDist * minDist) { minDist = Math.sqrt(dist2 as float64) as float32; }
+					if (dist2 < minDist * minDist) {
+						minDist = Math.sqrt(dist2 as float64) as float32;
+					}
 
-					const dist: float32 = (Math.abs(((x1 - x0) * (y0 - sy) - (y1 - y0) * (x0 - sx)) as float64) as float32) *
-						precompute[i];
+					const dist: float32 = (Math.abs(
+						((x1 - x0) * (y0 - sy) - (y1 - y0) * (x0 - sx)) as float64,
+					) as float32) * precompute[i];
 					if (dist < minDist) {
 						const dx: float32 = x1 - x0;
 						const dy: float32 = y1 - y0;
@@ -327,7 +332,8 @@ export function getGlyphSDF(
 					const boxY0 = minF(minF(y0, y1), y2);
 					const boxX1 = maxF(maxF(x0, x1), x2);
 					const boxY1 = maxF(maxF(y0, y1), y2);
-					if (sx > boxX0 - minDist && sx < boxX1 + minDist && sy > boxY0 - minDist && sy < boxY1 + minDist) {
+					if (sx > boxX0 - minDist && sx < boxX1 + minDist &&
+						sy > boxY0 - minDist && sy < boxY1 + minDist) {
 						let num: int32 = 0;
 						const ax: float32 = x1 - x0;
 						const ay: float32 = y1 - y0;
@@ -353,7 +359,8 @@ export function getGlyphSDF(
 								if (discriminant < 0) {
 									num = 0;
 								} else {
-									const root: float32 = Math.sqrt(discriminant as float64) as float32;
+									const root: float32 =
+										Math.sqrt(discriminant as float64) as float32;
 									res[0] = (-b - root) / (2 * a);
 									res[1] = (-b + root) / (2 * a);
 									num = 2;
@@ -361,12 +368,15 @@ export function getGlyphSDF(
 							}
 						} else {
 							const b: float32 = 3 * (ax * bx + ay * by) * aInv;
-							const c: float32 = (2 * (ax * ax + ay * ay) + (mx * bx + my * by)) * aInv;
+							const c: float32 =
+								(2 * (ax * ax + ay * ay) + (mx * bx + my * by)) * aInv;
 							const d: float32 = (mx * ax + my * ay) * aInv;
 							num = solveCubic(b, c, d, res);
 						}
 						let dist2 = squaredDistance(x0, y0, sx, sy);
-						if (dist2 < minDist * minDist) { minDist = Math.sqrt(dist2 as float64) as float32; }
+						if (dist2 < minDist * minDist) {
+							minDist = Math.sqrt(dist2 as float64) as float32;
+						}
 
 						let k: int32 = 0;
 						while (k < 3) {
@@ -376,7 +386,9 @@ export function getGlyphSDF(
 								const px: float32 = it * it * x0 + 2 * t * it * x1 + t * t * x2;
 								const py: float32 = it * it * y0 + 2 * t * it * y1 + t * t * y2;
 								dist2 = squaredDistance(px, py, sx, sy);
-								if (dist2 < minDist * minDist) { minDist = Math.sqrt(dist2 as float64) as float32; }
+								if (dist2 < minDist * minDist) {
+									minDist = Math.sqrt(dist2 as float64) as float32;
+								}
 							}
 							k += 1;
 						}
