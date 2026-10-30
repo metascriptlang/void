@@ -316,26 +316,16 @@ function initClosed(
 	right.y = py + dly * w;
 }
 
-function buttCap(
+function closeCap(
 	r: Rasterizer,
 	left: Corner,
 	right: Corner,
-	p: int32,
-	dx: float32,
-	dy: float32,
-	lineWidth: float32,
+	lx: float32,
+	ly: float32,
+	rx: float32,
+	ry: float32,
 	connect: boolean,
 ): void {
-	const w: float32 = lineWidth * 0.5;
-	const px = r.px[p];
-	const py = r.py[p];
-	const dlx: float32 = dy;
-	const dly: float32 = -dx;
-	const lx: float32 = px - dlx * w;
-	const ly: float32 = py - dly * w;
-	const rx: float32 = px + dlx * w;
-	const ry: float32 = py + dly * w;
-	addEdge(r, lx, ly, rx, ry);
 	if (connect) {
 		addEdge(r, left.x, left.y, lx, ly);
 		addEdge(r, rx, ry, right.x, right.y);
@@ -346,19 +336,17 @@ function buttCap(
 	right.y = ry;
 }
 
-function squareCap(
+function straightCap(
 	r: Rasterizer,
 	left: Corner,
 	right: Corner,
-	p: int32,
+	px: float32,
+	py: float32,
 	dx: float32,
 	dy: float32,
-	lineWidth: float32,
+	w: float32,
 	connect: boolean,
 ): void {
-	const w: float32 = lineWidth * 0.5;
-	const px: float32 = r.px[p] - dx * w;
-	const py: float32 = r.py[p] - dy * w;
 	const dlx: float32 = dy;
 	const dly: float32 = -dx;
 	const lx: float32 = px - dlx * w;
@@ -366,14 +354,7 @@ function squareCap(
 	const rx: float32 = px + dlx * w;
 	const ry: float32 = py + dly * w;
 	addEdge(r, lx, ly, rx, ry);
-	if (connect) {
-		addEdge(r, left.x, left.y, lx, ly);
-		addEdge(r, rx, ry, right.x, right.y);
-	}
-	left.x = lx;
-	left.y = ly;
-	right.x = rx;
-	right.y = ry;
+	closeCap(r, left, right, lx, ly, rx, ry, connect);
 }
 
 function roundCap(
@@ -416,14 +397,36 @@ function roundCap(
 			ry = y;
 		}
 	}
-	if (connect) {
-		addEdge(r, left.x, left.y, lx, ly);
-		addEdge(r, rx, ry, right.x, right.y);
+	closeCap(r, left, right, lx, ly, rx, ry, connect);
+}
+
+function addCap(
+	r: Rasterizer,
+	left: Corner,
+	right: Corner,
+	p: int32,
+	dx: float32,
+	dy: float32,
+	lineWidth: float32,
+	lineCap: int32,
+	ncap: int32,
+	connect: boolean,
+): void {
+	const w: float32 = lineWidth * 0.5;
+	match (lineCap) {
+		CAP_BUTT => {
+			straightCap(r, left, right, r.px[p], r.py[p], dx, dy, w, connect);
+		},
+		CAP_SQUARE => {
+			const px: float32 = r.px[p] - dx * w;
+			const py: float32 = r.py[p] - dy * w;
+			straightCap(r, left, right, px, py, dx, dy, w, connect);
+		},
+		CAP_ROUND => {
+			roundCap(r, left, right, p, dx, dy, lineWidth, ncap, connect);
+		},
+		_ => {},
 	}
-	left.x = lx;
-	left.y = ly;
-	right.x = rx;
-	right.y = ry;
 }
 
 function bevelJoin(
@@ -627,15 +630,7 @@ function expandStroke(
 		firstRight.y = right.y;
 	} else {
 		normalize(r, r.px[p1] - r.px[p0], r.py[p1] - r.py[p0]);
-		const dx = r.ndx;
-		const dy = r.ndy;
-		if (lineCap == CAP_BUTT) {
-			buttCap(r, left, right, p0, dx, dy, lineWidth, false);
-		} else if (lineCap == CAP_SQUARE) {
-			squareCap(r, left, right, p0, dx, dy, lineWidth, false);
-		} else if (lineCap == CAP_ROUND) {
-			roundCap(r, left, right, p0, dx, dy, lineWidth, ncap, false);
-		}
+		addCap(r, left, right, p0, r.ndx, r.ndy, lineWidth, lineCap, ncap, false);
 	}
 
 	for (let j = s; j < e; j++) {
@@ -661,13 +656,7 @@ function expandStroke(
 		normalize(r, r.px[p1] - r.px[p0], r.py[p1] - r.py[p0]);
 		const dx: float32 = -r.ndx;
 		const dy: float32 = -r.ndy;
-		if (lineCap == CAP_BUTT) {
-			buttCap(r, right, left, p1, dx, dy, lineWidth, true);
-		} else if (lineCap == CAP_SQUARE) {
-			squareCap(r, right, left, p1, dx, dy, lineWidth, true);
-		} else if (lineCap == CAP_ROUND) {
-			roundCap(r, right, left, p1, dx, dy, lineWidth, ncap, true);
-		}
+		addCap(r, right, left, p1, dx, dy, lineWidth, lineCap, ncap, true);
 	}
 }
 
