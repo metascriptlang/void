@@ -24,20 +24,16 @@ export function sub(this x: Str, from: int32, to: int32): Str {
 	return { b: x.b, s: x.s + from, e: Math.min(x.s + to, x.e) };
 }
 
-export function eq(this x: Str, literal: string): boolean {
-	const n = literal.byteLength();
-	for (let i: int32 = 0; i < n; i++) {
-		if (x.ch(i) != literal.byteAt(i)) { return false; }
-	}
-	return x.ch(n) == 0;
-}
-
 export function startsWith(this x: Str, literal: string): boolean {
 	const n = literal.byteLength();
 	for (let i: int32 = 0; i < n; i++) {
 		if (x.ch(i) != literal.byteAt(i)) { return false; }
 	}
 	return true;
+}
+
+export function eq(this x: Str, literal: string): boolean {
+	return x.startsWith(literal) && x.ch(literal.byteLength()) == 0;
 }
 
 export function same(this x: Str, other: Str): boolean {
