@@ -645,11 +645,13 @@ function hashFontName(font: KbFont, murmur: KbMurmur): void {
 	}
 }
 
+function shapingTableData(m: Readonly<Span<uint8>>): int64[] {
+	return [m.kbBlobTableData(KB_BLOB_TABLE_ID_GSUB), m.kbBlobTableData(KB_BLOB_TABLE_ID_GPOS)];
+}
+
 function chooseLangsys(font: KbFont, script: uint32, language: uint32): KbLangsysChoice {
 	const m: Span<uint8> = font.blob[0..font.blob.length];
-	const shapingTables: int64[] = [
-		m.kbBlobTableData(KB_BLOB_TABLE_ID_GSUB), m.kbBlobTableData(KB_BLOB_TABLE_ID_GPOS),
-	];
+	const shapingTables = shapingTableData(m);
 	const scriptTag = KB_SCRIPT_TAGS[script] as int64;
 	let result: KbLangsysChoice = { langsys: [0, 0], indic3: false };
 
@@ -707,9 +709,7 @@ function bakeSequentialLookups(
 	murmur: KbMurmur,
 ): KbSequentialBake {
 	const m: Span<uint8> = font.blob[0..font.blob.length];
-	const shapingTables: int64[] = [
-		m.kbBlobTableData(KB_BLOB_TABLE_ID_GSUB), m.kbBlobTableData(KB_BLOB_TABLE_ID_GPOS),
-	];
+	const shapingTables = shapingTableData(m);
 	const maxAxisCount = KB_MAX_VARIATION_AXIS_COUNT as int32;
 
 	let result: KbSequentialBake = {
