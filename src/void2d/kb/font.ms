@@ -262,130 +262,156 @@ function loadFontUnchecked(
 			}
 		}
 
-		if (magic == KB_FOURCC_OTTO || magic == KB_FOURCC_V1) {
-			result = KB_LOAD_FONT_ERROR_NEED_TO_CREATE_BLOB;
+		match (magic) {
+			KB_FOURCC_OTTO | KB_FOURCC_V1 => {
+				result = KB_LOAD_FONT_ERROR_NEED_TO_CREATE_BLOB;
 
-			const directoryTableCount = fileU16(data, directoryOffset + 4);
-			const tables = directoryOffset + 12;
+				const directoryTableCount = fileU16(data, directoryOffset + 4);
+				const tables = directoryOffset + 12;
 
-			const directoryTableCapacity: int64 = fileEnd - tables >= 0 ?
-				(fileEnd - tables) / 16 : 0x7FFFFFFFFFFFFFFF;
-			if (directoryTableCount <= directoryTableCapacity) {
-				for (let tableIndex: int64 = 0; tableIndex < directoryTableCount; tableIndex++) {
-					const table = tables + tableIndex * 16;
-					const tableOffset = data.kbFileU32(table + 8);
-					const tableLength = data.kbFileU32(table + 12);
+				const directoryTableCapacity: int64 = fileEnd - tables >= 0 ?
+					(fileEnd - tables) / 16 : 0x7FFFFFFFFFFFFFFF;
+				if (directoryTableCount <= directoryTableCapacity) {
+					for (
+						let tableIndex: int64 = 0;
+						tableIndex < directoryTableCount;
+						tableIndex++
+					) {
+						const table = tables + tableIndex * 16;
+						const tableOffset = data.kbFileU32(table + 8);
+						const tableLength = data.kbFileU32(table + 12);
 
-					const tableEnd = tableOffset + tableLength;
-					if (tableOffset >= tables + directoryTableCount * 16 && tableEnd <= fileEnd) {
-						const tableId = tagToTableId(data.kbU32(table));
+						const tableEnd = tableOffset + tableLength;
+						if (tableOffset >= tables + directoryTableCount * 16 &&
+							tableEnd <= fileEnd) {
+							const tableId = tagToTableId(data.kbU32(table));
 
-						if (tableId != 0) {
-							state.tableOffsets[tableId] = tableOffset;
-							state.tableLengths[tableId] = tableLength;
-						}
-					}
-				}
-			}
-
-			{
-				let totalLookupCount: int64 = 0;
-				let totalSubtableCount: int64 = 0;
-
-				const gsubGposTableIds: int32[] = [KB_BLOB_TABLE_ID_GSUB, KB_BLOB_TABLE_ID_GPOS];
-				for (let gsubGposTableIndex = 0; gsubGposTableIndex < 2; gsubGposTableIndex++) {
-					const tableId = gsubGposTableIds[gsubGposTableIndex];
-					const length = state.tableLengths[tableId];
-
-					if (length != 0) {
-						const gsubGpos = state.tableOffsets[tableId];
-						const scriptListOffset = fileU16(data, gsubGpos + 4);
-						const featureListOffset = fileU16(data, gsubGpos + 6);
-						const lookupListOffset = fileU16(data, gsubGpos + 8);
-
-						if (scriptListOffset == 0 && featureListOffset == 0 && lookupListOffset == 0) {
-							state.tableOffsets[tableId] = 0;
-							state.tableLengths[tableId] = 0;
-						} else if (scriptListOffset + 2 > length || featureListOffset + 2 > length ||
-							lookupListOffset + 2 > length) {
-							return KB_LOAD_FONT_ERROR_INVALID_FONT;
-						} else {
-							const lookupList = gsubGpos + fileU16(data, gsubGpos + 8);
-							const lookupOffsets = lookupList + 2;
-							const lookupCount = fileU16(data, lookupList);
-
-							for (let lookupIndex: int64 = 0; lookupIndex < lookupCount; lookupIndex++) {
-								const lookup = lookupList + fileU16(data, lookupOffsets + lookupIndex * 2);
-								totalSubtableCount += fileU16(data, lookup + 4);
+							if (tableId != 0) {
+								state.tableOffsets[tableId] = tableOffset;
+								state.tableLengths[tableId] = tableLength;
 							}
-
-							totalLookupCount += lookupCount;
 						}
 					}
 				}
 
-				state.lookupCount = totalLookupCount & 0xFFFFFFFF;
-				state.lookupSubtableCount = totalSubtableCount & 0xFFFFFFFF;
-			}
+				{
+					let totalLookupCount: int64 = 0;
+					let totalSubtableCount: int64 = 0;
 
-			{
-				let glyphCount: int64 = 0;
+					const gsubGposTableIds: int32[] = [
+						KB_BLOB_TABLE_ID_GSUB,
+						KB_BLOB_TABLE_ID_GPOS,
+					];
+					for (
+						let gsubGposTableIndex = 0;
+						gsubGposTableIndex < 2;
+						gsubGposTableIndex++
+					) {
+						const tableId = gsubGposTableIds[gsubGposTableIndex];
+						const length = state.tableLengths[tableId];
 
-				if (state.tableLengths[KB_BLOB_TABLE_ID_MAXP] != 0) {
-					glyphCount = fileU16(data, state.tableOffsets[KB_BLOB_TABLE_ID_MAXP] + 4);
+						if (length != 0) {
+							const gsubGpos = state.tableOffsets[tableId];
+							const scriptListOffset = fileU16(data, gsubGpos + 4);
+							const featureListOffset = fileU16(data, gsubGpos + 6);
+							const lookupListOffset = fileU16(data, gsubGpos + 8);
+
+							if (scriptListOffset == 0 && featureListOffset == 0 &&
+								lookupListOffset == 0) {
+								state.tableOffsets[tableId] = 0;
+								state.tableLengths[tableId] = 0;
+							} else if (scriptListOffset + 2 > length ||
+								featureListOffset + 2 > length ||
+								lookupListOffset + 2 > length) {
+								return KB_LOAD_FONT_ERROR_INVALID_FONT;
+							} else {
+								const lookupList = gsubGpos + fileU16(data, gsubGpos + 8);
+								const lookupOffsets = lookupList + 2;
+								const lookupCount = fileU16(data, lookupList);
+
+								for (
+									let lookupIndex: int64 = 0;
+									lookupIndex < lookupCount;
+									lookupIndex++
+								) {
+									const lookup = lookupList +
+										fileU16(data, lookupOffsets + lookupIndex * 2);
+									totalSubtableCount += fileU16(data, lookup + 4);
+								}
+
+								totalLookupCount += lookupCount;
+							}
+						}
+					}
+
+					state.lookupCount = totalLookupCount & 0xFFFFFFFF;
+					state.lookupSubtableCount = totalSubtableCount & 0xFFFFFFFF;
 				}
 
-				state.glyphCount = glyphCount;
-			}
+				{
+					let glyphCount: int64 = 0;
 
-			const scratchSize = ((state.tableLengths[KB_BLOB_TABLE_ID_GSUB] +
-				state.tableLengths[KB_BLOB_TABLE_ID_GPOS] +
-				state.tableLengths[KB_BLOB_TABLE_ID_GDEF]) & 0xFFFFFFFF) * 4 / 2;
+					if (state.tableLengths[KB_BLOB_TABLE_ID_MAXP] != 0) {
+						glyphCount = fileU16(data, state.tableOffsets[KB_BLOB_TABLE_ID_MAXP] + 4);
+					}
 
-			let glyphLookupMatrixSizeInWords: int64 = 0;
-			if (state.lookupCount != 0 && state.glyphCount != 0) {
-				const lastIndex = kbGlyphLookupMatrixIndex(state.lookupCount - 1, state.glyphCount - 1,
-					state.glyphCount);
-				glyphLookupMatrixSizeInWords = lastIndex.word + 1;
-			}
+					state.glyphCount = glyphCount;
+				}
 
-			let glyphLookupSubtableMatrixSizeInWords: int64 = 0;
-			if (state.lookupSubtableCount != 0 && state.glyphCount != 0) {
-				const lastIndex = kbGlyphLookupMatrixIndex(state.lookupSubtableCount - 1,
-					state.glyphCount - 1, state.glyphCount);
-				glyphLookupSubtableMatrixSizeInWords = lastIndex.word + 1;
-			}
+				const scratchSize = ((state.tableLengths[KB_BLOB_TABLE_ID_GSUB] +
+					state.tableLengths[KB_BLOB_TABLE_ID_GPOS] +
+					state.tableLengths[KB_BLOB_TABLE_ID_GDEF]) & 0xFFFFFFFF) * 4 / 2;
 
-			let bump = kbAlign(0, 4) + KB_BLOB_HEADER_SIZE;
-			for (let tableId = 0; tableId < KB_BLOB_TABLE_ID_COUNT; tableId++) {
-				bump = kbAlign(bump, 4) + state.tableLengths[tableId];
-			}
-			bump = kbAlign(bump, 4) + glyphLookupMatrixSizeInWords * 4;
-			bump = kbAlign(bump, 4) + glyphLookupSubtableMatrixSizeInWords * 4;
-			bump = kbAlign(bump, 4) + state.lookupCount * 4;
+				let glyphLookupMatrixSizeInWords: int64 = 0;
+				if (state.lookupCount != 0 && state.glyphCount != 0) {
+					const lastIndex = kbGlyphLookupMatrixIndex(state.lookupCount - 1, state.glyphCount - 1,
+						state.glyphCount);
+					glyphLookupMatrixSizeInWords = lastIndex.word + 1;
+				}
 
-			const outputSize = bump + 4;
-			if (outputSize > KB_BLOB_SIZE_LIMIT) { throw kbBoundsFail("blob size", outputSize); }
+				let glyphLookupSubtableMatrixSizeInWords: int64 = 0;
+				if (state.lookupSubtableCount != 0 && state.glyphCount != 0) {
+					const lastIndex = kbGlyphLookupMatrixIndex(state.lookupSubtableCount - 1,
+						state.glyphCount - 1, state.glyphCount);
+					glyphLookupSubtableMatrixSizeInWords = lastIndex.word + 1;
+				}
 
-			state.scratchSize = scratchSize & 0xFFFFFFFF;
-			state.glyphLookupMatrixSizeInBytes = (glyphLookupMatrixSizeInWords * 4) & 0xFFFFFFFF;
-			state.glyphLookupSubtableMatrixSizeInBytes =
-				(glyphLookupSubtableMatrixSizeInWords * 4) & 0xFFFFFFFF;
-			state.totalSize = outputSize;
-		} else if (magic == KB_FOURCC_KBTS) {
-			if (data.kbU32(KB_BLOB_HEADER_VERSION) != KB_BLOB_VERSION_CURRENT) {
-				result = KB_LOAD_FONT_ERROR_INVALID_FONT;
-			}
+				let bump = kbAlign(0, 4) + KB_BLOB_HEADER_SIZE;
+				for (let tableId = 0; tableId < KB_BLOB_TABLE_ID_COUNT; tableId++) {
+					bump = kbAlign(bump, 4) + state.tableLengths[tableId];
+				}
+				bump = kbAlign(bump, 4) + glyphLookupMatrixSizeInWords * 4;
+				bump = kbAlign(bump, 4) + glyphLookupSubtableMatrixSizeInWords * 4;
+				bump = kbAlign(bump, 4) + state.lookupCount * 4;
 
-			font.blob = new Array<uint8>(data.length as int32);
-			for (let i: int64 = 0; i < size; i++) {
-				font.blob[i] = data[i];
-			}
-			font.hasBlob = true;
+				const outputSize = bump + 4;
+				if (outputSize > KB_BLOB_SIZE_LIMIT) {
+					throw kbBoundsFail("blob size", outputSize);
+				}
 
-			const m: Span<uint8> = font.blob[0..font.blob.length];
-			const preferredSubtable = selectCmapSubtableFromBlob(m, font);
-			font.cmap = preferredSubtable.at;
+				state.scratchSize = scratchSize & 0xFFFFFFFF;
+				state.glyphLookupMatrixSizeInBytes =
+					(glyphLookupMatrixSizeInWords * 4) & 0xFFFFFFFF;
+				state.glyphLookupSubtableMatrixSizeInBytes =
+					(glyphLookupSubtableMatrixSizeInWords * 4) & 0xFFFFFFFF;
+				state.totalSize = outputSize;
+			},
+			KB_FOURCC_KBTS => {
+				if (data.kbU32(KB_BLOB_HEADER_VERSION) != KB_BLOB_VERSION_CURRENT) {
+					result = KB_LOAD_FONT_ERROR_INVALID_FONT;
+				}
+
+				font.blob = new Array<uint8>(data.length as int32);
+				for (let i: int64 = 0; i < size; i++) {
+					font.blob[i] = data[i];
+				}
+				font.hasBlob = true;
+
+				const m: Span<uint8> = font.blob[0..font.blob.length];
+				const preferredSubtable = selectCmapSubtableFromBlob(m, font);
+				font.cmap = preferredSubtable.at;
+			},
+			_ => {},
 		}
 	}
 
@@ -426,25 +452,32 @@ function markMatrixCoverage(
 	coverage: int64,
 ): void {
 	if (coverage != 0) {
-		const format = m.kbU16(coverage);
-		if (format == 1) {
-			const glyphIds = coverage + 4;
-			for (let glyphIndex: int64 = 0; glyphIndex < u16At(m, coverage + 2); glyphIndex++) {
-				const glyphId = u16At(m, glyphIds + glyphIndex * 2);
-				if (glyphId < glyphCount) {
-					setMatrixBit(m, matrix, row, glyphId, glyphCount);
-				}
-			}
-		} else if (format == 2) {
-			const ranges = coverage + 4;
-			for (let rangeIndex: int64 = 0; rangeIndex < u16At(m, coverage + 2); rangeIndex++) {
-				const range = ranges + rangeIndex * 6;
-				for (let glyphId = u16At(m, range); glyphId < u16At(m, range + 2) + 1; glyphId++) {
+		match (m.kbU16(coverage)) {
+			1 => {
+				const glyphIds = coverage + 4;
+				for (let glyphIndex: int64 = 0; glyphIndex < u16At(m, coverage + 2); glyphIndex++) {
+					const glyphId = u16At(m, glyphIds + glyphIndex * 2);
 					if (glyphId < glyphCount) {
 						setMatrixBit(m, matrix, row, glyphId, glyphCount);
 					}
 				}
-			}
+			},
+			2 => {
+				const ranges = coverage + 4;
+				for (let rangeIndex: int64 = 0; rangeIndex < u16At(m, coverage + 2); rangeIndex++) {
+					const range = ranges + rangeIndex * 6;
+					for (
+						let glyphId = u16At(m, range);
+						glyphId < u16At(m, range + 2) + 1;
+						glyphId++
+					) {
+						if (glyphId < glyphCount) {
+							setMatrixBit(m, matrix, row, glyphId, glyphCount);
+						}
+					}
+				}
+			},
+			_ => {},
 		}
 	}
 }
@@ -471,34 +504,51 @@ function markMatrixClassDef(
 	classesIncluded: int32[],
 ): void {
 	if (classDefBase != 0) {
-		const format = m.kbU16(classDefBase);
-		if (format == 1) {
-			const glyphClasses = classDefBase + 6;
-			for (let glyphIndex: int64 = 0; glyphIndex < u16At(m, classDefBase + 4); glyphIndex++) {
-				const glyphId = u16At(m, classDefBase + 2) + glyphIndex;
-				const glyphClass = u16At(m, glyphClasses + glyphIndex * 2);
+		match (m.kbU16(classDefBase)) {
+			1 => {
+				const glyphClasses = classDefBase + 6;
+				for (
+					let glyphIndex: int64 = 0;
+					glyphIndex < u16At(m, classDefBase + 4);
+					glyphIndex++
+				) {
+					const glyphId = u16At(m, classDefBase + 2) + glyphIndex;
+					const glyphClass = u16At(m, glyphClasses + glyphIndex * 2);
 
-				if (glyphId >= KB_CLASSES_INCLUDED_LENGTH || classIncluded(classesIncluded, glyphClass)) {
-					setMatrixBit(m, matrix, row, glyphId, glyphCount);
-				}
-			}
-		} else if (format == 2) {
-			const ranges = classDefBase + 4;
-			for (let rangeIndex: int64 = 0; rangeIndex < u16At(m, classDefBase + 2); rangeIndex++) {
-				const range = ranges + rangeIndex * 6;
-				const rangeClass = u16At(m, range + 4);
-
-				if (rangeClass >= KB_CLASSES_INCLUDED_LENGTH || classIncluded(classesIncluded, rangeClass)) {
-					let onePastLastGlyphId = u16At(m, range + 2) + 1;
-					if (onePastLastGlyphId > glyphCount) {
-						onePastLastGlyphId = glyphCount;
-					}
-
-					for (let glyphId = u16At(m, range); glyphId < onePastLastGlyphId; glyphId++) {
+					if (glyphId >= KB_CLASSES_INCLUDED_LENGTH ||
+						classIncluded(classesIncluded, glyphClass)) {
 						setMatrixBit(m, matrix, row, glyphId, glyphCount);
 					}
 				}
-			}
+			},
+			2 => {
+				const ranges = classDefBase + 4;
+				for (
+					let rangeIndex: int64 = 0;
+					rangeIndex < u16At(m, classDefBase + 2);
+					rangeIndex++
+				) {
+					const range = ranges + rangeIndex * 6;
+					const rangeClass = u16At(m, range + 4);
+
+					if (rangeClass >= KB_CLASSES_INCLUDED_LENGTH ||
+						classIncluded(classesIncluded, rangeClass)) {
+						let onePastLastGlyphId = u16At(m, range + 2) + 1;
+						if (onePastLastGlyphId > glyphCount) {
+							onePastLastGlyphId = glyphCount;
+						}
+
+						for (
+							let glyphId = u16At(m, range);
+							glyphId < onePastLastGlyphId;
+							glyphId++
+						) {
+							setMatrixBit(m, matrix, row, glyphId, glyphCount);
+						}
+					}
+				}
+			},
+			_ => {},
 		}
 	}
 }
@@ -1361,10 +1411,10 @@ export function kbFontFromMemory(data: Readonly<Span<uint8>>, fontIndex: int32):
 		const state = kbNewLoadFontState();
 		const error = kbLoadFont(font, state, data, fontIndex);
 
-		if (error == KB_LOAD_FONT_ERROR_NEED_TO_CREATE_BLOB) {
-			kbPlaceBlob(font, state, data);
-		} else if (error == KB_LOAD_FONT_ERROR_OUT_OF_BOUNDS) {
-			font.error = error;
+		match (error) {
+			KB_LOAD_FONT_ERROR_NEED_TO_CREATE_BLOB => { kbPlaceBlob(font, state, data); },
+			KB_LOAD_FONT_ERROR_OUT_OF_BOUNDS => { font.error = error; },
+			_ => {},
 		}
 	}
 	return font;
