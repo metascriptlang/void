@@ -120,25 +120,21 @@ function transition(table: uint8[], classValue: int64, classCount: int64, stateC
 export function kbBeginCluster(s: KbScratch, m: Span<uint8>, config: KbShapeConfig, glyph: int32): int32 {
 	s.realCluster = false;
 
-	if (config.shaper == KB_SHAPER_INDIC) {
-		return kbIndicBeginCluster(s, m, config, glyph);
-	} else if (config.shaper == KB_SHAPER_USE) {
-		return useBeginCluster(s, glyph);
-	} else if (config.shaper == KB_SHAPER_KHMER) {
-		return khmerBeginCluster(s, config, glyph);
-	} else if (config.shaper == KB_SHAPER_MYANMAR) {
-		return myanmarBeginCluster(s, glyph);
-	}
-	return s.storage.glyphs[glyph].next;
+	return match (config.shaper) {
+		KB_SHAPER_INDIC => kbIndicBeginCluster(s, m, config, glyph),
+		KB_SHAPER_USE => useBeginCluster(s, glyph),
+		KB_SHAPER_KHMER => khmerBeginCluster(s, config, glyph),
+		KB_SHAPER_MYANMAR => myanmarBeginCluster(s, glyph),
+		_ => s.storage.glyphs[glyph].next,
+	};
 }
 
 export function kbEndCluster(s: KbScratch, config: KbShapeConfig): void {
-	if (config.shaper == KB_SHAPER_INDIC) {
-		kbIndicEndCluster(s, config);
-	} else if (config.shaper == KB_SHAPER_USE) {
-		useEndCluster(s, config);
-	} else if (config.shaper == KB_SHAPER_MYANMAR) {
-		myanmarEndCluster(s);
+	match (config.shaper) {
+		KB_SHAPER_INDIC => { kbIndicEndCluster(s, config); },
+		KB_SHAPER_USE => { useEndCluster(s, config); },
+		KB_SHAPER_MYANMAR => { myanmarEndCluster(s); },
+		_ => {},
 	}
 }
 
@@ -453,28 +449,35 @@ function myanmarEndCluster(s: KbScratch): void {
 			let position = sectionPosition;
 			const classValue = glyphs[glyph].syllabicClass;
 
-			if (classValue == KB_INDIC_SYLLABIC_CLASS_MEDIAL_RA) {
-				position = KB_SYLLABIC_POSITION_PREBASE_CONSONANT;
-			} else if (classValue == KB_INDIC_SYLLABIC_CLASS_VOWEL_PRE) {
-				position = KB_SYLLABIC_POSITION_PREBASE_MATRA;
+			match (classValue) {
+				KB_INDIC_SYLLABIC_CLASS_MEDIAL_RA => {
+					position = KB_SYLLABIC_POSITION_PREBASE_CONSONANT;
+				},
+				KB_INDIC_SYLLABIC_CLASS_VOWEL_PRE => {
+					position = KB_SYLLABIC_POSITION_PREBASE_MATRA;
 
-				if (lastPreBaseMatra != KB_GLYPH_SENTINEL) {
-					kbDllistReverseSublist(storage, lastPreBaseMatra, glyphs[glyph].next);
-				} else {
-					lastPreBaseMatra = glyph;
-				}
-			} else if (classValue == KB_INDIC_SYLLABIC_CLASS_VARIATION_SELECTOR) {
-				position = lastPosition;
-			} else if (classValue == KB_INDIC_SYLLABIC_CLASS_VOWEL_BELOW) {
-				if (position == KB_SYLLABIC_POSITION_AFTER_MAIN) {
-					position = KB_SYLLABIC_POSITION_BELOWBASE_CONSONANT;
-				} else if (position == KB_SYLLABIC_POSITION_BELOWBASE_CONSONANT) {
-					position = sectionPosition;
-				}
-			} else if (classValue == KB_INDIC_SYLLABIC_CLASS_VEDIC_SIGN) {
-				if (position == KB_SYLLABIC_POSITION_BELOWBASE_CONSONANT) {
-					position = KB_SYLLABIC_POSITION_BEFORE_SUBJOINED;
-				}
+					if (lastPreBaseMatra != KB_GLYPH_SENTINEL) {
+						kbDllistReverseSublist(storage, lastPreBaseMatra, glyphs[glyph].next);
+					} else {
+						lastPreBaseMatra = glyph;
+					}
+				},
+				KB_INDIC_SYLLABIC_CLASS_VARIATION_SELECTOR => {
+					position = lastPosition;
+				},
+				KB_INDIC_SYLLABIC_CLASS_VOWEL_BELOW => {
+					if (position == KB_SYLLABIC_POSITION_AFTER_MAIN) {
+						position = KB_SYLLABIC_POSITION_BELOWBASE_CONSONANT;
+					} else if (position == KB_SYLLABIC_POSITION_BELOWBASE_CONSONANT) {
+						position = sectionPosition;
+					}
+				},
+				KB_INDIC_SYLLABIC_CLASS_VEDIC_SIGN => {
+					if (position == KB_SYLLABIC_POSITION_BELOWBASE_CONSONANT) {
+						position = KB_SYLLABIC_POSITION_BEFORE_SUBJOINED;
+					}
+				},
+				_ => {},
 			}
 
 			if (sectionPosition == KB_SYLLABIC_POSITION_BELOWBASE_CONSONANT &&
