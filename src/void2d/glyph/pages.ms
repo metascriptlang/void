@@ -137,8 +137,8 @@ export function void2dGlyphPageGeneration(page: int32): uint32 {
 
 export function void2dGlyphPageLiveCount(): int32 {
 	let live: int32 = 0;
-	for (let page: int32 = 0; page < (state.pages.length as int32); page++) {
-		if (state.pages[page].live) { live++; }
+	for (const p of state.pages) {
+		if (p.live) { live++; }
 	}
 	return live;
 }
@@ -354,13 +354,13 @@ export function void2dGlyphPageUploadBox(page: int32): Vec<int32> {
 }
 
 export function void2dGlyphPagesMarkDirty(): void {
-	for (let page: int32 = 0; page < (state.pages.length as int32); page++) {
-		if (state.pages[page].live) { markDirtyWhole(state.pages[page]); }
+	for (const p of state.pages) {
+		if (p.live) { markDirtyWhole(p); }
 	}
 }
 
 export function void2dGlyphPagesFrameBegin(): void {
-	for (let page: int32 = 0; page < (state.pages.length as int32); page++) {
-		state.pages[page].uploaded = false;
+	for (const p of state.pages) {
+		p.uploaded = false;
 	}
 }
