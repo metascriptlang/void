@@ -425,7 +425,9 @@ function addCap(
 		CAP_ROUND => {
 			roundCap(r, left, right, p, dx, dy, lineWidth, ncap, connect);
 		},
-		_ => {},
+		_ => {
+			throw new Error(`void2d svg: line cap ${lineCap} is not butt, round or square`);
+		},
 	}
 }
 
@@ -1012,7 +1014,9 @@ function fillActiveEdges(r: Rasterizer, head: int32, fillRule: int32): void {
 				e = r.anext[e];
 			}
 		},
-		_ => {},
+		_ => {
+			throw new Error(`void2d svg: fill rule ${fillRule} is not nonzero or evenodd`);
+		},
 	}
 }
 
@@ -1134,7 +1138,9 @@ function scanlineSolid(
 				fx = fx + dx;
 			}
 		},
-		_ => {},
+		_ => {
+			throw new Error(`void2d svg: paint kind ${cache.kind} is not a colour or a gradient`);
+		},
 	}
 }
 
