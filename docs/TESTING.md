@@ -329,13 +329,14 @@ read from the log.
    tests/js/targetCheck.ms` with every module flag off and on: Void compiles on JS, and what needs
    C (decoding images, loading fonts) answers with a named error there, because JS has no C to call.
    `-d:voidCff` is one of the flags: off, `tests/fonts/cffSynthetic.otf` is refused by name; on, the CFF tests run.
-   Then `msc check src/examples/main2d.ms` for every backend the host does not run (D3D11, GL
-   on Windows, Linux and Android, Metal on iOS, both web builds, the dummy), about 15 s in all, so
+   Then `msc check src/examples/main2d.ms` for every backend the host does not run (D3D11, D3D12,
+   GL on Windows, Linux and Android, Metal on iOS, both web builds, the dummy), about 15 s in all, so
    a function one backend lacks is red on any host rather than on the first machine that builds it.
 2. The demo entry builds and runs, then the integration programs, each with its named misuse
    runs; `mixedFrame` with its controls and both registration orders. Then the backend checks of
    the host: `webgpuD3d11Check` and `doorZeroHandleCheck` on WARP and `webgpuGlCheck`
-   (`-d:voidGlCore`) on the system device on Windows, `webgpuMetalCheck` on a Mac.
+   (`-d:voidGlCore`) on the system device on Windows, `webgpuMetalCheck` on a Mac. With `--d3d12`,
+   also `webgpuD3d12Check` (`-d:voidD3d12`) on WARP.
 3. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
    twice, compare the two, gate per-scene counters, write the PNG, then
    `tests/golden/compare.ms` judges every scene against `tests/golden/d3d11/` and prints
@@ -367,6 +368,10 @@ Flags:
   are one SKIP line. Pass it when a change touches `src/platform/macos/*`,
   `src/host/bridgeEmbed.m` or `tests/capture/capture.c`. `gpuTimer` runs on every Mac gate,
   in the quiet window.
+- `--d3d12` runs `webgpuD3d12Check` on WARP. Every pin ends by asserting that the D3D12 debug
+  layer recorded no message, so it needs the Graphics Tools optional feature
+  (`d3d12SDKLayers.dll`); without it `requestDevice` stops and names it. Without the flag it is
+  one SKIP line on Windows.
 - `--ios` runs the Metal goldens and view samples on an attached iPhone or iPad
   (`scripts/iosDevice.sh`); without it they are one SKIP line. The device must be paired and
   unlocked, or every iOS line fails by name.
