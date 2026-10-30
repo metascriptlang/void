@@ -68,6 +68,25 @@ function currentFeatureStageIndex(s: KbScratch): int32 {
 	return (s.featureStagesRead as int32) - 1;
 }
 
+// The GsubRebucketTouchedGlyphs block of kbts__GsubFeatures, repeated in kbts__GposFeatures.
+function rebucketTouchedGlyphs(
+	s: KbScratch,
+	first: int32,
+	onePastLast: int32,
+	sequentialLookupIndex: int32,
+): void {
+	const storage = s.storage;
+	let matched = first;
+	while (matched != onePastLast) {
+		if (storage.glyphs[matched].bucketedPlusOne != 0 &&
+			(storage.glyphs[matched].bucketedBucketIndex as int32) == sequentialLookupIndex) {
+			kbUnbucketGlyph(s, matched);
+			kbBucketGlyph(s, matched, sequentialLookupIndex + 1);
+		}
+		matched = storage.glyphs[matched].next;
+	}
+}
+
 export function kbGsubFeatures(s: KbScratch, m: Span<uint8>, config: KbShapeConfig): void {
 	const storage = s.storage;
 	const lookupList = kbGetLookupList(m, m.kbBlobTableData(KB_BLOB_TABLE_ID_GSUB));
@@ -127,17 +146,7 @@ export function kbGsubFeatures(s: KbScratch, m: Span<uint8>, config: KbShapeConf
 					}
 
 					const end = kbEndLookupApplication(s);
-
-					let matched = storage.glyphs[prev].next;
-					while (matched != end) {
-						if (storage.glyphs[matched].bucketedPlusOne != 0 &&
-							(storage.glyphs[matched].bucketedBucketIndex as int32) ==
-								sequentialLookupIndex) {
-							kbUnbucketGlyph(s, matched);
-							kbBucketGlyph(s, matched, sequentialLookupIndex + 1);
-						}
-						matched = storage.glyphs[matched].next;
-					}
+					rebucketTouchedGlyphs(s, storage.glyphs[prev].next, end, sequentialLookupIndex);
 				}
 			}
 		}
@@ -241,7 +250,6 @@ export function kbGposMetrics(s: KbScratch, m: Span<uint8>, config: KbShapeConfi
 }
 
 export function kbGposFeatures(s: KbScratch, m: Span<uint8>, config: KbShapeConfig): void {
-	const storage = s.storage;
 	const gpos = m.kbBlobTableData(KB_BLOB_TABLE_ID_GPOS);
 	const gdef = m.kbBlobTableData(KB_BLOB_TABLE_ID_GDEF);
 	const lookupList = kbGetLookupList(m, gpos);
@@ -289,17 +297,7 @@ export function kbGposFeatures(s: KbScratch, m: Span<uint8>, config: KbShapeConf
 					}
 
 					const end = kbEndLookupApplication(s);
-
-					let matched = glyph;
-					while (matched != end) {
-						if (storage.glyphs[matched].bucketedPlusOne != 0 &&
-							(storage.glyphs[matched].bucketedBucketIndex as int32) ==
-								sequentialLookupIndex) {
-							kbUnbucketGlyph(s, matched);
-							kbBucketGlyph(s, matched, sequentialLookupIndex + 1);
-						}
-						matched = storage.glyphs[matched].next;
-					}
+					rebucketTouchedGlyphs(s, glyph, end, sequentialLookupIndex);
 				}
 			}
 		}
