@@ -607,9 +607,8 @@ test "a depth32float clear to 0.5 reads back as 0.5 in every texel" {
 	device.destroy();
 }
 
-test "a triangle from DXBC with an empty layout draws its colour at the centre" {
-	const device = openDevice();
-	const pipeline = flatPipeline(device, device.createShaderModule(blobModule("green", VERTEX_HLSL, GREEN_HLSL)), 1);
+function greenTriangle(device: GPUDevice, descriptor: GPUShaderModuleDescriptor): Vec<uint8> {
+	const pipeline = flatPipeline(device, device.createShaderModule(descriptor), 1);
 	const vertices = vertexBuffer(device, 24);
 	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
 	device.queue.writeBuffer(vertices, 0, triangle);
@@ -621,8 +620,50 @@ test "a triangle from DXBC with an empty layout draws its colour at the centre" 
 	pass.draw(3, 1, 0, 0);
 	pass.end();
 	device.queue.submit(encoder.finish());
-	const read = readTarget(device, target);
+	return readTarget(device, target);
+}
+
+test "a triangle from DXBC with an empty layout draws its colour at the centre" {
+	const device = openDevice();
+	const read = greenTriangle(device, blobModule("green", VERTEX_HLSL, GREEN_HLSL));
 	assert texelAt(read, 256, 0, 0) == BLUE && texelAt(read, 256, 32, 32) == GREEN;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a module from HLSL text draws, and a stage without DXBC beside one with it still compiles its text" {
+	const device = openDevice();
+	let text: GPUShaderModuleDescriptor = {
+		label: "text",
+		vertexCode: VERTEX_HLSL,
+		vertexEntryPoint: "",
+		fragmentCode: GREEN_HLSL,
+		fragmentEntryPoint: "",
+	};
+	text.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	const fromText = greenTriangle(device, text);
+	assert texelAt(fromText, 256, 0, 0) == BLUE && texelAt(fromText, 256, 32, 32) == GREEN;
+	let mixed: GPUShaderModuleDescriptor = {
+		label: "mixed",
+		vertexCode: "",
+		vertexEntryPoint: "",
+		fragmentCode: GREEN_HLSL,
+		fragmentEntryPoint: "",
+		vertexBytecode: dxbc(VERTEX_HLSL, "vs_5_0"),
+	};
+	mixed.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	assert texelAt(greenTriangle(device, mixed), 256, 32, 32) == GREEN;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+const DOUBLE_HLSL = "RWByteAddressBuffer data : register(u0);\n[numthreads(4, 1, 1)] void main(uint3 id : SV_DispatchThreadID) { uint at = id.x * 4; data.Store(at, data.Load(at) * 2); }";
+
+test "a compute module from HLSL text compiles its cs_5_0 stage" {
+	const device = openDevice();
+	let descriptor: GPUShaderModuleDescriptor = { label: "compute", computeCode: DOUBLE_HLSL, computeEntryPoint: "" };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "storage", nativeSlot: 0 };
+	device.createShaderModule(descriptor);
 	assert drainDebugMessages() == 0;
 	device.destroy();
 }
