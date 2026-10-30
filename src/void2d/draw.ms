@@ -1,15 +1,4 @@
-// Void 2D emitter — turns the tree walk into a display list and nothing else.
-//
-// Before P1 this file issued sokol calls as the tree was walked: every state change was a
-// flush, every Label and Graphics owned an sg_buffer, and a Mask applied a scissor on the
-// spot. Now it appends to the two streams in displayList.ms and `end2d()` hands the whole
-// frame to `void2dReplay` once. The only sokol calls left here are the ones that are not
-// drawing — creating a render target, opening a pass — and those are the host's, not the
-// walk's.
-//
-// A batch ends when the state the replay would have to change ends: a different view, blend,
-// sampler or colour pipeline. The reason is recorded with the command, so a T1 snapshot says
-// `break: view` rather than leaving a count to be explained.
+// Void 2D emitter: turns the tree walk into the display-list streams of displayList.ms.
 
 import {
 	void2dSetup, void2dWhiteView, void2dSetDpiScale, void2dFrameBegin,
@@ -191,7 +180,7 @@ export function growthTarget(have: int32, need: int32): int32 {
 	return growthTargetOf(have, need);
 }
 
-// Counted from the stream rather than from the GPU, so T1 can read them with no GPU at all.
+// Counted from the stream rather than from the GPU, so a test reads them with no GPU.
 export function recordedDrawCount(): int32 { return drawCommandCount(); }
 export function recordedCommandCount(): int32 { return commandCount(); }
 export function recordedVertexCount(): int32 { return vertexCount(); }
@@ -259,10 +248,7 @@ function closeRun(): void {
 	ctx.runOpen = false;
 }
 
-// Close the open run so the streams are final. Naming the step separates *recording is
-// finished* from *the GPU is told about it*: `flushTargets` and `end2d` both start with it,
-// and T1 uses it on its own, because a display list is assertable with no GPU at all and the
-// replay is the one part that is not.
+// Exported so a test can read a display list with no GPU.
 export function finishRecording(): void {
 	closeRun();
 }
@@ -487,9 +473,6 @@ export function setup2d(): void {
 }
 
 
-// h2d has no DPI concept; void2d needs one because snapping and the pixel-exact text regime
-// are stated per device pixel. The logical size is a float — the `as int32` truncation that
-// put every glyph off-grid at DPI 1.25 and 1.5 is gone (VOID2D.md "Known defects").
 export function begin2d(w: float32, h: float32, dpi: float32): void {
 	useDefaultContext();
 	beginContext(w, h, dpi);
@@ -548,9 +531,8 @@ export function startContext(): void {
 	ctx.scopeDepths.length = 0;
 }
 
-// Upload the frame and run every render-target pass. Called with NO pass open, before the
-// swapchain pass is begun: that ordering is the phase's whole point, because a target pass
-// opened inside the swapchain pass is what sokol asserts on.
+// Upload the frame and run every render-target pass. Call it with no pass open: a target
+// pass opened inside the swapchain pass trips a sokol assert.
 export function flushTargets(): void {
 	const ctx: DrawContext2D = currentContext();
 	finishRecording();
@@ -1120,8 +1102,8 @@ export function setGradientEffect(
 }
 
 // The scene's default for nodes whose `smooth` is `Smooth.Inherit`. Set once per bracket by
-// `Scene.present`, before the walk; changing it mid-walk would make two nodes with identical
-// state sample differently, which is exactly the bug a tri-state invites.
+// `Scene2D.paint`, before the walk: changing it mid-walk would make two nodes with identical
+// state sample differently.
 export function setSceneSmooth(s: boolean): void {
 	const ctx: DrawContext2D = currentContext();
 	ctx.sceneSmooth = s;
@@ -1132,9 +1114,7 @@ export function sceneSmoothDefault(): boolean {
 	return ctx.sceneSmooth;
 }
 
-// h2d.Drawable.smooth and h2d.Drawable.tileWrap, resolved: linear vs nearest sampling, and
-// repeat vs clamp at the tile's edge. Batch state — a change closes the run, because a
-// sampler is bound per draw.
+// A sampler is bound per draw, so a change closes the run.
 export function setSampler(smooth: Smooth, tileWrap: boolean): void {
 	const ctx: DrawContext2D = currentContext();
 	const on: boolean = smooth == Smooth.Inherit ? ctx.sceneSmooth : smooth == Smooth.On;
@@ -1173,14 +1153,6 @@ export function drawImage(t: Tile, pos: Vec2, size: Vec2, tint: Color, blend: Bl
 		t.u0, t.v0, t.u1, t.v1);
 }
 
-// Which pipeline set the following draws need: the offscreen one (single sample, no depth)
-// or the swapchain one. Recorded per command rather than flipped here, because the replay
-// runs after the recording has finished — the demo caught this the moment the display list
-// landed, with every render-target draw replaying under the swapchain set.
-// Open a render-target bracket. Nothing touches the GPU here: the commands that follow are
-// moved into the hoisted target list when `endTarget` closes them, and the pass itself is
-// opened by the replay, outside the swapchain pass. The emitter's run state is saved because
-// the target has its own viewport and its own idea of what is already bound.
 function stopOnTarget(target: RenderTarget, scale: float32): void {
 	console.log(`void2d: beginTarget needs an allocated Rgba8 target and a positive scale, got ` +
 		`${target.format.toString()} ${target.width}x${target.height} view ${target.attachment}` +
@@ -1198,6 +1170,10 @@ function stopOnBlurOutsideTarget(): void {
 	unreachable;
 }
 
+// Open a render-target bracket. Nothing touches the GPU here: the commands that follow are
+// moved into the hoisted target list when `endTarget` closes them, and the pass itself is
+// opened by the replay, outside the swapchain pass. The emitter's run state is saved because
+// the target has its own viewport and its own idea of what is already bound.
 export function beginTarget(
 	target: RenderTarget,
 	w: float32,
@@ -1271,12 +1247,8 @@ export function blurPass(srcView: uint32, stepX: float32, stepY: float32): void 
 
 // ===== world-space geometry from a retained local-space mesh =====
 
-// A Label's glyphs and a Graphics' triangles are built once in LOCAL space and kept on the
-// node. Before P1 each owned an sg_buffer and was drawn with an object matrix in the shader,
-// which is why at most about 126 of them could exist at all. Now the mesh is transformed
-// here and appended to the frame's stream, so any number of them share one buffer and one
-// draw per state run. P2 gives the transform back to the GPU as a per-instance affine; until
-// then the CPU does it, which is what the old dynamic path already did for every Rect.
+// A Label's glyphs and a Graphics' triangles are built once in local space and kept on the
+// node; they are transformed here and appended to the frame's stream.
 export const FRINGE_HALF_WIDTH: float32 = 0.5;
 export const EDGE_FLOATS: int32 = 11;
 export const EDGE_NORMAL_BEFORE: int32 = 0;
@@ -1419,7 +1391,7 @@ export function drawMesh(
 		view, premultiplied, blend, m, tint, alpha);
 }
 
-// ===== arbitrary-corner quads (for rotated/affine nodes; a=TL b=TR c=BR d=BL) =====
+// ===== arbitrary-corner quads =====
 
 function quad4(
 	view: uint32, premultiplied: boolean, blend: BlendMode, a: Vec2, b: Vec2, c: Vec2, d: Vec2,
@@ -1434,12 +1406,6 @@ function quad4(
 	pushVertex(d.x, d.y, u0, v1, color.r, color.g, color.b, color.a);
 }
 
-// One instanced sprite: the node's world affine, the origin its local bounds map to, and
-// its local size. The shader rebuilds the corners, so the walk stops writing six transformed
-// vertices and writes 64 unchanged bytes instead.
-//
-// colorAdd, no colorKey - so a node with one stays on the vertex path. That is a decision the
-// caller makes, not a silent fallback: `spriteInstancingAvailable` is what render.ms asks.
 export function drawSpriteAffine(
 	view: uint32,
 	premultiplied: boolean,
@@ -1498,9 +1464,7 @@ export function appendSprite(
 // local space from these, so a rounded, bordered card at 37 degrees keeps its corner radius
 // and its edge softness instead of having them baked in here.
 //
-// `mode` is a lane and not a pipeline - that is P2's whole thesis. A card, its label and its
-// image differ by one float and stay in one run; the alternative is GPUI's per-kind pipelines,
-// which is what forces its BoundsTree (guardrail 1).
+// `mode` is a lane and not a pipeline: a card, its label and its image stay in one run.
 //
 // The modes that leave a lane unused pass zeros; `instance.ms` says which lane means what.
 export function drawUiInstance(view: uint32, blend: BlendMode, inst: UiInstance): void {
@@ -1517,7 +1481,7 @@ export function uiInstancingAvailable(): boolean {
 	return ctx.curEffect == NO_EFFECT;
 }
 
-// Counted from the stream rather than from the GPU, so T1 reads them with no GPU at all.
+// Counted from the stream rather than from the GPU, so a test reads them with no GPU.
 export function recordedUiInstanceCount(): int32 { return uiInstanceCount(); }
 export function recordedSpriteInstanceCount(): int32 { return spriteInstanceCount(); }
 
