@@ -88,4 +88,14 @@ int32_t dx12ExecuteIndirect(uint64_t list, uint64_t signature, uint32_t count, u
 int32_t dx12ResolveSubresource(uint64_t list, uint64_t target, uint32_t targetSubresource, uint64_t source, uint32_t sourceSubresource, int32_t format);
 int32_t dx12Event(uint64_t list, int32_t kind, const char *label);
 
+int32_t dx12TearingSupported(uint64_t adapter, int32_t *supported);
+int32_t dx12SwapchainCreate(uint64_t adapter, uint64_t queue, uint64_t window, int32_t composition, uint32_t width, uint32_t height, int32_t format, uint32_t bufferCount, uint32_t flags, uint32_t latency, uint64_t *swapchain, uint64_t *waitable);
+int32_t dx12SwapchainBuffer(uint64_t swapchain, uint32_t index, uint64_t *resource);
+int32_t dx12SwapchainCurrent(uint64_t swapchain, uint32_t *index);
+int32_t dx12SwapchainResize(uint64_t swapchain, uint32_t bufferCount, uint32_t width, uint32_t height, uint32_t flags);
+int32_t dx12SwapchainPresent(uint64_t swapchain, uint32_t interval, uint32_t flags, int32_t *result);
+int32_t dx12SwapchainRelease(uint64_t swapchain, uint64_t waitable);
+int32_t dx12RemovedReason(uint64_t device, int32_t *reason);
+int32_t dx12PointerBits(void *pointer, uint64_t *bits);
+
 int32_t dx12Release(uint64_t object);

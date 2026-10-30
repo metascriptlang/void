@@ -1010,6 +1010,121 @@ int32_t dx12ShaderCompile(const char *source, const char *entryPoint, const char
 
 const char *dx12CompileLog(void) { return s_compileLog; }
 
+#define SWAPCHAIN(s) ((IDXGISwapChain3 *)(uintptr_t)(s))
+
+static int32_t adapterFactory(uint64_t adapter, IDXGIFactory2 **factory) {
+	HRESULT hr = IDXGIAdapter1_GetParent((IDXGIAdapter1 *)(uintptr_t)adapter, &IID_IDXGIFactory2, (void **)factory);
+	return FAILED(hr) ? failCall("IDXGIAdapter1::GetParent(IDXGIFactory2)", hr) : DX12_OK;
+}
+
+int32_t dx12TearingSupported(uint64_t adapter, int32_t *supported) {
+	*supported = 0;
+	IDXGIFactory2 *factory = NULL;
+	int32_t status = adapterFactory(adapter, &factory);
+	if (status != DX12_OK) return status;
+	IDXGIFactory5 *factory5 = NULL;
+	if (SUCCEEDED(IDXGIFactory2_QueryInterface(factory, &IID_IDXGIFactory5, (void **)&factory5))) {
+		BOOL allowed = FALSE;
+		HRESULT hr = IDXGIFactory5_CheckFeatureSupport(factory5, DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowed, sizeof allowed);
+		*supported = SUCCEEDED(hr) && allowed;
+		IDXGIFactory5_Release(factory5);
+	}
+	IDXGIFactory2_Release(factory);
+	return DX12_OK;
+}
+
+static int32_t watchLatency(IDXGISwapChain3 *chain, uint32_t latency, uint64_t *waitable) {
+	HRESULT hr = IDXGISwapChain3_SetMaximumFrameLatency(chain, latency);
+	if (FAILED(hr)) return failCall("IDXGISwapChain2::SetMaximumFrameLatency", hr);
+	HANDLE handle = IDXGISwapChain3_GetFrameLatencyWaitableObject(chain);
+	if (handle == NULL) return fail(DX12_ERROR_CALL, "IDXGISwapChain2::GetFrameLatencyWaitableObject gave no handle");
+	*waitable = NATIVE(handle);
+	return DX12_OK;
+}
+
+int32_t dx12SwapchainCreate(uint64_t adapter, uint64_t queue, uint64_t window, int32_t composition, uint32_t width, uint32_t height, int32_t format,
+	uint32_t bufferCount, uint32_t flags, uint32_t latency, uint64_t *swapchain, uint64_t *waitable) {
+	*swapchain = 0;
+	*waitable = 0;
+	IDXGIFactory2 *factory = NULL;
+	int32_t status = adapterFactory(adapter, &factory);
+	if (status != DX12_OK) return status;
+	DXGI_SWAP_CHAIN_DESC1 desc = {0};
+	desc.Width = width;
+	desc.Height = height;
+	desc.Format = (DXGI_FORMAT)format;
+	desc.SampleDesc.Count = 1;
+	desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	desc.BufferCount = bufferCount;
+	desc.Scaling = DXGI_SCALING_STRETCH;
+	desc.SwapEffect = composition ? DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL : DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	desc.AlphaMode = composition ? DXGI_ALPHA_MODE_PREMULTIPLIED : DXGI_ALPHA_MODE_UNSPECIFIED;
+	desc.Flags = flags;
+	IDXGISwapChain1 *created = NULL;
+	HRESULT hr = composition
+		? IDXGIFactory2_CreateSwapChainForComposition(factory, (IUnknown *)QUEUE(queue), &desc, NULL, &created)
+		: IDXGIFactory2_CreateSwapChainForHwnd(factory, (IUnknown *)QUEUE(queue), (HWND)(uintptr_t)window, &desc, NULL, NULL, &created);
+	if (FAILED(hr)) {
+		IDXGIFactory2_Release(factory);
+		return failCall(composition ? "IDXGIFactory2::CreateSwapChainForComposition" : "IDXGIFactory2::CreateSwapChainForHwnd", hr);
+	}
+	if (!composition) IDXGIFactory2_MakeWindowAssociation(factory, (HWND)(uintptr_t)window, DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_PRINT_SCREEN);
+	IDXGIFactory2_Release(factory);
+	IDXGISwapChain3 *chain = NULL;
+	hr = IDXGISwapChain1_QueryInterface(created, &IID_IDXGISwapChain3, (void **)&chain);
+	IDXGISwapChain1_Release(created);
+	if (FAILED(hr)) return failCall("IDXGISwapChain1::QueryInterface(IDXGISwapChain3)", hr);
+	status = watchLatency(chain, latency, waitable);
+	if (status != DX12_OK) {
+		IDXGISwapChain3_Release(chain);
+		return status;
+	}
+	*swapchain = NATIVE(chain);
+	return DX12_OK;
+}
+
+int32_t dx12SwapchainBuffer(uint64_t swapchain, uint32_t index, uint64_t *resource) {
+	ID3D12Resource *buffer = NULL;
+	HRESULT hr = IDXGISwapChain3_GetBuffer(SWAPCHAIN(swapchain), index, &IID_ID3D12Resource, (void **)&buffer);
+	*resource = NATIVE(buffer);
+	return FAILED(hr) ? failCall("IDXGISwapChain3::GetBuffer", hr) : DX12_OK;
+}
+
+int32_t dx12SwapchainCurrent(uint64_t swapchain, uint32_t *index) {
+	*index = IDXGISwapChain3_GetCurrentBackBufferIndex(SWAPCHAIN(swapchain));
+	return DX12_OK;
+}
+
+int32_t dx12SwapchainResize(uint64_t swapchain, uint32_t bufferCount, uint32_t width, uint32_t height, uint32_t flags) {
+	HRESULT hr = IDXGISwapChain3_ResizeBuffers(SWAPCHAIN(swapchain), bufferCount, width, height, DXGI_FORMAT_UNKNOWN, flags);
+	return FAILED(hr) ? failCall("IDXGISwapChain3::ResizeBuffers", hr) : DX12_OK;
+}
+
+int32_t dx12SwapchainPresent(uint64_t swapchain, uint32_t interval, uint32_t flags, int32_t *result) {
+	HRESULT hr = IDXGISwapChain3_Present(SWAPCHAIN(swapchain), interval, flags);
+	*result = (int32_t)hr;
+	if (SUCCEEDED(hr) || (hr == DXGI_ERROR_WAS_STILL_DRAWING && (flags & DXGI_PRESENT_DO_NOT_WAIT))) return DX12_OK;
+	return failCall("IDXGISwapChain3::Present", hr);
+}
+
+int32_t dx12SwapchainRelease(uint64_t swapchain, uint64_t waitable) {
+	if (waitable != 0 && !CloseHandle(HANDLE_OF(waitable))) {
+		return fail(DX12_ERROR_CALL, "CloseHandle on the frame latency waitable failed with error %lu", GetLastError());
+	}
+	if (swapchain != 0) IDXGISwapChain3_Release(SWAPCHAIN(swapchain));
+	return DX12_OK;
+}
+
+int32_t dx12RemovedReason(uint64_t device, int32_t *reason) {
+	*reason = (int32_t)ID3D12Device_GetDeviceRemovedReason(DEVICE(device));
+	return DX12_OK;
+}
+
+int32_t dx12PointerBits(void *pointer, uint64_t *bits) {
+	*bits = NATIVE(pointer);
+	return DX12_OK;
+}
+
 int32_t dx12Release(uint64_t object) {
 	if (object != 0) IUnknown_Release((IUnknown *)(uintptr_t)object);
 	return DX12_OK;
