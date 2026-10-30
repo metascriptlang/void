@@ -400,9 +400,11 @@ export function tile(this atlas: GlyphAtlas, index: int32): GlyphTile {
 }
 
 export function release(this atlas: GlyphAtlas, index: int32): void {
-	if (atlas.tiles[index].refs > 0) {
-		atlas.tiles[index].refs = atlas.tiles[index].refs - 1;
+	if (atlas.tiles[index].refs <= 0) {
+		console.log(`void2d glyph atlas: release of tile ${index} with ${atlas.tiles[index].refs} refs`);
+		unreachable;
 	}
+	atlas.tiles[index].refs = atlas.tiles[index].refs - 1;
 }
 
 export function discard(this atlas: GlyphAtlas, index: int32): void {

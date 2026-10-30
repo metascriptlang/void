@@ -106,8 +106,6 @@ test "releasing the shared empty tile leaves it to be retained again" {
 		atlas.release(first.value);
 		atlas.release(second.value);
 		assert atlas.tile(first.value).refs == 0;
-		atlas.release(second.value);
-		assert atlas.tile(first.value).refs == 0;
 		const third = atlas.acquire(space);
 		assert third.ok;
 		if (third.ok) {
