@@ -31,24 +31,34 @@ import { Js, flag, intField, listenBubble, numberField, stringField } from "./wi
 import { WindowState } from "./windowCore";
 import { WindowIme } from "./windowIme";
 
-extern function listen(target: Js, name: string, handler: (event: Js) => boolean): () => void
+extern function listen(
+	target: Js,
+	name: string,
+	handler: (event: Js) => boolean,
+): () => void
 	from "((t,n,f)=>{const h=(e)=>{if(f(e))e.preventDefault();};t.addEventListener(n,h,true);return ()=>t.removeEventListener(n,h,true);})(#,#,#)";
 extern function documentTarget(): Js from "(document)";
 extern function windowTarget(): Js from "(window)";
-extern function targetX(source: Js, target: Js): int32 from "((e,t)=>((e.clientX-(t.getBoundingClientRect().left|0))|0))(#,#)";
-extern function targetY(source: Js, target: Js): int32 from "((e,t)=>((e.clientY-(t.getBoundingClientRect().top|0))|0))(#,#)";
-extern function touchList(event: Js): Js from "((e)=>{const m={};for(const t of e.touches){m[t.identifier]={identifier:t.identifier,clientX:t.clientX,clientY:t.clientY,isChanged:0};}for(const t of e.changedTouches){m[t.identifier]={identifier:t.identifier,clientX:t.clientX,clientY:t.clientY,isChanged:1};}return Object.values(m);})(#)";
+extern function targetX(source: Js, target: Js): int32
+	from "((e,t)=>((e.clientX-(t.getBoundingClientRect().left|0))|0))(#,#)";
+extern function targetY(source: Js, target: Js): int32
+	from "((e,t)=>((e.clientY-(t.getBoundingClientRect().top|0))|0))(#,#)";
+extern function touchList(event: Js): Js
+	from "((e)=>{const m={};for(const t of e.touches){m[t.identifier]={identifier:t.identifier,clientX:t.clientX,clientY:t.clientY,isChanged:0};}for(const t of e.changedTouches){m[t.identifier]={identifier:t.identifier,clientX:t.clientX,clientY:t.clientY,isChanged:1};}return Object.values(m);})(#)";
 extern function listLength(list: Js): int32 from "#.length";
 extern function listAt(list: Js, index: int32): Js from "#[#]";
 extern function pointerLockActive(): boolean from "(!!document.pointerLockElement)";
-extern function requestPointerLock(canvas: Js): void from "((c)=>{if(c.requestPointerLock)c.requestPointerLock();})(#)";
-extern function exitPointerLock(): void from "(()=>{if(document.exitPointerLock)document.exitPointerLock();})()";
+extern function requestPointerLock(canvas: Js): void
+	from "((c)=>{if(c.requestPointerLock)c.requestPointerLock();})(#)";
+extern function exitPointerLock(): void
+	from "(()=>{if(document.exitPointerLock)document.exitPointerLock();})()";
 extern function setCursorStyle(canvas: Js, cursor: string): void from "(#.style.cursor=#)";
 extern function clipboardText(event: Js): string from "#.clipboardData.getData('text')";
 extern function stopPropagation(event: Js): void from "#.stopPropagation()";
 extern function droppedFiles(event: Js): Js from "#.dataTransfer.files";
 extern function fileName(file: Js): string from "#.name";
-extern function fullscreenActive(): boolean from "(!!(document.fullscreenElement||document.mozFullScreenElement||document.webkitFullscreenElement||document.msFullscreenElement))";
+extern function fullscreenActive(): boolean
+	from "(!!(document.fullscreenElement||document.mozFullScreenElement||document.webkitFullscreenElement||document.msFullscreenElement))";
 extern function toggleFullscreenElement(canvas: Js, setFlag: (on: boolean) => void): void
 	from "((canvas,setFlag)=>{const current=document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement;let p;if(!current){if(canvas.requestFullscreen)p=canvas.requestFullscreen();else if(canvas.webkitRequestFullscreen)p=canvas.webkitRequestFullscreen();else if(canvas.mozRequestFullScreen)p=canvas.mozRequestFullScreen();if(p){p.catch((err)=>{console.warn('void: failed to enter fullscreen',err);setFlag(false);});}else{console.warn('void: this browser has no requestFullscreen');setFlag(false);}}else{if(document.exitFullscreen)p=document.exitFullscreen();else if(document.webkitExitFullscreen)p=document.webkitExitFullscreen();else if(document.mozCancelFullScreen)p=document.mozCancelFullScreen();if(p){p.catch((err)=>{console.warn('void: failed to leave fullscreen',err);setFlag(true);});}else{console.warn('void: this browser has no exitFullscreen');}}})(#,#)";
 
@@ -72,6 +82,15 @@ const CURSOR_NAMES: string[] = [
 	"all-scroll",
 	"not-allowed",
 ];
+
+function keyModifiers(event: Js): uint32 {
+	let modifiers: uint32 = 0;
+	if (flag(event, "ctrlKey")) { modifiers |= MODIFIER_CTRL; }
+	if (flag(event, "shiftKey")) { modifiers |= MODIFIER_SHIFT; }
+	if (flag(event, "altKey")) { modifiers |= MODIFIER_ALT; }
+	if (flag(event, "metaKey")) { modifiers |= MODIFIER_SUPER; }
+	return modifiers;
+}
 
 export class WindowEvents {
 	state: WindowState;
@@ -102,11 +121,7 @@ export class WindowEvents {
 		if ((held & HELD_LEFT) != 0) { modifiers |= MODIFIER_LMB; }
 		if ((held & HELD_RIGHT) != 0) { modifiers |= MODIFIER_RMB; }
 		if ((held & HELD_MIDDLE) != 0) { modifiers |= MODIFIER_MMB; }
-		if (flag(event, "ctrlKey")) { modifiers |= MODIFIER_CTRL; }
-		if (flag(event, "shiftKey")) { modifiers |= MODIFIER_SHIFT; }
-		if (flag(event, "altKey")) { modifiers |= MODIFIER_ALT; }
-		if (flag(event, "metaKey")) { modifiers |= MODIFIER_SUPER; }
-		return modifiers;
+		return modifiers | keyModifiers(event);
 	}
 
 	showCursor(): void {
@@ -161,9 +176,12 @@ export class WindowEvents {
 		let e = state.initEvent(type);
 		e.modifiers = this.modifiers(event);
 		if (buttonEvent) {
-			e.mouseButton = (button == 0
-				? MouseButton.Left
-				: button == 1 ? MouseButton.Middle : MouseButton.Right) as int32;
+			const pressed = match (button) {
+				0 => MouseButton.Left,
+				1 => MouseButton.Middle,
+				_ => MouseButton.Right,
+			};
+			e.mouseButton = pressed as int32;
 		}
 		this.window.windowEvent(e);
 		if (buttonEvent) { this.updateMouseLock(); }
@@ -180,11 +198,12 @@ export class WindowEvents {
 		let e = state.initEvent(AppEventType.MouseScroll);
 		e.modifiers = this.modifiers(event);
 		const mode = intField(event, "deltaMode");
-		let scale: float32 = 0;
-		if (mode == DOM_DELTA_PIXEL) { scale = -0.01; }
-		else if (mode == DOM_DELTA_LINE) { scale = -1.33; }
-		else if (mode == DOM_DELTA_PAGE) { scale = -10.0; }
-		else { this.window.platform.fail(`wheel event with delta mode ${mode}`); }
+		const scale: float32 = match (mode) {
+			DOM_DELTA_PIXEL => -0.01,
+			DOM_DELTA_LINE => -1.33,
+			DOM_DELTA_PAGE => -10.0,
+			_ => this.window.platform.fail(`wheel event with delta mode ${mode}`),
+		};
 		e.scrollX = scale * (numberField(event, "deltaX") as float32);
 		e.scrollY = scale * (numberField(event, "deltaY") as float32);
 		this.window.windowEvent(e);
@@ -253,7 +272,9 @@ export class WindowEvents {
 	}
 
 	focus(focused: boolean): boolean {
-		if (!focused) { this.window.keysHeld.release((key: int32): void => { this.releaseKey(key); }); }
+		if (!focused) {
+			this.window.keysHeld.release((key: int32): void => { this.releaseKey(key); });
+		}
 		this.emit(focused ? AppEventType.Focused : AppEventType.Unfocused);
 		return true;
 	}
@@ -266,7 +287,10 @@ export class WindowEvents {
 
 	toggleFullscreen(): void {
 		this.state.fullscreen = !this.state.fullscreen;
-		toggleFullscreenElement(this.canvas, (on: boolean): void => { this.state.fullscreen = on; });
+		toggleFullscreenElement(
+			this.canvas,
+			(on: boolean): void => { this.state.fullscreen = on; },
+		);
 	}
 
 	drop(event: Js): boolean {
@@ -275,7 +299,9 @@ export class WindowEvents {
 		const files = droppedFiles(event);
 		const count = listLength(files);
 		state.droppedPaths = [];
-		for (let i: int32 = 0; i < count; i++) { state.droppedPaths.push(fileName(listAt(files, i))); }
+		for (let i: int32 = 0; i < count; i++) {
+			state.droppedPaths.push(fileName(listAt(files, i)));
+		}
 		if (count == 0 || !this.enabled()) { return true; }
 		const mouse = state.mouse;
 		mouse.x = (intField(event, "clientX") as float32) * state.dpiScale;
@@ -283,10 +309,7 @@ export class WindowEvents {
 		mouse.dx = 0;
 		mouse.dy = 0;
 		let e = state.initEvent(AppEventType.FilesDropped);
-		if (flag(event, "shiftKey")) { e.modifiers |= MODIFIER_SHIFT; }
-		if (flag(event, "ctrlKey")) { e.modifiers |= MODIFIER_CTRL; }
-		if (flag(event, "altKey")) { e.modifiers |= MODIFIER_ALT; }
-		if (flag(event, "metaKey")) { e.modifiers |= MODIFIER_SUPER; }
+		e.modifiers |= keyModifiers(event);
 		this.window.windowEvent(e);
 		return true;
 	}
