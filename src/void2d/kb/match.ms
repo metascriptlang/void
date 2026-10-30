@@ -1,7 +1,18 @@
-import { KbUnpackedLookup, kbCoverGlyph, kbGlyphClassFromTable, kbGetChainedClassSequenceRule,
-	kbGetChainedClassSequenceRuleSet, kbGetChainedSequenceRule, kbGetChainedSequenceRuleSet,
-	kbGetClassSequenceRule, kbGetClassSequenceRuleSet, kbGetSequenceRule, kbGetSequenceRuleSet,
-	kbUnpackChainedSequenceContext3, kbUnpackChainedSequenceRule } from "./access";
+import {
+	KbUnpackedLookup,
+	kbCoverGlyph,
+	kbGlyphClassFromTable,
+	kbGetChainedClassSequenceRule,
+	kbGetChainedClassSequenceRuleSet,
+	kbGetChainedSequenceRule,
+	kbGetChainedSequenceRuleSet,
+	kbGetClassSequenceRule,
+	kbGetClassSequenceRuleSet,
+	kbGetSequenceRule,
+	kbGetSequenceRuleSet,
+	kbUnpackChainedSequenceContext3,
+	kbUnpackChainedSequenceRule,
+} from "./access";
 import { kbBoundsFail, kbU16 } from "./blob";
 import {
 	KB_GLYPH_CLASS_MARK,
@@ -32,7 +43,8 @@ export function kbSkipFlagsGposRegular(requestedFlags: uint32): uint32 {
 }
 
 export function kbSkipFlagsGposSequence(requestedFlags: uint32): uint32 {
-	return KB_SKIP_FLAG_ZWJ | KB_SKIP_FLAG_ZWNJ | KB_SKIP_FLAG_DEFAULT_IGNORABLES_NOT_SKIPPED_BY_GSUB;
+	return KB_SKIP_FLAG_ZWJ | KB_SKIP_FLAG_ZWNJ |
+		KB_SKIP_FLAG_DEFAULT_IGNORABLES_NOT_SKIPPED_BY_GSUB;
 }
 
 export struct KbSequenceMatch {
@@ -51,13 +63,20 @@ export struct KbSequenceLookupResult {
 
 const MAX_SEQUENCE_ARRAY: int32 = 64;
 
-export function kbGlyphPassesLookupFilter(s: KbScratch, glyph: int32, lookup: KbUnpackedLookup): boolean {
+export function kbGlyphPassesLookupFilter(
+	s: KbScratch,
+	glyph: int32,
+	lookup: KbUnpackedLookup,
+): boolean {
 	let result = true;
 	const classValue = s.storage.glyphs[glyph].classValue as int32;
 
 	if (classValue != 0) {
 		if (classValue > 31) {
-			throw kbBoundsFail("glyph class too large for the lookup flag shift", classValue as int64);
+			throw kbBoundsFail(
+				"glyph class too large for the lookup flag shift",
+				classValue as int64,
+			);
 		}
 		if ((lookup.flags & (1 << classValue)) != 0) { result = false; }
 	}
@@ -65,7 +84,8 @@ export function kbGlyphPassesLookupFilter(s: KbScratch, glyph: int32, lookup: Kb
 	if (result && classValue == KB_GLYPH_CLASS_MARK) {
 		if ((lookup.flags & KB_LOOKUP_FLAG_MARK_ATTACHMENT_CLASS_FILTER) != 0) {
 			const desiredMarkAttachmentClass = lookup.flags >> 8;
-			if ((s.storage.glyphs[glyph].markAttachmentClass as int32) != desiredMarkAttachmentClass) {
+			if ((s.storage.glyphs[glyph].markAttachmentClass as int32) !=
+				desiredMarkAttachmentClass) {
 				result = false;
 			}
 		}
@@ -167,7 +187,13 @@ export function kbMatchCoverageSequence(
 	};
 }
 
-function arrayMatches(m: Readonly<Span<uint8>>, ids: int32[], idsFrom: int32, at: int64, count: int64): boolean {
+function arrayMatches(
+	m: Readonly<Span<uint8>>,
+	ids: int32[],
+	idsFrom: int32,
+	at: int64,
+	count: int64,
+): boolean {
 	let difference = 0;
 	for (let i: int64 = 0; i < count; i++) {
 		difference |= (ids[idsFrom + i] & 0xFFFF) ^ m.kbU16(at + i * 2);
@@ -191,8 +217,11 @@ function pushChecked(array: int32[], value: int32): void {
 
 function emptyResult(s: KbScratch, atGlyph: int32): KbSequenceLookupResult {
 	return {
-		records: 0, onePastLastGlyphMatched: s.storage.glyphs[atGlyph].next, matched: false,
-		recordCount: 0, inputSequenceCountIncludingSkippedGlyphs: 0,
+		records: 0,
+		onePastLastGlyphMatched: s.storage.glyphs[atGlyph].next,
+		matched: false,
+		recordCount: 0,
+		inputSequenceCountIncludingSkippedGlyphs: 0,
 	};
 }
 
@@ -238,14 +267,16 @@ function sequenceContext1(
 				inputGlyphsTraversed += 1;
 			}
 
-			if ((ids.length + 1) >= glyphCount && arrayMatches(m, ids, 0, inputSequence, glyphCount - 1)) {
+			if ((ids.length + 1) >= glyphCount &&
+				arrayMatches(m, ids, 0, inputSequence, glyphCount - 1)) {
 				result.records = inputSequence + (glyphCount - 1) * 2;
 				result.recordCount = sequenceLookupCount;
 				result.inputSequenceCountIncludingSkippedGlyphs = 1;
 				if (glyphCount > 1) {
 					result.inputSequenceCountIncludingSkippedGlyphs =
 						inputGlyphOffsets[glyphCount - 2] + 1;
-					result.onePastLastGlyphMatched = s.storage.glyphs[inputGlyphs[glyphCount - 2]].next;
+					result.onePastLastGlyphMatched =
+						s.storage.glyphs[inputGlyphs[glyphCount - 2]].next;
 				}
 				result.matched = true;
 				break;
@@ -307,8 +338,10 @@ function sequenceContext2(
 				result.recordCount = sequenceLookupCount;
 				result.inputSequenceCountIncludingSkippedGlyphs = 1;
 				if (glyphCount > 1) {
-					result.inputSequenceCountIncludingSkippedGlyphs = inputOffsets[glyphCount - 2] + 1;
-					result.onePastLastGlyphMatched = s.storage.glyphs[inputGlyphs[glyphCount - 2]].next;
+					result.inputSequenceCountIncludingSkippedGlyphs =
+						inputOffsets[glyphCount - 2] + 1;
+					result.onePastLastGlyphMatched =
+						s.storage.glyphs[inputGlyphs[glyphCount - 2]].next;
 				}
 				result.matched = true;
 				break;
@@ -370,9 +403,12 @@ function chainedSequenceContext1(
 		for (let ruleIndex = 0; ruleIndex < ruleCount; ruleIndex++) {
 			const rule = kbGetChainedSequenceRule(m, set, ruleIndex);
 			const unpacked = kbUnpackChainedSequenceRule(m, rule, false);
-			if (unpacked.inputCount == 0) { throw kbBoundsFail("chained rule with no input glyph", rule); }
+			if (unpacked.inputCount == 0) {
+				throw kbBoundsFail("chained rule with no input glyph", rule);
+			}
 
-			while (backtrackGlyph != KB_GLYPH_SENTINEL && backtrackIds.length < unpacked.backtrackCount) {
+			while (backtrackGlyph != KB_GLYPH_SENTINEL &&
+				backtrackIds.length < unpacked.backtrackCount) {
 				if (!kbSkipGlyph(s, backtrackGlyph, lookup, skipFlags, skipUnicodeFlags)) {
 					pushChecked(backtrackIds, s.storage.glyphs[backtrackGlyph].id as int32);
 				}
@@ -449,7 +485,9 @@ function chainedSequenceContext2(
 		for (let ruleIndex = 0; ruleIndex < ruleCount; ruleIndex++) {
 			const rule = kbGetChainedClassSequenceRule(m, set, ruleIndex);
 			const unpacked = kbUnpackChainedSequenceRule(m, rule, false);
-			if (unpacked.inputCount == 0) { throw kbBoundsFail("chained rule with no input class", rule); }
+			if (unpacked.inputCount == 0) {
+				throw kbBoundsFail("chained rule with no input class", rule);
+			}
 
 			while (backtrackGlyph != KB_GLYPH_SENTINEL &&
 				backtrackClasses.length < unpacked.backtrackCount) {
@@ -461,12 +499,14 @@ function chainedSequenceContext2(
 			}
 
 			const inputClassCountRequired = unpacked.inputCount - 1 + unpacked.lookaheadCount;
-			while (inputGlyph != KB_GLYPH_SENTINEL && inputClasses.length < inputClassCountRequired) {
+			while (inputGlyph != KB_GLYPH_SENTINEL &&
+				inputClasses.length < inputClassCountRequired) {
 				if (!kbSkipGlyph(s, inputGlyph, lookup, skipFlags, skipUnicodeFlags)) {
 					const id = s.storage.glyphs[inputGlyph].id as int32;
 					const inputClass = classDefinitionClass(m, inputClassDefinition, id);
 					let lookaheadClass = inputClass;
-					if (lookaheadClassDefinition != 0 && lookaheadClassDefinition != inputClassDefinition) {
+					if (lookaheadClassDefinition != 0 &&
+						lookaheadClassDefinition != inputClassDefinition) {
 						lookaheadClass = classDefinitionClass(m, lookaheadClassDefinition, id);
 					}
 
@@ -532,14 +572,16 @@ function chainedSequenceContext3(
 		const matchingInputGlyphCount = 1 + inputMatch.matchCount;
 		const matchedOrSkippedInputGlyphCount = 1 + inputMatch.matchOrSkipCount;
 		const lookaheadMatch = kbMatchCoverageSequence(s, lookup, skipFlags, skipUnicodeFlags, base,
-			unpacked.lookaheadCoverageOffsets, unpacked.lookaheadCount, inputMatch.onePastMatchGlyph, false);
+			unpacked.lookaheadCoverageOffsets, unpacked.lookaheadCount,
+			inputMatch.onePastMatchGlyph, false);
 
 		if (backtrackMatch.matchCount == unpacked.backtrackCount &&
 			matchingInputGlyphCount == unpacked.inputCount &&
 			lookaheadMatch.matchCount == unpacked.lookaheadCount) {
 			result.records = unpacked.records;
 			result.recordCount = unpacked.recordCount;
-			result.inputSequenceCountIncludingSkippedGlyphs = matchedOrSkippedInputGlyphCount & 0xFFFF;
+			result.inputSequenceCountIncludingSkippedGlyphs =
+				matchedOrSkippedInputGlyphCount & 0xFFFF;
 			result.onePastLastGlyphMatched = inputMatch.onePastMatchGlyph;
 			result.matched = true;
 		}
@@ -565,10 +607,12 @@ export function kbDoSequenceLookup(
 	return match (key) {
 		0x50001 | 0x70001 => sequenceContext1(s, lookup, base, coverIndex, atGlyph, skipFlags,
 			skipUnicodeFlags),
-		0x50002 | 0x70002 => sequenceContext2(s, lookup, base, atGlyph, skipFlags, skipUnicodeFlags),
-		0x50003 | 0x70003 => sequenceContext3(s, lookup, base, atGlyph, skipFlags, skipUnicodeFlags),
-		0x60001 | 0x80001 => chainedSequenceContext1(s, lookup, base, coverIndex, atGlyph, skipFlags,
+		0x50002 | 0x70002 => sequenceContext2(s, lookup, base, atGlyph, skipFlags,
 			skipUnicodeFlags),
+		0x50003 | 0x70003 => sequenceContext3(s, lookup, base, atGlyph, skipFlags,
+			skipUnicodeFlags),
+		0x60001 | 0x80001 => chainedSequenceContext1(s, lookup, base, coverIndex, atGlyph,
+			skipFlags, skipUnicodeFlags),
 		0x60002 | 0x80002 => chainedSequenceContext2(s, lookup, base, atGlyph, skipFlags,
 			skipUnicodeFlags),
 		0x60003 | 0x80003 => chainedSequenceContext3(s, lookup, base, atGlyph, skipFlags,
