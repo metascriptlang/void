@@ -4,10 +4,12 @@ import {
 	GPUBindGroupEntry,
 	GPUBuffer,
 	GPUBufferUsage,
+	GPUCompareFunction,
 	GPUComputePipeline,
 	GPUDevice,
 	GPU_NO_QUERY_INDEX,
 	GPUMapMode,
+	GPUPrimitiveTopology,
 	GPURenderPassDescriptor,
 	GPURenderPipeline,
 	GPURenderPipelineDescriptor,
@@ -15,6 +17,7 @@ import {
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
 	GPUShaderStage,
+	GPUStencilOperation,
 	GPUTexture,
 	GPUTextureFormat,
 	GPUTextureSampleType,
@@ -37,6 +40,8 @@ import {
 	colourTarget,
 	colourUniforms,
 	drawIndirectRows,
+	drawMaskedTriangle,
+	drawOverLoadedStencil,
 	drawTriangleIn,
 	readBack,
 	readCounters,
@@ -45,6 +50,7 @@ import {
 	texelAt,
 	texels,
 	uniformGroup,
+	uniformGroupAt,
 	vertexBuffer,
 } from "./webgpuFixtures.ms";
 
@@ -1114,6 +1120,319 @@ test "an occlusion query counts samples over a drawn triangle and none over an e
 	const counts = readCounters(device, resolved, 34);
 	assert counts[0] > 0 && counts[32] == counts[0];
 	assert counts[33] == 0;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+function drawTriangleAt(device: GPUDevice, dynamicOffset: uint32, entryOffset: int64): Vec<uint8> {
+	const pipeline = flatPipeline(device, flatShader(device), 1);
+	const group = uniformGroupAt(device, pipeline, colourUniforms(device), entryOffset);
+	const vertices = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	const offsets: Vec<uint32> = [dynamicOffset];
+	pass.setBindGroup(0, group, offsets);
+	pass.draw(3, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	return readTarget(device, target);
+}
+
+test "a draw and its readback advance the frame index once per submit and leave what they made alive" {
+	const device = openDevice();
+	assert device.frameIndex() == 1;
+	const read = drawTriangleAt(device, 256, 0);
+	assert device.frameIndex() == 3;
+	assert texelAt(read, 256, 0, 0) == BLUE && texelAt(read, 256, 32, 32) == GREEN && texelAt(read, 256, 63, 63) == BLUE;
+	const live = device.liveCounts();
+	assert live.buffers == 3 && live.textures == 1 && live.views == 1 && live.shaderModules == 1 && live.pipelines == 1;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a bind group entry offset selects the second uniform block" {
+	const device = openDevice();
+	const read = drawTriangleAt(device, 0, 256);
+	assert texelAt(read, 256, 32, 32) == GREEN && texelAt(read, 256, 0, 0) == BLUE;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+function stripPipeline(device: GPUDevice, module: GPUShaderModule, topology: GPUPrimitiveTopology): GPURenderPipeline {
+	let descriptor: GPURenderPipelineDescriptor = { label: "strip" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	descriptor.primitive.topology = topology;
+	return device.createRenderPipeline(descriptor);
+}
+
+function drawStrip(device: GPUDevice, topology: GPUPrimitiveTopology, points: Vec<float32>, count: int32, colourOffset: uint32, viewportWidth: float32): Vec<uint8> {
+	const pipeline = stripPipeline(device, flatShader(device), topology);
+	const group = uniformGroup(device, pipeline, colourUniforms(device));
+	const vertices = vertexBuffer(device, 64);
+	device.queue.writeBuffer(vertices, 0, points);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	if (viewportWidth > 0) { pass.setViewport(0, 0, viewportWidth, SIZE, 0, 1); }
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	const offsets: Vec<uint32> = [colourOffset];
+	pass.setBindGroup(0, group, offsets);
+	pass.draw(count, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	return readTarget(device, target);
+}
+
+test "setViewport confines a full-target triangle strip to the left half" {
+	const device = openDevice();
+	const full: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0];
+	const left = drawStrip(device, "triangle-strip", full, 4, 256, 32.0);
+	assert texelAt(left, 256, 16, 32) == GREEN && texelAt(left, 256, 2, 2) == GREEN;
+	assert texelAt(left, 256, 48, 32) == BLUE && texelAt(left, 256, 62, 62) == BLUE;
+	assert texelAt(drawStrip(device, "triangle-strip", full, 4, 256, 0.0), 256, 48, 32) == GREEN;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a line-list draws a horizontal line and a triangle-strip fills a quad" {
+	const device = openDevice();
+	const line: Vec<float32> = [-1.0, -0.51, 1.0, -0.51];
+	const lined = drawStrip(device, "line-list", line, 2, 0, 0.0);
+	assert texelAt(lined, 256, 32, 48) == RED && texelAt(lined, 256, 32, 40) == BLUE && texelAt(lined, 256, 32, 56) == BLUE;
+	const strip: Vec<float32> = [-0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0.5];
+	const quad = drawStrip(device, "triangle-strip", strip, 4, 0, 0.0);
+	assert texelAt(quad, 256, 32, 32) == RED && texelAt(quad, 256, 20, 44) == RED && texelAt(quad, 256, 4, 4) == BLUE;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a unorm8x4 vertex colour from a second vertex buffer reaches the fragment shader" {
+	const device = openDevice();
+	const module = colouredShader(device);
+	let descriptor: GPURenderPipelineDescriptor = { label: "coloured" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.vertex.buffers[1].arrayStride = 4;
+	descriptor.vertex.buffers[1].attributes[0] = { format: "unorm8x4", offset: 0, shaderLocation: 1 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	const pipeline = device.createRenderPipeline(descriptor);
+	const positions = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(positions, 0, triangle);
+	const colours = vertexBuffer(device, 12);
+	const green: Vec<uint8> = [0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255];
+	device.queue.writeBuffer(colours, 0, green);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, positions, 0);
+	pass.setVertexBuffer(1, colours, 0);
+	pass.draw(3, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const read = readTarget(device, target);
+	assert texelAt(read, 256, 32, 32) == GREEN && texelAt(read, 256, 2, 2) == BLUE;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+function stencilPipeline(device: GPUDevice, module: GPUShaderModule, compare: GPUCompareFunction, passOp: GPUStencilOperation): GPURenderPipeline {
+	let descriptor: GPURenderPipelineDescriptor = { label: "stencil" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	descriptor.primitive.topology = "triangle-strip";
+	descriptor.depthStencil.format = "depth24plus-stencil8";
+	descriptor.depthStencil.depthCompare = "always";
+	descriptor.depthStencil.stencilFront = { compare: compare, passOp: passOp };
+	descriptor.depthStencil.stencilBack = { compare: compare, passOp: passOp };
+	return device.createRenderPipeline(descriptor);
+}
+
+test "a stencil write at reference 1 masks a later equal-test draw to the left half" {
+	const device = openDevice();
+	const module = flatShader(device);
+	const writer = stencilPipeline(device, module, "always", "replace");
+	const tester = stencilPipeline(device, module, "equal", "keep");
+	const uniforms = colourUniforms(device);
+	const vertices = vertexBuffer(device, 64);
+	const left: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 0.0, -1.0, 0.0, 1.0];
+	const full: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0];
+	device.queue.writeBuffer(vertices, 0, left);
+	device.queue.writeBuffer(vertices, 32, full);
+	const target = colourTarget(device, 1);
+	const depth = device.createTexture({
+		label: "depth stencil",
+		size: { width: SIZE, height: SIZE, depthOrArrayLayers: 1 },
+		format: "depth24plus-stencil8",
+		usage: GPUTextureUsage.RENDER_ATTACHMENT as int32,
+		sampleCount: 1,
+	});
+	let descriptor = clearingPass(target.createView({ label: null }), { id: 0 });
+	descriptor.depthStencilAttachment = {
+		view: depth.createView({ label: null }),
+		depthClearValue: 1.0,
+		depthLoadOp: "clear",
+		depthStoreOp: "store",
+		stencilClearValue: 0,
+		stencilLoadOp: "clear",
+		stencilStoreOp: "discard",
+	};
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(descriptor);
+	const red: Vec<uint32> = [0];
+	const green: Vec<uint32> = [256];
+	pass.setStencilReference(1);
+	pass.setPipeline(writer);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setBindGroup(0, uniformGroup(device, writer, uniforms), red);
+	pass.draw(4, 1, 0, 0);
+	pass.setPipeline(tester);
+	pass.setVertexBuffer(0, vertices, 32);
+	pass.setBindGroup(0, uniformGroup(device, tester, uniforms), green);
+	pass.draw(4, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const read = readTarget(device, target);
+	assert texelAt(read, 256, 16, 32) == GREEN && texelAt(read, 256, 48, 32) == BLUE;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a stencil cleared to 1 and stored is loaded by the next pass while that pass clears its depth" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawOverLoadedStencil(device, stencilPipeline(device, flatShader(device), "equal", "keep"), target);
+	const read = readTarget(device, target);
+	assert texelAt(read, 256, 0, 0) == GREEN && texelAt(read, 256, 63, 63) == GREEN;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a colour target with writeMask 0 keeps its clear colour where an omitted mask takes the triangle" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawMaskedTriangle(device, flatShader(device), 0, target);
+	assert texelAt(readTarget(device, target), 256, 32, 32) == BLUE;
+	drawMaskedTriangle(device, flatShader(device), null, target);
+	assert texelAt(readTarget(device, target), 256, 32, 32) == RED;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a pipeline with depth bias, slope scale and clamp creates" {
+	const device = openDevice();
+	const module = flatShader(device);
+	let descriptor: GPURenderPipelineDescriptor = { label: "bias" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	descriptor.depthStencil.format = "depth32float";
+	descriptor.depthStencil.depthWriteEnabled = true;
+	descriptor.depthStencil.depthCompare = "less";
+	descriptor.depthStencil.depthBias = 2;
+	descriptor.depthStencil.depthBiasSlopeScale = 1.5;
+	descriptor.depthStencil.depthBiasClamp = 0.1;
+	const pipeline = device.createRenderPipeline(descriptor);
+	assert pipeline.id != 0 && device.liveCounts().pipelines == 1;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a blend constant of 0.5 weights a red source over black to half red" {
+	const device = openDevice();
+	const module = flatShader(device);
+	let descriptor: GPURenderPipelineDescriptor = { label: "blend" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	descriptor.fragment.targets[0].blendEnabled = true;
+	descriptor.fragment.targets[0].blend = {
+		color: { operation: "add", srcFactor: "constant", dstFactor: "one-minus-constant" },
+		alpha: { operation: "add", srcFactor: "one", dstFactor: "zero" },
+	};
+	const pipeline = device.createRenderPipeline(descriptor);
+	const group = uniformGroup(device, pipeline, colourUniforms(device));
+	const vertices = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const target = colourTarget(device, 1);
+	let pass: GPURenderPassDescriptor = clearingPass(target.createView({ label: null }), { id: 0 });
+	pass.colorAttachments[0].clearValue = { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+	const encoder = device.createCommandEncoder();
+	const encoded = encoder.beginRenderPass(pass);
+	encoded.setPipeline(pipeline);
+	encoded.setVertexBuffer(0, vertices, 0);
+	encoded.setBlendConstant({ r: 0.5, g: 0.5, b: 0.5, a: 0.5 });
+	const offsets: Vec<uint32> = [0];
+	encoded.setBindGroup(0, group, offsets);
+	encoded.draw(3, 1, 0, 0);
+	encoded.end();
+	device.queue.submit(encoder.finish());
+	const read = readTarget(device, target);
+	const at = 32 * 256 + 32 * 4;
+	assert read[at] >= 126 && read[at] <= 129;
+	assert read[at + 1] == 0 && read[at + 2] == 0 && read[at + 3] == 255;
+	assert texelAt(read, 256, 0, 0) == 0x000000FF;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a fragment shader reads a read-only storage buffer" {
+	const device = openDevice();
+	let descriptor = blobModule("storage fragment", VERTEX_HLSL, "ByteAddressBuffer colors : register(t0);\nfloat4 main() : SV_Target0 { return asfloat(colors.Load4(0)); }");
+	descriptor.bindings[0] = {
+		group: 1,
+		binding: 0,
+		kind: "storage-buffer",
+		visibility: GPUShaderStage.FRAGMENT as int32,
+		bufferType: "read-only-storage",
+		nativeSlot: 0,
+	};
+	const pipeline = flatPipeline(device, device.createShaderModule(descriptor), 1);
+	const colours = device.createBuffer({
+		label: "colours",
+		size: 16,
+		usage: (GPUBufferUsage.STORAGE as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const red: Vec<float32> = [1.0, 0.0, 0.0, 1.0];
+	device.queue.writeBuffer(colours, 0, red);
+	let group: GPUBindGroupDescriptor = { label: "colours", layout: pipeline.getBindGroupLayout(1) };
+	group.entries[0] = { binding: 0, buffer: colours };
+	const vertices = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const target = colourTarget(device, 1);
+	const noOffsets: Vec<uint32> = [];
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setBindGroup(1, device.createBindGroup(group), noOffsets);
+	pass.draw(3, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const read = readTarget(device, target);
+	assert texelAt(read, 256, 0, 0) == BLUE && texelAt(read, 256, 32, 32) == RED;
 	assert drainDebugMessages() == 0;
 	device.destroy();
 }
