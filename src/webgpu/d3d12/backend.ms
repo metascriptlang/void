@@ -19,7 +19,9 @@ import {
 	stopOnNative,
 	submit as submitFrame,
 	waitIdle,
+	waitSerial,
 } from "./frame.ms";
+import * as resources from "./resources.ms";
 import {
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
@@ -106,6 +108,8 @@ let device: uint64 = 0;
 let adapter: uint64 = 0;
 let queue: uint64 = 0;
 let ring: FrameRing = closedFrames();
+let r: resources.Resources = resources.closedResources();
+let encoding = false;
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
 
@@ -140,6 +144,7 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	const frames = openFrames(device, queue, FRAMES_IN_FLIGHT);
 	if (!frames.ok) { stopOnFrame("requestDevice", frames.error); }
 	ring = frames.value;
+	r = resources.openResources(device, FRAMES_IN_FLIGHT);
 	return { id: 1, queue: { id: 1 } };
 }
 
@@ -155,6 +160,8 @@ export function formatRenderable(format: GPUTextureFormat): boolean {
 export function shutdown(): void {
 	const closed = closeFrames(ring);
 	ring = closedFrames();
+	resources.closeResources(r);
+	encoding = false;
 	dx12Release(queue);
 	dx12Release(device);
 	dx12Release(adapter);
@@ -185,22 +192,35 @@ export function executedAllocator(): uint64 { return ring.executed; }
 
 export function frameAllocator(slot: int32): uint64 { return ring.allocators[slot]; }
 
+export function retiredCount(): int32 { return ring.retired.length as int32; }
+
 export function drainDebugMessages(): uint64 {
 	let count: uint64 = 0;
 	commanded(dx12InfoDrain(device, count));
 	return count;
 }
 
+function ran(call: string, result: Result<void, NativeError>): void {
+	if (!result.ok) { stopOnFrame(call, result.error); }
+}
+
+function submitted(call: string): void {
+	const serial = submitFrame(ring, r.tracker);
+	if (!serial.ok) { stopOnFrame(call, serial.error); }
+	resources.resetUploads(r, ring.slot());
+	encoding = false;
+}
+
 export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void {
-	notBuilt("createBuffer", "D2");
+	ran("createBuffer", resources.createBuffer(r, id, descriptor));
 }
 
 export function destroyBuffer(buffer: GPUBuffer): void {
-	notBuilt("destroyBuffer", "D2");
+	resources.destroyBuffer(r, ring, buffer.id);
 }
 
 export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
-	notBuilt("writeBuffer", "D2");
+	ran("writeBuffer", resources.writeBuffer(r, ring, buffer, offset, data));
 }
 
 export function createTexture(texture: TextureRecord, descriptor: GPUTextureDescriptor): void {
@@ -264,15 +284,17 @@ export function destroyBindGroup(bindGroup: GPUBindGroup): void {
 	notBuilt("destroyBindGroup", "D3");
 }
 
-export function createCommandEncoder(): GPUCommandEncoder { return { id: 1 }; }
+export function createCommandEncoder(): GPUCommandEncoder {
+	encoding = true;
+	return { id: 1 };
+}
 
 export function finish(encoder: GPUCommandEncoder): GPUCommandBuffer {
 	return { id: 1 };
 }
 
 export function submit(commandBuffer: GPUCommandBuffer): void {
-	const submitted = submitFrame(ring);
-	if (!submitted.ok) { stopOnFrame("submit", submitted.error); }
+	submitted("submit");
 }
 
 export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {
@@ -328,7 +350,7 @@ export function multiDrawIndexedIndirect(buffer: GPUBuffer, offset: int64, drawC
 }
 
 export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
-	notBuilt("copyBufferToBuffer", "D6");
+	ran("copyBufferToBuffer", resources.copyBufferToBuffer(r, ring, source, sourceOffset, destination, destinationOffset, size));
 }
 
 export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
@@ -344,15 +366,26 @@ export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destinatio
 }
 
 export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, length: int64): void {
-	notBuilt("mapAsync", "D2");
+	const lastUse = r.lastUse(buffer);
+	if (lastUse > ring.submitted) {
+		if (encoding) {
+			stop(`mapAsync: GPUBuffer ${buffer.id} has work that was not submitted while a command encoder records; submit the encoder first`);
+		}
+		submitted("mapAsync");
+	}
+	if (lastUse == 0) { return; }
+	const waited = waitSerial(ring, lastUse);
+	if (!waited.ok) { stopOnFrame("mapAsync", waited.error); }
 }
 
 export function getMappedRange(buffer: GPUBuffer, offset: int64, length: int64): Vec<uint8> {
-	notBuilt("getMappedRange", "D2");
+	const read = resources.readMapped(r, buffer, offset, length);
+	if (!read.ok) { stopOnFrame("getMappedRange", read.error); }
+	return read.value;
 }
 
 export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
-	notBuilt("writeMappedRange", "D2");
+	ran("writeMappedRange", resources.writeMapped(r, buffer, offset, data));
 }
 
 export function createComputePipeline(id: uint32, descriptor: GPUComputePipelineDescriptor): void {
