@@ -71,7 +71,7 @@ test "fillPolygon concave arrow ear-clips without overlap" {
 		[vec2(0.0, 32.0), vec2(48.0, 32.0), vec2(48.0, 6.0), vec2(95.0, 52.0), vec2(48.0, 98.0),
 			vec2(48.0, 72.0), vec2(0.0, 72.0)];
 	const g = body().fillPolygon(pts, rgba(1.0, 1.0, 1.0, 1.0));
-	assert (geometry(g).mesh.length as int32) === 120;
+	assert (geometry(g).mesh.length as int32) === 96;
 	assert approxRel(meshTriArea(geometry(g).mesh), 4082.0, 0.5);
 }
 
@@ -80,6 +80,20 @@ test "fillPolygon of a concave outline emits n-2 triangles" {
 		[vec2(0.0, 0.0), vec2(10.0, 0.0), vec2(10.0, 10.0), vec2(5.0, 4.0), vec2(0.0, 10.0)];
 	const g = body().fillPolygon(pts, rgba(1.0, 1.0, 1.0, 1.0));
 	assert (geometry(g).mesh.length as int32) === 3 * 24;
+}
+
+test "fillPolygon drops repeated and collinear points and fills the rest" {
+	const pts: Vec2[] =
+		[vec2(0.0, 0.0), vec2(5.0, 0.0), vec2(10.0, 0.0), vec2(10.0, 10.0), vec2(0.0, 10.0),
+			vec2(0.0, 0.0)];
+	const g = body().fillPolygon(pts, rgba(1.0, 1.0, 1.0, 1.0));
+	assert approxRel(meshTriArea(geometry(g).mesh), 100.0, 0.5);
+}
+
+test "fillPolygon of a zero-area outline emits nothing" {
+	const flat: Vec2[] = [vec2(0.0, 5.0), vec2(4.0, 5.0), vec2(10.0, 5.0), vec2(2.0, 5.0)];
+	const g = body().fillPolygon(flat, rgba(1.0, 1.0, 1.0, 1.0));
+	assert (geometry(g).mesh.length as int32) === 0;
 }
 
 test "fillPolygon degenerate input emits nothing" {

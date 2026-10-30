@@ -515,7 +515,6 @@ function isEar(
 	return true;
 }
 
-// Simple polygons only: a self-intersecting outline triangulates to an undefined result.
 function triangulate(pts: Readonly<Span<Vec2>>): int32[] {
 	const out: int32[] = [];
 	const n: int32 = pts.length as int32;
@@ -533,7 +532,13 @@ function triangulate(pts: Readonly<Span<Vec2>>): int32[] {
 	while (remaining > 3) {
 		const u: int32 = prev[v];
 		const w: int32 = next[v];
-		if (isEar(pts, next, u, v, w, ccw)) {
+		if (cross3(pts[u].x, pts[u].y, pts[v].x, pts[v].y, pts[w].x, pts[w].y) == 0.0) {
+			next[u] = w;
+			prev[w] = u;
+			remaining = remaining - 1;
+			guard = 0;
+			v = u;
+		} else if (isEar(pts, next, u, v, w, ccw)) {
 			out.push(u);
 			out.push(v);
 			out.push(w);
@@ -546,14 +551,17 @@ function triangulate(pts: Readonly<Span<Vec2>>): int32[] {
 			v = next[v];
 			guard = guard + 1;
 			if (guard > remaining) {
-				console.log(`void2d: triangulate found no ear in a ${n} point polygon with ${remaining} points left; the outline is self-intersecting or degenerate`);
+				console.log(`void2d: triangulate found no ear in a ${n} point polygon with ${remaining} points left; the outline is self-intersecting`);
 				unreachable;
 			}
 		}
 	}
-	out.push(prev[v]);
+	const a: int32 = prev[v];
+	const c: int32 = next[v];
+	if (cross3(pts[a].x, pts[a].y, pts[v].x, pts[v].y, pts[c].x, pts[c].y) == 0.0) { return out; }
+	out.push(a);
 	out.push(v);
-	out.push(next[v]);
+	out.push(c);
 	return out;
 }
 
