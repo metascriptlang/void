@@ -1004,6 +1004,22 @@ when (voidColourEmoji) {
 	}
 }
 
+struct GlyphRefusals {
+	count: int32;
+	retryable: boolean;
+	last: AtlasError | null;
+}
+
+function refuse(this ref refusals: GlyphRefusals, error: AtlasError): void {
+	refusals.count = refusals.count + 1;
+	refusals.last = error;
+	refusals.retryable = refusals.retryable || transientRefusal(error);
+}
+
+function lastReason(this refusals: GlyphRefusals): string {
+	return refusals.last === null ? "" : refusals.last.toString();
+}
+
 export function placeLabel(index: int32, world: Transform2D, scale: float32): LabelText {
 	const entry: LabelText = labelTexts[index];
 	if (placementCurrent(entry, world, scale)) { return entry; }
@@ -1015,9 +1031,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	const devicePerLocal: float32 = linear * scale;
 	const fracX: float32 = fraction(world.tx * scale);
 	const fracY: float32 = fraction(world.ty * scale);
-	let refused: int32 = 0;
-	let retryable: boolean = false;
-	let refusal: string = "";
+	let refusals: GlyphRefusals = { count: 0, retryable: false, last: null };
 	const outlineWidth: float32 = outlineWidthOf(entry);
 	let outlineLaneValue: int32 = 0;
 	let outlineLaneChecked: boolean = false;
@@ -1094,8 +1108,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 						colourBox = colourBoxOf(g, tileSize);
 					}
 					if (colourBox.glyph == ColourGlyph.Refused) {
-						refused = refused + 1;
-						refusal = AtlasError.ColourRefused.toString();
+						refusals.refuse(AtlasError.ColourRefused);
 						continue;
 					}
 					if (colourBox.glyph == ColourGlyph.Present) {
@@ -1111,9 +1124,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 							);
 						}
 						if (!coloured.ok) {
-							refused = refused + 1;
-							refusal = coloured.error.toString();
-							retryable = retryable || transientRefusal(coloured.error);
+							refusals.refuse(coloured.error);
 							continue;
 						}
 						entry.placed.push(coloured.value);
@@ -1129,9 +1140,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 						if (outlineWidth > 0.0) {
 							const outlined = sdfOutlinePlacedGlyph(g, baseline, outlineWidth);
 							if (!outlined.ok) {
-								refused = refused + 1;
-								refusal = outlined.error.toString();
-								retryable = retryable || transientRefusal(outlined.error);
+								refusals.refuse(outlined.error);
 							} else if (outlined.value.w > 0.0) {
 								entry.placedOutline.push(outlined.value);
 							} else {
@@ -1141,9 +1150,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 						continue;
 					}
 					if (sdf.error != AtlasError.SdfCubicOutline || devicePerLocal <= 0.0) {
-						refused = refused + 1;
-						refusal = sdf.error.toString();
-						retryable = retryable || transientRefusal(sdf.error);
+						refusals.refuse(sdf.error);
 						continue;
 					}
 					coverageInSdf = true;
@@ -1168,9 +1175,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 					outline: 0,
 				});
 				if (!acquired.ok) {
-					refused = refused + 1;
-					refusal = acquired.error.toString();
-					retryable = retryable || transientRefusal(acquired.error);
+					refusals.refuse(acquired.error);
 					continue;
 				}
 				const tileIndex: int32 = acquired.value;
@@ -1184,9 +1189,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 					if (lane.ok) {
 						outlineLaneValue = lane.value;
 					} else {
-						refused = refused + 1;
-						refusal = lane.error.toString();
-						retryable = retryable || transientRefusal(lane.error);
+						refusals.refuse(lane.error);
 					}
 				}
 				if (outlineLaneValue > 0 && !isSpriteFace(g.face)) {
@@ -1195,9 +1198,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 						baselineDevice,
 					);
 					if (!outlined.ok) {
-						refused = refused + 1;
-						refusal = outlined.error.toString();
-						retryable = retryable || transientRefusal(outlined.error);
+						refusals.refuse(outlined.error);
 					} else if (outlined.value.w > 0.0) {
 						entry.placedOutline.push(outlined.value);
 					} else {
@@ -1219,17 +1220,18 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 		}
 	}
 	previousLines.length = 0;
+	const refused: int32 = refusals.count;
 	refusedGlyphs = refusedGlyphs + refused;
 	if (refused > 0 && refused != entry.refused) {
 		refusalReports = refusalReports + 1;
 		console.log(
 			`void2d: ${refused} of ${entry.layout.glyphs.length} glyphs of a label are not ` +
-			`drawn, the glyph atlas refused them (${refusal})`,
+			`drawn, the glyph atlas refused them (${refusals.lastReason()})`,
 		);
 	}
 	entry.refused = refused;
 	entry.placedValid = refused == 0;
-	entry.placementRetryable = retryable;
+	entry.placementRetryable = refusals.retryable;
 	entry.coverageInSdf = coverageInSdf;
 	entry.colourGlyphs = colourGlyphs;
 	entry.regime = regime;
