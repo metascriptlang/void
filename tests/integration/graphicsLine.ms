@@ -47,10 +47,10 @@ const STAGES: Vec<Stage> = [
 	{ width: 2.0, name: "two pixels" },
 ];
 
-let context: DrawContext = DrawContext.withUniformCapacity(
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + (STAGES.length as int32) * LINE_UNIFORM_LENGTH,
 );
-let forward: ForwardRenderer = makeForward();
+const forward: ForwardRenderer = makeForward();
 let lines: Vec<MaterialId> = [];
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);

@@ -63,17 +63,17 @@ const RIM: Vec3 = { x: 0.0, y: 0.0, z: 0.65 };
 const FRAMES: int32 = 3;
 const RIGHT_ANGLE: float32 = 1.5707963268;
 const DOWN: Quat = axisAngle(vec3(1.0, 0.0, 0.0), RIGHT_ANGLE);
-let lightCase: Case = voidCaptureEnvInt("VOID_LIGHT_SHADOW_CASE", 0) as Case;
-let pcf: boolean = voidCaptureEnvInt("VOID_LIGHT_SHADOW_PCF", 0) != 0;
-let control: boolean = voidCaptureEnvInt("VOID_LIGHT_SHADOW_CONTROL", 0) != 0;
-let biased: boolean = voidCaptureEnvInt("VOID_LIGHT_SHADOW_NORMAL_BIAS", 0) != 0;
-let context: DrawContext = DrawContext.withUniformCapacity(
+const lightCase: Case = voidCaptureEnvInt("VOID_LIGHT_SHADOW_CASE", 0) as Case;
+const pcf: boolean = voidCaptureEnvInt("VOID_LIGHT_SHADOW_PCF", 0) != 0;
+const control: boolean = voidCaptureEnvInt("VOID_LIGHT_SHADOW_CONTROL", 0) != 0;
+const biased: boolean = voidCaptureEnvInt("VOID_LIGHT_SHADOW_NORMAL_BIAS", 0) != 0;
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + 2 * DIR_SHADOW_UNIFORM_LENGTH + 2 * MATERIAL_UNIFORM_LENGTH,
 );
-let scene: Scene3D = Scene3D.create(context);
-let forward: ForwardRenderer = makeForward();
-let spotMap: DirShadowMap = makeMap(true);
-let cubeMap: DirShadowMap = makeMap(false);
+const scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = makeForward();
+const spotMap: DirShadowMap = makeMap(true);
+const cubeMap: DirShadowMap = makeMap(false);
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);

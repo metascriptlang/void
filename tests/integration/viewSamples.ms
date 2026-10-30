@@ -73,11 +73,11 @@ const RESOLVED_LOW: int32 = 40;
 const RESOLVED_HIGH: int32 = 215;
 const RESOLVED_ENOUGH: int32 = 40;
 
-let context: DrawContext = DrawContext.withUniformCapacity(
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH,
 );
-let forward: ForwardRenderer = createForward();
-let scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = createForward();
+const scene: Scene3D = Scene3D.create(context);
 let items: Vec<DrawItem> = [];
 let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
@@ -136,7 +136,7 @@ function buildScene(): void {
 	const _drawn: int32 = refresh(scene, items);
 	const collected: Result<int32, LightError> = collectLights(scene, lights);
 	if (!collected.ok) { unreachable; }
-	let view: Camera3D = {
+	const view: Camera3D = {
 		position: vec3(0.0, 0.0, 0.0),
 		yaw: 0.5,
 		pitch: 0.5,

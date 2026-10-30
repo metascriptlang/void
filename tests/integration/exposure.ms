@@ -48,12 +48,12 @@ const EXPOSED: float32 = 1.5;
 const GREY: Vec4 = { x: 0.5, y: 0.5, z: 0.5, w: 1.0 };
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
-let pixelArt: boolean = voidCaptureEnvInt("VOID_EXPOSURE_PIXEL_ART", 0) != 0;
-let context: DrawContext = DrawContext.withUniformCapacity(
+const pixelArt: boolean = voidCaptureEnvInt("VOID_EXPOSURE_PIXEL_ART", 0) != 0;
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 2 * UNLIT_MATERIAL_UNIFORM_LENGTH,
 );
-let forward: ForwardRenderer = makeForward();
-let preset: PixelArtRenderer = makePreset();
+const forward: ForwardRenderer = makeForward();
+const preset: PixelArtRenderer = makePreset();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);

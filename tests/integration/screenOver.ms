@@ -79,13 +79,13 @@ const WORLD_ONLY: int32 = 0;
 const OVERLAY_ONLY: int32 = 1;
 const COMPOSITE: int32 = 2;
 
-let context: DrawContext = DrawContext.withUniformCapacity(
+const context: DrawContext = DrawContext.withUniformCapacity(
 	2 * (FORWARD_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH),
 );
-let world: ForwardRenderer = createForward(WORLD_BACKGROUND);
-let overlay: ForwardRenderer = createForward(TRANSPARENT);
-let worldScene: Scene3D = Scene3D.create(context);
-let overlayScene: Scene3D = Scene3D.create(context);
+const world: ForwardRenderer = createForward(WORLD_BACKGROUND);
+const overlay: ForwardRenderer = createForward(TRANSPARENT);
+const worldScene: Scene3D = Scene3D.create(context);
+const overlayScene: Scene3D = Scene3D.create(context);
 let worldItems: Vec<DrawItem> = [];
 let overlayItems: Vec<DrawItem> = [];
 let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
@@ -150,7 +150,7 @@ function buildScene(
 }
 
 function writeCamera(): void {
-	let view: Camera3D = {
+	const view: Camera3D = {
 		position: vec3(0.0, 0.0, 0.0),
 		yaw: 0.0,
 		pitch: 0.5,

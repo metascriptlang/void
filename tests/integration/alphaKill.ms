@@ -53,15 +53,15 @@ const VERTEX_X: float32 = 1.6;
 const GAP_X: float32 = 0.8;
 const OPAQUE_WHITE: int64 = 0xFFFFFF;
 const FRAMES: int32 = 3;
-let pixelArt: boolean = voidCaptureEnvInt("VOID_ALPHA_KILL_PIXEL_ART", 0) != 0;
-let control: boolean = voidCaptureEnvInt("VOID_ALPHA_KILL_CONTROL", 0) != 0;
-let context: DrawContext = DrawContext.withUniformCapacity(
+const pixelArt: boolean = voidCaptureEnvInt("VOID_ALPHA_KILL_PIXEL_ART", 0) != 0;
+const control: boolean = voidCaptureEnvInt("VOID_ALPHA_KILL_CONTROL", 0) != 0;
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 2 * UNLIT_MATERIAL_UNIFORM_LENGTH +
 	2 * MATERIAL_UNIFORM_LENGTH,
 );
-let scene: Scene3D = Scene3D.create(context);
-let forward: ForwardRenderer = makeForward();
-let preset: PixelArtRenderer = makePreset();
+const scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = makeForward();
+const preset: PixelArtRenderer = makePreset();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);

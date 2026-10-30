@@ -42,8 +42,8 @@ function resolvesOnGpu(
 	atlas.beginFrame(1);
 	atlas.release(0);
 	target.close();
-	let core: Renderer = renderer;
-	let drawing: DrawContext = context;
+	const core: Renderer = renderer;
+	const drawing: DrawContext = context;
 	let items: Vec<DrawItem> = [];
 	const blocks: Vec<float32> = [];
 	const _began: Result<boolean, RendererError> = beginFrame(core, items, blocks, blocks);
@@ -63,8 +63,8 @@ function main(): int32 {
 	check("void2d vertexCount of the display list", vertexCount() == 0);
 	check("void2d render module", renderTargetsAlive() == 0);
 
-	let context: DrawContext = DrawContext.withUniformCapacity(0);
-	let scene: Scene3D = Scene3D.create(context);
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
+	const scene: Scene3D = Scene3D.create(context);
 	const group: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
 	const _child: NodeId3D = addGroup(scene, group, Transform3D.identity());
 	check("void3d removeChildren on a scene", removeChildren(scene, group) == 1);

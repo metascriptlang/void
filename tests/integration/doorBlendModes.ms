@@ -27,7 +27,7 @@ function fail(message: string): void {
 
 function init(): void {
 	gfxSetup();
-	let cache: PipelineCache = PipelineCache.empty();
+	const cache: PipelineCache = PipelineCache.empty();
 	let made: Vec<uint32> = [];
 	let alpha: uint32 = 0;
 	for (const mode of modes()) {

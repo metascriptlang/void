@@ -46,12 +46,12 @@ const SCREEN: LowResView = {
 	width: WIDTH, height: HEIGHT, scale: 1, offsetX: 0.0, offsetY: 0.0,
 };
 const FIXTURE: string = "out/tmp/gltfColourRenderFixture/colourAsymmetric.glb";
-let context: DrawContext = DrawContext.withUniformCapacity(
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + DIR_SHADOW_UNIFORM_LENGTH + COUNT * MATERIAL_UNIFORM_LENGTH,
 );
-let forward: ForwardRenderer = makeForward();
-let shadow: DirShadowMap = makeShadow();
-let scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = makeForward();
+const shadow: DirShadowMap = makeShadow();
+const scene: Scene3D = Scene3D.create(context);
 let model: NodeId3D = NO_NODE_ID;
 let sun: NodeId3D = NO_NODE_ID;
 let items: Vec<DrawItem> = [];

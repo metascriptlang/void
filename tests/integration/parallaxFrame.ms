@@ -52,12 +52,12 @@ const FLAT_NORMAL: uint32 = 0xFFFF8080;
 // back by half the amount along v: 0.2 of v, 0.4 of z on the quad.
 const AMOUNT: float32 = 0.4;
 const FRAMES: int32 = 3;
-let control: boolean = voidCaptureEnvInt("VOID_PARALLAX_CONTROL", 0) != 0;
-let context: DrawContext = DrawContext.withUniformCapacity(
+const control: boolean = voidCaptureEnvInt("VOID_PARALLAX_CONTROL", 0) != 0;
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PBR_MATERIAL_UNIFORM_LENGTH,
 );
-let scene: Scene3D = Scene3D.create(context);
-let forward: ForwardRenderer = makeForward();
+const scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = makeForward();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);

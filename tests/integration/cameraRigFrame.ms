@@ -31,20 +31,20 @@ import {
 	voidCaptureEnvInt, voidCaptureExit,
 } from "../capture/capture.h";
 
-let WIDTH: int32 = 320;
-let HEIGHT: int32 = 240;
-let BACKGROUND: Vec4 = { x: 0.04, y: 0.08, z: 0.12, w: 1.0 };
-let context: DrawContext = DrawContext.withUniformCapacity(
+const WIDTH: int32 = 320;
+const HEIGHT: int32 = 240;
+const BACKGROUND: Vec4 = { x: 0.04, y: 0.08, z: 0.12, w: 1.0 };
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH,
 );
-let scene: Scene3D = Scene3D.create(context);
-let forward: ForwardRenderer = makeForward();
-let preset: PixelArtRenderer = makePreset();
+const scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = makeForward();
+const preset: PixelArtRenderer = makePreset();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let firstFrame: Vec<int64> = new Array(WIDTH * HEIGHT);
-let SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
+const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 let parent: NodeId3D = NO_NODE_ID;
 let cameraNode: NodeId3D = NO_NODE_ID;
 let pixelArt: boolean = false;
@@ -178,7 +178,7 @@ function viewAt(frameIndex: int32): CameraView {
 	const expected: Mat4 = {
 		...pose.toMatrix(),
 	};
-	let unscaled: Transform3D = { ...pose, scale: vec3(1.0, 1.0, 1.0) };
+	const unscaled: Transform3D = { ...pose, scale: vec3(1.0, 1.0, 1.0) };
 	const world: Mat4 = pair == 2 || pair == 7 ? unscaled.toMatrix() : expected;
 	const made: Result<Camera3D, CameraError> = Camera3D.fromWorld(world, template);
 	if (!made.ok) { fail("the hand-built world camera was refused"); unreachable; }

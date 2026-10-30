@@ -20,7 +20,12 @@ import { Environment, EnvironmentError } from "../../src/void3d/environment";
 import {
 	ForwardRenderer, ForwardError, FORWARD_UNIFORM_LENGTH, renderFrame,
 } from "../../src/void3d/forwardRenderer";
-import { LitBindings, linearToSrgb, pbrEnvironmentLight, srgbToLinear } from "../../src/void3d/shader3d";
+import {
+	LitBindings,
+	linearToSrgb,
+	pbrEnvironmentLight,
+	srgbToLinear,
+} from "../../src/void3d/shader3d";
 import { TextureCube, vec3f, vec4f } from "../../src/shader/std";
 import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit,
@@ -41,9 +46,9 @@ const METALNESS: float32 = 0.0;
 const ROUGHNESS: float32 = 0.5;
 const GREY: Vec4 = { x: 0.5, y: 0.5, z: 0.5, w: 1.0 };
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
-let context: DrawContext =
+const context: DrawContext =
 	DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH + PBR_MATERIAL_UNIFORM_LENGTH);
-let forward: ForwardRenderer = makeForward();
+const forward: ForwardRenderer = makeForward();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);

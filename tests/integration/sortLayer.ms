@@ -49,14 +49,14 @@ const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, of
 const OPAQUE_X: float32 = -1.0;
 const ALPHA_X: float32 = 1.0;
 const FRAMES: int32 = 3;
-let pixelArt: boolean = voidCaptureEnvInt("VOID_SORT_LAYER_PIXEL_ART", 0) != 0;
-let control: boolean = voidCaptureEnvInt("VOID_SORT_LAYER_CONTROL", 0) != 0;
-let context: DrawContext = DrawContext.withUniformCapacity(
+const pixelArt: boolean = voidCaptureEnvInt("VOID_SORT_LAYER_PIXEL_ART", 0) != 0;
+const control: boolean = voidCaptureEnvInt("VOID_SORT_LAYER_CONTROL", 0) != 0;
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 4 * UNLIT_MATERIAL_UNIFORM_LENGTH,
 );
-let scene: Scene3D = Scene3D.create(context);
-let forward: ForwardRenderer = makeForward();
-let preset: PixelArtRenderer = makePreset();
+const scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = makeForward();
+const preset: PixelArtRenderer = makePreset();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);

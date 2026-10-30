@@ -57,12 +57,12 @@ const SAMPLES: Vec<Vec3> = [
 ];
 const CORNER: Vec3 = { x: 2.6, y: 0.0, z: 2.6 };
 const OUTSIDE: Vec3 = { x: 3.6, y: 0.0, z: 0.0 };
-let control: boolean = voidCaptureEnvInt("VOID_SPOT_COOKIE_CONTROL", 0) != 0;
-let context: DrawContext = DrawContext.withUniformCapacity(
+const control: boolean = voidCaptureEnvInt("VOID_SPOT_COOKIE_CONTROL", 0) != 0;
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH,
 );
-let scene: Scene3D = Scene3D.create(context);
-let forward: ForwardRenderer = makeForward();
+const scene: Scene3D = Scene3D.create(context);
+const forward: ForwardRenderer = makeForward();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);

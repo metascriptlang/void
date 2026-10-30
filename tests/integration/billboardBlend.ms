@@ -51,13 +51,13 @@ const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, of
 const FRAMES: int32 = 3;
 const QUARTER_BYTE: int64 = 64;
 const THREE_QUARTERS_BYTE: int64 = 192;
-let pixelArt: boolean = voidCaptureEnvInt("VOID_BILLBOARD_BLEND_PIXEL_ART", 0) != 0;
-let control: boolean = voidCaptureEnvInt("VOID_BILLBOARD_BLEND_CONTROL", 0) != 0;
-let context: DrawContext = DrawContext.withUniformCapacity(
+const pixelArt: boolean = voidCaptureEnvInt("VOID_BILLBOARD_BLEND_PIXEL_ART", 0) != 0;
+const control: boolean = voidCaptureEnvInt("VOID_BILLBOARD_BLEND_CONTROL", 0) != 0;
+const context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 3 * BILLBOARD_UNIFORM_LENGTH,
 );
-let forward: ForwardRenderer = makeForward();
-let preset: PixelArtRenderer = makePreset();
+const forward: ForwardRenderer = makeForward();
+const preset: PixelArtRenderer = makePreset();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
