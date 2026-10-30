@@ -97,6 +97,17 @@ struct Shelf {
 	cursor: int32;
 }
 
+struct TileSpot {
+	page: GlyphPage;
+	x: int32;
+	y: int32;
+}
+
+struct ShelfSpot {
+	x: int32;
+	y: int32;
+}
+
 struct AtlasPage {
 	kind: PageKind;
 	handle: GlyphPageHandle;
@@ -254,8 +265,19 @@ function coverageRasterRefusal(code: int32): AtlasError {
 }
 
 export function transientRefusal(error: AtlasError): boolean {
-	return error == AtlasError.Full || error == AtlasError.SdfNoMemory ||
-		error == AtlasError.OutlineNoMemory || error == AtlasError.ColourNoMemory;
+	return match (error) {
+		AtlasError.Full | AtlasError.SdfNoMemory | AtlasError.OutlineNoMemory |
+			AtlasError.ColourNoMemory => true,
+		AtlasError.TooLarge | AtlasError.KindNotBuilt | AtlasError.VariantOutOfRange |
+			AtlasError.SdfCubicOutline | AtlasError.SdfBadHandle | AtlasError.SdfWrongPageKind |
+			AtlasError.SdfOutsidePage | AtlasError.SdfBoxMismatch | AtlasError.MaskBadHandle |
+			AtlasError.MaskWrongPageKind | AtlasError.MaskOutsidePage | AtlasError.MaskBadShape |
+			AtlasError.ColourRefused | AtlasError.OutlineTooWide | AtlasError.OutlineBadHandle |
+			AtlasError.OutlineWrongPageKind | AtlasError.OutlineOutsidePage |
+			AtlasError.OutlineBoxMismatch | AtlasError.OutlineFaceRefused |
+			AtlasError.CoverageBadHandle | AtlasError.CoverageWrongPageKind |
+			AtlasError.CoverageOutsidePage | AtlasError.CoverageBoxMismatch => false,
+	};
 }
 
 test "only capacity and allocation failures are transient glyph refusals" {
@@ -396,7 +418,7 @@ function placeOnPage(
 	page: GlyphPage,
 	width: int32,
 	height: int32,
-): Result<[int32, int32], AtlasError> {
+): Result<ShelfSpot, AtlasError> {
 	const size: int32 = atlas.pageSize;
 	for (let s = 0; s < (atlas.shelves.length as int32); s++) {
 		const shelf: Shelf = atlas.shelves[s];
@@ -405,7 +427,7 @@ function placeOnPage(
 		if (fits) {
 			atlas.shelves[s].cursor = shelf.cursor + width;
 			atlas.pages[page as int32].placedArea += width * height;
-			return Result.ok([shelf.cursor, shelf.y]);
+			return Result.ok({ x: shelf.cursor, y: shelf.y });
 		}
 	}
 	const top: int32 = atlas.pages[page as int32].top;
@@ -413,7 +435,7 @@ function placeOnPage(
 	atlas.shelves.push({ page: page, y: top, height: height, cursor: width });
 	atlas.pages[page as int32].top = top + height;
 	atlas.pages[page as int32].placedArea += width * height;
-	return Result.ok([0, top]);
+	return Result.ok({ x: 0, y: top });
 }
 
 function reclaimPage(atlas: GlyphAtlas, kind: PageKind): Result<GlyphPage, AtlasError> {
@@ -449,7 +471,7 @@ function allocate(
 	kind: PageKind,
 	width: int32,
 	height: int32,
-): Result<[GlyphPage, int32, int32], AtlasError> {
+): Result<TileSpot, AtlasError> {
 	const w: int32 = width + GLYPH_GUTTER;
 	const h: int32 = height + GLYPH_GUTTER;
 	if (w > atlas.pageSize || h > atlas.pageSize) { return Result.err(AtlasError.TooLarge); }
@@ -457,7 +479,9 @@ function allocate(
 		if (atlas.pages[p].kind != kind) { continue; }
 		if (atlas.uploadedThisFrame(p as GlyphPage)) { continue; }
 		const placed = placeOnPage(atlas, p as GlyphPage, w, h);
-		if (placed.ok) { return Result.ok([p as GlyphPage, placed.value[0], placed.value[1]]); }
+		if (placed.ok) {
+			return Result.ok({ page: p as GlyphPage, x: placed.value.x, y: placed.value.y });
+		}
 	}
 	let page: GlyphPage = NO_GLYPH_PAGE;
 	const handle: int32 = (atlas.pages.length as int32) < atlas.maxPages
@@ -471,7 +495,7 @@ function allocate(
 		page = reclaimed;
 	}
 	const spot = try placeOnPage(atlas, page, w, h);
-	return Result.ok([page, spot[0], spot[1]]);
+	return Result.ok({ page: page, x: spot.x, y: spot.y });
 }
 
 export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, AtlasError> {
@@ -505,9 +529,9 @@ export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, At
 	let y: int32 = 0;
 	if (width > 0 && height > 0) {
 		const placed = try allocate(atlas, key.kind, width, height);
-		page = placed[0];
-		x = placed[1];
-		y = placed[2];
+		page = placed.page;
+		x = placed.x;
+		y = placed.y;
 		const code: int32 = void2dGlyphRasterize(key.face, key.glyph, key.sizePx, shift,
 			atlas.pages[page as int32].handle as int32, x, y, width, height);
 		if (code != 0) { return atlas.refuseKey(packedKey, coverageRasterRefusal(code)); }
@@ -561,9 +585,9 @@ export function acquireBlank(
 	let y: int32 = 0;
 	if (width > 0 && height > 0) {
 		const placed = try allocate(atlas, key.kind, width, height);
-		page = placed[0];
-		x = placed[1];
-		y = placed[2];
+		page = placed.page;
+		x = placed.x;
+		y = placed.y;
 	}
 	atlas.rasterizations = atlas.rasterizations + 1;
 	return Result.ok(atlas.record(packedKey, {
@@ -612,9 +636,9 @@ export function reserveMask(
 	atlas.rasterizations = atlas.rasterizations + 1;
 	const packedKey: uint64 = key.packed();
 	return Result.ok(atlas.record(packedKey, {
-		page: placed[0],
-		x: placed[1],
-		y: placed[2],
+		page: placed.page,
+		x: placed.x,
+		y: placed.y,
 		width: width,
 		height: height,
 		left: 0,
@@ -734,9 +758,9 @@ when (voidTextOutline) {
 		let y: int32 = 0;
 		if (width > 0 && height > 0) {
 			const placed = try allocate(atlas, PageKind.Coverage, width, height);
-			page = placed[0];
-			x = placed[1];
-			y = placed[2];
+			page = placed.page;
+			x = placed.x;
+			y = placed.y;
 			const code: int32 = void2dGlyphOutlineRasterize(key.face, key.glyph, key.sizePx, shift,
 				widthPx, atlas.pages[page as int32].handle as int32, x, y, width, height);
 			if (code != 0) { return atlas.refuseKey(packedKey, outlineRasterRefusal(code)); }
@@ -809,9 +833,9 @@ when (voidSdfText) {
 		let y: int32 = 0;
 		if (width > 0 && height > 0) {
 			const placed = try allocate(atlas, PageKind.Sdf, width, height);
-			page = placed[0];
-			x = placed[1];
-			y = placed[2];
+			page = placed.page;
+			x = placed.x;
+			y = placed.y;
 			const code: int32 = void2dGlyphSdfRasterize(face, glyph,
 				atlas.pages[page as int32].handle as int32, x, y, width, height);
 			if (code != 0) { return atlas.refuseKey(packedKey, sdfRasterRefusal(code)); }
@@ -863,9 +887,9 @@ when (voidSdfText && voidTextOutline) {
 		let y: int32 = 0;
 		if (width > 0 && height > 0) {
 			const placed = try allocate(atlas, PageKind.Sdf, width, height);
-			page = placed[0];
-			x = placed[1];
-			y = placed[2];
+			page = placed.page;
+			x = placed.x;
+			y = placed.y;
 			const code: int32 = void2dGlyphSdfOutlineRasterize(face, glyph, texels,
 				atlas.pages[page as int32].handle as int32, x, y, width, height);
 			if (code != 0) { return atlas.refuseKey(packedKey, sdfRasterRefusal(code)); }
