@@ -43,6 +43,7 @@ when (voidColourEmoji) {
 	import { scaleForMappingEmToPixels } from "../trueType";
 	import { u16At } from "../trueType/fontInfo";
 	import { rgbaTexelAt, writeRgbaTile } from "./pages";
+	import { blankInfo } from "./state";
 
 	export class ColourOpened {
 		status: int32 = COLOUR_NONE;
@@ -87,27 +88,13 @@ when (voidColourEmoji) {
 	// The metrics-only face of a colour font with no outlines.
 	export function colourInfo(bytes: uint8[], offset: int32, head: int32, hhea: int32, hmtx: int32): FontInfo {
 		const data = bytes as Span<uint8>;
-		return {
-			data: data,
-			fontstart: offset,
-			numGlyphs: 0,
-			loca: 0,
-			head: head,
-			glyf: 0,
-			hhea: hhea,
-			hmtx: hmtx,
-			kern: 0,
-			gpos: 0,
-			svg: 0,
-			indexMap: 0,
-			indexToLocFormat: data.u16At((head as int64) + 50),
-			cff: { data: data, base: 0, size: 0, cursor: 0 },
-			charstrings: { data: data, base: 0, size: 0, cursor: 0 },
-			gsubrs: { data: data, base: 0, size: 0, cursor: 0 },
-			subrs: { data: data, base: 0, size: 0, cursor: 0 },
-			fontdicts: { data: data, base: 0, size: 0, cursor: 0 },
-			fdselect: { data: data, base: 0, size: 0, cursor: 0 },
-		};
+		let info = blankInfo(data);
+		info.fontstart = offset;
+		info.head = head;
+		info.hhea = hhea;
+		info.hmtx = hmtx;
+		info.indexToLocFormat = data.u16At((head as int64) + 50);
+		return info;
 	}
 
 	function colourOf(f: GlyphFace): ColourFace {
