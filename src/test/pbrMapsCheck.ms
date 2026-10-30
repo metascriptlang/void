@@ -99,7 +99,11 @@ function colorOf(factors: Factors, packed: Texture2d, occlusion: Texture2d): Vec
 function ambientChannel(
 	albedo: float32, sky: float32, metalness: float32, roughness: float32, occlusion: float32,
 ): float32 {
-	const toCamera: Vec3 = vec3(CAMERA.x - POSITION.x, CAMERA.y - POSITION.y, CAMERA.z - POSITION.z);
+	const toCamera: Vec3 = vec3(
+		CAMERA.x - POSITION.x,
+		CAMERA.y - POSITION.y,
+		CAMERA.z - POSITION.z,
+	);
 	const nv: float64 = toCamera.z / Math.sqrt(toCamera.dot(toCamera));
 	const weight: float64 = Math.pow(2.0, (-5.55473 * nv - 6.98316) * nv);
 	const f0: float64 = (0.04 * (1.0 - metalness) + albedo * metalness) as float64;
@@ -111,7 +115,11 @@ function ambientChannel(
 function expectedColor(metalness: float32, roughness: float32, occlusion: float32): Vec3f {
 	const albedo: Vec3f = srgbToLinear(BASE.rgb);
 	const sky: Vec3f = srgbToLinear(vec3f(SKY.x, SKY.y, SKY.z));
-	const toCamera: Vec3 = vec3(CAMERA.x - POSITION.x, CAMERA.y - POSITION.y, CAMERA.z - POSITION.z);
+	const toCamera: Vec3 = vec3(
+		CAMERA.x - POSITION.x,
+		CAMERA.y - POSITION.y,
+		CAMERA.z - POSITION.z,
+	);
 	const surface: PbrSurface = {
 		linearAlbedo: vec3(albedo.x, albedo.y, albedo.z),
 		properties: { metalness: metalness, roughness: roughness, occlusion: occlusion },

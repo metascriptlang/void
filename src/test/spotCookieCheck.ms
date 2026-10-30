@@ -282,10 +282,10 @@ test "a cookie spot tints by its cookie and lights its pyramid's corners past th
 }
 
 function refusalOf(lights: Vec<float32>): RendererError | null {
-	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
 	const created: Result<Renderer, RendererError> = Renderer.create(context);
 	if (!created.ok) { unreachable; }
-	let core: Renderer = created.value;
+	const core: Renderer = created.value;
 	let items: Vec<DrawItem> = [];
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const began: Result<boolean, RendererError> = beginFrame(core, items, camera, lights);

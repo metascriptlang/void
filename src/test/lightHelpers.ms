@@ -39,13 +39,13 @@ function pushQuad(ref out: Vec<float32>, v: Vec4f): void {
 }
 
 function floatTexels(values: Vec<float32>): float32[] {
-	let out: float32[] = [];
+	const out: float32[] = [];
 	for (const v of values) { out.push(v); }
 	return out;
 }
 
 function wordTexels(values: Vec<uint32>): uint32[] {
-	let out: uint32[] = [];
+	const out: uint32[] = [];
 	for (const v of values) { out.push(v); }
 	return out;
 }
@@ -129,7 +129,7 @@ export function recordsOf(values: Vec<float32>): Vec<LightRecord> {
 
 // `records` with texel `texel` of light `light` replaced by `value`.
 export function withTexel(records: Texture2d, light: int32, texel: int32, value: Vec4f): Texture2d {
-	let texels: float32[] = [];
+	const texels: float32[] = [];
 	for (const v of records.texels) { texels.push(v); }
 	const first: int32 = (light * LIGHT_RECORD_TEXELS + texel) * 4;
 	texels[first] = value.x;

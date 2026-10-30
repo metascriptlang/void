@@ -51,7 +51,7 @@ const POINT: LightInstance = {
 };
 
 function lightsOf(): Vec<float32> {
-	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const _point = addLightNode(scene, scene.rootId(),
 		Transform3D.fromTranslation(vec3(0.0, 0.0, -2.0)), POINT);
 	const spot: LightInstance = {
@@ -112,7 +112,7 @@ test "the record texture starts at the first record, past the header" {
 }
 
 test "a frame with no record needs no view and lists one empty cluster" {
-	let frame: ClusterFrame = ClusterFrame.create(ClusterConfig.defaults());
+	const frame: ClusterFrame = ClusterFrame.create(ClusterConfig.defaults());
 	let block: Vec<float32> = headerOnly();
 	const assigned = assignFrame(frame, block, null, true, block);
 	assert assigned.ok;
@@ -128,7 +128,7 @@ test "a frame with no record needs no view and lists one empty cluster" {
 }
 
 test "a frame with records and no view is refused" {
-	let frame: ClusterFrame = ClusterFrame.create(ClusterConfig.defaults());
+	const frame: ClusterFrame = ClusterFrame.create(ClusterConfig.defaults());
 	let block: Vec<float32> = headerOnly();
 	const refused = assignFrame(frame, lightsOf(), null, false, block);
 	assert !refused.ok && refused.error == ClusterFrameError.NoView;
@@ -136,7 +136,7 @@ test "a frame with records and no view is refused" {
 
 test "the block carries the view's depth plane, its screen and its projection kind" {
 	for (const orthographic of [false, true]) {
-		let frame: ClusterFrame = ClusterFrame.create(ClusterConfig.defaults());
+		const frame: ClusterFrame = ClusterFrame.create(ClusterConfig.defaults());
 		const view: CameraView = viewOf(orthographic, 0.5);
 		let block: Vec<float32> = headerOnly();
 		const assigned: Result<ClusterAssignment, ClusterFrameError> =
@@ -157,7 +157,7 @@ function beganWith(view: CameraView | null, drawn: CameraView): RendererError | 
 	const created: Result<Renderer, RendererError> =
 		Renderer.create(DrawContext.withUniformCapacity(1024));
 	if (!created.ok) { unreachable; }
-	let core: Renderer = created.value;
+	const core: Renderer = created.value;
 	if (view !== null) { setCameraView(core, view); }
 	let items: Vec<DrawItem> = [];
 	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
@@ -176,7 +176,7 @@ test "a refused frame leaves the pass lists as the last frame left them" {
 	const created: Result<Renderer, RendererError> =
 		Renderer.create(DrawContext.withUniformCapacity(1024));
 	if (!created.ok) { unreachable; }
-	let core: Renderer = created.value;
+	const core: Renderer = created.value;
 	setCameraView(core, viewOf(false, 0.5));
 	core.opaque = {
 		...PassList.forPhase(Phase.Opaque),

@@ -237,7 +237,7 @@ test "a pool sized by the budget holds two presets, a shadow map and their mater
 	assert materialUniformFloats(keys[3]) == BILLBOARD_UNIFORM_LENGTH;
 	assert materialUniformFloats(keys[4]) == 0;
 	const floats: int32 = uniformFloatsFor(2, 0, 1, keys);
-	let context: DrawContext = DrawContext.withUniformCapacity(floats);
+	const context: DrawContext = DrawContext.withUniformCapacity(floats);
 	const first: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(context, BLACK);
 	const second: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(context, BLACK);
 	const map: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 256);
@@ -275,10 +275,10 @@ test "the shadow box is the casters' cut to the view across the light, keeping t
 }
 
 test "a shadow map reserves and owns its two blocks, and refuses no room or no size" {
-	let small: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH - 1);
+	const small: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH - 1);
 	const full: Result<DirShadowMap, ShadowError> = DirShadowMap.create(small, 1024);
 	assert !full.ok && full.error == ShadowError.UniformPoolFull;
-	let context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
 	const unsized: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 0);
 	assert !unsized.ok && unsized.error == ShadowError.Size;
 	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 1024);
@@ -300,7 +300,7 @@ function itemOf(context: DrawContext, material: MaterialId): DrawItem {
 }
 
 test "a caster whose material block is shorter than its shadow program's is refused by name" {
-	let context: DrawContext = DrawContext.withUniformCapacity(
+	const context: DrawContext = DrawContext.withUniformCapacity(
 		DIR_SHADOW_UNIFORM_LENGTH + MOVING_MATERIAL_UNIFORM_LENGTH,
 	);
 	const map: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 64);
@@ -324,14 +324,14 @@ test "a caster whose material block is shorter than its shadow program's is refu
 }
 
 test "a frame with a shadow map refuses a caster with no shadow output before it writes" {
-	let context: DrawContext = DrawContext.withUniformCapacity(
+	const context: DrawContext = DrawContext.withUniformCapacity(
 		RENDERER_UNIFORM_LENGTH + DIR_SHADOW_UNIFORM_LENGTH + BILLBOARD_UNIFORM_LENGTH,
 	);
 	const created: Result<Renderer, RendererError> = Renderer.create(context);
 	const map: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 256);
 	assert created.ok && map.ok;
 	if (!created.ok || !map.ok) { return; }
-	let core: Renderer = created.value;
+	const core: Renderer = created.value;
 	assert core.sceneGlobals.length == 3 && core.sceneGlobals[2] == core.frameBlock;
 	attachShadow(core, map.value);
 	assert core.sceneGlobals.length == 4 && core.sceneGlobals[3] == map.value.shadowBlock;

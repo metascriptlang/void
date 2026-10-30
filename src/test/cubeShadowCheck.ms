@@ -199,7 +199,7 @@ function white(): Texture2d {
 
 // One texel per face, the +X face's at `blocked` and the others at the far plane.
 function faces(blocked: float32): Texture2dArray {
-	let texels: float32[] = [blocked, 0.0, 0.0, 1.0];
+	const texels: float32[] = [blocked, 0.0, 0.0, 1.0];
 	for (let face = 1; face < 6; face++) {
 		const far: float32[] = [1.0, 0.0, 0.0, 1.0];
 		for (const v of far) { texels.push(v); }
@@ -210,10 +210,10 @@ function faces(blocked: float32): Texture2dArray {
 function packed(
 	values: Vec<float32>, opacity: float32, pcf: float32, normalBias: float32 = 0.0,
 ): Vec<float32> {
-	let context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
 	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.createCube(context, 1);
 	if (!made.ok) { unreachable; }
-	let map: DirShadowMap = made.value;
+	const map: DirShadowMap = made.value;
 	map.normalBias = normalBias;
 	if (pcf > 0.0) {
 		map.samplingKind = ShadowSamplingKind.Pcf;
@@ -344,14 +344,14 @@ test "only the record the header names reads the cube map, and only in a shadowe
 }
 
 function frameOf(lights: Vec<float32>, sun: boolean, point: boolean): RendererError | null {
-	let context: DrawContext = DrawContext.withUniformCapacity(
+	const context: DrawContext = DrawContext.withUniformCapacity(
 		RENDERER_UNIFORM_LENGTH + 2 * DIR_SHADOW_UNIFORM_LENGTH,
 	);
 	const created: Result<Renderer, RendererError> = Renderer.create(context);
 	const sunMap: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 64);
 	const cubeMap: Result<DirShadowMap, ShadowError> = DirShadowMap.createCube(context, 64);
 	if (!created.ok || !sunMap.ok || !cubeMap.ok) { unreachable; }
-	let core: Renderer = created.value;
+	const core: Renderer = created.value;
 	if (sun) { attachShadow(core, sunMap.value); }
 	if (point) { attachCubeShadow(core, cubeMap.value); }
 	let items: Vec<DrawItem> = [];
@@ -375,14 +375,14 @@ test "a frame refuses a bad cube caster, a caster with no range, and a caster wi
 }
 
 test "a point map alone owns the frame's block, and beside the sun's it lends its part" {
-	let context: DrawContext = DrawContext.withUniformCapacity(
+	const context: DrawContext = DrawContext.withUniformCapacity(
 		RENDERER_UNIFORM_LENGTH + 2 * DIR_SHADOW_UNIFORM_LENGTH,
 	);
 	const created: Result<Renderer, RendererError> = Renderer.create(context);
 	const sunMap: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 64);
 	const cubeMap: Result<DirShadowMap, ShadowError> = DirShadowMap.createCube(context, 64);
 	if (!created.ok || !sunMap.ok || !cubeMap.ok) { unreachable; }
-	let core: Renderer = created.value;
+	const core: Renderer = created.value;
 	const sun: DirShadowMap = sunMap.value;
 	const point: DirShadowMap = cubeMap.value;
 	assert point.kind == ShadowKind.Cube;

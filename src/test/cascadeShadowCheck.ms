@@ -71,7 +71,7 @@ function params(count: float32, overlap: float32): CascadeParams {
 
 // Layer i holds `depths[i]` at every texel.
 function bound(p: CascadeParams, depths: float32[]): ProbeBindings {
-	let texels: float32[] = [];
+	const texels: float32[] = [];
 	for (const depth of depths) {
 		for (let i = 0; i < SIZE * SIZE; i++) {
 			texels.push(depth);

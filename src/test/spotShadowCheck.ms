@@ -58,7 +58,6 @@ import {
 	litFs,
 	spotShadowAt,
 	recordShadowAt,
-	litTexelOf,
 	LitKey,
 } from "../void3d/shader3d";
 import { CascadeError, MAX_CASCADES } from "../void3d/cascades";
@@ -285,7 +284,9 @@ function spotMapped(
 	return {
 		...b,
 		shadowParams: {
-			...b.shadowParams, spotMatrix: spotMapOf(view), spotShadow: vec4f(bias, opacity, 1.0, 0.0),
+			...b.shadowParams,
+			spotMatrix: spotMapOf(view),
+			spotShadow: vec4f(bias, opacity, 1.0, 0.0),
 		},
 		spotShadowMap: oneLayer(depthTexture(depth)),
 	};
@@ -396,7 +397,9 @@ function withSun(b: LitBindings): LitBindings {
 	return {
 		...b,
 		lightParams: {
-			...b.lightParams, dirLight: vec4f(0.0, 1.0, 0.0, 1.0), dirColor: vec4f(1.0, 1.0, 1.0, 0.0),
+			...b.lightParams,
+			dirLight: vec4f(0.0, 1.0, 0.0, 1.0),
+			dirColor: vec4f(1.0, 1.0, 1.0, 0.0),
 		},
 	};
 }
@@ -416,7 +419,8 @@ test "a surface is dark where its own light's map blocks it, in both shading pat
 	const modes: Vec<boolean> = [false, true];
 	for (const pbr of modes) {
 		const open: Vec3f = surface(spotMapped(sunMapped(lit, 1.0, 1.0), view, 1.0, 0.0, 1.0), pbr);
-		const sunOut: Vec3f = surface(spotMapped(sunMapped(lit, 0.5, 1.0), view, 1.0, 0.0, 1.0), pbr);
+		const mapped = spotMapped(sunMapped(lit, 0.5, 1.0), view, 1.0, 0.0, 1.0);
+		const sunOut: Vec3f = surface(mapped, pbr);
 		const spotOut: Vec3f =
 			surface(spotMapped(sunMapped(lit, 1.0, 1.0), view, floorZ - 0.05, 0.0, 1.0), pbr);
 		const bothOut: Vec3f =
@@ -432,14 +436,14 @@ test "a surface is dark where its own light's map blocks it, in both shading pat
 }
 
 function refusalOf(lights: Vec<float32>, sun: boolean, spot: boolean): RendererError | null {
-	let context: DrawContext = DrawContext.withUniformCapacity(
+	const context: DrawContext = DrawContext.withUniformCapacity(
 		RENDERER_UNIFORM_LENGTH + 2 * DIR_SHADOW_UNIFORM_LENGTH,
 	);
 	const created: Result<Renderer, RendererError> = Renderer.create(context);
 	const sunMap: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 64);
 	const spotMap: Result<DirShadowMap, ShadowError> = DirShadowMap.createSpot(context, 64);
 	if (!created.ok || !sunMap.ok || !spotMap.ok) { unreachable; }
-	let core: Renderer = created.value;
+	const core: Renderer = created.value;
 	if (sun) { attachShadow(core, sunMap.value); }
 	if (spot) { attachSpotShadow(core, spotMap.value); }
 	let items: Vec<DrawItem> = [];
@@ -468,14 +472,14 @@ test "a shadowing spot with no spot map attached is refused, not drawn unshadowe
 }
 
 test "the sun's map and the spot's are made apart, and a frame applies the sun's block with the spot's half" {
-	let context: DrawContext = DrawContext.withUniformCapacity(
+	const context: DrawContext = DrawContext.withUniformCapacity(
 		RENDERER_UNIFORM_LENGTH + 2 * DIR_SHADOW_UNIFORM_LENGTH,
 	);
 	const created: Result<Renderer, RendererError> = Renderer.create(context);
 	const sunMap: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 64);
 	const spotMap: Result<DirShadowMap, ShadowError> = DirShadowMap.createSpot(context, 64);
 	if (!created.ok || !sunMap.ok || !spotMap.ok) { unreachable; }
-	let core: Renderer = created.value;
+	const core: Renderer = created.value;
 	const sun: DirShadowMap = sunMap.value;
 	const spot: DirShadowMap = spotMap.value;
 	assert sun.kind == ShadowKind.Sun && spot.kind == ShadowKind.Spot;
@@ -502,10 +506,10 @@ test "the sun's map and the spot's are made apart, and a frame applies the sun's
 }
 
 function sunCascades(first: float32, second: float32): LitBindings {
-	let context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
 	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 1);
 	if (!made.ok) { unreachable; }
-	let sun: DirShadowMap = made.value;
+	const sun: DirShadowMap = made.value;
 	const set: Result<int32, CascadeError> =
 		sun.setCascades({ bounds: [10.0, 20.0], overlap: 0.2, minimumDistance: 0.1 });
 	if (!set.ok || set.value != 2) { unreachable; }
@@ -535,10 +539,10 @@ test "a packed two-cascade sun reads each depth's layer, blends the overlap, and
 }
 
 test "a sun refuses a cascade config whose bounds do not rise, keeping the one it had" {
-	let context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
 	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 1);
 	if (!made.ok) { unreachable; }
-	let sun: DirShadowMap = made.value;
+	const sun: DirShadowMap = made.value;
 	const falling: Result<int32, CascadeError> =
 		sun.setCascades({ bounds: [20.0, 10.0], overlap: 0.2, minimumDistance: 0.1 });
 	assert !falling.ok && falling.error == CascadeError.Bounds && sun.cascades === null;
@@ -546,7 +550,7 @@ test "a sun refuses a cascade config whose bounds do not rise, keeping the one i
 
 // An 8x8 spot map shadowed left of its middle column and open right of it.
 function spotSplit(b: LitBindings, view: CameraView, pcf: float32): LitBindings {
-	let texels: float32[] = [];
+	const texels: float32[] = [];
 	for (let y = 0; y < 8; y++) {
 		for (let x = 0; x < 8; x++) {
 			const depth: float32 = x < 4 ? 0.0 : 1.0;
@@ -599,10 +603,10 @@ test "the spot's normal bias moves the receiver along its normal, scaled by its 
 }
 
 test "a map packs its PCF scale only when it samples with Pcf" {
-	let context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
 	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 1);
 	if (!made.ok) { unreachable; }
-	let sun: DirShadowMap = made.value;
+	const sun: DirShadowMap = made.value;
 	const layers: SunLayers = { clips: [identity()], far: [10.0] };
 	sun.packSun(layers, identity(), vec3(0.0, 0.0, 1.0));
 	assert sun.shadowValues[SHADOW_CASCADE_FILTER] == 0.0;
@@ -615,7 +619,7 @@ test "a map packs its PCF scale only when it samples with Pcf" {
 // An 8x8 sun map shadowed left of its middle column and open right of it, `perWorld` of the
 // map's width to a world unit.
 function sunSplit(b: LitBindings, perWorld: float32, normalBias: float32): LitBindings {
-	let texels: float32[] = [];
+	const texels: float32[] = [];
 	for (let y = 0; y < 8; y++) {
 		for (let x = 0; x < 8; x++) {
 			const texel: float32[] = [x < 4 ? 0.0 : 1.0, 0.0, 0.0, 1.0];
@@ -651,10 +655,10 @@ test "the sun's normal bias moves the receiver along its normal by texels of the
 }
 
 test "a sun packs its normal bias times the root of two, zero unless set as Heaps has none" {
-	let context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
 	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 1);
 	if (!made.ok) { unreachable; }
-	let sun: DirShadowMap = made.value;
+	const sun: DirShadowMap = made.value;
 	assert sun.normalBias == 0.0;
 	sun.normalBias = 1.5;
 	sun.packSun({ clips: [identity()], far: [10.0] }, identity(), vec3(0.0, 0.0, 1.0));

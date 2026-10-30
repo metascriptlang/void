@@ -54,7 +54,7 @@ function texelDirection(face: int32, x: int32, y: int32, size: int32): Vec3f {
 
 // A cube of `size` whose every texel holds face * 100 + its row-major index in red.
 function numberedCube(size: int32): TextureCube {
-	let texels: float32[] = [];
+	const texels: float32[] = [];
 	for (let face = 0; face < 6; face++) {
 		for (let i = 0; i < size * size; i++) {
 			texels.push((face * 100 + i) as float32);
@@ -67,7 +67,7 @@ function numberedCube(size: int32): TextureCube {
 }
 
 function constantCube(size: int32, value: float32): TextureCube {
-	let texels: float32[] = [];
+	const texels: float32[] = [];
 	for (let i = 0; i < 6 * size * size; i++) {
 		texels.push(value);
 		texels.push(value);
@@ -188,7 +188,7 @@ test "radiance at a near-mirror roughness is the source along the texel's direct
 
 function panorama(): Texture2d {
 	const rows: float32[] = [1.0, 1.0, 0.25, 0.25];
-	let texels: float32[] = [];
+	const texels: float32[] = [];
 	for (const value of rows) {
 		texels.push(value);
 		texels.push(value * 0.5);

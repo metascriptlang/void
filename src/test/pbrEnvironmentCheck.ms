@@ -109,7 +109,9 @@ test "cube faces follow +X -X +Y -Y +Z -Z and the GL (s, t) table" {
 	for (let face = 0; face < 6; face++) {
 		const centre = cubeFaceDirection(face, 0.5, 0.5);
 		assert centre.ok;
-		if (centre.ok) { assert closeVector(centre.value, centres[face].x, centres[face].y, centres[face].z); }
+		if (centre.ok) {
+			assert closeVector(centre.value, centres[face].x, centres[face].y, centres[face].z);
+		}
 		const texel = directionToCubeTexel(centres[face]);
 		assert texel.ok;
 		if (texel.ok) { assert texel.value.face == face; assert close(texel.value.u, 0.5); }
@@ -149,7 +151,10 @@ test "cube texel round trip over every face" {
 test "lut at roughness zero is a hand value for both sample forms" {
 	const head = splitSumLut(0.0, 1.0, 64);
 	assert head.ok;
-	if (head.ok) { assert close(head.value.scale, 1.0, 0.00001); assert close(head.value.bias, 0.0, 0.00001); }
+	if (head.ok) {
+		assert close(head.value.scale, 1.0, 0.00001);
+		assert close(head.value.bias, 0.0, 0.00001);
+	}
 	const oblique = splitSumLut(0.0, 0.6, 64, HammersleyForm.Unit);
 	assert oblique.ok;
 	if (oblique.ok) {
@@ -277,7 +282,8 @@ function latitudeLongitude(base: float32, slope: float32): Vec<RadianceSample> {
 		const solidAngle: float32 = s * (Math.PI as float32) / (rings as float32) *
 			2.0 * (Math.PI as float32) / (sectors as float32);
 		for (let j = 0; j < sectors; j++) {
-			const phi: float32 = ((j as float32) + 0.5) * 2.0 * (Math.PI as float32) / (sectors as float32);
+			const phi: float32 =
+				((j as float32) + 0.5) * 2.0 * (Math.PI as float32) / (sectors as float32);
 			const level: float32 = base + slope * z;
 			samples.push({
 				direction: vec3(s * (Math.cos(phi as float64) as float32),
@@ -321,15 +327,15 @@ test "sh of a linear environment matches the integral pi + 2 pi / 3 along the ax
 }
 
 test "sh refuses empty, negative and zero-direction samples by name" {
-	let none: Vec<RadianceSample> = [];
+	const none: Vec<RadianceSample> = [];
 	const empty = projectSh(none);
 	assert !empty.ok;
 	if (!empty.ok) { assert empty.error == PbrEnvironmentError.ZeroSamples; }
-	let one: Vec<RadianceSample> = [{
+	const one: Vec<RadianceSample> = [{
 		direction: vec3(0.0, 0.0, 1.0), radiance: vec3(-1.0, 0.0, 0.0), solidAngle: 1.0,
 	}];
 	assert !projectSh(one).ok;
-	let flat: Vec<RadianceSample> = [{
+	const flat: Vec<RadianceSample> = [{
 		direction: vec3(0.0, 0.0, 0.0), radiance: vec3(1.0, 0.0, 0.0), solidAngle: 1.0,
 	}];
 	const zero = projectSh(flat);

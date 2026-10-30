@@ -86,7 +86,7 @@ function assign(view: CameraView, lights: ClusterLight[]): ClusterAssignment {
 }
 
 function asTexture(data: DataTexture): Texture2dU32 {
-	let texels: uint32[] = [];
+	const texels: uint32[] = [];
 	for (const word of data.words) { texels.push(word); }
 	return { width: data.width, height: data.height, texels };
 }

@@ -206,7 +206,11 @@ function bindingsAt(
 function ambientChannel(
 	albedo: float32, sky: float32, metalness: float32, roughness: float32, occlusion: float32,
 ): float32 {
-	const toCamera: Vec3 = vec3(CAMERA.x - POSITION.x, CAMERA.y - POSITION.y, CAMERA.z - POSITION.z);
+	const toCamera: Vec3 = vec3(
+		CAMERA.x - POSITION.x,
+		CAMERA.y - POSITION.y,
+		CAMERA.z - POSITION.z,
+	);
 	const nv: float64 = toCamera.z / Math.sqrt(toCamera.dot(toCamera));
 	const weight: float64 = Math.pow(2.0, (-5.55473 * nv - 6.98316) * nv);
 	const f0: float64 = (0.04 * (1.0 - metalness) + albedo * metalness) as float64;
@@ -233,7 +237,11 @@ function expectedColor(
 ): Vec3f {
 	const albedo: Vec3f = srgbToLinear(BASE.rgb);
 	const sky: Vec3f = srgbToLinear(vec3f(SKY.x, SKY.y, SKY.z));
-	const toCamera: Vec3 = vec3(CAMERA.x - POSITION.x, CAMERA.y - POSITION.y, CAMERA.z - POSITION.z);
+	const toCamera: Vec3 = vec3(
+		CAMERA.x - POSITION.x,
+		CAMERA.y - POSITION.y,
+		CAMERA.z - POSITION.z,
+	);
 	const direct: Vec3 = oracle(metalness, roughness, toCamera, SUN, shadow, 0.0, occlusion,
 		vec3(albedo.x, albedo.y, albedo.z), vec3(1.0, 1.0, 1.0));
 	return linearToSrgb(vec3f(
@@ -362,7 +370,8 @@ test "an emitting pbr key adds colour times texel times strength after the light
 		srgbToLinear(vec3f(0.5, 0.25, 1.0)) * 2.0);
 	const color: Vec3f = emittingColor(emittingBindings(0.0, 0.7, emitted, glow));
 	assert nearColor(color, added) && color.x > lit.x;
-	assert nearColor(emittingColor(emittingBindings(0.0, 0.7, vec4f(0.0, 0.0, 0.0, 1.0), glow)), lit);
+	const unlit = emittingBindings(0.0, 0.7, vec4f(0.0, 0.0, 0.0, 1.0), glow);
+	assert nearColor(emittingColor(unlit), lit);
 	assert !nearColor(color, linearToSrgb(srgbToLinear(lit) + emitted.rgb * 0.5 * 2.0));
 }
 
@@ -405,7 +414,7 @@ test "a skinned pbr vertex is lit from its skinned world position, not from the 
 
 // One colour per face, faces +X -X +Y -Y +Z -Z.
 function cubeOf(colors: Vec3f[]): TextureCube {
-	let texels: float32[] = [];
+	const texels: float32[] = [];
 	for (const color of colors) {
 		texels.push(color.x);
 		texels.push(color.y);
@@ -460,7 +469,9 @@ test "the environment light is pbrIndirect over the cubes' irradiance and radian
 	const roughs: float32[] = [0.089, 0.5, 1.0];
 	for (const metalness of metals) {
 		for (const roughness of roughs) {
-			const b = environmentAt(constantCube(irradiance), constantCube(radiance), 1.5, 9.0, 0.7);
+			const b = environmentAt(
+				constantCube(irradiance), constantCube(radiance), 1.5, 9.0, 0.7,
+			);
 			const got = pbrEnvironmentLight(albedo, metalness, roughness, normal, view, 0.75, b);
 			const v = vec3(view.x, view.y, view.z).normalized();
 			const nv: float32 = Math.max(v.z, 0.0);

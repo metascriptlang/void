@@ -2,7 +2,6 @@ import { Vec3, Quat, vec3, axisAngle, identityQuat } from "../math/math3d";
 import {
 	Scene3D,
 	NodeId3D,
-	Transform3D,
 	LightKind,
 	LightInstance,
 	LightShape,
