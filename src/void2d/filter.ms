@@ -5,8 +5,8 @@ import { colorMatrixAlphaOnly, NO_COLOR_MATRIX } from "./effect";
 import { Color, premultipliedTargetTile, vec2, rgba } from "./types";
 import { BlendMode } from "../gpu/state";
 
-const zeroColor: Color = rgba(0.0, 0.0, 0.0, 0.0);
-const white: Color = rgba(1.0, 1.0, 1.0, 1.0);
+const CLEAR: Color = rgba(0.0, 0.0, 0.0, 0.0);
+const WHITE: Color = rgba(1.0, 1.0, 1.0, 1.0);
 
 export function blurToTarget(
 	src: RenderTarget,
@@ -16,10 +16,10 @@ export function blurToTarget(
 ): void {
 	const px: int32 = size as int32;
 	const blurred: RenderTarget = blurTargetPooled(src, px, px, radius);
-	beginTarget(dst, size, size, 1.0, 0.0, 0.0, zeroColor);
+	beginTarget(dst, size, size, 1.0, 0.0, 0.0, CLEAR);
 	drawImage(
 		premultipliedTargetTile(blurred, size, size), vec2(0.0, 0.0), vec2(size, size),
-		white, BlendMode.None);
+		WHITE, BlendMode.None);
 	endTarget();
 }
 
@@ -33,11 +33,11 @@ export function drawSilhouette(
 	gain: float32,
 	blend: BlendMode,
 ): void {
-	setEffect(colorMatrixAlphaOnly(gain), rgba(color.r, color.g, color.b, 0.0), zeroColor);
+	setEffect(colorMatrixAlphaOnly(gain), rgba(color.r, color.g, color.b, 0.0), CLEAR);
 	drawImage(
-		premultipliedTargetTile(blurredRT, w, h), vec2(x, y), vec2(w, h), white, blend,
+		premultipliedTargetTile(blurredRT, w, h), vec2(x, y), vec2(w, h), WHITE, blend,
 	);
-	setEffect(NO_COLOR_MATRIX, zeroColor, zeroColor);
+	setEffect(NO_COLOR_MATRIX, CLEAR, CLEAR);
 }
 
 export function drawGlow(
