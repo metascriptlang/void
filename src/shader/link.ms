@@ -185,6 +185,12 @@ function ownerOf(names: string[], owners: string[], effects: string[]): string {
 	return owned.length > 0 ? "effect '" + effects[owners.indexOf(owned[0])] + "'" : "the base";
 }
 
+function reachableExprs(m: ShaderModule, from: int32, visit: (e: ShaderExpr) => void): void {
+	let reachable: int32[] = [];
+	functionOrder(m, from, [], reachable);
+	for (const f of reachable) { stmtExprs(m.functions[f].body, visit); }
+}
+
 function blockReads(e: ShaderExpr, out: string[]): void {
 	if (e.kind == ExprKind.BlockMember) {
 		const read = String(e.index) + ":" + String(e.member);
@@ -196,10 +202,8 @@ function blockReads(e: ShaderExpr, out: string[]): void {
 function sharedMember(m: ShaderModule, owners: string[], effects: string[]):
 	Result<void, string> {
 	for (const entry of m.entries) {
-		let reachable: int32[] = [];
-		functionOrder(m, entry.functionIndex, [], reachable);
 		let reads: string[] = [];
-		for (const f of reachable) { stmtExprs(m.functions[f].body, (e) => blockReads(e, reads)); }
+		reachableExprs(m, entry.functionIndex, (e) => blockReads(e, reads));
 		let members: string[] = [];
 		let blocks: int32[] = [];
 		for (let i = 0; i < m.resources.length; i++) {
@@ -370,22 +374,47 @@ function siteBody(m: ShaderModule, site: ShaderFunction, steps: int32[], carrier
 	return body;
 }
 
-export function link(base: ShaderModule, effects: ShaderModule[]): Result<ShaderModule, string> {
-	let m = try irFromText(irText(base));
-	let vertexFunctions: int32[] = [];
+function vertexReach(m: ShaderModule): int32[] {
+	let reach: int32[] = [];
 	for (const entry of m.entries) {
-		if (entry.stage == ShaderStage.Vertex) {
-			functionOrder(m, entry.functionIndex, [], vertexFunctions);
+		if (entry.stage == ShaderStage.Vertex) { functionOrder(m, entry.functionIndex, [], reach); }
+	}
+	return reach;
+}
+
+function hookSites(m: ShaderModule): int32[] {
+	let sites: int32[] = [];
+	for (let i = 0; i < m.functions.length; i++) {
+		if (isHookSite(m, m.functions[i])) { sites.push(i as int32); }
+	}
+	return sites;
+}
+
+function unwrittenReads(
+	m: ShaderModule,
+	carriers: Carrier[],
+	readers: string[],
+	readerOf: int32[],
+): Result<void, string> {
+	for (let k = 0; k < readers.length; k++) {
+		const g = m.functions[readerOf[k]];
+		const c = carrierOf(m, carriers, g.params[1].type.structIndex);
+		const unwritten = carriedReads(m, g).findIndex((r) => r);
+		if (c.writers.length == 0 && unwritten >= 0) {
+			const s = m.structs[c.struct];
+			return Result.err("link: effect '" + readers[k] + "' reads varying '" +
+				s.members[unwritten].name + "' of carrier '" + s.name + "', which no vertex " +
+				"segment writes");
 		}
 	}
-	let sites: int32[] = [];
-	let steps: int32[][] = [];
-	for (let i = 0; i < m.functions.length; i++) {
-		const f = m.functions[i];
-		if (!isHookSite(m, f)) { continue; }
-		sites.push(i as int32);
-		steps.push([]);
-	}
+	return Result.ok(null);
+}
+
+export function link(base: ShaderModule, effects: ShaderModule[]): Result<ShaderModule, string> {
+	let m = try irFromText(irText(base));
+	const vertexFunctions = vertexReach(m);
+	const sites = hookSites(m);
+	let steps: int32[][] = sites.map((_) => []);
 	let owners: string[] = [];
 	let owning: string[] = [];
 	let carriers: Carrier[] = [];
@@ -435,17 +464,7 @@ export function link(base: ShaderModule, effects: ShaderModule[]): Result<Shader
 		}
 		steps[at].push(index);
 	}
-	for (let k = 0; k < readers.length; k++) {
-		const g = m.functions[readerOf[k]];
-		const c = carrierOf(m, carriers, g.params[1].type.structIndex);
-		const unwritten = carriedReads(m, g).findIndex((r) => r);
-		if (c.writers.length == 0 && unwritten >= 0) {
-			const s = m.structs[c.struct];
-			return Result.err("link: effect '" + readers[k] + "' reads varying '" +
-				s.members[unwritten].name + "' of carrier '" + s.name + "', which no vertex " +
-				"segment writes");
-		}
-	}
+	try unwrittenReads(m, carriers, readers, readerOf);
 	for (const c of carriers) {
 		if (c.writers.length > 0 && c.read.some((r) => r)) { try addVaryings(m, c); }
 	}
@@ -661,7 +680,9 @@ function withoutStores(m: ShaderModule, stmts: ShaderStmt[], dropped: int32[],
 		s.update = withoutStores(m, s.update, dropped, effects, stray);
 		s.body = withoutStores(m, s.body, dropped, effects, stray);
 		s.otherwise = withoutStores(m, s.otherwise, dropped, effects, stray);
-		for (const arm of s.cases) { arm.body = withoutStores(m, arm.body, dropped, effects, stray); }
+		for (const arm of s.cases) {
+			arm.body = withoutStores(m, arm.body, dropped, effects, stray);
+		}
 		out.push(s);
 	}
 	return out;
@@ -679,10 +700,8 @@ function withoutUnreadVaryings(m: ShaderModule): Result<ShaderModule, string> {
 	const vertex = m.entries.filter((e) => e.stage == ShaderStage.Vertex);
 	const fragment = m.entries.filter((e) => e.stage == ShaderStage.Fragment);
 	if (vertex.length != 1 || fragment.length != 1) { return Result.ok(m); }
-	let reachable: int32[] = [];
-	functionOrder(m, fragment[0].functionIndex, [], reachable);
 	let read: int32[] = [];
-	for (const f of reachable) { stmtExprs(m.functions[f].body, (e) => ioReads(e, read)); }
+	reachableExprs(m, fragment[0].functionIndex, (e) => ioReads(e, read));
 	const outs = varyingsOf(m, ShaderStage.Vertex, IoDirection.Out);
 	const ins = varyingsOf(m, ShaderStage.Fragment, IoDirection.In);
 	let dropped: int32[] = [];
