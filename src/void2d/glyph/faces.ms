@@ -37,8 +37,8 @@ import { applySynthetic, shapeBox } from "./outline";
 import { asInt32, truncInt } from "../trueType/fontInfo";
 
 when (voidColourEmoji) {
-	import { colourFaceGlyphIndex, colourInfo, colourOpen, colourReason, colourRegister } from "./colour";
-	import { COLOUR_NONE, COLOUR_NO_MEMORY, COLOUR_OK } from "../colourEmoji/colourFace";
+	import { colourFaceGlyphIndex, colourInfo, colourOpen, colourRegister } from "./colour";
+	import { COLOUR_NONE, COLOUR_NO_MEMORY, COLOUR_OK, colourFaceReason } from "../colourEmoji/colourFace";
 	import { FACE_BAD_COLOUR, FACE_NO_MEMORY } from "./state";
 }
 
@@ -351,7 +351,7 @@ export function void2dGlyphFaceLoad(path: string, index: int32): int32 {
 				outlines = true;
 			}
 		} else if (colourStatus != COLOUR_NONE) {
-			console.error(`void2d: ${path}: colour tables refused: ${colourReason()}`);
+			console.error(`void2d: ${path}: colour tables refused: ${colourFaceReason()}`);
 			if (!outlines) {
 				return colourStatus == COLOUR_NO_MEMORY ? FACE_NO_MEMORY : FACE_BAD_COLOUR;
 			}
