@@ -12,6 +12,10 @@ import {
 	TextRegime,
 	labelTexts,
 	LabelText,
+	advanceBlink,
+	cursorShown,
+	setLabelCursor,
+	setLabelBlinkTime,
 } from "../void2d/labelText";
 import { AtlasError, GlyphTile, quantizeX, snapBaseline } from "../void2d/glyphAtlas";
 import { Transform2D, trs2d, rgba } from "../void2d/types";
@@ -321,4 +325,19 @@ when (voidSdfText) {
 		}
 		releaseLabelText(index);
 	}
+}
+
+test "a blink clock advanced by a large total stays within one cycle and still toggles" {
+	const index = allocateLabelText();
+	setLabelBlinkTime(index, 0.5);
+	setLabelCursor(index, 0, RED);
+	assert cursorShown(labelTexts[index]);
+	for (let i = 0; i < 2000; i++) { advanceBlink(index, 1000.0); }
+	assert labelTexts[index].blinkClock >= 0.0;
+	assert labelTexts[index].blinkClock < 1.0;
+	advanceBlink(index, 0.25);
+	const first: boolean = cursorShown(labelTexts[index]);
+	advanceBlink(index, 0.5);
+	assert cursorShown(labelTexts[index]) != first;
+	releaseLabelText(index);
 }

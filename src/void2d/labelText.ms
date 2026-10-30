@@ -688,7 +688,11 @@ export function setLabelBlinkTime(index: int32, seconds: float32): void {
 }
 
 export function advanceBlink(index: int32, dt: float32): void {
-	labelTexts[index].blinkClock = labelTexts[index].blinkClock + dt;
+	const entry: LabelText = labelTexts[index];
+	entry.blinkClock = entry.blinkClock + dt;
+	if (entry.cursorBlinkTime <= 0.0) { return; }
+	const cycle: float32 = entry.cursorBlinkTime * 2.0;
+	entry.blinkClock = entry.blinkClock - (Math.floor(entry.blinkClock / cycle) as float32) * cycle;
 }
 
 export function cursorShown(entry: LabelText): boolean {
