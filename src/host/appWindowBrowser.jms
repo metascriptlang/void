@@ -12,7 +12,8 @@ import { WindowEvents } from "../platform/web/windowEvents";
 import { AppWindow, AppWindowPlatform } from "./appWindow";
 
 extern function setDocumentTitle(title: string): void from "(document.title=#)";
-extern function writeClipboard(text: string): void from "((text)=>{const ta=document.createElement('textarea');for(const [name,value] of [['autocomplete','off'],['autocorrect','off'],['autocapitalize','off'],['spellcheck','false']]){ta.setAttribute(name,value);}ta.style.left='-100px';ta.style.top='-100px';ta.style.height='1px';ta.style.width='1px';ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);})(#)";
+extern function writeClipboard(text: string): void
+	from "((text)=>{const ta=document.createElement('textarea');for(const [name,value] of [['autocomplete','off'],['autocorrect','off'],['autocapitalize','off'],['spellcheck','false']]){ta.setAttribute(name,value);}ta.style.left='-100px';ta.style.top='-100px';ta.style.height='1px';ta.style.width='1px';ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);})(#)";
 
 class BrowserWindow extends AppWindowPlatform {
 	live: WindowEvents | null = null;
@@ -28,7 +29,12 @@ class BrowserWindow extends AppWindowPlatform {
 
 	begin(canvas: CanvasView): void {
 		if (this.live !== null) { this.fail("the browser window already runs"); }
-		const live = new WindowEvents(new WindowState(canvas.size), canvas.canvas, appWindow, this.ime);
+		const live = new WindowEvents(
+			new WindowState(canvas.size),
+			canvas.canvas,
+			appWindow,
+			this.ime,
+		);
 		if (appWindow.titleSet) { setDocumentTitle(appWindow.title); }
 		live.open();
 		this.live = live;
@@ -42,7 +48,9 @@ class BrowserWindow extends AppWindowPlatform {
 		live.emit(AppEventType.Resized);
 	}
 
-	beginFrame(time: float64): void { this.running("beginFrame").state.timing.advanceTo(time / 1000); }
+	beginFrame(time: float64): void {
+		this.running("beginFrame").state.timing.advanceTo(time / 1000);
+	}
 
 	endFrame(ran: boolean): boolean {
 		const live = this.running("endFrame");
@@ -87,8 +95,14 @@ class BrowserWindow extends AppWindowPlatform {
 	mouseLocked(): boolean { return this.running("mouseLocked").state.mouse.locked; }
 	toggleFullscreen(): void { this.running("toggleFullscreen").toggleFullscreen(); }
 	isFullscreen(): boolean { return this.running("isFullscreen").state.fullscreen; }
-	droppedCount(): int32 { return this.running("droppedCount").state.droppedPaths.length as int32; }
-	droppedPath(index: int32): string { return this.running("droppedPath").state.droppedPaths[index]; }
+
+	droppedCount(): int32 {
+		return this.running("droppedCount").state.droppedPaths.length as int32;
+	}
+
+	droppedPath(index: int32): string {
+		return this.running("droppedPath").state.droppedPaths[index];
+	}
 
 	setTextInput(on: boolean): void {
 		this.ime.setTextInput(on ? 1 : 0);
