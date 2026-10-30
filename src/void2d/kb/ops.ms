@@ -78,8 +78,11 @@ function rebucketTouchedGlyphs(
 	const storage = s.storage;
 	let matched = first;
 	while (matched != onePastLast) {
-		if (storage.glyphs[matched].bucketedPlusOne != 0 &&
-			(storage.glyphs[matched].bucketedBucketIndex as int32) == sequentialLookupIndex) {
+		if (
+			storage.glyphs[matched].bucketedPlusOne != 0 &&
+			(storage.glyphs[matched].bucketedBucketIndex as int32) ==
+				sequentialLookupIndex
+		) {
 			kbUnbucketGlyph(s, matched);
 			kbBucketGlyph(s, matched, sequentialLookupIndex + 1);
 		}
@@ -87,21 +90,28 @@ function rebucketTouchedGlyphs(
 	}
 }
 
-export function kbGsubFeatures(s: KbScratch, m: Span<uint8>, config: KbShapeConfig): void {
+export function kbGsubFeatures(
+	s: KbScratch,
+	m: Span<uint8>,
+	config: KbShapeConfig,
+): void {
 	const storage = s.storage;
-	const lookupList = kbGetLookupList(m, m.kbBlobTableData(KB_BLOB_TABLE_ID_GSUB));
+	const lookupList = kbGetLookupList(
+		m,
+		m.kbBlobTableData(KB_BLOB_TABLE_ID_GSUB),
+	);
 
-	const filterMask = config.shaper == KB_SHAPER_USE ?
-		KB_USE_GLYPH_FEATURE_MASK : KB_GLYPH_FEATURE_MASK;
+	const filterMask =
+		config.shaper == KB_SHAPER_USE
+			? KB_USE_GLYPH_FEATURE_MASK
+			: KB_GLYPH_FEATURE_MASK;
 
 	const stageIndex = currentFeatureStageIndex(s);
 	const first = config.featureStageFirstLookupIndices[stageIndex] as int32;
-	const onePastLast = config.featureStageFirstLookupIndices[stageIndex + 1] as int32;
-	for (
-		let sequentialLookupIndex = first;
-		sequentialLookupIndex < onePastLast;
-		sequentialLookupIndex++
-	) {
+	const onePastLast = config.featureStageFirstLookupIndices[stageIndex +
+		1] as int32;
+	for (let sequentialLookupIndex = first; sequentialLookupIndex <
+	onePastLast; sequentialLookupIndex++) {
 		const sequentialLookup = config.sequentialLookups[sequentialLookupIndex];
 		const lookupIndex = sequentialLookup.lookupIndex as int32;
 		const skipFlags = sequentialLookup.skipFlags;
@@ -132,21 +142,38 @@ export function kbGsubFeatures(s: KbScratch, m: Span<uint8>, config: KbShapeConf
 
 					if ((glyphFlags & effectiveGlyphFilter) == effectiveGlyphFilter) {
 						s.frames[0] = {
-							inputGlyph: glyph, startIndex: 0, lookupIndex, subtableIndex: 0,
-							records: 0, recordCount: 0, recordIndex: 0,
+							inputGlyph: glyph,
+							startIndex: 0,
+							lookupIndex,
+							subtableIndex: 0,
+							records: 0,
+							recordCount: 0,
+							recordIndex: 0,
 						};
 						s.frameCount = 1;
 
 						while (s.frameCount != 0) {
 							const generatedGlyphFlags =
 								glyphFilter & (KB_GLYPH_FLAG_RPHF | KB_GLYPH_FLAG_PREF);
-							kbDoSubstitution(s, lookupList, sequentialLookupIndex,
-								featureValue as int32, false, skipFlags, generatedGlyphFlags);
+							kbDoSubstitution(
+								s,
+								lookupList,
+								sequentialLookupIndex,
+								featureValue as int32,
+								false,
+								skipFlags,
+								generatedGlyphFlags,
+							);
 						}
 					}
 
 					const end = kbEndLookupApplication(s);
-					rebucketTouchedGlyphs(s, storage.glyphs[prev].next, end, sequentialLookupIndex);
+					rebucketTouchedGlyphs(
+						s,
+						storage.glyphs[prev].next,
+						end,
+						sequentialLookupIndex,
+					);
 				}
 			}
 		}
@@ -157,9 +184,14 @@ export function kbGsubFeatures(s: KbScratch, m: Span<uint8>, config: KbShapeConf
 	s.sequentialLookupIndexIndex = onePastLast as uint32;
 }
 
-export function kbGposMetrics(s: KbScratch, m: Span<uint8>, config: KbShapeConfig): void {
+export function kbGposMetrics(
+	s: KbScratch,
+	m: Span<uint8>,
+	config: KbShapeConfig,
+): void {
 	const storage = s.storage;
-	const clearMarkAdvances = config.shaper == KB_SHAPER_MYANMAR || config.shaper == KB_SHAPER_USE;
+	const clearMarkAdvances =
+		config.shaper == KB_SHAPER_MYANMAR || config.shaper == KB_SHAPER_USE;
 
 	const hea = m.kbBlobTableData(KB_BLOB_TABLE_ID_HHEA);
 	const mtx = m.kbBlobTableData(KB_BLOB_TABLE_ID_HMTX);
@@ -183,8 +215,12 @@ export function kbGposMetrics(s: KbScratch, m: Span<uint8>, config: KbShapeConfi
 		if (hasLongMetrics) {
 			const id = storage.glyphs[glyph].id as int64;
 
-			if ((storage.glyphs[glyph].flags & KB_GLYPH_FLAG_GENERATED_BY_GSUB) == 0 &&
-				(storage.glyphs[glyph].unicodeFlags & KB_UNICODE_FLAG_DEFAULT_IGNORABLE) != 0) {
+			if (
+				(storage.glyphs[glyph].flags & KB_GLYPH_FLAG_GENERATED_BY_GSUB) == 0 &&
+				(storage.glyphs[glyph].unicodeFlags &
+					KB_UNICODE_FLAG_DEFAULT_IGNORABLE) !=
+					0
+			) {
 				advance = 0;
 			} else if (id < metricCount) {
 				advance = m.kbU16(mtx + id * 4);
@@ -212,11 +248,13 @@ export function kbGposMetrics(s: KbScratch, m: Span<uint8>, config: KbShapeConfi
 						mapCount = m.kbU32(map + 2);
 						entries = map + 6;
 					},
-					_ => {},
-				}
+					_ => {
+					},
+				};
 
 				if (mapCount != 0) {
-					const mapLookupIndex = innerIndex < mapCount ? innerIndex : mapCount - 1;
+					const mapLookupIndex =
+						innerIndex < mapCount ? innerIndex : mapCount - 1;
 					const entryFormat = m.kbU8(map + 1);
 					const bytesPerEntry = ((entryFormat >> 4) & 3) + 1;
 					const bitsPerInnerIndex = (entryFormat & 0xF) + 1;
@@ -229,19 +267,28 @@ export function kbGposMetrics(s: KbScratch, m: Span<uint8>, config: KbShapeConfi
 						_ => 0,
 					};
 
-					innerIndex = lookupEntry & (((1 as int64) << (bitsPerInnerIndex as int64)) - 1);
+					innerIndex =
+						lookupEntry & (((1 as int64) << (bitsPerInnerIndex as int64)) - 1);
 					outerIndex = lookupEntry >> (bitsPerInnerIndex as int64);
 				}
 			}
 
-			const delta: float32 = s.hasVariationVector ?
-				kbItemVariationStoreDelta(m, hvarStore, outerIndex, innerIndex,
-					s.variationVectorNormalized) : 0;
+			const delta: float32 = s.hasVariationVector
+				? kbItemVariationStoreDelta(
+						m,
+						hvarStore,
+						outerIndex,
+						innerIndex,
+						s.variationVectorNormalized,
+					)
+				: 0;
 			advance = (advance + kbRound32(delta)) & 0xFFFF;
 		}
 
-		if (!clearMarkAdvances ||
-			(storage.glyphs[glyph].classValue as int32) != KB_GLYPH_CLASS_MARK) {
+		if (
+			!clearMarkAdvances ||
+			(storage.glyphs[glyph].classValue as int32) != KB_GLYPH_CLASS_MARK
+		) {
 			storage.glyphs[glyph].advanceX = advance;
 		}
 
@@ -249,19 +296,21 @@ export function kbGposMetrics(s: KbScratch, m: Span<uint8>, config: KbShapeConfi
 	}
 }
 
-export function kbGposFeatures(s: KbScratch, m: Span<uint8>, config: KbShapeConfig): void {
+export function kbGposFeatures(
+	s: KbScratch,
+	m: Span<uint8>,
+	config: KbShapeConfig,
+): void {
 	const gpos = m.kbBlobTableData(KB_BLOB_TABLE_ID_GPOS);
 	const gdef = m.kbBlobTableData(KB_BLOB_TABLE_ID_GDEF);
 	const lookupList = kbGetLookupList(m, gpos);
 
 	const stageIndex = currentFeatureStageIndex(s);
 	const first = config.featureStageFirstLookupIndices[stageIndex] as int32;
-	const onePastLast = config.featureStageFirstLookupIndices[stageIndex + 1] as int32;
-	for (
-		let sequentialLookupIndex = first;
-		sequentialLookupIndex < onePastLast;
-		sequentialLookupIndex++
-	) {
+	const onePastLast = config.featureStageFirstLookupIndices[stageIndex +
+		1] as int32;
+	for (let sequentialLookupIndex = first; sequentialLookupIndex <
+	onePastLast; sequentialLookupIndex++) {
 		const sequentialLookup = config.sequentialLookups[sequentialLookupIndex];
 		const lookupIndex = sequentialLookup.lookupIndex as int32;
 		const skipFlags = sequentialLookup.skipFlags;
@@ -282,16 +331,24 @@ export function kbGposFeatures(s: KbScratch, m: Span<uint8>, config: KbShapeConf
 					const glyph = entry.glyph;
 					kbBeginLookupApplication(s, glyph);
 
-					for (
-						let subtableIndex = 0;
-						subtableIndex < lookup.subtableCount;
-						subtableIndex++
-					) {
+					for (let subtableIndex = 0; subtableIndex <
+					lookup.subtableCount; subtableIndex++) {
 						const subtableOffset =
 							lookup.subtableOffsets + (subtableIndex as int64) * 2;
 						const subtable = packedLookup + m.kbU16(subtableOffset);
-						if (kbDoSingleAdjustment(s, lookupList, lookupIndex as int64,
-							subtableIndex as int64, lookup, subtable, glyph, 0, skipFlags)) {
+						if (
+							kbDoSingleAdjustment(
+								s,
+								lookupList,
+								lookupIndex as int64,
+								subtableIndex as int64,
+								lookup,
+								subtable,
+								glyph,
+								0,
+								skipFlags,
+							)
+						) {
 							break;
 						}
 					}
@@ -309,7 +366,8 @@ export function kbGposFeatures(s: KbScratch, m: Span<uint8>, config: KbShapeConf
 export function kbPostGposFixup(s: KbScratch, config: KbShapeConfig): void {
 	const storage = s.storage;
 	const whitespace = config.whitespace;
-	const clearMarkAdvances = config.shaper == KB_SHAPER_ARABIC ||
+	const clearMarkAdvances =
+		config.shaper == KB_SHAPER_ARABIC ||
 		config.shaper == KB_SHAPER_DEFAULT ||
 		config.shaper == KB_SHAPER_HEBREW;
 
@@ -323,7 +381,9 @@ export function kbPostGposFixup(s: KbScratch, config: KbShapeConfig): void {
 			if (attach != 0) {
 				let attachAdvanceX = markAttachAdvanceX;
 				let attachAdvanceY = markAttachAdvanceY;
-				if ((storage.glyphs[attach].classValue as int32) != KB_GLYPH_CLASS_MARK) {
+				if (
+					(storage.glyphs[attach].classValue as int32) != KB_GLYPH_CLASS_MARK
+				) {
 					attachAdvanceX = storage.glyphs[attach].advanceX;
 					attachAdvanceY = storage.glyphs[attach].advanceY;
 				}
@@ -343,8 +403,12 @@ export function kbPostGposFixup(s: KbScratch, config: KbShapeConfig): void {
 		const next = storage.glyphs[glyph].next;
 		let keep = false;
 
-		if ((storage.glyphs[glyph].flags & KB_GLYPH_FLAG_GENERATED_BY_GSUB) == 0 &&
-			(storage.glyphs[glyph].unicodeFlags & KB_UNICODE_FLAG_DEFAULT_IGNORABLE) != 0) {
+		if (
+			(storage.glyphs[glyph].flags & KB_GLYPH_FLAG_GENERATED_BY_GSUB) == 0 &&
+			(storage.glyphs[glyph].unicodeFlags &
+				KB_UNICODE_FLAG_DEFAULT_IGNORABLE) !=
+				0
+		) {
 			if (whitespace.id != 0) {
 				keep = true;
 
@@ -353,8 +417,10 @@ export function kbPostGposFixup(s: KbScratch, config: KbShapeConfig): void {
 				storage.glyphs[glyph].configPlusOne = glyphConfig;
 			}
 		} else {
-			if (clearMarkAdvances &&
-				(storage.glyphs[glyph].classValue as int32) == KB_GLYPH_CLASS_MARK) {
+			if (
+				clearMarkAdvances &&
+				(storage.glyphs[glyph].classValue as int32) == KB_GLYPH_CLASS_MARK
+			) {
 				storage.glyphs[glyph].advanceX = 0;
 				storage.glyphs[glyph].advanceY = 0;
 			}

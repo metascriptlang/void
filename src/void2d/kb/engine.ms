@@ -1,13 +1,24 @@
 import { kbBeginCluster, kbEndCluster } from "./cluster";
 import { KB_GLYPH_SENTINEL, kbPopGlyphList, kbPushGlyphList } from "./glyph";
-import { kbBeginGsub, kbGposFeatures, kbGposMetrics, kbGsubFeatures, kbPostGposFixup } from "./ops";
+import {
+	kbBeginGsub,
+	kbGposFeatures,
+	kbGposMetrics,
+	kbGsubFeatures,
+	kbPostGposFixup,
+} from "./ops";
 import {
 	kbFlagJoiningLetters,
 	kbNormalize,
 	kbNormalizeHangul,
 	kbPreNormalizeDottedCircles,
 } from "./normalize";
-import { KbScratch, kbBucketGlyph, kbFreeGlyphBucket, kbUnbucketGlyph } from "./scratch";
+import {
+	KbScratch,
+	kbBucketGlyph,
+	kbFreeGlyphBucket,
+	kbUnbucketGlyph,
+} from "./scratch";
 import {
 	KB_OP_KIND_BEGIN_CLUSTER,
 	KB_OP_KIND_BEGIN_GSUB,
@@ -43,9 +54,11 @@ function readOp(s: KbScratch, end: uint8): boolean {
 			let kind = ops[s.ip as int32];
 			s.ip += 1;
 
-			if (kind == KB_OP_KIND_GSUB_FEATURES_WITH_USER ||
+			if (
+				kind == KB_OP_KIND_GSUB_FEATURES_WITH_USER ||
 				kind == KB_OP_KIND_GSUB_FEATURES ||
-				kind == KB_OP_KIND_GPOS_FEATURES) {
+				kind == KB_OP_KIND_GPOS_FEATURES
+			) {
 				s.featureStagesRead += 1;
 
 				if (kind == KB_OP_KIND_GSUB_FEATURES_WITH_USER) {
@@ -68,17 +81,36 @@ function executeOp(s: KbScratch, m: Span<uint8>): void {
 	}
 
 	match (s.opKind) {
-		KB_OP_KIND_PRE_NORMALIZE_DOTTED_CIRCLES => { kbPreNormalizeDottedCircles(s, config); },
-		KB_OP_KIND_NORMALIZE => { kbNormalize(s, config); },
-		KB_OP_KIND_NORMALIZE_HANGUL => { kbNormalizeHangul(s, config); },
-		KB_OP_KIND_BEGIN_GSUB => { kbBeginGsub(s); },
-		KB_OP_KIND_GSUB_FEATURES => { kbGsubFeatures(s, m, config); },
-		KB_OP_KIND_FLAG_JOINING_LETTERS => { kbFlagJoiningLetters(s); },
-		KB_OP_KIND_GPOS_METRICS => { kbGposMetrics(s, m, config); },
-		KB_OP_KIND_GPOS_FEATURES => { kbGposFeatures(s, m, config); },
-		KB_OP_KIND_POST_GPOS_FIXUP => { kbPostGposFixup(s, config); },
-		_ => {},
-	}
+		KB_OP_KIND_PRE_NORMALIZE_DOTTED_CIRCLES => {
+			kbPreNormalizeDottedCircles(s, config);
+		},
+		KB_OP_KIND_NORMALIZE => {
+			kbNormalize(s, config);
+		},
+		KB_OP_KIND_NORMALIZE_HANGUL => {
+			kbNormalizeHangul(s, config);
+		},
+		KB_OP_KIND_BEGIN_GSUB => {
+			kbBeginGsub(s);
+		},
+		KB_OP_KIND_GSUB_FEATURES => {
+			kbGsubFeatures(s, m, config);
+		},
+		KB_OP_KIND_FLAG_JOINING_LETTERS => {
+			kbFlagJoiningLetters(s);
+		},
+		KB_OP_KIND_GPOS_METRICS => {
+			kbGposMetrics(s, m, config);
+		},
+		KB_OP_KIND_GPOS_FEATURES => {
+			kbGposFeatures(s, m, config);
+		},
+		KB_OP_KIND_POST_GPOS_FIXUP => {
+			kbPostGposFixup(s, config);
+		},
+		_ => {
+		},
+	};
 }
 
 // kbts__ShapeDirect. The blob view is a parameter because the engine rewrites the scratch while it
@@ -108,7 +140,8 @@ function shapeDirect(
 	s.nextGlyphUid = 0;
 	s.sequentialLookupIndexIndex = 0;
 
-	for (let lookupIndex = 0; lookupIndex < s.sequentialLookupCount; lookupIndex++) {
+	for (let lookupIndex = 0; lookupIndex <
+	s.sequentialLookupCount; lookupIndex++) {
 		kbFreeGlyphBucket(s, lookupIndex);
 	}
 
@@ -123,11 +156,9 @@ function shapeDirect(
 		const beginClusterFeatureStagesRead = s.featureStagesRead;
 		let topLevelGlyph = glyphs[KB_GLYPH_SENTINEL].next;
 
-		for (
-			let lookupIndex = beginClusterSequentialLookupIndexIndex as int32;
-			lookupIndex < s.sequentialLookupCount;
-			lookupIndex++
-		) {
+		for (let lookupIndex =
+			beginClusterSequentialLookupIndexIndex as int32; lookupIndex <
+		s.sequentialLookupCount; lookupIndex++) {
 			kbFreeGlyphBucket(s, lookupIndex);
 		}
 
@@ -139,12 +170,19 @@ function shapeDirect(
 			s.sequentialLookupIndexIndex = beginClusterSequentialLookupIndexIndex;
 
 			const oneBeforeFirstClusterGlyph = glyphs[topLevelGlyph].prev;
-			const onePastLastClusterGlyph = kbBeginCluster(s, m, config, topLevelGlyph);
+			const onePastLastClusterGlyph = kbBeginCluster(
+				s,
+				m,
+				config,
+				topLevelGlyph,
+			);
 			step(observe, s);
 
 			const lastClusterGlyph = glyphs[onePastLastClusterGlyph].prev;
 			const wordBreak =
-				(glyphs[lastClusterGlyph].unicodeFlags & KB_UNICODE_FLAG_PART_OF_WORD) == 0;
+				(glyphs[lastClusterGlyph].unicodeFlags &
+					KB_UNICODE_FLAG_PART_OF_WORD) ==
+				0;
 			s.cluster = kbPushGlyphList(
 				storage,
 				glyphs[oneBeforeFirstClusterGlyph].next,
@@ -153,7 +191,13 @@ function shapeDirect(
 
 			let glyph = glyphs[KB_GLYPH_SENTINEL].next;
 			while (glyph != KB_GLYPH_SENTINEL) {
-				if (!kbBucketGlyph(s, glyph, beginClusterSequentialLookupIndexIndex as int32)) {
+				if (
+					!kbBucketGlyph(
+						s,
+						glyph,
+						beginClusterSequentialLookupIndexIndex as int32,
+					)
+				) {
 					kbUnbucketGlyph(s, glyph);
 				}
 				glyph = glyphs[glyph].next;

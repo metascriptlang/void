@@ -20,9 +20,7 @@ import {
 	KbGlyphStorage,
 	kbGlyphClasses,
 } from "./glyph";
-import {
-	KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION,
-} from "./shapeTables";
+import { KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION } from "./shapeTables";
 
 export const KB_LOOKUP_STACK_SIZE: int32 = 32;
 
@@ -67,7 +65,12 @@ export class KbScratch {
 	bucketBlocks: int32[][] = [];
 	freeBlocks: int32[] = [];
 
-	cluster: KbGlyphList = { sentinelPrev: 0, sentinelNext: 0, oneBeforeFirst: 0, onePastLast: 0 };
+	cluster: KbGlyphList = {
+		sentinelPrev: 0,
+		sentinelNext: 0,
+		oneBeforeFirst: 0,
+		onePastLast: 0,
+	};
 	lookupOnePastLastGlyph: int32 = 0;
 	lookupOnePastLastGlyphIndex: uint32 = 0;
 	nextGlyphUid: uint32 = 0;
@@ -104,32 +107,51 @@ export function kbPlaceScratch(
 	result.idSequentialLookupMatrix = idSequentialLookupMatrix;
 	result.sequentialLookupCount = sequentialLookupCount;
 
-	const m: Span<uint8> = font.blob[0..font.blob.length];
+	const m: Span<uint8> = font.blob[0 .. font.blob.length];
 	result.glyphIdCount = m.kbU32(KB_BLOB_HEADER_GLYPH_COUNT);
 	result.lookupSubtableCount = m.kbU32(KB_BLOB_HEADER_LOOKUP_SUBTABLE_COUNT);
-	result.gposLookupIndexOffset = m.kbU32(KB_BLOB_HEADER_GPOS_LOOKUP_INDEX_OFFSET);
-	result.glyphLookupSubtableMatrix = m.kbU32(KB_BLOB_HEADER_GLYPH_LOOKUP_SUBTABLE_MATRIX_OFFSET);
-	result.lookupSubtableIndexOffsets =
-		m.kbU32(KB_BLOB_HEADER_LOOKUP_SUBTABLE_INDEX_OFFSETS_OFFSET);
+	result.gposLookupIndexOffset = m.kbU32(
+		KB_BLOB_HEADER_GPOS_LOOKUP_INDEX_OFFSET,
+	);
+	result.glyphLookupSubtableMatrix = m.kbU32(
+		KB_BLOB_HEADER_GLYPH_LOOKUP_SUBTABLE_MATRIX_OFFSET,
+	);
+	result.lookupSubtableIndexOffsets = m.kbU32(
+		KB_BLOB_HEADER_LOOKUP_SUBTABLE_INDEX_OFFSETS_OFFSET,
+	);
 
 	const gdef = m.kbBlobTableData(KB_BLOB_TABLE_ID_GDEF);
-	if (gdef != 0 && m.kbU16(gdef) == 1 && m.kbU16(gdef + 2) >= 3 && m.kbU32(gdef + 14) != 0) {
+	if (
+		gdef != 0 &&
+		m.kbU16(gdef) == 1 &&
+		m.kbU16(gdef + 2) >= 3 &&
+		m.kbU32(gdef + 14) != 0
+	) {
 		result.gdefItemVariationStore = gdef + m.kbU32(gdef + 14);
 	}
 
-	for (let bucketIndex = 0; bucketIndex < sequentialLookupCount; bucketIndex++) {
+	for (let bucketIndex = 0; bucketIndex <
+	sequentialLookupCount; bucketIndex++) {
 		result.bucketBlocks.push([]);
 	}
 	for (let frameIndex = 0; frameIndex < KB_LOOKUP_STACK_SIZE; frameIndex++) {
 		result.frames.push({
-			inputGlyph: 0, startIndex: 0, lookupIndex: 0, subtableIndex: 0, records: 0,
-			recordCount: 0, recordIndex: 0,
+			inputGlyph: 0,
+			startIndex: 0,
+			lookupIndex: 0,
+			subtableIndex: 0,
+			records: 0,
+			recordCount: 0,
+			recordIndex: 0,
 		});
 	}
 	return result;
 }
 
-export function kbPlaceShapeScratch(config: KbShapeConfig, storage: KbGlyphStorage): KbScratch {
+export function kbPlaceShapeScratch(
+	config: KbShapeConfig,
+	storage: KbGlyphStorage,
+): KbScratch {
 	const stageCount = config.opList.stageFeatureCounts.length as int32;
 	const result = kbPlaceScratch(
 		config.font,
@@ -150,18 +172,28 @@ export function kbGlyphIncludedInLookupSubtable(
 	subtableIndex: int64,
 	glyph: int32,
 ): boolean {
-	if (s.glyphLookupSubtableMatrix == 0) { return true; }
+	if (s.glyphLookupSubtableMatrix == 0) {
+		return true;
+	}
 
-	const m: Span<uint8> = s.font.blob[0..s.font.blob.length];
-	const flatLookupIndex = gpos ? lookupIndex + s.gposLookupIndexOffset : lookupIndex;
+	const m: Span<uint8> = s.font.blob[0 .. s.font.blob.length];
+	const flatLookupIndex = gpos
+		? lookupIndex + s.gposLookupIndexOffset
+		: lookupIndex;
 	const flatSubtableIndex =
 		m.kbU32(s.lookupSubtableIndexOffsets + flatLookupIndex * 4) + subtableIndex;
 
 	const id = s.storage.glyphs[glyph].id as int64;
 	if (id < s.glyphIdCount) {
-		const index = kbGlyphLookupMatrixIndex(flatSubtableIndex, id, s.glyphIdCount);
+		const index = kbGlyphLookupMatrixIndex(
+			flatSubtableIndex,
+			id,
+			s.glyphIdCount,
+		);
 		const word = m.kbU32(s.glyphLookupSubtableMatrix + index.word * 4);
-		if ((word & ((1 as int64) << index.bit)) == 0) { return false; }
+		if ((word & ((1 as int64) << index.bit)) == 0) {
+			return false;
+		}
 	}
 	return true;
 }
@@ -175,7 +207,11 @@ export function kbEndLookupApplication(s: KbScratch): int32 {
 	return s.lookupOnePastLastGlyph;
 }
 
-export function kbSetLookupOnePastLastGlyph(s: KbScratch, index: int64, glyph: int32): void {
+export function kbSetLookupOnePastLastGlyph(
+	s: KbScratch,
+	index: int64,
+	glyph: int32,
+): void {
 	if (index > (s.lookupOnePastLastGlyphIndex as int64)) {
 		s.lookupOnePastLastGlyphIndex = index as uint32;
 		s.lookupOnePastLastGlyph = glyph;
@@ -210,7 +246,8 @@ function newBucketedGlyphBlock(s: KbScratch): int32 {
 	}
 	const block = s.blockCounts.length as int32;
 	s.blockCounts.push(0);
-	for (let entryIndex = 0; entryIndex < KB_BUCKETED_GLYPHS_PER_BLOCK; entryIndex++) {
+	for (let entryIndex = 0; entryIndex <
+	KB_BUCKETED_GLYPHS_PER_BLOCK; entryIndex++) {
 		s.blockEntries.push({ glyph: 0, sortKey: 0, featureValue: 0 });
 	}
 	return block;
@@ -218,17 +255,32 @@ function newBucketedGlyphBlock(s: KbScratch): int32 {
 
 export function kbBucketLength(s: KbScratch, bucketIndex: int32): int32 {
 	const blocks = s.bucketBlocks[bucketIndex];
-	if (blocks.length == 0) { return 0; }
-	return ((blocks.length as int32) - 1) * KB_BUCKETED_GLYPHS_PER_BLOCK +
-		s.blockCounts[blocks[blocks.length - 1]];
+	if (blocks.length == 0) {
+		return 0;
+	}
+	return (
+		((blocks.length as int32) - 1) * KB_BUCKETED_GLYPHS_PER_BLOCK +
+		s.blockCounts[blocks[blocks.length - 1]]
+	);
 }
 
-function bucketEntryIndex(s: KbScratch, bucketIndex: int32, position: int32): int32 {
-	return s.bucketBlocks[bucketIndex][position / KB_BUCKETED_GLYPHS_PER_BLOCK] *
-		KB_BUCKETED_GLYPHS_PER_BLOCK + position % KB_BUCKETED_GLYPHS_PER_BLOCK;
+function bucketEntryIndex(
+	s: KbScratch,
+	bucketIndex: int32,
+	position: int32,
+): int32 {
+	return (
+		s.bucketBlocks[bucketIndex][position / KB_BUCKETED_GLYPHS_PER_BLOCK] *
+			KB_BUCKETED_GLYPHS_PER_BLOCK +
+		(position % KB_BUCKETED_GLYPHS_PER_BLOCK)
+	);
 }
 
-export function kbBucketEntry(s: KbScratch, bucketIndex: int32, position: int32): KbBucketed {
+export function kbBucketEntry(
+	s: KbScratch,
+	bucketIndex: int32,
+	position: int32,
+): KbBucketed {
 	return s.blockEntries[bucketEntryIndex(s, bucketIndex, position)];
 }
 
@@ -239,22 +291,32 @@ function insertGlyphIntoBucket(
 	featureValue: uint16,
 ): void {
 	const blocks = s.bucketBlocks[bucketIndex];
-	if (blocks.length == 0 ||
-		s.blockCounts[blocks[blocks.length - 1]] == KB_BUCKETED_GLYPHS_PER_BLOCK) {
+	if (
+		blocks.length == 0 ||
+		s.blockCounts[blocks[blocks.length - 1]] == KB_BUCKETED_GLYPHS_PER_BLOCK
+	) {
 		blocks.push(newBucketedGlyphBlock(s));
 	}
 	const block = blocks[blocks.length - 1];
 	const entry = block * KB_BUCKETED_GLYPHS_PER_BLOCK + s.blockCounts[block];
 	s.blockCounts[block] = s.blockCounts[block] + 1;
-	s.blockEntries[entry] = { glyph, sortKey: s.storage.glyphs[glyph].sortKey, featureValue };
+	s.blockEntries[entry] = {
+		glyph,
+		sortKey: s.storage.glyphs[glyph].sortKey,
+		featureValue,
+	};
 	s.storage.glyphs[glyph].bucketedPlusOne = entry + 1;
 	s.storage.glyphs[glyph].bucketedBucketIndex = bucketIndex as uint16;
 }
 
 function lsbPositionOrBitWidth32(value: uint32): int32 {
-	if (value == 0) { return 32; }
+	if (value == 0) {
+		return 32;
+	}
 	let at: int32 = 0;
-	while (((value >> (at as uint32)) & 1) == 0) { at++; }
+	while (((value >> (at as uint32)) & 1) == 0) {
+		at++;
+	}
 	return at;
 }
 
@@ -268,12 +330,20 @@ function lookupWordBits(
 	matrixWord: int64,
 	rowWord: int64,
 ): uint32 {
-	if (config === null) { return s.idSequentialLookupMatrix[matrixWord]; }
-	return (s.idSequentialLookupMatrix[matrixWord] | config.enabledLookupBits[rowWord]) &
-		~config.disabledLookupBits[rowWord];
+	if (config === null) {
+		return s.idSequentialLookupMatrix[matrixWord];
+	}
+	return (
+		(s.idSequentialLookupMatrix[matrixWord] |
+			config.enabledLookupBits[rowWord]) &
+		~config.disabledLookupBits[rowWord]
+	);
 }
 
-function nonBinaryFeatureValue(config: KbGlyphConfig, sequentialLookupIndex: int32): uint16 {
+function nonBinaryFeatureValue(
+	config: KbGlyphConfig,
+	sequentialLookupIndex: int32,
+): uint16 {
 	for (const enabledLookup of config.nonBinaryEnabledLookups) {
 		if (enabledLookup.sequentialLookupIndex == sequentialLookupIndex) {
 			return enabledLookup.value as uint16;
@@ -293,20 +363,24 @@ export function kbBucketGlyph(
 	if ((minimumSequentialLookupIndex as int64) < sequentialLookupCount) {
 		const id = s.storage.glyphs[glyph].id as int64;
 		const bitsPerRow = (sequentialLookupCount + 31) & ~(31 as int64);
-		const onePastLastWordIndex = (id * bitsPerRow + sequentialLookupCount - 1) / 32 + 1;
+		const onePastLastWordIndex =
+			(id * bitsPerRow + sequentialLookupCount - 1) / 32 + 1;
 
 		if (id < (s.configGlyphCount as int64)) {
 			const configPlusOne = s.storage.glyphs[glyph].configPlusOne;
-			const flatIndex = id * bitsPerRow + (minimumSequentialLookupIndex as int64);
+			const flatIndex =
+				id * bitsPerRow + (minimumSequentialLookupIndex as int64);
 			const matrixWord = flatIndex / 32;
 			const matrixBit = (flatIndex % 32) as int32;
 
 			const beforeFirstMask = maskBelowBit(matrixBit);
-			const config = configPlusOne != 0 ? s.storage.configs[configPlusOne - 1] : null;
+			const config =
+				configPlusOne != 0 ? s.storage.configs[configPlusOne - 1] : null;
 			let at = matrixWord;
 			let atRow = (minimumSequentialLookupIndex as int64) / 32;
 
-			let bits: uint32 = lookupWordBits(s, config, at, atRow) & ~beforeFirstMask;
+			let bits: uint32 =
+				lookupWordBits(s, config, at, atRow) & ~beforeFirstMask;
 			at++;
 			atRow++;
 			let offset: int64 = 0;
@@ -322,10 +396,12 @@ export function kbBucketGlyph(
 
 			if (bits != 0) {
 				offset += (lsbPositionOrBitWidth32(bits) - matrixBit) as int64;
-				const sequentialLookupIndex =
-					(minimumSequentialLookupIndex as int64 + offset) as int32;
+				const sequentialLookupIndex = (minimumSequentialLookupIndex as int64 +
+					offset) as int32;
 				const featureValue: uint16 =
-					config !== null ? nonBinaryFeatureValue(config, sequentialLookupIndex) : 1;
+					config !== null
+						? nonBinaryFeatureValue(config, sequentialLookupIndex)
+						: 1;
 				insertGlyphIntoBucket(s, sequentialLookupIndex, glyph, featureValue);
 				result = true;
 			}
@@ -346,20 +422,30 @@ export function kbGsubMutate(
 	s.storage.glyphs[glyph].id = newId;
 	const classes = kbGlyphClasses(s.font, newId as int32);
 	s.storage.glyphs[glyph].classValue = classes.classValue as uint16;
-	s.storage.glyphs[glyph].markAttachmentClass = classes.markAttachmentClass as uint16;
+	s.storage.glyphs[glyph].markAttachmentClass =
+		classes.markAttachmentClass as uint16;
 	s.storage.glyphs[glyph].flags =
-		(s.storage.glyphs[glyph].flags & ~KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION) | flags;
+		(s.storage.glyphs[glyph].flags &
+			~KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION) |
+		flags;
 
 	kbUnbucketGlyph(s, glyph);
 	kbBucketGlyph(s, glyph, currentSequentialLookupIndex + 1);
 }
 
-export function kbSortGlyphBucket(s: KbScratch, sequentialLookupIndex: int32): void {
+export function kbSortGlyphBucket(
+	s: KbScratch,
+	sequentialLookupIndex: int32,
+): void {
 	const total = kbBucketLength(s, sequentialLookupIndex);
-	if (total == 0) { return; }
+	if (total == 0) {
+		return;
+	}
 
 	let deletedCount: int32 =
-		kbBucketEntry(s, sequentialLookupIndex, 0).sortKey == KB_DELETED_SORT_KEY ? 1 : 0;
+		kbBucketEntry(s, sequentialLookupIndex, 0).sortKey == KB_DELETED_SORT_KEY
+			? 1
+			: 0;
 
 	for (let forwardIndex = 1; forwardIndex < total; forwardIndex++) {
 		const bucketed = kbBucketEntry(s, sequentialLookupIndex, forwardIndex);
@@ -368,7 +454,11 @@ export function kbSortGlyphBucket(s: KbScratch, sequentialLookupIndex: int32): v
 		let backwardIndex = forwardIndex;
 		while (backwardIndex > 0) {
 			const nextBackwardIndex = backwardIndex - 1;
-			const from = bucketEntryIndex(s, sequentialLookupIndex, nextBackwardIndex);
+			const from = bucketEntryIndex(
+				s,
+				sequentialLookupIndex,
+				nextBackwardIndex,
+			);
 			if (s.blockEntries[from].sortKey > sortKey) {
 				const to = bucketEntryIndex(s, sequentialLookupIndex, backwardIndex);
 				s.blockEntries[to] = s.blockEntries[from];
@@ -387,7 +477,9 @@ export function kbSortGlyphBucket(s: KbScratch, sequentialLookupIndex: int32): v
 			s.storage.glyphs[bucketed.glyph].bucketedPlusOne = to + 1;
 		}
 
-		if (sortKey == KB_DELETED_SORT_KEY) { deletedCount++; }
+		if (sortKey == KB_DELETED_SORT_KEY) {
+			deletedCount++;
+		}
 	}
 
 	const blocks = s.bucketBlocks[sequentialLookupIndex];
@@ -405,7 +497,10 @@ export function kbSortGlyphBucket(s: KbScratch, sequentialLookupIndex: int32): v
 	}
 }
 
-export function kbFreeGlyphBucket(s: KbScratch, sequentialLookupIndex: int32): void {
+export function kbFreeGlyphBucket(
+	s: KbScratch,
+	sequentialLookupIndex: int32,
+): void {
 	for (const block of s.bucketBlocks[sequentialLookupIndex]) {
 		s.freeBlocks.push(block);
 	}
@@ -425,8 +520,10 @@ export function kbFreeGlyph(s: KbScratch, glyph: int32): int32 {
 
 	kbUnbucketGlyph(s, glyph);
 
-	s.storage.glyphs[s.storage.glyphs[glyph].prev].next = s.storage.glyphs[glyph].next;
-	s.storage.glyphs[s.storage.glyphs[glyph].next].prev = s.storage.glyphs[glyph].prev;
+	s.storage.glyphs[s.storage.glyphs[glyph].prev].next =
+		s.storage.glyphs[glyph].next;
+	s.storage.glyphs[s.storage.glyphs[glyph].next].prev =
+		s.storage.glyphs[glyph].prev;
 
 	s.storage.glyphs[glyph].next = KB_FREE_GLYPH_SENTINEL;
 	s.storage.glyphs[glyph].prev = s.storage.glyphs[KB_FREE_GLYPH_SENTINEL].prev;

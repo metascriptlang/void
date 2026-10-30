@@ -119,7 +119,22 @@ const KB_TAG_MVAR: int64 = 0x5241564D;
 const KB_TAG_HVAR: int64 = 0x52415648;
 const KB_TAG_VVAR: int64 = 0x52415656;
 
-const KB_CMAP_FORMAT_PRECEDENCE: int32[] = [1, 0, 1, 0, 2, 0, 1, 0, 3, 0, 3, 0, 4, 5];
+const KB_CMAP_FORMAT_PRECEDENCE: int32[] = [
+	1,
+	0,
+	1,
+	0,
+	2,
+	0,
+	1,
+	0,
+	3,
+	0,
+	3,
+	0,
+	4,
+	5,
+];
 
 export class KbFont {
 	blob: uint8[] = [];
@@ -158,25 +173,61 @@ function fileU16(data: Readonly<Span<uint8>>, at: int64): int64 {
 
 function tagToTableId(tag: int64): int32 {
 	match (tag) {
-		KB_TAG_HEAD => { return KB_BLOB_TABLE_ID_HEAD; },
-		KB_TAG_CMAP => { return KB_BLOB_TABLE_ID_CMAP; },
-		KB_TAG_GDEF => { return KB_BLOB_TABLE_ID_GDEF; },
-		KB_TAG_GSUB => { return KB_BLOB_TABLE_ID_GSUB; },
-		KB_TAG_GPOS => { return KB_BLOB_TABLE_ID_GPOS; },
-		KB_TAG_HHEA => { return KB_BLOB_TABLE_ID_HHEA; },
-		KB_TAG_VHEA => { return KB_BLOB_TABLE_ID_VHEA; },
-		KB_TAG_HMTX => { return KB_BLOB_TABLE_ID_HMTX; },
-		KB_TAG_VMTX => { return KB_BLOB_TABLE_ID_VMTX; },
-		KB_TAG_MAXP => { return KB_BLOB_TABLE_ID_MAXP; },
-		KB_TAG_OS2 => { return KB_BLOB_TABLE_ID_OS2; },
-		KB_TAG_NAME => { return KB_BLOB_TABLE_ID_NAME; },
-		KB_TAG_FVAR => { return KB_BLOB_TABLE_ID_FVAR; },
-		KB_TAG_AVAR => { return KB_BLOB_TABLE_ID_AVAR; },
-		KB_TAG_MVAR => { return KB_BLOB_TABLE_ID_MVAR; },
-		KB_TAG_HVAR => { return KB_BLOB_TABLE_ID_HVAR; },
-		KB_TAG_VVAR => { return KB_BLOB_TABLE_ID_VVAR; },
-		_ => { return 0; },
-	}
+		KB_TAG_HEAD => {
+			return KB_BLOB_TABLE_ID_HEAD;
+		},
+		KB_TAG_CMAP => {
+			return KB_BLOB_TABLE_ID_CMAP;
+		},
+		KB_TAG_GDEF => {
+			return KB_BLOB_TABLE_ID_GDEF;
+		},
+		KB_TAG_GSUB => {
+			return KB_BLOB_TABLE_ID_GSUB;
+		},
+		KB_TAG_GPOS => {
+			return KB_BLOB_TABLE_ID_GPOS;
+		},
+		KB_TAG_HHEA => {
+			return KB_BLOB_TABLE_ID_HHEA;
+		},
+		KB_TAG_VHEA => {
+			return KB_BLOB_TABLE_ID_VHEA;
+		},
+		KB_TAG_HMTX => {
+			return KB_BLOB_TABLE_ID_HMTX;
+		},
+		KB_TAG_VMTX => {
+			return KB_BLOB_TABLE_ID_VMTX;
+		},
+		KB_TAG_MAXP => {
+			return KB_BLOB_TABLE_ID_MAXP;
+		},
+		KB_TAG_OS2 => {
+			return KB_BLOB_TABLE_ID_OS2;
+		},
+		KB_TAG_NAME => {
+			return KB_BLOB_TABLE_ID_NAME;
+		},
+		KB_TAG_FVAR => {
+			return KB_BLOB_TABLE_ID_FVAR;
+		},
+		KB_TAG_AVAR => {
+			return KB_BLOB_TABLE_ID_AVAR;
+		},
+		KB_TAG_MVAR => {
+			return KB_BLOB_TABLE_ID_MVAR;
+		},
+		KB_TAG_HVAR => {
+			return KB_BLOB_TABLE_ID_HVAR;
+		},
+		KB_TAG_VVAR => {
+			return KB_BLOB_TABLE_ID_VVAR;
+		},
+		_ => {
+			return 0;
+		},
+	};
 }
 
 function isUnicodeSubtable(platformId: int32, encodingId: int32): boolean {
@@ -192,12 +243,13 @@ function selectCmapSubtable(
 	let result: KbCmapSubtablePointer = { platformId: 0, encodingId: 0, at: 0 };
 
 	const preferredFormat = 1;
-	for (let subtableIndex: int64 = 0; subtableIndex < u16At(m, cmap + 2); subtableIndex++) {
+	for (let subtableIndex: int64 = 0; subtableIndex <
+	u16At(m, cmap + 2); subtableIndex++) {
 		const subtable = kbGetCmapSubtable(m, cmap, subtableIndex);
 		if (subtable.at + 2 <= tableEnd) {
 			let format = m.kbU16(subtable.at);
 
-			if (format > 0xFF && (format >> 8) <= 14) {
+			if (format > 0xFF && format >> 8 <= 14) {
 				format = kbSwap16(format);
 				m.kbSetU16(subtable.at, format);
 			}
@@ -214,8 +266,10 @@ function selectCmapSubtable(
 				const precedence = KB_CMAP_FORMAT_PRECEDENCE[format];
 				const preferredPrecedence = KB_CMAP_FORMAT_PRECEDENCE[preferredFormat];
 
-				if (precedence > preferredPrecedence ||
-					(precedence == preferredPrecedence && subtable.platformId == 3)) {
+				if (
+					precedence > preferredPrecedence ||
+					(precedence == preferredPrecedence && subtable.platformId == 3)
+				) {
 					result = subtable;
 				}
 			}
@@ -225,19 +279,32 @@ function selectCmapSubtable(
 	return result;
 }
 
-function selectCmapSubtableFromBlob(m: Span<uint8>, font: KbFont): KbCmapSubtablePointer {
+function selectCmapSubtableFromBlob(
+	m: Span<uint8>,
+	font: KbFont,
+): KbCmapSubtablePointer {
 	let result: KbCmapSubtablePointer = { platformId: 0, encodingId: 0, at: 0 };
 	if (m.kbBlobTableLength(KB_BLOB_TABLE_ID_CMAP) >= KB_SIZE_CMAP) {
-		const tableEnd = m.kbBlobTableOffset(KB_BLOB_TABLE_ID_CMAP) +
+		const tableEnd =
+			m.kbBlobTableOffset(KB_BLOB_TABLE_ID_CMAP) +
 			m.kbBlobTableLength(KB_BLOB_TABLE_ID_CMAP);
-		result = selectCmapSubtable(m, m.kbBlobTableOffset(KB_BLOB_TABLE_ID_CMAP), tableEnd, font);
+		result = selectCmapSubtable(
+			m,
+			m.kbBlobTableOffset(KB_BLOB_TABLE_ID_CMAP),
+			tableEnd,
+			font,
+		);
 	}
 	return result;
 }
 
 function matrixSizeInWords(rowCount: int64, glyphCount: int64): int64 {
-	if (rowCount == 0 || glyphCount == 0) { return 0; }
-	return kbGlyphLookupMatrixIndex(rowCount - 1, glyphCount - 1, glyphCount).word + 1;
+	if (rowCount == 0 || glyphCount == 0) {
+		return 0;
+	}
+	return (
+		kbGlyphLookupMatrixIndex(rowCount - 1, glyphCount - 1, glyphCount).word + 1
+	);
 }
 
 function loadFontUnchecked(
@@ -260,7 +327,10 @@ function loadFontUnchecked(
 			if (size >= 12) {
 				const fontCount = data.kbFileU32(8);
 
-				if (((fontIndex as int64) & 0xFFFFFFFF) < fontCount && size >= 12 + 4 * fontCount) {
+				if (
+					((fontIndex as int64) & 0xFFFFFFFF) < fontCount &&
+					size >= 12 + 4 * fontCount
+				) {
 					directoryOffset = data.kbFileU32(12 + (fontIndex as int64) * 4);
 					magic = KB_FOURCC_V1;
 				}
@@ -274,21 +344,20 @@ function loadFontUnchecked(
 				const directoryTableCount = fileU16(data, directoryOffset + 4);
 				const tables = directoryOffset + 12;
 
-				const directoryTableCapacity: int64 = fileEnd - tables >= 0 ?
-					(fileEnd - tables) / 16 : 0x7FFFFFFFFFFFFFFF;
+				const directoryTableCapacity: int64 =
+					fileEnd - tables >= 0 ? (fileEnd - tables) / 16 : 0x7FFFFFFFFFFFFFFF;
 				if (directoryTableCount <= directoryTableCapacity) {
-					for (
-						let tableIndex: int64 = 0;
-						tableIndex < directoryTableCount;
-						tableIndex++
-					) {
+					for (let tableIndex: int64 = 0; tableIndex <
+					directoryTableCount; tableIndex++) {
 						const table = tables + tableIndex * 16;
 						const tableOffset = data.kbFileU32(table + 8);
 						const tableLength = data.kbFileU32(table + 12);
 
 						const tableEnd = tableOffset + tableLength;
-						if (tableOffset >= tables + directoryTableCount * 16 &&
-							tableEnd <= fileEnd) {
+						if (
+							tableOffset >= tables + directoryTableCount * 16 &&
+							tableEnd <= fileEnd
+						) {
 							const tableId = tagToTableId(data.kbU32(table));
 
 							if (tableId != 0) {
@@ -307,11 +376,8 @@ function loadFontUnchecked(
 						KB_BLOB_TABLE_ID_GSUB,
 						KB_BLOB_TABLE_ID_GPOS,
 					];
-					for (
-						let gsubGposTableIndex = 0;
-						gsubGposTableIndex < 2;
-						gsubGposTableIndex++
-					) {
+					for (let gsubGposTableIndex = 0; gsubGposTableIndex <
+					2; gsubGposTableIndex++) {
 						const tableId = gsubGposTableIds[gsubGposTableIndex];
 						const length = state.tableLengths[tableId];
 
@@ -321,26 +387,28 @@ function loadFontUnchecked(
 							const featureListOffset = fileU16(data, gsubGpos + 6);
 							const lookupListOffset = fileU16(data, gsubGpos + 8);
 
-							if (scriptListOffset == 0 && featureListOffset == 0 &&
-								lookupListOffset == 0) {
+							if (
+								scriptListOffset == 0 &&
+								featureListOffset == 0 &&
+								lookupListOffset == 0
+							) {
 								state.tableOffsets[tableId] = 0;
 								state.tableLengths[tableId] = 0;
-							} else if (scriptListOffset + 2 > length ||
+							} else if (
+								scriptListOffset + 2 > length ||
 								featureListOffset + 2 > length ||
-								lookupListOffset + 2 > length) {
+								lookupListOffset + 2 > length
+							) {
 								return KB_LOAD_FONT_ERROR_INVALID_FONT;
 							} else {
 								const lookupList = gsubGpos + fileU16(data, gsubGpos + 8);
 								const lookupOffsets = lookupList + 2;
 								const lookupCount = fileU16(data, lookupList);
 
-								for (
-									let lookupIndex: int64 = 0;
-									lookupIndex < lookupCount;
-									lookupIndex++
-								) {
-									const lookup = lookupList +
-										fileU16(data, lookupOffsets + lookupIndex * 2);
+								for (let lookupIndex: int64 = 0; lookupIndex <
+								lookupCount; lookupIndex++) {
+									const lookup =
+										lookupList + fileU16(data, lookupOffsets + lookupIndex * 2);
 									totalSubtableCount += fileU16(data, lookup + 4);
 								}
 
@@ -357,15 +425,22 @@ function loadFontUnchecked(
 					let glyphCount: int64 = 0;
 
 					if (state.tableLengths[KB_BLOB_TABLE_ID_MAXP] != 0) {
-						glyphCount = fileU16(data, state.tableOffsets[KB_BLOB_TABLE_ID_MAXP] + 4);
+						glyphCount = fileU16(
+							data,
+							state.tableOffsets[KB_BLOB_TABLE_ID_MAXP] + 4,
+						);
 					}
 
 					state.glyphCount = glyphCount;
 				}
 
-				const scratchSize = ((state.tableLengths[KB_BLOB_TABLE_ID_GSUB] +
-					state.tableLengths[KB_BLOB_TABLE_ID_GPOS] +
-					state.tableLengths[KB_BLOB_TABLE_ID_GDEF]) & 0xFFFFFFFF) * 4 / 2;
+				const scratchSize =
+					(((state.tableLengths[KB_BLOB_TABLE_ID_GSUB] +
+						state.tableLengths[KB_BLOB_TABLE_ID_GPOS] +
+						state.tableLengths[KB_BLOB_TABLE_ID_GDEF]) &
+						0xFFFFFFFF) *
+						4) /
+					2;
 
 				const glyphLookupMatrixSizeInWords = matrixSizeInWords(
 					state.lookupCount,
@@ -407,12 +482,13 @@ function loadFontUnchecked(
 				}
 				font.hasBlob = true;
 
-				const m: Span<uint8> = font.blob[0..font.blob.length];
+				const m: Span<uint8> = font.blob[0 .. font.blob.length];
 				const preferredSubtable = selectCmapSubtableFromBlob(m, font);
 				font.cmap = preferredSubtable.at;
 			},
-			_ => {},
-		}
+			_ => {
+			},
+		};
 	}
 
 	return result;
@@ -427,7 +503,9 @@ function kbLoadFont(
 	try {
 		return loadFontUnchecked(font, state, data, fontIndex);
 	} catch (e) {
-		if (e instanceof KbFontBoundsError) { return KB_LOAD_FONT_ERROR_OUT_OF_BOUNDS; }
+		if (e instanceof KbFontBoundsError) {
+			return KB_LOAD_FONT_ERROR_OUT_OF_BOUNDS;
+		}
 		throw e;
 	}
 }
@@ -455,7 +533,8 @@ function markMatrixCoverage(
 		match (m.kbU16(coverage)) {
 			1 => {
 				const glyphIds = coverage + 4;
-				for (let glyphIndex: int64 = 0; glyphIndex < u16At(m, coverage + 2); glyphIndex++) {
+				for (let glyphIndex: int64 = 0; glyphIndex <
+				u16At(m, coverage + 2); glyphIndex++) {
 					const glyphId = u16At(m, glyphIds + glyphIndex * 2);
 					if (glyphId < glyphCount) {
 						setMatrixBit(m, matrix, row, glyphId, glyphCount);
@@ -464,21 +543,20 @@ function markMatrixCoverage(
 			},
 			2 => {
 				const ranges = coverage + 4;
-				for (let rangeIndex: int64 = 0; rangeIndex < u16At(m, coverage + 2); rangeIndex++) {
+				for (let rangeIndex: int64 = 0; rangeIndex <
+				u16At(m, coverage + 2); rangeIndex++) {
 					const range = ranges + rangeIndex * 6;
-					for (
-						let glyphId = u16At(m, range);
-						glyphId < u16At(m, range + 2) + 1;
-						glyphId++
-					) {
+					for (let glyphId = u16At(m, range); glyphId <
+					u16At(m, range + 2) + 1; glyphId++) {
 						if (glyphId < glyphCount) {
 							setMatrixBit(m, matrix, row, glyphId, glyphCount);
 						}
 					}
 				}
 			},
-			_ => {},
-		}
+			_ => {
+			},
+		};
 	}
 }
 
@@ -486,7 +564,9 @@ function classIncluded(classesIncluded: int32[], classId: int64): boolean {
 	if (classId >= KB_CLASSES_INCLUDED_LENGTH) {
 		throw kbBoundsFail("class past ClassesIncluded", classId);
 	}
-	return (classesIncluded[classId / 32] & (1 << ((classId % 32) as int32))) != 0;
+	return (
+		(classesIncluded[classId / 32] & (1 << ((classId % 32) as int32))) != 0
+	);
 }
 
 function includeClass(classesIncluded: int32[], classId: int64): void {
@@ -507,49 +587,45 @@ function markMatrixClassDef(
 		match (m.kbU16(classDefBase)) {
 			1 => {
 				const glyphClasses = classDefBase + 6;
-				for (
-					let glyphIndex: int64 = 0;
-					glyphIndex < u16At(m, classDefBase + 4);
-					glyphIndex++
-				) {
+				for (let glyphIndex: int64 = 0; glyphIndex <
+				u16At(m, classDefBase + 4); glyphIndex++) {
 					const glyphId = u16At(m, classDefBase + 2) + glyphIndex;
 					const glyphClass = u16At(m, glyphClasses + glyphIndex * 2);
 
-					if (glyphId >= KB_CLASSES_INCLUDED_LENGTH ||
-						classIncluded(classesIncluded, glyphClass)) {
+					if (
+						glyphId >= KB_CLASSES_INCLUDED_LENGTH ||
+						classIncluded(classesIncluded, glyphClass)
+					) {
 						setMatrixBit(m, matrix, row, glyphId, glyphCount);
 					}
 				}
 			},
 			2 => {
 				const ranges = classDefBase + 4;
-				for (
-					let rangeIndex: int64 = 0;
-					rangeIndex < u16At(m, classDefBase + 2);
-					rangeIndex++
-				) {
+				for (let rangeIndex: int64 = 0; rangeIndex <
+				u16At(m, classDefBase + 2); rangeIndex++) {
 					const range = ranges + rangeIndex * 6;
 					const rangeClass = u16At(m, range + 4);
 
-					if (rangeClass >= KB_CLASSES_INCLUDED_LENGTH ||
-						classIncluded(classesIncluded, rangeClass)) {
+					if (
+						rangeClass >= KB_CLASSES_INCLUDED_LENGTH ||
+						classIncluded(classesIncluded, rangeClass)
+					) {
 						let onePastLastGlyphId = u16At(m, range + 2) + 1;
 						if (onePastLastGlyphId > glyphCount) {
 							onePastLastGlyphId = glyphCount;
 						}
 
-						for (
-							let glyphId = u16At(m, range);
-							glyphId < onePastLastGlyphId;
-							glyphId++
-						) {
+						for (let glyphId = u16At(m, range); glyphId <
+						onePastLastGlyphId; glyphId++) {
 							setMatrixBit(m, matrix, row, glyphId, glyphCount);
 						}
 					}
 				}
 			},
-			_ => {},
-		}
+			_ => {
+			},
+		};
 	}
 }
 
@@ -599,7 +675,11 @@ struct KbTableHeader {
 	tooShort: boolean;
 }
 
-function blobTableHeaderChecked(m: Span<uint8>, tableId: int32, headerSize: int64): KbTableHeader {
+function blobTableHeaderChecked(
+	m: Span<uint8>,
+	tableId: int32,
+	headerSize: int64,
+): KbTableHeader {
 	let result: KbTableHeader = { at: 0, end: 0, tooShort: false };
 	const length = m.kbBlobTableLength(tableId);
 	if (length != 0) {
@@ -613,7 +693,12 @@ function blobTableHeaderChecked(m: Span<uint8>, tableId: int32, headerSize: int6
 	return result;
 }
 
-function swapCmapSubtable(m: Span<uint8>, font: KbFont, cmap: int64, tableEnd: int64): boolean {
+function swapCmapSubtable(
+	m: Span<uint8>,
+	font: KbFont,
+	cmap: int64,
+	tableEnd: int64,
+): boolean {
 	let tableValid = false;
 	m.kbSwapU16At(cmap);
 	m.kbSwapU16At(cmap + 2);
@@ -621,7 +706,8 @@ function swapCmapSubtable(m: Span<uint8>, font: KbFont, cmap: int64, tableEnd: i
 	const records = cmap + KB_SIZE_CMAP;
 
 	if (records + u16At(m, cmap + 2) * KB_SIZE_ENCODING_RECORD <= tableEnd) {
-		for (let recordIndex: int64 = 0; recordIndex < u16At(m, cmap + 2); recordIndex++) {
+		for (let recordIndex: int64 = 0; recordIndex <
+		u16At(m, cmap + 2); recordIndex++) {
 			const record = records + recordIndex * KB_SIZE_ENCODING_RECORD;
 			m.kbSwapU16At(record + 2);
 			m.kbSwapU16At(record);
@@ -655,10 +741,13 @@ function swapCmapSubtable(m: Span<uint8>, font: KbFont, cmap: int64, tableEnd: i
 							const glyphIds = subHeaders + subHeaderCount * 8;
 
 							let glyphIdCount: int64 = 0;
-							for (let headerIndex: int64 = 0; headerIndex < subHeaderCount; headerIndex++) {
+							for (let headerIndex: int64 = 0; headerIndex <
+							subHeaderCount; headerIndex++) {
 								const subHeader = subHeaders + headerIndex * 8;
 
-								const onePastLastGlyphId = subHeader + 6 +
+								const onePastLastGlyphId =
+									subHeader +
+									6 +
 									(u16At(m, subHeader + 6) / 2 + u16At(m, subHeader + 2)) * 2;
 								const difference = (onePastLastGlyphId - glyphIds) / 2;
 								if (difference > glyphIdCount) {
@@ -673,8 +762,14 @@ function swapCmapSubtable(m: Span<uint8>, font: KbFont, cmap: int64, tableEnd: i
 					}
 				},
 				4 => {
-					if (m.kbSwapArray16(subtable + 2, 5, tableEnd) &&
-						m.kbSwapArray16(subtable + 14, u16At(m, subtable + 6) * 2 + 1, tableEnd)) {
+					if (
+						m.kbSwapArray16(subtable + 2, 5, tableEnd) &&
+						m.kbSwapArray16(
+							subtable + 14,
+							u16At(m, subtable + 6) * 2 + 1,
+							tableEnd,
+						)
+					) {
 						const segmentCount = u16At(m, subtable + 6) / 2;
 						const endCodes = subtable + 14;
 						const startCodes = endCodes + (segmentCount + 1) * 2;
@@ -684,7 +779,8 @@ function swapCmapSubtable(m: Span<uint8>, font: KbFont, cmap: int64, tableEnd: i
 
 						let glyphIdCount: int64 = 0;
 
-						for (let segmentIndex: int64 = 0; segmentIndex < segmentCount; segmentIndex++) {
+						for (let segmentIndex: int64 = 0; segmentIndex <
+						segmentCount; segmentIndex++) {
 							let offset = u16At(m, idRangeOffsets + segmentIndex * 2);
 							const startCode = u16At(m, startCodes + segmentIndex * 2);
 							const endCode = u16At(m, endCodes + segmentIndex * 2);
@@ -695,8 +791,11 @@ function swapCmapSubtable(m: Span<uint8>, font: KbFont, cmap: int64, tableEnd: i
 							}
 
 							if (offset != 0) {
-								const onePastIdLookup = idRangeOffsets + segmentIndex * 2 +
-									(endCode - startCode + 1) * 2 + (offset / 2) * 2;
+								const onePastIdLookup =
+									idRangeOffsets +
+									segmentIndex * 2 +
+									(endCode - startCode + 1) * 2 +
+									(offset / 2) * 2;
 								const difference = (onePastIdLookup - glyphIds) / 2;
 								if (difference > glyphIdCount) {
 									glyphIdCount = difference;
@@ -710,20 +809,28 @@ function swapCmapSubtable(m: Span<uint8>, font: KbFont, cmap: int64, tableEnd: i
 					}
 				},
 				6 => {
-					if (m.kbSwapArray16(subtable + 2, 4, tableEnd) &&
-						m.kbSwapArray16(subtable + 10, u16At(m, subtable + 8), tableEnd)) {
+					if (
+						m.kbSwapArray16(subtable + 2, 4, tableEnd) &&
+						m.kbSwapArray16(subtable + 10, u16At(m, subtable + 8), tableEnd)
+					) {
 						tableValid = true;
 					}
 				},
 				12 => {
-					if (m.kbSwapArray32(subtable + 4, 3, tableEnd) &&
-						m.kbSwapArray32(subtable + KB_SIZE_CMAP_12_13, (m.kbU32(subtable + 12) * 3) & 0xFFFFFFFF,
-							tableEnd)) {
+					if (
+						m.kbSwapArray32(subtable + 4, 3, tableEnd) &&
+						m.kbSwapArray32(
+							subtable + KB_SIZE_CMAP_12_13,
+							(m.kbU32(subtable + 12) * 3) & 0xFFFFFFFF,
+							tableEnd,
+						)
+					) {
 						tableValid = true;
 					}
 				},
-				_ => {},
-			}
+				_ => {
+				},
+			};
 
 			font.cmap = subtable;
 		}
@@ -795,7 +902,10 @@ function swapHeadAndTables(m: Span<uint8>, font: KbFont): boolean {
 	for (let mtxTableIndex = 0; mtxTableIndex < 2; mtxTableIndex++) {
 		const mtxLength = m.kbBlobTableLength(mtxTableIds[mtxTableIndex]);
 		if (mtxLength != 0) {
-			m.kbSwapArray16Unchecked(m.kbBlobTableOffset(mtxTableIds[mtxTableIndex]), mtxLength / 2);
+			m.kbSwapArray16Unchecked(
+				m.kbBlobTableOffset(mtxTableIds[mtxTableIndex]),
+				mtxLength / 2,
+			);
 		}
 	}
 
@@ -895,10 +1005,7 @@ function swapDeltaSetIndexMapAt(
 	}
 }
 
-function swapVariationTables(
-	m: Span<uint8>,
-	c: KbSwapContext,
-): boolean {
+function swapVariationTables(m: Span<uint8>, c: KbSwapContext): boolean {
 	let invalid = false;
 
 	const fvar = blobTableHeaderChecked(m, KB_BLOB_TABLE_ID_FVAR, KB_SIZE_FVAR);
@@ -913,7 +1020,10 @@ function swapVariationTables(
 		const instanceCount = u16At(m, fvar.at + 12);
 		const instanceSize = u16At(m, fvar.at + 14);
 
-		if (instances + kbWrap32(u16At(m, fvar.at + 12) * u16At(m, fvar.at + 14)) <= fvar.end) {
+		if (
+			instances + kbWrap32(u16At(m, fvar.at + 12) * u16At(m, fvar.at + 14)) <=
+			fvar.end
+		) {
 			for (let axisIndex: int64 = 0; axisIndex < axisCount; axisIndex++) {
 				const axis = axes + axisIndex * KB_SIZE_VARIATION_AXIS_RECORD;
 
@@ -921,9 +1031,11 @@ function swapVariationTables(
 				m.kbSwapArray16Unchecked(axis + 16, 2);
 			}
 
-			const instancesContainPostscriptNameId = instanceSize >= KB_SIZE_INSTANCE_RECORD + 4 * axisCount + 2;
+			const instancesContainPostscriptNameId =
+				instanceSize >= KB_SIZE_INSTANCE_RECORD + 4 * axisCount + 2;
 
-			for (let instanceIndex: int64 = 0; instanceIndex < instanceCount; instanceIndex++) {
+			for (let instanceIndex: int64 = 0; instanceIndex <
+			instanceCount; instanceIndex++) {
 				const instance = instances + instanceIndex * instanceSize;
 				const instanceCoordinates = instance + KB_SIZE_INSTANCE_RECORD;
 
@@ -945,14 +1057,17 @@ function swapVariationTables(
 		m.kbSwapArray16Unchecked(avar.at, 4);
 
 		let at = avar.at + KB_SIZE_AVAR;
-		for (let axisIndex: int64 = 0; axisIndex < u16At(m, avar.at + 6); axisIndex++) {
+		for (let axisIndex: int64 = 0; axisIndex <
+		u16At(m, avar.at + 6); axisIndex++) {
 			const segmentMaps = at;
 
 			if (segmentMaps + 2 <= avar.end) {
 				m.kbSwapU16At(segmentMaps);
 
 				const axisValueMaps = segmentMaps + 2;
-				if (m.kbSwapArray16(axisValueMaps, 2 * u16At(m, segmentMaps), avar.end)) {
+				if (
+					m.kbSwapArray16(axisValueMaps, 2 * u16At(m, segmentMaps), avar.end)
+				) {
 					at = axisValueMaps + u16At(m, segmentMaps) * 4;
 				} else {
 					invalid = true;
@@ -969,7 +1084,11 @@ function swapVariationTables(
 	const hvarVvarSizes: int64[] = [KB_SIZE_HVAR_VVAR_COMMON, KB_SIZE_VVAR];
 	for (let tableIdIndex = 0; tableIdIndex < 2; tableIdIndex++) {
 		const tableId = hvarVvarIds[tableIdIndex];
-		const hvarVvar = blobTableHeaderChecked(m, tableId, hvarVvarSizes[tableIdIndex]);
+		const hvarVvar = blobTableHeaderChecked(
+			m,
+			tableId,
+			hvarVvarSizes[tableIdIndex],
+		);
 		invalid = invalid || hvarVvar.tooShort;
 
 		if (hvarVvar.at != 0) {
@@ -1000,9 +1119,12 @@ function swapVariationTables(
 		const valueRecordSize = u16At(m, mvar.at + 6);
 
 		let valueRecordAt = mvar.at + KB_SIZE_MVAR;
-		if (valueRecordSize >= KB_SIZE_MVAR_VALUE_RECORD &&
-			valueRecordAt + valueRecordCount * valueRecordSize <= mvar.end) {
-			for (let valueRecordIndex: int64 = 0; valueRecordIndex < valueRecordCount; valueRecordIndex++) {
+		if (
+			valueRecordSize >= KB_SIZE_MVAR_VALUE_RECORD &&
+			valueRecordAt + valueRecordCount * valueRecordSize <= mvar.end
+		) {
+			for (let valueRecordIndex: int64 = 0; valueRecordIndex <
+			valueRecordCount; valueRecordIndex++) {
 				m.kbSwapArray16Unchecked(valueRecordAt + 4, 2);
 
 				valueRecordAt += valueRecordSize;
@@ -1034,11 +1156,18 @@ function swapGdefDefinitions(m: Span<uint8>, c: KbSwapContext): void {
 			kbSwapArray16Context(m, c, markGlyphSets, 2);
 			if (m.kbU16(markGlyphSets) == 1) {
 				const coverageOffsets = markGlyphSets + 4;
-				kbSwapArray32Context(m, c, coverageOffsets, u16At(m, markGlyphSets + 2));
+				kbSwapArray32Context(
+					m,
+					c,
+					coverageOffsets,
+					u16At(m, markGlyphSets + 2),
+				);
 
-				for (let markGlyphSetIndex: int64 = 0; markGlyphSetIndex < u16At(m, markGlyphSets + 2);
-					markGlyphSetIndex++) {
-					const coverageOffset = m.kbU32(coverageOffsets + markGlyphSetIndex * 4);
+				for (let markGlyphSetIndex: int64 = 0; markGlyphSetIndex <
+				u16At(m, markGlyphSets + 2); markGlyphSetIndex++) {
+					const coverageOffset = m.kbU32(
+						coverageOffsets + markGlyphSetIndex * 4,
+					);
 					kbSwapCoverage(m, c, markGlyphSets + coverageOffset);
 				}
 			}
@@ -1065,15 +1194,18 @@ function swapLookupLists(m: Span<uint8>, c: KbSwapContext): void {
 			m.kbSwapU16At(lookupList);
 			kbSwapArray16Context(m, c, lookupList + 2, u16At(m, lookupList));
 
-			for (let lookupIndex: int64 = 0; lookupIndex < u16At(m, lookupList); lookupIndex++) {
+			for (let lookupIndex: int64 = 0; lookupIndex <
+			u16At(m, lookupList); lookupIndex++) {
 				const packedLookup = kbGetLookup(m, lookupList, lookupIndex);
 
 				if (kbSwapLookup(m, c, packedLookup)) {
 					const lookup = kbUnpackLookup(m, gdef, packedLookup);
 
-					for (let subtableIndex: int64 = 0; subtableIndex < (lookup.subtableCount as int64);
-						subtableIndex++) {
-						const base = packedLookup + u16At(m, lookup.subtableOffsets + subtableIndex * 2);
+					for (let subtableIndex: int64 = 0; subtableIndex <
+					(lookup.subtableCount as int64); subtableIndex++) {
+						const base =
+							packedLookup +
+							u16At(m, lookup.subtableOffsets + subtableIndex * 2);
 
 						if (inGpos) {
 							kbSwapGposLookupSubtable(m, c, lookup.type, base);
@@ -1101,7 +1233,8 @@ function bakeSequenceContext(
 				const set = kbGetSequenceRuleSet(m, base, setIndex);
 
 				if (set != 0) {
-					for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
+					for (let ruleIndex: int64 = 0; ruleIndex <
+					u16At(m, set); ruleIndex++) {
 						const rule = kbGetSequenceRule(m, set, ruleIndex);
 
 						markMatrixGlyphIds(
@@ -1119,12 +1252,15 @@ function bakeSequenceContext(
 		2 => {
 			const classDefBase = base + u16At(m, base + 4);
 
-			const classesIncluded: int32[] = new Array<int32>(KB_CLASSES_INCLUDED_WORDS);
+			const classesIncluded: int32[] = new Array<int32>(
+				KB_CLASSES_INCLUDED_WORDS,
+			);
 
 			for (let setIndex: int64 = 0; setIndex < u16At(m, base + 6); setIndex++) {
 				const set = kbGetClassSequenceRuleSet(m, base, setIndex);
 				if (set != 0) {
-					for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
+					for (let ruleIndex: int64 = 0; ruleIndex <
+					u16At(m, set); ruleIndex++) {
 						const rule = kbGetClassSequenceRule(m, set, ruleIndex);
 						includeClasses(classesIncluded, m, rule + 4, u16At(m, rule) - 1);
 					}
@@ -1155,8 +1291,9 @@ function bakeSequenceContext(
 
 			coverage = base + u16At(m, coverageOffsets);
 		},
-		_ => {},
-	}
+		_ => {
+		},
+	};
 	return coverage;
 }
 
@@ -1222,14 +1359,22 @@ function bakeChainedSequenceContext(
 				lookaheadClassDefinition = base + lookaheadClassDefOffset;
 			}
 
-			const backtrackClassesIncluded: int32[] = new Array<int32>(KB_CLASSES_INCLUDED_WORDS);
-			const inputClassesIncluded: int32[] = new Array<int32>(KB_CLASSES_INCLUDED_WORDS);
-			const lookaheadClassesIncluded: int32[] = new Array<int32>(KB_CLASSES_INCLUDED_WORDS);
+			const backtrackClassesIncluded: int32[] = new Array<int32>(
+				KB_CLASSES_INCLUDED_WORDS,
+			);
+			const inputClassesIncluded: int32[] = new Array<int32>(
+				KB_CLASSES_INCLUDED_WORDS,
+			);
+			const lookaheadClassesIncluded: int32[] = new Array<int32>(
+				KB_CLASSES_INCLUDED_WORDS,
+			);
 
-			for (let setIndex: int64 = 0; setIndex < u16At(m, base + 10); setIndex++) {
+			for (let setIndex: int64 = 0; setIndex <
+			u16At(m, base + 10); setIndex++) {
 				const set = kbGetChainedClassSequenceRuleSet(m, base, setIndex);
 				if (set != 0) {
-					for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
+					for (let ruleIndex: int64 = 0; ruleIndex <
+					u16At(m, set); ruleIndex++) {
 						const rule = kbGetChainedSequenceRule(m, set, ruleIndex);
 						const unpacked = kbUnpackChainedSequenceRule(m, rule, false);
 
@@ -1313,18 +1458,28 @@ function bakeChainedSequenceContext(
 				unpacked.lookaheadCount as int64,
 			);
 		},
-		_ => {},
-	}
+		_ => {
+		},
+	};
 	return coverage;
 }
 
-function bakeMatrices(m: Span<uint8>, state: KbLoadFontState, bumpAfterTables: int64): void {
+function bakeMatrices(
+	m: Span<uint8>,
+	state: KbLoadFontState,
+	bumpAfterTables: int64,
+): void {
 	const glyphCount = m.kbU32(KB_BLOB_HEADER_GLYPH_COUNT);
 
 	const glyphLookupMatrix = kbAlign(bumpAfterTables, 4);
-	const glyphLookupSubtableMatrix = kbAlign(glyphLookupMatrix + state.glyphLookupMatrixSizeInBytes, 4);
-	const lookupSubtableIndexOffsets = kbAlign(glyphLookupSubtableMatrix +
-		state.glyphLookupSubtableMatrixSizeInBytes, 4);
+	const glyphLookupSubtableMatrix = kbAlign(
+		glyphLookupMatrix + state.glyphLookupMatrixSizeInBytes,
+		4,
+	);
+	const lookupSubtableIndexOffsets = kbAlign(
+		glyphLookupSubtableMatrix + state.glyphLookupSubtableMatrixSizeInBytes,
+		4,
+	);
 
 	const gdef = m.kbBlobTableData(KB_BLOB_TABLE_ID_GDEF);
 
@@ -1341,16 +1496,21 @@ function bakeMatrices(m: Span<uint8>, state: KbLoadFontState, bumpAfterTables: i
 			const inGpos = tableId == KB_BLOB_TABLE_ID_GPOS;
 
 			const lookupList = kbGetLookupList(m, shapingTable);
-			for (let lookupIndex: int64 = 0; lookupIndex < u16At(m, lookupList); lookupIndex++) {
+			for (let lookupIndex: int64 = 0; lookupIndex <
+			u16At(m, lookupList); lookupIndex++) {
 				const packedLookup = kbGetLookup(m, lookupList, lookupIndex);
 				const lookup = kbUnpackLookup(m, gdef, packedLookup);
 
-				m.kbSetU32(lookupSubtableIndexOffsets + runningLookupIndex * 4, runningSubtableIndex);
+				m.kbSetU32(
+					lookupSubtableIndexOffsets + runningLookupIndex * 4,
+					runningSubtableIndex,
+				);
 
-				for (let subtableIndex: int64 = 0; subtableIndex < (lookup.subtableCount as int64);
-					subtableIndex++) {
+				for (let subtableIndex: int64 = 0; subtableIndex <
+				(lookup.subtableCount as int64); subtableIndex++) {
 					let lookupType = lookup.type;
-					let base = packedLookup + u16At(m, lookup.subtableOffsets + subtableIndex * 2);
+					let base =
+						packedLookup + u16At(m, lookup.subtableOffsets + subtableIndex * 2);
 
 					let extensionSteps: int64 = 0;
 					while ((!inGpos && lookupType == 7) || (inGpos && lookupType == 9)) {
@@ -1372,13 +1532,11 @@ function bakeMatrices(m: Span<uint8>, state: KbLoadFontState, bumpAfterTables: i
 					}
 
 					if (!inGpos && lookupType == 4) {
-						for (let setIndex: int64 = 0; setIndex < u16At(m, base + 4); setIndex++) {
+						for (let setIndex: int64 = 0; setIndex <
+						u16At(m, base + 4); setIndex++) {
 							const set = kbGetLigatureSet(m, base, setIndex);
-							for (
-								let ligatureIndex: int64 = 0;
-								ligatureIndex < u16At(m, set);
-								ligatureIndex++
-							) {
+							for (let ligatureIndex: int64 = 0; ligatureIndex <
+							u16At(m, set); ligatureIndex++) {
 								const ligature = kbGetLigature(m, set, ligatureIndex);
 								markMatrixGlyphIds(
 									m,
@@ -1390,7 +1548,9 @@ function bakeMatrices(m: Span<uint8>, state: KbLoadFontState, bumpAfterTables: i
 								);
 							}
 						}
-					} else if ((!inGpos && lookupType == 5) || (inGpos && lookupType == 7)) {
+					} else if (
+						(!inGpos && lookupType == 5) || (inGpos && lookupType == 7)
+					) {
 						const contextCoverage = bakeSequenceContext(
 							m,
 							base,
@@ -1398,8 +1558,12 @@ function bakeMatrices(m: Span<uint8>, state: KbLoadFontState, bumpAfterTables: i
 							runningSubtableIndex,
 							glyphCount,
 						);
-						if (contextCoverage != 0) { coverage = contextCoverage; }
-					} else if ((!inGpos && lookupType == 6) || (inGpos && lookupType == 8)) {
+						if (contextCoverage != 0) {
+							coverage = contextCoverage;
+						}
+					} else if (
+						(!inGpos && lookupType == 6) || (inGpos && lookupType == 8)
+					) {
 						const contextCoverage = bakeChainedSequenceContext(
 							m,
 							base,
@@ -1407,7 +1571,9 @@ function bakeMatrices(m: Span<uint8>, state: KbLoadFontState, bumpAfterTables: i
 							runningSubtableIndex,
 							glyphCount,
 						);
-						if (contextCoverage != 0) { coverage = contextCoverage; }
+						if (contextCoverage != 0) {
+							coverage = contextCoverage;
+						}
 					} else if (!inGpos && lookupType == 8) {
 						const unpacked = kbUnpackReverseChainSubstitution(m, base, false);
 
@@ -1431,8 +1597,20 @@ function bakeMatrices(m: Span<uint8>, state: KbLoadFontState, bumpAfterTables: i
 						);
 					}
 
-					markMatrixCoverage(m, glyphLookupMatrix, runningLookupIndex, glyphCount, coverage);
-					markMatrixCoverage(m, glyphLookupSubtableMatrix, runningSubtableIndex, glyphCount, coverage);
+					markMatrixCoverage(
+						m,
+						glyphLookupMatrix,
+						runningLookupIndex,
+						glyphCount,
+						coverage,
+					);
+					markMatrixCoverage(
+						m,
+						glyphLookupSubtableMatrix,
+						runningSubtableIndex,
+						glyphCount,
+						coverage,
+					);
 
 					runningSubtableIndex += 1;
 				}
@@ -1448,8 +1626,14 @@ function bakeMatrices(m: Span<uint8>, state: KbLoadFontState, bumpAfterTables: i
 
 	m.kbSetU32(KB_BLOB_HEADER_GPOS_LOOKUP_INDEX_OFFSET, gposLookupIndexOffset);
 	m.kbSetU32(KB_BLOB_HEADER_GLYPH_LOOKUP_MATRIX_OFFSET, glyphLookupMatrix);
-	m.kbSetU32(KB_BLOB_HEADER_GLYPH_LOOKUP_SUBTABLE_MATRIX_OFFSET, glyphLookupSubtableMatrix);
-	m.kbSetU32(KB_BLOB_HEADER_LOOKUP_SUBTABLE_INDEX_OFFSETS_OFFSET, lookupSubtableIndexOffsets);
+	m.kbSetU32(
+		KB_BLOB_HEADER_GLYPH_LOOKUP_SUBTABLE_MATRIX_OFFSET,
+		glyphLookupSubtableMatrix,
+	);
+	m.kbSetU32(
+		KB_BLOB_HEADER_LOOKUP_SUBTABLE_INDEX_OFFSETS_OFFSET,
+		lookupSubtableIndexOffsets,
+	);
 }
 
 function placeBlobUnchecked(
@@ -1461,7 +1645,7 @@ function placeBlobUnchecked(
 
 	if (state.totalSize != 0) {
 		font.blob = new Array<uint8>(state.totalSize as int32);
-		const m: Span<uint8> = font.blob[0..font.blob.length];
+		const m: Span<uint8> = font.blob[0 .. font.blob.length];
 
 		let bump = KB_BLOB_HEADER_SIZE;
 
@@ -1498,7 +1682,10 @@ function placeBlobUnchecked(
 		swapGdefDefinitions(m, c);
 		swapLookupLists(m, c);
 
-		if (result == KB_LOAD_FONT_ERROR_NONE && m.kbBlobTableLength(KB_BLOB_TABLE_ID_MAXP) != 0) {
+		if (
+			result == KB_LOAD_FONT_ERROR_NONE &&
+			m.kbBlobTableLength(KB_BLOB_TABLE_ID_MAXP) != 0
+		) {
 			bakeMatrices(m, state, bump);
 		}
 	}
@@ -1528,17 +1715,25 @@ function kbPlaceBlob(
 	return result;
 }
 
-export function kbFontFromMemory(data: Readonly<Span<uint8>>, fontIndex: int32): KbFont {
+export function kbFontFromMemory(
+	data: Readonly<Span<uint8>>,
+	fontIndex: int32,
+): KbFont {
 	const font = new KbFont();
 	if (data.length > 0) {
 		const state = kbNewLoadFontState();
 		const error = kbLoadFont(font, state, data, fontIndex);
 
 		match (error) {
-			KB_LOAD_FONT_ERROR_NEED_TO_CREATE_BLOB => { kbPlaceBlob(font, state, data); },
-			KB_LOAD_FONT_ERROR_OUT_OF_BOUNDS => { font.error = error; },
-			_ => {},
-		}
+			KB_LOAD_FONT_ERROR_NEED_TO_CREATE_BLOB => {
+				kbPlaceBlob(font, state, data);
+			},
+			KB_LOAD_FONT_ERROR_OUT_OF_BOUNDS => {
+				font.error = error;
+			},
+			_ => {
+			},
+		};
 	}
 	return font;
 }
@@ -1547,13 +1742,16 @@ export function kbFontIsValid(font: KbFont): boolean {
 	return font.error == 0;
 }
 
-export function kbCodepointToGlyphId(font: KbFont, signedCodepoint: int32): int32 {
+export function kbCodepointToGlyphId(
+	font: KbFont,
+	signedCodepoint: int32,
+): int32 {
 	let result: int32 = 0;
 	let codepoint: int64 = (signedCodepoint as int64) & 0xFFFFFFFF;
 
 	const cmapBase = font.cmap;
 	if (cmapBase != 0) {
-		const m: Span<uint8> = font.blob[0..font.blob.length];
+		const m: Span<uint8> = font.blob[0 .. font.blob.length];
 		const cmapFormat = m.kbU16(cmapBase);
 		match (cmapFormat) {
 			0 => {
@@ -1602,21 +1800,35 @@ export function kbCodepointToGlyphId(font: KbFont, signedCodepoint: int32): int3
 				if (segmentCount != 0) {
 					while (segmentCount > 1) {
 						const halfCount = segmentCount / 2;
-						segmentIndexOffset = u16At(m, endCodes + (segmentIndexOffset + halfCount - 1) * 2) < codepoint ?
-							segmentIndexOffset + halfCount : segmentIndexOffset;
+						segmentIndexOffset =
+							u16At(m, endCodes + (segmentIndexOffset + halfCount - 1) * 2) <
+							codepoint
+								? segmentIndexOffset + halfCount
+								: segmentIndexOffset;
 						segmentCount -= halfCount;
 					}
 				}
 
 				const start = u16At(m, startCodes + segmentIndexOffset * 2);
-				if (codepoint >= start && codepoint <= u16At(m, endCodes + segmentIndexOffset * 2)) {
+				if (
+					codepoint >= start &&
+					codepoint <= u16At(m, endCodes + segmentIndexOffset * 2)
+				) {
 					const delta = m.kbS16(idDeltas + segmentIndexOffset * 2) as int64;
 					const rangeOffset = u16At(m, idRangeOffsets + segmentIndexOffset * 2);
 
 					let glyphId = delta & 0xFFFF;
 					if (rangeOffset != 0) {
-						glyphId = (glyphId + u16At(m, idRangeOffsets + segmentIndexOffset * 2 +
-							(codepoint - start) * 2 + (rangeOffset / 2) * 2)) & 0xFFFF;
+						glyphId =
+							(glyphId +
+								u16At(
+									m,
+									idRangeOffsets +
+										segmentIndexOffset * 2 +
+										(codepoint - start) * 2 +
+										(rangeOffset / 2) * 2,
+								)) &
+							0xFFFF;
 					} else {
 						glyphId = (glyphId + (codepoint & 0xFFFF)) & 0xFFFF;
 					}
@@ -1639,7 +1851,10 @@ export function kbCodepointToGlyphId(font: KbFont, signedCodepoint: int32): int3
 				if (groupCount != 0) {
 					while (groupCount > 1) {
 						const halfCount = groupCount / 2;
-						groups = m.kbU32(groups + (halfCount - 1) * 12 + 4) < codepoint ? groups + halfCount * 12 : groups;
+						groups =
+							m.kbU32(groups + (halfCount - 1) * 12 + 4) < codepoint
+								? groups + halfCount * 12
+								: groups;
 						groupCount -= halfCount;
 					}
 				}
@@ -1651,8 +1866,9 @@ export function kbCodepointToGlyphId(font: KbFont, signedCodepoint: int32): int3
 
 				result = kbWrap32(glyphId) as int32;
 			},
-			_ => {},
-		}
+			_ => {
+			},
+		};
 	}
 
 	return result;

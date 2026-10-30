@@ -32,7 +32,11 @@ import {
 	kbSkipFlagsGposSequence,
 	kbSkipGlyph,
 } from "./match";
-import { KbResolvedValueRecord, kbResolveAnchorXy, kbResolveValueRecord } from "./resolve";
+import {
+	KbResolvedValueRecord,
+	kbResolveAnchorXy,
+	kbResolveValueRecord,
+} from "./resolve";
 import {
 	KbScratch,
 	kbGlyphIncludedInLookupSubtable,
@@ -78,24 +82,38 @@ function shaperRtl(shaper: uint32): boolean {
 }
 
 function shaperClearsMarkAdvancesInPostGposFixup(shaper: uint32): boolean {
-	return shaper == KB_SHAPER_ARABIC || shaper == KB_SHAPER_DEFAULT ||
-		shaper == KB_SHAPER_HEBREW;
+	return (
+		shaper == KB_SHAPER_ARABIC ||
+		shaper == KB_SHAPER_DEFAULT ||
+		shaper == KB_SHAPER_HEBREW
+	);
 }
 
-function applyValueRecord(s: KbScratch, glyph: int32, record: KbResolvedValueRecord): void {
+function applyValueRecord(
+	s: KbScratch,
+	glyph: int32,
+	record: KbResolvedValueRecord,
+): void {
 	s.storage.glyphs[glyph].offsetX += record.placementX;
 	s.storage.glyphs[glyph].offsetY += record.placementY;
 	s.storage.glyphs[glyph].advanceX += record.advanceX;
 	s.storage.glyphs[glyph].advanceY += record.advanceY;
 }
 
-function attachGlyph(s: KbScratch, parent: int32, child: int32, x: int32, y: int32): void {
+function attachGlyph(
+	s: KbScratch,
+	parent: int32,
+	child: int32,
+	x: int32,
+	y: int32,
+): void {
 	const deltaOffsetX = x - s.storage.glyphs[child].offsetX;
 	const deltaOffsetY = y - s.storage.glyphs[child].offsetY;
 
 	s.storage.glyphs[child].offsetX = x;
 	s.storage.glyphs[child].offsetY = y;
-	s.storage.glyphs[child].flags |= KB_GLYPH_FLAG_USED_IN_GPOS | KB_GLYPH_FLAG_NO_BREAK;
+	s.storage.glyphs[child].flags |=
+		KB_GLYPH_FLAG_USED_IN_GPOS | KB_GLYPH_FLAG_NO_BREAK;
 	s.storage.glyphs[child].attachGlyph = parent;
 
 	s.storage.glyphs[parent].flags |= KB_GLYPH_FLAG_USED_IN_GPOS;
@@ -116,25 +134,39 @@ function attachGlyph(s: KbScratch, parent: int32, child: int32, x: int32, y: int
 	}
 }
 
-function singleAdjustment(s: KbScratch, base: int64, coverIndex: int64, glyph: int32): boolean {
-	const m: Span<uint8> = s.font.blob[0..s.font.blob.length];
+function singleAdjustment(
+	s: KbScratch,
+	base: int64,
+	coverIndex: int64,
+	glyph: int32,
+): boolean {
+	const m: Span<uint8> = s.font.blob[0 .. s.font.blob.length];
 	const valueFormat = m.kbU16(base + 4);
 	const format = m.kbU16(base);
 
-	let record: KbResolvedValueRecord = { placementX: 0, placementY: 0, advanceX: 0, advanceY: 0 };
+	let record: KbResolvedValueRecord = {
+		placementX: 0,
+		placementY: 0,
+		advanceX: 0,
+		advanceY: 0,
+	};
 	match (format) {
 		1 => {
 			record = kbResolveValueRecord(s, base, valueFormat, base + 6);
 		},
 		2 => {
 			const recordSize = popCount16(valueFormat) as int64;
-			record = kbResolveValueRecord(s, base, valueFormat,
-				base + 8 + recordSize * 2 * coverIndex);
+			record = kbResolveValueRecord(
+				s,
+				base,
+				valueFormat,
+				base + 8 + recordSize * 2 * coverIndex,
+			);
 		},
 		_ => {
 			throw kbBoundsFail(`unhandled single adjustment format ${format}`, base);
 		},
-	}
+	};
 
 	applyValueRecord(s, glyph, record);
 	s.storage.glyphs[glyph].flags |= KB_GLYPH_FLAG_USED_IN_GPOS;
@@ -151,10 +183,18 @@ function pairAdjustment(
 	skipUnicodeFlags: uint32,
 	outcome: KbAdjustOutcome,
 ): boolean {
-	const m: Span<uint8> = s.font.blob[0..s.font.blob.length];
-	const nextGlyph = kbNextGlyph(s, lookup, s.storage.glyphs[glyph].next, regularSkipFlags,
-		skipUnicodeFlags, false);
-	if (nextGlyph == KB_GLYPH_SENTINEL) { return false; }
+	const m: Span<uint8> = s.font.blob[0 .. s.font.blob.length];
+	const nextGlyph = kbNextGlyph(
+		s,
+		lookup,
+		s.storage.glyphs[glyph].next,
+		regularSkipFlags,
+		skipUnicodeFlags,
+		false,
+	);
+	if (nextGlyph == KB_GLYPH_SENTINEL) {
+		return false;
+	}
 
 	const nextGlyphId = s.storage.glyphs[nextGlyph].id as int32;
 	const valueFormat1 = m.kbU16(base + 4);
@@ -197,13 +237,22 @@ function pairAdjustment(
 			const class2Count = m.kbU16(base + 14);
 			const pairRecordSize = size1 + size2;
 
-			const class1 = kbGlyphClassFromTable(m, classDef1, s.storage.glyphs[glyph].id as int64);
+			const class1 = kbGlyphClassFromTable(
+				m,
+				classDef1,
+				s.storage.glyphs[glyph].id as int64,
+			);
 			const class2 = kbGlyphClassFromTable(m, classDef2, nextGlyphId as int64);
 
 			if (class1.classValue < class1Count && class2.classValue < class2Count) {
-				const record = base + 16 +
-					((class1.classValue as int64) * pairRecordSize * (class2Count as int64) +
-						(class2.classValue as int64) * pairRecordSize) * 2;
+				const record =
+					base +
+					16 +
+					((class1.classValue as int64) *
+						pairRecordSize *
+						(class2Count as int64) +
+						(class2.classValue as int64) * pairRecordSize) *
+						2;
 				unpacked1 = record;
 				unpacked2 = record + size1 * 2;
 				found = true;
@@ -212,9 +261,11 @@ function pairAdjustment(
 		_ => {
 			throw kbBoundsFail(`unhandled pair adjustment format ${format}`, base);
 		},
-	}
+	};
 
-	if (!found) { return false; }
+	if (!found) {
+		return false;
+	}
 
 	const valueRecord1 = kbResolveValueRecord(s, base, valueFormat1, unpacked1);
 	applyValueRecord(s, glyph, valueRecord1);
@@ -241,20 +292,36 @@ function cursiveAdjustment(
 	regularSkipFlags: uint32,
 	skipUnicodeFlags: uint32,
 ): boolean {
-	const m: Span<uint8> = s.font.blob[0..s.font.blob.length];
+	const m: Span<uint8> = s.font.blob[0 .. s.font.blob.length];
 	const coverage = base + m.kbU16(base + 2);
 	const entryExits = base + 6;
 
-	const prev = kbNextGlyph(s, lookup, s.storage.glyphs[glyph].prev, regularSkipFlags,
-		skipUnicodeFlags, true);
-	if (prev == KB_GLYPH_SENTINEL) { return false; }
+	const prev = kbNextGlyph(
+		s,
+		lookup,
+		s.storage.glyphs[glyph].prev,
+		regularSkipFlags,
+		skipUnicodeFlags,
+		true,
+	);
+	if (prev == KB_GLYPH_SENTINEL) {
+		return false;
+	}
 
-	const prevCover = kbCoverGlyph(m, coverage, s.storage.glyphs[prev].id as int32);
-	if (!prevCover.valid) { return false; }
+	const prevCover = kbCoverGlyph(
+		m,
+		coverage,
+		s.storage.glyphs[prev].id as int32,
+	);
+	if (!prevCover.valid) {
+		return false;
+	}
 
 	const prevExitOffset = m.kbU16(entryExits + prevCover.index * 4 + 2);
 	const entryOffset = m.kbU16(entryExits + coverIndex * 4);
-	if (prevExitOffset == 0 || entryOffset == 0) { return false; }
+	if (prevExitOffset == 0 || entryOffset == 0) {
+		return false;
+	}
 
 	const anchor0 = kbResolveAnchorXy(s, base + prevExitOffset);
 	const anchor1 = kbResolveAnchorXy(s, base + entryOffset);
@@ -280,12 +347,13 @@ function cursiveAdjustment(
 
 	s.storage.glyphs[prev].advanceX = advance0X;
 	s.storage.glyphs[prev].offsetX = offset0X;
-	s.storage.glyphs[prev].flags |= KB_GLYPH_FLAG_CURSIVE | KB_GLYPH_FLAG_USED_IN_GPOS |
-		KB_GLYPH_FLAG_NO_BREAK;
+	s.storage.glyphs[prev].flags |=
+		KB_GLYPH_FLAG_CURSIVE | KB_GLYPH_FLAG_USED_IN_GPOS | KB_GLYPH_FLAG_NO_BREAK;
 	s.storage.glyphs[prev].markOrdering = CURSIVE_FLAG_START;
 	s.storage.glyphs[glyph].advanceX = advance1X;
 	s.storage.glyphs[glyph].offsetX = offset1X;
-	s.storage.glyphs[glyph].flags |= KB_GLYPH_FLAG_CURSIVE | KB_GLYPH_FLAG_USED_IN_GPOS;
+	s.storage.glyphs[glyph].flags |=
+		KB_GLYPH_FLAG_CURSIVE | KB_GLYPH_FLAG_USED_IN_GPOS;
 	s.storage.glyphs[glyph].markOrdering = CURSIVE_FLAG_END;
 
 	let between = s.storage.glyphs[prev].next;
@@ -298,7 +366,8 @@ function cursiveAdjustment(
 	let cursiveDy: int32 = 0;
 	let cursiveGlyph = glyph;
 	let backward = false;
-	let adjustNearbyGlyphs = (s.storage.glyphs[glyph].flags & KB_GLYPH_FLAG_CURSIVE) != 0;
+	let adjustNearbyGlyphs =
+		(s.storage.glyphs[glyph].flags & KB_GLYPH_FLAG_CURSIVE) != 0;
 
 	if ((lookup.flags & KB_LOOKUP_FLAG_RIGHT_TO_LEFT) == 0) {
 		const newOffset1Y = offset0Y + anchor0.y - anchor1.y;
@@ -315,9 +384,9 @@ function cursiveAdjustment(
 
 	if (adjustNearbyGlyphs) {
 		s.storage.glyphs[cursiveGlyph].markOrdering = 0;
-		cursiveGlyph = backward ?
-			s.storage.glyphs[cursiveGlyph].prev :
-			s.storage.glyphs[cursiveGlyph].next;
+		cursiveGlyph = backward
+			? s.storage.glyphs[cursiveGlyph].prev
+			: s.storage.glyphs[cursiveGlyph].next;
 
 		const stopFlag = backward ? CURSIVE_FLAG_END : CURSIVE_FLAG_START;
 
@@ -326,16 +395,20 @@ function cursiveAdjustment(
 
 			if ((cursiveFlags & stopFlag) != 0) {
 				break;
-			} else if ((s.storage.glyphs[cursiveGlyph].flags & KB_GLYPH_FLAG_CURSIVE) != 0) {
+			} else if (
+				(s.storage.glyphs[cursiveGlyph].flags & KB_GLYPH_FLAG_CURSIVE) != 0
+			) {
 				s.storage.glyphs[cursiveGlyph].offsetY += cursiveDy;
-			} else if ((s.storage.glyphs[cursiveGlyph].classValue as int32) !=
-				KB_GLYPH_CLASS_MARK) {
+			} else if (
+				(s.storage.glyphs[cursiveGlyph].classValue as int32) !=
+				KB_GLYPH_CLASS_MARK
+			) {
 				break;
 			}
 
-			cursiveGlyph = backward ?
-				s.storage.glyphs[cursiveGlyph].prev :
-				s.storage.glyphs[cursiveGlyph].next;
+			cursiveGlyph = backward
+				? s.storage.glyphs[cursiveGlyph].prev
+				: s.storage.glyphs[cursiveGlyph].next;
 		}
 	}
 	return true;
@@ -343,7 +416,10 @@ function cursiveAdjustment(
 
 function classBit(classValue: int32): int32 {
 	if (classValue > 31) {
-		throw kbBoundsFail("glyph class too large for the base class shift", classValue as int64);
+		throw kbBoundsFail(
+			"glyph class too large for the base class shift",
+			classValue as int64,
+		);
 	}
 	return 1 << classValue;
 }
@@ -357,16 +433,19 @@ function markToBaseAdjustment(
 	regularSkipFlags: uint32,
 	skipUnicodeFlags: uint32,
 ): boolean {
-	const m: Span<uint8> = s.font.blob[0..s.font.blob.length];
+	const m: Span<uint8> = s.font.blob[0 .. s.font.blob.length];
 	const countMarkAdvances = !shaperClearsMarkAdvancesInPostGposFixup(s.shaper);
 	const baseCoverage = base + m.kbU16(base + 4);
 	const markClassCount = m.kbU16(base + 6) as int64;
 	let advanceSinceBaseX: int32 = 0;
 	let advanceSinceBaseY: int32 = 0;
-	const baseClasses: int32 = lookup.type == 6 ?
-		1 << KB_GLYPH_CLASS_MARK :
-		1 | (1 << KB_GLYPH_CLASS_BASE) | (1 << KB_GLYPH_CLASS_LIGATURE) |
-			(1 << KB_GLYPH_CLASS_COMPONENT);
+	const baseClasses: int32 =
+		lookup.type == 6
+			? 1 << KB_GLYPH_CLASS_MARK
+			: 1 |
+				(1 << KB_GLYPH_CLASS_BASE) |
+				(1 << KB_GLYPH_CLASS_LIGATURE) |
+				(1 << KB_GLYPH_CLASS_COMPONENT);
 	let baseGlyph = KB_GLYPH_SENTINEL;
 
 	let prevGlyph = s.storage.glyphs[glyph].prev;
@@ -377,17 +456,26 @@ function markToBaseAdjustment(
 			advanceSinceBaseY += s.storage.glyphs[prevGlyph].advanceY;
 		}
 
-		if (!kbSkipGlyph(s, prevGlyph, lookup, regularSkipFlags, skipUnicodeFlags)) {
+		if (
+			!kbSkipGlyph(s, prevGlyph, lookup, regularSkipFlags, skipUnicodeFlags)
+		) {
 			if ((classBit(prevClass) & baseClasses) != 0) {
 				const prevFlags = s.storage.glyphs[prevGlyph].flags;
 				const beforePrev = s.storage.glyphs[prevGlyph].prev;
-				if (lookup.type == 4 &&
-					(prevFlags & (KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION |
-						KB_GLYPH_FLAG_MULTIPLE_SUBSTITUTION)) ==
+				if (
+					lookup.type == 4 &&
+					(prevFlags &
+						(KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION |
+							KB_GLYPH_FLAG_MULTIPLE_SUBSTITUTION)) ==
 						KB_GLYPH_FLAG_MULTIPLE_SUBSTITUTION &&
-					(s.storage.glyphs[beforePrev].classValue as int32) != KB_GLYPH_CLASS_MARK) {
-					const baseCover = kbCoverGlyph(m, baseCoverage,
-						s.storage.glyphs[prevGlyph].id as int32);
+					(s.storage.glyphs[beforePrev].classValue as int32) !=
+						KB_GLYPH_CLASS_MARK
+				) {
+					const baseCover = kbCoverGlyph(
+						m,
+						baseCoverage,
+						s.storage.glyphs[prevGlyph].id as int32,
+					);
 					if (baseCover.valid) {
 						baseGlyph = prevGlyph;
 						break;
@@ -403,32 +491,46 @@ function markToBaseAdjustment(
 		prevGlyph = s.storage.glyphs[prevGlyph].prev;
 	}
 
-	if (baseGlyph == KB_GLYPH_SENTINEL) { return false; }
+	if (baseGlyph == KB_GLYPH_SENTINEL) {
+		return false;
+	}
 
 	const baseState = s.storage.glyphs[baseGlyph];
 	const currentState = s.storage.glyphs[glyph];
-	const ok = lookup.type == 4 ||
+	const ok =
+		lookup.type == 4 ||
 		(baseState.ligatureUid == currentState.ligatureUid &&
 			baseState.ligatureComponentIndexPlusOne ==
 				currentState.ligatureComponentIndexPlusOne) ||
 		((baseState.flags | currentState.flags) & KB_GLYPH_FLAG_LIGATURE) != 0;
-	if (!ok) { return false; }
+	if (!ok) {
+		return false;
+	}
 
 	const baseCover = kbCoverGlyph(m, baseCoverage, baseState.id as int32);
-	if (!baseCover.valid) { return false; }
+	if (!baseCover.valid) {
+		return false;
+	}
 
 	const baseArray = base + m.kbU16(base + 10);
-	const baseAnchorOffsets = baseArray + 2 + baseCover.index * markClassCount * 2;
+	const baseAnchorOffsets =
+		baseArray + 2 + baseCover.index * markClassCount * 2;
 	const markInfo = kbGetMarkInfo(m, base, m.kbU16(base + 8), coverIndex);
 
-	const baseAnchorOffset = m.kbU16(baseAnchorOffsets + (m.kbU16(markInfo.record) as int64) * 2);
-	if (baseAnchorOffset == 0) { return false; }
+	const baseAnchorOffset = m.kbU16(
+		baseAnchorOffsets + (m.kbU16(markInfo.record) as int64) * 2,
+	);
+	if (baseAnchorOffset == 0) {
+		return false;
+	}
 
 	const baseAnchor = kbResolveAnchorXy(s, baseArray + baseAnchorOffset);
 	const markAnchor = kbResolveAnchorXy(s, markInfo.anchor);
 
-	const newOffsetX = baseState.offsetX - advanceSinceBaseX + (baseAnchor.x - markAnchor.x);
-	const newOffsetY = baseState.offsetY - advanceSinceBaseY + (baseAnchor.y - markAnchor.y);
+	const newOffsetX =
+		baseState.offsetX - advanceSinceBaseX + (baseAnchor.x - markAnchor.x);
+	const newOffsetY =
+		baseState.offsetY - advanceSinceBaseY + (baseAnchor.y - markAnchor.y);
 
 	attachGlyph(s, baseGlyph, glyph, newOffsetX, newOffsetY);
 	return true;
@@ -443,10 +545,13 @@ function markToLigatureAdjustment(
 	regularSkipFlags: uint32,
 	skipUnicodeFlags: uint32,
 ): boolean {
-	const m: Span<uint8> = s.font.blob[0..s.font.blob.length];
+	const m: Span<uint8> = s.font.blob[0 .. s.font.blob.length];
 	let advanceSinceBaseX: int32 = 0;
 	let advanceSinceBaseY: int32 = 0;
-	const baseClasses: int32 = 1 | (1 << KB_GLYPH_CLASS_BASE) | (1 << KB_GLYPH_CLASS_LIGATURE) |
+	const baseClasses: int32 =
+		1 |
+		(1 << KB_GLYPH_CLASS_BASE) |
+		(1 << KB_GLYPH_CLASS_LIGATURE) |
 		(1 << KB_GLYPH_CLASS_COMPONENT);
 	let ligatureGlyph = KB_GLYPH_SENTINEL;
 
@@ -455,54 +560,89 @@ function markToLigatureAdjustment(
 		advanceSinceBaseX += s.storage.glyphs[prevGlyph].advanceX;
 		advanceSinceBaseY += s.storage.glyphs[prevGlyph].advanceY;
 
-		if (!kbSkipGlyph(s, prevGlyph, lookup, regularSkipFlags, skipUnicodeFlags) &&
-			(classBit(s.storage.glyphs[prevGlyph].classValue as int32) & baseClasses) != 0) {
+		if (
+			!kbSkipGlyph(s, prevGlyph, lookup, regularSkipFlags, skipUnicodeFlags) &&
+			(classBit(s.storage.glyphs[prevGlyph].classValue as int32) &
+				baseClasses) !=
+				0
+		) {
 			ligatureGlyph = prevGlyph;
 			break;
 		}
 		prevGlyph = s.storage.glyphs[prevGlyph].prev;
 	}
 
-	if (ligatureGlyph == KB_GLYPH_SENTINEL) { return false; }
+	if (ligatureGlyph == KB_GLYPH_SENTINEL) {
+		return false;
+	}
 
 	const ligatureArray = base + m.kbU16(base + 10);
-	const ligatureCover = kbCoverGlyph(m, base + m.kbU16(base + 4),
-		s.storage.glyphs[ligatureGlyph].id as int32);
-	if (!ligatureCover.valid) { return false; }
+	const ligatureCover = kbCoverGlyph(
+		m,
+		base + m.kbU16(base + 4),
+		s.storage.glyphs[ligatureGlyph].id as int32,
+	);
+	if (!ligatureCover.valid) {
+		return false;
+	}
 
-	const ligatureAttach = kbGetLigatureAttach(m, ligatureArray, ligatureCover.index);
+	const ligatureAttach = kbGetLigatureAttach(
+		m,
+		ligatureArray,
+		ligatureCover.index,
+	);
 	const markInfo = kbGetMarkInfo(m, base, m.kbU16(base + 8), coverIndex);
 	const attachCount = m.kbU16(ligatureAttach) as int64;
-	let componentIndexPlusOne = s.storage.glyphs[glyph].ligatureComponentIndexPlusOne as int64;
+	let componentIndexPlusOne = s.storage.glyphs[glyph]
+		.ligatureComponentIndexPlusOne as int64;
 
-	if (s.storage.glyphs[glyph].ligatureUid != s.storage.glyphs[ligatureGlyph].uid) {
+	if (
+		s.storage.glyphs[glyph].ligatureUid != s.storage.glyphs[ligatureGlyph].uid
+	) {
 		componentIndexPlusOne = attachCount;
 	}
 
-	if (componentIndexPlusOne > attachCount) { return false; }
+	if (componentIndexPlusOne > attachCount) {
+		return false;
+	}
 
 	let anchorIndex = componentIndexPlusOne;
 	if (anchorIndex != 0) {
 		anchorIndex -= 1;
 	} else {
 		if (attachCount == 0) {
-			throw kbBoundsFail("mark to ligature attach with no components", ligatureAttach);
+			throw kbBoundsFail(
+				"mark to ligature attach with no components",
+				ligatureAttach,
+			);
 		}
 		anchorIndex = attachCount - 1;
 	}
 
-	const ligatureAnchorAt = kbGetLigatureAttachAnchor(m, base, ligatureAttach,
-		m.kbU16(markInfo.record), anchorIndex);
+	const ligatureAnchorAt = kbGetLigatureAttachAnchor(
+		m,
+		base,
+		ligatureAttach,
+		m.kbU16(markInfo.record),
+		anchorIndex,
+	);
 	if (ligatureAnchorAt == 0) {
-		throw kbBoundsFail("mark to ligature anchor offset is null", ligatureAttach);
+		throw kbBoundsFail(
+			"mark to ligature anchor offset is null",
+			ligatureAttach,
+		);
 	}
 	const ligatureAnchor = kbResolveAnchorXy(s, ligatureAnchorAt);
 	const markAnchor = kbResolveAnchorXy(s, markInfo.anchor);
 
 	const ligatureState = s.storage.glyphs[ligatureGlyph];
-	const newOffsetX = ligatureState.offsetX - advanceSinceBaseX +
+	const newOffsetX =
+		ligatureState.offsetX -
+		advanceSinceBaseX +
 		(ligatureAnchor.x - markAnchor.x);
-	const newOffsetY = ligatureState.offsetY - advanceSinceBaseY +
+	const newOffsetY =
+		ligatureState.offsetY -
+		advanceSinceBaseY +
 		(ligatureAnchor.y - markAnchor.y);
 
 	attachGlyph(s, ligatureGlyph, glyph, newOffsetX, newOffsetY);
@@ -535,17 +675,31 @@ function contextualAdjustment(
 	skipUnicodeFlags: uint32,
 	outcome: KbAdjustOutcome,
 ): boolean {
-	const sequenceLookup = kbDoSequenceLookup(s, lookup, base, coverIndex, glyph, sequenceSkipFlags,
-		skipUnicodeFlags);
-	if (sequenceLookup.recordCount == 0) { return false; }
+	const sequenceLookup = kbDoSequenceLookup(
+		s,
+		lookup,
+		base,
+		coverIndex,
+		glyph,
+		sequenceSkipFlags,
+		skipUnicodeFlags,
+	);
+	if (sequenceLookup.recordCount == 0) {
+		return false;
+	}
 
 	const gdef = m.kbBlobTableData(KB_BLOB_TABLE_ID_GDEF);
 
-	for (let recordIndex: int32 = 0; recordIndex < sequenceLookup.recordCount; recordIndex++) {
+	for (let recordIndex: int32 = 0; recordIndex <
+	sequenceLookup.recordCount; recordIndex++) {
 		const record = sequenceLookup.records + (recordIndex as int64) * 4;
 		const recordSequenceIndex = m.kbU16(record);
 		const recordLookupListIndex = m.kbU16(record + 2);
-		const packedRecordLookup = kbGetLookup(m, lookupList, recordLookupListIndex);
+		const packedRecordLookup = kbGetLookup(
+			m,
+			lookupList,
+			recordLookupListIndex,
+		);
 		const recordLookup = kbUnpackLookup(m, gdef, packedRecordLookup);
 
 		let nestedCurrentGlyph = glyph;
@@ -564,17 +718,29 @@ function contextualAdjustment(
 			at = s.storage.glyphs[at].next;
 		}
 
-		for (let nestedSubtableIndex: int32 = 0; nestedSubtableIndex < recordLookup.subtableCount;
-			nestedSubtableIndex++) {
-			const nestedBase = packedRecordLookup +
-				m.kbU16(recordLookup.subtableOffsets + (nestedSubtableIndex as int64) * 2);
-			kbDoSingleAdjustment(s, lookupList, recordLookupListIndex as int64,
-				nestedSubtableIndex as int64, recordLookup, nestedBase, nestedCurrentGlyph,
-				startIndex + nestedCurrentGlyphIndex, requestedSkipFlags);
+		for (let nestedSubtableIndex: int32 = 0; nestedSubtableIndex <
+		recordLookup.subtableCount; nestedSubtableIndex++) {
+			const nestedBase =
+				packedRecordLookup +
+				m.kbU16(
+					recordLookup.subtableOffsets + (nestedSubtableIndex as int64) * 2,
+				);
+			kbDoSingleAdjustment(
+				s,
+				lookupList,
+				recordLookupListIndex as int64,
+				nestedSubtableIndex as int64,
+				recordLookup,
+				nestedBase,
+				nestedCurrentGlyph,
+				startIndex + nestedCurrentGlyphIndex,
+				requestedSkipFlags,
+			);
 		}
 	}
 
-	outcome.onePastLastGlyphIndex = startIndex +
+	outcome.onePastLastGlyphIndex =
+		startIndex +
 		(sequenceLookup.inputSequenceCountIncludingSkippedGlyphs as int64);
 	outcome.onePastLastGlyph = sequenceLookup.onePastLastGlyphMatched;
 	return true;
@@ -600,13 +766,24 @@ export function kbDoSingleAdjustment(
 	const sequenceSkipFlags = kbSkipFlagsGposSequence(requestedSkipFlags);
 
 	let result = false;
-	const outcome = new KbAdjustOutcome(startIndex + 1, s.storage.glyphs[currentGlyph].next);
+	const outcome = new KbAdjustOutcome(
+		startIndex + 1,
+		s.storage.glyphs[currentGlyph].next,
+	);
 
-	if (!kbGlyphIncludedInLookupSubtable(s, true, lookupIndex, subtableIndex, currentGlyph)) {
+	if (
+		!kbGlyphIncludedInLookupSubtable(
+			s,
+			true,
+			lookupIndex,
+			subtableIndex,
+			currentGlyph,
+		)
+	) {
 		return false;
 	}
 
-	const m: Span<uint8> = s.font.blob[0..s.font.blob.length];
+	const m: Span<uint8> = s.font.blob[0 .. s.font.blob.length];
 	let lookup = lookupIn;
 	let base = baseIn;
 
@@ -617,9 +794,14 @@ export function kbDoSingleAdjustment(
 
 	let coverValid = kbGlyphPassesLookupFilter(s, currentGlyph, lookup);
 	let coverIndex: int64 = 0;
-	if (coverValid && kbLookupBeginsWithCoverage(true, lookup.type, m.kbU16(base))) {
-		const cover = kbCoverGlyph(m, base + m.kbU16(base + 2),
-			s.storage.glyphs[currentGlyph].id as int32);
+	if (
+		coverValid && kbLookupBeginsWithCoverage(true, lookup.type, m.kbU16(base))
+	) {
+		const cover = kbCoverGlyph(
+			m,
+			base + m.kbU16(base + 2),
+			s.storage.glyphs[currentGlyph].id as int32,
+		);
 		coverValid = cover.valid;
 		coverIndex = cover.index;
 	}
@@ -627,21 +809,65 @@ export function kbDoSingleAdjustment(
 	if (coverValid) {
 		result = match (lookup.type) {
 			1 => singleAdjustment(s, base, coverIndex, currentGlyph),
-			2 => pairAdjustment(s, lookup, base, coverIndex, currentGlyph, regularSkipFlags,
-				skipUnicodeFlags, outcome),
-			3 => cursiveAdjustment(s, lookup, base, coverIndex, currentGlyph, regularSkipFlags,
-				skipUnicodeFlags),
-			4 | 6 => markToBaseAdjustment(s, lookup, base, coverIndex, currentGlyph,
-				regularSkipFlags, skipUnicodeFlags),
-			5 => markToLigatureAdjustment(s, lookup, base, coverIndex, currentGlyph,
-				regularSkipFlags, skipUnicodeFlags),
-			7 | 8 => contextualAdjustment(s, s.font.blob, lookupList, lookup, base, coverIndex,
-				currentGlyph, startIndex, requestedSkipFlags, sequenceSkipFlags, skipUnicodeFlags,
-				outcome),
+			2 => pairAdjustment(
+				s,
+				lookup,
+				base,
+				coverIndex,
+				currentGlyph,
+				regularSkipFlags,
+				skipUnicodeFlags,
+				outcome,
+			),
+			3 => cursiveAdjustment(
+				s,
+				lookup,
+				base,
+				coverIndex,
+				currentGlyph,
+				regularSkipFlags,
+				skipUnicodeFlags,
+			),
+			4 | 6 => markToBaseAdjustment(
+				s,
+				lookup,
+				base,
+				coverIndex,
+				currentGlyph,
+				regularSkipFlags,
+				skipUnicodeFlags,
+			),
+			5 => markToLigatureAdjustment(
+				s,
+				lookup,
+				base,
+				coverIndex,
+				currentGlyph,
+				regularSkipFlags,
+				skipUnicodeFlags,
+			),
+			7 | 8 => contextualAdjustment(
+				s,
+				s.font.blob,
+				lookupList,
+				lookup,
+				base,
+				coverIndex,
+				currentGlyph,
+				startIndex,
+				requestedSkipFlags,
+				sequenceSkipFlags,
+				skipUnicodeFlags,
+				outcome,
+			),
 			_ => unhandledAdjustmentType(lookup.type, base),
 		};
 
-		kbSetLookupOnePastLastGlyph(s, outcome.onePastLastGlyphIndex, outcome.onePastLastGlyph);
+		kbSetLookupOnePastLastGlyph(
+			s,
+			outcome.onePastLastGlyphIndex,
+			outcome.onePastLastGlyph,
+		);
 	}
 	return result;
 }

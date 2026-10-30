@@ -30,7 +30,7 @@ export function kbRound32(x: float32): int32 {
 		result -= 1;
 		resultF -= 1;
 	}
-	if ((x - resultF) >= 0.5) {
+	if (x - resultF >= 0.5) {
 		result += 1;
 	}
 	return result;
@@ -57,7 +57,10 @@ export function kbItemVariationStoreDelta(
 	const axisCount = m.kbU16(regionList) as int64;
 	const regionAxisCoordinates = regionList + 4;
 	if (axisCount > (variationVectorNormalized.length as int64)) {
-		throw kbBoundsFail("variation vector shorter than the region axis count", axisCount);
+		throw kbBoundsFail(
+			"variation vector shorter than the region axis count",
+			axisCount,
+		);
 	}
 
 	const data = store + m.kbU32(store + 8 + deltaSetOuterIndex * 4);
@@ -66,16 +69,21 @@ export function kbItemVariationStoreDelta(
 
 	const regionIndices = data + 6;
 	const deltas = regionIndices + regionIndexCount * 2;
-	const wordDeltas = deltas + deltaSetInnerIndex * (wordDeltaCount + regionIndexCount);
+	const wordDeltas =
+		deltas + deltaSetInnerIndex * (wordDeltaCount + regionIndexCount);
 	const halfWordDeltas = wordDeltas + wordDeltaCount * 2;
 
-	for (let regionIndexIndex: int64 = 0; regionIndexIndex < regionIndexCount; regionIndexIndex++) {
+	for (let regionIndexIndex: int64 = 0; regionIndexIndex <
+	regionIndexCount; regionIndexIndex++) {
 		const regionIndex = m.kbU16(regionIndices + regionIndexIndex * 2) as int64;
 		const regionCoords = regionAxisCoordinates + regionIndex * axisCount * 6;
 
-		const regionDelta = regionIndexIndex < wordDeltaCount ?
-			m.kbS16(wordDeltas + regionIndexIndex * 2) as float32 :
-			halfWordDelta(m.kbU8(halfWordDeltas + (regionIndexIndex - wordDeltaCount))) as float32;
+		const regionDelta =
+			regionIndexIndex < wordDeltaCount
+				? m.kbS16(wordDeltas + regionIndexIndex * 2) as float32
+				: halfWordDelta(
+						m.kbU8(halfWordDeltas + (regionIndexIndex - wordDeltaCount)),
+					) as float32;
 
 		let regionFactor: float32 = 1;
 
@@ -87,11 +95,13 @@ export function kbItemVariationStoreDelta(
 			const peakFixed = m.kbS16(regionAxis + 2);
 			const highFixed = m.kbS16(regionAxis + 4);
 
-			if (peakFixed != 0 &&
+			if (
+				peakFixed != 0 &&
 				lowFixed <= peakFixed &&
 				peakFixed <= highFixed &&
 				!(lowFixed < 0 && highFixed > 0 && peakFixed != 0) &&
-				inputFixed != peakFixed) {
+				inputFixed != peakFixed
+			) {
 				let axisFactor: float32 = 0;
 
 				if (inputFixed >= lowFixed && inputFixed <= highFixed) {
@@ -122,19 +132,32 @@ export function kbItemVariationStoreDelta(
 }
 
 function resolveDevice(s: KbScratch, device: int64): float32 {
-	const m: Span<uint8> = s.font.blob[0..s.font.blob.length];
-	if (!s.hasVariationVector || m.kbU16(device + 4) != 0x8000 || s.gdefItemVariationStore == 0) {
+	const m: Span<uint8> = s.font.blob[0 .. s.font.blob.length];
+	if (
+		!s.hasVariationVector ||
+		m.kbU16(device + 4) != 0x8000 ||
+		s.gdefItemVariationStore == 0
+	) {
 		return 0;
 	}
-	return kbItemVariationStoreDelta(m, s.gdefItemVariationStore, m.kbU16(device) as int64,
-		m.kbU16(device + 2) as int64, s.variationVectorNormalized);
+	return kbItemVariationStoreDelta(
+		m,
+		s.gdefItemVariationStore,
+		m.kbU16(device) as int64,
+		m.kbU16(device + 2) as int64,
+		s.variationVectorNormalized,
+	);
 }
 
 function adjustedByDevice(s: KbScratch, value: int32, device: int64): int32 {
 	return kbWrapS16(value + kbWrapS16(kbRound32(resolveDevice(s, device))));
 }
 
-function adjustedByOptionalDevice(s: KbScratch, value: int32, device: int64): int32 {
+function adjustedByOptionalDevice(
+	s: KbScratch,
+	value: int32,
+	device: int64,
+): int32 {
 	return device != 0 ? adjustedByDevice(s, value, device) : value;
 }
 
@@ -144,27 +167,51 @@ export function kbResolveValueRecord(
 	format: int32,
 	record: int64,
 ): KbResolvedValueRecord {
-	const m: Span<uint8> = s.font.blob[0..s.font.blob.length];
+	const m: Span<uint8> = s.font.blob[0 .. s.font.blob.length];
 	const unpacked = kbUnpackValueRecord(m, parent, format, record);
 	return {
-		placementX: adjustedByOptionalDevice(s, unpacked.placementX, unpacked.placementXDevice),
-		placementY: adjustedByOptionalDevice(s, unpacked.placementY, unpacked.placementYDevice),
-		advanceX: adjustedByOptionalDevice(s, unpacked.advanceX, unpacked.advanceXDevice),
-		advanceY: adjustedByOptionalDevice(s, unpacked.advanceY, unpacked.advanceYDevice),
+		placementX: adjustedByOptionalDevice(
+			s,
+			unpacked.placementX,
+			unpacked.placementXDevice,
+		),
+		placementY: adjustedByOptionalDevice(
+			s,
+			unpacked.placementY,
+			unpacked.placementYDevice,
+		),
+		advanceX: adjustedByOptionalDevice(
+			s,
+			unpacked.advanceX,
+			unpacked.advanceXDevice,
+		),
+		advanceY: adjustedByOptionalDevice(
+			s,
+			unpacked.advanceY,
+			unpacked.advanceYDevice,
+		),
 	};
 }
 
 export function kbResolveAnchorXy(s: KbScratch, anchor: int64): KbAnchorXy {
-	const m: Span<uint8> = s.font.blob[0..s.font.blob.length];
+	const m: Span<uint8> = s.font.blob[0 .. s.font.blob.length];
 	const x = m.kbS16(anchor + 2);
 	const y = m.kbS16(anchor + 4);
-	if (m.kbU16(anchor) != 3) { return { x, y }; }
+	if (m.kbU16(anchor) != 3) {
+		return { x, y };
+	}
 	return {
 		x: x + anchorDeviceDelta(s, anchor, m.kbU16(anchor + 6)),
 		y: y + anchorDeviceDelta(s, anchor, m.kbU16(anchor + 8)),
 	};
 }
 
-function anchorDeviceDelta(s: KbScratch, anchor: int64, deviceOffset: int32): int32 {
-	return deviceOffset != 0 ? kbRound32(resolveDevice(s, anchor + deviceOffset)) : 0;
+function anchorDeviceDelta(
+	s: KbScratch,
+	anchor: int64,
+	deviceOffset: int32,
+): int32 {
+	return deviceOffset != 0
+		? kbRound32(resolveDevice(s, anchor + deviceOffset))
+		: 0;
 }

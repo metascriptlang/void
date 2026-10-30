@@ -1,4 +1,9 @@
-import { KbBreak, KbBreakState, kbBreakBegin, KB_JAPANESE_LINE_BREAK_STYLE_NORMAL } from "./break";
+import {
+	KbBreak,
+	KbBreakState,
+	kbBreakBegin,
+	KB_JAPANESE_LINE_BREAK_STYLE_NORMAL,
+} from "./break";
 import { KbFeatureOverride, KbShapeConfig } from "./config";
 import { KbFont, kbCodepointToGlyphId } from "./font";
 import {
@@ -164,7 +169,11 @@ export class KbShapeContext {
 	shapeConfigs: KbExistingShapeConfig[] = [];
 	glyphConfigs: KbExistingGlyphConfig[] = [];
 	scratchFeatureOverrides: KbFeatureOverride[] = [];
-	breakState: KbBreakState = kbBreakBegin(0, KB_JAPANESE_LINE_BREAK_STYLE_NORMAL, 0);
+	breakState: KbBreakState = kbBreakBegin(
+		0,
+		KB_JAPANESE_LINE_BREAK_STYLE_NORMAL,
+		0,
+	);
 }
 
 function zeroInput(): KbInputCodepoint {
@@ -237,12 +246,21 @@ export function kbShapeBegin(
 	ctx.runFont = 0;
 	ctx.runScript = 0;
 	ctx.runDirection = 0;
-	ctx.breakState = kbBreakBegin(paragraphDirection, KB_JAPANESE_LINE_BREAK_STYLE_NORMAL, 0);
+	ctx.breakState = kbBreakBegin(
+		paragraphDirection,
+		KB_JAPANESE_LINE_BREAK_STYLE_NORMAL,
+		0,
+	);
 }
 
 // kbts_FontCoverageTest*. The C's recomposition search runs over a parent count it has just zeroed,
 // so no mark ever recomposes with its base: a mark the font lacks fails the test.
-function fontCovers(font: KbFont, input: KbInputCodepoint[], start: int32, end: int32): boolean {
+function fontCovers(
+	font: KbFont,
+	input: KbInputCodepoint[],
+	start: int32,
+	end: int32,
+): boolean {
 	let currentBaseError = false;
 	let error = false;
 	for (let i = start; i < end && !error; i++) {
@@ -261,7 +279,13 @@ function updateBreaks(ctx: KbShapeContext): void {
 	if ((ctx.flags & FLAG_MANUAL_SEGMENTATION) != 0) {
 		return;
 	}
-	let found: KbBreak = { position: 0, flags: 0, direction: 0, paragraphDirection: 0, script: 0 };
+	let found: KbBreak = {
+		position: 0,
+		flags: 0,
+		direction: 0,
+		paragraphDirection: 0,
+		script: 0,
+	};
 	while (ctx.breakState.kbBreakNext(out found)) {
 		const position = found.position + ctx.breakStartIndex;
 		ensureInput(ctx, position);
@@ -272,9 +296,16 @@ function updateBreaks(ctx: KbShapeContext): void {
 
 		if ((found.flags & KB_BREAK_FLAG_GRAPHEME) != 0) {
 			let coveringFontPlusOne: int32 = 0;
-			for (let fontIndex = (ctx.fonts.length as int32) - 1; fontIndex >= 0; fontIndex--) {
-				if (fontCovers(ctx.fonts[fontIndex].font, ctx.input, ctx.lastGraphemeBreakIndex,
-					position)) {
+			for (let fontIndex = (ctx.fonts.length as int32) - 1; fontIndex >=
+			0; fontIndex--) {
+				if (
+					fontCovers(
+						ctx.fonts[fontIndex].font,
+						ctx.input,
+						ctx.lastGraphemeBreakIndex,
+						position,
+					)
+				) {
 					coveringFontPlusOne = fontIndex + 1;
 					break;
 				}
@@ -307,7 +338,11 @@ export function kbShapeBeginManualRuns(ctx: KbShapeContext): void {
 	ctx.flags |= FLAG_MANUAL_SEGMENTATION;
 }
 
-export function kbShapeNextManualRun(ctx: KbShapeContext, direction: uint32, script: uint32): void {
+export function kbShapeNextManualRun(
+	ctx: KbShapeContext,
+	direction: uint32,
+	script: uint32,
+): void {
 	if ((ctx.flags & FLAG_MANUAL_SEGMENTATION) != 0) {
 		ctx.flags |= FLAG_START_OF_MANUAL_RUN | FLAG_USE_MANUAL_BREAK_INFO;
 		ctx.manualRunDirection = direction;
@@ -319,8 +354,11 @@ export function kbShapeEndManualRuns(ctx: KbShapeContext): void {
 	if ((ctx.flags & FLAG_MANUAL_SEGMENTATION) != 0) {
 		ctx.flags &= ~FLAG_MANUAL_SEGMENTATION;
 		if (ctx.inputCount > 0) {
-			ctx.breakState =
-				kbBreakBegin(ctx.paragraphDirection, KB_JAPANESE_LINE_BREAK_STYLE_NORMAL, 0);
+			ctx.breakState = kbBreakBegin(
+				ctx.paragraphDirection,
+				KB_JAPANESE_LINE_BREAK_STYLE_NORMAL,
+				0,
+			);
 			ctx.breakStartIndex = ctx.inputCount;
 		}
 	}
@@ -396,8 +434,14 @@ export function kbShapeCodepointWithUserId(
 	}
 }
 
-export function kbShapePushFeature(ctx: KbShapeContext, tag: uint32, value: int32): void {
-	if ((ctx.scratchFeatureOverrides.length as int32) < MAX_SIMULTANEOUS_FEATURES) {
+export function kbShapePushFeature(
+	ctx: KbShapeContext,
+	tag: uint32,
+	value: int32,
+): void {
+	if (
+		(ctx.scratchFeatureOverrides.length as int32) < MAX_SIMULTANEOUS_FEATURES
+	) {
 		ctx.scratchFeatureOverrides.push({ tag, value });
 		ctx.flags |= FLAG_FEATURE_OVERRIDES_DIRTY;
 	}
@@ -417,7 +461,10 @@ export function kbShapePopFeature(ctx: KbShapeContext, tag: uint32): boolean {
 function beginParagraph(ctx: KbShapeContext): void {
 	let fontPlusOne: int32 = 0;
 	if (ctx.fonts.length > 0) {
-		fontPlusOne = (ctx.flags & FLAG_MANUAL_SEGMENTATION) == 0 ? (ctx.fonts.length as int32) : 1;
+		fontPlusOne =
+			(ctx.flags & FLAG_MANUAL_SEGMENTATION) == 0
+				? (ctx.fonts.length as int32)
+				: 1;
 	}
 	ctx.runFont = fontPlusOne;
 	ctx.runScript = 0;
@@ -449,7 +496,9 @@ function sameVector(a: float32[], b: float32[]): boolean {
 
 function runFontEntry(ctx: KbShapeContext, fontPlusOne: int32): KbContextFont {
 	if (fontPlusOne == 0) {
-		throw new Error("kb shape context: a run has no font; push one before shaping");
+		throw new Error(
+			"kb shape context: a run has no font; push one before shaping",
+		);
 	}
 	return ctx.fonts[fontPlusOne - 1];
 }
@@ -462,8 +511,12 @@ function findOrCreateShapeConfig(
 ): KbShapeConfig {
 	const entry = runFontEntry(ctx, fontPlusOne);
 	for (const existing of ctx.shapeConfigs) {
-		if (existing.serial == entry.serial && existing.script == script &&
-			existing.language == language && sameVector(existing.vector, entry.variationVector)) {
+		if (
+			existing.serial == entry.serial &&
+			existing.script == script &&
+			existing.language == language &&
+			sameVector(existing.vector, entry.variationVector)
+		) {
 			return existing.config;
 		}
 	}
@@ -474,13 +527,15 @@ function findOrCreateShapeConfig(
 		entry.variationVector,
 		entry.serial as int64,
 	);
-	ctx.shapeConfigs.push(new KbExistingShapeConfig(
-		entry.serial,
-		entry.variationVector,
-		script,
-		language,
-		config,
-	));
+	ctx.shapeConfigs.push(
+		new KbExistingShapeConfig(
+			entry.serial,
+			entry.variationVector,
+			script,
+			language,
+			config,
+		),
+	);
 	return config;
 }
 
@@ -501,8 +556,10 @@ function findOrCreateGlyphConfig(
 		}
 		let same = true;
 		for (let i: int32 = 0; i < count; i++) {
-			if (existing.overrides[i].tag != list[i].tag ||
-				existing.overrides[i].value != list[i].value) {
+			if (
+				existing.overrides[i].tag != list[i].tag ||
+				existing.overrides[i].value != list[i].value
+			) {
 				same = false;
 				break;
 			}
@@ -528,7 +585,12 @@ function pushRunGlyph(
 	index: int32,
 ): void {
 	const item = ctx.input[index];
-	const glyphConfig = findOrCreateGlyphConfig(ctx, config, item.overrides, item.overrideCount);
+	const glyphConfig = findOrCreateGlyphConfig(
+		ctx,
+		config,
+		item.overrides,
+		item.overrideCount,
+	);
 	kbPushGlyph(
 		ctx.storage,
 		runFontEntry(ctx, fontPlusOne).font,
@@ -578,8 +640,10 @@ export function kbShapeRun(ctx: KbShapeContext): KbRun | null {
 			const index = ctx.runNext;
 			ctx.runNext += 1;
 
-			if ((ctx.input[index].breakFlags & KB_BREAK_FLAG_DIRECTION) != 0 &&
-				ctx.input[index].direction == 0) {
+			if (
+				(ctx.input[index].breakFlags & KB_BREAK_FLAG_DIRECTION) != 0 &&
+				ctx.input[index].direction == 0
+			) {
 				ctx.input[index].direction = runParagraphDirection;
 			}
 
@@ -587,8 +651,10 @@ export function kbShapeRun(ctx: KbShapeContext): KbRun | null {
 			result = true;
 
 			const item = ctx.input[index];
-			const newLine = !first &&
-				(item.breakFlags & (KB_BREAK_FLAG_LINE_HARD | KB_BREAK_FLAG_MANUAL)) != 0;
+			const newLine =
+				!first &&
+				(item.breakFlags & (KB_BREAK_FLAG_LINE_HARD | KB_BREAK_FLAG_MANUAL)) !=
+					0;
 
 			if (first) {
 				flags = item.breakFlags;
@@ -601,15 +667,23 @@ export function kbShapeRun(ctx: KbShapeContext): KbRun | null {
 				}
 			}
 
-			if ((item.fontPlusOne != 0 && item.fontPlusOne != runFont) ||
+			if (
+				(item.fontPlusOne != 0 && item.fontPlusOne != runFont) ||
 				(item.script != 0 && item.script != runScript) ||
 				(item.direction != 0 && item.direction != runDirection) ||
 				(item.paragraphDirection != 0 &&
 					item.paragraphDirection != runParagraphDirection) ||
-				newLine) {
-				if (item.fontPlusOne != 0) { ctx.runFont = item.fontPlusOne; }
-				if (item.script != 0) { ctx.runScript = item.script; }
-				if (item.direction != 0) { ctx.runDirection = item.direction; }
+				newLine
+			) {
+				if (item.fontPlusOne != 0) {
+					ctx.runFont = item.fontPlusOne;
+				}
+				if (item.script != 0) {
+					ctx.runScript = item.script;
+				}
+				if (item.direction != 0) {
+					ctx.runDirection = item.direction;
+				}
 				if (item.paragraphDirection != 0) {
 					ctx.runParagraphDirection = item.paragraphDirection;
 				}
@@ -622,13 +696,18 @@ export function kbShapeRun(ctx: KbShapeContext): KbRun | null {
 				runScript = ctx.runScript;
 				runDirection = ctx.runDirection;
 				runParagraphDirection = ctx.runParagraphDirection;
-				const created = findOrCreateShapeConfig(ctx, runFont, runScript, language);
+				const created = findOrCreateShapeConfig(
+					ctx,
+					runFont,
+					runScript,
+					language,
+				);
 				config = created;
 				pushRunGlyph(ctx, runFont, created, index);
 				initialized = true;
 			} else {
-				const existing = config ??
-					findOrCreateShapeConfig(ctx, runFont, runScript, language);
+				const existing =
+					config ?? findOrCreateShapeConfig(ctx, runFont, runScript, language);
 				config = existing;
 				pushRunGlyph(ctx, runFont, existing, index);
 			}
@@ -641,7 +720,10 @@ export function kbShapeRun(ctx: KbShapeContext): KbRun | null {
 			}
 			if (runDirection == 0) {
 				runDirection = KB_DIRECTION_LTR;
-				if (runConfig.shaper == KB_SHAPER_ARABIC || runConfig.shaper == KB_SHAPER_HEBREW) {
+				if (
+					runConfig.shaper == KB_SHAPER_ARABIC ||
+					runConfig.shaper == KB_SHAPER_HEBREW
+				) {
 					runDirection = KB_DIRECTION_RTL;
 				}
 			}
@@ -649,14 +731,15 @@ export function kbShapeRun(ctx: KbShapeContext): KbRun | null {
 			let normalized = entry.normalized;
 			if (normalized == null) {
 				const fresh: int32[] = [];
-				for (let i: int32 = 0; i < (entry.variationVector.length as int32); i++) {
+				for (let i: int32 = 0; i <
+				(entry.variationVector.length as int32); i++) {
 					fresh.push(0);
 				}
 				kbNormalizeVariationVector(entry.font, entry.variationVector, fresh);
 				entry.normalized = fresh;
 				normalized = fresh;
 			}
-			const m: Span<uint8> = entry.font.blob[0..entry.font.blob.length];
+			const m: Span<uint8> = entry.font.blob[0 .. entry.font.blob.length];
 			shapeGlyphs(m, runConfig, ctx.storage, runDirection, normalized);
 		}
 	} else {
@@ -671,7 +754,10 @@ export function kbShapeRun(ctx: KbShapeContext): KbRun | null {
 	if (!result) {
 		return null;
 	}
-	const run = new KbRun(runFontEntry(ctx, runFont).font, new KbGlyphIterator(ctx.storage));
+	const run = new KbRun(
+		runFontEntry(ctx, runFont).font,
+		new KbGlyphIterator(ctx.storage),
+	);
 	run.script = runScript;
 	run.paragraphDirection = runParagraphDirection;
 	run.direction = runDirection;
@@ -680,7 +766,10 @@ export function kbShapeRun(ctx: KbShapeContext): KbRun | null {
 	return run;
 }
 
-export function kbGlyphIteratorNext(it: KbGlyphIterator, out glyph: KbGlyph): boolean {
+export function kbGlyphIteratorNext(
+	it: KbGlyphIterator,
+	out glyph: KbGlyph,
+): boolean {
 	if (it.current == KB_GLYPH_SENTINEL) {
 		glyph = kbZeroGlyph();
 		return false;
@@ -700,7 +789,8 @@ export function kbShapeGetShapeCodepoint(
 	}
 	const item = ctx.input[index];
 	const result = new KbShapeCodepoint();
-	result.font = item.fontPlusOne != 0 ? ctx.fonts[item.fontPlusOne - 1].font : null;
+	result.font =
+		item.fontPlusOne != 0 ? ctx.fonts[item.fontPlusOne - 1].font : null;
 	result.featureOverrideCount = item.overrideCount;
 	result.codepoint = item.codepoint;
 	result.userId = item.userId;
