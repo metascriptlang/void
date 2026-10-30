@@ -312,7 +312,12 @@ function pathRead(path: string): boolean {
 
 function holdBytes(name: string, bytes: uint8[]): Result<void, FontError> {
 	let known: boolean = false;
-	for (const held of heldNames) { known = known || held.equals(name); }
+	for (const held of heldNames) {
+		if (held.equals(name)) {
+			known = true;
+			break;
+		}
+	}
 	if (!known && pathRead(name)) { return Result.err(FontError.NameHeld); }
 	const held = holdFaceBytes(name, bytes);
 	if (held.ok) {
@@ -323,7 +328,6 @@ function holdBytes(name: string, bytes: uint8[]): Result<void, FontError> {
 	return Result.err(FontError.NotLoaded);
 }
 
-// registerFace for a face given as bytes (an asset read from an APK); `name` stands for its path.
 export function registerFaceBytes(
 	name: string, bytes: uint8[], family: string, weight: int32, style: FontStyle,
 ): Result<void, FontError> {
@@ -337,7 +341,6 @@ export function defaultFontBytes(bytes: uint8[]): Result<void, FontError> {
 	return holdBytes(DEFAULT_PATH, bytes);
 }
 
-// addFont for a face given as bytes; `name` stands for its path.
 export function addFontBytes(name: string, bytes: uint8[]): Result<FontId, FontError> {
 	try holdBytes(name, bytes);
 	return addFont(name);
@@ -370,14 +373,17 @@ function weightRank(desired: int32, weight: int32): int32 {
 function bestFace(family: string, weight: int32, style: FontStyle): Result<int32, FontError> {
 	let styleMatches: boolean = false;
 	for (const r of registered) {
-		if (r.family.equals(family) && r.style == style) { styleMatches = true; }
+		if (r.family.equals(family) && r.style == style) {
+			styleMatches = true;
+			break;
+		}
 	}
 	let best: int32 = -1;
 	let bestRank: int32 = 0;
 	for (let i = 0; i < (registered.length as int32); i++) {
-		const r = registered[i];
-		if (!r.family.equals(family) || (styleMatches && r.style != style)) { continue; }
-		const rank: int32 = weightRank(weight, r.weight);
+		if (!registered[i].family.equals(family) ||
+			(styleMatches && registered[i].style != style)) { continue; }
+		const rank: int32 = weightRank(weight, registered[i].weight);
 		if (best < 0 || rank < bestRank) {
 			best = i;
 			bestRank = rank;
