@@ -132,12 +132,12 @@ when (voidColourEmoji) {
 		let box: GlyphBox = none;
 		let inked: boolean = false;
 		for (let i: int32 = 0; i < count; i++) {
-			const b = getGlyphBitmapBoxSubpixel(f.info, layers[i].glyph, scale, scale, 0.0, 0.0);
-			if (b.x1 <= b.x0 || b.y1 <= b.y0) { continue; }
-			if (!inked || b.x0 < box.x0) { box.x0 = b.x0; }
-			if (!inked || b.y0 < box.y0) { box.y0 = b.y0; }
-			if (!inked || b.x1 > box.x1) { box.x1 = b.x1; }
-			if (!inked || b.y1 > box.y1) { box.y1 = b.y1; }
+			const ink = getGlyphBitmapBoxSubpixel(f.info, layers[i].glyph, scale, scale, 0.0, 0.0);
+			if (ink.x1 <= ink.x0 || ink.y1 <= ink.y0) { continue; }
+			if (!inked || ink.x0 < box.x0) { box.x0 = ink.x0; }
+			if (!inked || ink.y0 < box.y0) { box.y0 = ink.y0; }
+			if (!inked || ink.x1 > box.x1) { box.x1 = ink.x1; }
+			if (!inked || ink.y1 > box.y1) { box.y1 = ink.y1; }
 			inked = true;
 		}
 		if (!inked) { return { status: COLOUR_ABSENT, box: box }; }
@@ -194,12 +194,12 @@ when (voidColourEmoji) {
 		const layers = newLayers();
 		const count = layersOf(state.faces[face], glyph, layers);
 		if (index < 0 || index >= count) { return 0; }
-		const l = layers[index];
-		return (l.r as uint32) | ((l.g as uint32) << 8) | ((l.b as uint32) << 16) | ((l.a as uint32) << 24);
+		const layer = layers[index];
+		return (layer.r as uint32) | ((layer.g as uint32) << 8) | ((layer.b as uint32) << 16) | ((layer.a as uint32) << 24);
 	}
 
 	function colourLayerRasterize(
-		f: GlyphFace, glyph: int32, sizePx: float32, at: uint32[], w: int32, h: int32,
+		f: GlyphFace, glyph: int32, sizePx: float32, tile: uint32[], w: int32, h: int32,
 	): int32 {
 		const layered = colourLayerBox(f, glyph, sizePx);
 		const box = layered.box;
@@ -210,17 +210,17 @@ when (voidColourEmoji) {
 		const layers = newLayers();
 		const count = layersOf(f, glyph, layers);
 		if (count < 0) { return COLOUR_RASTER_REFUSED; }
-		for (let i: int32 = 0; i < w * h; i++) { at[i] = 0; }
+		for (let i: int32 = 0; i < w * h; i++) { tile[i] = 0; }
 		const scale = scaleForMappingEmToPixels(f.info, sizePx);
 		for (let i: int32 = 0; i < count; i++) {
-			const b = getGlyphBitmapBoxSubpixel(f.info, layers[i].glyph, scale, scale, 0.0, 0.0);
-			const lw = b.x1 - b.x0;
-			const lh = b.y1 - b.y0;
-			if (lw <= 0 || lh <= 0) { continue; }
-			const coverage: uint8[] = new Array<uint8>(lw * lh);
-			for (let z: int32 = 0; z < lw * lh; z++) { coverage[z] = 0; }
-			makeGlyphBitmapSubpixel(f.info, coverage, lw, lh, lw, scale, scale, 0.0, 0.0, layers[i].glyph);
-			colourCompose(at, w, w, h, coverage, lw, b.x0 - box.x0, b.y0 - box.y0, lw, lh, layers[i]);
+			const ink = getGlyphBitmapBoxSubpixel(f.info, layers[i].glyph, scale, scale, 0.0, 0.0);
+			const inkWidth = ink.x1 - ink.x0;
+			const inkHeight = ink.y1 - ink.y0;
+			if (inkWidth <= 0 || inkHeight <= 0) { continue; }
+			const coverage: uint8[] = new Array<uint8>(inkWidth * inkHeight);
+			for (let texel: int32 = 0; texel < inkWidth * inkHeight; texel++) { coverage[texel] = 0; }
+			makeGlyphBitmapSubpixel(f.info, coverage, inkWidth, inkHeight, inkWidth, scale, scale, 0.0, 0.0, layers[i].glyph);
+			colourCompose(tile, w, w, h, coverage, inkWidth, ink.x0 - box.x0, ink.y0 - box.y0, inkWidth, inkHeight, layers[i]);
 		}
 		return COLOUR_RASTER_OK;
 	}
