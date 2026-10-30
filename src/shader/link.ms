@@ -417,6 +417,51 @@ function unwrittenReads(m: ShaderModule, carriers: Carrier[], readers: Reader[])
 	return Result.ok(null);
 }
 
+function hookOf(m: ShaderModule, e: ShaderModule, sites: int32[]): Result<int32, string> {
+	const last = e.functions.length - 1;
+	const name = last >= 0 ? e.functions[last].name : "";
+	const phase = last >= 0 ? segmentPhase(e, e.functions[last]) : "";
+	if (e.entries.length > 0 || e.ios.length > 0 || e.workgroups.length > 0 || phase == "") {
+		return Result.err("link: effect '" + name + "' is no segment: a module " +
+			"without entries whose last function takes and returns its phase struct");
+	}
+	const at = sites.findIndex((s) => m.functions[s].name == phase);
+	if (at < 0) {
+		return Result.err("link: effect '" + name + "' works on phase '" + phase +
+			"', which the base has no hook site for");
+	}
+	return Result.ok(at as int32);
+}
+
+function registerCarrier(
+	m: ShaderModule,
+	carriers: Carrier[],
+	readers: Reader[],
+	effect: string,
+	index: int32,
+	phase: string,
+	atVertexSite: boolean,
+): Result<void, string> {
+	const g = m.functions[index];
+	const writes = writesCarrier(g);
+	if (!writes && g.params.length != 2) { return Result.ok(null); }
+	const struct = writes ? g.result.structIndex : g.params[1].type.structIndex;
+	if (writes != atVertexSite) {
+		return Result.err("link: effect '" + effect + "' " + (writes ? "writes" : "reads") +
+			" carrier '" + m.structs[struct].name + "' at phase '" + phase + "', which is no " +
+			(writes ? "vertex" : "fragment") + " hook site");
+	}
+	let c = carrierOf(m, carriers, struct);
+	if (writes) {
+		c.writers.push(effect);
+		return Result.ok(null);
+	}
+	const read = carriedReads(m, g);
+	for (let k = 0; k < read.length; k++) { c.read[k] = c.read[k] || read[k]; }
+	readers.push({ effect: effect, functionIndex: index });
+	return Result.ok(null);
+}
+
 export function link(base: ShaderModule, effects: ShaderModule[]): Result<ShaderModule, string> {
 	let m = try irFromText(irText(base));
 	const vertexFunctions = vertexReach(m);
@@ -427,44 +472,17 @@ export function link(base: ShaderModule, effects: ShaderModule[]): Result<Shader
 	let readers: Reader[] = [];
 	for (const given of effects) {
 		const e = try irFromText(irText(given));
-		const segment = e.functions.length > 0 ? e.functions[e.functions.length - 1] :
-			new ShaderFunction();
-		const phase = segmentPhase(e, segment);
-		if (e.entries.length > 0 || e.ios.length > 0 || e.workgroups.length > 0 || phase == "") {
-			return Result.err("link: effect '" + segment.name + "' is no segment: a module " +
-				"without entries whose last function takes and returns its phase struct");
-		}
-		const at = sites.findIndex((s) => m.functions[s].name == phase);
-		if (at < 0) {
-			return Result.err("link: effect '" + segment.name + "' works on phase '" + phase +
-				"', which the base has no hook site for");
-		}
-		const effect = segment.name;
+		const at = try hookOf(m, e, sites);
+		const effect = e.functions[e.functions.length - 1].name;
 		const index = try merge(m, e, effect);
 		for (const r of m.resources) {
 			if (r.binding < 0 && !owned.some((o) => o.resource == r.name)) {
 				owned.push({ resource: r.name, effect: effect });
 			}
 		}
-		const g = m.functions[index];
-		const writes = writesCarrier(g);
-		if (writes || g.params.length == 2) {
-			const struct = writes ? g.result.structIndex : g.params[1].type.structIndex;
-			if (writes != vertexFunctions.includes(sites[at])) {
-				return Result.err("link: effect '" + effect + "' " +
-					(writes ? "writes" : "reads") + " carrier '" + m.structs[struct].name +
-					"' at phase '" + phase + "', which is no " +
-					(writes ? "vertex" : "fragment") + " hook site");
-			}
-			let c = carrierOf(m, carriers, struct);
-			if (writes) {
-				c.writers.push(effect);
-			} else {
-				const read = carriedReads(m, g);
-				for (let k = 0; k < read.length; k++) { c.read[k] = c.read[k] || read[k]; }
-				readers.push({ effect: effect, functionIndex: index });
-			}
-		}
+		const phase = m.functions[sites[at]].name;
+		const vertexSite = vertexFunctions.includes(sites[at]);
+		try registerCarrier(m, carriers, readers, effect, index, phase, vertexSite);
 		steps[at].push(index);
 	}
 	try unwrittenReads(m, carriers, readers);
