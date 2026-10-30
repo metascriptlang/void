@@ -176,7 +176,7 @@ export function update(
 function nodeTurn(n: NodeRef): float32 {
 	const origin: Vec2 = n.localToGlobal(vec2(0.0, 0.0));
 	const across: Vec2 = n.localToGlobal(vec2(1.0, 0.0));
-	if (across.y == origin.y) { return across.x >= origin.x ? 0.0 : 3.1415927; }
+	if (across.y == origin.y) { return across.x >= origin.x ? 0.0 : Math.PI as float32; }
 	return Math.atan2((across.y - origin.y) as float64, (across.x - origin.x) as float64) as float32;
 }
 
