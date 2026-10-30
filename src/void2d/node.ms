@@ -455,7 +455,7 @@ export function newRow(this s: Scene2D, kind: DrawKind, payload: int32): int32 {
 	s.orders.push(order);
 	s.layouts.push(noLayout());
 	s.parents.push(NO_NODE_2D);
-	s.children.push(new Array(0));
+	s.children.push([]);
 	s.localMatrices.push(identity2d());
 	s.worlds.push(identity2d());
 	s.bounds.push(noBounds);
@@ -1018,8 +1018,8 @@ export function tileGroup(this s: Scene2D): NodeRef {
 		s.tileGroups[payload] = row;
 	} else {
 		s.tileGroups.push(row);
-		s.tileCells.push(new Array(0));
-		s.tileEdits.push(new Array(0));
+		s.tileCells.push([]);
+		s.tileEdits.push([]);
 	}
 	return s.refOf(s.newRow(DrawKind.TileGroup, payload));
 }
@@ -1139,7 +1139,7 @@ export function clear(this n: NodeRef): NodeRef {
 	match (kind) {
 		DrawKind.TileGroup => {
 			if ((s.tileCells[p].length as int32) == 0) { return n; }
-			s.tileCells[p] = new Array(0);
+			s.tileCells[p] = [];
 			s.reshape(i);
 		},
 		DrawKind.Graphics => {
@@ -1841,7 +1841,7 @@ export function removeChildren(this n: NodeRef): void {
 		s.releaseGlyphs(child);
 		s.releaseLayout(child);
 	}
-	s.children[parent] = new Array(0);
+	s.children[parent] = [];
 	s.markChanged(parent, Changed.Tree);
 	s.structureChanged = true;
 }
@@ -1943,8 +1943,8 @@ function releasePayload(this s: Scene2D, i: int32): void {
 			if (payload != NO_PAYLOAD) { s.freeScrolls.push(payload); }
 		},
 		DrawKind.TileGroup => {
-			s.tileCells[payload] = new Array(0);
-			s.tileEdits[payload] = new Array(0);
+			s.tileCells[payload] = [];
+			s.tileEdits[payload] = [];
 			s.freeTileGroups.push(payload);
 		},
 		DrawKind.Group | DrawKind.ScaleGrid => {},
@@ -1962,7 +1962,7 @@ function freeRow(this s: Scene2D, i: int32): void {
 	if (matrixRow != NO_COLOR_MATRIX_ROW) { s.freeColorMatrices.push(matrixRow); }
 	s.kinds[i] = DrawKind.Group;
 	s.parents[i] = NO_NODE_2D;
-	s.children[i] = new Array(0);
+	s.children[i] = [];
 	s.paints[i] = defaultPaint();
 	s.orders[i] = { zIndex: 0, visible: true, name: "", noOverlap: false, layerSlot: false };
 	s.layouts[i] = noLayout();
@@ -2001,10 +2001,10 @@ function freeSubtree(this s: Scene2D, top: int32): void {
 
 export function closeRows(this s: Scene2D): void {
 	const rows: int32 = s.generations.length as int32;
-	let freed: Vec<boolean> = new Array(0);
+	let freed: Vec<boolean> = [];
 	for (let i: int32 = 0; i < rows; i++) { freed.push(s.generations[i] == 0); }
 	for (const i of s.free) { freed[i] = true; }
-	let tops: Vec<int32> = new Array(0);
+	let tops: Vec<int32> = [];
 	for (let i: int32 = 0; i < rows; i++) {
 		if (!freed[i] && s.parents[i] == NO_NODE_2D) { tops.push(i); }
 	}
