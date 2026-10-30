@@ -604,7 +604,7 @@ when (voidSprites) {
 		if (!validFace(base)) { return FACE_NO_BASE; }
 		const f = faceAt(base);
 		if (f.sprite || f.colourOnly || f.browser) { return FACE_NO_BASE; }
-		const sprite = copyFace(faceAt(base));
+		const sprite = copyFace(f);
 		sprite.emboldenUnits = 0.0;
 		sprite.skew = 0.0;
 		sprite.colourHandle = -1;
