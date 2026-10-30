@@ -495,6 +495,21 @@ export function begin2d(w: float32, h: float32, dpi: float32): void {
 	beginContext(w, h, dpi);
 }
 
+export function openFrame(
+	this ctx: DrawContext2D,
+	w: float32,
+	h: float32,
+	dpi: float32,
+): void {
+	ctx.frameDpi = dpi;
+	ctx.fbW = w;
+	ctx.fbH = h;
+	ctx.targetsFlushed = false;
+	ctx.frameLive = true;
+	ctx.originX = 0.0;
+	ctx.originY = 0.0;
+}
+
 export function openBracket(w: float32, h: float32, dpi: float32): void {
 	const ctx: DrawContext2D = currentContext();
 	if (ctx.prepared) {
@@ -506,13 +521,7 @@ export function openBracket(w: float32, h: float32, dpi: float32): void {
 	void2dFrameBegin();
 	when (voidProfiler) { profilerFrameOpened(); }
 	beginGlyphFrame(void2dFrameSerial());
-	ctx.frameDpi = dpi;
-	ctx.fbW = w;
-	ctx.fbH = h;
-	ctx.targetsFlushed = false;
-	ctx.frameLive = true;
-	ctx.originX = 0.0;
-	ctx.originY = 0.0;
+	ctx.openFrame(w, h, dpi);
 }
 
 export function beginContext(w: float32, h: float32, dpi: float32): void {

@@ -4,6 +4,7 @@ import {
 } from "./render";
 import {
 	openBracket,
+	openFrame,
 	startContext,
 	finishRecording,
 	setSceneSmooth,
@@ -268,13 +269,7 @@ export function paint(this s: Scene2D, wf: float32, hf: float32, dpi: float32): 
 	if (kept) {
 		const next: DrawContext2D = s.spareContext;
 		useContext(next);
-		next.frameDpi = dpi;
-		next.fbW = wf;
-		next.fbH = hf;
-		next.targetsFlushed = false;
-		next.frameLive = true;
-		next.originX = 0.0;
-		next.originY = 0.0;
+		next.openFrame(wf, hf, dpi);
 		setSceneSmooth(s.defaultSmooth);
 		startContext();
 		enterCamera(s.root, s.viewShift.x, s.viewShift.y);
