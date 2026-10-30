@@ -528,7 +528,7 @@ function breakAfter(
 	const whole: LineBreak = { end: to, next: to };
 	if (from >= to) { return whole; }
 	let delta: float32 = -shaped.glyphs[from].x;
-	let candidate: int32 = -1;
+	let candidate: int32 | null = null;
 	let inked: boolean = false;
 	let cells: int32 = 0;
 	for (let k = from; k < to; k++) {
@@ -540,7 +540,7 @@ function breakAfter(
 		delta = delta + advance - g.advance;
 		cells = cells + cellsOf(shaped.glyphs, k, from, cellWidths);
 		const right: float32 = cell > 0.0 ? (cells as float32) * cell : x + advance;
-		if (value != SPACE && candidate > from && right > room) {
+		if (value != SPACE && candidate !== null && right > room) {
 			return breakAt(shaped.glyphs, candidate);
 		}
 		if (value != SPACE) { inked = true; }
@@ -610,8 +610,10 @@ function alignLines(
 	style: TextStyle,
 	widest: float32,
 ): void {
-	const multiline: boolean = style.align == Align.MultilineCenter ||
-		style.align == Align.MultilineRight;
+	const multiline: boolean = match (style.align) {
+		Align.MultilineCenter | Align.MultilineRight => true,
+		Align.Left | Align.Right | Align.Center => false,
+	};
 	const span: float32 = multiline ? widest : (style.maxWidth > 0.0 ? style.maxWidth : 0.0);
 	const share: float32 = alignShare(style.align);
 	if (share == 0.0) { return; }
