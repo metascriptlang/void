@@ -5,7 +5,6 @@ export const SVG_REFUSED: int32 = -2;
 export const SVG_NO_SIZE: int32 = -3;
 export const SVG_NO_MEMORY: int32 = -4;
 export const SVG_BAD_HANDLE: int32 = -5;
-export const SVG_BAD_SIZE: int32 = -6;
 export const SVG_TOO_LARGE: int32 = -7;
 
 const NAME_SHOWN: int32 = 48;
