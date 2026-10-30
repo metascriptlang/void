@@ -258,7 +258,15 @@ function addVertex(
 
 function closeShape(this ref c: CsCtx): void {
 	if (c.firstX != c.x || c.firstY != c.y) {
-		c.addVertex(VERTEX_LINE, truncInt(c.firstX as float64), truncInt(c.firstY as float64), 0, 0, 0, 0);
+		c.addVertex(
+			VERTEX_LINE,
+			truncInt(c.firstX as float64),
+			truncInt(c.firstY as float64),
+			0,
+			0,
+			0,
+			0,
+		);
 	}
 }
 
