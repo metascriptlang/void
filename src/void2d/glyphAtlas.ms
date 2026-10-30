@@ -537,17 +537,7 @@ export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, At
 		if (code != 0) { return atlas.refuseKey(packedKey, coverageRasterRefusal(code)); }
 	}
 	atlas.rasterizations = atlas.rasterizations + 1;
-	return Result.ok(atlas.record(packedKey, {
-		page: page,
-		x: x,
-		y: y,
-		width: width > 0 ? width : 0,
-		height: height > 0 ? height : 0,
-		left: left,
-		top: top,
-		refs: 1,
-		key: packedKey,
-	}));
+	return Result.ok(atlas.record(packedKey, newTile(packedKey, page, x, y, width, height, left, top)));
 }
 
 export function cached(this atlas: GlyphAtlas, key: GlyphKey): boolean {
@@ -590,17 +580,7 @@ export function acquireBlank(
 		y = placed.y;
 	}
 	atlas.rasterizations = atlas.rasterizations + 1;
-	return Result.ok(atlas.record(packedKey, {
-		page: page,
-		x: x,
-		y: y,
-		width: width > 0 ? width : 0,
-		height: height > 0 ? height : 0,
-		left: left,
-		top: top,
-		refs: 1,
-		key: packedKey,
-	}));
+	return Result.ok(atlas.record(packedKey, newTile(packedKey, page, x, y, width, height, left, top)));
 }
 
 export function retainMask(this atlas: GlyphAtlas, key: GlyphKey): int32 {
@@ -694,6 +674,29 @@ export function acquireMask(
 	return Result.ok(index);
 }
 
+function newTile(
+	packedKey: uint64,
+	page: GlyphPage,
+	x: int32,
+	y: int32,
+	width: int32,
+	height: int32,
+	left: int32,
+	top: int32,
+): GlyphTile {
+	return {
+		page: page,
+		x: x,
+		y: y,
+		width: width > 0 ? width : 0,
+		height: height > 0 ? height : 0,
+		left: left,
+		top: top,
+		refs: 1,
+		key: packedKey,
+	};
+}
+
 function record(this atlas: GlyphAtlas, packedKey: uint64, tile: GlyphTile): int32 {
 	let index: int32 = atlas.tiles.length as int32;
 	if ((atlas.freeTiles.length as int32) > 0) {
@@ -767,17 +770,9 @@ when (voidTextOutline) {
 			atlas.outlineRasterizations = atlas.outlineRasterizations + 1;
 		}
 		atlas.rasterizations = atlas.rasterizations + 1;
-		return Result.ok(atlas.record(packedKey, {
-			page: page,
-			x: x,
-			y: y,
-			width: width > 0 ? width : 0,
-			height: height > 0 ? height : 0,
-			left: left,
-			top: top,
-			refs: 1,
-			key: packedKey,
-		}));
+		return Result.ok(atlas.record(
+			packedKey, newTile(packedKey, page, x, y, width, height, left, top),
+		));
 	}
 }
 
@@ -841,17 +836,9 @@ when (voidSdfText) {
 			if (code != 0) { return atlas.refuseKey(packedKey, sdfRasterRefusal(code)); }
 			atlas.generations = atlas.generations + 1;
 		}
-		return Result.ok(atlas.record(packedKey, {
-			page: page,
-			x: x,
-			y: y,
-			width: width > 0 ? width : 0,
-			height: height > 0 ? height : 0,
-			left: left,
-			top: top,
-			refs: 1,
-			key: packedKey,
-		}));
+		return Result.ok(atlas.record(
+			packedKey, newTile(packedKey, page, x, y, width, height, left, top),
+		));
 	}
 }
 
@@ -895,17 +882,9 @@ when (voidSdfText && voidTextOutline) {
 			if (code != 0) { return atlas.refuseKey(packedKey, sdfRasterRefusal(code)); }
 			atlas.outlineRasterizations = atlas.outlineRasterizations + 1;
 		}
-		return Result.ok(atlas.record(packedKey, {
-			page: page,
-			x: x,
-			y: y,
-			width: width > 0 ? width : 0,
-			height: height > 0 ? height : 0,
-			left: left,
-			top: top,
-			refs: 1,
-			key: packedKey,
-		}));
+		return Result.ok(atlas.record(
+			packedKey, newTile(packedKey, page, x, y, width, height, left, top),
+		));
 	}
 }
 
