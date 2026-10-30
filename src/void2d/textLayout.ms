@@ -288,10 +288,6 @@ struct Codepoint {
 	shapingBreak: boolean;
 }
 
-enum GraphemeCoverage {
-	NoFaceCoversAll,
-}
-
 function decodeUtf8(text: string, font: FontId): Vec<Codepoint> {
 	let out: Vec<Codepoint> = new Array(0);
 	let index: int32 = 0;
@@ -385,16 +381,16 @@ function graphemeFace(
 	cps: Readonly<Span<Codepoint>>,
 	first: int32,
 	end: int32,
-): Result<CodepointFace, GraphemeCoverage> {
+): CodepointFace | null {
 	const base: Presentation = clusterPresentation(cps, first, end);
 	for (let k = first; k < end; k++) {
 		if (isJoiner(cps[k].value)) { continue; }
 		const candidate: CodepointFace = faceOf(
 			font, cps[k].value, memberPresentation(first, k, base),
 		);
-		if (coversGrapheme(candidate.face, cps, first, end)) { return Result.ok(candidate); }
+		if (coversGrapheme(candidate.face, cps, first, end)) { return candidate; }
 	}
-	return Result.err(GraphemeCoverage.NoFaceCoversAll);
+	return null;
 }
 
 function memberFace(
@@ -411,10 +407,10 @@ function assignGrapheme(cps: Span<Codepoint>, first: int32, end: int32): void {
 	const font: FontId = cps[first].font;
 	if (end - first > 1) {
 		const whole = graphemeFace(font, cps, first, end);
-		if (whole.ok) {
+		if (whole !== null) {
 			for (let k = first; k < end; k++) {
-				cps[k].face = whole.value.face;
-				cps[k].scale = whole.value.scale;
+				cps[k].face = whole.face;
+				cps[k].scale = whole.scale;
 			}
 			return;
 		}
