@@ -1136,28 +1136,31 @@ export function clear(this n: NodeRef): NodeRef {
 	const i: int32 = n.liveRow("clear");
 	const s: Scene2D = n.scene;
 	const kind: DrawKind = s.kinds[i];
-	if (kind !== DrawKind.Graphics && kind !== DrawKind.TileGroup) {
-		console.log(
-			`void2d: clear asked of a ${kind.toString()} node; only a Graphics or a TileGroup ` +
-			"can be cleared",
-		);
-		unreachable;
-	}
 	const p: int32 = s.payloads[i];
-	if (kind === DrawKind.TileGroup) {
-		if ((s.tileCells[p].length as int32) == 0) { return n; }
-		s.tileCells[p] = new Array(0);
-		s.reshape(i);
-		return n;
+	match (kind) {
+		DrawKind.TileGroup => {
+			if ((s.tileCells[p].length as int32) == 0) { return n; }
+			s.tileCells[p] = new Array(0);
+			s.reshape(i);
+		},
+		DrawKind.Graphics => {
+			s.meshes[p].mesh = [];
+			s.meshes[p].edges = [];
+			s.meshes[p].fringed = false;
+			s.meshes[p].records = [];
+			s.meshes[p].source = WHITE_SOURCE;
+			s.meshes[p].alphaPremultiplied = false;
+			s.meshes[p].stale = true;
+			s.markChanged(i, Changed.Content);
+		},
+		_ => {
+			console.log(
+				`void2d: clear asked of a ${kind.toString()} node; only a Graphics or a TileGroup ` +
+				"can be cleared",
+			);
+			unreachable;
+		},
 	}
-	s.meshes[p].mesh = [];
-	s.meshes[p].edges = [];
-	s.meshes[p].fringed = false;
-	s.meshes[p].records = [];
-	s.meshes[p].source = WHITE_SOURCE;
-	s.meshes[p].alphaPremultiplied = false;
-	s.meshes[p].stale = true;
-	s.markChanged(i, Changed.Content);
 	return n;
 }
 
@@ -1478,11 +1481,15 @@ function stopOnUnpaintable(call: string, actual: DrawKind): void {
 
 function takePaintable(n: NodeRef, i: int32, call: string): void {
 	const actual: DrawKind = n.scene.kinds[i];
-	if (actual === DrawKind.Rect) { return; }
-	if (actual !== DrawKind.Group) { stopOnUnpaintable(call, actual); }
-	n.scene.kinds[i] = DrawKind.Rect;
-	n.scene.putPaint(i, { ...n.scene.paints[i], color: rgba(0.0, 0.0, 0.0, 0.0) });
-	n.scene.markChanged(i, Changed.Content);
+	match (actual) {
+		DrawKind.Rect => {},
+		DrawKind.Group => {
+			n.scene.kinds[i] = DrawKind.Rect;
+			n.scene.putPaint(i, { ...n.scene.paints[i], color: rgba(0.0, 0.0, 0.0, 0.0) });
+			n.scene.markChanged(i, Changed.Content);
+		},
+		_ => { stopOnUnpaintable(call, actual); },
+	}
 }
 
 export function setBackground(this n: NodeRef, c: Color): NodeRef {
@@ -1496,17 +1503,18 @@ export function clearBackground(this n: NodeRef): NodeRef {
 	const i: int32 = n.liveRow("clearBackground");
 	const s: Scene2D = n.scene;
 	const actual: DrawKind = s.kinds[i];
-	if (actual !== DrawKind.Rect && actual !== DrawKind.Group) {
-		stopOnUnpaintable("clearBackground", actual);
-	}
-	if (actual === DrawKind.Rect) {
-		const payload: int32 = s.payloads[i];
-		if (payload != NO_BOX_STYLE) {
-			releaseBoxStyle(payload);
-			s.payloads[i] = NO_PAYLOAD;
-		}
-		s.kinds[i] = DrawKind.Group;
-		s.putPaint(i, { ...s.paints[i], color: rgba(0.0, 0.0, 0.0, 0.0) });
+	match (actual) {
+		DrawKind.Rect => {
+			const payload: int32 = s.payloads[i];
+			if (payload != NO_BOX_STYLE) {
+				releaseBoxStyle(payload);
+				s.payloads[i] = NO_PAYLOAD;
+			}
+			s.kinds[i] = DrawKind.Group;
+			s.putPaint(i, { ...s.paints[i], color: rgba(0.0, 0.0, 0.0, 0.0) });
+		},
+		DrawKind.Group => {},
+		_ => { stopOnUnpaintable("clearBackground", actual); },
 	}
 	s.markChanged(i, Changed.Content);
 	return n;
@@ -1516,27 +1524,30 @@ export function setImageStyle(this n: NodeRef, style: ImageStyle): NodeRef {
 	const i: int32 = n.liveRow("setImageStyle");
 	const s: Scene2D = n.scene;
 	const kind: DrawKind = s.kinds[i];
-	if (kind !== DrawKind.Sprite && kind !== DrawKind.Anim) {
-		console.log(
-			`void2d: setImageStyle asked of a ${kind.toString()} node; only a Sprite or an ` +
-			"Anim has an image style",
-		);
-		unreachable;
-	}
-	const current: int32 = s.imageStyleOf(i);
-	let next: int32 = current;
-	if (current == NO_IMAGE_STYLE) {
-		next = allocateImageStyle(style);
-	} else {
-		updateImageStyle(current, style);
-	}
-	if (kind === DrawKind.Anim) {
-		s.anims[s.payloads[i]].imageStyle = next;
-	} else {
-		s.payloads[i] = next;
+	match (kind) {
+		DrawKind.Sprite => {
+			s.payloads[i] = storeImageStyle(s.payloads[i], style);
+		},
+		DrawKind.Anim => {
+			const anim: int32 = s.payloads[i];
+			s.anims[anim].imageStyle = storeImageStyle(s.anims[anim].imageStyle, style);
+		},
+		_ => {
+			console.log(
+				`void2d: setImageStyle asked of a ${kind.toString()} node; only a Sprite or an ` +
+				"Anim has an image style",
+			);
+			unreachable;
+		},
 	}
 	s.markChanged(i, Changed.Content);
 	return n;
+}
+
+function storeImageStyle(current: int32, style: ImageStyle): int32 {
+	if (current == NO_IMAGE_STYLE) { return allocateImageStyle(style); }
+	updateImageStyle(current, style);
+	return current;
 }
 
 export function imageStyleOf(this s: Scene2D, i: int32): int32 {
