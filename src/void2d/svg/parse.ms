@@ -315,8 +315,7 @@ function convertToPixels(
 ): float32 {
 	const attr = curAttr(p);
 	const result: float32 = match (units) {
-		UNITS_USER => value,
-		UNITS_PX => value,
+		UNITS_USER | UNITS_PX => value,
 		UNITS_PT => value / 72.0 * p.dpi,
 		UNITS_PC => value / 6.0 * p.dpi,
 		UNITS_MM => value / 25.4 * p.dpi,
@@ -978,26 +977,12 @@ function parseAttribs(p: Parser, attrs: Attr[]): void {
 
 function argsPerElement(cmd: int32): int32 {
 	return match (cmd) {
-		118 => 1,
-		86 => 1,
-		104 => 1,
-		72 => 1,
-		109 => 2,
-		77 => 2,
-		108 => 2,
-		76 => 2,
-		116 => 2,
-		84 => 2,
-		113 => 4,
-		81 => 4,
-		115 => 4,
-		83 => 4,
-		99 => 6,
-		67 => 6,
-		97 => 7,
-		65 => 7,
-		122 => 0,
-		90 => 0,
+		118 | 86 | 104 | 72 => 1,
+		109 | 77 | 108 | 76 | 116 | 84 => 2,
+		113 | 81 | 115 | 83 => 4,
+		99 | 67 => 6,
+		97 | 65 => 7,
+		122 | 90 => 0,
 		_ => -1,
 	};
 }
@@ -1376,45 +1361,55 @@ function parsePath(p: Parser, attrs: Attr[]): void {
 					nargs += 1;
 				}
 				if (nargs >= rargs) {
-					
-						if (cmd == 109 || cmd == 77) {
+					match (cmd) {
+						109 | 77 => {
 							pathMoveTo(p, pen, args, cmd == 109);
 							cmd = cmd == 109 ? 108 : 76;
 							rargs = argsPerElement(cmd);
 							pen.cpx2 = pen.cpx;
 							pen.cpy2 = pen.cpy;
 							initPoint = true;
-						} else if (cmd == 108 || cmd == 76) {
+						},
+						108 | 76 => {
 							pathLineTo(p, pen, args, cmd == 108);
 							pen.cpx2 = pen.cpx;
 							pen.cpy2 = pen.cpy;
-						} else if (cmd == 72 || cmd == 104) {
+						},
+						72 | 104 => {
 							pathHLineTo(p, pen, args, cmd == 104);
 							pen.cpx2 = pen.cpx;
 							pen.cpy2 = pen.cpy;
-						} else if (cmd == 86 || cmd == 118) {
+						},
+						86 | 118 => {
 							pathVLineTo(p, pen, args, cmd == 118);
 							pen.cpx2 = pen.cpx;
 							pen.cpy2 = pen.cpy;
-						} else if (cmd == 67 || cmd == 99) {
+						},
+						67 | 99 => {
 							pathCubicBezTo(p, pen, args, cmd == 99);
-						} else if (cmd == 83 || cmd == 115) {
+						},
+						83 | 115 => {
 							pathCubicBezShortTo(p, pen, args, cmd == 115);
-						} else if (cmd == 81 || cmd == 113) {
+						},
+						81 | 113 => {
 							pathQuadBezTo(p, pen, args, cmd == 113);
-						} else if (cmd == 84 || cmd == 116) {
+						},
+						84 | 116 => {
 							pathQuadBezShortTo(p, pen, args, cmd == 116);
-						} else if (cmd == 65 || cmd == 97) {
+						},
+						65 | 97 => {
 							pathArcTo(p, pen, args, cmd == 97);
 							pen.cpx2 = pen.cpx;
 							pen.cpy2 = pen.cpy;
-						} else {
+						},
+						_ => {
 							if (nargs >= 2) {
 								pen.cpx = args[nargs - 2];
 								pen.cpy = args[nargs - 1];
 								pen.cpx2 = pen.cpx;
 								pen.cpy2 = pen.cpy;
 							}
+						},
 					}
 					nargs = 0;
 				}
@@ -1949,13 +1944,14 @@ function imageBounds(p: Parser, bounds: float32[]): void {
 }
 
 function viewAlign(content: float32, container: float32, kind: int32): float32 {
-	if (kind == ALIGN_MIN) { return 0.0; }
-	if (kind == ALIGN_MAX) {
-		const far: float32 = container - content;
-		return far;
-	}
+	const far: float32 = container - content;
 	const mid: float32 = (container - content) * 0.5;
-	return mid;
+	const aligned: float32 = match (kind) {
+		ALIGN_MIN => 0.0,
+		ALIGN_MAX => far,
+		_ => mid,
+	};
+	return aligned;
 }
 
 function scaleGradient(grad: Gradient, tx: float32, ty: float32, sx: float32, sy: float32): void {
