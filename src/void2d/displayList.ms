@@ -731,9 +731,7 @@ function addDirtyUi(from: int32, to: int32): void {
 		activeContext.dirtyUi[pairs * 2 - 1] = to;
 		return;
 	}
-	while ((activeContext.dirtyUi.length as int32) < (pairs + 1) * 2) {
-		activeContext.dirtyUi.push(0);
-	}
+	sized(activeContext.dirtyUi, (pairs + 1) * 2);
 	activeContext.dirtyUi[pairs * 2] = from;
 	activeContext.dirtyUi[pairs * 2 + 1] = to;
 	activeContext.dirtyUiTotal = pairs + 1;
@@ -894,7 +892,7 @@ function stageCleanCopy(old: DrawContext2D, first: int32, end: int32, at: int32,
 			return;
 		}
 	}
-	while ((activeContext.uiCopies.length as int32) < (n + 1) * 3) { activeContext.uiCopies.push(0); }
+	sized(activeContext.uiCopies, (n + 1) * 3);
 	activeContext.uiCopies[n * 3] = first;
 	activeContext.uiCopies[n * 3 + 1] = at;
 	activeContext.uiCopies[n * 3 + 2] = count;
@@ -1620,9 +1618,7 @@ function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
 	const total: int32 = streamTotal(pipeline);
 	if (total <= lo) { return; }
 	const span: int32 = (total - lo) * width;
-	while ((activeContext.laneScratch.length as int32) < span) {
-		activeContext.laneScratch.push(0.0 as float32);
-	}
+	growTo(activeContext.laneScratch, span);
 	let covered: int32 = 0;
 	for (const src of activeContext.laneOrder) {
 		if (pipelineAt(activeContext.commands, src * COMMAND_FLOATS) == pipeline) {
@@ -1681,9 +1677,7 @@ export function layLanes(
 	sized(activeContext.laneSourceCounts, sources);
 	sized(activeContext.laneOutputs, sources);
 	sized(activeContext.laneOffsets, sources);
-	while ((activeContext.laneOut.length as int32) < sources * COMMAND_FLOATS) {
-		activeContext.laneOut.push(0.0 as float32);
-	}
+	growTo(activeContext.laneOut, sources * COMMAND_FLOATS);
 	while ((activeContext.laneBySprite.length as int32) > 0) { activeContext.laneBySprite.pop(); }
 	while ((activeContext.laneByUi.length as int32) > 0) { activeContext.laneByUi.pop(); }
 	while ((activeContext.laneByVertex.length as int32) > 0) { activeContext.laneByVertex.pop(); }
