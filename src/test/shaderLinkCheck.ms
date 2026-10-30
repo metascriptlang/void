@@ -357,6 +357,7 @@ const CHAIN_HLSL =
 	"static float4 position;\n" +
 	"static float2 uv;\n" +
 	"static float4 fragColor;\n" +
+	"static bool demoted = false;\n" +
 	"\n" +
 	"UvStage makeUvStage(float2 v0)\n" +
 	"{\n" +
@@ -386,7 +387,7 @@ const CHAIN_HLSL =
 	"{\n" +
 	"    if (shaded.color.w < 0.5)\n" +
 	"    {\n" +
-	"        discard;\n" +
+	"        demoted = true;\n" +
 	"    }\n" +
 	"    return shaded;\n" +
 	"}\n" +
@@ -407,6 +408,10 @@ const CHAIN_HLSL =
 	"    UvStage stage = UvStage_1(start);\n" +
 	"    Shaded lit_1 = makeShaded(float4(stage.uv.x, stage.uv.y, _0_time, 1.0));\n" +
 	"    fragColor = Shaded_1(lit_1).color;\n" +
+	"    if (demoted)\n" +
+	"    {\n" +
+	"        discard;\n" +
+	"    }\n" +
 	"    return;\n" +
 	"}\n" +
 	"\n" +
