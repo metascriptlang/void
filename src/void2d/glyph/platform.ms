@@ -80,7 +80,11 @@ export function platformInfo(bytes: uint8[], offset: int32): PlatformTable | nul
 		fontdicts: { data: data, base: 0, size: 0, cursor: 0 },
 		fdselect: { data: data, base: 0, size: 0, cursor: 0 },
 	};
-	return new PlatformTable(info, data.u16At((maxp as int64) + 4), data.u16At((head as int64) + 18));
+	return new PlatformTable(
+		info,
+		data.u16At((maxp as int64) + 4),
+		data.u16At((head as int64) + 18),
+	);
 }
 
 export function postScriptName(bytes: uint8[], offset: int32): string {
@@ -109,11 +113,21 @@ export function postScriptName(bytes: uint8[], offset: int32): string {
 }
 
 export function platformOpen(
-	path: string | null, bytes: uint8[], name: string, glyphCount: int32, unitsPerEm: int32,
+	path: string | null,
+	bytes: uint8[],
+	name: string,
+	glyphCount: int32,
+	unitsPerEm: int32,
 ): Ptr<void> | null {
 	const facePath = path ?? "";
-	const opened = void2dPlatformFaceOpen(facePath, bytes[0], bytes.length, name, glyphCount, unitsPerEm);
-	return opened;
+	return void2dPlatformFaceOpen(
+		facePath,
+		bytes[0],
+		bytes.length,
+		name,
+		glyphCount,
+		unitsPerEm,
+	);
 }
 
 export function platformUnitsBox(platform: Ptr<void>, glyph: int32): float32[] {
@@ -123,19 +137,49 @@ export function platformUnitsBox(platform: Ptr<void>, glyph: int32): float32[] {
 }
 
 export function platformBox(
-	platform: Ptr<void>, glyph: int32, sizePx: float32, shiftX: float32, skew: float32, emboldenPx: float32,
+	platform: Ptr<void>,
+	glyph: int32,
+	sizePx: float32,
+	shiftX: float32,
+	skew: float32,
+	emboldenPx: float32,
 ): GlyphBox {
 	let box: int32[] = [0, 0, 0, 0];
-	void2dPlatformFaceBox(platform, glyph, sizePx, shiftX, skew, emboldenPx, (box as Span<int32>) as Ptr<int32>);
+	void2dPlatformFaceBox(
+		platform,
+		glyph,
+		sizePx,
+		shiftX,
+		skew,
+		emboldenPx,
+		(box as Span<int32>) as Ptr<int32>,
+	);
 	return { x0: box[0], y0: box[1], x1: box[2], y1: box[3] };
 }
 
 export function platformFill(
-	platform: Ptr<void>, glyph: int32, sizePx: float32, shiftX: float32, skew: float32, emboldenPx: float32,
-	at: Span<uint8>, w: int32, h: int32, stride: int32,
+	platform: Ptr<void>,
+	glyph: int32,
+	sizePx: float32,
+	shiftX: float32,
+	skew: float32,
+	emboldenPx: float32,
+	at: Span<uint8>,
+	w: int32,
+	h: int32,
+	stride: int32,
 ): boolean {
 	return void2dPlatformFaceFill(
-		platform, glyph, sizePx, shiftX, skew, emboldenPx, (at as Span<uint8>) as Ptr<uint8>, w, h, stride,
+		platform,
+		glyph,
+		sizePx,
+		shiftX,
+		skew,
+		emboldenPx,
+		(at as Span<uint8>) as Ptr<uint8>,
+		w,
+		h,
+		stride,
 	) != 0;
 }
 
@@ -161,7 +205,9 @@ when (emcc) {
 		let descent: int32[] = [0];
 		let lineGap: int32[] = [0];
 		void2dPlatformFaceVMetrics(
-			platform, (ascent as Span<int32>) as Ptr<int32>, (descent as Span<int32>) as Ptr<int32>,
+			platform,
+			(ascent as Span<int32>) as Ptr<int32>,
+			(descent as Span<int32>) as Ptr<int32>,
 			(lineGap as Span<int32>) as Ptr<int32>,
 		);
 		return { ascent: ascent[0], descent: descent[0], lineGap: lineGap[0] };

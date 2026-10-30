@@ -26,7 +26,12 @@ struct OutlinePoints {
 	slot: int32[];
 }
 
-function pushPoint(ref points: OutlinePoints, vertices: Readonly<Span<Vertex>>, v: int32, k: int32): void {
+function pushPoint(
+	ref points: OutlinePoints,
+	vertices: Readonly<Span<Vertex>>,
+	v: int32,
+	k: int32,
+): void {
 	const vertex = vertices[v];
 	match (k) {
 		0 => {
@@ -45,7 +50,11 @@ function pushPoint(ref points: OutlinePoints, vertices: Readonly<Span<Vertex>>, 
 	points.slot.push(v * 3 + k);
 }
 
-function outlinePoints(vertices: Readonly<Span<Vertex>>, ref points: OutlinePoints, ref ends: int32[]): int32 {
+function outlinePoints(
+	vertices: Readonly<Span<Vertex>>,
+	ref points: OutlinePoints,
+	ref ends: int32[],
+): int32 {
 	let n: int32 = 0;
 	let contours: int32 = 0;
 	for (let i: int32 = 0; i < (vertices.length as int32); i++) {
@@ -87,7 +96,12 @@ function normLen(ref x: float32, ref y: float32): float32 {
 }
 
 function emboldenContour(
-	ref px: float32[], ref py: float32[], first: int32, last: int32, strength: float32, trueType: boolean,
+	ref px: float32[],
+	ref py: float32[],
+	first: int32,
+	last: int32,
+	strength: float32,
+	trueType: boolean,
 ): void {
 	const xs: float32 = strength * 0.5;
 	const ys: float32 = strength * 0.5;
@@ -166,8 +180,16 @@ function embolden(ref vertices: Vec<Vertex>, strength: float32): void {
 		first = 0;
 		for (let c: int32 = 0; c < contours; c++) {
 			const last = ends[c];
-			const closed = last > first && points.x[last] == points.x[first] && points.y[last] == points.y[first];
-			emboldenContour(points.x, points.y, first, closed ? last - 1 : last, strength, area < 0.0);
+			const closed = last > first && points.x[last] == points.x[first] &&
+				points.y[last] == points.y[first];
+			emboldenContour(
+				points.x,
+				points.y,
+				first,
+				closed ? last - 1 : last,
+				strength,
+				area < 0.0,
+			);
 			if (closed) {
 				points.x[last] = points.x[first];
 				points.y[last] = points.y[first];
@@ -225,7 +247,11 @@ export function applySynthetic(
 	}
 }
 
-export function shapeBox(vertices: Readonly<Span<Vertex>>, scale: float32, shiftX: float32): GlyphBox {
+export function shapeBox(
+	vertices: Readonly<Span<Vertex>>,
+	scale: float32,
+	shiftX: float32,
+): GlyphBox {
 	const count = vertices.length as int32;
 	if (count <= 0) { return { x0: 0, y0: 0, x1: 0, y1: 0 }; }
 	let x0: float32 = vertices[0].x as float32;

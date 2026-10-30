@@ -60,7 +60,8 @@ function pointDistance(
 			const y1: float32 = (verts[i - 1].y as float32) * scaleY;
 			const dist2 = squaredDistance(x0, y0, sx, sy);
 			if (dist2 < minDist * minDist) { minDist = sqrtF(dist2); }
-			const dist: float32 = absF((x1 - x0) * (y0 - sy) - (y1 - y0) * (x0 - sx)) * precompute[i];
+			const dist: float32 =
+				absF((x1 - x0) * (y0 - sy) - (y1 - y0) * (x0 - sx)) * precompute[i];
 			if (dist < minDist) {
 				const dx: float32 = x1 - x0;
 				const dy: float32 = y1 - y0;
@@ -78,7 +79,8 @@ function pointDistance(
 			const boxY0 = minF(minF(y0, y1), y2);
 			const boxX1 = maxF(maxF(x0, x1), x2);
 			const boxY1 = maxF(maxF(y0, y1), y2);
-			if (sx > boxX0 - minDist && sx < boxX1 + minDist && sy > boxY0 - minDist && sy < boxY1 + minDist) {
+			if (sx > boxX0 - minDist && sx < boxX1 + minDist &&
+				sy > boxY0 - minDist && sy < boxY1 + minDist) {
 				let num: int32 = 0;
 				const ax: float32 = x1 - x0;
 				const ay: float32 = y1 - y0;
@@ -238,7 +240,9 @@ export function flattenCubics(input: Vec<Vertex>, flatness: float32): Flattened 
 		}
 	}
 	let grid: int32 = 1;
-	while (grid < FLATTEN_GRID_LIMIT && reach * ((grid * 2) as float32) <= FLATTEN_REACH) { grid *= 2; }
+	while (grid < FLATTEN_GRID_LIMIT && reach * ((grid * 2) as float32) <= FLATTEN_REACH) {
+		grid *= 2;
+	}
 	const flatnessSquared: float32 = flatness * flatness;
 	let out: Vec<Vertex> = [];
 	let px: float32 = 0.0;
@@ -248,8 +252,17 @@ export function flattenCubics(input: Vec<Vertex>, flatness: float32): Flattened 
 		if (v.kind == VERTEX_CUBIC) {
 			let points: Vec<Point> = [];
 			tesselateCubic(
-				points, px, py, v.cx as float32, v.cy as float32, v.cx1 as float32, v.cy1 as float32,
-				v.x as float32, v.y as float32, flatnessSquared, 0,
+				points,
+				px,
+				py,
+				v.cx as float32,
+				v.cy as float32,
+				v.cx1 as float32,
+				v.cy1 as float32,
+				v.x as float32,
+				v.y as float32,
+				flatnessSquared,
+				0,
 			);
 			for (let k: int32 = 0; k < (points.length as int32); k++) {
 				out.push({
