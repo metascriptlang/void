@@ -232,28 +232,28 @@ function openCblc(face: ColourFace, bytes: uint8[]): int32 {
 	}
 	for (let i: int64 = 0; i < sizes; i++) {
 		const at = 8 + 48 * i;
-		const st = new Strike();
-		st.kind = KIND_CBDT;
-		st.arrayAt = rd32(s, at);
-		st.subtables = rd32(s, at + 8);
-		st.ppemX = rd8(s, at + 44);
-		st.ppemY = rd8(s, at + 45);
+		const strike = new Strike();
+		strike.kind = KIND_CBDT;
+		strike.arrayAt = rd32(s, at);
+		strike.subtables = rd32(s, at + 8);
+		strike.ppemX = rd8(s, at + 44);
+		strike.ppemY = rd8(s, at + 45);
 		const depth = rd8(s, at + 46);
 		if (s.bad) { return fail(`CBLC is cut off inside strike record ${i}`); }
-		if (st.ppemY == 0 || st.ppemX == 0) {
+		if (strike.ppemY == 0 || strike.ppemX == 0) {
 			return fail(`CBLC strike ${i} has ppem 0`);
 		}
 		if (depth != 32) {
 			console.error(
-				`void2d: CBLC strike ${i} (ppem ${st.ppemY}) has bit depth ${depth}, only 32 (colour) is read; the strike is skipped`,
+				`void2d: CBLC strike ${i} (ppem ${strike.ppemY}) has bit depth ${depth}, only 32 (colour) is read; the strike is skipped`,
 			);
 			continue;
 		}
-		if (st.arrayAt > s.n || st.subtables > (s.n - st.arrayAt) / 8) {
+		if (strike.arrayAt > s.n || strike.subtables > (s.n - strike.arrayAt) / 8) {
 			return fail(`CBLC strike ${i} index subtable array lies outside the table`);
 		}
 		if (face.strikes.length == MAX_STRIKES) { return fail(`more than ${MAX_STRIKES} strikes`); }
-		face.strikes.push(st);
+		face.strikes.push(strike);
 	}
 	if (face.strikes.length == 0) {
 		return fail("CBLC holds no strike with a 32-bit colour depth");
@@ -271,19 +271,19 @@ function openSbix(face: ColourFace, bytes: uint8[]): int32 {
 	}
 	const offsets: int64 = 4 * ((face.numGlyphs as int64) + 1);
 	for (let i: int64 = 0; i < count; i++) {
-		const st = new Strike();
-		st.kind = KIND_SBIX;
-		st.arrayAt = rd32(s, 8 + 4 * i);
-		st.subtables = 0;
-		st.ppemX = rd16(s, st.arrayAt);
-		st.ppemY = st.ppemX;
+		const strike = new Strike();
+		strike.kind = KIND_SBIX;
+		strike.arrayAt = rd32(s, 8 + 4 * i);
+		strike.subtables = 0;
+		strike.ppemX = rd16(s, strike.arrayAt);
+		strike.ppemY = strike.ppemX;
 		if (s.bad) { return fail(`sbix is cut off inside strike ${i}`); }
-		if (st.ppemY == 0) { return fail(`sbix strike ${i} has ppem 0`); }
-		if (st.arrayAt + 4 + offsets > s.n) {
+		if (strike.ppemY == 0) { return fail(`sbix strike ${i} has ppem 0`); }
+		if (strike.arrayAt + 4 + offsets > s.n) {
 			return fail(`sbix strike ${i} glyph offsets run past the table`);
 		}
 		if (face.strikes.length == MAX_STRIKES) { return fail(`more than ${MAX_STRIKES} strikes`); }
-		face.strikes.push(st);
+		face.strikes.push(strike);
 	}
 	return COLOUR_OK;
 }
@@ -808,18 +808,18 @@ function chooseStrike(face: ColourFace, bytes: uint8[], glyph: int32, sizePx: fl
 	let bestPpem: int32 = 0;
 	let refusal = COLOUR_ABSENT;
 	for (let i: int32 = 0; i < face.strikes.length; i++) {
-		const st = face.strikes[i];
+		const strike = face.strikes[i];
 		const found = new Bitmap();
-		const code = findBitmap(face, bytes, st, glyph, found);
+		const code = findBitmap(face, bytes, strike, glyph, found);
 		if (code == COLOUR_PRESENT) {
-			const bigger = (st.ppemY as float32) >= sizePx;
+			const bigger = (strike.ppemY as float32) >= sizePx;
 			const bestBigger = hasBest && (bestPpem as float32) >= sizePx;
 			const better = !hasBest
-				|| (bigger && (!bestBigger || st.ppemY < bestPpem))
-				|| (!bigger && !bestBigger && st.ppemY > bestPpem);
+				|| (bigger && (!bestBigger || strike.ppemY < bestPpem))
+				|| (!bigger && !bestBigger && strike.ppemY > bestPpem);
 			if (better) {
 				hasBest = true;
-				bestPpem = st.ppemY;
+				bestPpem = strike.ppemY;
 				choice.bitmap = found;
 			}
 		} else if (code != COLOUR_ABSENT) {
