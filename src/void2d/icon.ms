@@ -52,7 +52,7 @@ let refusedIcons: int32 = 0;
 let reportedIcons: int32 = 0;
 let rasterizedIcons: int32 = 0;
 
-const hidden: PlacedGlyph = {
+const HIDDEN_GLYPH: PlacedGlyph = {
 	tile: -1, page: NO_GLYPH_PAGE, x: 0.0, y: 0.0, w: 0.0, h: 0.0,
 	u0: 0.0, v0: 0.0, u1: 0.0, v1: 0.0, run: NO_RUN,
 };
@@ -206,7 +206,7 @@ export function placeIcon(
 	const maskHeight: int32 = maskSide(deviceH);
 	if (maskWidth == 0 || maskHeight == 0) {
 		dropTile(index);
-		return { drawn: false, refused: false, exact: exact, glyph: hidden };
+		return { drawn: false, refused: false, exact: exact, glyph: HIDDEN_GLYPH };
 	}
 	if (placements[index].tile < 0 ||
 		placements[index].maskWidth != maskWidth || placements[index].maskHeight != maskHeight) {
@@ -219,7 +219,7 @@ export function placeIcon(
 				console.log(`void2d: an icon mask was refused (${acquired.error})`);
 			}
 			placements[index].refusal = acquired.error;
-			return { drawn: false, refused: true, exact: exact, glyph: hidden };
+			return { drawn: false, refused: true, exact: exact, glyph: HIDDEN_GLYPH };
 		}
 		placements[index].tile = acquired.value;
 		placements[index].maskWidth = maskWidth;
@@ -230,7 +230,6 @@ export function placeIcon(
 	const [u0, v0, u1, v1] = tile.uvRect();
 	const quadW: float32 = (maskWidth as float32) / (ICON_SUPERSAMPLE as float32);
 	const quadH: float32 = (maskHeight as float32) / (ICON_SUPERSAMPLE as float32);
-	let glyph: PlacedGlyph = hidden;
 	if (exact) {
 		const originX: float32 = Math.floor((world.tx * scale) as float64) as float32;
 		const originY: float32 = Math.floor((world.ty * scale) as float64) as float32;
@@ -238,19 +237,23 @@ export function placeIcon(
 		const centredY: float32 = world.ty * scale + (deviceH - quadH) * 0.5;
 		const left: float32 = Math.floor((centredX + 0.5) as float64) as float32;
 		const top: float32 = Math.floor((centredY + 0.5) as float64) as float32;
-		glyph = {
-			tile: placements[index].tile, page: tile.page,
-			x: left - originX, y: top - originY, w: quadW, h: quadH,
-			u0: u0, v0: v0, u1: u1, v1: v1, run: NO_RUN,
+		return {
+			drawn: true, refused: false, exact: exact,
+			glyph: {
+				tile: placements[index].tile, page: tile.page,
+				x: left - originX, y: top - originY, w: quadW, h: quadH,
+				u0: u0, v0: v0, u1: u1, v1: v1, run: NO_RUN,
+			},
 		};
-	} else {
-		const localW: float32 = quadW / devicePerLocal;
-		const localH: float32 = quadH / devicePerLocal;
-		glyph = {
+	}
+	const localW: float32 = quadW / devicePerLocal;
+	const localH: float32 = quadH / devicePerLocal;
+	return {
+		drawn: true, refused: false, exact: exact,
+		glyph: {
 			tile: placements[index].tile, page: tile.page,
 			x: (width - localW) * 0.5, y: (height - localH) * 0.5, w: localW, h: localH,
 			u0: u0, v0: v0, u1: u1, v1: v1, run: NO_RUN,
-		};
-	}
-	return { drawn: true, refused: false, exact: exact, glyph: glyph };
+		},
+	};
 }
