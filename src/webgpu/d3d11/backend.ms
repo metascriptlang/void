@@ -76,6 +76,7 @@ import {
 import {
 	cachedCanvas,
 	currentFrame,
+	replacesWrittenBytes,
 	entryOf,
 	clampedAnisotropy,
 	addressesBinding,
@@ -943,7 +944,8 @@ export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void 
 			miscFlags |= MISC_ALLOW_RAW_VIEWS;
 		}
 		if (indirect) { miscFlags |= MISC_DRAWINDIRECT_ARGS; }
-		slot.updatable = (bindFlags == 0 || storage) && (has(usage, GPUBufferUsage.COPY_DST as int32) || resolve);
+		const copyDestination = has(usage, GPUBufferUsage.COPY_DST as int32);
+		slot.updatable = ((bindFlags == 0 || storage) && (copyDestination || resolve)) || (copyDestination && !descriptor.transient);
 		const writable = has(usage, GPUBufferUsage.COPY_DST as int32) && !slot.updatable;
 		slot.native = d3dCreateBuffer(
 			device,
@@ -1127,6 +1129,9 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 		d3dCopyBytes(buffers[index].shadow[0], offset, data[0], bytes);
 		bound.uniformsDirty = true;
 		return;
+	}
+	if (discard && !bufferRecords.slots[index].transient && !replacesWrittenBytes(index, offset, bytes)) {
+		stop(`writeBuffer of ${bytes} bytes at ${offset} on uniform GPUBuffer ${buffer.id} keeps older bytes, which a D3D11 constant buffer cannot: write it whole or create it transient`);
 	}
 	const mapType = discard ? MAP_WRITE_DISCARD : MAP_WRITE_NO_OVERWRITE;
 	if (d3dMapWrite(context, buffers[index].native, mapType, offset, data[0], bytes) == 0) {

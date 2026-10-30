@@ -579,6 +579,26 @@ test "a buffer range copies to a MAP_READ buffer and a mapped range reads it bac
 	device.destroy();
 }
 
+test "a later frame's first writeBuffer of a range keeps the bytes around it" {
+	const device = openDevice();
+	const vertices = device.createBuffer({
+		label: "vertices",
+		size: 16,
+		usage: (GPUBufferUsage.VERTEX as int32) | (GPUBufferUsage.COPY_SRC as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const bytes: Vec<uint8> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+	device.queue.writeBuffer(vertices, 0, bytes);
+	device.queue.submit(device.createCommandEncoder().finish());
+	device.queue.writeBuffer(vertices, 4, [200, 200, 200, 200] as Vec<uint8>);
+	const destination = readbackBuffer(device, 16);
+	const encoder = device.createCommandEncoder();
+	encoder.copyBufferToBuffer(vertices, 0, destination, 0, 16);
+	device.queue.submit(encoder.finish());
+	const read = readBack(destination);
+	for (let i = 0; i < 16; i++) { assert read[i] == (i >= 4 && i < 8 ? 200 : i + 1) as uint8; }
+	device.destroy();
+}
+
 test "a MAP_WRITE buffer filled through a mapped range copies to a MAP_READ buffer" {
 	const device = openDevice();
 	const upload = device.createBuffer({
