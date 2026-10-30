@@ -199,6 +199,11 @@ export function transitionRange(ref t: StateTracker, index: int32, to: uint32, r
 	requeue(t, index, was);
 }
 
+export function settledAt(t: StateTracker, index: int32, state: uint32): boolean {
+	const whole = t.resources[index].whole;
+	return t.resources[index].subs.length == 0 && whole.state == state && whole.target == state;
+}
+
 export function queueUavBarrier(ref t: StateTracker): void { t.uav = true; }
 
 function settled(sub: SubState, tracking: Tracking): SubState {
