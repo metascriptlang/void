@@ -161,11 +161,20 @@ function merge(into: ShaderModule, from: ShaderModule, effect: string): Result<i
 	return Result.ok(functions[functions.length - 1]);
 }
 
-function numberBindings(m: ShaderModule, owners: string[], effects: string[]):
-	Result<void, string> {
+struct Owned {
+	resource: string;
+	effect: string;
+}
+
+struct Reader {
+	effect: string;
+	functionIndex: int32;
+}
+
+function numberBindings(m: ShaderModule, owned: Owned[]): Result<void, string> {
 	for (const r of m.resources) {
 		if (r.binding >= 0) { continue; }
-		const effect = effects[owners.indexOf(r.name)];
+		const effect = owned[owned.findIndex((o) => o.resource == r.name)].effect;
 		let next = 0;
 		for (const o of m.resources) {
 			if (o.group == r.group && o.binding >= next) { next = o.binding + 1; }
@@ -180,9 +189,12 @@ function numberBindings(m: ShaderModule, owners: string[], effects: string[]):
 	return Result.ok(null);
 }
 
-function ownerOf(names: string[], owners: string[], effects: string[]): string {
-	const owned = names.filter((n) => owners.includes(n));
-	return owned.length > 0 ? "effect '" + effects[owners.indexOf(owned[0])] + "'" : "the base";
+function ownerOf(names: string[], owned: Owned[]): string {
+	for (const n of names) {
+		const at = owned.findIndex((o) => o.resource == n);
+		if (at >= 0) { return "effect '" + owned[at].effect + "'"; }
+	}
+	return "the base";
 }
 
 function reachableExprs(m: ShaderModule, from: int32, visit: (e: ShaderExpr) => void): void {
@@ -199,8 +211,7 @@ function blockReads(e: ShaderExpr, out: string[]): void {
 	for (const o of e.operands) { blockReads(o, out); }
 }
 
-function sharedMember(m: ShaderModule, owners: string[], effects: string[]):
-	Result<void, string> {
+function sharedMember(m: ShaderModule, owned: Owned[]): Result<void, string> {
 	for (const entry of m.entries) {
 		let reads: string[] = [];
 		reachableExprs(m, entry.functionIndex, (e) => blockReads(e, reads));
@@ -217,7 +228,7 @@ function sharedMember(m: ShaderModule, owners: string[], effects: string[]):
 					m.resources[blocks[j]].binding != r.binding);
 				if (held >= 0) {
 					const pair = [r.name, m.resources[blocks[held]].name];
-					return Result.err("link: " + ownerOf(pair, owners, effects) + ": '" + f.name +
+					return Result.err("link: " + ownerOf(pair, owned) + ": '" + f.name +
 						"' names two things in one stage");
 				}
 				members.push(f.name);
@@ -390,19 +401,15 @@ function hookSites(m: ShaderModule): int32[] {
 	return sites;
 }
 
-function unwrittenReads(
-	m: ShaderModule,
-	carriers: Carrier[],
-	readers: string[],
-	readerOf: int32[],
-): Result<void, string> {
-	for (let k = 0; k < readers.length; k++) {
-		const g = m.functions[readerOf[k]];
+function unwrittenReads(m: ShaderModule, carriers: Carrier[], readers: Reader[]):
+	Result<void, string> {
+	for (const reader of readers) {
+		const g = m.functions[reader.functionIndex];
 		const c = carrierOf(m, carriers, g.params[1].type.structIndex);
 		const unwritten = carriedReads(m, g).findIndex((r) => r);
 		if (c.writers.length == 0 && unwritten >= 0) {
 			const s = m.structs[c.struct];
-			return Result.err("link: effect '" + readers[k] + "' reads varying '" +
+			return Result.err("link: effect '" + reader.effect + "' reads varying '" +
 				s.members[unwritten].name + "' of carrier '" + s.name + "', which no vertex " +
 				"segment writes");
 		}
@@ -415,11 +422,9 @@ export function link(base: ShaderModule, effects: ShaderModule[]): Result<Shader
 	const vertexFunctions = vertexReach(m);
 	const sites = hookSites(m);
 	let steps: int32[][] = sites.map((_) => []);
-	let owners: string[] = [];
-	let owning: string[] = [];
+	let owned: Owned[] = [];
 	let carriers: Carrier[] = [];
-	let readers: string[] = [];
-	let readerOf: int32[] = [];
+	let readers: Reader[] = [];
 	for (const given of effects) {
 		const e = try irFromText(irText(given));
 		const segment = e.functions.length > 0 ? e.functions[e.functions.length - 1] :
@@ -437,9 +442,8 @@ export function link(base: ShaderModule, effects: ShaderModule[]): Result<Shader
 		const effect = segment.name;
 		const index = try merge(m, e, effect);
 		for (const r of m.resources) {
-			if (r.binding < 0 && !owners.includes(r.name)) {
-				owners.push(r.name);
-				owning.push(effect);
+			if (r.binding < 0 && !owned.some((o) => o.resource == r.name)) {
+				owned.push({ resource: r.name, effect: effect });
 			}
 		}
 		const g = m.functions[index];
@@ -458,13 +462,12 @@ export function link(base: ShaderModule, effects: ShaderModule[]): Result<Shader
 			} else {
 				const read = carriedReads(m, g);
 				for (let k = 0; k < read.length; k++) { c.read[k] = c.read[k] || read[k]; }
-				readers.push(effect);
-				readerOf.push(index);
+				readers.push({ effect: effect, functionIndex: index });
 			}
 		}
 		steps[at].push(index);
 	}
-	try unwrittenReads(m, carriers, readers, readerOf);
+	try unwrittenReads(m, carriers, readers);
 	for (const c of carriers) {
 		if (c.writers.length > 0 && c.read.some((r) => r)) { try addVaryings(m, c); }
 	}
@@ -474,8 +477,8 @@ export function link(base: ShaderModule, effects: ShaderModule[]): Result<Shader
 	}
 	for (const f of m.functions) { pruneDeadFields(m, f); }
 	const kept = try withoutUnread(try withoutUnreadVaryings(m));
-	try numberBindings(kept, owners, owning);
-	try sharedMember(kept, owners, owning);
+	try numberBindings(kept, owned);
+	try sharedMember(kept, owned);
 	return Result.ok(kept);
 }
 
