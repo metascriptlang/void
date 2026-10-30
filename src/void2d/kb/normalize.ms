@@ -91,7 +91,7 @@ function kbLoadParents(glyph: KbGlyph): KbParent[] {
 	const offset = kbParentInfoOffset(glyph.parentInfo);
 	const count = kbParentInfoCount(glyph.parentInfo);
 
-	let result: KbParent[] = [];
+	const result: KbParent[] = [];
 	for (let parentIndex: uint32 = 0; parentIndex < count; parentIndex++) {
 		const delta = KB_PARENT_DELTAS[(offset + parentIndex) as int32];
 		const codepoint = ((glyph.codepoint as int64 + (delta as int64)) & 0xFFFFFFFF) as uint32;
@@ -125,7 +125,7 @@ function decompose(s: KbScratch, config: KbShapeConfig): void {
 		if (kbDecompositionSize(storage.glyphs[glyph].decomposition) != 0) {
 			let prevAnchor = storage.glyphs[glyph].prev;
 
-			let stack: KbGlyph[] = [storage.glyphs[glyph]];
+			const stack: KbGlyph[] = [storage.glyphs[glyph]];
 
 			kbFreeGlyph(s, glyph);
 
@@ -134,7 +134,7 @@ function decompose(s: KbScratch, config: KbShapeConfig): void {
 				let decomposition: uint64 = 0;
 				let decompositionSize: uint32 = 0;
 				let anyUnsupported = false;
-				let decomposed: KbGlyph[] = [];
+				const decomposed: KbGlyph[] = [];
 
 				if ((toDecompose.flags & KB_GLYPH_FLAG_DO_NOT_DECOMPOSE) == 0) {
 					decomposition = toDecompose.decomposition;
@@ -190,13 +190,12 @@ function recompose(s: KbScratch, config: KbShapeConfig): void {
 	let decimalDigitCount: int64 = 0;
 	let inFraction = false;
 
-	let beforeFractionSlashGlyphFlags: uint32 = KB_GLYPH_FLAG_NUMR | KB_GLYPH_FLAG_FRAC;
-	let afterFractionSlashGlyphFlags: uint32 = KB_GLYPH_FLAG_DNOM | KB_GLYPH_FLAG_FRAC;
-	if (config.shaper == KB_SHAPER_ARABIC || config.shaper == KB_SHAPER_HEBREW) {
-		const swap = beforeFractionSlashGlyphFlags;
-		beforeFractionSlashGlyphFlags = afterFractionSlashGlyphFlags;
-		afterFractionSlashGlyphFlags = swap;
-	}
+	const numeratorFlags: uint32 = KB_GLYPH_FLAG_NUMR | KB_GLYPH_FLAG_FRAC;
+	const denominatorFlags: uint32 = KB_GLYPH_FLAG_DNOM | KB_GLYPH_FLAG_FRAC;
+	const rightToLeftFraction =
+		config.shaper == KB_SHAPER_ARABIC || config.shaper == KB_SHAPER_HEBREW;
+	const beforeFractionSlashGlyphFlags = rightToLeftFraction ? denominatorFlags : numeratorFlags;
+	const afterFractionSlashGlyphFlags = rightToLeftFraction ? numeratorFlags : denominatorFlags;
 
 	const shouldFlip = s.runDirection == KB_DIRECTION_RTL;
 
@@ -498,7 +497,7 @@ export function kbNormalizeHangul(s: KbScratch, config: KbShapeConfig): void {
 		let l: int64 = 0;
 		let v: int64 = 0;
 		let t: int64 = 0;
-		let lvtGlyphs: KbGlyph[] = [];
+		const lvtGlyphs: KbGlyph[] = [];
 
 		const lInfo = hangulSyllableInfo(storage.glyphs[glyph].codepoint);
 		if (lInfo.syllableType >= KB_HANGUL_SYLLABLE_TYPE_LV) {
@@ -613,8 +612,8 @@ export function kbNormalizeHangul(s: KbScratch, config: KbShapeConfig): void {
 			storage.glyphs[storage.glyphs[glyph].prev].next = glyph;
 			storage.glyphs[storage.glyphs[lastConsumed].next].prev = lastConsumed;
 
-			for (let lvtIndex = 0; lvtIndex < lvtGlyphs.length; lvtIndex++) {
-				kbInsertGlyphBefore(storage, next, lvtGlyphs[lvtIndex]);
+			for (const lvtGlyph of lvtGlyphs) {
+				kbInsertGlyphBefore(storage, next, lvtGlyph);
 			}
 		}
 
