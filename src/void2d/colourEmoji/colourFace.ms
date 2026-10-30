@@ -29,6 +29,8 @@ struct Table {
 	found: boolean;
 }
 
+const NO_TABLE: Table = { offset: 0, length: 0, found: false };
+
 class Strike {
 	kind: int32 = KIND_CBDT;
 	arrayAt: int64 = 0;
@@ -75,19 +77,19 @@ export class ColourSfnt {
 
 export class ColourFace {
 	length: int64;
-	cmap: Table = { offset: 0, length: 0, found: false };
-	head: Table = { offset: 0, length: 0, found: false };
-	hhea: Table = { offset: 0, length: 0, found: false };
-	hmtx: Table = { offset: 0, length: 0, found: false };
-	maxp: Table = { offset: 0, length: 0, found: false };
-	glyf: Table = { offset: 0, length: 0, found: false };
-	loca: Table = { offset: 0, length: 0, found: false };
-	cff: Table = { offset: 0, length: 0, found: false };
-	cblc: Table = { offset: 0, length: 0, found: false };
-	cbdt: Table = { offset: 0, length: 0, found: false };
-	sbix: Table = { offset: 0, length: 0, found: false };
-	colr: Table = { offset: 0, length: 0, found: false };
-	cpal: Table = { offset: 0, length: 0, found: false };
+	cmap: Table = NO_TABLE;
+	head: Table = NO_TABLE;
+	hhea: Table = NO_TABLE;
+	hmtx: Table = NO_TABLE;
+	maxp: Table = NO_TABLE;
+	glyf: Table = NO_TABLE;
+	loca: Table = NO_TABLE;
+	cff: Table = NO_TABLE;
+	cblc: Table = NO_TABLE;
+	cbdt: Table = NO_TABLE;
+	sbix: Table = NO_TABLE;
+	colr: Table = NO_TABLE;
+	cpal: Table = NO_TABLE;
 	numGlyphs: int32 = 0;
 	index: int64 = 0;
 	indexFormat: int32 = 0;
@@ -196,7 +198,6 @@ function reportedBefore(face: ColourFace, glyph: int32): boolean {
 }
 
 function findTable(face: ColourFace, bytes: uint8[], directory: int64, tables: int32, tag: string): Table {
-	const none: Table = { offset: 0, length: 0, found: false };
 	for (let i: int32 = 0; i < tables; i++) {
 		const at = (directory + 16 * (i as int64)) as int32;
 		let same = true;
@@ -210,7 +211,7 @@ function findTable(face: ColourFace, bytes: uint8[], directory: int64, tables: i
 		if (offset > face.length || length > face.length - offset) { continue; }
 		return { offset: offset, length: length, found: true };
 	}
-	return none;
+	return NO_TABLE;
 }
 
 function openCblc(face: ColourFace, bytes: uint8[]): int32 {
