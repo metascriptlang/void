@@ -50,96 +50,39 @@ export const KB_FOURCC_TTCF: int64 = 0x66637474;
 export const KB_FOURCC_OTTO: int64 = 0x4F54544F;
 export const KB_FOURCC_V1: int64 = 0x00000100;
 
-export const KB_SIZE_SCRIPT_LIST: int64 = 2;
-export const KB_SIZE_SCRIPT_RECORD: int64 = 6;
-export const KB_SIZE_OT_SCRIPT: int64 = 4;
-export const KB_SIZE_LANGSYS_RECORD: int64 = 6;
-export const KB_SIZE_LANGSYS: int64 = 6;
-export const KB_SIZE_FEATURE_LIST: int64 = 2;
-export const KB_SIZE_FEATURE_RECORD: int64 = 6;
 export const KB_SIZE_FEATURE: int64 = 4;
-export const KB_SIZE_LOOKUP_LIST: int64 = 2;
 export const KB_SIZE_LOOKUP: int64 = 6;
 export const KB_SIZE_COVERAGE: int64 = 4;
-export const KB_SIZE_RANGE_RECORD: int64 = 6;
-export const KB_SIZE_CLASS_DEFINITION_1: int64 = 6;
 export const KB_SIZE_CLASS_DEFINITION_2: int64 = 4;
-export const KB_SIZE_CLASS_RANGE_RECORD: int64 = 6;
-export const KB_SIZE_SEQUENCE_LOOKUP_RECORD: int64 = 4;
-export const KB_SIZE_SEQUENCE_RULE: int64 = 4;
-export const KB_SIZE_SEQUENCE_RULE_SET: int64 = 2;
 export const KB_SIZE_SEQUENCE_CONTEXT_1: int64 = 6;
 export const KB_SIZE_SEQUENCE_CONTEXT_2: int64 = 8;
-export const KB_SIZE_SEQUENCE_CONTEXT_3: int64 = 6;
-export const KB_SIZE_CLASS_SEQUENCE_RULE_SET: int64 = 2;
-export const KB_SIZE_CLASS_SEQUENCE_RULE: int64 = 4;
 export const KB_SIZE_CHAINED_SEQUENCE_CONTEXT_1: int64 = 6;
-export const KB_SIZE_CHAINED_SEQUENCE_RULE_SET: int64 = 2;
-export const KB_SIZE_CHAINED_SEQUENCE_RULE: int64 = 2;
 export const KB_SIZE_CHAINED_SEQUENCE_CONTEXT_2: int64 = 12;
-export const KB_SIZE_CHAINED_SEQUENCE_CONTEXT_3: int64 = 4;
-export const KB_SIZE_DEVICE: int64 = 6;
-export const KB_SIZE_FEATURE_VARIATIONS: int64 = 8;
-export const KB_SIZE_FEATURE_VARIATION_RECORD: int64 = 8;
-export const KB_SIZE_CONDITION_SET: int64 = 2;
-export const KB_SIZE_FEATURE_TABLE_SUBSTITUTION: int64 = 6;
-export const KB_SIZE_FEATURE_TABLE_SUBSTITUTION_RECORD: int64 = 6;
-export const KB_SIZE_SINGLE_SUBSTITUTION: int64 = 6;
-export const KB_SIZE_MULTIPLE_SUBSTITUTION: int64 = 6;
-export const KB_SIZE_SEQUENCE: int64 = 2;
-export const KB_SIZE_ALTERNATE_SUBSTITUTION: int64 = 6;
-export const KB_SIZE_ALTERNATE_SET: int64 = 2;
-export const KB_SIZE_LIGATURE_SUBSTITUTION: int64 = 6;
-export const KB_SIZE_LIGATURE_SET: int64 = 2;
 export const KB_SIZE_LIGATURE: int64 = 4;
-export const KB_SIZE_EXTENSION: int64 = 8;
-export const KB_SIZE_REVERSE_CHAIN_SUBSTITUTION: int64 = 6;
-export const KB_SIZE_MARK_GLYPH_SETS: int64 = 4;
-export const KB_SIZE_ANCHOR: int64 = 10;
-export const KB_SIZE_MARK_RECORD: int64 = 4;
-export const KB_SIZE_MARK_ARRAY: int64 = 2;
-export const KB_SIZE_SINGLE_ADJUSTMENT_1: int64 = 6;
-export const KB_SIZE_SINGLE_ADJUSTMENT_2: int64 = 8;
 export const KB_SIZE_PAIR_VALUE_RECORD: int64 = 2;
-export const KB_SIZE_PAIR_SET: int64 = 2;
 export const KB_SIZE_PAIR_ADJUSTMENT_1: int64 = 10;
 export const KB_SIZE_PAIR_ADJUSTMENT_2: int64 = 16;
-export const KB_SIZE_ENTRY_EXIT: int64 = 4;
-export const KB_SIZE_CURSIVE_ATTACHMENT: int64 = 6;
-export const KB_SIZE_BASE_ARRAY: int64 = 2;
-export const KB_SIZE_MARK_TO_BASE_ATTACHMENT: int64 = 12;
 export const KB_SIZE_LIGATURE_ATTACH: int64 = 2;
-export const KB_SIZE_LIGATURE_ARRAY: int64 = 2;
-export const KB_SIZE_MARK_TO_LIGATURE_ATTACHMENT: int64 = 12;
 export const KB_SIZE_CMAP: int64 = 4;
 export const KB_SIZE_ENCODING_RECORD: int64 = 8;
 export const KB_SIZE_CMAP_0: int64 = 262;
 export const KB_SIZE_CMAP_2: int64 = 518;
-export const KB_SIZE_SUB_HEADER: int64 = 8;
-export const KB_SIZE_CMAP_4: int64 = 14;
-export const KB_SIZE_CMAP_6: int64 = 10;
 export const KB_SIZE_CMAP_12_13: int64 = 16;
 export const KB_SIZE_CMAP_14: int64 = 10;
-export const KB_SIZE_SEQUENTIAL_MAP_GROUP: int64 = 12;
 export const KB_SIZE_GDEF: int64 = 18;
 export const KB_SIZE_HEAD: int64 = 54;
 export const KB_SIZE_HEA: int64 = 36;
 export const KB_SIZE_NAME: int64 = 6;
-export const KB_SIZE_NAME_RECORD: int64 = 12;
 export const KB_SIZE_FVAR: int64 = 16;
 export const KB_SIZE_VARIATION_AXIS_RECORD: int64 = 20;
 export const KB_SIZE_INSTANCE_RECORD: int64 = 4;
-export const KB_SIZE_FIXED16_16: int64 = 4;
 export const KB_SIZE_AVAR: int64 = 8;
-export const KB_SIZE_SEGMENT_MAPS: int64 = 2;
-export const KB_SIZE_AXIS_VALUE_MAP: int64 = 4;
 export const KB_SIZE_HVAR_VVAR_COMMON: int64 = 20;
 export const KB_SIZE_VVAR: int64 = 24;
 export const KB_SIZE_MVAR: int64 = 12;
 export const KB_SIZE_MVAR_VALUE_RECORD: int64 = 8;
 export const KB_SIZE_DELTA_SET_INDEX_MAP: int64 = 2;
 export const KB_SIZE_VARIATION_REGION_LIST: int64 = 4;
-export const KB_SIZE_REGION_AXIS_COORDINATES: int64 = 6;
 export const KB_SIZE_ITEM_VARIATION_DATA: int64 = 6;
 
 export const KB_LOOKUP_FLAG_USE_MARK_FILTERING_SET: int32 = 1 << 4;
@@ -178,7 +121,7 @@ export function kbU32(this m: Readonly<Span<uint8>>, at: int64): int64 {
 		((m[at + 3] as int64) << 24);
 }
 
-export function kbSetU8(this m: Span<uint8>, at: int64, value: int32): void {
+function kbSetU8(this m: Span<uint8>, at: int64, value: int32): void {
 	if (at < 0 || at >= (m.length as int64)) { throw kbBoundsFail("u8 write", at); }
 	m[at] = (value & 0xFF) as uint8;
 }
@@ -195,10 +138,6 @@ export function kbSetU32(this m: Span<uint8>, at: int64, value: int64): void {
 	m[at + 1] = ((value >> 8) & 0xFF) as uint8;
 	m[at + 2] = ((value >> 16) & 0xFF) as uint8;
 	m[at + 3] = ((value >> 24) & 0xFF) as uint8;
-}
-
-export function kbFileU8(this f: Readonly<Span<uint8>>, at: int64): int32 {
-	return f.kbU8(at);
 }
 
 export function kbFileU16(this f: Readonly<Span<uint8>>, at: int64): int32 {
