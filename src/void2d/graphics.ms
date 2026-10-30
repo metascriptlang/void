@@ -302,7 +302,7 @@ function edgeHalfWidths(
 		for (let i: int32 = 0; i < total; i++) { out.push(uniform); }
 		return out;
 	}
-	const cap: float32 = rule == EdgeLimit.Convex ? 2.0 * uniform : -1.0;
+	const cap: float32 | null = rule == EdgeLimit.Convex ? 2.0 * uniform : null;
 	for (let i: int32 = 0; i < total; i++) {
 		let deepest: float32 = 0.0;
 		for (let v: int32 = 0; v < total; v++) {
@@ -311,7 +311,7 @@ function edgeHalfWidths(
 			if (inward > deepest) { deepest = inward; }
 		}
 		const half: float32 = deepest * 0.5;
-		out.push(cap >= 0.0 && cap < half ? cap : half);
+		out.push(cap != null && cap < half ? cap : half);
 	}
 	return out;
 }
