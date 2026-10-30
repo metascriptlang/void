@@ -45,7 +45,7 @@ int32_t dx12FormatSupport(uint64_t device, int32_t format, uint32_t *support1, u
 int32_t dx12CopyBufferRegion(uint64_t list, uint64_t target, uint64_t targetOffset, uint64_t source, uint64_t sourceOffset, uint64_t bytes);
 int32_t dx12CopyBufferTexture(uint64_t list, int32_t toTexture, uint64_t texture, uint32_t subresource, uint32_t x, uint32_t y, uint32_t z, uint64_t buffer, uint64_t offset, int32_t format, uint32_t footprintWidth, uint32_t footprintHeight, uint32_t rowPitch, uint32_t bufferX, uint32_t bufferY, uint32_t width, uint32_t height);
 int32_t dx12CopyTexture(uint64_t list, uint64_t target, uint32_t targetSubresource, uint32_t targetX, uint32_t targetY, uint32_t targetZ, uint64_t source, uint32_t sourceSubresource, uint32_t sourceX, uint32_t sourceY, uint32_t sourceZ, uint32_t width, uint32_t height, uint32_t depth);
-int32_t dx12BarrierTransition(uint64_t resource, uint32_t before, uint32_t after);
+int32_t dx12BarrierTransition(uint64_t resource, uint32_t subresource, uint32_t before, uint32_t after);
 int32_t dx12BarrierFlush(uint64_t list, int32_t uav);
 
 int32_t dx12Release(uint64_t object);

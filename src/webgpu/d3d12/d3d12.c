@@ -414,13 +414,13 @@ static int32_t barrierSlot(D3D12_RESOURCE_BARRIER **barrier) {
 	return DX12_OK;
 }
 
-int32_t dx12BarrierTransition(uint64_t resource, uint32_t before, uint32_t after) {
+int32_t dx12BarrierTransition(uint64_t resource, uint32_t subresource, uint32_t before, uint32_t after) {
 	D3D12_RESOURCE_BARRIER *barrier = NULL;
 	int32_t status = barrierSlot(&barrier);
 	if (status != DX12_OK) return status;
 	barrier->Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	barrier->Transition.pResource = RESOURCE(resource);
-	barrier->Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+	barrier->Transition.Subresource = subresource;
 	barrier->Transition.StateBefore = (D3D12_RESOURCE_STATES)before;
 	barrier->Transition.StateAfter = (D3D12_RESOURCE_STATES)after;
 	return DX12_OK;
