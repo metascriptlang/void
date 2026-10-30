@@ -596,12 +596,24 @@ const SPLIT_FS_HLSL =
 
 function moduleOf(text: string): ShaderModule {
 	const m = irFromText(text);
-	return m.ok ? m.value : new ShaderModule();
+	if (!m.ok) { throw "internal: segment text does not parse: " + m.error; }
+	return m.value;
+}
+
+function programBase(vertex: string, fragment: string): ShaderModule {
+	const m = programModule(vertex, fragment, []);
+	if (!m.ok) { throw "internal: base program does not build: " + m.error; }
+	return m.value;
+}
+
+function linkedOn(base: ShaderModule, effects: ShaderModule[]): ShaderModule {
+	const m = link(base, effects);
+	if (!m.ok) { throw "internal: link refused where it should succeed: " + m.error; }
+	return m.value;
 }
 
 function baseOf(): ShaderModule {
-	const m = programModule(glslIr(baseVs), glslLinkedIr(baseFs, baseVs), []);
-	return m.ok ? m.value : new ShaderModule();
+	return programBase(glslIr(baseVs), glslLinkedIr(baseFs, baseVs));
 }
 
 const UV_SCROLL = glslSegmentIr(uvScroll);
@@ -609,18 +621,18 @@ const COLOUR_ADD = glslSegmentIr(colourAdd);
 const KILL_ALPHA = glslSegmentIr(killAlpha);
 
 function linked(effects: string[]): string {
-	const m = link(baseOf(), effects.map((t) => moduleOf(t)));
-	return m.ok ? irText(m.value) : m.error;
+	return irText(linkedModule(effects));
 }
 
 function refusal(base: ShaderModule, effects: ShaderModule[]): string {
 	const m = link(base, effects);
-	return m.ok ? "" : m.error;
+	if (m.ok) { throw "internal: link succeeded where a refusal was expected"; }
+	return m.error;
 }
 
 function printed(m: ShaderModule, target: ShaderTarget, path: string, entry: int32): string {
 	const text = stageSource(m, entry, target);
-	if (!text.ok) { return text.error; }
+	if (!text.ok) { throw "internal: stage " + path + " does not print: " + text.error; }
 	const _out = mkdir("out");
 	const _folder = mkdir("out/linkCheck");
 	const _written = writeFile("out/linkCheck/" + path, text.value);
@@ -641,8 +653,7 @@ function siteChain(m: ShaderModule, phase: string): string {
 }
 
 function linkedModule(effects: string[]): ShaderModule {
-	const m = link(baseOf(), effects.map((t) => moduleOf(t)));
-	return m.ok ? m.value : new ShaderModule();
+	return linkedOn(baseOf(), effects.map((t) => moduleOf(t)));
 }
 
 function sameColour(a: Vec4f, b: Vec4f): boolean {
@@ -700,8 +711,8 @@ function reflected(m: ShaderModule): string {
 	let out: string[] = [];
 	for (const target of TARGETS) {
 		const s = programSource(m, target);
-		if (!s.ok) { return s.error; }
-		if (s.value.refusal != "") { return s.value.refusal; }
+		if (!s.ok) { throw "internal: program does not print: " + s.error; }
+		if (s.value.refusal != "") { throw "internal: program is refused: " + s.value.refusal; }
 		out.push(s.value.reflection.bindings.map((b) => String(b.group) + "/" +
 			String(b.binding) + " " + b.kind + " " + String(b.nativeSlot) +
 			(b.nativeName == null ? "" : " " + b.nativeName)).join(","));
@@ -744,10 +755,8 @@ test "a resource named as the base's with another type is refused" {
 const ADD_DETAIL = glslSegmentIr(addDetail);
 
 function splitLinked(effects: string[]): ShaderModule {
-	const base = programModule(glslIr(splitVs), glslLinkedIr(splitFs, splitVs), []);
-	if (!base.ok) { return new ShaderModule(); }
-	const m = link(base.value, effects.map((t) => moduleOf(t)));
-	return m.ok ? m.value : new ShaderModule();
+	const base = programBase(glslIr(splitVs), glslLinkedIr(splitFs, splitVs));
+	return linkedOn(base, effects.map((t) => moduleOf(t)));
 }
 
 function iosOf(m: ShaderModule): string {
@@ -840,11 +849,12 @@ function nudge(phase: VPhase): VPhase {
 
 const NUDGE = glslSegmentIr(nudge);
 
+function hookedBase(): ShaderModule {
+	return programBase(glslIr(hookedVs), glslLinkedIr(baseFs, hookedVs));
+}
+
 function hookedLinked(effects: string[]): ShaderModule {
-	const base = programModule(glslIr(hookedVs), glslLinkedIr(baseFs, hookedVs), []);
-	if (!base.ok) { return new ShaderModule(); }
-	const m = link(base.value, effects.map((t) => moduleOf(t)));
-	return m.ok ? m.value : new ShaderModule();
+	return linkedOn(hookedBase(), effects.map((t) => moduleOf(t)));
 }
 
 test "a vertex effect chains at the vertex entry's hook site" {
@@ -915,8 +925,7 @@ test "a carried field no fragment segment reads gets no varying" {
 }
 
 test "a fragment segment reading a carrier no vertex segment writes is refused" {
-	const base = programModule(glslIr(hookedVs), glslLinkedIr(baseFs, hookedVs), []);
-	assert base.ok && refusal(base.value, [moduleOf(LIFT_COLOUR)]) ==
+	assert refusal(hookedBase(), [moduleOf(LIFT_COLOUR)]) ==
 		"link: effect 'liftColour' reads varying 'lift' of carrier 'Carried', which no vertex " +
 		"segment writes";
 }
@@ -974,13 +983,11 @@ const LAYER_DETAIL = glslSegmentIr(layerDetail);
 const LAYER_EXTRA = glslSegmentIr(layerExtra);
 
 function layerBase(): ShaderModule {
-	const m = programModule(glslIr(layerVs), glslLinkedIr(layerFs, layerVs), []);
-	return m.ok ? m.value : new ShaderModule();
+	return programBase(glslIr(layerVs), glslLinkedIr(layerFs, layerVs));
 }
 
 function layerLinked(effect: string): ShaderModule {
-	const m = link(layerBase(), [moduleOf(effect)]);
-	return m.ok ? m.value : new ShaderModule();
+	return linkedOn(layerBase(), [moduleOf(effect)]);
 }
 
 test "two programs on one base each keep the varyings their own fragment reads" {
@@ -1082,10 +1089,20 @@ const FADE_VS = glslIr(fadeVs);
 const FADE_FS = glslLinkedIr(fadeFs, fadeVs);
 const DISTANCE_FADE = glslSegmentIr(distanceFade);
 
+function keyedProgram(
+	vertex: string,
+	fragment: string,
+	on: string[],
+	segments: string[],
+): ShaderModule {
+	const m = linkedProgram(vertex, fragment, on, segments);
+	if (!m.ok) { throw "internal: keyed program does not link: " + m.error; }
+	return m.value;
+}
+
 function fadeProgram(on: string[]): ShaderModule {
 	const segments = on.includes("F") ? [DISTANCE_FADE] : [];
-	const m = linkedProgram(FADE_VS, FADE_FS, on, segments);
-	return m.ok ? m.value : new ShaderModule();
+	return keyedProgram(FADE_VS, FADE_FS, on, segments);
 }
 
 test "a key links only the effects listed for its features, after it is specialized" {
@@ -1094,8 +1111,7 @@ test "a key links only the effects listed for its features, after it is speciali
 	assert iosOf(keyed) == "vs in position,vs out clip,vs out uv,vs out world," +
 		"fs in position,fs in uv,fs in world,fs out fragColor";
 	const plain = fadeProgram([]);
-	const unlinked = programModule(FADE_VS, FADE_FS, []);
-	assert unlinked.ok && irText(plain) == irText(unlinked.value);
+	assert irText(plain) == irText(programBase(FADE_VS, FADE_FS));
 	assert !plain.functions.some((f) => f.name == "distanceFade");
 	assert iosOf(plain) ==
 		"vs in position,vs out clip,vs out uv,fs in position,fs in uv,fs out fragColor";
@@ -1132,9 +1148,8 @@ const SLOT_FS = glslLinkedIr(slotFs, baseVs);
 const GAIN = glslSegmentIr(gain);
 
 function slotsOf(on: string[], segments: string[]): string {
-	const m = linkedProgram(SLOT_VS, SLOT_FS, on, segments);
-	if (!m.ok) { return m.error; }
-	return m.value.resources.map((r) => r.name + "@" + String(r.binding)).join(",");
+	const m = keyedProgram(SLOT_VS, SLOT_FS, on, segments);
+	return m.resources.map((r) => r.name + "@" + String(r.binding)).join(",");
 }
 
 test "an effect's block keeps the base's binding where the key leaves the base's read out" {
@@ -1164,9 +1179,8 @@ const ADDED = "color = (color + tintParams.tint);";
 const SCALED = "color = (color * tintParams.tint);";
 
 function keyedFragment(fragment: string, on: string[]): string {
-	const m = linkedProgram(SLOT_VS, fragment, on, [KEYED_TINT]);
-	if (!m.ok) { return m.error; }
-	return printed(m.value, ShaderTarget.Wgsl, "keyedTintFs.wgsl", 1);
+	const m = keyedProgram(SLOT_VS, fragment, on, [KEYED_TINT]);
+	return printed(m, ShaderTarget.Wgsl, "keyedTintFs.wgsl", 1);
 }
 
 test "a keyed segment links the branch its row's features pick" {
@@ -1239,8 +1253,7 @@ const WIDE_ADD = glslSegmentIr(wideAdd);
 const BOTH_ADD = glslSegmentIr(bothAdd);
 
 function altProgram(on: string[]): ShaderModule {
-	const m = linkedProgram(SLOT_VS, ALT_FS, on, [ALT_ADD]);
-	return m.ok ? m.value : new ShaderModule();
+	return keyedProgram(SLOT_VS, ALT_FS, on, [ALT_ADD]);
 }
 
 test "a segment's alternative blocks merge onto the base's blocks at one binding" {
@@ -1278,13 +1291,11 @@ function tintedVs(input: Corner, b: TintedBindings): Placed {
 }
 
 test "a vertex block and an effect's fragment block may share a member name" {
-	const base = programModule(glslIr(tintedVs), glslLinkedIr(baseFs, tintedVs), []);
-	assert base.ok;
-	const m = link(base.value, [moduleOf(COLOUR_ADD)]);
-	assert m.ok;
-	assert m.value.resources.map((r) => r.name + "@" + String(r.binding)).join(",") ==
+	const base = programBase(glslIr(tintedVs), glslLinkedIr(baseFs, tintedVs));
+	const m = linkedOn(base, [moduleOf(COLOUR_ADD)]);
+	assert m.resources.map((r) => r.name + "@" + String(r.binding)).join(",") ==
 		"vertexTint@2,frame@0,tintParams@3";
-	assert reflected(m.value).split("\n").length == TARGETS.length;
+	assert reflected(m).split("\n").length == TARGETS.length;
 }
 
 function brighten(c: Vec4f): Vec4f {
@@ -1312,10 +1323,8 @@ const BRIGHT_ADD = glslSegmentIr(brightAdd);
 const DIM_ADD = glslSegmentIr(dimAdd);
 
 function helperLinked(effect: ShaderModule): ShaderModule {
-	const base = programModule(glslIr(baseVs), glslLinkedIr(brightFs, baseVs), []);
-	if (!base.ok) { return new ShaderModule(); }
-	const m = link(base.value, [effect]);
-	return m.ok ? m.value : new ShaderModule();
+	const base = programBase(glslIr(baseVs), glslLinkedIr(brightFs, baseVs));
+	return linkedOn(base, [effect]);
 }
 
 test "an effect's helper identical to the base's links to the base's one copy" {
