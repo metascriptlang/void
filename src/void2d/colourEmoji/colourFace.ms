@@ -304,18 +304,22 @@ function chooseIndex(face: ColourFace, bytes: uint8[]): int32 {
 	if (chosen == 0) { return fail("cmap has no Unicode subtable"); }
 	const format = rd16(c, chosen);
 	if (c.bad) { return fail("the cmap subtable lies outside the table"); }
-	if (format == 4) {
-		const segments: int64 = rd16(c, chosen + 6) / 2;
-		if (c.bad || chosen + 16 + 8 * segments > c.n) {
-			return fail("cmap format 4 segments run past the table");
-		}
-	} else if (format == 12) {
-		const groups = rd32(c, chosen + 12);
-		if (c.bad || chosen + 16 + 12 * groups > c.n) {
-			return fail("cmap format 12 groups run past the table");
-		}
-	} else {
-		return fail(`cmap format ${format} is not read for a colour font (4 and 12 are)`);
+	match (format) {
+		4 => {
+			const segments: int64 = rd16(c, chosen + 6) / 2;
+			if (c.bad || chosen + 16 + 8 * segments > c.n) {
+				return fail("cmap format 4 segments run past the table");
+			}
+		},
+		12 => {
+			const groups = rd32(c, chosen + 12);
+			if (c.bad || chosen + 16 + 12 * groups > c.n) {
+				return fail("cmap format 12 groups run past the table");
+			}
+		},
+		_ => {
+			return fail(`cmap format ${format} is not read for a colour font (4 and 12 are)`);
+		},
 	}
 	face.index = chosen;
 	face.indexFormat = format;
@@ -639,33 +643,37 @@ function findCbdt(face: ColourFace, bytes: uint8[], strike: Strike, glyph: int32
 		let bigHeight: int32 = 0;
 		let bigBx: int32 = 0;
 		let bigBy: int32 = 0;
-		if (indexFormat == 1 || indexFormat == 3) {
-			const width: int64 = indexFormat == 1 ? 4 : 2;
-			const cells: int64 = (last as int64) - (first as int64) + 2;
-			if (sub + 8 > index.n || cells > (index.n - sub - 8) / width) {
-				return fail(`CBLC index format ${indexFormat} offsets run past the table`);
-			}
-			const at = sub + 8 + width * slot;
-			const a = indexFormat == 1 ? rd32(index, at) : (rd16(index, at) as int64);
-			const b = indexFormat == 1 ? rd32(index, at + width) : (rd16(index, at + width) as int64);
-			if (b < a) { return fail(`CBLC glyph ${glyph} has a negative image length`); }
-			start = imageBase + a;
-			size = b - a;
-		} else if (indexFormat == 2) {
-			const each = rd32(index, sub + 8);
-			bigHeight = rd8(index, sub + 12);
-			bigWidth = rd8(index, sub + 13);
-			bigBx = rdI8(index, sub + 14);
-			bigBy = rdI8(index, sub + 15);
-			hasMetrics = true;
-			if (index.bad) { return fail("CBLC index format 2 is cut off"); }
-			start = imageBase + each * slot;
-			size = each;
-		} else {
-			if (!refusedBefore(face, indexFormat & 31)) {
-				console.error(`void2d: CBLC index format ${indexFormat} is not read (1, 2 and 3 are)`);
-			}
-			return COLOUR_REFUSED;
+		match (indexFormat) {
+			1 | 3 => {
+				const width: int64 = indexFormat == 1 ? 4 : 2;
+				const cells: int64 = (last as int64) - (first as int64) + 2;
+				if (sub + 8 > index.n || cells > (index.n - sub - 8) / width) {
+					return fail(`CBLC index format ${indexFormat} offsets run past the table`);
+				}
+				const at = sub + 8 + width * slot;
+				const a = indexFormat == 1 ? rd32(index, at) : (rd16(index, at) as int64);
+				const b = indexFormat == 1 ? rd32(index, at + width) : (rd16(index, at + width) as int64);
+				if (b < a) { return fail(`CBLC glyph ${glyph} has a negative image length`); }
+				start = imageBase + a;
+				size = b - a;
+			},
+			2 => {
+				const each = rd32(index, sub + 8);
+				bigHeight = rd8(index, sub + 12);
+				bigWidth = rd8(index, sub + 13);
+				bigBx = rdI8(index, sub + 14);
+				bigBy = rdI8(index, sub + 15);
+				hasMetrics = true;
+				if (index.bad) { return fail("CBLC index format 2 is cut off"); }
+				start = imageBase + each * slot;
+				size = each;
+			},
+			_ => {
+				if (!refusedBefore(face, indexFormat & 31)) {
+					console.error(`void2d: CBLC index format ${indexFormat} is not read (1, 2 and 3 are)`);
+				}
+				return COLOUR_REFUSED;
+			},
 		}
 		if (size == 0) { return COLOUR_ABSENT; }
 		if (imageFormat != 17 && imageFormat != 18 && imageFormat != 19) {
@@ -679,7 +687,11 @@ function findCbdt(face: ColourFace, bytes: uint8[], strike: Strike, glyph: int32
 		if (start > data.n || size > data.n - start) {
 			return fail(`CBDT glyph ${glyph} image lies outside the table`);
 		}
-		const header: int64 = imageFormat == 17 ? 5 : imageFormat == 18 ? 8 : 0;
+		const header: int64 = match (imageFormat) {
+			17 => 5,
+			18 => 8,
+			_ => 0,
+		};
 		let width = bigWidth;
 		let height = bigHeight;
 		let bx = bigBx;
