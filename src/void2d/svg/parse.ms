@@ -1594,23 +1594,29 @@ function parsePoly(p: Parser, attrs: Attr[], closeFlag: boolean): void {
 	addShape(p);
 }
 
+function skipViewBoxSeparators(x: Str, from: int32): int32 {
+	let s = from;
+	while (x.ch(s) != 0 && (isSpace(x.ch(s)) || x.ch(s) == 37 || x.ch(s) == 44)) { s += 1; }
+	return s;
+}
+
 // Reads up to four numbers from a viewBox, stopping at the C's early return when it runs dry.
 function parseViewBox(p: Parser, x: Str): void {
 	let s: int32 = 0;
 	let end = numberEnd(x, s);
 	p.viewMinx = atofFloat(numberItem(x, s, end));
 	s = end;
-	while (x.ch(s) != 0 && (isSpace(x.ch(s)) || x.ch(s) == 37 || x.ch(s) == 44)) { s += 1; }
+	s = skipViewBoxSeparators(x, s);
 	if (x.ch(s) == 0) { return; }
 	end = numberEnd(x, s);
 	p.viewMiny = atofFloat(numberItem(x, s, end));
 	s = end;
-	while (x.ch(s) != 0 && (isSpace(x.ch(s)) || x.ch(s) == 37 || x.ch(s) == 44)) { s += 1; }
+	s = skipViewBoxSeparators(x, s);
 	if (x.ch(s) == 0) { return; }
 	end = numberEnd(x, s);
 	p.viewWidth = atofFloat(numberItem(x, s, end));
 	s = end;
-	while (x.ch(s) != 0 && (isSpace(x.ch(s)) || x.ch(s) == 37 || x.ch(s) == 44)) { s += 1; }
+	s = skipViewBoxSeparators(x, s);
 	if (x.ch(s) == 0) { return; }
 	end = numberEnd(x, s);
 	p.viewHeight = atofFloat(numberItem(x, s, end));
@@ -1662,7 +1668,7 @@ function parseSvg(p: Parser, attrs: Attr[]): void {
 function viewBoxRunsDry(x: Str): boolean {
 	let s: int32 = numberEnd(x, 0);
 	for (let k: int32 = 0; k < 3; k++) {
-		while (x.ch(s) != 0 && (isSpace(x.ch(s)) || x.ch(s) == 37 || x.ch(s) == 44)) { s += 1; }
+		s = skipViewBoxSeparators(x, s);
 		if (x.ch(s) == 0) { return true; }
 		s = numberEnd(x, s);
 	}
