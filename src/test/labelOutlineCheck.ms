@@ -327,6 +327,17 @@ when (voidSdfText) {
 	}
 }
 
+test "a released label slot is reused and the new entry is live" {
+	const first = allocateLabelText();
+	assert labelTexts[first].live;
+	releaseLabelText(first);
+	assert !labelTexts[first].live;
+	const second = allocateLabelText();
+	assert second == first;
+	assert labelTexts[second].live;
+	releaseLabelText(second);
+}
+
 test "a blink clock advanced by a large total stays within one cycle and still toggles" {
 	const index = allocateLabelText();
 	setLabelBlinkTime(index, 0.5);

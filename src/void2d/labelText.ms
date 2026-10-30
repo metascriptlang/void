@@ -207,6 +207,7 @@ export interface LabelText {
 	placedLines: Vec<PlacedLine>;
 	emitKey: LineEmitKey;
 	emitRunColours: Vec<Color>;
+	live: boolean;
 }
 
 export const NO_CURSOR: int32 = -1;
@@ -328,6 +329,7 @@ export function allocateLabelText(): int32 {
 		placedLines: new Array(0),
 		emitKey: NO_LINE_EMIT_KEY,
 		emitRunColours: new Array(0),
+		live: true,
 	};
 	if ((freeLabelTexts.length as int32) > 0) {
 		const index: int32 = freeLabelTexts.pop();
@@ -353,6 +355,11 @@ export function releaseLabelGlyphs(index: int32): void {
 }
 
 export function releaseLabelText(index: int32): void {
+	if (!labelTexts[index].live) {
+		console.log(`void2d label text: slot ${index} released twice`);
+		unreachable;
+	}
+	labelTexts[index].live = false;
 	releasePlacement(labelTexts[index]);
 	labelTexts[index].layout = emptyLayout();
 	labelTexts[index].lineShapes = emptyLineShapes(labelTexts[index].style);
