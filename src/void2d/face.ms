@@ -323,9 +323,11 @@ export function isColourOnly(face: int32): boolean {
 
 export function colourTileBox(face: int32, glyph: int32, sizePx: float32): ColourTileBox {
 	void2dGlyphColourBox(face, glyph, sizePx, boxSlots);
-	const status: ColourGlyph = boxSlots[4] == 1
-		? ColourGlyph.Present
-		: boxSlots[4] == 0 ? ColourGlyph.Absent : ColourGlyph.Refused;
+	const status: ColourGlyph = match (boxSlots[4]) {
+		0 => ColourGlyph.Absent,
+		1 => ColourGlyph.Present,
+		_ => ColourGlyph.Refused,
+	};
 	return {
 		left: boxSlots[0],
 		top: boxSlots[1],
