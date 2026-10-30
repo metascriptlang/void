@@ -131,39 +131,54 @@ export function computeCrossingsX(
 	const n = verts.length as int32;
 	for (let i: int32 = 0; i < n; i++) {
 		const v = verts[i];
-		if (v.kind == VERTEX_LINE) {
-			winding += lineCrossing(x, y, verts[i - 1], v);
-		}
-		if (v.kind == VERTEX_CURVE) {
-			const p = verts[i - 1];
-			const x0 = p.x as int32;
-			const y0 = p.y as int32;
-			const x1 = v.cx as int32;
-			const y1 = v.cy as int32;
-			const x2 = v.x as int32;
-			const y2 = v.y as int32;
-			const ax = minI(x0, minI(x1, x2));
-			const ay = minI(y0, minI(y1, y2));
-			const by = maxI(y0, maxI(y1, y2));
-			if (y > (ay as float32) && y < (by as float32) && x > (ax as float32)) {
-				const q0x = x0 as float32;
-				const q0y = y0 as float32;
-				const q1x = x1 as float32;
-				const q1y = y1 as float32;
-				const q2x = x2 as float32;
-				const q2y = y2 as float32;
-				if ((q0x == q1x && q0y == q1y) || (q1x == q2x && q1y == q2y)) {
-					winding += lineCrossing(x, y, p, v);
-				} else {
-					const numHits = rayIntersectBezier(x, y, 1, 0, q0x, q0y, q1x, q1y, q2x, q2y, hits);
-					if (numHits >= 1) {
-						if (hits[0] < 0) { winding += hits[1] < 0 ? -1 : 1; }
-					}
-					if (numHits >= 2) {
-						if (hits[2] < 0) { winding += hits[3] < 0 ? -1 : 1; }
+		match (v.kind) {
+			VERTEX_LINE => {
+				winding += lineCrossing(x, y, verts[i - 1], v);
+			},
+			VERTEX_CURVE => {
+				const p = verts[i - 1];
+				const x0 = p.x as int32;
+				const y0 = p.y as int32;
+				const x1 = v.cx as int32;
+				const y1 = v.cy as int32;
+				const x2 = v.x as int32;
+				const y2 = v.y as int32;
+				const ax = minI(x0, minI(x1, x2));
+				const ay = minI(y0, minI(y1, y2));
+				const by = maxI(y0, maxI(y1, y2));
+				if (y > (ay as float32) && y < (by as float32) && x > (ax as float32)) {
+					const q0x = x0 as float32;
+					const q0y = y0 as float32;
+					const q1x = x1 as float32;
+					const q1y = y1 as float32;
+					const q2x = x2 as float32;
+					const q2y = y2 as float32;
+					if ((q0x == q1x && q0y == q1y) || (q1x == q2x && q1y == q2y)) {
+						winding += lineCrossing(x, y, p, v);
+					} else {
+						const numHits = rayIntersectBezier(
+							x,
+							y,
+							1,
+							0,
+							q0x,
+							q0y,
+							q1x,
+							q1y,
+							q2x,
+							q2y,
+							hits,
+						);
+						if (numHits >= 1) {
+							if (hits[0] < 0) { winding += hits[1] < 0 ? -1 : 1; }
+						}
+						if (numHits >= 2) {
+							if (hits[2] < 0) { winding += hits[3] < 0 ? -1 : 1; }
+						}
 					}
 				}
-			}
+			},
+			_ => {},
 		}
 	}
 	return winding;
@@ -241,26 +256,32 @@ export function getGlyphSDF(
 	let j: int32 = numVerts - 1;
 	for (let i: int32 = 0; i < numVerts; i++) {
 		const v = verts[i];
-		if (v.kind == VERTEX_LINE) {
-			const x0: float32 = (v.x as float32) * scaleX;
-			const y0: float32 = (v.y as float32) * scaleY;
-			const x1: float32 = (verts[j].x as float32) * scaleX;
-			const y1: float32 = (verts[j].y as float32) * scaleY;
-			const dist: float32 = Math.sqrt(((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)) as float64) as float32;
-			precompute[i] = (dist < (1.0 / 1024)) ? 0.0 : 1.0 / dist;
-		} else if (v.kind == VERTEX_CURVE) {
-			const x2: float32 = (verts[j].x as float32) * scaleX;
-			const y2: float32 = (verts[j].y as float32) * scaleY;
-			const x1: float32 = (v.cx as float32) * scaleX;
-			const y1: float32 = (v.cy as float32) * scaleY;
-			const x0: float32 = (v.x as float32) * scaleX;
-			const y0: float32 = (v.y as float32) * scaleY;
-			const bx: float32 = x0 - 2 * x1 + x2;
-			const by: float32 = y0 - 2 * y1 + y2;
-			const len2: float32 = bx * bx + by * by;
-			precompute[i] = len2 >= eps2 ? 1.0 / len2 : 0.0;
-		} else {
-			precompute[i] = 0.0;
+		match (v.kind) {
+			VERTEX_LINE => {
+				const x0: float32 = (v.x as float32) * scaleX;
+				const y0: float32 = (v.y as float32) * scaleY;
+				const x1: float32 = (verts[j].x as float32) * scaleX;
+				const y1: float32 = (verts[j].y as float32) * scaleY;
+				const dist: float32 = Math.sqrt(
+					((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)) as float64,
+				) as float32;
+				precompute[i] = (dist < (1.0 / 1024)) ? 0.0 : 1.0 / dist;
+			},
+			VERTEX_CURVE => {
+				const x2: float32 = (verts[j].x as float32) * scaleX;
+				const y2: float32 = (verts[j].y as float32) * scaleY;
+				const x1: float32 = (v.cx as float32) * scaleX;
+				const y1: float32 = (v.cy as float32) * scaleY;
+				const x0: float32 = (v.x as float32) * scaleX;
+				const y0: float32 = (v.y as float32) * scaleY;
+				const bx: float32 = x0 - 2 * x1 + x2;
+				const by: float32 = y0 - 2 * y1 + y2;
+				const len2: float32 = bx * bx + by * by;
+				precompute[i] = len2 >= eps2 ? 1.0 / len2 : 0.0;
+			},
+			_ => {
+				precompute[i] = 0.0;
+			},
 		}
 		j = i;
 	}

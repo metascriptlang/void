@@ -86,38 +86,43 @@ function pairAdvance(
 	const size2 = bitCount(valueFormat2 & 0xFF) * 2;
 	const xAdvanceAt = bitCount(valueFormat1 & 0x3) * 2;
 	const hasXAdvance = (valueFormat1 & 0x4) != 0;
-	if (format == 1) {
-		const coverage = getCoverageIndex(data, table + data.u16At(table + 2), left);
-		if (coverage >= data.u16At(table + 8)) { return 0; }
-		const pairSet: int64 = table + data.u16At(table + 10 + 2 * (coverage as int64));
-		const count = data.u16At(pairSet);
-		const stride = 2 + size1 + size2;
-		let lo: int32 = 0;
-		let hi: int32 = count - 1;
-		while (lo <= hi) {
-			const mid = (lo + hi) >> 1;
-			const record: int64 = pairSet + 2 + (stride as int64) * (mid as int64);
-			const second = data.u16At(record);
-			if (right < second) {
-				hi = mid - 1;
-			} else if (right > second) {
-				lo = mid + 1;
-			} else {
-				applied = true;
-				return hasXAdvance ? data.i16At(record + 2 + xAdvanceAt) : 0;
+	match (format) {
+		1 => {
+			const coverage = getCoverageIndex(data, table + data.u16At(table + 2), left);
+			if (coverage >= data.u16At(table + 8)) { return 0; }
+			const pairSet: int64 = table + data.u16At(table + 10 + 2 * (coverage as int64));
+			const count = data.u16At(pairSet);
+			const stride = 2 + size1 + size2;
+			let lo: int32 = 0;
+			let hi: int32 = count - 1;
+			while (lo <= hi) {
+				const mid = (lo + hi) >> 1;
+				const record: int64 = pairSet + 2 + (stride as int64) * (mid as int64);
+				const second = data.u16At(record);
+				if (right < second) {
+					hi = mid - 1;
+				} else if (right > second) {
+					lo = mid + 1;
+				} else {
+					applied = true;
+					return hasXAdvance ? data.i16At(record + 2 + xAdvanceAt) : 0;
+				}
 			}
-		}
-		return 0;
-	}
-	if (format == 2) {
-		const class1 = getGlyphClass(data, table + data.u16At(table + 8), left);
-		const class2 = getGlyphClass(data, table + data.u16At(table + 10), right);
-		const class1Count = data.u16At(table + 12);
-		const class2Count = data.u16At(table + 14);
-		if (class1 < 0 || class2 < 0 || class1 >= class1Count || class2 >= class2Count) { return 0; }
-		applied = true;
-		const record: int64 = table + 16 + ((class1 * class2Count + class2) as int64) * ((size1 + size2) as int64);
-		return hasXAdvance ? data.i16At(record + xAdvanceAt) : 0;
+		},
+		2 => {
+			const class1 = getGlyphClass(data, table + data.u16At(table + 8), left);
+			const class2 = getGlyphClass(data, table + data.u16At(table + 10), right);
+			const class1Count = data.u16At(table + 12);
+			const class2Count = data.u16At(table + 14);
+			if (class1 < 0 || class2 < 0 || class1 >= class1Count || class2 >= class2Count) {
+				return 0;
+			}
+			applied = true;
+			const record: int64 = table + 16 +
+				((class1 * class2Count + class2) as int64) * ((size1 + size2) as int64);
+			return hasXAdvance ? data.i16At(record + xAdvanceAt) : 0;
+		},
+		_ => {},
 	}
 	return 0;
 }

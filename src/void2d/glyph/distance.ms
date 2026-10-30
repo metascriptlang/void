@@ -156,26 +156,30 @@ export function distanceFill(
 	let j: int32 = numVerts - 1;
 	for (let i: int32 = 0; i < numVerts; i++) {
 		const v = verts[i];
-		if (v.kind == VERTEX_LINE) {
-			const x0: float32 = (v.x as float32) * scaleX;
-			const y0: float32 = (v.y as float32) * scaleY;
-			const x1: float32 = (verts[j].x as float32) * scaleX;
-			const y1: float32 = (verts[j].y as float32) * scaleY;
-			const dist: float32 = sqrtF((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
-			precompute[i] = (dist < eps) ? 0.0 : 1.0 / dist;
-		} else if (v.kind == VERTEX_CURVE) {
-			const x2: float32 = (verts[j].x as float32) * scaleX;
-			const y2: float32 = (verts[j].y as float32) * scaleY;
-			const x1: float32 = (v.cx as float32) * scaleX;
-			const y1: float32 = (v.cy as float32) * scaleY;
-			const x0: float32 = (v.x as float32) * scaleX;
-			const y0: float32 = (v.y as float32) * scaleY;
-			const bx: float32 = x0 - 2 * x1 + x2;
-			const by: float32 = y0 - 2 * y1 + y2;
-			const len2: float32 = bx * bx + by * by;
-			precompute[i] = len2 >= eps2 ? 1.0 / len2 : 0.0;
-		} else {
-			precompute[i] = 0.0;
+		match (v.kind) {
+			VERTEX_LINE => {
+				const x0: float32 = (v.x as float32) * scaleX;
+				const y0: float32 = (v.y as float32) * scaleY;
+				const x1: float32 = (verts[j].x as float32) * scaleX;
+				const y1: float32 = (verts[j].y as float32) * scaleY;
+				const dist: float32 = sqrtF((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+				precompute[i] = (dist < eps) ? 0.0 : 1.0 / dist;
+			},
+			VERTEX_CURVE => {
+				const x2: float32 = (verts[j].x as float32) * scaleX;
+				const y2: float32 = (verts[j].y as float32) * scaleY;
+				const x1: float32 = (v.cx as float32) * scaleX;
+				const y1: float32 = (v.cy as float32) * scaleY;
+				const x0: float32 = (v.x as float32) * scaleX;
+				const y0: float32 = (v.y as float32) * scaleY;
+				const bx: float32 = x0 - 2 * x1 + x2;
+				const by: float32 = y0 - 2 * y1 + y2;
+				const len2: float32 = bx * bx + by * by;
+				precompute[i] = len2 >= eps2 ? 1.0 / len2 : 0.0;
+			},
+			_ => {
+				precompute[i] = 0.0;
+			},
 		}
 		j = i;
 	}
@@ -215,9 +219,21 @@ export function flattenCubics(input: Vec<Vertex>, flatness: float32): Flattened 
 	const count = input.length as int32;
 	for (let i: int32 = 0; i < count; i++) {
 		const v = input[i];
-		const used = v.kind == VERTEX_CUBIC ? 6 : v.kind == VERTEX_CURVE ? 4 : 2;
+		const used: int32 = match (v.kind) {
+			VERTEX_CUBIC => 6,
+			VERTEX_CURVE => 4,
+			_ => 2,
+		};
 		for (let k: int32 = 0; k < used; k++) {
-			const value: float32 = (k == 0 ? v.x : k == 1 ? v.y : k == 2 ? v.cx : k == 3 ? v.cy : k == 4 ? v.cx1 : v.cy1) as float32;
+			const coordinate: int16 = match (k) {
+				0 => v.x,
+				1 => v.y,
+				2 => v.cx,
+				3 => v.cy,
+				4 => v.cx1,
+				_ => v.cy1,
+			};
+			const value = coordinate as float32;
 			if (absF(value) > reach) { reach = absF(value); }
 		}
 	}
