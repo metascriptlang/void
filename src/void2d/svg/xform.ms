@@ -109,16 +109,6 @@ export function xformPointY(x: float32, y: float32, t: float32[]): float32 {
 	return py;
 }
 
-export function xformVecX(x: float32, y: float32, t: float32[]): float32 {
-	const vx: float32 = x * t[0] + y * t[2];
-	return vx;
-}
-
-export function xformVecY(x: float32, y: float32, t: float32[]): float32 {
-	const vy: float32 = x * t[1] + y * t[3];
-	return vy;
-}
-
 export function minf(a: float32, b: float32): float32 {
 	return a < b ? a : b;
 }
