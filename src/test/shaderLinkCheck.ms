@@ -656,6 +656,10 @@ function linkedModule(effects: string[]): ShaderModule {
 	return linkedOn(baseOf(), effects.map((t) => moduleOf(t)));
 }
 
+function bindingList(m: ShaderModule): string {
+	return m.resources.map((r) => r.name + "@" + String(r.binding)).join(",");
+}
+
 function sameColour(a: Vec4f, b: Vec4f): boolean {
 	return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
 }
@@ -680,8 +684,7 @@ test "the effects of a phase chain at its hook site in the author's order" {
 	const m = linkedModule([UV_SCROLL, COLOUR_ADD, KILL_ALPHA]);
 	assert siteChain(m, "UvStage") == "uvScroll(phase)";
 	assert siteChain(m, "Shaded") == "killAlpha(colourAdd(phase))";
-	assert m.resources.map((r) => r.name + "@" + String(r.binding)).join(",") ==
-		"frame@0,tintParams@1";
+	assert bindingList(m) == "frame@0,tintParams@1";
 }
 
 test "the linked chain folds on the CPU to the chained base" {
@@ -694,7 +697,7 @@ test "the linked chain folds on the CPU to the chained base" {
 
 test "the linked fragment prints for WGSL and HLSL with its effect bindings numbered" {
 	const m = linkedModule([UV_SCROLL, COLOUR_ADD, KILL_ALPHA]);
-	assert irErrors(m).length == 0;
+	assert irErrors(m).length == 0, "the linked module has IR errors";
 	assert printed(m, ShaderTarget.Wgsl, "chainFs.wgsl", 1) == CHAIN_WGSL;
 	assert printed(m, ShaderTarget.Hlsl5, "chainFs.ps.hlsl", 1) == CHAIN_HLSL;
 }
@@ -706,6 +709,10 @@ const TARGETS = [
 	ShaderTarget.Glsl300es,
 	ShaderTarget.Msl,
 ];
+
+function reflectsEveryTarget(m: ShaderModule): boolean {
+	return reflected(m).split("\n").length == TARGETS.length;
+}
 
 function reflected(m: ShaderModule): string {
 	let out: string[] = [];
@@ -816,7 +823,7 @@ test "two texture effects get distinct views and samplers" {
 	assert m.resources.map((r) => r.name + "@" + String(r.group) + "/" + String(r.binding))
 		.join(",") ==
 		"frame@0/0,tintParams@0/1,detailA@1/0,detailASampler@2/0,detailB@1/1,detailBSampler@2/1";
-	assert irErrors(m).length == 0;
+	assert irErrors(m).length == 0, "the linked module has IR errors";
 	assert reflected(m) == DETAIL_REFLECTED;
 	assert printed(m, ShaderTarget.Wgsl, "detailFs.wgsl", 1).includes(" main(");
 	assert printed(m, ShaderTarget.Hlsl5, "detailFs.ps.hlsl", 1).includes(" main(");
@@ -860,7 +867,7 @@ function hookedLinked(effects: string[]): ShaderModule {
 test "a vertex effect chains at the vertex entry's hook site" {
 	const m = hookedLinked([NUDGE]);
 	assert siteChain(m, "VPhase") == "nudge(phase)";
-	assert irErrors(m).length == 0;
+	assert irErrors(m).length == 0, "the linked module has IR errors";
 	const vs = printed(m, ShaderTarget.Wgsl, "hookedVs.wgsl", 0);
 	assert vs.includes("fn nudge(") && vs.includes("return nudge(phase);");
 	assert !printed(m, ShaderTarget.Wgsl, "hookedFs.wgsl", 1).includes("nudge");
@@ -869,7 +876,7 @@ test "a vertex effect chains at the vertex entry's hook site" {
 test "a vertex effect and a fragment effect each land in their own stage" {
 	const m = hookedLinked([NUDGE, COLOUR_ADD]);
 	assert siteChain(m, "VPhase") == "nudge(phase)" && siteChain(m, "Shaded") == "colourAdd(phase)";
-	assert irErrors(m).length == 0;
+	assert irErrors(m).length == 0, "the linked module has IR errors";
 	const vs = printed(m, ShaderTarget.Wgsl, "hookedTintVs.wgsl", 0);
 	const fs = printed(m, ShaderTarget.Wgsl, "hookedTintFs.wgsl", 1);
 	assert vs.includes("return nudge(phase);") && !vs.includes("colourAdd");
@@ -907,13 +914,13 @@ test "a carrier a vertex segment writes reaches the fragment segment as varyings
 	const m = hookedLinked([CARRY_LIFT, LIFT_COLOUR]);
 	assert iosOf(hookedLinked([])) == HOOKED_IOS;
 	assert iosOf(m) == HOOKED_IOS + ",vs out lift,fs in lift,vs out fade,fs in fade";
-	assert irErrors(m).length == 0;
+	assert irErrors(m).length == 0, "the linked module has IR errors";
 	const vs = printed(m, ShaderTarget.Wgsl, "carriedVs.wgsl", 0);
 	const fs = printed(m, ShaderTarget.Wgsl, "carriedFs.wgsl", 1);
 	assert vs.includes("var carried : Carried = carryLift(phase);") &&
 		vs.includes("lift = carried.lift;") && vs.includes("fade = carried.fade;");
 	assert fs.includes("return liftColour(phase, Carried(lift, fade));");
-	assert reflected(m).split("\n").length == TARGETS.length;
+	assert reflectsEveryTarget(m), "the program reflects for fewer targets than TARGETS";
 }
 
 test "a carried field no fragment segment reads gets no varying" {
@@ -1012,7 +1019,7 @@ test "a dropped varying whose stored value has an effect is refused" {
 	let base = layerBase();
 	const c = base.ios.findIndex((io) => io.stage == ShaderStage.Vertex && io.name == "c");
 	const vs = base.functions.find((f) => f.name == "layerVs");
-	assert c >= 0 && vs != null;
+	assert c >= 0 && vs != null, "the layer base has no vertex varying c or no layerVs";
 	if (vs == null) { return; }
 	let stores = 0;
 	for (const s of vs.body) {
@@ -1023,7 +1030,7 @@ test "a dropped varying whose stored value has an effect is refused" {
 		s.expr = add;
 		stores++;
 	}
-	assert stores == 1;
+	assert stores == 1, "layerVs must store varying c exactly once";
 	assert refusal(base, [moduleOf(LAYER_DETAIL)]) ==
 		"link: varying 'c' is read by no fragment, and the value its vertex stores has an effect";
 }
@@ -1148,8 +1155,7 @@ const SLOT_FS = glslLinkedIr(slotFs, baseVs);
 const GAIN = glslSegmentIr(gain);
 
 function slotsOf(on: string[], segments: string[]): string {
-	const m = keyedProgram(SLOT_VS, SLOT_FS, on, segments);
-	return m.resources.map((r) => r.name + "@" + String(r.binding)).join(",");
+	return bindingList(keyedProgram(SLOT_VS, SLOT_FS, on, segments));
 }
 
 test "an effect's block keeps the base's binding where the key leaves the base's read out" {
@@ -1259,17 +1265,16 @@ function altProgram(on: string[]): ShaderModule {
 test "a segment's alternative blocks merge onto the base's blocks at one binding" {
 	const wide = altProgram(["W"]);
 	const plain = altProgram([]);
-	assert wide.resources.map((r) => r.name + "@" + String(r.binding)).join(",") ==
-		"frame@0,wide@1";
-	assert plain.resources.map((r) => r.name + "@" + String(r.binding)).join(",") ==
-		"frame@0,tintParams@1";
-	assert irErrors(wide).length == 0 && irErrors(plain).length == 0;
+	assert bindingList(wide) == "frame@0,wide@1";
+	assert bindingList(plain) == "frame@0,tintParams@1";
+	assert irErrors(wide).length == 0, "the wide variant has IR errors";
+	assert irErrors(plain).length == 0, "the plain variant has IR errors";
 	const wideWgsl = printed(wide, ShaderTarget.Wgsl, "altWideFs.wgsl", 1);
 	const plainWgsl = printed(plain, ShaderTarget.Wgsl, "altPlainFs.wgsl", 1);
 	assert wideWgsl.includes("(shaded.color + wide.tint)") && !wideWgsl.includes("tintParams");
 	assert plainWgsl.includes("(shaded.color + tintParams.tint)") && !plainWgsl.includes("wide");
-	assert reflected(wide).split("\n").length == TARGETS.length;
-	assert reflected(plain).split("\n").length == TARGETS.length;
+	assert reflectsEveryTarget(wide), "the wide variant reflects for fewer targets";
+	assert reflectsEveryTarget(plain), "the plain variant reflects for fewer targets";
 }
 
 test "two effect blocks at numbered bindings that share a member name are refused" {
@@ -1293,9 +1298,8 @@ function tintedVs(input: Corner, b: TintedBindings): Placed {
 test "a vertex block and an effect's fragment block may share a member name" {
 	const base = programBase(glslIr(tintedVs), glslLinkedIr(baseFs, tintedVs));
 	const m = linkedOn(base, [moduleOf(COLOUR_ADD)]);
-	assert m.resources.map((r) => r.name + "@" + String(r.binding)).join(",") ==
-		"vertexTint@2,frame@0,tintParams@3";
-	assert reflected(m).split("\n").length == TARGETS.length;
+	assert bindingList(m) == "vertexTint@2,frame@0,tintParams@3";
+	assert reflectsEveryTarget(m), "the program reflects for fewer targets than TARGETS";
 }
 
 function brighten(c: Vec4f): Vec4f {
@@ -1331,7 +1335,7 @@ test "an effect's helper identical to the base's links to the base's one copy" {
 	const m = helperLinked(moduleOf(BRIGHT_ADD));
 	assert m.functions.map((f) => f.name).join(",") == "baseVs,brighten,brightFs,Shaded,brightAdd";
 	assert siteChain(m, "Shaded") == "brightAdd(phase)";
-	assert irErrors(m).length == 0;
+	assert irErrors(m).length == 0, "the linked module has IR errors";
 	assert printed(m, ShaderTarget.Wgsl, "brightFs.wgsl", 1)
 		.includes("return Shaded(brighten(shaded.color));");
 }
@@ -1342,7 +1346,7 @@ test "an effect's helper named as the base's with another body is renamed" {
 	const m = helperLinked(effect);
 	assert m.functions.map((f) => f.name).join(",") ==
 		"baseVs,brighten,brightFs,Shaded,brighten_1,dimAdd";
-	assert irErrors(m).length == 0;
+	assert irErrors(m).length == 0, "the linked module has IR errors";
 	assert printed(m, ShaderTarget.Wgsl, "dimFs.wgsl", 1)
 		.includes("return Shaded(brighten_1(shaded.color));");
 }
