@@ -11,8 +11,8 @@ export const COLOUR_REFUSED: int32 = -1;
 
 export const COLOUR_MAX_LAYERS: int32 = 256;
 export const COLOUR_MAX_TEXELS: int64 = 4096 * 4096;
-export const COLOUR_MAX_SIZE_PX: float32 = 16384.0;
 
+const MAX_SIZE_PX: float32 = 16384.0;
 const MAX_TABLES: int32 = 256;
 const MAX_STRIKES: int32 = 64;
 const MAX_SIDE: int32 = 4096;
@@ -848,8 +848,8 @@ export function colourGlyphBox(face: ColourFace, bytes: uint8[], glyph: int32, s
 	lastReason = "";
 	let status = COLOUR_ABSENT;
 	let bitmap = new Bitmap();
-	if (!(sizePx <= COLOUR_MAX_SIZE_PX)) {
-		fail(`a size of ${gText(sizePx as float64)} px is over the ${gText(COLOUR_MAX_SIZE_PX as float64)} px limit`);
+	if (!(sizePx <= MAX_SIZE_PX)) {
+		fail(`a size of ${gText(sizePx as float64)} px is over the ${gText(MAX_SIZE_PX as float64)} px limit`);
 		status = COLOUR_REFUSED;
 	} else {
 		const choice = chooseStrike(face, bytes, glyph, sizePx);
