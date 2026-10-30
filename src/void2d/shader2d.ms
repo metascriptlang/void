@@ -1142,4 +1142,3 @@ function uiColor(input: UiInput, b: UiBindings, uvDx: Vec2f, uvDy: Vec2f): Vec4f
 	}
 	return withEffect(b, vec4f(rgb, alpha), vec3f(1.0));
 }
-
