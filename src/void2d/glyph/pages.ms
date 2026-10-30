@@ -249,6 +249,29 @@ export function void2dGlyphPageTexel(page: int32, x: int32, y: int32): int32 {
 }
 
 when (voidColourEmoji) {
+	export function rgbaTexelAt(p: GlyphPage, x: int32, y: int32): uint32 {
+		const t: int32 = (y * p.size + x) * 4;
+		return (p.texels[t] as uint32) | ((p.texels[t + 1] as uint32) << 8) |
+			((p.texels[t + 2] as uint32) << 16) | ((p.texels[t + 3] as uint32) << 24);
+	}
+
+	export function writeRgbaTile(
+		p: GlyphPage, x: int32, y: int32, w: int32, h: int32,
+		texels: Readonly<Span<uint32>>, stride: int32,
+	): void {
+		for (let row: int32 = 0; row < h; row++) {
+			for (let col: int32 = 0; col < w; col++) {
+				const value: uint32 = texels[row * stride + col];
+				const t: int32 = ((y + row) * p.size + x + col) * 4;
+				p.texels[t] = (value & 0xFF) as uint8;
+				p.texels[t + 1] = ((value >> 8) & 0xFF) as uint8;
+				p.texels[t + 2] = ((value >> 16) & 0xFF) as uint8;
+				p.texels[t + 3] = ((value >> 24) & 0xFF) as uint8;
+			}
+		}
+		markDirtyBox(p, x, y, w, h);
+	}
+
 	export function void2dGlyphPageTexelRgba(page: int32, x: int32, y: int32): uint32 {
 		if (!validPage(page)) { return 0; }
 		const p = state.pages[page];
@@ -257,9 +280,7 @@ when (voidColourEmoji) {
 			return 0;
 		}
 		if (x < 0 || y < 0 || x >= p.size || y >= p.size) { return 0; }
-		const t: int32 = (y * p.size + x) * 4;
-		return (p.texels[t] as uint32) | ((p.texels[t + 1] as uint32) << 8) |
-			((p.texels[t + 2] as uint32) << 16) | ((p.texels[t + 3] as uint32) << 24);
+		return rgbaTexelAt(p, x, y);
 	}
 
 	export function void2dGlyphPageBlitRgba(
@@ -279,17 +300,7 @@ when (voidColourEmoji) {
 			console.error(`void2d: Rgba tile ${w}x${h} at (${x},${y}) falls outside its ${p.size} page`);
 			return BLIT_OUTSIDE_PAGE;
 		}
-		for (let row: int32 = 0; row < h; row++) {
-			for (let col: int32 = 0; col < w; col++) {
-				const value: uint32 = texels[row * stride + col];
-				const t: int32 = ((y + row) * p.size + x + col) * 4;
-				p.texels[t] = (value & 0xFF) as uint8;
-				p.texels[t + 1] = ((value >> 8) & 0xFF) as uint8;
-				p.texels[t + 2] = ((value >> 16) & 0xFF) as uint8;
-				p.texels[t + 3] = ((value >> 24) & 0xFF) as uint8;
-			}
-		}
-		markDirtyBox(p, x, y, w, h);
+		writeRgbaTile(p, x, y, w, h, texels, stride);
 		return BLIT_OK;
 	}
 }
