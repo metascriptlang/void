@@ -884,6 +884,17 @@ function swapHeadAndTables(m: Span<uint8>, font: KbFont): boolean {
 	return invalid;
 }
 
+function swapDeltaSetIndexMapAt(
+	m: Span<uint8>,
+	c: KbSwapContext,
+	table: int64,
+	offsetAt: int64,
+): void {
+	if (m.kbU32(offsetAt) != 0) {
+		kbSwapDeltaSetIndexMap(m, c, table + m.kbU32(offsetAt));
+	}
+}
+
 function swapVariationTables(
 	m: Span<uint8>,
 	c: KbSwapContext,
@@ -968,22 +979,14 @@ function swapVariationTables(
 
 			kbSwapItemVariationStore(m, c, at + m.kbU32(at + 4));
 
-			if (m.kbU32(at + 8) != 0) {
-				kbSwapDeltaSetIndexMap(m, c, at + m.kbU32(at + 8));
-			}
-			if (m.kbU32(at + 12) != 0) {
-				kbSwapDeltaSetIndexMap(m, c, at + m.kbU32(at + 12));
-			}
-			if (m.kbU32(at + 16) != 0) {
-				kbSwapDeltaSetIndexMap(m, c, at + m.kbU32(at + 16));
-			}
+			swapDeltaSetIndexMapAt(m, c, at, at + 8);
+			swapDeltaSetIndexMapAt(m, c, at, at + 12);
+			swapDeltaSetIndexMapAt(m, c, at, at + 16);
 
 			if (tableId == KB_BLOB_TABLE_ID_VVAR) {
 				m.kbSwapU32At(at + 20);
 
-				if (m.kbU32(at + 20) != 0) {
-					kbSwapDeltaSetIndexMap(m, c, at + m.kbU32(at + 20));
-				}
+				swapDeltaSetIndexMapAt(m, c, at, at + 20);
 			}
 		}
 	}
