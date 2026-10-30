@@ -1307,54 +1307,52 @@ function emitNode(
 	}
 }
 
-let poolTargets: Vec<RenderTarget> = [];
-let poolOwner: Vec<int32> = [];
-let poolSerial: Vec<int32> = [];
+struct PooledTarget {
+	target: RenderTarget;
+	owner: int32;
+	serial: int32;
+}
+
+let targetPool: Vec<PooledTarget> = [];
 
 export function acquireFrameTarget(w: int32, h: int32): RenderTarget { return acquireTarget(w, h); }
-export function renderTargetsAlive(): int32 { return poolTargets.length as int32; }
+export function renderTargetsAlive(): int32 { return targetPool.length as int32; }
 
 export function closeContextTargets(id: int32): void {
 	let i: int32 = 0;
-	while (i < (poolTargets.length as int32)) {
-		if (poolOwner[i] != id) {
+	while (i < (targetPool.length as int32)) {
+		if (targetPool[i].owner != id) {
 			i = i + 1;
 			continue;
 		}
-		poolTargets[i].close();
-		const last: int32 = (poolTargets.length as int32) - 1;
-		poolTargets[i] = poolTargets[last];
-		poolOwner[i] = poolOwner[last];
-		poolSerial[i] = poolSerial[last];
-		poolTargets.pop();
-		poolOwner.pop();
-		poolSerial.pop();
+		targetPool[i].target.close();
+		targetPool[i] = targetPool[(targetPool.length as int32) - 1];
+		targetPool.pop();
 	}
 }
 
 function adoptPoolContext(): void {
 	const generation: int32 = contextGeneration();
-	for (let i: int32 = 0; i < (poolTargets.length as int32); i++) {
-		if (poolTargets[i].generation == generation) { continue; }
-		poolTargets[i].resize(poolTargets[i].width, poolTargets[i].height);
+	for (let i: int32 = 0; i < (targetPool.length as int32); i++) {
+		const target: RenderTarget = targetPool[i].target;
+		if (target.generation == generation) { continue; }
+		target.resize(target.width, target.height);
 	}
 }
 
 function acquireTarget(w: int32, h: int32): RenderTarget {
 	adoptPoolContext();
 	const owner: DrawContext2D = currentContext();
-	for (let i: int32 = 0; i < (poolTargets.length as int32); i++) {
-		const free: boolean = contextSerial(poolOwner[i]) != poolSerial[i];
-		if (free && poolTargets[i].width == w && poolTargets[i].height == h) {
-			poolOwner[i] = owner.id;
-			poolSerial[i] = contextSerial(owner.id);
-			return poolTargets[i];
+	for (let i: int32 = 0; i < (targetPool.length as int32); i++) {
+		const free: boolean = contextSerial(targetPool[i].owner) != targetPool[i].serial;
+		if (free && targetPool[i].target.width == w && targetPool[i].target.height == h) {
+			targetPool[i].owner = owner.id;
+			targetPool[i].serial = contextSerial(owner.id);
+			return targetPool[i].target;
 		}
 	}
 	const target: RenderTarget = RenderTarget.allocate(w, h, PixelFormat.Rgba8, true);
-	poolTargets.push(target);
-	poolOwner.push(owner.id);
-	poolSerial.push(contextSerial(owner.id));
+	targetPool.push({ target: target, owner: owner.id, serial: contextSerial(owner.id) });
 	return target;
 }
 
