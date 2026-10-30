@@ -1,5 +1,7 @@
 export class KbFontBoundsError extends Error {
-	constructor(message: string) { super(message); }
+	constructor(message: string) {
+		super(message);
+	}
 }
 
 export const KB_LOAD_FONT_ERROR_NONE: int32 = 0;
@@ -101,12 +103,16 @@ export function kbBoundsFail(what: string, at: int64): KbFontBoundsError {
 }
 
 export function kbU8(this m: Readonly<Span<uint8>>, at: int64): int32 {
-	if (at < 0 || at >= (m.length as int64)) { throw kbBoundsFail("u8 read", at); }
+	if (at < 0 || at >= (m.length as int64)) {
+		throw kbBoundsFail("u8 read", at);
+	}
 	return m[at] as int32;
 }
 
 export function kbU16(this m: Readonly<Span<uint8>>, at: int64): int32 {
-	if (at < 0 || at + 2 > (m.length as int64)) { throw kbBoundsFail("u16 read", at); }
+	if (at < 0 || at + 2 > (m.length as int64)) {
+		throw kbBoundsFail("u16 read", at);
+	}
 	return (m[at] as int32) | ((m[at + 1] as int32) << 8);
 }
 
@@ -116,24 +122,36 @@ export function kbS16(this m: Readonly<Span<uint8>>, at: int64): int32 {
 }
 
 export function kbU32(this m: Readonly<Span<uint8>>, at: int64): int64 {
-	if (at < 0 || at + 4 > (m.length as int64)) { throw kbBoundsFail("u32 read", at); }
-	return (m[at] as int64) | ((m[at + 1] as int64) << 8) | ((m[at + 2] as int64) << 16) |
-		((m[at + 3] as int64) << 24);
+	if (at < 0 || at + 4 > (m.length as int64)) {
+		throw kbBoundsFail("u32 read", at);
+	}
+	return (
+		(m[at] as int64) |
+		((m[at + 1] as int64) << 8) |
+		((m[at + 2] as int64) << 16) |
+		((m[at + 3] as int64) << 24)
+	);
 }
 
 function kbSetU8(this m: Span<uint8>, at: int64, value: int32): void {
-	if (at < 0 || at >= (m.length as int64)) { throw kbBoundsFail("u8 write", at); }
+	if (at < 0 || at >= (m.length as int64)) {
+		throw kbBoundsFail("u8 write", at);
+	}
 	m[at] = (value & 0xFF) as uint8;
 }
 
 export function kbSetU16(this m: Span<uint8>, at: int64, value: int32): void {
-	if (at < 0 || at + 2 > (m.length as int64)) { throw kbBoundsFail("u16 write", at); }
+	if (at < 0 || at + 2 > (m.length as int64)) {
+		throw kbBoundsFail("u16 write", at);
+	}
 	m[at] = (value & 0xFF) as uint8;
 	m[at + 1] = ((value >> 8) & 0xFF) as uint8;
 }
 
 export function kbSetU32(this m: Span<uint8>, at: int64, value: int64): void {
-	if (at < 0 || at + 4 > (m.length as int64)) { throw kbBoundsFail("u32 write", at); }
+	if (at < 0 || at + 4 > (m.length as int64)) {
+		throw kbBoundsFail("u32 write", at);
+	}
 	m[at] = (value & 0xFF) as uint8;
 	m[at + 1] = ((value >> 8) & 0xFF) as uint8;
 	m[at + 2] = ((value >> 16) & 0xFF) as uint8;
@@ -153,8 +171,12 @@ export function kbSwap16(value: int32): int32 {
 }
 
 export function kbSwap32(value: int64): int64 {
-	return ((value & 0xFF) << 24) | ((value & 0xFF00) << 8) | ((value >> 8) & 0xFF00) |
-		((value >> 24) & 0xFF);
+	return (
+		((value & 0xFF) << 24) |
+		((value & 0xFF00) << 8) |
+		((value >> 8) & 0xFF00) |
+		((value >> 24) & 0xFF)
+	);
 }
 
 export function kbWrap32(value: int64): int64 {
@@ -162,7 +184,9 @@ export function kbWrap32(value: int64): int64 {
 }
 
 export function kbUn(value: int64): int64 {
-	if (value < 0) { throw kbBoundsFail("negative count read as a huge unsigned", value); }
+	if (value < 0) {
+		throw kbBoundsFail("negative count read as a huge unsigned", value);
+	}
 	return value;
 }
 
@@ -188,7 +212,11 @@ export function kbSwapU32At(this m: Span<uint8>, at: int64): void {
 	m.kbSetU32(at, kbSwap32(m.kbU32(at)));
 }
 
-export function kbSwapArray16Unchecked(this m: Span<uint8>, at: int64, count: int64): void {
+export function kbSwapArray16Unchecked(
+	this m: Span<uint8>,
+	at: int64,
+	count: int64,
+): void {
 	for (let i: int64 = 0; i < count; i++) {
 		const p = at + i * 2;
 		const low = m.kbU8(p);
@@ -198,7 +226,11 @@ export function kbSwapArray16Unchecked(this m: Span<uint8>, at: int64, count: in
 	}
 }
 
-export function kbSwapArray32Unchecked(this m: Span<uint8>, at: int64, count: int64): void {
+export function kbSwapArray32Unchecked(
+	this m: Span<uint8>,
+	at: int64,
+	count: int64,
+): void {
 	for (let i: int64 = 0; i < count; i++) {
 		const p = at + i * 4;
 		const b0 = m.kbU8(p);
@@ -212,27 +244,50 @@ export function kbSwapArray32Unchecked(this m: Span<uint8>, at: int64, count: in
 	}
 }
 
-export function kbSwapArray16(this m: Span<uint8>, at: int64, count: int64, end: int64): boolean {
-	if (at + count * 2 > end) { return false; }
+export function kbSwapArray16(
+	this m: Span<uint8>,
+	at: int64,
+	count: int64,
+	end: int64,
+): boolean {
+	if (at + count * 2 > end) {
+		return false;
+	}
 	m.kbSwapArray16Unchecked(at, count);
 	return true;
 }
 
-export function kbSwapArray32(this m: Span<uint8>, at: int64, count: int64, end: int64): boolean {
-	if (at + count * 4 > end) { return false; }
+export function kbSwapArray32(
+	this m: Span<uint8>,
+	at: int64,
+	count: int64,
+	end: int64,
+): boolean {
+	if (at + count * 4 > end) {
+		return false;
+	}
 	m.kbSwapArray32Unchecked(at, count);
 	return true;
 }
 
-export function kbBlobTableOffset(this m: Readonly<Span<uint8>>, tableId: int32): int64 {
+export function kbBlobTableOffset(
+	this m: Readonly<Span<uint8>>,
+	tableId: int32,
+): int64 {
 	return m.kbU32(KB_BLOB_HEADER_TABLES + (tableId as int64) * 8);
 }
 
-export function kbBlobTableLength(this m: Readonly<Span<uint8>>, tableId: int32): int64 {
+export function kbBlobTableLength(
+	this m: Readonly<Span<uint8>>,
+	tableId: int32,
+): int64 {
 	return m.kbU32(KB_BLOB_HEADER_TABLES + (tableId as int64) * 8 + 4);
 }
 
-export function kbBlobTableData(this m: Readonly<Span<uint8>>, tableId: int32): int64 {
+export function kbBlobTableData(
+	this m: Readonly<Span<uint8>>,
+	tableId: int32,
+): int64 {
 	return m.kbBlobTableLength(tableId) != 0 ? m.kbBlobTableOffset(tableId) : 0;
 }
 
@@ -249,4 +304,3 @@ export function kbGlyphLookupMatrixIndex(
 	const flat = rowIndex * glyphCount + glyphIndex;
 	return { word: flat / 32, bit: flat % 32 };
 }
-

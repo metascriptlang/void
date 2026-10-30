@@ -13,19 +13,31 @@ function relink(storage: KbGlyphStorage, a: int32): void {
 	storage.glyphs[storage.glyphs[a].prev].next = a;
 }
 
-export function kbDllistInsertBefore(storage: KbGlyphStorage, a: int32, b: int32): void {
+export function kbDllistInsertBefore(
+	storage: KbGlyphStorage,
+	a: int32,
+	b: int32,
+): void {
 	storage.glyphs[a].next = b;
 	storage.glyphs[a].prev = storage.glyphs[b].prev;
 	relink(storage, a);
 }
 
-export function kbDllistInsertAfter(storage: KbGlyphStorage, a: int32, b: int32): void {
+export function kbDllistInsertAfter(
+	storage: KbGlyphStorage,
+	a: int32,
+	b: int32,
+): void {
 	storage.glyphs[a].prev = b;
 	storage.glyphs[a].next = storage.glyphs[b].next;
 	relink(storage, a);
 }
 
-export function kbDllistSwap(storage: KbGlyphStorage, a: int32, b: int32): void {
+export function kbDllistSwap(
+	storage: KbGlyphStorage,
+	a: int32,
+	b: int32,
+): void {
 	const aPrev = storage.glyphs[a].prev;
 	const aNext = storage.glyphs[a].next;
 	const bPrev = storage.glyphs[b].prev;
@@ -72,10 +84,14 @@ export function kbDllistReverseSublist(
 
 // KBTS__DLLIST_SORT: an insertion sort over the glyph links, keyed by one u8 member. Equal keys
 // keep their order because the swap happens only on a strictly greater predecessor.
-function sortKey(storage: KbGlyphStorage, glyph: int32, bySyllabicPosition: boolean): int32 {
-	const key = bySyllabicPosition ?
-		storage.glyphs[glyph].syllabicPosition :
-		storage.glyphs[glyph].markOrdering;
+function sortKey(
+	storage: KbGlyphStorage,
+	glyph: int32,
+	bySyllabicPosition: boolean,
+): int32 {
+	const key = bySyllabicPosition
+		? storage.glyphs[glyph].syllabicPosition
+		: storage.glyphs[glyph].markOrdering;
 	return key as int32;
 }
 

@@ -231,7 +231,13 @@ function graphemeFlags(position: uint32): uint32 {
 }
 
 function emptyBreak(): KbBreak {
-	return { position: 0, flags: 0, direction: 0, paragraphDirection: 0, script: 0 };
+	return {
+		position: 0,
+		flags: 0,
+		direction: 0,
+		paragraphDirection: 0,
+		script: 0,
+	};
 }
 
 function doBreak(
@@ -243,7 +249,9 @@ function doBreak(
 	script: uint32,
 ): void {
 	const breakPosition: uint32 = state.currentPosition + (position as uint32);
-	if (flags == 0 || breakPosition > state.currentPosition) { return; }
+	if (flags == 0 || breakPosition > state.currentPosition) {
+		return;
+	}
 	let found: KbBreak = {
 		position: int32Of(breakPosition),
 		flags: flags,
@@ -268,7 +276,10 @@ function doBreak(
 		state.lastScriptBreakPosition = breakPosition;
 		state.lastScriptBreakScript = script as uint8;
 	}
-	if ((flags & KB_BREAK_FLAG_DIRECTION) != 0 && state.lastDirectionBreakDirection != 0) {
+	if (
+		(flags & KB_BREAK_FLAG_DIRECTION) != 0 &&
+		state.lastDirectionBreakDirection != 0
+	) {
 		const lastPosition = state.lastDirectionBreakPosition;
 		const lastDirection = state.lastDirectionBreakDirection;
 		let index = state.bracketCount as int32;
@@ -318,18 +329,30 @@ function doBreak(
 		);
 	}
 	state.breaks[state.breakCount as int32] = found;
-	if (!matched) { state.breakCount += 1; }
+	if (!matched) {
+		state.breakCount += 1;
+	}
 }
 
 function lineBreakFlags(effective: uint64): uint32 {
 	let flags: uint32 = 0;
-	if ((effective & LINE_BREAK_ALLOWED_MASK) != 0) { flags |= KB_BREAK_FLAG_LINE_SOFT; }
-	if ((effective & LINE_BREAK_REQUIRED_MASK) != 0) { flags |= KB_BREAK_FLAG_LINE_HARD; }
+	if ((effective & LINE_BREAK_ALLOWED_MASK) != 0) {
+		flags |= KB_BREAK_FLAG_LINE_SOFT;
+	}
+	if ((effective & LINE_BREAK_REQUIRED_MASK) != 0) {
+		flags |= KB_BREAK_FLAG_LINE_HARD;
+	}
 	return flags;
 }
 
-function doLineBreak(this ref state: KbBreakState, position: int32, effective: uint64): void {
-	if ((effective & LINE_BREAK_MASK) == 0) { return; }
+function doLineBreak(
+	this ref state: KbBreakState,
+	position: int32,
+	effective: uint64,
+): void {
+	if ((effective & LINE_BREAK_MASK) == 0) {
+		return;
+	}
 	state.doBreak(position, lineBreakFlags(effective), 0, 0, 0);
 }
 
@@ -345,8 +368,9 @@ function startParagraph(this ref state: KbBreakState): void {
 			flags = BREAK_STATE_FLAG_SAW_R_AFTER_L;
 			startOfTextClass = BIDI_R;
 		},
-		_ => {},
-	}
+		_ => {
+		},
+	};
 	state.paragraphDirection = (direction & 0xFF) as uint32;
 	state.bidirectionalClass1 = startOfTextClass;
 	state.flags = flags;
@@ -376,17 +400,30 @@ function flushDirection(
 		BIDI_NI => {
 			breakFlags = KB_BREAK_FLAG_DIRECTION;
 		},
-		_ => {},
-	}
-	if ((breakFlags & KB_BREAK_FLAG_DIRECTION) != 0 && direction != (lastDirection as uint32)) {
+		_ => {
+		},
+	};
+	if (
+		(breakFlags & KB_BREAK_FLAG_DIRECTION) != 0 &&
+		direction != (lastDirection as uint32)
+	) {
 		lastDirection = direction as uint8;
 		state.doBreak(positionOffset, KB_BREAK_FLAG_DIRECTION, direction, 0, 0);
 	}
-	if ((breakFlags & KB_BREAK_FLAG_PARAGRAPH_DIRECTION) != 0 && state.paragraphDirection == 0) {
+	if (
+		(breakFlags & KB_BREAK_FLAG_PARAGRAPH_DIRECTION) != 0 &&
+		state.paragraphDirection == 0
+	) {
 		const startOfParagraphOffset = int16Of(
 			state.paragraphStartPosition - state.currentPosition,
 		);
-		state.doBreak(startOfParagraphOffset, KB_BREAK_FLAG_PARAGRAPH_DIRECTION, 0, direction, 0);
+		state.doBreak(
+			startOfParagraphOffset,
+			KB_BREAK_FLAG_PARAGRAPH_DIRECTION,
+			0,
+			direction,
+			0,
+		);
 		state.paragraphDirection = (direction & 0xFF) as uint32;
 	}
 }
@@ -415,24 +452,29 @@ function lineBreakStage(
 					lineUnbreaksAsync |= kbLineRequired(3, 0);
 				}
 				match (lastLineBreakClass) {
-					KB_LINE_BREAK_CLASS_SOT | KB_LINE_BREAK_CLASS_BK | KB_LINE_BREAK_CLASS_CR |
-						KB_LINE_BREAK_CLASS_LF | KB_LINE_BREAK_CLASS_NL |
-						KB_LINE_BREAK_CLASS_SP | KB_LINE_BREAK_CLASS_ZW => {
+					KB_LINE_BREAK_CLASS_SOT | KB_LINE_BREAK_CLASS_BK | KB_LINE_BREAK_CLASS_CR | KB_LINE_BREAK_CLASS_LF | KB_LINE_BREAK_CLASS_NL | KB_LINE_BREAK_CLASS_SP | KB_LINE_BREAK_CLASS_ZW => {
 						lineBreakClass = KB_LINE_BREAK_CLASS_ALNEA;
 					},
-					_ => { absorb = true; },
-				}
+					_ => {
+						absorb = true;
+					},
+				};
 			},
 			KB_LINE_BREAK_CLASS_CJ => {
 				lineBreakClass =
-					state.japaneseLineBreakStyle == KB_JAPANESE_LINE_BREAK_STYLE_STRICT ?
-						KB_LINE_BREAK_CLASS_NSEA : KB_LINE_BREAK_CLASS_IDEA;
+					state.japaneseLineBreakStyle == KB_JAPANESE_LINE_BREAK_STYLE_STRICT
+						? KB_LINE_BREAK_CLASS_NSEA
+						: KB_LINE_BREAK_CLASS_IDEA;
 			},
-			_ => {},
-		}
+			_ => {
+			},
+		};
 	}
-	if (!absorb && lastLineBreakClass == lineBreakClass &&
-		lineBreakClass == KB_LINE_BREAK_CLASS_SP) {
+	if (
+		!absorb &&
+		lastLineBreakClass == lineBreakClass &&
+		lineBreakClass == KB_LINE_BREAK_CLASS_SP
+	) {
 		absorb = true;
 	}
 	if (absorb) {
@@ -447,20 +489,26 @@ function lineBreakStage(
 		return;
 	}
 	history = (history << 8) | (lineBreakClass as uint32);
-	if (pending.endOfText &&
-		(state.configFlags & KB_BREAK_CONFIG_FLAG_END_OF_TEXT_GENERATES_HARD_LINE_BREAK) != 0) {
+	if (
+		pending.endOfText &&
+		(state.configFlags &
+			KB_BREAK_CONFIG_FLAG_END_OF_TEXT_GENERATES_HARD_LINE_BREAK) !=
+			0
+	) {
 		lineBreaks |= kbLineRequired(5, 1);
-		if ((history & 0xFF00) == ((KB_LINE_BREAK_CLASS_QUPF as uint32) << 8)) {
+		if ((history & 0xFF00) == (KB_LINE_BREAK_CLASS_QUPF as uint32) << 8) {
 			lineUnbreaks |= kbLineRequired(3, 2);
 		}
 	}
 	lineBreaks |= kbLineAllowed(0, 0);
 	lineBreaks |= kbLineAllowed(0, 1);
 	match (lineBreakClass) {
-		KB_LINE_BREAK_CLASS_BK | KB_LINE_BREAK_CLASS_CR | KB_LINE_BREAK_CLASS_LF |
-			KB_LINE_BREAK_CLASS_NL => {
+		KB_LINE_BREAK_CLASS_BK | KB_LINE_BREAK_CLASS_CR | KB_LINE_BREAK_CLASS_LF | KB_LINE_BREAK_CLASS_NL => {
 			lineUnbreaks |= kbLineRequired(4, 1);
-			pending.flushFlags |= FLUSH_SCRIPT | FLUSH_DIRECTION_2 | FLUSH_DIRECTION_1 |
+			pending.flushFlags |=
+				FLUSH_SCRIPT |
+				FLUSH_DIRECTION_2 |
+				FLUSH_DIRECTION_1 |
 				FLUSH_DIRECTION_PARAGRAPH;
 			pending.scriptCount = 0;
 			pending.hardLineBreak = true;
@@ -473,17 +521,14 @@ function lineBreakStage(
 		KB_LINE_BREAK_CLASS_BB => {
 			lineUnbreaks |= kbLineRequired(0, 0);
 		},
-		KB_LINE_BREAK_CLASS_GLEA | KB_LINE_BREAK_CLASS_GLNEA | KB_LINE_BREAK_CLASS_OPEA |
-			KB_LINE_BREAK_CLASS_OPNEA => {
+		KB_LINE_BREAK_CLASS_GLEA | KB_LINE_BREAK_CLASS_GLNEA | KB_LINE_BREAK_CLASS_OPEA | KB_LINE_BREAK_CLASS_OPNEA => {
 			lineUnbreaks |= kbLineRequired(3, 0);
 		},
 		KB_LINE_BREAK_CLASS_WJ => {
 			lineUnbreaks |= kbLineRequired(3, 0);
 			lineUnbreaks |= kbLineRequired(3, 1);
 		},
-		KB_LINE_BREAK_CLASS_CLEA | KB_LINE_BREAK_CLASS_CLNEA | KB_LINE_BREAK_CLASS_CPEA |
-			KB_LINE_BREAK_CLASS_CPNEA | KB_LINE_BREAK_CLASS_EXEA | KB_LINE_BREAK_CLASS_EXNEA |
-			KB_LINE_BREAK_CLASS_SY => {
+		KB_LINE_BREAK_CLASS_CLEA | KB_LINE_BREAK_CLASS_CLNEA | KB_LINE_BREAK_CLASS_CPEA | KB_LINE_BREAK_CLASS_CPNEA | KB_LINE_BREAK_CLASS_EXEA | KB_LINE_BREAK_CLASS_EXNEA | KB_LINE_BREAK_CLASS_SY => {
 			lineUnbreaks |= kbLineRequired(3, 1);
 		},
 		KB_LINE_BREAK_CLASS_IS => {
@@ -507,14 +552,17 @@ function lineBreakStage(
 			lineBreaks |= kbLineAllowed(1, 0);
 			lineBreaks |= kbLineAllowed(1, 1);
 		},
-		KB_LINE_BREAK_CLASS_BANEA | KB_LINE_BREAK_CLASS_BAEA | KB_LINE_BREAK_CLASS_HYPHEN |
-			KB_LINE_BREAK_CLASS_HY | KB_LINE_BREAK_CLASS_NSNEA | KB_LINE_BREAK_CLASS_NSEA |
-			KB_LINE_BREAK_CLASS_INNEA | KB_LINE_BREAK_CLASS_INEA => {
+		KB_LINE_BREAK_CLASS_BANEA | KB_LINE_BREAK_CLASS_BAEA | KB_LINE_BREAK_CLASS_HYPHEN | KB_LINE_BREAK_CLASS_HY | KB_LINE_BREAK_CLASS_NSNEA | KB_LINE_BREAK_CLASS_NSEA | KB_LINE_BREAK_CLASS_INNEA | KB_LINE_BREAK_CLASS_INEA => {
 			lineUnbreaks |= kbLineRequired(0, 1);
 		},
-		_ => {},
-	}
-	let rules: KbLineRules = { breaks: lineBreaks, unbreaks: lineUnbreaks, history: history };
+		_ => {
+		},
+	};
+	let rules: KbLineRules = {
+		breaks: lineBreaks,
+		unbreaks: lineUnbreaks,
+		history: history,
+	};
 	kbLineRules2(rules);
 	kbLineRules3(rules);
 	kbLineRules4(rules);
@@ -567,7 +615,8 @@ function addCodepoint(
 	let wordBreakHistory = state.wordBreakHistory;
 	let lastWordBreakClass = state.lastWordBreakClass;
 	let wordBreak2PositionOffset = state.wordBreak2PositionOffset;
-	const lastWordBreakClassIncludingIgnored = state.lastWordBreakClassIncludingIgnored;
+	const lastWordBreakClassIncludingIgnored =
+		state.lastWordBreakClassIncludingIgnored;
 	const positionOffset2 = state.positionOffset2;
 	const positionOffset3 = state.positionOffset3;
 	let flags = state.flags;
@@ -605,7 +654,9 @@ function addCodepoint(
 				state.brackets[slot].position = state.currentPosition;
 				state.brackets[slot].direction = KB_DIRECTION_DONT_KNOW as uint8;
 				state.brackets[slot].script = KB_SCRIPT_DONT_KNOW as uint8;
-				if (scriptCount != 0) { state.brackets[slot].script = state.scriptSet[0]; }
+				if (scriptCount != 0) {
+					state.brackets[slot].script = state.scriptSet[0];
+				}
 				state.flags |= BREAK_STATE_FLAG_LAST_WAS_BRACKET;
 			}
 		},
@@ -631,24 +682,32 @@ function addCodepoint(
 				}
 			}
 		},
-		_ => {},
-	}
+		_ => {
+		},
+	};
 
 	state.lineBreakStage(pending, lineBreakClass, lastLineBreakClass);
 	scriptCount = pending.scriptCount;
 
-	if (endOfText) { pending.flushFlags |= FLUSH_SCRIPT; }
+	if (endOfText) {
+		pending.flushFlags |= FLUSH_SCRIPT;
+	}
 	if (codepointScriptCount < 2) {
 		const codepointScript = codepointScriptOffset as uint8;
-		const known = (codepointScript as uint32) != KB_SCRIPT_DONT_KNOW &&
+		const known =
+			(codepointScript as uint32) != KB_SCRIPT_DONT_KNOW &&
 			(codepointScript as uint32) != KB_SCRIPT_DEFAULT &&
 			(codepointScript as uint32) != KB_SCRIPT_DEFAULT2;
 		if (known) {
 			let scriptSetMatch = false;
 			for (let i: int32 = 0; i < (scriptCount as int32); i++) {
-				if (state.scriptSet[i] == codepointScript) { scriptSetMatch = true; }
+				if (state.scriptSet[i] == codepointScript) {
+					scriptSetMatch = true;
+				}
 			}
-			if (!scriptSetMatch) { pending.flushFlags |= FLUSH_SCRIPT; }
+			if (!scriptSetMatch) {
+				pending.flushFlags |= FLUSH_SCRIPT;
+			}
 			scriptCount = 1;
 			state.scriptSet[0] = codepointScript;
 		}
@@ -661,7 +720,8 @@ function addCodepoint(
 			codepointScriptIndex < (codepointScriptCount as int32)
 		) {
 			const codepointScript =
-				KB_SCRIPT_EXTENSIONS[(codepointScriptOffset as int32) + codepointScriptIndex];
+				KB_SCRIPT_EXTENSIONS[(codepointScriptOffset as int32) +
+					codepointScriptIndex];
 			const script = state.scriptSet[scriptIndex];
 			if (codepointScript < script) {
 				codepointScriptIndex += 1;
@@ -677,7 +737,8 @@ function addCodepoint(
 		if (newScriptCount == 0) {
 			pending.flushFlags |= FLUSH_SCRIPT;
 			for (let i: int32 = 0; i < (codepointScriptCount as int32); i++) {
-				state.scriptSet[i] = KB_SCRIPT_EXTENSIONS[(codepointScriptOffset as int32) + i];
+				state.scriptSet[i] =
+					KB_SCRIPT_EXTENSIONS[(codepointScriptOffset as int32) + i];
 			}
 			scriptCount = codepointScriptCount;
 		} else {
@@ -685,14 +746,19 @@ function addCodepoint(
 		}
 	}
 
-	if (endOfText) { bidirectionalClass = BIDI_NI; }
+	if (endOfText) {
+		bidirectionalClass = BIDI_NI;
+	}
 	let skipDirection = bidirectionalClass == BIDI_BN;
 	if (!skipDirection) {
 		let treatAsAn = false;
 		match (bidirectionalClass) {
-			BIDI_NSM => { bidirectionalClass = bidirectional1; },
+			BIDI_NSM => {
+				bidirectionalClass = bidirectional1;
+			},
 			BIDI_L => {
-				flags &= 0xFFFFFFFF ^
+				flags &=
+					0xFFFFFFFF ^
 					(BREAK_STATE_FLAG_SAW_R_AFTER_L | BREAK_STATE_FLAG_SAW_AL_AFTER_LR);
 			},
 			BIDI_R => {
@@ -700,7 +766,8 @@ function addCodepoint(
 				flags &= 0xFFFFFFFF ^ BREAK_STATE_FLAG_SAW_AL_AFTER_LR;
 			},
 			BIDI_AL => {
-				flags |= BREAK_STATE_FLAG_SAW_AL_AFTER_LR | BREAK_STATE_FLAG_SAW_R_AFTER_L;
+				flags |=
+					BREAK_STATE_FLAG_SAW_AL_AFTER_LR | BREAK_STATE_FLAG_SAW_R_AFTER_L;
 				bidirectionalClass = BIDI_R;
 			},
 			BIDI_EN => {
@@ -708,28 +775,41 @@ function addCodepoint(
 					bidirectionalClass = BIDI_AN;
 					treatAsAn = true;
 				} else {
-					if (bidirectional2 == BIDI_EN &&
-						(bidirectional1 == BIDI_ES || bidirectional1 == BIDI_CS)) {
+					if (
+						bidirectional2 == BIDI_EN &&
+						(bidirectional1 == BIDI_ES || bidirectional1 == BIDI_CS)
+					) {
 						bidirectional1 = BIDI_EN;
 					}
-					if (state.paragraphDirection != 0 &&
-						(flags & BREAK_STATE_FLAG_SAW_R_AFTER_L) == 0) {
+					if (
+						state.paragraphDirection != 0 &&
+						(flags & BREAK_STATE_FLAG_SAW_R_AFTER_L) == 0
+					) {
 						bidirectionalClass = BIDI_L;
 					}
 				}
 			},
-			BIDI_AN => { treatAsAn = true; },
-			BIDI_ET => {
-				if (bidirectional1 == BIDI_EN) { bidirectionalClass = BIDI_EN; }
+			BIDI_AN => {
+				treatAsAn = true;
 			},
-			_ => {},
-		}
+			BIDI_ET => {
+				if (bidirectional1 == BIDI_EN) {
+					bidirectionalClass = BIDI_EN;
+				}
+			},
+			_ => {
+			},
+		};
 		if (treatAsAn && bidirectional2 == BIDI_AN && bidirectional1 == BIDI_CS) {
 			bidirectional1 = BIDI_AN;
 		}
-		if (inSet(bidirectional1, SET_ET_ES_CS)) { bidirectional1 = BIDI_NI; }
+		if (inSet(bidirectional1, SET_ET_ES_CS)) {
+			bidirectional1 = BIDI_NI;
+		}
 		if (bidirectional1 == BIDI_NI) {
-			if (!pending.hardLineBreak && inSet(bidirectionalClass, SET_NI_ET_ES_CS)) {
+			if (
+				!pending.hardLineBreak && inSet(bidirectionalClass, SET_NI_ET_ES_CS)
+			) {
 				skipDirection = true;
 			} else if (
 				(bidirectional2 == BIDI_R || bidirectionalClass == BIDI_R) &&
@@ -747,7 +827,9 @@ function addCodepoint(
 		}
 		if (!skipDirection) {
 			pending.flushFlags |= FLUSH_DIRECTION_2 | FLUSH_DIRECTION_1;
-			if (endOfText) { pending.flushFlags |= FLUSH_DIRECTION_1; }
+			if (endOfText) {
+				pending.flushFlags |= FLUSH_DIRECTION_1;
+			}
 		}
 	}
 	if (skipDirection) {
@@ -760,10 +842,10 @@ function addCodepoint(
 		pending.flagState |= graphemeFlags(1);
 		state.graphemeBreakState = 0;
 	} else {
-		let next = KB_GRAPHEME_BREAK_TRANSITION[
-			(graphemeBreakClass as int32) * GRAPHEME_STATE_COUNT +
-				(state.graphemeBreakState as int32)
-		];
+		let next =
+			KB_GRAPHEME_BREAK_TRANSITION[(graphemeBreakClass as int32) *
+				GRAPHEME_STATE_COUNT +
+				(state.graphemeBreakState as int32)];
 		match (next) {
 			GRAPHEME_STATE_B01 => {
 				pending.flagState |= graphemeFlags(1) | graphemeFlags(0);
@@ -779,25 +861,32 @@ function addCodepoint(
 					next -= GRAPHEME_STATE_B1;
 				}
 			},
-		}
+		};
 		state.graphemeBreakState = next;
 	}
 
 	if (
-		(wordBreakClass == KB_WORD_BREAK_CLASS_EX || wordBreakClass == KB_WORD_BREAK_CLASS_FO ||
+		(wordBreakClass == KB_WORD_BREAK_CLASS_EX ||
+			wordBreakClass == KB_WORD_BREAK_CLASS_FO ||
 			wordBreakClass == KB_WORD_BREAK_CLASS_ZWJ) &&
-		!(lastWordBreakClass == KB_WORD_BREAK_CLASS_SOT ||
+		!(
+			lastWordBreakClass == KB_WORD_BREAK_CLASS_SOT ||
 			lastWordBreakClass == KB_WORD_BREAK_CLASS_CR ||
 			lastWordBreakClass == KB_WORD_BREAK_CLASS_LF ||
-			lastWordBreakClass == KB_WORD_BREAK_CLASS_NL)
+			lastWordBreakClass == KB_WORD_BREAK_CLASS_NL
+		)
 	) {
-		wordBreak2PositionOffset = wrapInt16(wordBreak2PositionOffset + positionOffset2);
+		wordBreak2PositionOffset = wrapInt16(
+			wordBreak2PositionOffset + positionOffset2,
+		);
 		state.wordBreak2PositionOffset = wordBreak2PositionOffset;
 	} else {
 		let wordBreaks: uint32 = (state.wordBreaks as uint32) << 4;
 		wordBreakHistory = (wordBreakHistory << 8) | (wordBreakClass as uint32);
 		wordBreaks |= kbWordBits(0, 1) | kbWordBits(0, 0);
-		if (startOfText) { wordBreaks |= kbWordBits(2, 1); }
+		if (startOfText) {
+			wordBreaks |= kbWordBits(2, 1);
+		}
 		let rules: KbWordRules = {
 			unbreaks: (state.wordUnbreaks as uint32) << 4,
 			history: wordBreakHistory,
@@ -811,16 +900,25 @@ function addCodepoint(
 					rules.unbreaks |= kbWordBits(0, 1);
 				}
 			},
-			_ => {},
-		}
+			_ => {
+			},
+		};
 		kbWordRules2(rules, wordBreak2PositionOffset);
 		kbWordRules3(rules);
 		wordBreakHistory = rules.history;
 		const effective = wordBreaks & (0xFFFFFFFF ^ rules.unbreaks);
 		if ((effective & kbWordBits(2, 2)) != 0) {
-			state.doBreak(positionOffset2 + wordBreak2PositionOffset, KB_BREAK_FLAG_WORD, 0, 0, 0);
+			state.doBreak(
+				positionOffset2 + wordBreak2PositionOffset,
+				KB_BREAK_FLAG_WORD,
+				0,
+				0,
+				0,
+			);
 		}
-		if (endOfText) { pending.flagState |= KB_BREAK_FLAG_WORD << 8; }
+		if (endOfText) {
+			pending.flagState |= KB_BREAK_FLAG_WORD << 8;
+		}
 		state.wordBreaks = wordBreaks as uint16;
 		state.wordUnbreaks = rules.unbreaks as uint16;
 		state.lastWordBreakClass = wordBreakClass;
@@ -831,14 +929,26 @@ function addCodepoint(
 
 	if ((pending.flushFlags & FLUSH_SCRIPT) != 0) {
 		if (scriptCountAtBeginningOfUpdate != 0) {
-			state.doBreak(scriptPositionOffset, KB_BREAK_FLAG_SCRIPT, 0, 0, breakScript);
+			state.doBreak(
+				scriptPositionOffset,
+				KB_BREAK_FLAG_SCRIPT,
+				0,
+				0,
+				breakScript,
+			);
 			scriptPositionOffset = 0;
 		}
-		if (pending.hardLineBreak) { scriptPositionOffset = int16Of(positionIncrement); }
+		if (pending.hardLineBreak) {
+			scriptPositionOffset = int16Of(positionIncrement);
+		}
 	}
 	if ((pending.flushFlags & FLUSH_DIRECTION_1) != 0) {
 		let direction = lastDirection;
-		state.flushDirection(direction, bidirectional1, bidirectional1PositionOffset);
+		state.flushDirection(
+			direction,
+			bidirectional1,
+			bidirectional1PositionOffset,
+		);
 		lastDirection = direction;
 	}
 	if ((pending.flushFlags & FLUSH_DIRECTION_PARAGRAPH) != 0) {
@@ -847,11 +957,19 @@ function addCodepoint(
 		state.paragraphStartPosition = state.currentPosition + 1;
 		state.startParagraph();
 		if (state.userParagraphDirection == KB_DIRECTION_DONT_KNOW) {
-			state.doBreak(1, KB_BREAK_FLAG_PARAGRAPH_DIRECTION, 0, KB_DIRECTION_DONT_KNOW, 0);
+			state.doBreak(
+				1,
+				KB_BREAK_FLAG_PARAGRAPH_DIRECTION,
+				0,
+				KB_DIRECTION_DONT_KNOW,
+				0,
+			);
 		}
 	}
 
-	scriptPositionOffset = wrapInt16(scriptPositionOffset - int16Of(positionIncrement));
+	scriptPositionOffset = wrapInt16(
+		scriptPositionOffset - int16Of(positionIncrement),
+	);
 
 	const flagState = pending.flagState;
 	state.doBreak(positionOffset3, (flagState >> 24) & 0xFF, 0, 0, 0);
@@ -862,15 +980,21 @@ function addCodepoint(
 	}
 	state.flagState = flagState;
 	flags |= BREAK_STATE_FLAG_STARTED;
-	if (endOfText) { flags |= BREAK_STATE_FLAG_END; }
+	if (endOfText) {
+		flags |= BREAK_STATE_FLAG_END;
+	}
 	state.flags = flags;
 	state.positionOffset2 = wrapInt16(0 - int16Of(positionIncrement));
-	state.positionOffset3 = wrapInt16(positionOffset2 - int16Of(positionIncrement));
+	state.positionOffset3 = wrapInt16(
+		positionOffset2 - int16Of(positionIncrement),
+	);
 	state.currentPosition += positionIncrement;
 	if ((pending.flushFlags & FLUSH_DIRECTION_2) != 0) {
 		state.bidirectionalClass2 = bidirectional1;
 		state.bidirectionalClass1 = bidirectionalClass;
-		state.bidirectional1PositionOffset = wrapInt16(0 - int16Of(positionIncrement));
+		state.bidirectional1PositionOffset = wrapInt16(
+			0 - int16Of(positionIncrement),
+		);
 	}
 	state.lastDirection = lastDirection;
 	state.scriptPositionOffset = scriptPositionOffset;
@@ -926,7 +1050,13 @@ export function kbBreakBegin(
 	};
 	state.startParagraph();
 	if (paragraphDirection != 0) {
-		state.doBreak(0, KB_BREAK_FLAG_PARAGRAPH_DIRECTION, 0, paragraphDirection, 0);
+		state.doBreak(
+			0,
+			KB_BREAK_FLAG_PARAGRAPH_DIRECTION,
+			0,
+			paragraphDirection,
+			0,
+		);
 	}
 	return state;
 }
@@ -942,10 +1072,15 @@ export function kbBreakAddCodepoint(
 	endOfText: boolean,
 ): void {
 	state.addCodepoint(codepoint as uint32, positionIncrement as uint32, false);
-	if (endOfText) { state.kbBreakEnd(); }
+	if (endOfText) {
+		state.kbBreakEnd();
+	}
 }
 
-export function kbBreakNext(this ref state: KbBreakState, out found: KbBreak): boolean {
+export function kbBreakNext(
+	this ref state: KbBreakState,
+	out found: KbBreak,
+): boolean {
 	if (state.breakCount == 0) {
 		found = emptyBreak();
 		return false;

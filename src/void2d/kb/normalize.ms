@@ -75,7 +75,11 @@ struct KbParent {
 }
 
 // kbts__SetGlyphPreserveLinksAndUserId: the new glyph keeps the old links and user id, and nothing else.
-export function kbSetGlyphPreserveLinksAndUserId(storage: KbGlyphStorage, dest: int32, source: KbGlyph): void {
+export function kbSetGlyphPreserveLinksAndUserId(
+	storage: KbGlyphStorage,
+	dest: int32,
+	source: KbGlyph,
+): void {
 	const prev = storage.glyphs[dest].prev;
 	const next = storage.glyphs[dest].next;
 	const userId = storage.glyphs[dest].userIdOrCodepointIndex;
@@ -94,14 +98,21 @@ function kbLoadParents(glyph: KbGlyph): KbParent[] {
 	const result: KbParent[] = [];
 	for (let parentIndex: uint32 = 0; parentIndex < count; parentIndex++) {
 		const delta = KB_PARENT_DELTAS[(offset + parentIndex) as int32];
-		const codepoint = ((glyph.codepoint as int64 + (delta as int64)) & 0xFFFFFFFF) as uint32;
+		const codepoint = ((glyph.codepoint as int64 + (delta as int64)) &
+			0xFFFFFFFF) as uint32;
 		const decomposition = kbDecomposition(codepoint);
-		result.push({ codepoint, codepoint1: kbDecompositionCodepoint(decomposition, 1) });
+		result.push({
+			codepoint,
+			codepoint1: kbDecompositionCodepoint(decomposition, 1),
+		});
 	}
 	return result;
 }
 
-export function kbPreNormalizeDottedCircles(s: KbScratch, config: KbShapeConfig): void {
+export function kbPreNormalizeDottedCircles(
+	s: KbScratch,
+	config: KbShapeConfig,
+): void {
 	const storage = s.storage;
 	let codepoints: uint64 = 0;
 	let glyph = storage.glyphs[KB_GLYPH_SENTINEL].next;
@@ -142,10 +153,15 @@ function decompose(s: KbScratch, config: KbShapeConfig): void {
 
 					if (decompositionSize == 2 || toDecompose.id == 0) {
 						for (let index: uint32 = 0; index < decompositionSize; index++) {
-							const decompositionGlyph = kbCodepointToGlyph(font,
+							const decompositionGlyph = kbCodepointToGlyph(
+								font,
 								kbDecompositionCodepoint(decomposition, index) as int32,
-								toDecompose.configPlusOne, toDecompose.userIdOrCodepointIndex);
-							if (decompositionGlyph.id == 0) { anyUnsupported = true; }
+								toDecompose.configPlusOne,
+								toDecompose.userIdOrCodepointIndex,
+							);
+							if (decompositionGlyph.id == 0) {
+								anyUnsupported = true;
+							}
 							decomposed.push(decompositionGlyph);
 						}
 					} else {
@@ -157,7 +173,10 @@ function decompose(s: KbScratch, config: KbShapeConfig): void {
 					prevAnchor = kbInsertGlyphAfter(storage, prevAnchor, toDecompose);
 				} else {
 					if (decompositionSize > 2) {
-						throw kbBoundsFail("decomposition of more than two codepoints", decompositionSize as int64);
+						throw kbBoundsFail(
+							"decomposition of more than two codepoints",
+							decompositionSize as int64,
+						);
 					}
 					if ((decomposition & KB_UNICODE_DECOMPOSITION_DO_NOT_RECURSE0) != 0) {
 						decomposed[0].flags |= KB_GLYPH_FLAG_DO_NOT_DECOMPOSE;
@@ -194,8 +213,12 @@ function recompose(s: KbScratch, config: KbShapeConfig): void {
 	const denominatorFlags: uint32 = KB_GLYPH_FLAG_DNOM | KB_GLYPH_FLAG_FRAC;
 	const rightToLeftFraction =
 		config.shaper == KB_SHAPER_ARABIC || config.shaper == KB_SHAPER_HEBREW;
-	const beforeFractionSlashGlyphFlags = rightToLeftFraction ? denominatorFlags : numeratorFlags;
-	const afterFractionSlashGlyphFlags = rightToLeftFraction ? numeratorFlags : denominatorFlags;
+	const beforeFractionSlashGlyphFlags = rightToLeftFraction
+		? denominatorFlags
+		: numeratorFlags;
+	const afterFractionSlashGlyphFlags = rightToLeftFraction
+		? numeratorFlags
+		: denominatorFlags;
 
 	const shouldFlip = s.runDirection == KB_DIRECTION_RTL;
 
@@ -203,10 +226,19 @@ function recompose(s: KbScratch, config: KbShapeConfig): void {
 	while (glyph != KB_GLYPH_SENTINEL) {
 		storage.glyphs[glyph].uid = kbNextGlyphUid(s);
 
-		if (shouldFlip && (storage.glyphs[glyph].unicodeFlags & KB_UNICODE_FLAG_MIRRORED) != 0) {
-			const matchingBracketCodepoint = kbMirrorCodepoint(storage.glyphs[glyph].codepoint);
-			const matchingBracket = kbCodepointToGlyph(font, matchingBracketCodepoint as int32,
-				storage.glyphs[glyph].configPlusOne, 0);
+		if (
+			shouldFlip &&
+			(storage.glyphs[glyph].unicodeFlags & KB_UNICODE_FLAG_MIRRORED) != 0
+		) {
+			const matchingBracketCodepoint = kbMirrorCodepoint(
+				storage.glyphs[glyph].codepoint,
+			);
+			const matchingBracket = kbCodepointToGlyph(
+				font,
+				matchingBracketCodepoint as int32,
+				storage.glyphs[glyph].configPlusOne,
+				0,
+			);
 			if (matchingBracket.id != 0) {
 				kbSetGlyphPreserveLinksAndUserId(storage, glyph, matchingBracket);
 			}
@@ -216,12 +248,18 @@ function recompose(s: KbScratch, config: KbShapeConfig): void {
 
 		if (storage.glyphs[glyph].combiningClass == 0) {
 			lastBase = glyph;
-			if (config.shaper != KB_SHAPER_USE ||
-				storage.glyphs[glyph].syllabicClass != KB_INDIC_SYLLABIC_CLASS_MATRA) {
+			if (
+				config.shaper != KB_SHAPER_USE ||
+				storage.glyphs[glyph].syllabicClass != KB_INDIC_SYLLABIC_CLASS_MATRA
+			) {
 				lastBaseParents = kbLoadParents(storage.glyphs[glyph]);
-				if ((lastBaseParents.length as uint32) > KB_MAXIMUM_RECOMPOSITION_PARENTS) {
-					throw kbBoundsFail("more recomposition parents than the C buffer holds",
-						lastBaseParents.length as int64);
+				if (
+					(lastBaseParents.length as uint32) > KB_MAXIMUM_RECOMPOSITION_PARENTS
+				) {
+					throw kbBoundsFail(
+						"more recomposition parents than the C buffer holds",
+						lastBaseParents.length as int64,
+					);
 				}
 			} else {
 				lastBaseParents = [];
@@ -232,16 +270,26 @@ function recompose(s: KbScratch, config: KbShapeConfig): void {
 
 		let recomposed = false;
 
-		for (let parentIndex: int64 = 0; parentIndex < doubleRecompositionCount; parentIndex++) {
+		for (let parentIndex: int64 = 0; parentIndex <
+		doubleRecompositionCount; parentIndex++) {
 			const parent = lastBaseParents[parentIndex as int32];
 
 			if (storage.glyphs[glyph].codepoint == parent.codepoint1) {
-				const parentId = kbCodepointToGlyphId(font, parent.codepoint as int32) as uint16;
+				const parentId = kbCodepointToGlyphId(
+					font,
+					parent.codepoint as int32,
+				) as uint16;
 
 				if (parentId != 0) {
-					let parentGlyph = kbCodepointToGlyph(font, parent.codepoint as int32, 0, 0);
+					let parentGlyph = kbCodepointToGlyph(
+						font,
+						parent.codepoint as int32,
+						0,
+						0,
+					);
 					parentGlyph.uid = storage.glyphs[lastBase].uid;
-					parentGlyph.userIdOrCodepointIndex = storage.glyphs[lastBase].userIdOrCodepointIndex;
+					parentGlyph.userIdOrCodepointIndex =
+						storage.glyphs[lastBase].userIdOrCodepointIndex;
 					parentGlyph.configPlusOne = storage.glyphs[lastBase].configPlusOne;
 
 					const next = storage.glyphs[glyph].next;
@@ -266,10 +314,13 @@ function recompose(s: KbScratch, config: KbShapeConfig): void {
 			}
 		}
 
-		if ((storage.glyphs[glyph].unicodeFlags & KB_UNICODE_FLAG_DECIMAL_DIGIT) != 0) {
+		if (
+			(storage.glyphs[glyph].unicodeFlags & KB_UNICODE_FLAG_DECIMAL_DIGIT) != 0
+		) {
 			if (inFraction) {
 				storage.glyphs[glyph].flags |= afterFractionSlashGlyphFlags;
-				for (let digitIndex: int64 = 0; digitIndex < preSlashDecimalDigitCount; digitIndex++) {
+				for (let digitIndex: int64 = 0; digitIndex <
+				preSlashDecimalDigitCount; digitIndex++) {
 					storage.glyphs[preSlashGlyph].flags |= beforeFractionSlashGlyphFlags;
 					preSlashGlyph = storage.glyphs[preSlashGlyph].next;
 				}
@@ -279,7 +330,10 @@ function recompose(s: KbScratch, config: KbShapeConfig): void {
 				digitGlyph = glyph;
 			}
 			decimalDigitCount += 1;
-		} else if (storage.glyphs[glyph].codepoint == 0x2044 && (!inFraction || decimalDigitCount != 0)) {
+		} else if (
+			storage.glyphs[glyph].codepoint == 0x2044 &&
+			(!inFraction || decimalDigitCount != 0)
+		) {
 			storage.glyphs[glyph].flags |= KB_GLYPH_FLAG_FRAC;
 			preSlashDecimalDigitCount = decimalDigitCount;
 			preSlashGlyph = digitGlyph;
@@ -307,9 +361,11 @@ function reorderMarks(s: KbScratch): void {
 
 			let sequenceGlyph = storage.glyphs[glyph].next;
 			while (sequenceGlyph != KB_GLYPH_SENTINEL) {
-				const sequenceGlyphCombiningClass = storage.glyphs[sequenceGlyph].combiningClass;
+				const sequenceGlyphCombiningClass =
+					storage.glyphs[sequenceGlyph].combiningClass;
 				if (sequenceGlyphCombiningClass != 0) {
-					storage.glyphs[sequenceGlyph].markOrdering = sequenceGlyphCombiningClass;
+					storage.glyphs[sequenceGlyph].markOrdering =
+						sequenceGlyphCombiningClass;
 				} else {
 					break;
 				}
@@ -342,7 +398,8 @@ function reorderArabicMarks(s: KbScratch): void {
 
 			let sequenceGlyph = glyph;
 			while (sequenceGlyph != KB_GLYPH_SENTINEL) {
-				const sequenceGlyphCombiningClass = storage.glyphs[sequenceGlyph].combiningClass as int32;
+				const sequenceGlyphCombiningClass = storage.glyphs[sequenceGlyph]
+					.combiningClass as int32;
 				const sequenceGlyphFlags = storage.glyphs[sequenceGlyph].unicodeFlags;
 
 				let markOrdering: uint8 = 3;
@@ -350,14 +407,20 @@ function reorderArabicMarks(s: KbScratch): void {
 				if (sequenceGlyphCombiningClass == REMAPPED_CCC_33) {
 					markOrdering = 2;
 				} else if (sequenceGlyphCombiningClass == 220) {
-					mcm220SequenceState = nextMcmSequenceState(mcm220SequenceState, sequenceGlyphFlags);
+					mcm220SequenceState = nextMcmSequenceState(
+						mcm220SequenceState,
+						sequenceGlyphFlags,
+					);
 					if (mcm220SequenceState == KB_MCM_SEQUENCE_STATE_IN) {
 						markOrdering = 0;
 					}
 
 					mcm230SequenceState = KB_MCM_SEQUENCE_STATE_NONE;
 				} else if (sequenceGlyphCombiningClass == 230) {
-					mcm230SequenceState = nextMcmSequenceState(mcm230SequenceState, sequenceGlyphFlags);
+					mcm230SequenceState = nextMcmSequenceState(
+						mcm230SequenceState,
+						sequenceGlyphFlags,
+					);
 					if (mcm230SequenceState == KB_MCM_SEQUENCE_STATE_IN) {
 						markOrdering = 1;
 					}
@@ -385,14 +448,22 @@ function nextMcmSequenceState(state: uint32, unicodeFlags: uint8): uint32 {
 	if ((unicodeFlags & KB_UNICODE_FLAG_MODIFIER_COMBINING_MARK) == 0) {
 		return KB_MCM_SEQUENCE_STATE_OUT;
 	}
-	return state == KB_MCM_SEQUENCE_STATE_OUT ? KB_MCM_SEQUENCE_STATE_OUT : KB_MCM_SEQUENCE_STATE_IN;
+	return state == KB_MCM_SEQUENCE_STATE_OUT
+		? KB_MCM_SEQUENCE_STATE_OUT
+		: KB_MCM_SEQUENCE_STATE_IN;
 }
 
 function isAboveBaseThaiLaoMark(codepoint: uint32): boolean {
-	return codepoint == 0xE31 || (codepoint >= 0xE34 && codepoint <= 0xE37) || codepoint == 0xE3B ||
+	return (
+		codepoint == 0xE31 ||
+		(codepoint >= 0xE34 && codepoint <= 0xE37) ||
+		codepoint == 0xE3B ||
 		(codepoint >= 0xE47 && codepoint <= 0xE4E) ||
-		codepoint == 0xEB1 || (codepoint >= 0xEB4 && codepoint <= 0xEB7) || codepoint == 0xEBB ||
-		(codepoint >= 0xEC7 && codepoint <= 0xECE);
+		codepoint == 0xEB1 ||
+		(codepoint >= 0xEB4 && codepoint <= 0xEB7) ||
+		codepoint == 0xEBB ||
+		(codepoint >= 0xEC7 && codepoint <= 0xECE)
+	);
 }
 
 function decomposeSaraAms(s: KbScratch, config: KbShapeConfig): void {
@@ -408,11 +479,16 @@ function decomposeSaraAms(s: KbScratch, config: KbShapeConfig): void {
 				aboveBaseGlyph = glyph;
 			}
 
-			const newGlyph = kbInsertGlyphBefore(storage, aboveBaseGlyph, config.nikhahit);
+			const newGlyph = kbInsertGlyphBefore(
+				storage,
+				aboveBaseGlyph,
+				config.nikhahit,
+			);
 
 			const glyphConfig = storage.glyphs[glyph].configPlusOne;
 
-			storage.glyphs[newGlyph].userIdOrCodepointIndex = storage.glyphs[glyph].userIdOrCodepointIndex;
+			storage.glyphs[newGlyph].userIdOrCodepointIndex =
+				storage.glyphs[glyph].userIdOrCodepointIndex;
 			storage.glyphs[newGlyph].configPlusOne = glyphConfig;
 
 			kbSetGlyphPreserveLinksAndUserId(storage, glyph, config.saraAa);
@@ -436,10 +512,15 @@ export function kbNormalize(s: KbScratch, config: KbShapeConfig): void {
 	reorderMarks(s);
 
 	match (config.script) {
-		KB_SCRIPT_ARABIC => { reorderArabicMarks(s); },
-		KB_SCRIPT_THAI | KB_SCRIPT_LAO => { decomposeSaraAms(s, config); },
-		_ => {},
-	}
+		KB_SCRIPT_ARABIC => {
+			reorderArabicMarks(s);
+		},
+		KB_SCRIPT_THAI | KB_SCRIPT_LAO => {
+			decomposeSaraAms(s, config);
+		},
+		_ => {
+		},
+	};
 }
 
 struct KbHangulInfo {
@@ -541,16 +622,29 @@ export function kbNormalizeHangul(s: KbScratch, config: KbShapeConfig): void {
 					const toneMarkCodepoint = storage.glyphs[next].codepoint;
 
 					if (toneMarkCodepoint >= 0x302E && toneMarkCodepoint <= 0x302F) {
-						lvtGlyphs.push(kbCodepointToGlyph(font, toneMarkCodepoint as int32, glyphConfig, userId));
+						lvtGlyphs.push(
+							kbCodepointToGlyph(
+								font,
+								toneMarkCodepoint as int32,
+								glyphConfig,
+								userId,
+							),
+						);
 
 						next = storage.glyphs[next].next;
 					}
 				}
 
 				if ((lInfo.composable & vInfo.composable & tInfo.composable) != 0) {
-					const lvtCodepoint = 0xAC00 + (l - 0x1100) * 588 + (v - 0x1161) * 28 + (t - 0x11A7);
+					const lvtCodepoint =
+						0xAC00 + (l - 0x1100) * 588 + (v - 0x1161) * 28 + (t - 0x11A7);
 
-					const lvtGlyph = kbCodepointToGlyph(font, lvtCodepoint as int32, glyphConfig, userId);
+					const lvtGlyph = kbCodepointToGlyph(
+						font,
+						lvtCodepoint as int32,
+						glyphConfig,
+						userId,
+					);
 					if (lvtGlyph.id != 0) {
 						lvtGlyphs.push(lvtGlyph);
 					}
@@ -561,16 +655,31 @@ export function kbNormalizeHangul(s: KbScratch, config: KbShapeConfig): void {
 					if ((lInfo.composable & vInfo.composable) != 0) {
 						const lvCodepoint = 0xAC00 + (l - 0x1100) * 588 + (v - 0x1161) * 28;
 
-						lvGlyph = kbCodepointToGlyph(font, lvCodepoint as int32, glyphConfig, userId);
+						lvGlyph = kbCodepointToGlyph(
+							font,
+							lvCodepoint as int32,
+							glyphConfig,
+							userId,
+						);
 					}
 
 					if (lvGlyph.id != 0) {
 						lvtGlyphs.push(lvGlyph);
 					} else {
-						let lGlyph = kbCodepointToGlyph(font, l as int32, glyphConfig, userId);
+						let lGlyph = kbCodepointToGlyph(
+							font,
+							l as int32,
+							glyphConfig,
+							userId,
+						);
 						lGlyph.flags |= KB_GLYPH_FLAG_LJMO;
 
-						let vGlyph = kbCodepointToGlyph(font, v as int32, glyphConfig, userId);
+						let vGlyph = kbCodepointToGlyph(
+							font,
+							v as int32,
+							glyphConfig,
+							userId,
+						);
 						vGlyph.flags |= KB_GLYPH_FLAG_VJMO;
 
 						lvtGlyphs.push(lGlyph);
@@ -578,7 +687,12 @@ export function kbNormalizeHangul(s: KbScratch, config: KbShapeConfig): void {
 					}
 
 					if (t != 0) {
-						let tGlyph = kbCodepointToGlyph(font, t as int32, glyphConfig, userId);
+						let tGlyph = kbCodepointToGlyph(
+							font,
+							t as int32,
+							glyphConfig,
+							userId,
+						);
 						tGlyph.flags |= KB_GLYPH_FLAG_TJMO;
 
 						lvtGlyphs.push(tGlyph);
@@ -588,7 +702,14 @@ export function kbNormalizeHangul(s: KbScratch, config: KbShapeConfig): void {
 		}
 
 		if (lvtGlyphs.length == 0) {
-			lvtGlyphs.push(kbCodepointToGlyph(font, storage.glyphs[glyph].codepoint as int32, glyphConfig, userId));
+			lvtGlyphs.push(
+				kbCodepointToGlyph(
+					font,
+					storage.glyphs[glyph].codepoint as int32,
+					glyphConfig,
+					userId,
+				),
+			);
 		}
 
 		{
@@ -601,7 +722,8 @@ export function kbNormalizeHangul(s: KbScratch, config: KbShapeConfig): void {
 
 			// Send it to the front of the free list.
 			storage.glyphs[glyph].prev = KB_FREE_GLYPH_SENTINEL;
-			storage.glyphs[lastConsumed].next = storage.glyphs[KB_FREE_GLYPH_SENTINEL].next;
+			storage.glyphs[lastConsumed].next =
+				storage.glyphs[KB_FREE_GLYPH_SENTINEL].next;
 			storage.glyphs[storage.glyphs[glyph].prev].next = glyph;
 			storage.glyphs[storage.glyphs[lastConsumed].next].prev = lastConsumed;
 
@@ -617,7 +739,8 @@ export function kbNormalizeHangul(s: KbScratch, config: KbShapeConfig): void {
 export function kbFlagJoiningLetters(s: KbScratch): void {
 	const storage = s.storage;
 
-	const joinedAfter: uint64 = ((1 as uint64) << (KB_UNICODE_JOINING_TYPE_RIGHT as uint64)) |
+	const joinedAfter: uint64 =
+		((1 as uint64) << (KB_UNICODE_JOINING_TYPE_RIGHT as uint64)) |
 		((1 as uint64) << (KB_UNICODE_JOINING_TYPE_DUAL as uint64)) |
 		((1 as uint64) << (KB_UNICODE_JOINING_TYPE_FORCE as uint64));
 	const joiningTypesMatchLookup: uint64 =
@@ -626,28 +749,45 @@ export function kbFlagJoiningLetters(s: KbScratch): void {
 		(joinedAfter << (8 * (KB_UNICODE_JOINING_TYPE_FORCE as uint64)));
 
 	const joiningFeatureTransition: uint64 =
-		((KB_JOINING_FEATURE_INIT as uint64) << (8 * (KB_JOINING_FEATURE_ISOL as uint64))) |
-		((KB_JOINING_FEATURE_MEDI as uint64) << (8 * (KB_JOINING_FEATURE_FINA as uint64))) |
-		((KB_JOINING_FEATURE_MEDI as uint64) << (8 * (KB_JOINING_FEATURE_MEDI as uint64))) |
-		((KB_JOINING_FEATURE_MED2 as uint64) << (8 * (KB_JOINING_FEATURE_MED2 as uint64)));
+		((KB_JOINING_FEATURE_INIT as uint64) <<
+			(8 * (KB_JOINING_FEATURE_ISOL as uint64))) |
+		((KB_JOINING_FEATURE_MEDI as uint64) <<
+			(8 * (KB_JOINING_FEATURE_FINA as uint64))) |
+		((KB_JOINING_FEATURE_MEDI as uint64) <<
+			(8 * (KB_JOINING_FEATURE_MEDI as uint64))) |
+		((KB_JOINING_FEATURE_MED2 as uint64) <<
+			(8 * (KB_JOINING_FEATURE_MED2 as uint64)));
 
 	// The C starts from a zeroed glyph that is not in the list: it never matches and takes no writes.
 	let previous: int32 = NO_GLYPH;
 
 	let glyph = storage.glyphs[KB_GLYPH_SENTINEL].next;
 	while (glyph != KB_GLYPH_SENTINEL) {
-		if (storage.glyphs[glyph].joiningType != KB_UNICODE_JOINING_TYPE_TRANSPARENT) {
-			const previousJoiningType = previous == NO_GLYPH ? 0 : storage.glyphs[previous].joiningType as int32;
+		if (
+			storage.glyphs[glyph].joiningType != KB_UNICODE_JOINING_TYPE_TRANSPARENT
+		) {
+			const previousJoiningType =
+				previous == NO_GLYPH
+					? 0
+					: storage.glyphs[previous].joiningType as int32;
 
-			storage.glyphs[glyph].joiningFeature =
-				(previousJoiningType == 0 ? KB_JOINING_FEATURE_INIT : KB_JOINING_FEATURE_FINA) as uint8;
+			storage.glyphs[glyph].joiningFeature = (
+				previousJoiningType == 0
+					? KB_JOINING_FEATURE_INIT
+					: KB_JOINING_FEATURE_FINA
+			) as uint8;
 
-			const matchBit = (storage.glyphs[glyph].joiningType as uint64) + 8 * (previousJoiningType as uint64);
+			const matchBit =
+				(storage.glyphs[glyph].joiningType as uint64) +
+				8 * (previousJoiningType as uint64);
 			if (((joiningTypesMatchLookup >> matchBit) & 1) != 0) {
-				const previousFeature = (joiningFeatureTransition >>
-					(8 * (storage.glyphs[previous].joiningFeature as uint64))) & 0xFF;
+				const previousFeature =
+					(joiningFeatureTransition >>
+						(8 * (storage.glyphs[previous].joiningFeature as uint64))) &
+					0xFF;
 				storage.glyphs[previous].joiningFeature = previousFeature as uint8;
-				storage.glyphs[previous].flags = (storage.glyphs[previous].flags & ~KB_JOINING_FEATURE_MASK) |
+				storage.glyphs[previous].flags =
+					(storage.glyphs[previous].flags & ~KB_JOINING_FEATURE_MASK) |
 					joiningFeatureToGlyphFlag(previousFeature as int32);
 
 				storage.glyphs[glyph].joiningFeature = KB_JOINING_FEATURE_FINA as uint8;
@@ -656,8 +796,11 @@ export function kbFlagJoiningLetters(s: KbScratch): void {
 			}
 
 			if (storage.glyphs[glyph].joiningFeature != 0) {
-				storage.glyphs[glyph].flags = (storage.glyphs[glyph].flags & ~KB_JOINING_FEATURE_MASK) |
-					joiningFeatureToGlyphFlag(storage.glyphs[glyph].joiningFeature as int32);
+				storage.glyphs[glyph].flags =
+					(storage.glyphs[glyph].flags & ~KB_JOINING_FEATURE_MASK) |
+					joiningFeatureToGlyphFlag(
+						storage.glyphs[glyph].joiningFeature as int32,
+					);
 			}
 
 			previous = glyph;
@@ -672,5 +815,5 @@ function joiningFeatureToGlyphFlag(feature: int32): uint32 {
 	if (feature < 1) {
 		throw kbBoundsFail("joining feature 0 has no glyph flag", feature as int64);
 	}
-	return ((1 as uint32) << ((feature - 1) as uint32));
+	return (1 as uint32) << ((feature - 1) as uint32);
 }

@@ -1,4 +1,9 @@
-import { KB_BLOB_TABLE_ID_GDEF, kbBlobTableData, kbBlobTableLength, kbU16 } from "./blob";
+import {
+	KB_BLOB_TABLE_ID_GDEF,
+	kbBlobTableData,
+	kbBlobTableLength,
+	kbU16,
+} from "./blob";
 import { kbGlyphClassFromTable } from "./access";
 import {
 	kbCombiningClass,
@@ -100,13 +105,38 @@ export class KbGlyphStorage {
 
 export function kbZeroGlyph(): KbGlyph {
 	return {
-		prev: 0, next: 0, codepoint: 0, id: 0, uid: 0, userIdOrCodepointIndex: 0,
-		offsetX: 0, offsetY: 0, advanceX: 0, advanceY: 0, attachGlyph: 0, configPlusOne: 0,
-		decomposition: 0, classValue: 0, markAttachmentClass: 0, flags: 0, parentInfo: 0,
-		bucketedPlusOne: 0, sortKey: 0, sortKeyInterval: 0, bucketedBucketIndex: 0,
-		ligatureUid: 0, ligatureComponentIndexPlusOne: 0, ligatureComponentCount: 0,
-		joiningFeature: 0, joiningType: 0, unicodeFlags: 0, syllabicClass: 0,
-		syllabicPosition: 0, useClass: 0, combiningClass: 0, markOrdering: 0,
+		prev: 0,
+		next: 0,
+		codepoint: 0,
+		id: 0,
+		uid: 0,
+		userIdOrCodepointIndex: 0,
+		offsetX: 0,
+		offsetY: 0,
+		advanceX: 0,
+		advanceY: 0,
+		attachGlyph: 0,
+		configPlusOne: 0,
+		decomposition: 0,
+		classValue: 0,
+		markAttachmentClass: 0,
+		flags: 0,
+		parentInfo: 0,
+		bucketedPlusOne: 0,
+		sortKey: 0,
+		sortKeyInterval: 0,
+		bucketedBucketIndex: 0,
+		ligatureUid: 0,
+		ligatureComponentIndexPlusOne: 0,
+		ligatureComponentCount: 0,
+		joiningFeature: 0,
+		joiningType: 0,
+		unicodeFlags: 0,
+		syllabicClass: 0,
+		syllabicPosition: 0,
+		useClass: 0,
+		combiningClass: 0,
+		markOrdering: 0,
 	};
 }
 
@@ -116,18 +146,24 @@ export function kbGlyphIsValid(glyph: int32): boolean {
 
 export function kbGlyphClasses(font: KbFont, id: int32): KbGlyphClasses {
 	let result: KbGlyphClasses = { classValue: 0, markAttachmentClass: 0 };
-	const m: Span<uint8> = font.blob[0..font.blob.length];
+	const m: Span<uint8> = font.blob[0 .. font.blob.length];
 	const gdef = m.kbBlobTableData(KB_BLOB_TABLE_ID_GDEF);
 	if (gdef != 0) {
 		const classDefinitionOffset = m.kbU16(gdef + 4);
 		if (classDefinitionOffset != 0) {
-			result.classValue =
-				kbGlyphClassFromTable(m, gdef + classDefinitionOffset, id).classValue;
+			result.classValue = kbGlyphClassFromTable(
+				m,
+				gdef + classDefinitionOffset,
+				id,
+			).classValue;
 		}
 		const markAttachmentOffset = m.kbU16(gdef + 10);
 		if (markAttachmentOffset != 0 && result.classValue == KB_GLYPH_CLASS_MARK) {
-			result.markAttachmentClass =
-				kbGlyphClassFromTable(m, gdef + markAttachmentOffset, id).classValue;
+			result.markAttachmentClass = kbGlyphClassFromTable(
+				m,
+				gdef + markAttachmentOffset,
+				id,
+			).classValue;
 		}
 	}
 	return result;
@@ -162,13 +198,15 @@ export function kbCodepointToGlyph(
 
 	result.id = kbCodepointToGlyphId(font, iCodepoint) as uint16;
 
-	const m: Span<uint8> = font.blob[0..font.blob.length];
+	const m: Span<uint8> = font.blob[0 .. font.blob.length];
 	if (m.kbBlobTableLength(KB_BLOB_TABLE_ID_GDEF) != 0) {
 		const classes = kbGlyphClasses(font, result.id as int32);
 		result.classValue = classes.classValue as uint16;
 		result.markAttachmentClass = classes.markAttachmentClass as uint16;
-	} else if ((result.unicodeFlags & KB_UNICODE_FLAG_DEFAULT_IGNORABLE) != 0 ||
-		(result.unicodeFlags & KB_UNICODE_FLAG_NON_SPACING_MARK) == 0) {
+	} else if (
+		(result.unicodeFlags & KB_UNICODE_FLAG_DEFAULT_IGNORABLE) != 0 ||
+		(result.unicodeFlags & KB_UNICODE_FLAG_NON_SPACING_MARK) == 0
+	) {
 		result.classValue = KB_GLYPH_CLASS_BASE as uint16;
 	} else {
 		result.classValue = KB_GLYPH_CLASS_MARK as uint16;
@@ -184,8 +222,10 @@ function insertGlyph(
 ): int32 {
 	let result = storage.glyphs[KB_FREE_GLYPH_SENTINEL].next;
 	if (result != KB_FREE_GLYPH_SENTINEL) {
-		storage.glyphs[storage.glyphs[result].prev].next = storage.glyphs[result].next;
-		storage.glyphs[storage.glyphs[result].next].prev = storage.glyphs[result].prev;
+		storage.glyphs[storage.glyphs[result].prev].next =
+			storage.glyphs[result].next;
+		storage.glyphs[storage.glyphs[result].next].prev =
+			storage.glyphs[result].prev;
 	} else {
 		result = storage.glyphs.length as int32;
 		storage.glyphs.push(kbZeroGlyph());
@@ -206,11 +246,19 @@ function insertGlyph(
 	return result;
 }
 
-export function kbInsertGlyphBefore(storage: KbGlyphStorage, anchor: int32, base: KbGlyph): int32 {
+export function kbInsertGlyphBefore(
+	storage: KbGlyphStorage,
+	anchor: int32,
+	base: KbGlyph,
+): int32 {
 	return insertGlyph(storage, anchor, true, base);
 }
 
-export function kbInsertGlyphAfter(storage: KbGlyphStorage, anchor: int32, base: KbGlyph): int32 {
+export function kbInsertGlyphAfter(
+	storage: KbGlyphStorage,
+	anchor: int32,
+	base: KbGlyph,
+): int32 {
 	return insertGlyph(storage, anchor, false, base);
 }
 
@@ -231,7 +279,11 @@ export function kbPushGlyph(
 	return kbInsertGlyphBefore(storage, KB_GLYPH_SENTINEL, template);
 }
 
-export function kbPushGlyphList(storage: KbGlyphStorage, first: int32, last: int32): KbGlyphList {
+export function kbPushGlyphList(
+	storage: KbGlyphStorage,
+	first: int32,
+	last: int32,
+): KbGlyphList {
 	const result: KbGlyphList = {
 		sentinelPrev: storage.glyphs[KB_GLYPH_SENTINEL].prev,
 		sentinelNext: storage.glyphs[KB_GLYPH_SENTINEL].next,
@@ -245,9 +297,14 @@ export function kbPushGlyphList(storage: KbGlyphStorage, first: int32, last: int
 	return result;
 }
 
-export function kbPopGlyphList(storage: KbGlyphStorage, list: KbGlyphList): void {
-	storage.glyphs[list.oneBeforeFirst].next = storage.glyphs[KB_GLYPH_SENTINEL].next;
-	storage.glyphs[list.onePastLast].prev = storage.glyphs[KB_GLYPH_SENTINEL].prev;
+export function kbPopGlyphList(
+	storage: KbGlyphStorage,
+	list: KbGlyphList,
+): void {
+	storage.glyphs[list.oneBeforeFirst].next =
+		storage.glyphs[KB_GLYPH_SENTINEL].next;
+	storage.glyphs[list.onePastLast].prev =
+		storage.glyphs[KB_GLYPH_SENTINEL].prev;
 
 	if (KB_GLYPH_SENTINEL != list.oneBeforeFirst) {
 		storage.glyphs[KB_GLYPH_SENTINEL].next = list.sentinelNext;
@@ -256,8 +313,10 @@ export function kbPopGlyphList(storage: KbGlyphStorage, list: KbGlyphList): void
 		storage.glyphs[KB_GLYPH_SENTINEL].prev = list.sentinelPrev;
 	}
 
-	storage.glyphs[storage.glyphs[KB_GLYPH_SENTINEL].prev].next = KB_GLYPH_SENTINEL;
-	storage.glyphs[storage.glyphs[KB_GLYPH_SENTINEL].next].prev = KB_GLYPH_SENTINEL;
+	storage.glyphs[storage.glyphs[KB_GLYPH_SENTINEL].prev].next =
+		KB_GLYPH_SENTINEL;
+	storage.glyphs[storage.glyphs[KB_GLYPH_SENTINEL].next].prev =
+		KB_GLYPH_SENTINEL;
 }
 
 export function kbClearActiveGlyphs(storage: KbGlyphStorage): void {
