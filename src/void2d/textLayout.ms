@@ -206,7 +206,13 @@ export struct LaidGlyph {
 
 export const NO_RUN: int32 = -1;
 
-export enum UnderlineStyle { Solid, Double, Dotted, Dashed, Wavy }
+export enum UnderlineStyle {
+	Solid,
+	Double,
+	Dotted,
+	Dashed,
+	Wavy,
+}
 
 export struct TextRun {
 	len: int32;
@@ -769,7 +775,7 @@ when (voidShaper) {
 
 	function sameGroup(this a: Codepoint, b: Codepoint): boolean {
 		return !isControl(b.value) && a.face == b.face && a.scale == b.scale &&
-			(a.font as int32) == (b.font as int32);
+			a.font == b.font;
 	}
 
 	function levelAt(bidi: BidiRuns, k: int32): int32 {
@@ -1202,7 +1208,7 @@ export function shapeLines(
 				if (alike) {
 					const old: ShapedLine = cache.lines[hit];
 					alike = pieces < (old.runLens.length as int32) && old.runLens[pieces] == len &&
-						(old.runFonts[pieces] as int32) == (runs[run].font as int32);
+						old.runFonts[pieces] == runs[run].font;
 				}
 				cache.runMap.push(run);
 				pieces = pieces + 1;
@@ -2045,10 +2051,6 @@ export function xForIndex(this l: TextLayout, index: int32): float32 {
 	return l.clusterEnd(line);
 }
 
-function distance(a: float32, b: float32): float32 {
-	return a < b ? b - a : a - b;
-}
-
 export function selectedExtents(
 	this l: TextLayout, li: int32, start: int32, end: int32, gap: float32, tail: float32,
 ): Vec<float32> {
@@ -2197,9 +2199,9 @@ export function indexAt(this l: TextLayout, x: float32, y: float32): int32 {
 		const edges = l.lineEdges(li);
 		const clusters: int32 = edges.starts.length as int32;
 		let best: int32 = l.glyphs[edges.starts[0]].index;
-		let nearest: float32 = distance(x, edges.edges[0]);
+		let nearest: float32 = Math.abs(x - edges.edges[0]) as float32;
 		for (let j = 1; j <= clusters; j++) {
-			const apart: float32 = distance(x, edges.edges[j]);
+			const apart: float32 = Math.abs(x - edges.edges[j]) as float32;
 			if (apart <= nearest) {
 				nearest = apart;
 				best = j < clusters ? l.glyphs[edges.starts[j]].index : line.indexEnd;
