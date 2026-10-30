@@ -385,12 +385,8 @@ function boxRenderBounds(s: Scene2D, i: int32, world: Transform2D, lb: Bounds2D)
 	};
 }
 
-function renderScaleGrid(s: Scene2D, i: int32, world: Transform2D, col: Color): void {
-	drawScaleGrid(s.contents[i], s.contents[i].tile, world, col, s.paints[i].blend);
-}
-
 function drawScaleGrid(
-	grid: Content2D, t: Tile, world: Transform2D, col: Color, blend: BlendMode,
+	grid: Borrow<Content2D>, t: Borrow<Tile>, world: Transform2D, col: Color, blend: BlendMode,
 ): void {
 	const srcW: float32 = t.w;
 	const srcH: float32 = t.h;
@@ -1298,7 +1294,7 @@ function emitNode(
 			emitGraphics(s, i, world, na, blend);
 		},
 		DrawKind.ScaleGrid => {
-			renderScaleGrid(s, i, world, col);
+			drawScaleGrid(s.contents[i], s.contents[i].tile, world, col, s.paints[i].blend);
 		},
 		DrawKind.TileGroup => {
 			emitTiles(s, i, world, col, blend, instanced);
