@@ -1,6 +1,6 @@
 import { truncInt } from "../trueType/fontInfo";
 
-export const NUMBER_ITEM_BYTES: int32 = 63;
+const NUMBER_ITEM_BYTES: int32 = 63;
 
 const BIG_DIGITS: int32 = 15;
 const EXPONENT_LIMIT: float64 = 100000.0;
@@ -117,7 +117,7 @@ function exponentValue(x: Str, from: int32, out: float64[]): int32 {
 }
 
 // nsvg__atof, on the bytes of x up to its end.
-export function atof(x: Str): float64 {
+function atof(x: Str): float64 {
 	let cur: int32 = 0;
 	let sign: float64 = 1.0;
 	let res: float64 = 0.0;
