@@ -947,7 +947,7 @@ function emitIcon(s: Scene2D, i: int32, world: Transform2D, col: Color): void {
 function emitStyledImage(
 	s: Scene2D,
 	i: int32,
-	t: Tile,
+	t: Borrow<Tile>,
 	world: Transform2D,
 	col: Color,
 	sizeX: float32,
@@ -1006,12 +1006,12 @@ function emitTiles(
 	}
 }
 
-function appendTile(t: Tile, m: Transform2D, tint: Color): void {
+function appendTile(t: Borrow<Tile>, m: Transform2D, tint: Color): void {
 	const origin = vec2(t.dx, t.dy) * m;
 	appendSprite(m, origin.x, origin.y, t.w, t.h, t.u0, t.v0, t.u1, t.v1, tint);
 }
 
-function quadTile(t: Tile, m: Transform2D, tint: Color, blend: BlendMode): void {
+function quadTile(t: Borrow<Tile>, m: Transform2D, tint: Color, blend: BlendMode): void {
 	imageQuad(
 		t, vec2(t.dx, t.dy) * m, vec2(t.dx + t.w, t.dy) * m, vec2(t.dx + t.w, t.dy + t.h) * m,
 		vec2(t.dx, t.dy + t.h) * m, tint, blend,
@@ -1870,7 +1870,7 @@ function queueRetile(s: Scene2D, i: int32): void {
 	s.retile.push(i);
 }
 
-function rewriteTile(instance: int32, t: Tile, m: Transform2D, tint: Color): void {
+function rewriteTile(instance: int32, t: Borrow<Tile>, m: Transform2D, tint: Color): void {
 	const origin = vec2(t.dx, t.dy) * m;
 	rewriteSprite(instance, m, origin.x, origin.y, t.w, t.h, t.u0, t.v0, t.u1, t.v1, tint);
 }
