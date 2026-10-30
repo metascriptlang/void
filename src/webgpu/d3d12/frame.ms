@@ -13,6 +13,7 @@ import {
 	dx12QueueSignal,
 	dx12Release,
 } from "./d3d12.h";
+import { StateTracker, decay, flushTransitions } from "./tracker.ms";
 
 @passL("-ld3d12");
 @passL("-ldxgi");
@@ -103,9 +104,11 @@ function makeFrames(ref ring: FrameRing, device: uint64, count: int32): Result<v
 	return Result.ok(null);
 }
 
-export function submit(ref ring: FrameRing): Result<uint64, NativeError> {
+export function submit(ref ring: FrameRing, ref tracker: StateTracker): Result<uint64, NativeError> {
+	try checked(flushTransitions(tracker, ring.list));
 	try checked(dx12ListClose(ring.list));
 	try checked(dx12QueueExecute(ring.queue, ring.list));
+	decay(tracker);
 	const serial = ring.submitted + 1;
 	try checked(dx12QueueSignal(ring.queue, ring.fence, serial));
 	ring.submitted = serial;
@@ -125,8 +128,10 @@ function reopen(ref ring: FrameRing): Result<void, NativeError> {
 	return Result.ok(null);
 }
 
+export function recording(this ring: FrameRing): uint64 { return ring.submitted + 1; }
+
 export function retire(ref ring: FrameRing, native: uint64): void {
-	ring.retired.push({ serial: ring.submitted + 1, native: native });
+	ring.retired.push({ serial: ring.recording(), native: native });
 }
 
 export function collect(ref ring: FrameRing): Result<uint64, NativeError> {
@@ -144,9 +149,13 @@ export function collect(ref ring: FrameRing): Result<uint64, NativeError> {
 	return Result.ok(completed);
 }
 
-export function waitIdle(ref ring: FrameRing): Result<uint64, NativeError> {
-	try checked(dx12FenceWait(ring.fence, ring.event, ring.submitted));
+export function waitSerial(ref ring: FrameRing, serial: uint64): Result<uint64, NativeError> {
+	try checked(dx12FenceWait(ring.fence, ring.event, serial));
 	return collect(ring);
+}
+
+export function waitIdle(ref ring: FrameRing): Result<uint64, NativeError> {
+	return waitSerial(ring, ring.submitted);
 }
 
 export function closeFrames(ref ring: FrameRing): Result<void, NativeError> {
