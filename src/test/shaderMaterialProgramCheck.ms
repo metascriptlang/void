@@ -83,25 +83,31 @@ materialModule(detailed, crateVs, crateFs, [colourAdd, detailMul]);
 materialModule(swapped, crateVs, crateFs, [detailMul, colourAdd]);
 
 test "a material with no effects registers what shaderProgram registers for its stages" {
-	assert bareCrate != plainCrate;
-	assert layoutFloats(programLayout(bareCrate), 0) == layoutFloats(programLayout(plainCrate), 0);
-	assert uniformSlotMask(bareCrate) == uniformSlotMask(plainCrate);
-	assert uniformBlockBytes(bareCrate, 0) == uniformBlockBytes(plainCrate, 0);
-	assert textureSlotMask(bareCrate) == textureSlotMask(plainCrate);
-	assert samplerSlotMask(bareCrate) == samplerSlotMask(plainCrate);
-	assert uniformSlotMask(plainCrate) == 1 && textureSlotMask(plainCrate) == 0;
+	assert bareCrate != plainCrate, "the two programs are registered apart";
+	assert layoutFloats(programLayout(bareCrate), 0) == layoutFloats(programLayout(plainCrate), 0),
+		"block 0 floats";
+	assert uniformSlotMask(bareCrate) == uniformSlotMask(plainCrate), "uniform slots";
+	assert uniformBlockBytes(bareCrate, 0) == uniformBlockBytes(plainCrate, 0), "block 0 bytes";
+	assert textureSlotMask(bareCrate) == textureSlotMask(plainCrate), "texture slots";
+	assert samplerSlotMask(bareCrate) == samplerSlotMask(plainCrate), "sampler slots";
+	assert uniformSlotMask(plainCrate) == 1 && textureSlotMask(plainCrate) == 0,
+		"the base has one block and no texture";
 }
 
 test "each effect adds its block, view and sampler past the base's bindings" {
-	assert layoutFloats(programLayout(detailedCrate), 0) == 2 + 2;
-	assert uniformSlotMask(detailedCrate) == 3;
-	assert uniformBlockBytes(detailedCrate, 0) == 16 && uniformBlockBytes(detailedCrate, 1) == 16;
-	assert textureSlotMask(detailedCrate) == 1;
-	assert samplerSlotMask(detailedCrate) == 1;
+	assert layoutFloats(programLayout(detailedCrate), 0) == 2 + 2, "block 0 floats";
+	assert uniformSlotMask(detailedCrate) == 3, "the tint block takes slot 1";
+	assert uniformBlockBytes(detailedCrate, 0) == 16 && uniformBlockBytes(detailedCrate, 1) == 16,
+		"block bytes";
+	assert textureSlotMask(detailedCrate) == 1, "the detail view takes texture slot 0";
+	assert samplerSlotMask(detailedCrate) == 1, "the detail sampler takes sampler slot 0";
 }
 
 test "the effects chain at the hook site in the author's order" {
-	assert detailedModule.fragmentCode.includes("detailMul(colourAdd(phase))");
-	assert swappedModule.fragmentCode.includes("colourAdd(detailMul(phase))");
-	assert detailedModule.fragmentCode != swappedModule.fragmentCode;
+	assert detailedModule.fragmentCode.includes("detailMul(colourAdd(phase))"),
+		"colourAdd runs first";
+	assert swappedModule.fragmentCode.includes("colourAdd(detailMul(phase))"),
+		"detailMul runs first";
+	assert detailedModule.fragmentCode != swappedModule.fragmentCode,
+		"the order reaches the printed text";
 }
