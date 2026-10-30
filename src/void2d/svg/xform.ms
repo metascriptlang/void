@@ -3,60 +3,47 @@ export const NSVG_KAPPA90: float32 = 0.5522847493;
 
 const NSVG_EPSILON: float64 = 1e-12;
 
+function setXform(
+	t: float32[],
+	a: float32,
+	b: float32,
+	c: float32,
+	d: float32,
+	e: float32,
+	f: float32,
+): void {
+	t[0] = a;
+	t[1] = b;
+	t[2] = c;
+	t[3] = d;
+	t[4] = e;
+	t[5] = f;
+}
+
 export function xformIdentity(t: float32[]): void {
-	t[0] = 1.0;
-	t[1] = 0.0;
-	t[2] = 0.0;
-	t[3] = 1.0;
-	t[4] = 0.0;
-	t[5] = 0.0;
+	setXform(t, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
 }
 
 export function xformSetTranslation(t: float32[], tx: float32, ty: float32): void {
-	t[0] = 1.0;
-	t[1] = 0.0;
-	t[2] = 0.0;
-	t[3] = 1.0;
-	t[4] = tx;
-	t[5] = ty;
+	setXform(t, 1.0, 0.0, 0.0, 1.0, tx, ty);
 }
 
 export function xformSetScale(t: float32[], sx: float32, sy: float32): void {
-	t[0] = sx;
-	t[1] = 0.0;
-	t[2] = 0.0;
-	t[3] = sy;
-	t[4] = 0.0;
-	t[5] = 0.0;
+	setXform(t, sx, 0.0, 0.0, sy, 0.0, 0.0);
 }
 
 export function xformSetSkewX(t: float32[], a: float32): void {
-	t[0] = 1.0;
-	t[1] = 0.0;
-	t[2] = Math.tan(a as float64) as float32;
-	t[3] = 1.0;
-	t[4] = 0.0;
-	t[5] = 0.0;
+	setXform(t, 1.0, 0.0, Math.tan(a as float64) as float32, 1.0, 0.0, 0.0);
 }
 
 export function xformSetSkewY(t: float32[], a: float32): void {
-	t[0] = 1.0;
-	t[1] = Math.tan(a as float64) as float32;
-	t[2] = 0.0;
-	t[3] = 1.0;
-	t[4] = 0.0;
-	t[5] = 0.0;
+	setXform(t, 1.0, Math.tan(a as float64) as float32, 0.0, 1.0, 0.0, 0.0);
 }
 
 export function xformSetRotation(t: float32[], a: float32): void {
 	const cs: float32 = Math.cos(a as float64) as float32;
 	const sn: float32 = Math.sin(a as float64) as float32;
-	t[0] = cs;
-	t[1] = sn;
-	t[2] = -sn;
-	t[3] = cs;
-	t[4] = 0.0;
-	t[5] = 0.0;
+	setXform(t, cs, sn, -sn, cs, 0.0, 0.0);
 }
 
 export function xformMultiply(t: float32[], s: float32[]): void {
