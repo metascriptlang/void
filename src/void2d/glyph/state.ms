@@ -70,7 +70,15 @@ export class GlyphFace {
 	browser: boolean = false;
 	asciiUnits: float32 = 0.0;
 	glyphCount: int32 = 0;
-	heights: FaceHeights = { cap: 0, ex: 0, ic: 0, capEstimate: 0, exEstimate: 0, icEstimate: 0, lineHeight: 0 };
+	heights: FaceHeights = {
+		cap: 0,
+		ex: 0,
+		ic: 0,
+		capEstimate: 0,
+		exEstimate: 0,
+		icEstimate: 0,
+		lineHeight: 0,
+	};
 	underlineTop: float32 = 0.0;
 	underlineThickness: float32 = 0.0;
 	strikeTop: float32 = 0.0;
@@ -111,8 +119,19 @@ export const state: GlyphState = new GlyphState();
 
 export function blankInfo(data: Readonly<Span<uint8>>): FontInfo {
 	return {
-		data: data, fontstart: 0, numGlyphs: 0, loca: 0, head: 0, glyf: 0, hhea: 0, hmtx: 0,
-		kern: 0, gpos: 0, svg: 0, indexMap: 0, indexToLocFormat: 0,
+		data: data,
+		fontstart: 0,
+		numGlyphs: 0,
+		loca: 0,
+		head: 0,
+		glyf: 0,
+		hhea: 0,
+		hmtx: 0,
+		kern: 0,
+		gpos: 0,
+		svg: 0,
+		indexMap: 0,
+		indexToLocFormat: 0,
 		cff: { data: data, base: 0, size: 0, cursor: 0 },
 		charstrings: { data: data, base: 0, size: 0, cursor: 0 },
 		gsubrs: { data: data, base: 0, size: 0, cursor: 0 },

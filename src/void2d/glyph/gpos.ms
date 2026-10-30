@@ -30,7 +30,9 @@ function addKernLookup(ref lookups: int32[], lookup: int32): void {
 		if (lookups[i] == lookup) { return; }
 	}
 	if ((lookups.length as int32) == MAX_KERN_LOOKUPS) {
-		console.error(`void2d: more than ${MAX_KERN_LOOKUPS} GPOS kern lookups; the rest are ignored`);
+		console.error(
+			`void2d: more than ${MAX_KERN_LOOKUPS} GPOS kern lookups; the rest are ignored`,
+		);
 		return;
 	}
 	lookups.push(lookup);
@@ -43,7 +45,10 @@ function addKernLookup(ref lookups: int32[], lookup: int32): void {
 }
 
 function addKernFeature(
-	data: Readonly<Span<uint8>>, ref lookups: int32[], featureList: int64, featureIndex: int32,
+	data: Readonly<Span<uint8>>,
+	ref lookups: int32[],
+	featureList: int64,
+	featureIndex: int32,
 ): void {
 	if (featureIndex < 0 || featureIndex >= data.u16At(featureList)) { return; }
 	const record: int64 = featureList + 2 + 6 * (featureIndex as int64);
@@ -75,7 +80,11 @@ export function findKernLookups(info: FontInfo): int32[] {
 }
 
 function pairAdvance(
-	data: Readonly<Span<uint8>>, table: int64, left: int32, right: int32, ref applied: boolean,
+	data: Readonly<Span<uint8>>,
+	table: int64,
+	left: int32,
+	right: int32,
+	ref applied: boolean,
 ): int32 {
 	applied = false;
 	if (getCoverageIndex(data, table + data.u16At(table + 2), left) < 0) { return 0; }
@@ -127,7 +136,12 @@ function pairAdvance(
 	return 0;
 }
 
-export function gposKern(info: FontInfo, lookups: Readonly<Span<int32>>, left: int32, right: int32): int32 {
+export function gposKern(
+	info: FontInfo,
+	lookups: Readonly<Span<int32>>,
+	left: int32,
+	right: int32,
+): int32 {
 	const data = info.data;
 	const gpos: int64 = info.gpos as int64;
 	const lookupList: int64 = gpos + data.u16At(gpos + 8);

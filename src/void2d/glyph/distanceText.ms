@@ -26,7 +26,11 @@ function paddedBox(box: GlyphBox, pad: int32): GlyphBox {
 }
 
 function bitmapBox(
-	f: GlyphFace, glyph: int32, vertices: Readonly<Span<Vertex>>, scale: float32, shiftX: float32,
+	f: GlyphFace,
+	glyph: int32,
+	vertices: Readonly<Span<Vertex>>,
+	scale: float32,
+	shiftX: float32,
 ): GlyphBox {
 	if (isSynthetic(f)) { return shapeBox(vertices, scale, shiftX); }
 	return getGlyphBitmapBoxSubpixel(f.info, glyph, scale, scale, shiftX, 0.0);
@@ -37,7 +41,10 @@ function noTileKind(face: int32): boolean {
 }
 
 function sdfBitmapBox(
-	f: GlyphFace, glyph: int32, vertices: Readonly<Span<Vertex>>, scale: float32,
+	f: GlyphFace,
+	glyph: int32,
+	vertices: Readonly<Span<Vertex>>,
+	scale: float32,
 ): GlyphBox {
 	return paddedBox(bitmapBox(f, glyph, vertices, scale, 0.0), SDF_PAD);
 }
@@ -107,7 +114,13 @@ when (voidSdfText) {
 	}
 
 	export function void2dGlyphSdfRasterize(
-		face: int32, glyph: int32, page: int32, x: int32, y: int32, w: int32, h: int32,
+		face: int32,
+		glyph: int32,
+		page: int32,
+		x: int32,
+		y: int32,
+		w: int32,
+		h: int32,
 	): int32 {
 		const tile = tileFault("SDF", face, page, PAGE_SDF, x, y, w, h);
 		if (tile != SDF_OK) { return tile; }
@@ -122,22 +135,38 @@ when (voidSdfText) {
 		if (fit != SDF_OK) { return fit; }
 		const at: int32 = y * p.size + x;
 		distanceFill(
-			vertices, void2dGlyphScale(face, SDF_EM), 0.0, box, false, 0.0,
-			p.texels[at..p.texels.length], p.size,
+			vertices,
+			void2dGlyphScale(face, SDF_EM),
+			0.0,
+			box,
+			false,
+			0.0,
+			p.texels[at..p.texels.length],
+			p.size,
 		);
 		state.sdfGenerations++;
 		markDirtyBox(p, x, y, w, h);
 		return SDF_OK;
 	}
 
-	export function void2dGlyphSdfStbDiff(face: int32, glyph: int32, page: int32, x: int32, y: int32): int32 {
+	export function void2dGlyphSdfStbDiff(
+		face: int32,
+		glyph: int32,
+		page: int32,
+		x: int32,
+		y: int32,
+	): int32 {
 		if (!validFace(face) || !validPage(page) || isSynthetic(state.faces[face]) ||
 			state.faces[face].sprite || state.faces[face].platform != null) {
 			return -2;
 		}
 		const p = state.pages[page];
 		const reference = getGlyphSDF(
-			state.faces[face].info, void2dGlyphScale(face, SDF_EM), glyph, SDF_PAD, SDF_EDGE as uint8,
+			state.faces[face].info,
+			void2dGlyphScale(face, SDF_EM),
+			glyph,
+			SDF_PAD,
+			SDF_EDGE as uint8,
 			SDF_DIST_SCALE,
 		);
 		if (reference == null) { return -1; }
@@ -168,7 +197,11 @@ when (voidTextOutline) {
 	}
 
 	export function void2dGlyphOutlineBox(
-		face: int32, glyph: int32, sizePx: float32, shiftX: float32, widthPx: float32,
+		face: int32,
+		glyph: int32,
+		sizePx: float32,
+		shiftX: float32,
+		widthPx: float32,
 		out: Span<int32>,
 	): void {
 		clear5(out, "void2dGlyphOutlineBox");
@@ -181,14 +214,23 @@ when (voidTextOutline) {
 		const vertices = glyphShape(f, glyph);
 		if (vertices.length > 0) {
 			putBox(out, paddedBox(
-				bitmapBox(f, glyph, vertices, void2dGlyphScale(face, sizePx), shiftX), outlinePad(widthPx),
+				bitmapBox(f, glyph, vertices, void2dGlyphScale(face, sizePx), shiftX),
+				outlinePad(widthPx),
 			));
 		}
 	}
 
 	export function void2dGlyphOutlineRasterize(
-		face: int32, glyph: int32, sizePx: float32, shiftX: float32, widthPx: float32,
-		page: int32, x: int32, y: int32, w: int32, h: int32,
+		face: int32,
+		glyph: int32,
+		sizePx: float32,
+		shiftX: float32,
+		widthPx: float32,
+		page: int32,
+		x: int32,
+		y: int32,
+		w: int32,
+		h: int32,
 	): int32 {
 		const tile = tileFault("outline", face, page, PAGE_COVERAGE, x, y, w, h);
 		if (tile != SDF_OK) { return tile; }
@@ -206,12 +248,25 @@ when (voidTextOutline) {
 		if (hasCubic(vertices)) {
 			const flat = flattenCubics(vertices, 0.35 / scale);
 			distanceFill(
-				flat.vertices, scale / (flat.grid as float32), shiftX, box, true, widthPx,
-				p.texels[at..p.texels.length], p.size,
+				flat.vertices,
+				scale / (flat.grid as float32),
+				shiftX,
+				box,
+				true,
+				widthPx,
+				p.texels[at..p.texels.length],
+				p.size,
 			);
 		} else {
 			distanceFill(
-				vertices, scale, shiftX, box, true, widthPx, p.texels[at..p.texels.length], p.size,
+				vertices,
+				scale,
+				shiftX,
+				box,
+				true,
+				widthPx,
+				p.texels[at..p.texels.length],
+				p.size,
 			);
 		}
 		state.outlineGenerations++;
@@ -222,7 +277,11 @@ when (voidTextOutline) {
 
 when (voidSdfText && voidTextOutline) {
 	function sdfOutlineBox(
-		f: GlyphFace, glyph: int32, vertices: Readonly<Span<Vertex>>, scale: float32, biasTexels: float32,
+		f: GlyphFace,
+		glyph: int32,
+		vertices: Readonly<Span<Vertex>>,
+		scale: float32,
+		biasTexels: float32,
 	): GlyphBox {
 		const box = sdfBitmapBox(f, glyph, vertices, scale);
 		if (box.x1 <= box.x0) { return box; }
@@ -231,7 +290,10 @@ when (voidSdfText && voidTextOutline) {
 	}
 
 	export function void2dGlyphSdfOutlineBox(
-		face: int32, glyph: int32, biasTexels: float32, out: Span<int32>,
+		face: int32,
+		glyph: int32,
+		biasTexels: float32,
+		out: Span<int32>,
 	): void {
 		clear5(out, "void2dGlyphSdfOutlineBox");
 		if (!validFace(face)) { return; }
@@ -245,13 +307,23 @@ when (voidSdfText && voidTextOutline) {
 			if (hasCubic(vertices)) {
 				out[4] = 1;
 			} else {
-				putBox(out, sdfOutlineBox(f, glyph, vertices, void2dGlyphScale(face, SDF_EM), biasTexels));
+				putBox(
+					out,
+					sdfOutlineBox(f, glyph, vertices, void2dGlyphScale(face, SDF_EM), biasTexels),
+				);
 			}
 		}
 	}
 
 	export function void2dGlyphSdfOutlineRasterize(
-		face: int32, glyph: int32, biasTexels: float32, page: int32, x: int32, y: int32, w: int32, h: int32,
+		face: int32,
+		glyph: int32,
+		biasTexels: float32,
+		page: int32,
+		x: int32,
+		y: int32,
+		w: int32,
+		h: int32,
 	): int32 {
 		const tile = tileFault("SDF outline", face, page, PAGE_SDF, x, y, w, h);
 		if (tile != SDF_OK) { return tile; }
@@ -266,8 +338,14 @@ when (voidSdfText && voidTextOutline) {
 		if (fit != SDF_OK) { return fit; }
 		const at: int32 = y * p.size + x;
 		distanceFill(
-			vertices, void2dGlyphScale(face, SDF_EM), 0.0, box, false, biasTexels,
-			p.texels[at..p.texels.length], p.size,
+			vertices,
+			void2dGlyphScale(face, SDF_EM),
+			0.0,
+			box,
+			false,
+			biasTexels,
+			p.texels[at..p.texels.length],
+			p.size,
 		);
 		state.outlineGenerations++;
 		markDirtyBox(p, x, y, w, h);
