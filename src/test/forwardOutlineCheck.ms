@@ -3,7 +3,37 @@ import {
 	ForwardOutlineSettings, valid, outlineColor, fxaaCoverage, outlineWidthCoverage,
 	OUTLINE_WIDTH_SAMPLES,
 } from "../void3d/forwardOutline";
-import { Program, ProgramKey, declares, uniformBlockLength } from "../void3d/gpu3d";
+import {
+	LIGHT_UNIFORM_LENGTH,
+	Preset,
+	Program,
+	ProgramKey,
+	VERTEX_UNIFORM_LENGTH,
+	declares,
+	drawnIn,
+	uniformBlockLength,
+} from "../void3d/gpu3d";
+import {
+	ForwardRenderer,
+	ForwardError,
+	FORWARD_UNIFORM_LENGTH,
+	FORWARD_OUTLINE_UNIFORM_LENGTH,
+	setOutlineBlend,
+	setOutlineSettings,
+	closeForward,
+	prepareFrame,
+} from "../void3d/forwardRenderer";
+import {
+	DrawContext,
+	DrawItem,
+	MaterialId,
+	MaterialError,
+	addMaterial,
+	releaseMaterial,
+	closeContext,
+} from "../void3d/draw";
+import { Material, Phase } from "../void3d/material";
+import { RenderState, BlendMode, Compare } from "../gpu/state";
 
 const CLEAR: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 0.0 };
 const LIT: Vec4 = { x: 0.4, y: 0.2, z: 0.1, w: 0.5 };
@@ -30,7 +60,10 @@ function reference(
 	const hi: float32 = Math.max(lm, Math.max(Math.max(lnw, lne), Math.max(lsw, lse)));
 	const dx: float32 = -((lnw + lne) - (lsw + lse));
 	const dy: float32 = (lnw + lsw) - (lne + lse);
-	const reduction: float32 = Math.max((lnw + lne + lsw + lse) * (0.25 / 128.0), (1.0 / 8.0) as float32);
+	const reduction: float32 = Math.max(
+		(lnw + lne + lsw + lse) * (0.25 / 128.0),
+		(1.0 / 8.0) as float32,
+	);
 	const r: float32 = (1.0 / (Math.min(Math.abs(dx), Math.abs(dy)) + reduction)) as float32;
 	const ux: float32 = Math.min(8.0, Math.max(-8.0, dx * r));
 	const uy: float32 = Math.min(8.0, Math.max(-8.0, dy * r));
@@ -51,15 +84,19 @@ function cornerTexel(x: int32, y: int32): float32 {
 	return (x >= 0 && x <= 1 && y >= 0) || (y >= 0 && y <= 1 && x >= 0) ? 1.0 : 0.0;
 }
 
+function texelOf(corner: boolean, x: int32, y: int32): float32 {
+	return corner ? cornerTexel(x, y) : diagonalTexel(x, y);
+}
+
 function bilinear(x: float32, y: float32, corner: boolean): float32 {
 	const ix: int32 = Math.floor(x) as int32;
 	const iy: int32 = Math.floor(y) as int32;
 	const tx: float32 = x - (ix as float32);
 	const ty: float32 = y - (iy as float32);
-	const a: float32 = corner ? cornerTexel(ix, iy) : diagonalTexel(ix, iy);
-	const b: float32 = corner ? cornerTexel(ix + 1, iy) : diagonalTexel(ix + 1, iy);
-	const c: float32 = corner ? cornerTexel(ix, iy + 1) : diagonalTexel(ix, iy + 1);
-	const d: float32 = corner ? cornerTexel(ix + 1, iy + 1) : diagonalTexel(ix + 1, iy + 1);
+	const a: float32 = texelOf(corner, ix, iy);
+	const b: float32 = texelOf(corner, ix + 1, iy);
+	const c: float32 = texelOf(corner, ix, iy + 1);
+	const d: float32 = texelOf(corner, ix + 1, iy + 1);
 	return (a * (1.0 - tx) + b * tx) * (1.0 - ty) + (c * (1.0 - tx) + d * tx) * ty;
 }
 
@@ -117,16 +154,6 @@ test "forwardOutline normal MRT occupies bit16 never skin bit15" {
 	assert ProgramKey.of(Program.Lit).bits() == 0;
 }
 
-import {
-	ForwardRenderer, ForwardError, FORWARD_UNIFORM_LENGTH, FORWARD_OUTLINE_UNIFORM_LENGTH,
-	setOutlineBlend, setOutlineSettings, closeForward, prepareFrame,
-} from "../void3d/forwardRenderer";
-import { DrawContext, DrawItem, MaterialId, MaterialError, addMaterial, releaseMaterial, closeContext } from "../void3d/draw";
-import { Material, Phase } from "../void3d/material";
-import { RenderState, BlendMode, Compare } from "../gpu/state";
-import { VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH, drawnIn, Preset, declares } from
-	"../void3d/gpu3d";
-
 test "forwardOutline disabled create keeps old budget and lazy zero path" {
 	const context: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
 	const made: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(context, CLEAR);
@@ -160,7 +187,8 @@ test "forwardOutline lazy holders reuse ranges and settings snapshot marks chang
 			setOutlineBlend(renderer, 0.0);
 			setOutlineBlend(renderer, 1.0);
 			assert context.uniforms.used == used && context.liveMaterials() == 5;
-			let settings: ForwardOutlineSettings = { ...ForwardOutlineSettings.defaults(), color: LINE };
+			let settings: ForwardOutlineSettings =
+				{ ...ForwardOutlineSettings.defaults(), color: LINE };
 			renderer.core.changed = false;
 			setOutlineSettings(renderer, settings);
 			settings.color.w = 0.0;
@@ -206,7 +234,8 @@ function phaseRefusal(pass: RenderState, phase: Phase): ForwardError | null {
 		addMaterial(context, Material.plain(Program.Lit, pass, phase));
 	if (!added.ok) { unreachable; }
 	let items: Vec<DrawItem> = [{
-		mesh: { store: 0, index: 0, generation: 0 }, material: added.value,
+		mesh: { store: 0, index: 0, generation: 0 },
+		material: added.value,
 		world: identity(),
 	}];
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
@@ -270,14 +299,14 @@ test "forwardOutline width screen reflection has own four-float block" {
 test "forwardOutline RGBA8 partial coverage interval rejects old four-pixel width3" {
 	const alpha: float32 = 0.5;
 	const coverage: float32 = 0.5;
-	const maskLow: int32 = Math.ceil(coverage*255.0-1.0) as int32;
-	const maskHigh: int32 = Math.floor(coverage*255.0+1.0) as int32;
-	const partialLow: int32 = Math.ceil(alpha*(maskLow as float32)-1.0) as int32;
-	const partialHigh: int32 = Math.floor(alpha*(maskHigh as float32)+1.0) as int32;
-	const fullLow: int32 = Math.ceil(alpha*255.0-1.0) as int32;
-	const fullHigh: int32 = Math.floor(alpha*255.0+1.0) as int32;
-	const low: int32 = 2*fullLow+2*partialLow;
-	const high: int32 = 2*fullHigh+2*partialHigh;
+	const maskLow: int32 = Math.ceil(coverage * 255.0 - 1.0) as int32;
+	const maskHigh: int32 = Math.floor(coverage * 255.0 + 1.0) as int32;
+	const partialLow: int32 = Math.ceil(alpha * (maskLow as float32) - 1.0) as int32;
+	const partialHigh: int32 = Math.floor(alpha * (maskHigh as float32) + 1.0) as int32;
+	const fullLow: int32 = Math.ceil(alpha * 255.0 - 1.0) as int32;
+	const fullHigh: int32 = Math.floor(alpha * 255.0 + 1.0) as int32;
+	const low: int32 = 2 * fullLow + 2 * partialLow;
+	const high: int32 = 2 * fullHigh + 2 * partialHigh;
 	assert low == 380 && high == 386;
 	assert 508 > high;
 	assert 380 >= low && 380 <= high;

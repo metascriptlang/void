@@ -58,7 +58,7 @@ function weightedMask(): ColorMatrixMask {
 }
 
 function texture(width: int32, height: int32, texel: (x: int32) => Vec4): Texture2d {
-	let texels: float32[] = [];
+	const texels: float32[] = [];
 	for (let y = 0; y < height; y++) {
 		for (let x = 0; x < width; x++) {
 			const c: Vec4 = texel(x);
@@ -191,12 +191,17 @@ test "a mask with no second matrix mixes toward the source colour" {
 }
 
 test "the mask is read where its UV rows map the target's UV" {
-	const settings: ColorMatrixSettings = { matrix: matrixA(), useAlpha: false, secondMatrix: null };
+	const settings: ColorMatrixSettings =
+		{ matrix: matrixA(), useAlpha: false, secondMatrix: null };
 	const source: Texture2d = texture(4, 4, (_x: int32): Vec4 => vec4(0.25, 0.5, 0.75, 0.375));
-	const ramp: Texture2d = texture(8, 8, (x: int32): Vec4 => vec4((x as float32) / 8.0, 0.0, 0.0, 0.0));
-	const mask: ColorMatrixMask = { ...ColorMatrixMask.create(), matA: { x: 2.0, y: -1.0, z: 0.125 } };
-	const first: Vec4 = screen(vec4(0.25, 0.5, 0.75, 0.375), settings);
+	const ramp: Texture2d = texture(
+		8,
+		8,
+		(x: int32): Vec4 => vec4((x as float32) / 8.0, 0.0, 0.0, 0.0),
+	);
+	const mask: ColorMatrixMask = { ...ColorMatrixMask.create(), matA: weightedMask().matA };
 	const color: Vec4 = vec4(0.25, 0.5, 0.75, 0.375);
+	const first: Vec4 = screen(color, settings);
 	const weight: float32 = 0.0625;
 	const expected: Vec4 = vec4(
 		first.x + (color.x - first.x) * weight, first.y + (color.y - first.y) * weight,
@@ -222,7 +227,8 @@ test "the identity pass makes the colour opaque and leaves the rest, and saturat
 }
 
 test "a mask texel of 0 under a positive power keeps the first matrix; past 1 it extrapolates" {
-	const settings: ColorMatrixSettings = { matrix: matrixA(), useAlpha: false, secondMatrix: null };
+	const settings: ColorMatrixSettings =
+		{ matrix: matrixA(), useAlpha: false, secondMatrix: null };
 	const color: Vec4 = vec4(0.25, 0.5, 0.75, 0.375);
 	const mask = ColorMatrixMask.create();
 	assert closeColor(masked(color, settings, mask, vec4(0.0, 0.0, 0.0, 0.0)),

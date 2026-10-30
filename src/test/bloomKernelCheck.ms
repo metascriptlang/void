@@ -6,6 +6,10 @@ struct BloomKernelFrame {
 	pixels: Vec<float64>;
 }
 
+function clamped(index: int32, size: int32): int32 {
+	return Math.max(0, Math.min(index, size - 1));
+}
+
 function sample(
 	this frame: BloomKernelFrame,
 	u: float64,
@@ -19,10 +23,10 @@ function sample(
 	const iy: int32 = Math.floor(y) as int32;
 	const fx: float64 = x - (ix as float64);
 	const fy: float64 = y - (iy as float64);
-	const x0: int32 = Math.max(0, Math.min(ix, frame.width - 1));
-	const x1: int32 = Math.max(0, Math.min(ix + 1, frame.width - 1));
-	const y0: int32 = Math.max(0, Math.min(iy, frame.height - 1));
-	const y1: int32 = Math.max(0, Math.min(iy + 1, frame.height - 1));
+	const x0: int32 = clamped(ix, frame.width);
+	const x1: int32 = clamped(ix + 1, frame.width);
+	const y0: int32 = clamped(iy, frame.height);
+	const y1: int32 = clamped(iy + 1, frame.height);
 	return (frame.pixels[y0 * frame.width + x0] * (1.0 - fx) +
 		frame.pixels[y0 * frame.width + x1] * fx) * (1.0 - fy) +
 		(frame.pixels[y1 * frame.width + x0] * (1.0 - fx) +
@@ -40,7 +44,7 @@ function downsample(
 	first: boolean,
 ): BloomKernelFrame {
 	let target: BloomKernelFrame = {
-		width: width, height: height, pixels: new Array(width * height),
+		width, height, pixels: new Array(width * height),
 	};
 	for (let y = 0; y < height; y++) {
 		for (let x = 0; x < width; x++) {
@@ -91,7 +95,7 @@ function upsample(source: BloomKernelFrame, ref target: BloomKernelFrame, factor
 
 function chain(width: int32, height: int32): BloomKernelFrame {
 	let frame: BloomKernelFrame = {
-		width: width, height: height, pixels: new Array(width * height),
+		width, height, pixels: new Array(width * height),
 	};
 	for (let y = height / 2 - 4; y < height / 2 + 4; y++) {
 		for (let x = width / 2 - 4; x < width / 2 + 4; x++) {

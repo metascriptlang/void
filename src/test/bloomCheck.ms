@@ -63,13 +63,13 @@ test "the upsample blends colour by its alpha and leaves the target's alpha alon
 }
 
 test "an HDR preset reserves its bloom off, and setBloom turns it on and off" {
-	let context: DrawContext = DrawContext.withUniformCapacity(FORWARD_HDR_UNIFORM_LENGTH);
+	const context: DrawContext = DrawContext.withUniformCapacity(FORWARD_HDR_UNIFORM_LENGTH);
 	const background: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 	const created: Result<ForwardRenderer, ForwardError> =
 		ForwardRenderer.createHdrWhere(context, background, true);
 	assert created.ok;
 	if (created.ok) {
-		let forward: ForwardRenderer = created.value;
+		const forward: ForwardRenderer = created.value;
 		const pass: ToneMapPass | null = forward.toneMap;
 		assert pass !== null;
 		if (pass !== null) {

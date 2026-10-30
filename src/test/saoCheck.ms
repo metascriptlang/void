@@ -35,9 +35,9 @@ function perspective(): Camera3D {
 }
 
 function resolvedView(camera: Camera3D): CameraView {
-	let result: Result<CameraView, CameraError> = camera.resolve(320, 180);
-	if (result.ok) { return result.value; }
-	unreachable;
+	const result: Result<CameraView, CameraError> = camera.resolve(320, 180);
+	if (!result.ok) { unreachable; }
+	return result.value;
 }
 
 function blockOf(settings: ScalableAoSettings, camera: Camera3D, zeroToOne: boolean): Vec<float32> {

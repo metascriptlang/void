@@ -30,7 +30,7 @@ function at(x: float32, y: float32): PostInput {
 }
 
 function filled(width: int32, height: int32, texel: Vec4f): Texture2d {
-	let texels: float32[] = [];
+	const texels: float32[] = [];
 	for (let i = 0; i < width * height; i++) {
 		texels.push(texel.x);
 		texels.push(texel.y);
@@ -101,7 +101,7 @@ test "bloom's first downsample averages fireflies per group, then thresholds" {
 }
 
 function leftSurfaceOf(width: float32): OutlineMaskBindings {
-	let normal = filled(4, 1, vec4f(0.5, 0.5, 1.0, 1.0));
+	const normal = filled(4, 1, vec4f(0.5, 0.5, 1.0, 1.0));
 	for (let i = 8; i < 16; i++) { normal.texels[i] = 0.0; }
 	return {
 		outlineNormal: normal,
@@ -136,7 +136,7 @@ function mixOf(blend: float32): Vec4f {
 }
 
 function facesMeetingAt4Of(width: float32): OutlineMaskBindings {
-	let normal = filled(8, 1, vec4f(0.5, 0.5, 1.0, 1.0));
+	const normal = filled(8, 1, vec4f(0.5, 0.5, 1.0, 1.0));
 	for (let i = 4; i < 8; i++) {
 		normal.texels[i * 4] = 1.0;
 		normal.texels[i * 4 + 2] = 0.5;
@@ -209,7 +209,7 @@ test "the SAO radius, occlusion and fades follow ScalableAO's" {
 
 // White above the diagonal x > y and black under it, the white at alpha 0.75, the black at 0.25.
 function staircase(size: int32): Texture2d {
-	let texels: float32[] = [];
+	const texels: float32[] = [];
 	for (let y = 0; y < size; y++) {
 		for (let x = 0; x < size; x++) {
 			const white: float32 = x > y ? 1.0 : 0.0;
