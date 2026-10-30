@@ -126,6 +126,9 @@ const ZERO_WIDTH_JOINER: int32 = 0x200D;
 const ZERO_WIDTH_NON_JOINER: int32 = 0x200C;
 
 const ELLIPSIS: int32 = 0x2026;
+const FIRST_SUPPLEMENTARY: int32 = 0x10000;
+const MIDDLE_HEAD_SHARE: float64 = 2.0 / 3.0;
+const GRID_SNAP_TOLERANCE: float32 = 1.0;
 
 export const NO_GLYPH: int32 = -1;
 export const TAB_STOP_SPACES: int32 = 8;
@@ -294,14 +297,18 @@ struct Codepoint {
 	shapingBreak: boolean;
 }
 
+function utf16Width(codepoint: int32): int32 {
+	return codepoint >= FIRST_SUPPLEMENTARY ? 2 : 1;
+}
+
 function decodeUtf8(text: string, font: FontId): Vec<Codepoint> {
 	let out: Vec<Codepoint> = new Array(0);
 	let index: int32 = 0;
-	const bytes: Readonly<Span<char>> = text;
+	const bytes: Readonly<Span<uint8>> = text.asBytes();
 	const total: int32 = bytes.length as int32;
 	let i: int32 = 0;
 	while (i < total) {
-		const lead: int32 = (bytes[i] as uint8) as int32;
+		const lead: int32 = bytes[i] as int32;
 		let length: int32 = 1;
 		let value: int32 = lead;
 		if (lead >= 0xF0) {
@@ -316,14 +323,14 @@ function decodeUtf8(text: string, font: FontId): Vec<Codepoint> {
 		}
 		if (i + length > total) { length = total - i; }
 		for (let k = 1; k < length; k++) {
-			value = (value << 6) | (((bytes[i + k] as uint8) as int32) & 0x3F);
+			value = (value << 6) | ((bytes[i + k] as int32) & 0x3F);
 		}
 		out.push({
 			value: value, shown: value, joining: false, index: index, byteStart: i,
 			byteEnd: i + length, font: font,
 			run: NO_RUN, face: -1, scale: 1.0, clusterStart: false, shapingBreak: false,
 		});
-		index = index + (value >= 0x10000 ? 2 : 1);
+		index = index + utf16Width(value);
 		i = i + length;
 	}
 	return out;
@@ -620,7 +627,7 @@ function alignLines(
 }
 
 function unitEnd(this cp: Codepoint): int32 {
-	return cp.index + (cp.value >= 0x10000 ? 2 : 1);
+	return cp.index + utf16Width(cp.value);
 }
 
 function assignRuns(cps: Span<Codepoint>, runs: Readonly<Span<TextRun>>, units: int32): void {
@@ -680,7 +687,7 @@ function hasTab(cps: Readonly<Span<Codepoint>>): boolean {
 	return false;
 }
 
-function refusedText(
+function checkRtlSupport(
 	cps: Readonly<Span<Codepoint>>, direction: TextDirection,
 ): Result<void, TextError> {
 	when (voidBidi) {
@@ -991,7 +998,7 @@ export function shapeText(
 	direction: TextDirection = TextDirection.Auto,
 ): Result<ShapedText, TextError> {
 	let cps: Vec<Codepoint> = decodeUtf8(text, style.font);
-	const accepted = try refusedText(cps, direction);
+	const accepted = try checkRtlSupport(cps, direction);
 	const count: int32 = cps.length as int32;
 	const units: int32 = count > 0 ? cps[count - 1].unitEnd() : 0;
 	if (runs.length > 0) { assignRuns(cps, runs, units); }
@@ -1396,7 +1403,7 @@ function forceCells(
 			head = k;
 			headCells = cells;
 			const forced: float32 = (cells as float32) * cell;
-			if (Math.abs(shaped - forced) > 1.0 || isSpriteFace(glyphs[k].face)) {
+			if (Math.abs(shaped - forced) > GRID_SNAP_TOLERANCE || isSpriteFace(glyphs[k].face)) {
 				glyphs[k].x = forced;
 			}
 			lastShaped = shaped;
@@ -1579,7 +1586,7 @@ function pushTruncated(
 	const count: int32 = line.length as int32;
 	const content: float32 = room - dots;
 	const headBudget: float32 =
-		truncate == Truncate.Middle ? (content * (2.0 / 3.0)) as float32 : content;
+		truncate == Truncate.Middle ? (content * MIDDLE_HEAD_SHARE) as float32 : content;
 	const tailBudget: float32 = truncate == Truncate.Middle ? content - headBudget : content;
 	let head: int32 = 0;
 	if (truncate != Truncate.Start) {
@@ -1981,7 +1988,7 @@ export function wrapLines(
 
 function unitsTo(shaped: ShapedText, end: int32): int32 {
 	const last: LaidGlyph = shaped.glyphs[end - 1];
-	return last.index + (last.codepoint >= 0x10000 ? 2 : 1);
+	return last.index + utf16Width(last.codepoint);
 }
 
 export function layout(
