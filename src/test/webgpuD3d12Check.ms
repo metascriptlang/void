@@ -19,6 +19,7 @@ import {
 import { requestDevice } from "../webgpu/device.ms";
 import { adapterDescription, drainDebugMessages, executedAllocator, frameAllocator, idleSerial, retiredCount, samplerDescriptor, viewDescriptor } from "../webgpu/d3d12/backend.ms";
 import { splitTextureCopy } from "../webgpu/d3d12/resources.ms";
+import { PRESENT_MODE_IMMEDIATE, PRESENT_MODE_VSYNC, flipFormat, planPresent, presentCall } from "../webgpu/d3d12/surface.ms";
 import { newCursor, nextPair, serializeRootSignature, shaderLayout, tableEntries } from "../webgpu/d3d12/descriptor.ms";
 import { dx12Release } from "../webgpu/d3d12/d3d12.h";
 import { d3dBlobFree, d3dBlobRead, d3dCompile, d3dCompileLog } from "../webgpu/d3d11/d3d11.h";
@@ -842,4 +843,26 @@ test "a 4x multisampled triangle resolves into its single-sample resolve target"
 	assert texelAt(read, 256, 0, 0) == BLUE && texelAt(read, 256, 32, 32) == RED;
 	assert drainDebugMessages() == 0;
 	device.destroy();
+}
+
+test "vsync presents 2 buffers at interval 1 and immediate at interval 0, tearing only where the factory allows it" {
+	const vsync = planPresent(PRESENT_MODE_VSYNC, true);
+	assert vsync.bufferCount == 2 && vsync.interval == 1 && vsync.presentFlags == 0 && vsync.swapFlags == 0x40;
+	const tearing = planPresent(PRESENT_MODE_IMMEDIATE, true);
+	assert tearing.bufferCount == 2 && tearing.interval == 0 && tearing.presentFlags == 0x200 && tearing.swapFlags == 0x840;
+	const withoutTearing = planPresent(PRESENT_MODE_IMMEDIATE, false);
+	assert withoutTearing.interval == 0 && withoutTearing.presentFlags == 0 && withoutTearing.swapFlags == 0x40;
+}
+
+test "a present inside a modal size loop does not wait, and any other keeps the plan's interval and flags" {
+	const plan = planPresent(PRESENT_MODE_IMMEDIATE, true);
+	const modal = presentCall(plan, true);
+	assert modal.interval == 0 && modal.flags == 0x8;
+	const normal = presentCall(planPresent(PRESENT_MODE_VSYNC, false), false);
+	assert normal.interval == 1 && normal.flags == 0;
+}
+
+test "a flip swapchain takes bgra8 and rgba8 unorm, rgb10a2 and rgba16float, and refuses an sRGB format" {
+	assert flipFormat(87) && flipFormat(28) && flipFormat(24) && flipFormat(10);
+	assert !flipFormat(91) && !flipFormat(29);
 }
