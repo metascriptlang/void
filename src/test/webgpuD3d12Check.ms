@@ -25,15 +25,17 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 } from "../webgpu/types.ms";
-import { requestDevice } from "../webgpu/device.ms";
+import { getCurrentTexture, requestDevice } from "../webgpu/device.ms";
 import {
 	adapterDescription,
+	closeSurface,
 	descriptorStats,
 	drainDebugMessages,
 	executedAllocator,
 	frameAllocator,
 	idleSerial,
 	nativeTexture,
+	openSurface,
 	retiredCount,
 	samplerDescriptor,
 	viewDescriptor,
@@ -2007,6 +2009,29 @@ test "a label reaches the native object as its D3D12 name" {
 	assert length == 16;
 	assert name[0] == 108 && name[9] == 116 && name[15] == 101;
 	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "the swapchain texture copies out of a composition back buffer, resolved when it is multisampled" {
+	const device = openDevice();
+	const surface = openSurface(0, true, 8, 8, PRESENT_MODE_VSYNC);
+	const renderView = (surface as uint64) as Ptr<void>;
+	const screen = getCurrentTexture({ width: 8, height: 8, sampleCount: 1, renderView, resolveView: null, depthStencilView: null });
+	const clear = device.createCommandEncoder();
+	clear.beginRenderPass(clearingPass(screen.createView({ label: null }), { id: 0 })).end();
+	const direct = readbackBuffer(device, 256 * 8);
+	clear.copyTextureToBuffer({ texture: screen }, { buffer: direct, offset: 0, bytesPerRow: 256, rowsPerImage: 8 }, { width: 8, height: 8, depthOrArrayLayers: 1 });
+	device.queue.submit(clear.finish());
+	assert texelAt(readBack(direct), 256, 3, 3) == BLUE;
+	const multi = getCurrentTexture({ width: 8, height: 8, sampleCount: 4, renderView, resolveView: null, depthStencilView: null });
+	const frame = device.createCommandEncoder();
+	frame.beginRenderPass(clearingPass(multi.createView({ label: null }), { id: 0 })).end();
+	const copied = readbackBuffer(device, 256 * 8);
+	frame.copyTextureToBuffer({ texture: multi }, { buffer: copied, offset: 0, bytesPerRow: 256, rowsPerImage: 8 }, { width: 8, height: 8, depthOrArrayLayers: 1 });
+	device.queue.submit(frame.finish());
+	assert texelAt(readBack(copied), 256, 7, 7) == BLUE;
+	assert drainDebugMessages() == 0;
+	closeSurface(surface);
 	device.destroy();
 }
 
