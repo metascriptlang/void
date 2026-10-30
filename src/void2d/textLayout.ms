@@ -1190,8 +1190,8 @@ export function shapeLines(
 				indexed = true;
 			}
 			const found = byText.get(text.byteSlice(start, stop));
-			if (found.present) {
-				hit = found.value;
+			if (found !== null) {
+				hit = found;
 				shift = (lines.length as int32) - hit;
 			}
 		}
