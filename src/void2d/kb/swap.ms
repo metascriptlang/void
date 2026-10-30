@@ -26,7 +26,6 @@ import {
 	kbGetChainedClassSequenceRuleSet,
 	kbGetChainedSequenceRule,
 	kbGetChainedSequenceRuleSet,
-	kbGetClassSequenceRule,
 	kbGetClassSequenceRuleSet,
 	kbGetDefaultLangsys,
 	kbGetLigature,
@@ -449,6 +448,34 @@ export function kbSwapClassDefinition(m: Span<uint8>, c: KbSwapContext, base: in
 	}
 }
 
+function swapSequenceRuleSet(m: Span<uint8>, c: KbSwapContext, set: int64): void {
+	if (set != 0 && !kbAlreadyVisited(c, set)) {
+		m.kbSwapU16At(set);
+		kbSwapArray16Context(m, c, set + 2, u16At(m, set));
+
+		for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
+			const rule = kbGetSequenceRule(m, set, ruleIndex);
+
+			if (!kbAlreadyVisited(c, rule)) {
+				kbSwapArray16Context(m, c, rule, 2);
+				kbSwapArray16Context(m, c, rule + 4, kbUn(u16At(m, rule) - 1 + u16At(m, rule + 2) * 2));
+			}
+		}
+	}
+}
+
+function swapCoverages(
+	m: Span<uint8>,
+	c: KbSwapContext,
+	base: int64,
+	coverageOffsets: int64,
+	count: int32,
+): void {
+	for (let coverageIndex: int64 = 0; coverageIndex < (count as int64); coverageIndex++) {
+		kbSwapCoverage(m, c, base + u16At(m, coverageOffsets + coverageIndex * 2));
+	}
+}
+
 function swapSequenceContextSubtable(m: Span<uint8>, c: KbSwapContext, base: int64): void {
 	match (m.kbU16(base)) {
 		1 => {
@@ -456,22 +483,7 @@ function swapSequenceContextSubtable(m: Span<uint8>, c: KbSwapContext, base: int
 			kbSwapArray16Context(m, c, base + KB_SIZE_SEQUENCE_CONTEXT_1, u16At(m, base + 4));
 
 			for (let setIndex: int64 = 0; setIndex < u16At(m, base + 4); setIndex++) {
-				const set = kbGetSequenceRuleSet(m, base, setIndex);
-
-				if (set != 0 && !kbAlreadyVisited(c, set)) {
-					m.kbSwapU16At(set);
-					kbSwapArray16Context(m, c, set + 2, u16At(m, set));
-
-					for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
-						const rule = kbGetSequenceRule(m, set, ruleIndex);
-
-						if (!kbAlreadyVisited(c, rule)) {
-							kbSwapArray16Context(m, c, rule, 2);
-							kbSwapArray16Context(m, c, rule + 4,
-								kbUn(u16At(m, rule) - 1 + u16At(m, rule + 2) * 2));
-						}
-					}
-				}
+				swapSequenceRuleSet(m, c, kbGetSequenceRuleSet(m, base, setIndex));
 			}
 		},
 		2 => {
@@ -482,22 +494,7 @@ function swapSequenceContextSubtable(m: Span<uint8>, c: KbSwapContext, base: int
 			kbSwapClassDefinition(m, c, classDefBase);
 
 			for (let setIndex: int64 = 0; setIndex < u16At(m, base + 6); setIndex++) {
-				const set = kbGetClassSequenceRuleSet(m, base, setIndex);
-
-				if (set != 0 && !kbAlreadyVisited(c, set)) {
-					m.kbSwapU16At(set);
-					kbSwapArray16Context(m, c, set + 2, u16At(m, set));
-
-					for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
-						const rule = kbGetClassSequenceRule(m, set, ruleIndex);
-
-						if (!kbAlreadyVisited(c, rule)) {
-							kbSwapArray16Context(m, c, rule, 2);
-							kbSwapArray16Context(m, c, rule + 4,
-								kbUn(u16At(m, rule) - 1 + 2 * u16At(m, rule + 2)));
-						}
-					}
-				}
+				swapSequenceRuleSet(m, c, kbGetClassSequenceRuleSet(m, base, setIndex));
 			}
 		},
 		3 => {
@@ -542,15 +539,9 @@ function swapChainedSequenceContextSubtable(m: Span<uint8>, c: KbSwapContext, ba
 				(unpacked.lookaheadCount as int64) + (unpacked.recordCount as int64) * 2 + 4;
 			kbSwapArray16Context(m, c, base + 2, u16Count);
 
-			for (let index: int64 = 0; index < (unpacked.backtrackCount as int64); index++) {
-				kbSwapCoverage(m, c, base + u16At(m, unpacked.backtrackCoverageOffsets + index * 2));
-			}
-			for (let index: int64 = 0; index < (unpacked.inputCount as int64); index++) {
-				kbSwapCoverage(m, c, base + u16At(m, unpacked.inputCoverageOffsets + index * 2));
-			}
-			for (let index: int64 = 0; index < (unpacked.lookaheadCount as int64); index++) {
-				kbSwapCoverage(m, c, base + u16At(m, unpacked.lookaheadCoverageOffsets + index * 2));
-			}
+			swapCoverages(m, c, base, unpacked.backtrackCoverageOffsets, unpacked.backtrackCount);
+			swapCoverages(m, c, base, unpacked.inputCoverageOffsets, unpacked.inputCount);
+			swapCoverages(m, c, base, unpacked.lookaheadCoverageOffsets, unpacked.lookaheadCount);
 		},
 		_ => {},
 	}
@@ -651,12 +642,8 @@ export function kbSwapGsubLookupSubtable(
 					(unpacked.lookaheadCount as int64) + 3;
 				kbSwapArray16Context(m, c, base + 4, u16Count);
 
-				for (let index: int64 = 0; index < (unpacked.backtrackCount as int64); index++) {
-					kbSwapCoverage(m, c, base + u16At(m, unpacked.backtrackCoverageOffsets + index * 2));
-				}
-				for (let index: int64 = 0; index < (unpacked.lookaheadCount as int64); index++) {
-					kbSwapCoverage(m, c, base + u16At(m, unpacked.lookaheadCoverageOffsets + index * 2));
-				}
+				swapCoverages(m, c, base, unpacked.backtrackCoverageOffsets, unpacked.backtrackCount);
+				swapCoverages(m, c, base, unpacked.lookaheadCoverageOffsets, unpacked.lookaheadCount);
 			},
 			_ => {},
 		}
