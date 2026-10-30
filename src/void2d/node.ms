@@ -1361,14 +1361,15 @@ export function setFrame(this n: NodeRef, index: int32): NodeRef {
 	const i: int32 = n.liveRow("setFrame");
 	requireKind(n, i, DrawKind.Anim, "setFrame", "frames");
 	const s: Scene2D = n.scene;
-	const row: AnimFrames = s.anims[s.payloads[i]];
-	const len: int32 = row.frames.length as int32;
+	const payload: int32 = s.payloads[i];
+	const len: int32 = s.anims[payload].frames.length as int32;
 	if (index < 0 || index >= len) {
 		console.log(`void2d: setFrame(${index}) on an Anim of ${len} frames`);
 		unreachable;
 	}
-	const shown: int32 = row.frameIndex();
-	s.anims[s.payloads[i]] = { ...row, current: index, carryMs: 0.0 };
+	const shown: int32 = s.anims[payload].frameIndex();
+	s.anims[payload].current = index;
+	s.anims[payload].carryMs = 0.0;
 	if (index != shown) { s.markChanged(i, Changed.Content); }
 	return n;
 }
@@ -1377,9 +1378,9 @@ export function setFrameDelays(this n: NodeRef, delaysMs: Vec<int32>): NodeRef {
 	const i: int32 = n.liveRow("setFrameDelays");
 	requireKind(n, i, DrawKind.Anim, "setFrameDelays", "frames");
 	const s: Scene2D = n.scene;
-	const row: AnimFrames = s.anims[s.payloads[i]];
+	const payload: int32 = s.payloads[i];
 	const count: int32 = delaysMs.length as int32;
-	const len: int32 = row.frames.length as int32;
+	const len: int32 = s.anims[payload].frames.length as int32;
 	if (count != 0 && count != len) {
 		console.log(`void2d: setFrameDelays got ${count} delays for an Anim of ${len} frames`);
 		unreachable;
@@ -1390,7 +1391,8 @@ export function setFrameDelays(this n: NodeRef, delaysMs: Vec<int32>): NodeRef {
 			unreachable;
 		}
 	}
-	s.anims[s.payloads[i]] = { ...row, delaysMs: delaysMs, carryMs: 0.0 };
+	s.anims[payload].delaysMs = delaysMs;
+	s.anims[payload].carryMs = 0.0;
 	return n;
 }
 
@@ -1398,14 +1400,16 @@ export function setFrames(this n: NodeRef, frames: Tile[]): NodeRef {
 	const i: int32 = n.liveRow("setFrames");
 	requireKind(n, i, DrawKind.Anim, "setFrames", "frames");
 	const s: Scene2D = n.scene;
-	const row: AnimFrames = s.anims[s.payloads[i]];
-	const delays: int32 = row.delaysMs.length as int32;
+	const payload: int32 = s.payloads[i];
+	const delays: int32 = s.anims[payload].delaysMs.length as int32;
 	const len: int32 = frames.length as int32;
 	if (delays != 0 && delays != len) {
 		console.log(`void2d: setFrames got ${len} frames for an Anim holding ${delays} frame delays`);
 		unreachable;
 	}
-	s.anims[s.payloads[i]] = { ...row, frames: frames, current: 0, carryMs: 0.0 };
+	s.anims[payload].frames = frames;
+	s.anims[payload].current = 0;
+	s.anims[payload].carryMs = 0.0;
 	s.markChanged(i, Changed.Content);
 	return n;
 }
@@ -1418,7 +1422,9 @@ export function setFps(this n: NodeRef, fps: float32): NodeRef {
 		unreachable;
 	}
 	const s: Scene2D = n.scene;
-	s.anims[s.payloads[i]] = { ...s.anims[s.payloads[i]], fps: fps, carryMs: 0.0 };
+	const payload: int32 = s.payloads[i];
+	s.anims[payload].fps = fps;
+	s.anims[payload].carryMs = 0.0;
 	return n;
 }
 
@@ -1430,7 +1436,7 @@ export function setSpeed(this n: NodeRef, speed: float32): NodeRef {
 		unreachable;
 	}
 	const s: Scene2D = n.scene;
-	s.anims[s.payloads[i]] = { ...s.anims[s.payloads[i]], speed: speed };
+	s.anims[s.payloads[i]].speed = speed;
 	return n;
 }
 
@@ -1438,7 +1444,7 @@ export function setLooping(this n: NodeRef, looping: boolean): NodeRef {
 	const i: int32 = n.liveRow("setLooping");
 	requireKind(n, i, DrawKind.Anim, "setLooping", "frames");
 	const s: Scene2D = n.scene;
-	s.anims[s.payloads[i]] = { ...s.anims[s.payloads[i]], looping: looping };
+	s.anims[s.payloads[i]].looping = looping;
 	return n;
 }
 
@@ -1446,7 +1452,7 @@ export function setPaused(this n: NodeRef, paused: boolean): NodeRef {
 	const i: int32 = n.liveRow("setPaused");
 	requireKind(n, i, DrawKind.Anim, "setPaused", "frames");
 	const s: Scene2D = n.scene;
-	s.anims[s.payloads[i]] = { ...s.anims[s.payloads[i]], paused: paused };
+	s.anims[s.payloads[i]].paused = paused;
 	return n;
 }
 
