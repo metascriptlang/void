@@ -10,14 +10,25 @@ import { ImeInput } from "./imeInput";
 import { Js, flag, intField, listenBubble, stringField } from "./window";
 import { WindowState } from "./windowCore";
 
-extern function createInput(): Js from "(()=>{const input=document.createElement('textarea');for(const [name,value] of [['autocomplete','off'],['autocorrect','off'],['autocapitalize','off'],['spellcheck','false'],['aria-hidden','true'],['tabindex','-1']]){input.setAttribute(name,value);}input.style.cssText='position:fixed;left:0;top:0;width:1px;height:1px;margin:0;padding:0;border:0;outline:none;resize:none;overflow:hidden;opacity:0;pointer-events:none;';return input;})()";
-extern function insertAfter(canvas: Js, input: Js): void from "#.insertAdjacentElement('afterend',#)";
+extern function createInput(): Js
+	from "(()=>{const input=document.createElement('textarea');for(const [name,value] of [['autocomplete','off'],['autocorrect','off'],['autocapitalize','off'],['spellcheck','false'],['aria-hidden','true'],['tabindex','-1']]){input.setAttribute(name,value);}input.style.cssText='position:fixed;left:0;top:0;width:1px;height:1px;margin:0;padding:0;border:0;outline:none;resize:none;overflow:hidden;opacity:0;pointer-events:none;';return input;})()";
+extern function insertAfter(canvas: Js, input: Js): void
+	from "#.insertAdjacentElement('afterend',#)";
 extern function removeInput(input: Js): void from "#.remove()";
 extern function clearValue(input: Js): void from "(#.value='')";
 extern function focusInput(input: Js): void from "#.focus({preventScroll:true})";
-extern function focusLater(input: Js): void from "((i)=>setTimeout(()=>i.focus({preventScroll:true}),0))(#)";
-extern function blurIfFocused(input: Js): void from "((i)=>{if(document.activeElement===i)i.blur();})(#)";
-extern function placeInput(input: Js, canvas: Js, x: float64, y: float64, w: float64, h: float64): void
+extern function focusLater(input: Js): void
+	from "((i)=>setTimeout(()=>i.focus({preventScroll:true}),0))(#)";
+extern function blurIfFocused(input: Js): void
+	from "((i)=>{if(document.activeElement===i)i.blur();})(#)";
+extern function placeInput(
+	input: Js,
+	canvas: Js,
+	x: float64,
+	y: float64,
+	width: float64,
+	height: float64,
+): void
 	from "((input,canvas,x,y,w,h)=>{const r=canvas.getBoundingClientRect();input.style.left=(r.left+x)+'px';input.style.top=(r.top+y)+'px';input.style.width=Math.max(1,w)+'px';input.style.height=Math.max(1,h)+'px';input.style.fontSize=Math.max(1,h)+'px';input.style.lineHeight=Math.max(1,h)+'px';})(#,#,#,#,#,#)";
 
 export class WindowIme {
@@ -40,7 +51,9 @@ export class WindowIme {
 
 	tookKey(type: AppEventType): boolean { return this.ime.tookKey(this.composing, type); }
 
-	send(type: AppEventType, text: string, cursor: int32): void { this.window.deliverText(type, text, cursor); }
+	send(type: AppEventType, text: string, cursor: int32): void {
+		this.window.deliverText(type, text, cursor);
+	}
 
 	applyRect(): void {
 		const rect = this.ime.cssRect(this.state.dpiScale as float64);
@@ -67,7 +80,11 @@ export class WindowIme {
 		});
 		this.add(input, "input", (event: Js): boolean => {
 			if (flag(event, "isComposing")) {
-				this.send(AppEventType.Preedit, stringField(input, "value"), intField(input, "selectionStart"));
+				this.send(
+					AppEventType.Preedit,
+					stringField(input, "value"),
+					intField(input, "selectionStart"),
+				);
 			} else {
 				clearValue(input);
 			}
