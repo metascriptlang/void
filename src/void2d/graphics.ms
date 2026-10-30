@@ -637,7 +637,7 @@ export function fillGradientRect(
 	c1: Color,
 	angle: float32,
 ): NodeRef {
-	const pts: Vec2[] = [vec2(x, y), vec2(x + w, y), vec2(x + w, y + h), vec2(x, y + h)];
+	const pts: Vec2[] = rectPoints(x, y, w, h);
 	return g.fillGradientPolygon(pts, c0, c1, angle);
 }
 
@@ -651,7 +651,7 @@ export function fillGradientRectOklab(
 	c1: Color,
 	angle: float32,
 ): NodeRef {
-	const pts: Vec2[] = [vec2(x, y), vec2(x + w, y), vec2(x + w, y + h), vec2(x, y + h)];
+	const pts: Vec2[] = rectPoints(x, y, w, h);
 	return g.fillGradientPolygonStops(pts, c0, c1, c1, -1.0, angle, GradientSpace.Oklab);
 }
 
@@ -668,7 +668,7 @@ export function fillGradientRectStops(
 	angle: float32,
 	space: GradientSpace,
 ): NodeRef {
-	const pts: Vec2[] = [vec2(x, y), vec2(x + w, y), vec2(x + w, y + h), vec2(x, y + h)];
+	const pts: Vec2[] = rectPoints(x, y, w, h);
 	return g.fillGradientPolygonStops(pts, c0, cMiddle, c1, middle, angle, space);
 }
 
@@ -970,7 +970,7 @@ export function strokeRect(
 	width: float32,
 	color: Color,
 ): NodeRef {
-	const pts: Vec2[] = [vec2(x, y), vec2(x + w, y), vec2(x + w, y + h), vec2(x, y + h)];
+	const pts: Vec2[] = rectPoints(x, y, w, h);
 	return g.strokePoly(pts, width, color, true);
 }
 
