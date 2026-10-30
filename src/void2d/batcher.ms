@@ -17,7 +17,7 @@ import {
 	NO_SCOPE,
 } from "./commandFields";
 import {
-	CommandKind, Pipeline, Program2D, PROGRAMS_2D, BLEND_MODES, EFFECT_FLOATS, VERTEX_FLOATS,
+	CommandKind, Pipeline, Program2D, PROGRAMS_2D, BLEND_MODES, EFFECT_FLOATS, EFFECT_ADD, EFFECT_KEY, VERTEX_FLOATS,
 	contextCount, setContextIssuedHook,
 } from "./displayList";
 import {
@@ -1150,8 +1150,8 @@ function drawUiRun(
 		const at: int32 = effectIndex * EFFECT_FLOATS;
 		for (let i: int32 = 0; i < 16; i++) { uiFx[ui_fx_colorMatrix + i] = effects[at + i]; }
 		for (let i: int32 = 0; i < 4; i++) {
-			uiFx[ui_fx_colorAdd + i] = effects[at + 16 + i];
-			uiFx[ui_fx_colorKey + i] = effects[at + 20 + i];
+			uiFx[ui_fx_colorAdd + i] = effects[at + EFFECT_ADD + i];
+			uiFx[ui_fx_colorKey + i] = effects[at + EFFECT_KEY + i];
 		}
 		uiFx[ui_fx_effectParams] = 1.0;
 	}
@@ -1206,17 +1206,17 @@ function drawVertexRun(
 	const effectIndex: int32 = field(cmd, CMD_EFFECT);
 	const hasFx: boolean = effectIndex >= 0 && effectIndex < effectCount;
 	const fx: int32 = effectIndex * EFFECT_FLOATS;
-	const addR: float32 = hasFx ? effects[fx + 16] : 0.0;
-	const addG: float32 = hasFx ? effects[fx + 17] : 0.0;
-	const addB: float32 = hasFx ? effects[fx + 18] : 0.0;
-	const addA: float32 = hasFx ? effects[fx + 19] : 0.0;
+	const addR: float32 = hasFx ? effects[fx + EFFECT_ADD] : 0.0;
+	const addG: float32 = hasFx ? effects[fx + EFFECT_ADD + 1] : 0.0;
+	const addB: float32 = hasFx ? effects[fx + EFFECT_ADD + 2] : 0.0;
+	const addA: float32 = hasFx ? effects[fx + EFFECT_ADD + 3] : 0.0;
 
 	clearFloats(vertexParams);
 	vertexParams[void2d_params_viewport] = fbW;
 	vertexParams[void2d_params_viewport + 1] = fbH;
 	const isRT: boolean = sampledTarget(view);
 	const noEffect: boolean = (!hasFx || identityMatrix(effects, fx)) && addR == 0.0 && addG == 0.0 &&
-		addB == 0.0 && addA == 0.0 && (!hasFx || effects[fx + 23] <= 0.5);
+		addB == 0.0 && addA == 0.0 && (!hasFx || effects[fx + EFFECT_KEY + 3] <= 0.5);
 	const premultiplied: boolean = premultipliedSource(cmd);
 	vertexParams[void2d_params_viewport + 2] = (isRT && !originTopLeft) ? 1.0 : 0.0;
 	vertexParams[void2d_params_viewport + 3] = (premultiplied && noEffect) ? 1.0 : 0.0;
@@ -1250,7 +1250,7 @@ function drawVertexRun(
 	vertexFx[void2d_fx_colorAdd + 3] = addA;
 	if (hasFx) {
 		for (let i: int32 = 0; i < 4; i++) {
-			vertexFx[void2d_fx_colorKey + i] = effects[fx + 20 + i];
+			vertexFx[void2d_fx_colorKey + i] = effects[fx + EFFECT_KEY + i];
 			vertexFx[void2d_fx_gradientMeta + i] = effects[fx + 24 + i];
 			vertexFx[void2d_fx_gradientParams + i] = effects[fx + 28 + i];
 			vertexFx[void2d_fx_gradientColor0 + i] = effects[fx + 32 + i];

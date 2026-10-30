@@ -113,6 +113,8 @@ export const EFFECT_FLOATS: int32 = 44;
 export const VERTEX_FLOATS: int32 = 8;
 export const NO_EFFECT: int32 = -1;
 
+export const EFFECT_ADD: int32 = 16;
+export const EFFECT_KEY: int32 = 20;
 export const EFFECT_GRADIENT_META: int32 = 24;
 export const EFFECT_GRADIENT_PARAMS: int32 = 28;
 export const EFFECT_GRADIENT_COLOR0: int32 = 32;
@@ -1236,14 +1238,14 @@ export function pushEffect(matrix: Mat4, add: Color, key: Color): int32 {
 	growTo(activeContext.effects, base + EFFECT_FLOATS);
 	for (let i: int32 = 0; i < EFFECT_FLOATS; i++) { activeContext.effects[base + i] = 0.0; }
 	writeColorMatrix(matrix, activeContext.effects, base);
-	activeContext.effects[base + 16] = add.r;
-	activeContext.effects[base + 17] = add.g;
-	activeContext.effects[base + 18] = add.b;
-	activeContext.effects[base + 19] = add.a;
-	activeContext.effects[base + 20] = key.r;
-	activeContext.effects[base + 21] = key.g;
-	activeContext.effects[base + 22] = key.b;
-	activeContext.effects[base + 23] = key.a;
+	activeContext.effects[base + EFFECT_ADD] = add.r;
+	activeContext.effects[base + EFFECT_ADD + 1] = add.g;
+	activeContext.effects[base + EFFECT_ADD + 2] = add.b;
+	activeContext.effects[base + EFFECT_ADD + 3] = add.a;
+	activeContext.effects[base + EFFECT_KEY] = key.r;
+	activeContext.effects[base + EFFECT_KEY + 1] = key.g;
+	activeContext.effects[base + EFFECT_KEY + 2] = key.b;
+	activeContext.effects[base + EFFECT_KEY + 3] = key.a;
 	activeContext.effectTotal = activeContext.effectTotal + 1;
 	return activeContext.effectTotal - 1;
 }
