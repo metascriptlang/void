@@ -367,8 +367,6 @@ function shapeStale(entry: LabelText, text: string, style: TextStyle): boolean {
 		style.size != shapedWith.size || style.letterSpacing != shapedWith.letterSpacing;
 }
 
-// A width, alignment or line-option change wraps the shaped text again; only a change to what
-// is shaped looks glyphs up (T1 "a width change lays out no glyph again").
 export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 	const entry: LabelText = labelTexts[index];
 	entry.placedValid = false;
@@ -399,10 +397,6 @@ export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 	entry.decorations = entry.layout.runDecorations(entry.runs, style.size, entry.options.forceWidth);
 }
 
-// GPUI's segments (line.rs:790-937): one per run per line; the backgrounds fill the line box,
-// underline and strikethrough sit where the run's face puts them. A dotted or dashed underline
-// repeats per cell as Ghostty's sprites do (font/sprite/draw/special.zig:15-140), the grid's
-// cell, or else the run's `0` advance as CSS's `ch`.
 function runDecorations(
 	this layout: TextLayout,
 	runs: Readonly<Span<TextRun>>,
@@ -444,7 +438,8 @@ function slotColor(run: TextRun, slot: DecorationKind): Color {
 		DecorationKind.Underline => run.underline,
 		DecorationKind.Overline => run.overline,
 		DecorationKind.Strikethrough => run.strikethrough,
-		_ => {
+		DecorationKind.WavyUnderline | DecorationKind.DoubleUnderline |
+			DecorationKind.DottedUnderline | DecorationKind.DashedUnderline => {
 			console.log(`void2d: no run colour for decoration slot ${slot}`);
 			unreachable;
 		},
@@ -707,7 +702,6 @@ export function advanceBlink(index: int32, dt: float32): void {
 	labelTexts[index].blinkClock = labelTexts[index].blinkClock + dt;
 }
 
-// h2d's TextInput blink (h2d/TextInput.hx `cursorBlinkTime`): on for one period, off for the next.
 export function cursorShown(entry: LabelText): boolean {
 	if (entry.cursorIndex == NO_CURSOR) { return false; }
 	if (entry.cursorBlinkTime <= 0.0) { return true; }
