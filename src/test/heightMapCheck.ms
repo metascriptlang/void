@@ -35,7 +35,8 @@ test "height map ray bisects to the surface, not to the last sample" {
 	const oblique = downward(0, 0, 4, 0.6, -0.8);
 	const crossing = heightMapRayIntersection(ground, oblique, 0.5, 0.001, 100.0);
 	assert crossing.ok && Math.abs(crossing.value - 5.0) <= 0.001;
-	const climbing = heightMapRayIntersection(slope, downward(0, 0, 1, 0.6, -0.8), 0.25, 0.001, 100.0);
+	const climbingRay = downward(0, 0, 1, 0.6, -0.8);
+	const climbing = heightMapRayIntersection(slope, climbingRay, 0.25, 0.001, 100.0);
 	assert climbing.ok && Math.abs(climbing.value - 1.0 / 1.1) <= 0.001;
 }
 
@@ -58,7 +59,8 @@ test "height map refuses a bad step, precision, range and a non-finite height by
 	const b = heightMapRayIntersection(ground, ray, 1.0, -0.01, 100.0);
 	const c = heightMapRayIntersection(ground, ray, 1.0, 0.01, 0.0);
 	const d = heightMapRayIntersection(missing, ray, 1.0, 0.01, 100.0);
-	const e = heightMapRayIntersection(ground, downward(NaN as float32, 0, 2, 0, -1), 1.0, 0.01, 1.0);
+	const nanRay = downward(NaN as float32, 0, 2, 0, -1);
+	const e = heightMapRayIntersection(ground, nanRay, 1.0, 0.01, 1.0);
 	assert !a.ok && a.error == HeightMapError.InvalidStep;
 	assert !b.ok && b.error == HeightMapError.InvalidPrecision;
 	assert !c.ok && c.error == HeightMapError.InvalidRange;

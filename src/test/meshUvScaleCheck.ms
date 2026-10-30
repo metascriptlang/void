@@ -31,7 +31,7 @@ test "UV scaling changes only UV0 across layouts storage and signed or zero fact
 			for (const skinned of [false, true]) {
 				for (const encoding of [0, 1, 2]) {
 					let data = uvTriangle(tangented, skinned, encoding);
-					let before: Vec<float32> = data.vertices;
+					const before: Vec<float32> = data.vertices;
 					const bounds = data.bounds;
 					const width = data.stride();
 					assert scaleUvs(data, factor.u, factor.v).ok;
@@ -75,7 +75,7 @@ test "UV scaling retains empty data and refuses missing UV or partial vertex sto
 	if (!absent.ok) { assert absent.error == MeshError.UvMismatch; }
 	let partial = uvTriangle(false, false, 0);
 	partial.vertices.push(1.0);
-	let before: Vec<float32> = partial.vertices;
+	const before: Vec<float32> = partial.vertices;
 	const malformed = scaleUvs(partial, 2.0, 3.0);
 	assert !malformed.ok;
 	if (!malformed.ok) { assert malformed.error == MeshError.VertexStorage; }
@@ -88,7 +88,7 @@ test "UV scaling rejects nonfinite factors without publishing changes" {
 	for (const factor of [infinite, nan]) {
 		for (const axis of [0, 1]) {
 			let data = uvTriangle(true, true, 2);
-			let before: Vec<float32> = data.vertices;
+			const before: Vec<float32> = data.vertices;
 			const result = scaleUvs(data, axis == 0 ? factor : 1.0, axis == 1 ? factor : 1.0);
 			assert !result.ok;
 			if (!result.ok) { assert result.error == MeshError.UvScaleParameters; }
@@ -100,7 +100,7 @@ test "UV scaling rejects nonfinite factors without publishing changes" {
 test "UV scaling preflights a late unrepresentable UV before any write" {
 	let data = uvTriangle(true, true, 2);
 	data.vertices[2 * data.stride() + 6] = 3.0e38;
-	let before: Vec<float32> = data.vertices;
+	const before: Vec<float32> = data.vertices;
 	const bounds = data.bounds;
 	const result = scaleUvs(data, 2.0, 1.0);
 	assert !result.ok;

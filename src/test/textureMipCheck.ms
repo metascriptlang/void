@@ -64,7 +64,7 @@ test "textureMip owns every colour-coded supplied square mip and its offsets" {
 	);
 	assert made.ok;
 	if (!made.ok) { return; }
-	let data: TextureMipData = made.value;
+	const data: TextureMipData = made.value;
 	assert data.levels.length == 3 && data.pixels.length == 21;
 	assert data.levels[1].pixelOffset == 16 && data.levels[2].pixelOffset == 20;
 	assert data.levels[1].byteOffset() == 64 && data.levels[2].byteCount() == 4;
@@ -81,8 +81,8 @@ test "textureMip owns every colour-coded supplied square mip and its offsets" {
 }
 
 test "textureMip NPOT rectangle floors each axis and keeps its one-row tail" {
-	const levels: Vec<TextureMipLevel> = rectangularLevels();
-	const pixels: Vec<uint32> = colours(21, 3);
+	let levels: Vec<TextureMipLevel> = rectangularLevels();
+	let pixels: Vec<uint32> = colours(21, 3);
 	const made: Result<TextureMipData, TextureMipError> = TextureMipData.create(
 		levels, pixels, sampling(TextureMipFilter.Linear, 2.0),
 	);
@@ -124,7 +124,7 @@ test "textureMip late malformed data refuses replacement atomically for both cha
 
 test "textureMip refuses missing repeated or wrongly rounded levels without repair" {
 	let levels: Vec<TextureMipLevel> = squareLevels();
-	const pixels: Vec<uint32> = colours(16, 4);
+	let pixels: Vec<uint32> = colours(16, 4);
 	levels.pop();
 	assert mipError(TextureMipData.create(levels, pixels,
 		sampling(TextureMipFilter.Nearest, 2.0))) == TextureMipError.IncompleteChain;
@@ -164,7 +164,7 @@ test "textureMip checks every offset count and trailing extent" {
 test "textureMip rejects nonpositive overflow-sized and excessive descriptor shapes" {
 	const sampler: TextureSampler2D = sampling(TextureMipFilter.None, 0.0);
 	const empty: Vec<TextureMipLevel> = [];
-	const pixels: Vec<uint32> = [0];
+	let pixels: Vec<uint32> = [0];
 	assert mipError(TextureMipData.create(empty, pixels, sampler)) == TextureMipError.EmptyChain;
 	let levels: Vec<TextureMipLevel> = [
 		{ width: 0, height: 1, pixelOffset: 0, pixelCount: 1 },
@@ -190,7 +190,7 @@ test "textureMip no-mip fixes LOD0 and accepts only base or complete supplied st
 	const base: Vec<TextureMipLevel> = [
 		{ width: 4, height: 4, pixelOffset: 0, pixelCount: 16 },
 	];
-	const pixels: Vec<uint32> = new Array(16);
+	let pixels: Vec<uint32> = new Array(16);
 	assert TextureMipData.create(base, pixels, sampler).ok;
 	assert TextureMipData.create(squareLevels(), colours(16, 4), sampler).ok;
 	assert sampler.admitPortable(1).ok;
@@ -264,7 +264,7 @@ test "textureMip names unsupported anisotropy filtering and LOD requests" {
 }
 
 test "textureMip replacement publishes only after late sampler validation" {
-	const levels: Vec<TextureMipLevel> = squareLevels();
+	let levels: Vec<TextureMipLevel> = squareLevels();
 	let pixels: Vec<uint32> = colours(16, 4);
 	const sampler: TextureSampler2D = sampling(TextureMipFilter.Linear, 2.0);
 	const made: Result<TextureMipData, TextureMipError> =

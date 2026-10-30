@@ -47,10 +47,12 @@ function pixelsFor(count: int32): Vec<uint32> {
 }
 
 function chainOf(width: int32, height: int32): TextureMipData {
-	const levels: Vec<TextureMipLevel> = levelsOf(width, height);
+	let levels: Vec<TextureMipLevel> = levelsOf(width, height);
 	const last: TextureMipLevel = levels[levels.length - 1];
 	const created: Result<TextureMipData, TextureMipError> = TextureMipData.create(
-		levels, pixelsFor(last.pixelOffset + last.pixelCount), trilinear((levels.length - 1) as float32),
+		levels,
+		pixelsFor(last.pixelOffset + last.pixelCount),
+		trilinear((levels.length - 1) as float32),
 	);
 	if (!created.ok) { unreachable; }
 	return created.value;

@@ -31,7 +31,7 @@ test "uniform scale preserves attributes and topology across signed or zero fact
 			for (const skinned of [false, true]) {
 				for (const encoding of [0, 1, 2]) {
 					let data = scaleTriangle(layout, skinned, encoding);
-					let before: Vec<float32> = data.vertices;
+					const before: Vec<float32> = data.vertices;
 					const width = data.stride();
 					assert scaleUniform(data, factor).ok;
 					assert data.vertexCount() == 3 && data.stride() == width;
@@ -80,7 +80,7 @@ test "uniform scaling preserves empty data and rejects partial vertices" {
 	assert empty.vertexCount() == 0 && empty.bounds.isEmpty();
 	let partial = scaleTriangle(0, false, 0);
 	partial.vertices.push(1.0);
-	let before: Vec<float32> = partial.vertices;
+	const before: Vec<float32> = partial.vertices;
 	const result = scaleUniform(partial, 2.0);
 	assert !result.ok;
 	if (!result.ok) { assert result.error == MeshError.VertexStorage; }
@@ -92,7 +92,7 @@ test "uniform scaling rejects nonfinite factors before mutating positions" {
 	const nan: float32 = infinite - infinite;
 	for (const factor of [infinite, -infinite, nan]) {
 		let data = scaleTriangle(2, true, 2);
-		let before: Vec<float32> = data.vertices;
+		const before: Vec<float32> = data.vertices;
 		const bounds = data.bounds;
 		const result = scaleUniform(data, factor);
 		assert !result.ok;
@@ -106,7 +106,7 @@ test "uniform scaling preflights late unrepresentable positions atomically" {
 	let data = scaleTriangle(2, true, 2);
 	data.vertices[2 * data.stride()] = 3.0e38;
 	recomputeBounds(data);
-	let before: Vec<float32> = data.vertices;
+	const before: Vec<float32> = data.vertices;
 	const bounds = data.bounds;
 	const result = scaleUniform(data, 2.0);
 	assert !result.ok;

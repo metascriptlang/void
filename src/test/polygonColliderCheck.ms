@@ -121,7 +121,11 @@ test "a polygon refuses malformed buffers and empty meshes by name" {
 	assert !b.ok && b.error == PolygonError.IndexRange;
 	assert !c.ok && c.error == PolygonError.EmptyMesh;
 	assert !d.ok && d.error == PolygonError.EmptyMesh;
-	const bad: Triangle3D = { p0: vec3(NaN as float32, 0, 0), p1: vec3(1, 0, 0), p2: vec3(0, 1, 0) };
+	const bad: Triangle3D = {
+		p0: vec3(NaN as float32, 0, 0),
+		p1: vec3(1, 0, 0),
+		p2: vec3(0, 1, 0),
+	};
 	const e = bad.rayIntersection(ray, true);
 	assert !e.ok && e.error == PolygonError.NonFinite;
 }

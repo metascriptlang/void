@@ -49,13 +49,13 @@ function materials(): Vec<Material> {
 }
 
 test "frustum keeps touching bounds but rejects outside each of its six planes" {
-	let frustum: Frustum3D = Frustum3D.fromMatrix(identity());
-	let touching: Vec<Mat4> = [
+	const frustum: Frustum3D = Frustum3D.fromMatrix(identity());
+	const touching: Vec<Mat4> = [
 		translation(-1.25, 0.0, 0.5), translation(1.25, 0.0, 0.5),
 		translation(0.0, -1.25, 0.5), translation(0.0, 1.25, 0.5),
 		translation(0.0, 0.0, -0.25), translation(0.0, 0.0, 1.25),
 	];
-	let outside: Vec<Mat4> = [
+	const outside: Vec<Mat4> = [
 		translation(-1.26, 0.0, 0.5), translation(1.26, 0.0, 0.5),
 		translation(0.0, -1.26, 0.5), translation(0.0, 1.26, 0.5),
 		translation(0.0, 0.0, -0.26), translation(0.0, 0.0, 1.26),
@@ -68,12 +68,12 @@ test "frustum keeps touching bounds but rejects outside each of its six planes" 
 
 test "frustum point containment includes contact and rejects all six outside halfspaces" {
 	const frustum = Frustum3D.fromMatrix(identity());
-	let contacts: Vec<Vec3> = [
+	const contacts: Vec<Vec3> = [
 		vec3(-1.0, 0.0, 0.5), vec3(1.0, 0.0, 0.5),
 		vec3(0.0, -1.0, 0.5), vec3(0.0, 1.0, 0.5),
 		vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0),
 	];
-	let outside: Vec<Vec3> = [
+	const outside: Vec<Vec3> = [
 		vec3(-1.01, 0.0, 0.5), vec3(1.01, 0.0, 0.5),
 		vec3(0.0, -1.01, 0.5), vec3(0.0, 1.01, 0.5),
 		vec3(0.0, 0.0, -0.01), vec3(0.0, 0.0, 1.01),
@@ -114,12 +114,12 @@ test "point containment does not require normalized stored planes" {
 
 test "sphere culling includes contact and rejects separation at all six planes" {
 	const frustum = Frustum3D.fromMatrix(identity());
-	let contacts: Vec<Vec3> = [
+	const contacts: Vec<Vec3> = [
 		vec3(-1.25, 0.0, 0.5), vec3(1.25, 0.0, 0.5),
 		vec3(0.0, -1.25, 0.5), vec3(0.0, 1.25, 0.5),
 		vec3(0.0, 0.0, -0.25), vec3(0.0, 0.0, 1.25),
 	];
-	let outside: Vec<Vec3> = [
+	const outside: Vec<Vec3> = [
 		vec3(-1.26, 0.0, 0.5), vec3(1.26, 0.0, 0.5),
 		vec3(0.0, -1.26, 0.5), vec3(0.0, 1.26, 0.5),
 		vec3(0.0, 0.0, -0.26), vec3(0.0, 0.0, 1.26),
@@ -133,7 +133,7 @@ test "sphere culling includes contact and rejects separation at all six planes" 
 
 test "zero radius sphere culling agrees with world point containment" {
 	const frustum = Frustum3D.fromMatrix(identity());
-	let points: Vec<Vec3> = [
+	const points: Vec<Vec3> = [
 		vec3(0.0, 0.0, 0.5), vec3(-1.0, -1.0, 0.0), vec3(1.0, 1.0, 1.0),
 		vec3(0.0, 0.0, -0.01), vec3(1.01, 0.0, 0.5),
 	];
@@ -167,10 +167,10 @@ test "sphere culling preserves radii under nonunit stored planes" {
 }
 
 test "transformed local bounds keep reflected nonuniform scale and shear extents" {
-	let frustum: Frustum3D = Frustum3D.fromMatrix(identity());
+	const frustum: Frustum3D = Frustum3D.fromMatrix(identity());
 	assert frustum.intersectsBounds(cube(), scaling(-2.0, 0.5, 1.0) * translation(1.4, 0.0, 0.5));
 	assert !frustum.intersectsBounds(cube(), scaling(-2.0, 0.5, 1.0) * translation(1.6, 0.0, 0.5));
-	let shear: Mat4 = { ...identity(), m21: 2.0 };
+	const shear: Mat4 = { ...identity(), m21: 2.0 };
 	assert frustum.intersectsBounds(cube(), shear * translation(1.7, 0.0, 0.5));
 	assert !frustum.intersectsBounds(cube(), shear * translation(1.8, 0.0, 0.5));
 	assert frustum.intersectsBounds(cube(), scaling(0.0, 0.0, 0.0) * translation(1.0, 0.0, 0.5));
@@ -178,20 +178,20 @@ test "transformed local bounds keep reflected nonuniform scale and shear extents
 }
 
 test "rotated off-center bounds transform their center and local axes" {
-	let frustum: Frustum3D = Frustum3D.fromMatrix(identity());
-	let rotate: Mat4 = { ...identity(), m11: 0.0, m12: 1.0, m21: -1.0, m22: 0.0 };
-	let bounds: Bounds3D = Bounds3D.fromValues(1.0, -0.1, -0.1, 1.6, 0.2, 0.2);
+	const frustum: Frustum3D = Frustum3D.fromMatrix(identity());
+	const rotate: Mat4 = { ...identity(), m11: 0.0, m12: 1.0, m21: -1.0, m22: 0.0 };
+	const bounds: Bounds3D = Bounds3D.fromValues(1.0, -0.1, -0.1, 1.6, 0.2, 0.2);
 	assert frustum.intersectsBounds(bounds, rotate * translation(0.0, -0.1, 0.5));
 	assert !frustum.intersectsBounds(bounds, rotate * translation(0.0, 0.1, 0.5));
 }
 
 test "perspective frustum side slopes widen with distance and retain near far touching" {
-	let frustum: Frustum3D = Frustum3D.fromMatrix(perspective());
-	let sides: Vec<Mat4> = [
+	const frustum: Frustum3D = Frustum3D.fromMatrix(perspective());
+	const sides: Vec<Mat4> = [
 		translation(-2.0, 0.0, -2.0), translation(2.0, 0.0, -2.0),
 		translation(0.0, -2.0, -2.0), translation(0.0, 2.0, -2.0),
 	];
-	let outside: Vec<Mat4> = [
+	const outside: Vec<Mat4> = [
 		translation(-2.01, 0.0, -2.0), translation(2.01, 0.0, -2.0),
 		translation(0.0, -2.01, -2.0), translation(0.0, 2.01, -2.0),
 	];
@@ -209,15 +209,15 @@ test "perspective frustum side slopes widen with distance and retain near far to
 }
 
 test "per-view filtering re-includes source items after camera movement and reads live bounds" {
-	let items: Vec<DrawItem> = [
+	const items: Vec<DrawItem> = [
 		item(0, 0, 0.0, 0.5), item(0, 0, 4.0, 0.5), item(1, 0, 99.0, 0.5),
 	];
 	let meshes: Vec<MeshData> = [bounded(), MeshData.empty()];
-	let phases: Vec<Material> = materials();
+	const phases: Vec<Material> = materials();
 	let first: PassList = PassList.forPhase(Phase.Opaque);
 	let second: PassList = PassList.forPhase(Phase.Opaque);
-	let origin: Frustum3D = Frustum3D.fromMatrix(identity());
-	let moved: Frustum3D = Frustum3D.fromMatrix(translation(-4.0, 0.0, 0.0));
+	const origin: Frustum3D = Frustum3D.fromMatrix(identity());
+	const moved: Frustum3D = Frustum3D.fromMatrix(translation(-4.0, 0.0, 0.0));
 	collect(first, items, phases);
 	assert filterFrustum(first, items, meshes, origin) == 1;
 	assert first.count == 2 && first.indices[0] == 0 && first.indices[1] == 2;
@@ -236,25 +236,25 @@ test "per-view filtering re-includes source items after camera movement and read
 }
 
 test "phase filtering counts exclusions across phases and preserves alpha depth order" {
-	let items: Vec<DrawItem> = [
+	const items: Vec<DrawItem> = [
 		item(0, 0, 4.0, 0.5), item(0, 1, 0.0, 0.2), item(0, 2, 4.0, 0.5),
 		item(0, 1, 4.0, 0.9), item(0, 1, 0.0, 0.8), item(1, 2, 99.0, 0.5),
 		item(0, 1, 0.0, 0.8),
 	];
 	let meshes: Vec<MeshData> = [bounded(), MeshData.empty()];
-	let phases: Vec<Material> = materials();
+	const phases: Vec<Material> = materials();
 	let opaque: PassList = PassList.forPhase(Phase.Opaque);
 	let alpha: PassList = PassList.forPhase(Phase.Alpha);
 	let additive: PassList = PassList.forPhase(Phase.Additive);
 	collect(opaque, items, phases);
 	collect(alpha, items, phases);
 	collect(additive, items, phases);
-	let frustum: Frustum3D = Frustum3D.fromMatrix(identity());
-	let excluded: int32 = filterFrustum(opaque, items, meshes, frustum) +
+	const frustum: Frustum3D = Frustum3D.fromMatrix(identity());
+	const excluded: int32 = filterFrustum(opaque, items, meshes, frustum) +
 		filterFrustum(alpha, items, meshes, frustum) +
 		filterFrustum(additive, items, meshes, frustum);
 	assert excluded == 3 && opaque.count == 0 && additive.count == 1 && additive.indices[0] == 5;
-	let camera: Vec<float32> = [
+	const camera: Vec<float32> = [
 		1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
 		0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
 	];
@@ -264,14 +264,14 @@ test "phase filtering counts exclusions across phases and preserves alpha depth 
 }
 
 test "perspective alpha sorting uses projected depth including behind-eye unbounded items" {
-	let items: Vec<DrawItem> = [
+	const items: Vec<DrawItem> = [
 		item(0, 1, 0.0, -2.0), item(0, 1, 0.0, 1.0),
 		item(0, 1, 0.0, -8.0), item(0, 1, 0.0, 2.0),
 	];
-	let phases: Vec<Material> = materials();
+	const phases: Vec<Material> = materials();
 	let alpha: PassList = PassList.forPhase(Phase.Alpha);
 	collect(alpha, items, phases);
-	let camera: Vec<float32> = [
+	const camera: Vec<float32> = [
 		1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
 		0.0, 0.0, -1.125, -1.0, 0.0, 0.0, -1.125, 0.0,
 	];
@@ -285,11 +285,11 @@ function layered(phase: Phase, layer: int32): Material {
 }
 
 test "every list draws lower layers first; alpha goes back to front inside a layer" {
-	let phases: Vec<Material> = [
+	const phases: Vec<Material> = [
 		layered(Phase.Opaque, 0), layered(Phase.Alpha, 0), layered(Phase.Additive, 0),
 		layered(Phase.Opaque, -1), layered(Phase.Alpha, 1), layered(Phase.Additive, -2),
 	];
-	let items: Vec<DrawItem> = [
+	const items: Vec<DrawItem> = [
 		item(0, 0, 0.0, 0.5), item(0, 3, 0.0, 0.5), item(0, 3, 4.0, 0.5), item(0, 0, 0.0, 0.5),
 		item(0, 3, 0.0, 0.5), item(0, 1, 0.0, 0.9), item(0, 4, 0.0, 0.95), item(0, 1, 0.0, 0.5),
 		item(0, 2, 0.0, 0.5), item(0, 5, 0.0, 0.5),
@@ -301,13 +301,13 @@ test "every list draws lower layers first; alpha goes back to front inside a lay
 	collect(opaque, items, phases);
 	collect(alpha, items, phases);
 	collect(additive, items, phases);
-	let frustum: Frustum3D = Frustum3D.fromMatrix(identity());
+	const frustum: Frustum3D = Frustum3D.fromMatrix(identity());
 	assert filterFrustum(opaque, items, meshes, frustum) == 1;
 	sortByLayer(opaque);
 	assert opaque.count == 4;
 	assert opaque.indices[0] == 1 && opaque.indices[1] == 4;
 	assert opaque.indices[2] == 0 && opaque.indices[3] == 3;
-	let camera: Vec<float32> = [
+	const camera: Vec<float32> = [
 		1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
 		0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
 	];
@@ -330,11 +330,11 @@ function backToFront(): Vec<float32> {
 }
 
 test "a lower render order draws first in every list, after the layer and before the depth" {
-	let phases: Vec<Material> = [
+	const phases: Vec<Material> = [
 		layered(Phase.Opaque, 0), layered(Phase.Alpha, 0), layered(Phase.Additive, 0),
 		layered(Phase.Opaque, 1), layered(Phase.Alpha, 1),
 	];
-	let items: Vec<DrawItem> = [
+	const items: Vec<DrawItem> = [
 		ordered(item(0, 0, 0.0, 0.5), 2), ordered(item(0, 0, 0.0, 0.5), -3),
 		ordered(item(0, 3, 0.0, 0.5), -9), item(0, 0, 0.0, 0.5),
 		ordered(item(0, 1, 0.0, 0.2), 5), ordered(item(0, 1, 0.0, 0.9), 5),
@@ -362,8 +362,8 @@ test "a lower render order draws first in every list, after the layer and before
 }
 
 test "equal render orders keep item order and the depth sort of the alpha list" {
-	let phases: Vec<Material> = materials();
-	let items: Vec<DrawItem> = [
+	const phases: Vec<Material> = materials();
+	const items: Vec<DrawItem> = [
 		ordered(item(0, 1, 0.0, 0.2), 7), ordered(item(0, 1, 0.0, 0.9), 7),
 		ordered(item(0, 1, 0.0, 0.9), 7), ordered(item(0, 1, 0.0, 0.5), 7),
 	];
@@ -373,7 +373,7 @@ test "equal render orders keep item order and the depth sort of the alpha list" 
 	assert alpha.indices[0] == 1 && alpha.indices[1] == 2;
 	assert alpha.indices[2] == 3 && alpha.indices[3] == 0;
 	let opaque: PassList = PassList.forPhase(Phase.Opaque);
-	let same: Vec<DrawItem> = [
+	const same: Vec<DrawItem> = [
 		ordered(item(0, 0, 0.0, 0.5), 7), ordered(item(0, 0, 0.0, 0.1), 7),
 		ordered(item(0, 0, 0.0, 0.9), 7),
 	];
@@ -383,7 +383,7 @@ test "equal render orders keep item order and the depth sort of the alpha list" 
 }
 
 test "a culled item's render order is compacted away with it" {
-	let items: Vec<DrawItem> = [
+	const items: Vec<DrawItem> = [
 		ordered(item(0, 1, 0.0, 0.5), 3), ordered(item(1, 1, 99.0, 0.5), -5),
 		ordered(item(0, 1, 0.0, 0.5), 1),
 	];

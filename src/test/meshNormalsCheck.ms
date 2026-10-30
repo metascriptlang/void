@@ -43,7 +43,7 @@ test "normal rebuild is area weighted by stored vertex IDs and retains all other
 		for (const skinned of [false, true]) {
 			for (const encoding of [0, 1, 2]) {
 				let data = normalFixture(layout, skinned, encoding);
-				let before: Vec<float32> = data.vertices;
+				const before: Vec<float32> = data.vertices;
 				const bounds = data.bounds;
 				const width = data.stride();
 				assert recomputeNormals(data).ok;
@@ -125,7 +125,7 @@ test "normal rebuilding preserves empty data and rejects storage or index faults
 		if (fault == 0) { data.vertices.push(1.0); }
 		if (fault == 1) { data.indices.push(0); }
 		if (fault == 2 && data.wideIndices !== null) { data.wideIndices[0] = 0x80000000; }
-		let before: Vec<float32> = data.vertices;
+		const before: Vec<float32> = data.vertices;
 		const bounds = data.bounds;
 		const result = recomputeNormals(data);
 		assert !result.ok;
@@ -144,7 +144,7 @@ test "normal rebuilding rejects late nonfinite positions before changing any nor
 	for (const invalid of [infinite, -infinite, infinite - infinite]) {
 		let data = normalFixture(0, false, 1);
 		data.vertices[3 * data.stride()] = invalid;
-		let before: Vec<float32> = data.vertices;
+		const before: Vec<float32> = data.vertices;
 		const result = recomputeNormals(data);
 		assert !result.ok;
 		if (!result.ok) { assert result.error == MeshError.PositionRange; }

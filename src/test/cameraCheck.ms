@@ -64,7 +64,7 @@ function snapping(snap: boolean): Camera3D {
 
 // The camera looking at a target `texels` along its own right axis.
 function slid(snap: boolean, texels: float32): Camera3D {
-	let base: Camera3D = snapping(snap);
+	const base: Camera3D = snapping(snap);
 	return { ...base, position: base.basisOf().right.scaled(texels * WORLD_PER_TEXEL) };
 }
 
@@ -108,9 +108,9 @@ test "the basis is orthonormal and looks down from the yaw" {
 }
 
 test "the target is the middle of the image and the depth range fills [0, 1]" {
-	let camera: Camera3D = snapping(false);
-	let view: CameraView = viewOf(camera);
-	let middle: Vec3 = camera.position.project(view.viewProj);
+	const camera: Camera3D = snapping(false);
+	const view: CameraView = viewOf(camera);
+	const middle: Vec3 = camera.position.project(view.viewProj);
 	assert approx(middle.x, 0.0) && approx(middle.y, 0.0);
 	assert approx(middle.z, 0.5);
 	const atNear: Vec3 = view.basis.forward.scaled(camera.nearPlane).project(view.viewProj);
@@ -123,7 +123,7 @@ test "the target is the middle of the image and the depth range fills [0, 1]" {
 }
 
 test "ortho bounds follow the low-res view, its divisor and its margin" {
-	let camera: Camera3D = snapping(false);
+	const camera: Camera3D = snapping(false);
 	const full: OrthoBounds = camera.orthoBounds(TEXEL_WIDTH, TEXEL_HEIGHT);
 	assert approx(full.maxX - full.minX, (TEXEL_WIDTH as float32) * WORLD_PER_TEXEL);
 	assert approx(full.maxY - full.minY, UNITS_ON_SHORT_SIDE);
@@ -132,7 +132,7 @@ test "ortho bounds follow the low-res view, its divisor and its margin" {
 
 	// The preview halves the target and doubles the texel, so it covers the same world.
 	const preview: LowResView = try lowResView(1280, 720, 360, 2, 0) catch NO_LOW_RES;
-	let halved: Camera3D = {
+	const halved: Camera3D = {
 		...camera,
 		projection: {
 			kind: ProjectionKind.Orthographic, worldPerTexel: PREVIEW_PER_TEXEL, snap: false,
@@ -175,7 +175,7 @@ test "the remainder stays in [0, 1) and the eye stays on the grid" {
 	const offsets: Vec<float32> = [-7.75, -1.4, -0.2, 0.0, 0.05, 2.5, 3.999, 41.25];
 	const basis: CameraBasis = snapping(true).basisOf();
 	for (const offset of offsets) {
-		let camera: Camera3D = {
+		const camera: Camera3D = {
 			...snapping(true),
 			position: basis.right.scaled(offset * WORLD_PER_TEXEL) +
 				basis.up.scaled(offset * 0.5 * WORLD_PER_TEXEL),
@@ -192,7 +192,7 @@ test "the remainder stays in [0, 1) and the eye stays on the grid" {
 }
 
 test "no snap leaves the camera where it was asked to be" {
-	let camera: Camera3D = slid(false, 0.37);
+	const camera: Camera3D = slid(false, 0.37);
 	const view: CameraView = viewOf(camera);
 	assert view.remainderX == 0.0 && view.remainderY == 0.0;
 	assert nearVec(view.eye, camera.position);
@@ -263,12 +263,12 @@ test "rayFromScreen reads the framebuffer, not the low-res target" {
 }
 
 test "a camera that cannot be resolved says which part is wrong" {
-	let camera: Camera3D = snapping(true);
+	const camera: Camera3D = snapping(true);
 	const empty: Result<CameraView, CameraError> = camera.resolve(0, TEXEL_HEIGHT);
 	assert !empty.ok;
 	if (!empty.ok) { assert empty.error == CameraError.EmptyTarget; }
 
-	let noGrid: Camera3D = {
+	const noGrid: Camera3D = {
 		...camera,
 		projection: { kind: ProjectionKind.Orthographic, worldPerTexel: 0.0, snap: true },
 	};
@@ -276,7 +276,7 @@ test "a camera that cannot be resolved says which part is wrong" {
 	assert !gridless.ok;
 	if (!gridless.ok) { assert gridless.error == CameraError.BadWorldPerTexel; }
 
-	let noDepth: Camera3D = { ...camera, farPlane: camera.nearPlane };
+	const noDepth: Camera3D = { ...camera, farPlane: camera.nearPlane };
 	const flat: Result<CameraView, CameraError> = noDepth.resolve(TEXEL_WIDTH, TEXEL_HEIGHT);
 	assert !flat.ok;
 	if (!flat.ok) { assert flat.error == CameraError.EmptyDepthRange; }
@@ -294,61 +294,61 @@ function perspective(): Camera3D {
 }
 
 function resolvedView(camera: Camera3D, width: int32, height: int32): CameraView {
-	let result: Result<CameraView, CameraError> = camera.resolve(width, height);
+	const result: Result<CameraView, CameraError> = camera.resolve(width, height);
 	if (result.ok) { return result.value; }
 	unreachable;
 }
 
 test "perspective maps finite near and far planes to zero and one" {
-	let camera: Camera3D = perspective();
-	let view: CameraView = resolvedView(camera, 800, 400);
-	let atNear: Vec3 = vec3(0.0, 0.0, -1.0).project(view.viewProj);
-	let atFar: Vec3 = vec3(0.0, 0.0, -11.0).project(view.viewProj);
-	let middle: Vec3 = vec3(0.0, 0.0, -6.0).project(view.viewProj);
+	const camera: Camera3D = perspective();
+	const view: CameraView = resolvedView(camera, 800, 400);
+	const atNear: Vec3 = vec3(0.0, 0.0, -1.0).project(view.viewProj);
+	const atFar: Vec3 = vec3(0.0, 0.0, -11.0).project(view.viewProj);
+	const middle: Vec3 = vec3(0.0, 0.0, -6.0).project(view.viewProj);
 	assert approx(atNear.z, 0.0) && approx(atFar.z, 1.0);
 	assert middle.z > 0.5 && middle.z < 1.0;
 	assert approx(middle.x, 0.0) && approx(middle.y, 0.0);
-	let nearer: Vec3 = vec3(1.0, 0.0, -2.0).project(view.viewProj);
-	let farther: Vec3 = vec3(1.0, 0.0, -4.0).project(view.viewProj);
+	const nearer: Vec3 = vec3(1.0, 0.0, -2.0).project(view.viewProj);
+	const farther: Vec3 = vec3(1.0, 0.0, -4.0).project(view.viewProj);
 	assert approx(nearer.x, 0.25) && approx(farther.x, 0.125);
 }
 
 test "perspective vertical FOV stays fixed while aspect ratio changes" {
-	let camera: Camera3D = perspective();
-	let wide: CameraView = resolvedView(camera, 800, 400);
-	let tall: CameraView = resolvedView(camera, 400, 800);
-	let upper: Vec3 = vec3(0.0, 2.0, -2.0);
+	const camera: Camera3D = perspective();
+	const wide: CameraView = resolvedView(camera, 800, 400);
+	const tall: CameraView = resolvedView(camera, 400, 800);
+	const upper: Vec3 = vec3(0.0, 2.0, -2.0);
 	assert approx(upper.project(wide.viewProj).y, 1.0);
 	assert approx(upper.project(tall.viewProj).y, 1.0);
-	let right: Vec3 = vec3(4.0, 0.0, -2.0);
+	const right: Vec3 = vec3(4.0, 0.0, -2.0);
 	assert approx(right.project(wide.viewProj).x, 1.0);
 	assert approx(right.project(tall.viewProj).x, 4.0);
 }
 
 test "perspective project and unproject rays agree through both framebuffer row orders" {
-	let camera: Camera3D = {
+	const camera: Camera3D = {
 		...perspective(), position: vec3(3.1, 2.2, 1.3), yaw: 0.4, pitch: 0.2,
 	};
-	let blit: LowResView = {
+	const blit: LowResView = {
 		width: 402, height: 202, scale: 3, offsetX: 3.0, offsetY: 3.0,
 	};
-	let view: CameraView = resolvedView(camera, blit.width, blit.height);
+	const view: CameraView = resolvedView(camera, blit.width, blit.height);
 	assert nearVec(view.eye, camera.position);
 	assert view.remainderX == 0.0 && view.remainderY == 0.0;
-	let center: Vec3 = camera.position + view.basis.forward.scaled(5.0);
-	let point: Vec3 = center + view.basis.right.scaled(1.0) + view.basis.up.scaled(0.5);
-	let rowOrders: Vec<boolean> = [true, false];
+	const center: Vec3 = camera.position + view.basis.forward.scaled(5.0);
+	const point: Vec3 = center + view.basis.right.scaled(1.0) + view.basis.up.scaled(0.5);
+	const rowOrders: Vec<boolean> = [true, false];
 	for (let topLeft of rowOrders) {
-		let pixel: Vec3 = view.project(point, blit, topLeft);
-		let ray: Ray = view.rayFromScreen(pixel.x, pixel.y, blit, topLeft);
-		let toward: Vec3 = (point - camera.position).normalized();
+		const pixel: Vec3 = view.project(point, blit, topLeft);
+		const ray: Ray = view.rayFromScreen(pixel.x, pixel.y, blit, topLeft);
+		const toward: Vec3 = (point - camera.position).normalized();
 		assert nearVec(ray.direction, toward);
-		let along: float32 = (point - ray.origin).dot(ray.direction);
+		const along: float32 = (point - ray.origin).dot(ray.direction);
 		assert nearVec(ray.pointAt(along), point);
-		let nearDepth: float32 = (ray.origin - camera.position).dot(view.basis.forward);
+		const nearDepth: float32 = (ray.origin - camera.position).dot(view.basis.forward);
 		assert approx(nearDepth, camera.nearPlane);
-		let centerPixel: Vec3 = view.project(center, blit, topLeft);
-		let centerRay: Ray =
+		const centerPixel: Vec3 = view.project(center, blit, topLeft);
+		const centerRay: Ray =
 			view.rayFromScreen(centerPixel.x, centerPixel.y, blit, topLeft);
 		assert nearVec(centerRay.direction, view.basis.forward);
 		assert !nearVec(ray.direction, centerRay.direction);
@@ -356,61 +356,61 @@ test "perspective project and unproject rays agree through both framebuffer row 
 }
 
 test "perspective refuses unsafe FOV and non-positive near depth" {
-	let camera: Camera3D = perspective();
-	let badFovs: Vec<float32> = [
+	const camera: Camera3D = perspective();
+	const badFovs: Vec<float32> = [
 		0.0, -0.1, 3.141592653589793, 4.0, (0.0 / 0.0) as float32, (1.0 / 0.0) as float32,
 	];
 	for (let fov of badFovs) {
-		let bad: Camera3D = {
+		const bad: Camera3D = {
 			...camera, projection: { kind: ProjectionKind.Perspective, fovY: fov },
 		};
-		let result: Result<CameraView, CameraError> = bad.resolve(800, 400);
+		const result: Result<CameraView, CameraError> = bad.resolve(800, 400);
 		assert !result.ok;
 		if (!result.ok) { assert result.error == CameraError.BadFov; }
 	}
-	let badDepths: Vec<float32> = [0.0, -1.0, 11.0, 12.0];
+	const badDepths: Vec<float32> = [0.0, -1.0, 11.0, 12.0];
 	for (let depth of badDepths) {
-		let bad: Camera3D = { ...camera, nearPlane: depth };
-		let result: Result<CameraView, CameraError> = bad.resolve(800, 400);
+		const bad: Camera3D = { ...camera, nearPlane: depth };
+		const result: Result<CameraView, CameraError> = bad.resolve(800, 400);
 		assert !result.ok;
 		if (!result.ok) { assert result.error == CameraError.EmptyDepthRange; }
 	}
 }
 
 test "camera refuses nonfinite poses and projections that overflow" {
-	let camera: Camera3D = perspective();
-	let infinite: float32 = (1.0 / 0.0) as float32;
-	let badPose: Camera3D = { ...camera, position: vec3(infinite, 0.0, 0.0) };
-	let posed: Result<CameraView, CameraError> = badPose.resolve(800, 400);
+	const camera: Camera3D = perspective();
+	const infinite: float32 = (1.0 / 0.0) as float32;
+	const badPose: Camera3D = { ...camera, position: vec3(infinite, 0.0, 0.0) };
+	const posed: Result<CameraView, CameraError> = badPose.resolve(800, 400);
 	assert !posed.ok;
 	if (!posed.ok) { assert posed.error == CameraError.NonFinitePose; }
-	let badRange: Camera3D = { ...camera, farPlane: infinite };
-	let ranged: Result<CameraView, CameraError> = badRange.resolve(800, 400);
+	const badRange: Camera3D = { ...camera, farPlane: infinite };
+	const ranged: Result<CameraView, CameraError> = badRange.resolve(800, 400);
 	assert !ranged.ok;
 	if (!ranged.ok) { assert ranged.error == CameraError.EmptyDepthRange; }
-	let overflow: Camera3D = {
+	const overflow: Camera3D = {
 		...camera, projection: { kind: ProjectionKind.Perspective, fovY: 1e-40 },
 	};
-	let projected: Result<CameraView, CameraError> = overflow.resolve(800, 400);
+	const projected: Result<CameraView, CameraError> = overflow.resolve(800, 400);
 	assert !projected.ok;
 	if (!projected.ok) { assert projected.error == CameraError.NonFiniteProjection; }
 }
 
 test "finite perspective refuses depth ranges that collapse the far plane" {
-	let ranges: Vec<Vec3> = [vec3(1.0, 100000000.0, 0.0), vec3(0.1, 10000000.0, 0.0)];
+	const ranges: Vec<Vec3> = [vec3(1.0, 100000000.0, 0.0), vec3(0.1, 10000000.0, 0.0)];
 	for (let range of ranges) {
-		let camera: Camera3D = {
+		const camera: Camera3D = {
 			...perspective(), nearPlane: range.x, farPlane: range.y,
 		};
-		let result: Result<CameraView, CameraError> = camera.resolve(800, 400);
+		const result: Result<CameraView, CameraError> = camera.resolve(800, 400);
 		assert !result.ok;
 		if (!result.ok) { assert result.error == CameraError.UnrepresentableDepthRange; }
 	}
-	let ordinary: Camera3D = { ...perspective(), nearPlane: 1.0, farPlane: 100.0 };
-	let result: Result<CameraView, CameraError> = ordinary.resolve(800, 400);
+	const ordinary: Camera3D = { ...perspective(), nearPlane: 1.0, farPlane: 100.0 };
+	const result: Result<CameraView, CameraError> = ordinary.resolve(800, 400);
 	assert result.ok;
 	if (result.ok) {
-		let ray: Ray = result.value.rayFromScreen(
+		const ray: Ray = result.value.rayFromScreen(
 			400.0, 200.0,
 			{ width: 800, height: 400, scale: 1, offsetX: 0.0, offsetY: 0.0 }, true,
 		);
@@ -419,30 +419,30 @@ test "finite perspective refuses depth ranges that collapse the far plane" {
 }
 
 test "perspective refuses finite views below the inverse precision boundary" {
-	let ranges: Vec<Vec3> = [vec3(1e-12, 1e-10, 0.0), vec3(2e-12, 2e-10, 0.0)];
+	const ranges: Vec<Vec3> = [vec3(1e-12, 1e-10, 0.0), vec3(2e-12, 2e-10, 0.0)];
 	for (let range of ranges) {
-		let camera: Camera3D = {
+		const camera: Camera3D = {
 			...perspective(), nearPlane: range.x, farPlane: range.y,
 		};
-		let result: Result<CameraView, CameraError> = camera.resolve(800, 400);
+		const result: Result<CameraView, CameraError> = camera.resolve(800, 400);
 		assert !result.ok;
 		if (!result.ok) { assert result.error == CameraError.UnprojectableView; }
 	}
 }
 
 test "perspective rejects overflowing corner rays without banning a supported large view" {
-	let camera: Camera3D = {
+	const camera: Camera3D = {
 		...perspective(), nearPlane: 1e9, farPlane: 1e15,
 		projection: { kind: ProjectionKind.Perspective, fovY: 3.1415925 },
 	};
-	let refused: Result<CameraView, CameraError> = camera.resolve(800, 400);
+	const refused: Result<CameraView, CameraError> = camera.resolve(800, 400);
 	assert !refused.ok;
 	if (!refused.ok) { assert refused.error == CameraError.UnprojectableView; }
-	let supported: Camera3D = {
+	const supported: Camera3D = {
 		...camera, projection: { kind: ProjectionKind.Perspective, fovY: 1.0 },
 	};
-	let view: CameraView = resolvedView(supported, 800, 400);
-	let ray: Ray = view.rayFromScreen(
+	const view: CameraView = resolvedView(supported, 800, 400);
+	const ray: Ray = view.rayFromScreen(
 		0.0, 0.0, { width: 800, height: 400, scale: 1, offsetX: 0.0, offsetY: 0.0 }, true,
 	);
 	assert approx(ray.direction.lengthSquared(), 1.0);

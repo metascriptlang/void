@@ -12,7 +12,7 @@ function unitBox(): Bounds3D {
 }
 
 test "an empty bounds has no size, no center and contains nothing" {
-	const box: Bounds3D = Bounds3D.empty();
+	let box: Bounds3D = Bounds3D.empty();
 	assert box.isEmpty();
 	assert near(box.size(), 0.0, 0.0, 0.0);
 	assert near(box.center(), 0.0, 0.0, 0.0);
@@ -41,7 +41,7 @@ test "points grow the bounds on both sides" {
 }
 
 test "fromValues is a corner and a size" {
-	const box: Bounds3D = unitBox();
+	let box: Bounds3D = unitBox();
 	assert near(box.min, 0.0, 0.0, 0.0);
 	assert near(box.max, 1.0, 2.0, 3.0);
 	assert approx(box.dimension(), 3.0);
@@ -62,7 +62,7 @@ test "adding a bounds takes the union" {
 }
 
 test "contains is min inclusive and max exclusive" {
-	const box: Bounds3D = unitBox();
+	let box: Bounds3D = unitBox();
 	assert box.contains(vec3(0.0, 0.0, 0.0));
 	assert box.contains(vec3(0.5, 1.0, 2.9));
 	assert !box.contains(vec3(1.0, 1.0, 1.0));
@@ -70,7 +70,7 @@ test "contains is min inclusive and max exclusive" {
 }
 
 test "collide counts touching, containsBounds does not need it" {
-	const box: Bounds3D = unitBox();
+	let box: Bounds3D = unitBox();
 	assert box.collide(Bounds3D.fromValues(1.0, 2.0, 3.0, 1.0, 1.0, 1.0));
 	assert !box.collide(Bounds3D.fromValues(1.001, 2.0, 3.0, 1.0, 1.0, 1.0));
 	assert box.containsBounds(Bounds3D.fromValues(0.25, 0.25, 0.25, 0.5, 0.5, 0.5));
@@ -78,7 +78,7 @@ test "collide counts touching, containsBounds does not need it" {
 }
 
 test "containsSphere requires the whole volume rather than only its center" {
-	const box = Bounds3D.fromValues(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+	let box = Bounds3D.fromValues(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
 	assert box.containsSphere(vec3(0.5, 0.5, 0.5), 0.25);
 	assert box.contains(vec3(0.1, 0.5, 0.5));
 	assert !box.containsSphere(vec3(0.1, 0.5, 0.5), 0.25);
@@ -87,13 +87,13 @@ test "containsSphere requires the whole volume rather than only its center" {
 }
 
 test "containsSphere includes all six face contacts but not crossed faces" {
-	const box = Bounds3D.fromValues(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
-	let contacts: Vec<Vec3> = [
+	let box = Bounds3D.fromValues(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+	const contacts: Vec<Vec3> = [
 		vec3(0.25, 0.5, 0.5), vec3(0.75, 0.5, 0.5),
 		vec3(0.5, 0.25, 0.5), vec3(0.5, 0.75, 0.5),
 		vec3(0.5, 0.5, 0.25), vec3(0.5, 0.5, 0.75),
 	];
-	let crossing: Vec<Vec3> = [
+	const crossing: Vec<Vec3> = [
 		vec3(0.24, 0.5, 0.5), vec3(0.76, 0.5, 0.5),
 		vec3(0.5, 0.24, 0.5), vec3(0.5, 0.76, 0.5),
 		vec3(0.5, 0.5, 0.24), vec3(0.5, 0.5, 0.76),
@@ -105,7 +105,7 @@ test "containsSphere includes all six face contacts but not crossed faces" {
 }
 
 test "zero radius volume containment is closed even on a max face" {
-	const box = Bounds3D.fromValues(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+	let box = Bounds3D.fromValues(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
 	const face = vec3(1.0, 0.5, 0.5);
 	assert box.containsSphere(face, 0.0);
 	assert !box.contains(face);
@@ -137,7 +137,7 @@ test "intersection clips both corners without changing either input" {
 }
 
 test "intersection keeps face edge and point contacts as nonempty bounds" {
-	const box = unitBox();
+	let box = unitBox();
 	for (const start of [vec3(1.0, 0.5, 1.0), vec3(1.0, 2.0, 1.0), vec3(1.0, 2.0, 3.0)]) {
 		const contact = box.intersection(Bounds3D.fromPoints(start, vec3(2.0, 3.0, 4.0)));
 		assert !contact.isEmpty();
@@ -147,7 +147,7 @@ test "intersection keeps face edge and point contacts as nonempty bounds" {
 }
 
 test "intersection preserves empty and separated sets without collapsing them to a point" {
-	const box = unitBox();
+	let box = unitBox();
 	for (const other of [Bounds3D.empty(),
 		Bounds3D.fromValues(0.0, 0.0, 0.0, 1.0, -1.0, 1.0),
 		Bounds3D.fromValues(2.0, 0.0, 0.0, 1.0, 1.0, 1.0),
@@ -162,7 +162,7 @@ test "intersection preserves empty and separated sets without collapsing them to
 }
 
 test "identity leaves a bounds alone and an empty one stays empty" {
-	const box: Bounds3D = unitBox();
+	let box: Bounds3D = unitBox();
 	const same: Bounds3D = box.transformed(identity());
 	assert near(same.min, 0.0, 0.0, 0.0);
 	assert near(same.max, 1.0, 2.0, 3.0);
@@ -193,7 +193,7 @@ test "offsetBy is a translation without a matrix" {
 }
 
 test "the bounding sphere is half the diagonal" {
-	const box: Bounds3D = Bounds3D.fromValues(0.0, 0.0, 0.0, 2.0, 3.0, 6.0);
+	let box: Bounds3D = Bounds3D.fromValues(0.0, 0.0, 0.0, 2.0, 3.0, 6.0);
 	assert approx(box.boundingSphereRadius(), 3.5);
 }
 
@@ -211,7 +211,7 @@ test "bounding sphere radii stay finite for subnormal extents" {
 
 test "bounding sphere radius survives an overflowing float32 edge difference" {
 	const limit: float32 = 3.0e38;
-	const box = Bounds3D.fromPoints(vec3(-limit, 0.0, 0.0), vec3(limit, 0.0, 0.0));
+	let box = Bounds3D.fromPoints(vec3(-limit, 0.0, 0.0), vec3(limit, 0.0, 0.0));
 	const radius: float32 = box.boundingSphereRadius();
 	assert Number.isFinite(radius);
 	assert approx(radius / limit, 1.0);
@@ -219,14 +219,14 @@ test "bounding sphere radius survives an overflowing float32 edge difference" {
 
 test "bounding sphere radius halves the diagonal before narrowing to float32" {
 	const extent: float32 = 1.0e38;
-	const box = Bounds3D.fromPoints(vec3(-extent, -extent, -extent), vec3(extent, extent, extent));
+	let box = Bounds3D.fromPoints(vec3(-extent, -extent, -extent), vec3(extent, extent, extent));
 	const radius: float32 = box.boundingSphereRadius();
 	assert Number.isFinite(radius);
 	assert approx(radius / extent, 1.7320508);
 }
 
 test "closestPoint clamps into the box and leaves inside points alone" {
-	const box: Bounds3D = unitBox();
+	let box: Bounds3D = unitBox();
 	assert near(box.closestPoint(vec3(5.0, -5.0, 1.0)), 1.0, 0.0, 1.0);
 	assert near(box.closestPoint(vec3(0.5, 0.5, 0.5)), 0.5, 0.5, 0.5);
 }

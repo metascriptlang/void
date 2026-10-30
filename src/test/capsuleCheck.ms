@@ -85,9 +85,18 @@ function rayFails(capsule: Capsule3D, error: CapsuleError): boolean {
 }
 
 test "capsule refuses a negative radius, a zero axis and non-finite input by name" {
-	assert rayFails({ a: vec3(0, 0, 0), b: vec3(0, 0, 2), radius: -1.0 }, CapsuleError.NegativeRadius);
-	assert rayFails({ a: vec3(1, 1, 1), b: vec3(1, 1, 1), radius: 1.0 }, CapsuleError.ZeroLengthAxis);
-	assert rayFails({ a: vec3(0, 0, 0), b: vec3(0, 0, NaN as float32), radius: 1.0 }, CapsuleError.NonFinite);
+	assert rayFails(
+		{ a: vec3(0, 0, 0), b: vec3(0, 0, 2), radius: -1.0 },
+		CapsuleError.NegativeRadius,
+	);
+	assert rayFails(
+		{ a: vec3(1, 1, 1), b: vec3(1, 1, 1), radius: 1.0 },
+		CapsuleError.ZeroLengthAxis,
+	);
+	assert rayFails(
+		{ a: vec3(0, 0, 0), b: vec3(0, 0, NaN as float32), radius: 1.0 },
+		CapsuleError.NonFinite,
+	);
 	const stuck: Capsule3D = { a: vec3(1, 1, 1), b: vec3(1, 1, 1), radius: 1.0 };
 	const contained = stuck.contains(vec3(1, 1, 1));
 	assert !contained.ok && contained.error == CapsuleError.ZeroLengthAxis;

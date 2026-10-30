@@ -90,7 +90,7 @@ test "oriented bounds all nine edge cross axes are independently necessary" {
 	for (let i: int32 = 0; i < 3; i++) {
 		for (let j: int32 = 0; j < 3; j++) {
 			const a = permuted(pair[0], i);
-			const b = permuted(pair[1], j);
+			let b = permuted(pair[1], j);
 			assert overlap(a, b, false);
 			assert overlap(b, a, false);
 		}
@@ -114,7 +114,7 @@ test "oriented bounds reference epsilon intentionally keeps near contact conserv
 
 test "oriented bounds widen center differences before float32 subtraction overflow" {
 	const a = box(vec3(-3e38, 0, 0), vec3(3e38, 1, 1));
-	const b = box(vec3(3e38, 0, 0), vec3(3e38, 1, 1));
+	let b = box(vec3(3e38, 0, 0), vec3(3e38, 1, 1));
 	assert overlap(a, b, true);
 	assert overlap(a, box(vec3(3e38, 0, 0), vec3(1e38, 1, 1)), false);
 	assert a.center.x == -3e38 && b.center.x == 3e38;

@@ -37,7 +37,7 @@ test "mesh translation bakes positions and bounds without changing attributes or
 		for (const skinned of [false, true]) {
 			for (const encoding of [0, 1, 2]) {
 				let data = triangle(layout, skinned, encoding);
-				let before: Vec<float32> = data.vertices;
+				const before: Vec<float32> = data.vertices;
 				const width = data.stride();
 				assert translate(data, vec3(3.0, -2.0, 5.0)).ok;
 				assert data.vertexCount() == 3 && data.stride() == width;
@@ -72,7 +72,7 @@ test "mesh translation keeps empty data empty and mutates only its owned value" 
 	let empty = MeshData.empty();
 	assert translate(empty, vec3(1.0, 2.0, 3.0)).ok;
 	assert empty.vertexCount() == 0 && empty.bounds.isEmpty();
-	let original = triangle(2, true, 2);
+	const original = triangle(2, true, 2);
 	let copy = original;
 	assert translate(copy, vec3(3.0, -2.0, 5.0)).ok;
 	assert original.bounds.min == vec3(0.0, 0.0, 0.0);
@@ -85,7 +85,7 @@ test "mesh translation rejects nonfinite offsets before publishing any change" {
 	const nan: float32 = infinite - infinite;
 	for (const value of [infinite, -infinite, nan]) {
 		let data = triangle(1, false, 1);
-		let before: Vec<float32> = data.vertices;
+		const before: Vec<float32> = data.vertices;
 		const bounds = data.bounds;
 		const result = translate(data, vec3(1.0, value, 0.0));
 		assert !result.ok;
@@ -99,7 +99,7 @@ test "mesh translation preflights a late unrepresentable position atomically" {
 	let data = triangle(2, true, 2);
 	data.vertices[2 * data.stride()] = 3.0e38;
 	recomputeBounds(data);
-	let before: Vec<float32> = data.vertices;
+	const before: Vec<float32> = data.vertices;
 	const bounds = data.bounds;
 	const result = translate(data, vec3(1.0e38, 1.0, 1.0));
 	assert !result.ok;
@@ -111,7 +111,7 @@ test "mesh translation preflights a late unrepresentable position atomically" {
 test "mesh translation rejects a partial interleaved vertex without changing storage" {
 	let data = triangle(0, false, 0);
 	data.vertices.push(1.0);
-	let before: Vec<float32> = data.vertices;
+	const before: Vec<float32> = data.vertices;
 	const result = translate(data, vec3(1.0, 2.0, 3.0));
 	assert !result.ok;
 	if (!result.ok) { assert result.error == MeshError.VertexStorage; }

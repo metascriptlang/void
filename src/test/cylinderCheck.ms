@@ -79,9 +79,18 @@ function rayFails(cylinder: Cylinder3D, error: CylinderError): boolean {
 }
 
 test "cylinder refuses a negative radius, a zero axis and non-finite input by name" {
-	assert rayFails({ a: vec3(0, 0, 0), b: vec3(0, 0, 2), radius: -1.0 }, CylinderError.NegativeRadius);
-	assert rayFails({ a: vec3(1, 1, 1), b: vec3(1, 1, 1), radius: 1.0 }, CylinderError.ZeroLengthAxis);
-	assert rayFails({ a: vec3(0, 0, 0), b: vec3(0, 0, 2), radius: NaN as float32 }, CylinderError.NonFinite);
+	assert rayFails(
+		{ a: vec3(0, 0, 0), b: vec3(0, 0, 2), radius: -1.0 },
+		CylinderError.NegativeRadius,
+	);
+	assert rayFails(
+		{ a: vec3(1, 1, 1), b: vec3(1, 1, 1), radius: 1.0 },
+		CylinderError.ZeroLengthAxis,
+	);
+	assert rayFails(
+		{ a: vec3(0, 0, 0), b: vec3(0, 0, 2), radius: NaN as float32 },
+		CylinderError.NonFinite,
+	);
 	const stuck: Cylinder3D = { a: vec3(1, 1, 1), b: vec3(1, 1, 1), radius: 1.0 };
 	const contained = stuck.contains(vec3(1, 1, 1));
 	assert !contained.ok && contained.error == CylinderError.ZeroLengthAxis;
