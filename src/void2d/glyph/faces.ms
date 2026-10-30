@@ -107,7 +107,7 @@ function findTableSlice(face: GlyphFace, tag: string): TableSlice {
 	return { offset: -1, length: 0 };
 }
 
-export function findGlyph(face: GlyphFace, codepoint: int32): int32 {
+function findGlyph(face: GlyphFace, codepoint: int32): int32 {
 	state.glyphLookups++;
 	when (voidColourEmoji) {
 		if (face.colourOnly) { return colourFaceGlyphIndex(face.colourHandle, face.bytes.data, codepoint); }
