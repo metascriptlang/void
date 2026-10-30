@@ -7,7 +7,7 @@ import {
 	truncInt,
 } from "../trueType/fontInfo";
 import { Point, tesselateCubic } from "../trueType/rasterize";
-import { computeCrossingsX, solveCubic } from "../trueType/sdf";
+import { computeCrossingsX, solveCubic, squaredDistance } from "../trueType/sdf";
 import { shortOf } from "./outline";
 
 export const SDF_EM: float32 = 32.0;
@@ -58,7 +58,7 @@ function pointDistance(
 		if (v.kind == VERTEX_LINE && precompute[i] != 0.0) {
 			const x1: float32 = (verts[i - 1].x as float32) * scaleX;
 			const y1: float32 = (verts[i - 1].y as float32) * scaleY;
-			const dist2: float32 = (x0 - sx) * (x0 - sx) + (y0 - sy) * (y0 - sy);
+			const dist2 = squaredDistance(x0, y0, sx, sy);
 			if (dist2 < minDist * minDist) { minDist = sqrtF(dist2); }
 			const dist: float32 = absF((x1 - x0) * (y0 - sy) - (y1 - y0) * (x0 - sx)) * precompute[i];
 			if (dist < minDist) {
@@ -116,7 +116,7 @@ function pointDistance(
 					const d: float32 = (mx * ax + my * ay) * aInv;
 					num = solveCubic(b, c, d, res);
 				}
-				let dist2: float32 = (x0 - sx) * (x0 - sx) + (y0 - sy) * (y0 - sy);
+				let dist2 = squaredDistance(x0, y0, sx, sy);
 				if (dist2 < minDist * minDist) { minDist = sqrtF(dist2); }
 				for (let r: int32 = 0; r < num; r++) {
 					if (res[r] >= 0.0 && res[r] <= 1.0) {
@@ -124,7 +124,7 @@ function pointDistance(
 						const it: float32 = 1.0 - t;
 						const px: float32 = it * it * x0 + 2 * t * it * x1 + t * t * x2;
 						const py: float32 = it * it * y0 + 2 * t * it * y1 + t * t * y2;
-						dist2 = (px - sx) * (px - sx) + (py - sy) * (py - sy);
+						dist2 = squaredDistance(px, py, sx, sy);
 						if (dist2 < minDist * minDist) { minDist = sqrtF(dist2); }
 					}
 				}
