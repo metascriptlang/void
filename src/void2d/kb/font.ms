@@ -235,6 +235,11 @@ function selectCmapSubtableFromBlob(m: Span<uint8>, font: KbFont): KbCmapSubtabl
 	return result;
 }
 
+function matrixSizeInWords(rowCount: int64, glyphCount: int64): int64 {
+	if (rowCount == 0 || glyphCount == 0) { return 0; }
+	return kbGlyphLookupMatrixIndex(rowCount - 1, glyphCount - 1, glyphCount).word + 1;
+}
+
 function loadFontUnchecked(
 	font: KbFont,
 	state: KbLoadFontState,
@@ -362,19 +367,14 @@ function loadFontUnchecked(
 					state.tableLengths[KB_BLOB_TABLE_ID_GPOS] +
 					state.tableLengths[KB_BLOB_TABLE_ID_GDEF]) & 0xFFFFFFFF) * 4 / 2;
 
-				let glyphLookupMatrixSizeInWords: int64 = 0;
-				if (state.lookupCount != 0 && state.glyphCount != 0) {
-					const lastIndex = kbGlyphLookupMatrixIndex(state.lookupCount - 1, state.glyphCount - 1,
-						state.glyphCount);
-					glyphLookupMatrixSizeInWords = lastIndex.word + 1;
-				}
-
-				let glyphLookupSubtableMatrixSizeInWords: int64 = 0;
-				if (state.lookupSubtableCount != 0 && state.glyphCount != 0) {
-					const lastIndex = kbGlyphLookupMatrixIndex(state.lookupSubtableCount - 1,
-						state.glyphCount - 1, state.glyphCount);
-					glyphLookupSubtableMatrixSizeInWords = lastIndex.word + 1;
-				}
+				const glyphLookupMatrixSizeInWords = matrixSizeInWords(
+					state.lookupCount,
+					state.glyphCount,
+				);
+				const glyphLookupSubtableMatrixSizeInWords = matrixSizeInWords(
+					state.lookupSubtableCount,
+					state.glyphCount,
+				);
 
 				let bump = kbAlign(0, 4) + KB_BLOB_HEADER_SIZE;
 				for (let tableId = 0; tableId < KB_BLOB_TABLE_ID_COUNT; tableId++) {
