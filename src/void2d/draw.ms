@@ -536,7 +536,7 @@ export function startContext(): void {
 	ctx.curSampler = samplerIndex(ctx.sceneSmooth, false);
 	clearEffect();
 	ctx.clipDepth = 0;
-	while ((ctx.scopeDepths.length as int32) > 0) { ctx.scopeDepths.pop(); }
+	ctx.scopeDepths.length = 0;
 }
 
 // Upload the frame and run every render-target pass. Called with NO pass open, before the
