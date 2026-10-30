@@ -11,7 +11,12 @@ const SHADER = `
 `;
 
 async function main(): Promise<void> {
-	acquireContext("#void", 1, () => {}, () => {});
+	acquireContext(
+		"#void",
+		1,
+		() => {},
+		() => {},
+	);
 	const device = requestDevice({
 		device: null,
 		context: null,
@@ -24,7 +29,9 @@ async function main(): Promise<void> {
 		size: { width: 64, height: 64, depthOrArrayLayers: 1 },
 		format: "rgba8unorm",
 		dimension: "2d",
-		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		usage:
+			(GPUTextureUsage.RENDER_ATTACHMENT as int32) |
+			(GPUTextureUsage.COPY_SRC as int32),
 		sampleCount: 1,
 	});
 	const module = device.createShaderModule({
@@ -43,7 +50,8 @@ async function main(): Promise<void> {
 	const vertices = device.createBuffer({
 		label: "vertices",
 		size: 24,
-		usage: (GPUBufferUsage.VERTEX as int32) | (GPUBufferUsage.COPY_DST as int32),
+		usage:
+			(GPUBufferUsage.VERTEX as int32) | (GPUBufferUsage.COPY_DST as int32),
 	});
 	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
 	device.queue.writeBuffer(vertices, 0, triangle);
@@ -57,12 +65,14 @@ async function main(): Promise<void> {
 	const encoder = device.createCommandEncoder();
 	const pass = encoder.beginRenderPass({
 		label: "frame",
-		colorAttachments: [{
-			view: target.createView({ label: null }),
-			clearValue: { r: 0.0, g: 0.0, b: 1.0, a: 1.0 },
-			loadOp: "clear",
-			storeOp: "store",
-		}],
+		colorAttachments: [
+			{
+				view: target.createView({ label: null }),
+				clearValue: { r: 0.0, g: 0.0, b: 1.0, a: 1.0 },
+				loadOp: "clear",
+				storeOp: "store",
+			},
+		],
 	});
 	pass.setPipeline(pipeline);
 	pass.draw(3, 1, 0, 0);

@@ -1,4 +1,10 @@
-import { FontInfo, Vertex, VERTEX_CURVE, VERTEX_LINE, truncInt } from "./fontInfo";
+import {
+	FontInfo,
+	Vertex,
+	VERTEX_CURVE,
+	VERTEX_LINE,
+	truncInt,
+} from "./fontInfo";
 import { getGlyphShape } from "../trueType";
 import { getGlyphBitmapBoxSubpixel } from "./rasterize";
 
@@ -64,18 +70,26 @@ function rayIntersectBezier(
 			const d: float32 = Math.sqrt(discr as float64) as float32;
 			s0 = (b + d) * rcpna;
 			s1 = (b - d) * rcpna;
-			if (s0 >= 0.0 && s0 <= 1.0) { numS = 1; }
+			if (s0 >= 0.0 && s0 <= 1.0) {
+				numS = 1;
+			}
 			if (d > 0.0 && s1 >= 0.0 && s1 <= 1.0) {
-				if (numS == 0) { s0 = s1; }
+				if (numS == 0) {
+					s0 = s1;
+				}
 				numS += 1;
 			}
 		}
 	} else {
 		s0 = c / (-2 * b);
-		if (s0 >= 0.0 && s0 <= 1.0) { numS = 1; }
+		if (s0 >= 0.0 && s0 <= 1.0) {
+			numS = 1;
+		}
 	}
 
-	if (numS == 0) { return 0; }
+	if (numS == 0) {
+		return 0;
+	}
 	const rcpLen2: float32 = 1 / (rayX * rayX + rayY * rayY);
 	const raynX: float32 = rayX * rcpLen2;
 	const raynY: float32 = rayY * rcpLen2;
@@ -105,12 +119,18 @@ function lineCrossing(x: float32, y: float32, a: Vertex, b: Vertex): int32 {
 	const y0 = a.y as int32;
 	const x1 = b.x as int32;
 	const y1 = b.y as int32;
-	if (y > (minI(y0, y1) as float32) && y < (maxI(y0, y1) as float32) &&
-		x > (minI(x0, x1) as float32)) {
+	if (
+		y > (minI(y0, y1) as float32) &&
+		y < (maxI(y0, y1) as float32) &&
+		x > (minI(x0, x1) as float32)
+	) {
 		const xInter: float32 =
-			(y - (y0 as float32)) / ((y1 - y0) as float32) * ((x1 - x0) as float32) +
+			((y - (y0 as float32)) / ((y1 - y0) as float32)) *
+				((x1 - x0) as float32) +
 			(x0 as float32);
-		if (xInter < x) { return y0 < y1 ? 1 : -1; }
+		if (xInter < x) {
+			return y0 < y1 ? 1 : -1;
+		}
 	}
 	return 0;
 }
@@ -172,33 +192,45 @@ export function computeCrossingsX(
 							hits,
 						);
 						if (numHits >= 1) {
-							if (hits[0] < 0) { winding += hits[1] < 0 ? -1 : 1; }
+							if (hits[0] < 0) {
+								winding += hits[1] < 0 ? -1 : 1;
+							}
 						}
 						if (numHits >= 2) {
-							if (hits[2] < 0) { winding += hits[3] < 0 ? -1 : 1; }
+							if (hits[2] < 0) {
+								winding += hits[3] < 0 ? -1 : 1;
+							}
 						}
 					}
 				}
 			},
-			_ => {},
-		}
+			_ => {
+			},
+		};
 	}
 	return winding;
 }
 
 // stbtt__cuberoot: pow is the double libm one, with the exponent a float 1/3.
 function cuberoot(x: float32): float32 {
-	if (x < 0) { return -(Math.pow((-x) as float64, THIRD as float64) as float32); }
+	if (x < 0) {
+		return -(Math.pow((-x) as float64, THIRD as float64) as float32);
+	}
 	return Math.pow(x as float64, THIRD as float64) as float32;
 }
 
 // stbtt__solve_cubic: x^3 + a*x^2 + b*x + c = 0, roots into r.
-export function solveCubic(a: float32, b: float32, c: float32, r: float32[]): int32 {
+export function solveCubic(
+	a: float32,
+	b: float32,
+	c: float32,
+	r: float32[],
+): int32 {
 	const s: float32 = -a / 3;
-	const p: float32 = b - a * a / 3;
-	const q: float32 = a * (2 * a * a - 9 * b) / 27 + c;
+	const p: float32 = b - (a * a) / 3;
+	const q: float32 = (a * (2 * a * a - 9 * b)) / 27 + c;
 	const p3: float32 = p * p * p;
-	const d: float32 = q * q + 4 * p3 / 27;
+	const d: float32 = q * q + (4 * p3) / 27;
 	if (d >= 0) {
 		const z: float32 = Math.sqrt(d as float64) as float32;
 		let u: float32 = (-q + z) / 2;
@@ -209,7 +241,8 @@ export function solveCubic(a: float32, b: float32, c: float32, r: float32[]): in
 		return 1;
 	}
 	const u: float32 = Math.sqrt((-p / 3) as float64) as float32;
-	const inner: float64 = -Math.sqrt((-27 / p3) as float64) * (q as float64) / 2;
+	const inner: float64 =
+		(-Math.sqrt((-27 / p3) as float64) * (q as float64)) / 2;
 	const v: float32 = (Math.acos(inner) as float32) / 3;
 	const m: float32 = Math.cos(v as float64) as float32;
 	const n: float32 = (Math.cos((v as float64) - HALF_PI) as float32) * SQRT3;
@@ -219,7 +252,12 @@ export function solveCubic(a: float32, b: float32, c: float32, r: float32[]): in
 	return 3;
 }
 
-export function squaredDistance(px: float32, py: float32, sx: float32, sy: float32): float32 {
+export function squaredDistance(
+	px: float32,
+	py: float32,
+	sx: float32,
+	sy: float32,
+): float32 {
 	return (px - sx) * (px - sx) + (py - sy) * (py - sy);
 }
 
@@ -234,10 +272,14 @@ export function getGlyphSDF(
 ): Sdf | null {
 	const scaleX: float32 = scale;
 	let scaleY: float32 = scale;
-	if (scale == 0) { return null; }
+	if (scale == 0) {
+		return null;
+	}
 
 	const box = getGlyphBitmapBoxSubpixel(info, glyph, scale, scale, 0.0, 0.0);
-	if (box.x0 == box.x1 || box.y0 == box.y1) { return null; }
+	if (box.x0 == box.x1 || box.y0 == box.y1) {
+		return null;
+	}
 	const ix0 = box.x0 - padding;
 	const iy0 = box.y0 - padding;
 	const ix1 = box.x1 + padding;
@@ -267,7 +309,7 @@ export function getGlyphSDF(
 				const dist: float32 = Math.sqrt(
 					((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)) as float64,
 				) as float32;
-				precompute[i] = (dist < (1.0 / 1024)) ? 0.0 : 1.0 / dist;
+				precompute[i] = (dist < 1.0 / 1024) ? 0.0 : 1.0 / dist;
 			},
 			VERTEX_CURVE => {
 				const x2: float32 = (verts[j].x as float32) * scaleX;
@@ -284,7 +326,7 @@ export function getGlyphSDF(
 			_ => {
 				precompute[i] = 0.0;
 			},
-		}
+		};
 		j = i;
 	}
 
@@ -312,16 +354,19 @@ export function getGlyphSDF(
 						minDist = Math.sqrt(dist2 as float64) as float32;
 					}
 
-					const dist: float32 = (Math.abs(
-						((x1 - x0) * (y0 - sy) - (y1 - y0) * (x0 - sx)) as float64,
-					) as float32) * precompute[i];
+					const dist: float32 =
+						(Math.abs(
+							((x1 - x0) * (y0 - sy) - (y1 - y0) * (x0 - sx)) as float64,
+						) as float32) * precompute[i];
 					if (dist < minDist) {
 						const dx: float32 = x1 - x0;
 						const dy: float32 = y1 - y0;
 						const px: float32 = x0 - sx;
 						const py: float32 = y0 - sy;
 						const t: float32 = -(px * dx + py * dy) / (dx * dx + dy * dy);
-						if (t >= 0.0 && t <= 1.0) { minDist = dist; }
+						if (t >= 0.0 && t <= 1.0) {
+							minDist = dist;
+						}
 					}
 				} else if (v.kind == VERTEX_CURVE) {
 					const x2: float32 = (verts[i - 1].x as float32) * scaleX;
@@ -332,8 +377,12 @@ export function getGlyphSDF(
 					const boxY0 = minF(minF(y0, y1), y2);
 					const boxX1 = maxF(maxF(x0, x1), x2);
 					const boxY1 = maxF(maxF(y0, y1), y2);
-					if (sx > boxX0 - minDist && sx < boxX1 + minDist &&
-						sy > boxY0 - minDist && sy < boxY1 + minDist) {
+					if (
+						sx > boxX0 - minDist &&
+						sx < boxX1 + minDist &&
+						sy > boxY0 - minDist &&
+						sy < boxY1 + minDist
+					) {
 						let num: int32 = 0;
 						const ax: float32 = x1 - x0;
 						const ay: float32 = y1 - y0;
@@ -359,8 +408,9 @@ export function getGlyphSDF(
 								if (discriminant < 0) {
 									num = 0;
 								} else {
-									const root: float32 =
-										Math.sqrt(discriminant as float64) as float32;
+									const root: float32 = Math.sqrt(
+										discriminant as float64,
+									) as float32;
 									res[0] = (-b - root) / (2 * a);
 									res[1] = (-b + root) / (2 * a);
 									num = 2;
@@ -395,14 +445,17 @@ export function getGlyphSDF(
 					}
 				}
 			}
-			if (winding == 0) { minDist = -minDist; }
+			if (winding == 0) {
+				minDist = -minDist;
+			}
 			let val: float32 = (onedgeValue as float32) + pixelDistScale * minDist;
 			if (val < 0) {
 				val = 0;
 			} else if (val > 255) {
 				val = 255;
 			}
-			data[(y - iy0) * w + (x - ix0)] = (truncInt(val as float64) & 0xFF) as uint8;
+			data[(y - iy0) * w + (x - ix0)] = (truncInt(val as float64) &
+				0xFF) as uint8;
 		}
 	}
 	return { data: data, width: w, height: h, xoff: ix0, yoff: iy0 };

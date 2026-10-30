@@ -54,15 +54,23 @@ class WindowRun extends Start {
 		this.frame = frame;
 	}
 
-	suspend(): void { emitApp(AppEventType.Suspended); }
-	resume(): void { emitApp(AppEventType.Resumed); }
+	suspend(): void {
+		emitApp(AppEventType.Suspended);
+	}
+	resume(): void {
+		emitApp(AppEventType.Resumed);
+	}
 
 	release(): void {
-		if (!browserWindow.valid()) { return; }
+		if (!browserWindow.valid()) {
+			return;
+		}
 		leave(this.canvas);
 		browserWindow.end();
 		const surface = this.surface;
-		if (surface !== null) { surfaceClose(surface); }
+		if (surface !== null) {
+			surfaceClose(surface);
+		}
 		doorShutdown();
 		detach(this.canvas);
 	}
@@ -78,32 +86,52 @@ class WindowRun extends Start {
 			}
 			restoreStale();
 			const surface = this.surface;
-			if (surface !== null) { surfaceBind(surface); }
+			if (surface !== null) {
+				surfaceBind(surface);
+			}
 			this.frame();
 			ran = true;
 		}
-		if (browserWindow.endFrame(ran)) { this.stop(); }
+		if (browserWindow.endFrame(ran)) {
+			this.stop();
+		}
 	}
 }
 
 class WindowDriver extends HostDriver {
-	live(): boolean { return browserWindow.valid(); }
-	sampleCount(): int32 { return windowSamples; }
-	fbWidth(): int32 { return browserWindow.framebufferWidth(); }
-	fbHeight(): int32 { return browserWindow.framebufferHeight(); }
-	dpiScale(): float32 { return browserWindow.running("dpiScale").state.dpiScale; }
-	keyDown(code: int32): boolean { return appWindow.keysHeld.isDown(code); }
+	live(): boolean {
+		return browserWindow.valid();
+	}
+	sampleCount(): int32 {
+		return windowSamples;
+	}
+	fbWidth(): int32 {
+		return browserWindow.framebufferWidth();
+	}
+	fbHeight(): int32 {
+		return browserWindow.framebufferHeight();
+	}
+	dpiScale(): float32 {
+		return browserWindow.running("dpiScale").state.dpiScale;
+	}
+	keyDown(code: int32): boolean {
+		return appWindow.keysHeld.isDown(code);
+	}
 }
 
 useWindowDriver(new WindowDriver("window driver"));
 
 function emitApp(type: AppEventType): void {
 	const live = browserWindow.live;
-	if (live !== null) { live.emit(type); }
+	if (live !== null) {
+		live.emit(type);
+	}
 }
 
 async function beginWindow(canvas: CanvasView, run: WindowRun): Promise<void> {
-	if (!(await acquire(canvas, run))) { return; }
+	if (!(await acquire(canvas, run))) {
+		return;
+	}
 	run.surface = surfaceOpen(canvas.selector);
 	browserWindow.begin(canvas);
 	enter(
@@ -111,13 +139,19 @@ async function beginWindow(canvas: CanvasView, run: WindowRun): Promise<void> {
 		(resized: CanvasSize): void => {
 			browserWindow.resized(resized);
 			const surface = run.surface;
-			if (surface !== null) { surfaceReconfigure(surface); }
+			if (surface !== null) {
+				surfaceReconfigure(surface);
+			}
 		},
-		(time: float64): void => { run.tick(time); },
+		(time: float64): void => {
+			run.tick(time);
+		},
 	);
 }
 
-function fatal(message: string): void { throw new Error(message); }
+function fatal(message: string): void {
+	throw new Error(message);
+}
 
 function voidRunConfigured(
 	width: int32,
@@ -128,7 +162,9 @@ function voidRunConfigured(
 	frame: () => void,
 ): void {
 	claimDriver(Driver.Window);
-	if (starts.length > 0) { fail("voidWebRun: the browser window already runs"); }
+	if (starts.length > 0) {
+		fail("voidWebRun: the browser window already runs");
+	}
 	const canvas = pageCanvas(WINDOW_CANVAS, highDpi != 0);
 	if (canvas === null) {
 		return fail(`no canvas ${WINDOW_CANVAS}: the page has no ${WINDOW_CANVAS}`);
@@ -142,7 +178,12 @@ function voidRunConfigured(
 	beginWindow(canvas, run);
 }
 
-function voidRun(width: int32, height: int32, init: () => void, frame: () => void): void {
+function voidRun(
+	width: int32,
+	height: int32,
+	init: () => void,
+	frame: () => void,
+): void {
 	voidRunConfigured(width, height, 4, 1, init, frame);
 }
 

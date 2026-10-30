@@ -212,7 +212,11 @@ function createParser(source: uint8[], dpi: float32): Parser {
 	p.source = source;
 	p.dpi = dpi;
 	const first = new Attrib();
-	first.paintOrder = encodePaintOrder(PAINT_ORDER_FILL, PAINT_ORDER_STROKE, PAINT_ORDER_MARKERS);
+	first.paintOrder = encodePaintOrder(
+		PAINT_ORDER_FILL,
+		PAINT_ORDER_STROKE,
+		PAINT_ORDER_MARKERS,
+	);
 	p.attrs.push(first);
 	return p;
 }
@@ -234,7 +238,9 @@ function pushAttr(p: Parser): void {
 }
 
 function popAttr(p: Parser): void {
-	if (p.head > 0) { p.head -= 1; }
+	if (p.head > 0) {
+		p.head -= 1;
+	}
 }
 
 function resetPath(p: Parser): void {
@@ -313,31 +319,39 @@ function convertToPixels(
 	const attr = curAttr(p);
 	const result: float32 = match (units) {
 		UNITS_USER | UNITS_PX => value,
-		UNITS_PT => value / 72.0 * p.dpi,
-		UNITS_PC => value / 6.0 * p.dpi,
-		UNITS_MM => value / 25.4 * p.dpi,
-		UNITS_CM => value / 2.54 * p.dpi,
+		UNITS_PT => (value / 72.0) * p.dpi,
+		UNITS_PC => (value / 6.0) * p.dpi,
+		UNITS_MM => (value / 25.4) * p.dpi,
+		UNITS_CM => (value / 2.54) * p.dpi,
 		UNITS_IN => value * p.dpi,
 		UNITS_EM => value * attr.fontSize,
 		UNITS_EX => value * attr.fontSize * 0.52,
-		UNITS_PERCENT => orig + value / 100.0 * length,
+		UNITS_PERCENT => orig + (value / 100.0) * length,
 		_ => value,
 	};
 	return result;
 }
 
 function bytesEqual(a: uint8[], b: uint8[]): boolean {
-	if (a.length != b.length) { return false; }
+	if (a.length != b.length) {
+		return false;
+	}
 	for (let i: int32 = 0; i < (a.length as int32); i++) {
-		if (a[i] != b[i]) { return false; }
+		if (a[i] != b[i]) {
+			return false;
+		}
 	}
 	return true;
 }
 
 function findGradientData(p: Parser, id: uint8[]): GradientData | null {
-	if (id.length == 0) { return null; }
+	if (id.length == 0) {
+		return null;
+	}
 	for (let i = (p.gradients.length as int32) - 1; i >= 0; i--) {
-		if (bytesEqual(p.gradients[i].id, id)) { return p.gradients[i]; }
+		if (bytesEqual(p.gradients[i].id, id)) {
+			return p.gradients[i];
+		}
 	}
 	return null;
 }
@@ -349,7 +363,9 @@ function createGradient(
 	xform: float32[],
 ): Gradient | null {
 	const data = findGradientData(p, id);
-	if (data == null) { return null; }
+	if (data == null) {
+		return null;
+	}
 	let ref: GradientData | null = data;
 	let stops: GradientStop[] | null = null;
 	let refIter: int32 = 0;
@@ -359,12 +375,18 @@ function createGradient(
 			break;
 		}
 		const nextRef = findGradientData(p, ref.ref);
-		if (nextRef == ref) { break; }
+		if (nextRef == ref) {
+			break;
+		}
 		ref = nextRef;
 		refIter += 1;
-		if (refIter > 32) { break; }
+		if (refIter > 32) {
+			break;
+		}
 	}
-	if (stops == null) { return null; }
+	if (stops == null) {
+		return null;
+	}
 
 	let ox: float32 = 0.0;
 	let oy: float32 = 0.0;
@@ -430,7 +452,9 @@ function getAverageScale(t: float32[]): float32 {
 }
 
 function copyBounds(target: float32[], source: float32[]): void {
-	for (let i: int32 = 0; i < 4; i++) { target[i] = source[i]; }
+	for (let i: int32 = 0; i < 4; i++) {
+		target[i] = source[i];
+	}
 }
 
 function growBounds(bounds: float32[], box: float32[]): void {
@@ -441,7 +465,11 @@ function growBounds(bounds: float32[], box: float32[]): void {
 }
 
 // nsvg__getLocalBounds: a shape with no curve leaves `bounds` as the caller set it.
-function getLocalBounds(bounds: float32[], shape: Shape, xform: float32[]): void {
+function getLocalBounds(
+	bounds: float32[],
+	shape: Shape,
+	xform: float32[],
+): void {
 	const curve: float32[] = [0, 0, 0, 0, 0, 0, 0, 0];
 	const box: float32[] = [0, 0, 0, 0];
 	let first = true;
@@ -489,14 +517,18 @@ function setPaint(paint: Paint, has: int32, opacity: float32): void {
 			paint.kind = PAINT_UNDEF;
 		},
 		_ => {
-			throw new Error(`void2d svg: paint presence ${has} is not none, colour or url`);
+			throw new Error(
+				`void2d svg: paint presence ${has} is not none, colour or url`,
+			);
 		},
-	}
+	};
 }
 
 function addShape(p: Parser): void {
 	const attr = curAttr(p);
-	if (p.plist.length == 0) { return; }
+	if (p.plist.length == 0) {
+		return;
+	}
 	const shape = new Shape();
 	shape.fillGradient = attr.fillGradient;
 	shape.strokeGradient = attr.strokeGradient;
@@ -515,7 +547,9 @@ function addShape(p: Parser): void {
 	shape.opacity = attr.opacity;
 	shape.paintOrder = attr.paintOrder;
 
-	for (let i = (p.plist.length as int32) - 1; i >= 0; i--) { shape.paths.push(p.plist[i]); }
+	for (let i = (p.plist.length as int32) - 1; i >= 0; i--) {
+		shape.paths.push(p.plist[i]);
+	}
 	p.plist = [];
 
 	copyBounds(shape.bounds, shape.paths[0].bounds);
@@ -531,9 +565,15 @@ function addShape(p: Parser): void {
 
 function addPath(p: Parser, closed: boolean): void {
 	const attr = curAttr(p);
-	if (p.npts < 4) { return; }
-	if (closed) { lineTo(p, p.pts[0], p.pts[1]); }
-	if ((p.npts % 3) != 1) { return; }
+	if (p.npts < 4) {
+		return;
+	}
+	if (closed) {
+		lineTo(p, p.pts[0], p.pts[1]);
+	}
+	if (p.npts % 3 != 1) {
+		return;
+	}
 
 	const path = new Path();
 	path.closed = closed;
@@ -556,36 +596,62 @@ function addPath(p: Parser, closed: boolean): void {
 
 function parseOpacity(value: Str): float32 {
 	let val: float32 = value.atofFloat();
-	if (val < 0.0) { val = 0.0; }
-	if (val > 1.0) { val = 1.0; }
+	if (val < 0.0) {
+		val = 0.0;
+	}
+	if (val > 1.0) {
+		val = 1.0;
+	}
 	return val;
 }
 
 function parseMiterLimit(value: Str): float32 {
 	let val: float32 = value.atofFloat();
-	if (val < 0.0) { val = 0.0; }
+	if (val < 0.0) {
+		val = 0.0;
+	}
 	return val;
 }
 
 function parseUnits(x: Str, at: int32): int32 {
 	const a = x.ch(at);
 	const b = x.ch(at + 1);
-	if (a == 112 && b == 120) { return UNITS_PX; }
-	if (a == 112 && b == 116) { return UNITS_PT; }
-	if (a == 112 && b == 99) { return UNITS_PC; }
-	if (a == 109 && b == 109) { return UNITS_MM; }
-	if (a == 99 && b == 109) { return UNITS_CM; }
-	if (a == 105 && b == 110) { return UNITS_IN; }
-	if (a == 37) { return UNITS_PERCENT; }
-	if (a == 101 && b == 109) { return UNITS_EM; }
-	if (a == 101 && b == 120) { return UNITS_EX; }
+	if (a == 112 && b == 120) {
+		return UNITS_PX;
+	}
+	if (a == 112 && b == 116) {
+		return UNITS_PT;
+	}
+	if (a == 112 && b == 99) {
+		return UNITS_PC;
+	}
+	if (a == 109 && b == 109) {
+		return UNITS_MM;
+	}
+	if (a == 99 && b == 109) {
+		return UNITS_CM;
+	}
+	if (a == 105 && b == 110) {
+		return UNITS_IN;
+	}
+	if (a == 37) {
+		return UNITS_PERCENT;
+	}
+	if (a == 101 && b == 109) {
+		return UNITS_EM;
+	}
+	if (a == 101 && b == 120) {
+		return UNITS_EX;
+	}
 	return UNITS_USER;
 }
 
 function isCoordinate(x: Str): boolean {
 	let at: int32 = 0;
 	const c = x.ch(0);
-	if (c == 45 || c == 43) { at = 1; }
+	if (c == 45 || c == 43) {
+		at = 1;
+	}
 	return isDigit(x.ch(at)) || x.ch(at) == 46;
 }
 
@@ -596,24 +662,44 @@ function parseCoordinateRaw(x: Str): Coord {
 	return { value: value, units: units };
 }
 
-function parseCoordinate(p: Parser, x: Str, orig: float32, length: float32): float32 {
+function parseCoordinate(
+	p: Parser,
+	x: Str,
+	orig: float32,
+	length: float32,
+): float32 {
 	const coord = parseCoordinateRaw(x);
 	return convertToPixels(p, coord.value, coord.units, orig, length);
 }
 
 // nsvg__parseTransformArgs: the argument count lands in na[0]; the result is the C's length.
-function parseTransformArgs(x: Str, args: float32[], maxNa: int32, na: int32[]): int32 {
+function parseTransformArgs(
+	x: Str,
+	args: float32[],
+	maxNa: int32,
+	na: int32[],
+): int32 {
 	na[0] = 0;
 	let ptr: int32 = 0;
-	while (x.ch(ptr) != 0 && x.ch(ptr) != 40) { ptr += 1; }
-	if (x.ch(ptr) == 0) { return 1; }
+	while (x.ch(ptr) != 0 && x.ch(ptr) != 40) {
+		ptr += 1;
+	}
+	if (x.ch(ptr) == 0) {
+		return 1;
+	}
 	let end = ptr;
-	while (x.ch(end) != 0 && x.ch(end) != 41) { end += 1; }
-	if (x.ch(end) == 0) { return 1; }
+	while (x.ch(end) != 0 && x.ch(end) != 41) {
+		end += 1;
+	}
+	if (x.ch(end) == 0) {
+		return 1;
+	}
 	while (ptr < end) {
 		const c = x.ch(ptr);
 		if (c == 45 || c == 43 || c == 46 || isDigit(c)) {
-			if (na[0] >= maxNa) { return 0; }
+			if (na[0] >= maxNa) {
+				return 0;
+			}
 			const stop = x.numberEnd(ptr);
 			args[na[0]] = x.numberItem(ptr, stop).atofFloat();
 			na[0] += 1;
@@ -626,14 +712,18 @@ function parseTransformArgs(x: Str, args: float32[], maxNa: int32, na: int32[]):
 }
 
 function copySix(target: float32[], source: float32[]): void {
-	for (let i: int32 = 0; i < 6; i++) { target[i] = source[i]; }
+	for (let i: int32 = 0; i < 6; i++) {
+		target[i] = source[i];
+	}
 }
 
 function parseMatrix(xform: float32[], x: Str): int32 {
 	const t: float32[] = [0, 0, 0, 0, 0, 0];
 	const na: int32[] = [0];
 	const len = parseTransformArgs(x, t, 6, na);
-	if (na[0] != 6) { return len; }
+	if (na[0] != 6) {
+		return len;
+	}
 	copySix(xform, t);
 	return len;
 }
@@ -643,7 +733,9 @@ function parseTranslate(xform: float32[], x: Str): int32 {
 	const t: float32[] = [0, 0, 0, 0, 0, 0];
 	const na: int32[] = [0];
 	const len = parseTransformArgs(x, args, 2, na);
-	if (na[0] == 1) { args[1] = 0.0; }
+	if (na[0] == 1) {
+		args[1] = 0.0;
+	}
 	xformSetTranslation(t, args[0], args[1]);
 	copySix(xform, t);
 	return len;
@@ -654,7 +746,9 @@ function parseScale(xform: float32[], x: Str): int32 {
 	const t: float32[] = [0, 0, 0, 0, 0, 0];
 	const na: int32[] = [0];
 	const len = parseTransformArgs(x, args, 2, na);
-	if (na[0] == 1) { args[1] = args[0]; }
+	if (na[0] == 1) {
+		args[1] = args[0];
+	}
 	xformSetScale(t, args[0], args[1]);
 	copySix(xform, t);
 	return len;
@@ -665,7 +759,7 @@ function parseSkewX(xform: float32[], x: Str): int32 {
 	const t: float32[] = [0, 0, 0, 0, 0, 0];
 	const na: int32[] = [0];
 	const len = parseTransformArgs(x, args, 1, na);
-	const angle: float32 = args[0] / 180.0 * NSVG_PI;
+	const angle: float32 = (args[0] / 180.0) * NSVG_PI;
 	xformSetSkewX(t, angle);
 	copySix(xform, t);
 	return len;
@@ -676,7 +770,7 @@ function parseSkewY(xform: float32[], x: Str): int32 {
 	const t: float32[] = [0, 0, 0, 0, 0, 0];
 	const na: int32[] = [0];
 	const len = parseTransformArgs(x, args, 1, na);
-	const angle: float32 = args[0] / 180.0 * NSVG_PI;
+	const angle: float32 = (args[0] / 180.0) * NSVG_PI;
 	xformSetSkewY(t, angle);
 	copySix(xform, t);
 	return len;
@@ -697,7 +791,7 @@ function parseRotate(xform: float32[], x: Str): int32 {
 		xformSetTranslation(t, -args[1], -args[2]);
 		xformMultiply(m, t);
 	}
-	const angle: float32 = args[0] / 180.0 * NSVG_PI;
+	const angle: float32 = (args[0] / 180.0) * NSVG_PI;
 	xformSetRotation(t, angle);
 	xformMultiply(m, t);
 	if (na[0] > 1) {
@@ -746,7 +840,9 @@ function parseTransform(xform: float32[], x: Str): void {
 function parseUrl(x: Str): uint8[] {
 	const id: uint8[] = [];
 	let i: int32 = 4;
-	if (x.ch(i) == 35) { i += 1; }
+	if (x.ch(i) == 35) {
+		i += 1;
+	}
 	while (id.length < ID_BYTES && x.ch(i) != 0 && x.ch(i) != 41) {
 		id.push(x.ch(i) as uint8);
 		i += 1;
@@ -765,51 +861,97 @@ function bytesOf(x: Str, limit: int32): uint8[] {
 }
 
 function parseLineCap(x: Str): int32 {
-	if (x.eq("butt")) { return CAP_BUTT; }
-	if (x.eq("round")) { return CAP_ROUND; }
-	if (x.eq("square")) { return CAP_SQUARE; }
+	if (x.eq("butt")) {
+		return CAP_BUTT;
+	}
+	if (x.eq("round")) {
+		return CAP_ROUND;
+	}
+	if (x.eq("square")) {
+		return CAP_SQUARE;
+	}
 	return CAP_BUTT;
 }
 
 function parseLineJoin(x: Str): int32 {
-	if (x.eq("miter")) { return JOIN_MITER; }
-	if (x.eq("round")) { return JOIN_ROUND; }
-	if (x.eq("bevel")) { return JOIN_BEVEL; }
+	if (x.eq("miter")) {
+		return JOIN_MITER;
+	}
+	if (x.eq("round")) {
+		return JOIN_ROUND;
+	}
+	if (x.eq("bevel")) {
+		return JOIN_BEVEL;
+	}
 	return JOIN_MITER;
 }
 
 function parseFillRule(x: Str): int32 {
-	if (x.eq("nonzero")) { return FILLRULE_NONZERO; }
-	if (x.eq("evenodd")) { return FILLRULE_EVENODD; }
+	if (x.eq("nonzero")) {
+		return FILLRULE_NONZERO;
+	}
+	if (x.eq("evenodd")) {
+		return FILLRULE_EVENODD;
+	}
 	return FILLRULE_NONZERO;
 }
 
 function parsePaintOrder(x: Str): int32 {
 	if (x.eq("normal") || x.eq("fill stroke markers")) {
-		return encodePaintOrder(PAINT_ORDER_FILL, PAINT_ORDER_STROKE, PAINT_ORDER_MARKERS);
+		return encodePaintOrder(
+			PAINT_ORDER_FILL,
+			PAINT_ORDER_STROKE,
+			PAINT_ORDER_MARKERS,
+		);
 	}
 	if (x.eq("fill markers stroke")) {
-		return encodePaintOrder(PAINT_ORDER_FILL, PAINT_ORDER_MARKERS, PAINT_ORDER_STROKE);
+		return encodePaintOrder(
+			PAINT_ORDER_FILL,
+			PAINT_ORDER_MARKERS,
+			PAINT_ORDER_STROKE,
+		);
 	}
 	if (x.eq("markers fill stroke")) {
-		return encodePaintOrder(PAINT_ORDER_MARKERS, PAINT_ORDER_FILL, PAINT_ORDER_STROKE);
+		return encodePaintOrder(
+			PAINT_ORDER_MARKERS,
+			PAINT_ORDER_FILL,
+			PAINT_ORDER_STROKE,
+		);
 	}
 	if (x.eq("markers stroke fill")) {
-		return encodePaintOrder(PAINT_ORDER_MARKERS, PAINT_ORDER_STROKE, PAINT_ORDER_FILL);
+		return encodePaintOrder(
+			PAINT_ORDER_MARKERS,
+			PAINT_ORDER_STROKE,
+			PAINT_ORDER_FILL,
+		);
 	}
 	if (x.eq("stroke fill markers")) {
-		return encodePaintOrder(PAINT_ORDER_STROKE, PAINT_ORDER_FILL, PAINT_ORDER_MARKERS);
+		return encodePaintOrder(
+			PAINT_ORDER_STROKE,
+			PAINT_ORDER_FILL,
+			PAINT_ORDER_MARKERS,
+		);
 	}
 	if (x.eq("stroke markers fill")) {
-		return encodePaintOrder(PAINT_ORDER_STROKE, PAINT_ORDER_MARKERS, PAINT_ORDER_FILL);
+		return encodePaintOrder(
+			PAINT_ORDER_STROKE,
+			PAINT_ORDER_MARKERS,
+			PAINT_ORDER_FILL,
+		);
 	}
-	return encodePaintOrder(PAINT_ORDER_FILL, PAINT_ORDER_STROKE, PAINT_ORDER_MARKERS);
+	return encodePaintOrder(
+		PAINT_ORDER_FILL,
+		PAINT_ORDER_STROKE,
+		PAINT_ORDER_MARKERS,
+	);
 }
 
 // nsvg__getNextDashItem: the item's end; the item runs from the returned start.
 function nextDashItem(x: Str, from: int32, item: Item): int32 {
 	let s = from;
-	while (x.ch(s) != 0 && (isSpace(x.ch(s)) || x.ch(s) == 44)) { s += 1; }
+	while (x.ch(s) != 0 && (isSpace(x.ch(s)) || x.ch(s) == 44)) {
+		s += 1;
+	}
 	item.from = s;
 	let n: int32 = 0;
 	while (x.ch(s) != 0 && !isSpace(x.ch(s)) && x.ch(s) != 44) {
@@ -821,35 +963,56 @@ function nextDashItem(x: Str, from: int32, item: Item): int32 {
 }
 
 function parseStrokeDashArray(p: Parser, x: Str, dashes: float32[]): int32 {
-	if (x.ch(0) == 110) { return 0; }
+	if (x.ch(0) == 110) {
+		return 0;
+	}
 	let count: int32 = 0;
 	const item = new Item();
 	let s: int32 = 0;
 	while (x.ch(s) != 0) {
 		s = nextDashItem(x, s, item);
-		if (item.to == item.from) { break; }
+		if (item.to == item.from) {
+			break;
+		}
 		if (count < MAX_DASHES) {
-			const coordinate = parseCoordinate(p, x.sub(item.from, item.to), 0.0, actualLength(p));
+			const coordinate = parseCoordinate(
+				p,
+				x.sub(item.from, item.to),
+				0.0,
+				actualLength(p),
+			);
 			dashes[count] = absf(coordinate);
 			count += 1;
 		}
 	}
 	let sum: float32 = 0.0;
-	for (let i: int32 = 0; i < count; i++) { sum = sum + dashes[i]; }
-	if (sum <= 0.000001) { count = 0; }
+	for (let i: int32 = 0; i < count; i++) {
+		sum = sum + dashes[i];
+	}
+	if (sum <= 0.000001) {
+		count = 0;
+	}
 	return count;
 }
 
 function applyClassStyles(p: Parser, value: Str): void {
 	let cur: int32 = 0;
 	while (value.ch(cur) != 0) {
-		while (value.ch(cur) != 0 && isSpace(value.ch(cur))) { cur += 1; }
-		if (value.ch(cur) == 0) { break; }
+		while (value.ch(cur) != 0 && isSpace(value.ch(cur))) {
+			cur += 1;
+		}
+		if (value.ch(cur) == 0) {
+			break;
+		}
 		const classStart = cur;
-		while (value.ch(cur) != 0 && !isSpace(value.ch(cur))) { cur += 1; }
+		while (value.ch(cur) != 0 && !isSpace(value.ch(cur))) {
+			cur += 1;
+		}
 		const token = value.sub(classStart, cur);
 		for (let i = (p.styles.length as int32) - 1; i >= 0; i--) {
-			if (p.styles[i].className.same(token)) { parseStyle(p, p.styles[i].properties); }
+			if (p.styles[i].className.same(token)) {
+				parseStyle(p, p.styles[i].properties);
+			}
 		}
 	}
 }
@@ -859,7 +1022,9 @@ function parseAttr(p: Parser, name: Str, value: Str): boolean {
 	if (name.eq("style")) {
 		parseStyle(p, value);
 	} else if (name.eq("display")) {
-		if (value.eq("none")) { attr.visible = false; }
+		if (value.eq("none")) {
+			attr.visible = false;
+		}
 	} else if (name.eq("fill")) {
 		if (value.eq("none")) {
 			attr.hasFill = 0;
@@ -922,15 +1087,26 @@ function parseAttr(p: Parser, name: Str, value: Str): boolean {
 	return true;
 }
 
-function parseNameValue(p: Parser, str: Str, start: int32, end: int32): boolean {
+function parseNameValue(
+	p: Parser,
+	str: Str,
+	start: int32,
+	end: int32,
+): boolean {
 	let at = start;
-	while (at < end && str.ch(at) != 58) { at += 1; }
+	while (at < end && str.ch(at) != 58) {
+		at += 1;
+	}
 	let val = at;
-	while (at > start && (str.ch(at) == 58 || isSpace(str.ch(at)))) { at -= 1; }
+	while (at > start && (str.ch(at) == 58 || isSpace(str.ch(at)))) {
+		at -= 1;
+	}
 	at += 1;
 	const nameLength = Math.min(at - start, NAME_VALUE_BYTES);
 	const name = str.sub(start, start + nameLength);
-	while (val < end && (str.ch(val) == 58 || isSpace(str.ch(val)))) { val += 1; }
+	while (val < end && (str.ch(val) == 58 || isSpace(str.ch(val)))) {
+		val += 1;
+	}
 	const valueLength = Math.min(end - val, NAME_VALUE_BYTES);
 	const value = str.sub(val, val + valueLength);
 	return parseAttr(p, name, value);
@@ -938,19 +1114,29 @@ function parseNameValue(p: Parser, str: Str, start: int32, end: int32): boolean 
 
 function parseStyle(p: Parser, str: Str): void {
 	if (p.styleDepth >= MAX_STYLE_DEPTH) {
-		throw new Error("void2d svg: style rules nest deeper than 64 levels, a class names itself");
+		throw new Error(
+			"void2d svg: style rules nest deeper than 64 levels, a class names itself",
+		);
 	}
 	p.styleDepth += 1;
 	let at: int32 = 0;
 	while (str.ch(at) != 0) {
-		while (str.ch(at) != 0 && isSpace(str.ch(at))) { at += 1; }
+		while (str.ch(at) != 0 && isSpace(str.ch(at))) {
+			at += 1;
+		}
 		const start = at;
-		while (str.ch(at) != 0 && str.ch(at) != 59) { at += 1; }
+		while (str.ch(at) != 0 && str.ch(at) != 59) {
+			at += 1;
+		}
 		let end = at;
-		while (end > start && (str.ch(end) == 59 || isSpace(str.ch(end)))) { end -= 1; }
+		while (end > start && (str.ch(end) == 59 || isSpace(str.ch(end)))) {
+			end -= 1;
+		}
 		end += 1;
 		parseNameValue(p, str, start, end);
-		if (str.ch(at) != 0) { at += 1; }
+		if (str.ch(at) != 0) {
+			at += 1;
+		}
 	}
 	p.styleDepth -= 1;
 }
@@ -1017,7 +1203,12 @@ function pathVLineTo(p: Parser, pen: Pen, args: float32[], rel: boolean): void {
 	lineTo(p, pen.cpx, pen.cpy);
 }
 
-function pathCubicBezTo(p: Parser, pen: Pen, args: float32[], rel: boolean): void {
+function pathCubicBezTo(
+	p: Parser,
+	pen: Pen,
+	args: float32[],
+	rel: boolean,
+): void {
 	let x2: float32 = 0.0;
 	let y2: float32 = 0.0;
 	let cx1: float32 = 0.0;
@@ -1046,7 +1237,12 @@ function pathCubicBezTo(p: Parser, pen: Pen, args: float32[], rel: boolean): voi
 	pen.cpy = y2;
 }
 
-function pathCubicBezShortTo(p: Parser, pen: Pen, args: float32[], rel: boolean): void {
+function pathCubicBezShortTo(
+	p: Parser,
+	pen: Pen,
+	args: float32[],
+	rel: boolean,
+): void {
 	const x1 = pen.cpx;
 	const y1 = pen.cpy;
 	let x2: float32 = 0.0;
@@ -1082,14 +1278,19 @@ function quadToCubic(
 	x2: float32,
 	y2: float32,
 ): void {
-	const cx1: float32 = x1 + 2.0 / 3.0 * (cx - x1);
-	const cy1: float32 = y1 + 2.0 / 3.0 * (cy - y1);
-	const cx2: float32 = x2 + 2.0 / 3.0 * (cx - x2);
-	const cy2: float32 = y2 + 2.0 / 3.0 * (cy - y2);
+	const cx1: float32 = x1 + (2.0 / 3.0) * (cx - x1);
+	const cy1: float32 = y1 + (2.0 / 3.0) * (cy - y1);
+	const cx2: float32 = x2 + (2.0 / 3.0) * (cx - x2);
+	const cy2: float32 = y2 + (2.0 / 3.0) * (cy - y2);
 	cubicBezTo(p, cx1, cy1, cx2, cy2, x2, y2);
 }
 
-function pathQuadBezTo(p: Parser, pen: Pen, args: float32[], rel: boolean): void {
+function pathQuadBezTo(
+	p: Parser,
+	pen: Pen,
+	args: float32[],
+	rel: boolean,
+): void {
 	const x1 = pen.cpx;
 	const y1 = pen.cpy;
 	let cx: float32 = 0.0;
@@ -1114,7 +1315,12 @@ function pathQuadBezTo(p: Parser, pen: Pen, args: float32[], rel: boolean): void
 	pen.cpy = y2;
 }
 
-function pathQuadBezShortTo(p: Parser, pen: Pen, args: float32[], rel: boolean): void {
+function pathQuadBezShortTo(
+	p: Parser,
+	pen: Pen,
+	args: float32[],
+	rel: boolean,
+): void {
 	const x1 = pen.cpx;
 	const y1 = pen.cpy;
 	let x2: float32 = 0.0;
@@ -1154,8 +1360,12 @@ function vecrat(ux: float32, uy: float32, vx: float32, vy: float32): float32 {
 
 function vecang(ux: float32, uy: float32, vx: float32, vy: float32): float32 {
 	let r = vecrat(ux, uy, vx, vy);
-	if (r < -1.0) { r = -1.0; }
-	if (r > 1.0) { r = 1.0; }
+	if (r < -1.0) {
+		r = -1.0;
+	}
+	if (r > 1.0) {
+		r = 1.0;
+	}
 	const left: float32 = ux * vy;
 	const right: float32 = uy * vx;
 	const sign: float32 = left < right ? -1.0 : 1.0;
@@ -1167,7 +1377,7 @@ function vecang(ux: float32, uy: float32, vx: float32, vy: float32): float32 {
 function pathArcTo(p: Parser, pen: Pen, args: float32[], rel: boolean): void {
 	let rx: float32 = absf(args[0]);
 	let ry: float32 = absf(args[1]);
-	const rotx: float32 = args[2] / 180.0 * NSVG_PI;
+	const rotx: float32 = (args[2] / 180.0) * NSVG_PI;
 	const fa: int32 = (absf(args[3]) as float64) > 1e-6 ? 1 : 0;
 	const fs: int32 = (absf(args[4]) as float64) > 1e-6 ? 1 : 0;
 	const x1 = pen.cpx;
@@ -1195,8 +1405,8 @@ function pathArcTo(p: Parser, pen: Pen, args: float32[], rel: boolean): void {
 	const sinrx: float32 = Math.sin(rotx as float64) as float32;
 	const cosrx: float32 = Math.cos(rotx as float64) as float32;
 
-	const x1p: float32 = cosrx * dx / 2.0 + sinrx * dy / 2.0;
-	const y1p: float32 = -sinrx * dx / 2.0 + cosrx * dy / 2.0;
+	const x1p: float32 = (cosrx * dx) / 2.0 + (sinrx * dy) / 2.0;
+	const y1p: float32 = (-sinrx * dx) / 2.0 + (cosrx * dy) / 2.0;
 	d = sqr(x1p) / sqr(rx) + sqr(y1p) / sqr(ry);
 	if (d > 1) {
 		d = sqrtf(d);
@@ -1206,14 +1416,18 @@ function pathArcTo(p: Parser, pen: Pen, args: float32[], rel: boolean): void {
 	let s: float32 = 0.0;
 	let sa: float32 = sqr(rx) * sqr(ry) - sqr(rx) * sqr(y1p) - sqr(ry) * sqr(x1p);
 	const sb: float32 = sqr(rx) * sqr(y1p) + sqr(ry) * sqr(x1p);
-	if (sa < 0.0) { sa = 0.0; }
+	if (sa < 0.0) {
+		sa = 0.0;
+	}
 	if (sb > 0.0) {
 		const ratio: float32 = sa / sb;
 		s = sqrtf(ratio);
 	}
-	if (fa == fs) { s = -s; }
-	const cxp: float32 = s * rx * y1p / ry;
-	const cyp: float32 = s * -ry * x1p / rx;
+	if (fa == fs) {
+		s = -s;
+	}
+	const cxp: float32 = (s * rx * y1p) / ry;
+	const cyp: float32 = (s * -ry * x1p) / rx;
 
 	const cx: float32 = (x1 + x2) / 2.0 + cosrx * cxp - sinrx * cyp;
 	const cy: float32 = (y1 + y2) / 2.0 + sinrx * cxp + cosrx * cyp;
@@ -1235,7 +1449,7 @@ function pathArcTo(p: Parser, pen: Pen, args: float32[], rel: boolean): void {
 
 	const divs: float32 = absf(da) / (NSVG_PI * 0.5) + 1.0;
 	const ndivs: int32 = floatToInt(divs);
-	let hda: float32 = (da / (ndivs as float32)) / 2.0;
+	let hda: float32 = da / (ndivs as float32) / 2.0;
 	if (hda < 0.001 && hda > -0.001) {
 		hda = hda * 0.5;
 	} else {
@@ -1243,8 +1457,10 @@ function pathArcTo(p: Parser, pen: Pen, args: float32[], rel: boolean): void {
 		const sinHda: float32 = Math.sin(hda as float64) as float32;
 		hda = (1.0 - cosHda) / sinHda;
 	}
-	let kappa: float32 = absf(4.0 / 3.0 * hda);
-	if (da < 0.0) { kappa = -kappa; }
+	let kappa: float32 = absf((4.0 / 3.0) * hda);
+	if (da < 0.0) {
+		kappa = -kappa;
+	}
 
 	let px: float32 = 0.0;
 	let py: float32 = 0.0;
@@ -1263,7 +1479,9 @@ function pathArcTo(p: Parser, pen: Pen, args: float32[], rel: boolean): void {
 		const ty0: float32 = dx * ry * kappa;
 		const tanx: float32 = tx0 * t[0] + ty0 * t[2];
 		const tany: float32 = tx0 * t[1] + ty0 * t[3];
-		if (i > 0) { cubicBezTo(p, px + ptanx, py + ptany, x - tanx, y - tany, x, y); }
+		if (i > 0) {
+			cubicBezTo(p, px + ptanx, py + ptany, x - tanx, y - tany, x, y);
+		}
 		px = x;
 		py = y;
 		ptanx = tanx;
@@ -1278,8 +1496,12 @@ function nextArcFlagItem(x: Str, from: int32, item: Item): int32 {
 	item.from = from;
 	item.to = from;
 	let s = from;
-	while (x.ch(s) != 0 && (isSpace(x.ch(s)) || x.ch(s) == 44)) { s += 1; }
-	if (x.ch(s) == 0) { return s; }
+	while (x.ch(s) != 0 && (isSpace(x.ch(s)) || x.ch(s) == 44)) {
+		s += 1;
+	}
+	if (x.ch(s) == 0) {
+		return s;
+	}
 	if (x.ch(s) == 48 || x.ch(s) == 49) {
 		item.from = s;
 		item.to = s + 1;
@@ -1293,8 +1515,12 @@ function nextPathItem(x: Str, from: int32, item: Item): int32 {
 	let s = from;
 	item.from = from;
 	item.to = from;
-	while (x.ch(s) != 0 && (isSpace(x.ch(s)) || x.ch(s) == 44)) { s += 1; }
-	if (x.ch(s) == 0) { return s; }
+	while (x.ch(s) != 0 && (isSpace(x.ch(s)) || x.ch(s) == 44)) {
+		s += 1;
+	}
+	if (x.ch(s) == 0) {
+		return s;
+	}
 	const c = x.ch(s);
 	if (c == 45 || c == 43 || c == 46 || isDigit(c)) {
 		const end = x.numberEnd(s);
@@ -1342,8 +1568,12 @@ function parsePath(p: Parser, attrs: Attr[]): void {
 			if ((cmd == 65 || cmd == 97) && (nargs == 3 || nargs == 4)) {
 				s = nextArcFlagItem(d, s, item);
 			}
-			if (item.to == item.from) { s = nextPathItem(d, s, item); }
-			if (item.to == item.from) { break; }
+			if (item.to == item.from) {
+				s = nextPathItem(d, s, item);
+			}
+			if (item.to == item.from) {
+				break;
+			}
 			const text = itemStr(d, item);
 			if (cmd != 0 && isCoordinate(text)) {
 				if (nargs < 10) {
@@ -1400,13 +1630,15 @@ function parsePath(p: Parser, attrs: Attr[]): void {
 								pen.cpy2 = pen.cpy;
 							}
 						},
-					}
+					};
 					nargs = 0;
 				}
 			} else {
 				cmd = text.ch(0);
 				if (cmd == 77 || cmd == 109) {
-					if (p.npts > 0) { addPath(p, closedFlag); }
+					if (p.npts > 0) {
+						addPath(p, closedFlag);
+					}
 					resetPath(p);
 					closedFlag = false;
 					nargs = 0;
@@ -1434,7 +1666,9 @@ function parsePath(p: Parser, attrs: Attr[]): void {
 				}
 			}
 		}
-		if (p.npts != 0) { addPath(p, closedFlag); }
+		if (p.npts != 0) {
+			addPath(p, closedFlag);
+		}
 	}
 	addShape(p);
 }
@@ -1450,21 +1684,45 @@ function parseRect(p: Parser, attrs: Attr[]): void {
 		const name = attrs[i].name;
 		const value = attrs[i].value;
 		if (!parseAttr(p, name, value)) {
-			if (name.eq("x")) { x = parseCoordinate(p, value, p.viewMinx, p.viewWidth); }
-			if (name.eq("y")) { y = parseCoordinate(p, value, p.viewMiny, p.viewHeight); }
-			if (name.eq("width")) { w = parseCoordinate(p, value, 0.0, p.viewWidth); }
-			if (name.eq("height")) { h = parseCoordinate(p, value, 0.0, p.viewHeight); }
-			if (name.eq("rx")) { rx = absf(parseCoordinate(p, value, 0.0, p.viewWidth)); }
-			if (name.eq("ry")) { ry = absf(parseCoordinate(p, value, 0.0, p.viewHeight)); }
+			if (name.eq("x")) {
+				x = parseCoordinate(p, value, p.viewMinx, p.viewWidth);
+			}
+			if (name.eq("y")) {
+				y = parseCoordinate(p, value, p.viewMiny, p.viewHeight);
+			}
+			if (name.eq("width")) {
+				w = parseCoordinate(p, value, 0.0, p.viewWidth);
+			}
+			if (name.eq("height")) {
+				h = parseCoordinate(p, value, 0.0, p.viewHeight);
+			}
+			if (name.eq("rx")) {
+				rx = absf(parseCoordinate(p, value, 0.0, p.viewWidth));
+			}
+			if (name.eq("ry")) {
+				ry = absf(parseCoordinate(p, value, 0.0, p.viewHeight));
+			}
 		}
 	}
 
-	if (rx < 0.0 && ry > 0.0) { rx = ry; }
-	if (ry < 0.0 && rx > 0.0) { ry = rx; }
-	if (rx < 0.0) { rx = 0.0; }
-	if (ry < 0.0) { ry = 0.0; }
-	if (rx > w / 2.0) { rx = w / 2.0; }
-	if (ry > h / 2.0) { ry = h / 2.0; }
+	if (rx < 0.0 && ry > 0.0) {
+		rx = ry;
+	}
+	if (ry < 0.0 && rx > 0.0) {
+		ry = rx;
+	}
+	if (rx < 0.0) {
+		rx = 0.0;
+	}
+	if (ry < 0.0) {
+		ry = 0.0;
+	}
+	if (rx > w / 2.0) {
+		rx = w / 2.0;
+	}
+	if (ry > h / 2.0) {
+		ry = h / 2.0;
+	}
 
 	if (w != 0.0 && h != 0.0) {
 		resetPath(p);
@@ -1491,13 +1749,51 @@ function parseRect(p: Parser, attrs: Attr[]): void {
 	}
 }
 
-function addEllipse(p: Parser, cx: float32, cy: float32, rx: float32, ry: float32): void {
+function addEllipse(
+	p: Parser,
+	cx: float32,
+	cy: float32,
+	rx: float32,
+	ry: float32,
+): void {
 	resetPath(p);
 	moveTo(p, cx + rx, cy);
-	cubicBezTo(p, cx + rx, cy + ry * NSVG_KAPPA90, cx + rx * NSVG_KAPPA90, cy + ry, cx, cy + ry);
-	cubicBezTo(p, cx - rx * NSVG_KAPPA90, cy + ry, cx - rx, cy + ry * NSVG_KAPPA90, cx - rx, cy);
-	cubicBezTo(p, cx - rx, cy - ry * NSVG_KAPPA90, cx - rx * NSVG_KAPPA90, cy - ry, cx, cy - ry);
-	cubicBezTo(p, cx + rx * NSVG_KAPPA90, cy - ry, cx + rx, cy - ry * NSVG_KAPPA90, cx + rx, cy);
+	cubicBezTo(
+		p,
+		cx + rx,
+		cy + ry * NSVG_KAPPA90,
+		cx + rx * NSVG_KAPPA90,
+		cy + ry,
+		cx,
+		cy + ry,
+	);
+	cubicBezTo(
+		p,
+		cx - rx * NSVG_KAPPA90,
+		cy + ry,
+		cx - rx,
+		cy + ry * NSVG_KAPPA90,
+		cx - rx,
+		cy,
+	);
+	cubicBezTo(
+		p,
+		cx - rx,
+		cy - ry * NSVG_KAPPA90,
+		cx - rx * NSVG_KAPPA90,
+		cy - ry,
+		cx,
+		cy - ry,
+	);
+	cubicBezTo(
+		p,
+		cx + rx * NSVG_KAPPA90,
+		cy - ry,
+		cx + rx,
+		cy - ry * NSVG_KAPPA90,
+		cx + rx,
+		cy,
+	);
 	addPath(p, true);
 	addShape(p);
 }
@@ -1510,12 +1806,20 @@ function parseCircle(p: Parser, attrs: Attr[]): void {
 		const name = attrs[i].name;
 		const value = attrs[i].value;
 		if (!parseAttr(p, name, value)) {
-			if (name.eq("cx")) { cx = parseCoordinate(p, value, p.viewMinx, p.viewWidth); }
-			if (name.eq("cy")) { cy = parseCoordinate(p, value, p.viewMiny, p.viewHeight); }
-			if (name.eq("r")) { r = absf(parseCoordinate(p, value, 0.0, actualLength(p))); }
+			if (name.eq("cx")) {
+				cx = parseCoordinate(p, value, p.viewMinx, p.viewWidth);
+			}
+			if (name.eq("cy")) {
+				cy = parseCoordinate(p, value, p.viewMiny, p.viewHeight);
+			}
+			if (name.eq("r")) {
+				r = absf(parseCoordinate(p, value, 0.0, actualLength(p)));
+			}
 		}
 	}
-	if (r > 0.0) { addEllipse(p, cx, cy, r, r); }
+	if (r > 0.0) {
+		addEllipse(p, cx, cy, r, r);
+	}
 }
 
 function parseEllipse(p: Parser, attrs: Attr[]): void {
@@ -1527,13 +1831,23 @@ function parseEllipse(p: Parser, attrs: Attr[]): void {
 		const name = attrs[i].name;
 		const value = attrs[i].value;
 		if (!parseAttr(p, name, value)) {
-			if (name.eq("cx")) { cx = parseCoordinate(p, value, p.viewMinx, p.viewWidth); }
-			if (name.eq("cy")) { cy = parseCoordinate(p, value, p.viewMiny, p.viewHeight); }
-			if (name.eq("rx")) { rx = absf(parseCoordinate(p, value, 0.0, p.viewWidth)); }
-			if (name.eq("ry")) { ry = absf(parseCoordinate(p, value, 0.0, p.viewHeight)); }
+			if (name.eq("cx")) {
+				cx = parseCoordinate(p, value, p.viewMinx, p.viewWidth);
+			}
+			if (name.eq("cy")) {
+				cy = parseCoordinate(p, value, p.viewMiny, p.viewHeight);
+			}
+			if (name.eq("rx")) {
+				rx = absf(parseCoordinate(p, value, 0.0, p.viewWidth));
+			}
+			if (name.eq("ry")) {
+				ry = absf(parseCoordinate(p, value, 0.0, p.viewHeight));
+			}
 		}
 	}
-	if (rx > 0.0 && ry > 0.0) { addEllipse(p, cx, cy, rx, ry); }
+	if (rx > 0.0 && ry > 0.0) {
+		addEllipse(p, cx, cy, rx, ry);
+	}
 }
 
 function parseLine(p: Parser, attrs: Attr[]): void {
@@ -1545,10 +1859,18 @@ function parseLine(p: Parser, attrs: Attr[]): void {
 		const name = attrs[i].name;
 		const value = attrs[i].value;
 		if (!parseAttr(p, name, value)) {
-			if (name.eq("x1")) { x1 = parseCoordinate(p, value, p.viewMinx, p.viewWidth); }
-			if (name.eq("y1")) { y1 = parseCoordinate(p, value, p.viewMiny, p.viewHeight); }
-			if (name.eq("x2")) { x2 = parseCoordinate(p, value, p.viewMinx, p.viewWidth); }
-			if (name.eq("y2")) { y2 = parseCoordinate(p, value, p.viewMiny, p.viewHeight); }
+			if (name.eq("x1")) {
+				x1 = parseCoordinate(p, value, p.viewMinx, p.viewWidth);
+			}
+			if (name.eq("y1")) {
+				y1 = parseCoordinate(p, value, p.viewMiny, p.viewHeight);
+			}
+			if (name.eq("x2")) {
+				x2 = parseCoordinate(p, value, p.viewMinx, p.viewWidth);
+			}
+			if (name.eq("y2")) {
+				y2 = parseCoordinate(p, value, p.viewMiny, p.viewHeight);
+			}
 		}
 	}
 	resetPath(p);
@@ -1593,7 +1915,9 @@ function parsePoly(p: Parser, attrs: Attr[], closeFlag: boolean): void {
 
 function skipViewBoxSeparators(x: Str, from: int32): int32 {
 	let s = from;
-	while (x.ch(s) != 0 && (isSpace(x.ch(s)) || x.ch(s) == 37 || x.ch(s) == 44)) { s += 1; }
+	while (x.ch(s) != 0 && (isSpace(x.ch(s)) || x.ch(s) == 37 || x.ch(s) == 44)) {
+		s += 1;
+	}
 	return s;
 }
 
@@ -1604,17 +1928,23 @@ function parseViewBox(p: Parser, x: Str): void {
 	p.viewMinx = x.numberItem(s, end).atofFloat();
 	s = end;
 	s = skipViewBoxSeparators(x, s);
-	if (x.ch(s) == 0) { return; }
+	if (x.ch(s) == 0) {
+		return;
+	}
 	end = x.numberEnd(s);
 	p.viewMiny = x.numberItem(s, end).atofFloat();
 	s = end;
 	s = skipViewBoxSeparators(x, s);
-	if (x.ch(s) == 0) { return; }
+	if (x.ch(s) == 0) {
+		return;
+	}
 	end = x.numberEnd(s);
 	p.viewWidth = x.numberItem(s, end).atofFloat();
 	s = end;
 	s = skipViewBoxSeparators(x, s);
-	if (x.ch(s) == 0) { return; }
+	if (x.ch(s) == 0) {
+		return;
+	}
 	end = x.numberEnd(s);
 	p.viewHeight = x.numberItem(s, end).atofFloat();
 }
@@ -1633,8 +1963,12 @@ function parseSvg(p: Parser, attrs: Attr[]): void {
 				const before = p.viewHeight;
 				const dryEnd = viewBoxRunsDry(value);
 				parseViewBox(p, value);
-				if (dryEnd) { return; }
-				if (before != before) { return; }
+				if (dryEnd) {
+					return;
+				}
+				if (before != before) {
+					return;
+				}
 			} else if (name.eq("preserveAspectRatio")) {
 				if (value.contains("none")) {
 					p.alignType = ALIGN_NONE;
@@ -1654,7 +1988,9 @@ function parseSvg(p: Parser, attrs: Attr[]): void {
 						p.alignY = ALIGN_MAX;
 					}
 					p.alignType = ALIGN_MEET;
-					if (value.contains("slice")) { p.alignType = ALIGN_SLICE; }
+					if (value.contains("slice")) {
+						p.alignType = ALIGN_SLICE;
+					}
 				}
 			}
 		}
@@ -1666,7 +2002,9 @@ function viewBoxRunsDry(x: Str): boolean {
 	let s: int32 = x.numberEnd(0);
 	for (let k: int32 = 0; k < 3; k++) {
 		s = skipViewBoxSeparators(x, s);
-		if (x.ch(s) == 0) { return true; }
+		if (x.ch(s) == 0) {
+			return true;
+		}
 		s = x.numberEnd(s);
 	}
 	return false;
@@ -1675,7 +2013,9 @@ function viewBoxRunsDry(x: Str): boolean {
 function newGradient(p: Parser, attrs: Attr[], kind: int32): void {
 	const grad = new GradientData();
 	grad.kind = kind;
-	for (let i: int32 = 0; i < COORD_SLOTS; i++) { grad.coords.push({ value: 0.0, units: UNITS_USER }); }
+	for (let i: int32 = 0; i < COORD_SLOTS; i++) {
+		grad.coords.push({ value: 0.0, units: UNITS_USER });
+	}
 	if (kind == PAINT_LINEAR_GRADIENT) {
 		grad.coords[0] = { value: 0.0, units: UNITS_PERCENT };
 		grad.coords[1] = { value: 0.0, units: UNITS_PERCENT };
@@ -1721,7 +2061,9 @@ function parseGradientStop(p: Parser, attrs: Attr[]): void {
 	for (let i: int32 = 0; i < (attrs.length as int32); i++) {
 		parseAttr(p, attrs[i].name, attrs[i].value);
 	}
-	if (p.gradients.length == 0) { return; }
+	if (p.gradients.length == 0) {
+		return;
+	}
 	const grad = p.gradients[(p.gradients.length as int32) - 1];
 	const stop = new GradientStop();
 	const scaled: float32 = cur.stopOpacity * 255;
@@ -1755,7 +2097,9 @@ function startElement(p: Parser, el: Str, attrs: Attr[]): void {
 		pushAttr(p);
 		parseAttribs(p, attrs);
 	} else if (el.eq("path")) {
-		if (p.pathFlag) { return; }
+		if (p.pathFlag) {
+			return;
+		}
 		pushAttr(p);
 		parsePath(p, attrs);
 		popAttr(p);
@@ -1812,31 +2156,47 @@ function endElement(p: Parser, el: Str): void {
 
 // nsvg__content: the selector lists and property blocks of a style element.
 function content(p: Parser, s: Str): void {
-	if (!p.styleFlag) { return; }
+	if (!p.styleFlag) {
+		return;
+	}
 	let at: int32 = 0;
 	while (s.ch(at) != 0) {
 		const staged: StyleDecl[] = [];
 		const selectors: Str[] = [];
 		while (s.ch(at) != 0 && s.ch(at) != 123) {
-			while (s.ch(at) != 0 && (isSpace(s.ch(at)) || s.ch(at) == 44)) { at += 1; }
-			if (s.ch(at) == 0 || s.ch(at) == 123) { break; }
+			while (s.ch(at) != 0 && (isSpace(s.ch(at)) || s.ch(at) == 44)) {
+				at += 1;
+			}
+			if (s.ch(at) == 0 || s.ch(at) == 123) {
+				break;
+			}
 			const selStart = at;
-			while (s.ch(at) != 0 && !isSpace(s.ch(at)) && s.ch(at) != 44 && s.ch(at) != 123) {
+			while (
+				s.ch(at) != 0 && !isSpace(s.ch(at)) && s.ch(at) != 44 && s.ch(at) != 123
+			) {
 				at += 1;
 			}
 			const selEnd = at;
-			if (s.ch(selStart) != 46 || (selectors.length as int32) >= MAX_CLASSES) { continue; }
+			if (s.ch(selStart) != 46 || (selectors.length as int32) >= MAX_CLASSES) {
+				continue;
+			}
 			selectors.push(s.sub(selStart + 1, selEnd));
 		}
-		if (s.ch(at) == 0) { break; }
+		if (s.ch(at) == 0) {
+			break;
+		}
 		at += 1;
 		const propsStart = at;
-		while (s.ch(at) != 0 && s.ch(at) != 125) { at += 1; }
+		while (s.ch(at) != 0 && s.ch(at) != 125) {
+			at += 1;
+		}
 		const properties = s.sub(propsStart, at);
 		for (let i: int32 = 0; i < (selectors.length as int32); i++) {
 			p.styles.push({ className: selectors[i], properties: properties });
 		}
-		if (s.ch(at) != 0) { at += 1; }
+		if (s.ch(at) != 0) {
+			at += 1;
+		}
 	}
 }
 
@@ -1844,45 +2204,73 @@ function parseElement(p: Parser, text: Str): void {
 	let at: int32 = 0;
 	let start = false;
 	let end = false;
-	while (text.ch(at) != 0 && isSpace(text.ch(at))) { at += 1; }
+	while (text.ch(at) != 0 && isSpace(text.ch(at))) {
+		at += 1;
+	}
 	if (text.ch(at) == 47) {
 		at += 1;
 		end = true;
 	} else {
 		start = true;
 	}
-	if (text.ch(at) == 0 || text.ch(at) == 63 || text.ch(at) == 33) { return; }
+	if (text.ch(at) == 0 || text.ch(at) == 63 || text.ch(at) == 33) {
+		return;
+	}
 	const nameStart = at;
-	while (text.ch(at) != 0 && !isSpace(text.ch(at))) { at += 1; }
+	while (text.ch(at) != 0 && !isSpace(text.ch(at))) {
+		at += 1;
+	}
 	const name = text.sub(nameStart, at);
-	if (text.ch(at) != 0) { at += 1; }
+	if (text.ch(at) != 0) {
+		at += 1;
+	}
 
 	const attrs: Attr[] = [];
 	let nattr: int32 = 0;
 	while (!end && text.ch(at) != 0 && nattr < XML_MAX_ATTRIBS - 3) {
-		while (text.ch(at) != 0 && isSpace(text.ch(at))) { at += 1; }
-		if (text.ch(at) == 0) { break; }
+		while (text.ch(at) != 0 && isSpace(text.ch(at))) {
+			at += 1;
+		}
+		if (text.ch(at) == 0) {
+			break;
+		}
 		if (text.ch(at) == 47) {
 			end = true;
 			break;
 		}
 		const attrStart = at;
-		while (text.ch(at) != 0 && !isSpace(text.ch(at)) && text.ch(at) != 61) { at += 1; }
+		while (text.ch(at) != 0 && !isSpace(text.ch(at)) && text.ch(at) != 61) {
+			at += 1;
+		}
 		const attrName = text.sub(attrStart, at);
-		if (text.ch(at) != 0) { at += 1; }
-		while (text.ch(at) != 0 && text.ch(at) != 34 && text.ch(at) != 39) { at += 1; }
-		if (text.ch(at) == 0) { break; }
+		if (text.ch(at) != 0) {
+			at += 1;
+		}
+		while (text.ch(at) != 0 && text.ch(at) != 34 && text.ch(at) != 39) {
+			at += 1;
+		}
+		if (text.ch(at) == 0) {
+			break;
+		}
 		const quote = text.ch(at);
 		at += 1;
 		const valueStart = at;
-		while (text.ch(at) != 0 && text.ch(at) != quote) { at += 1; }
+		while (text.ch(at) != 0 && text.ch(at) != quote) {
+			at += 1;
+		}
 		const value = text.sub(valueStart, at);
-		if (text.ch(at) != 0) { at += 1; }
+		if (text.ch(at) != 0) {
+			at += 1;
+		}
 		attrs.push({ name: attrName, value: value });
 		nattr += 2;
 	}
-	if (start) { startElement(p, name, attrs); }
-	if (end) { endElement(p, name); }
+	if (start) {
+		startElement(p, name, attrs);
+	}
+	if (end) {
+		endElement(p, name);
+	}
 }
 
 function parseXml(p: Parser, length: int32): void {
@@ -1894,8 +2282,12 @@ function parseXml(p: Parser, length: int32): void {
 		const c = input[s] as int32;
 		if (c == 60 && !inTag) {
 			let from = mark;
-			while (from < s && isSpace(input[from] as int32)) { from += 1; }
-			if (from < s) { content(p, { b: input, s: from, e: s }); }
+			while (from < s && isSpace(input[from] as int32)) {
+				from += 1;
+			}
+			if (from < s) {
+				content(p, { b: input, s: from, e: s });
+			}
 			s += 1;
 			mark = s;
 			inTag = true;
@@ -1928,14 +2320,18 @@ function viewAlign(content: float32, container: float32, kind: int32): float32 {
 	const far: float32 = container - content;
 	const mid: float32 = (container - content) * 0.5;
 	const aligned: float32 = match (kind) {
-		ALIGN_MIN => 0.0,
-		ALIGN_MAX => far,
-		_ => mid,
+		ALIGN_MIN => 0.0,ALIGN_MAX => far,_ => mid,
 	};
 	return aligned;
 }
 
-function scaleGradient(grad: Gradient, tx: float32, ty: float32, sx: float32, sy: float32): void {
+function scaleGradient(
+	grad: Gradient,
+	tx: float32,
+	ty: float32,
+	sx: float32,
+	sy: float32,
+): void {
 	const t: float32[] = [0, 0, 0, 0, 0, 0];
 	xformSetTranslation(t, tx, ty);
 	xformMultiply(grad.xform, t);
@@ -1953,7 +2349,8 @@ function placeGradient(
 ): void {
 	const gradient = paint.gradient;
 	if (
-		(paint.kind == PAINT_LINEAR_GRADIENT || paint.kind == PAINT_RADIAL_GRADIENT) &&
+		(paint.kind == PAINT_LINEAR_GRADIENT ||
+			paint.kind == PAINT_RADIAL_GRADIENT) &&
 		gradient != null
 	) {
 		scaleGradient(gradient, tx, ty, sx, sy);
@@ -1982,15 +2379,23 @@ function scaleToViewbox(p: Parser): void {
 			p.viewHeight = bounds[3] - bounds[1];
 		}
 	}
-	if (p.imageWidth == 0) { p.imageWidth = p.viewWidth; }
-	if (p.imageHeight == 0) { p.imageHeight = p.viewHeight; }
+	if (p.imageWidth == 0) {
+		p.imageWidth = p.viewWidth;
+	}
+	if (p.imageHeight == 0) {
+		p.imageHeight = p.viewHeight;
+	}
 
 	let tx: float32 = -p.viewMinx;
 	let ty: float32 = -p.viewMiny;
 	let sx: float32 = 0.0;
 	let sy: float32 = 0.0;
-	if (p.viewWidth > 0) { sx = p.imageWidth / p.viewWidth; }
-	if (p.viewHeight > 0) { sy = p.imageHeight / p.viewHeight; }
+	if (p.viewWidth > 0) {
+		sx = p.imageWidth / p.viewWidth;
+	}
+	if (p.viewHeight > 0) {
+		sy = p.imageHeight / p.viewHeight;
+	}
 	const us: float32 = 1.0 / convertToPixels(p, 1.0, UNITS_PX, 0.0, 1.0);
 
 	if (p.alignType == ALIGN_MEET || p.alignType == ALIGN_SLICE) {
@@ -2041,8 +2446,15 @@ function createGradients(p: Parser): void {
 	}
 }
 
-function resolveGradient(p: Parser, shape: Shape, paint: Paint, id: uint8[]): void {
-	if (paint.kind != PAINT_UNDEF) { return; }
+function resolveGradient(
+	p: Parser,
+	shape: Shape,
+	paint: Paint,
+	id: uint8[],
+): void {
+	if (paint.kind != PAINT_UNDEF) {
+		return;
+	}
 	if (id.length > 0) {
 		const inv: float32[] = [0, 0, 0, 0, 0, 0];
 		const localBounds: float32[] = [0, 0, 0, 0];
@@ -2054,12 +2466,18 @@ function resolveGradient(p: Parser, shape: Shape, paint: Paint, id: uint8[]): vo
 			paint.kind = gradientKindOf(p, id);
 		}
 	}
-	if (paint.kind == PAINT_UNDEF) { paint.kind = PAINT_NONE; }
+	if (paint.kind == PAINT_UNDEF) {
+		paint.kind = PAINT_NONE;
+	}
 }
 
 function gradientKindOf(p: Parser, id: uint8[]): int32 {
 	const data = findGradientData(p, id);
-	if (data == null) { throw new Error("void2d svg: a gradient was built for an id that names none"); }
+	if (data == null) {
+		throw new Error(
+			"void2d svg: a gradient was built for an id that names none",
+		);
+	}
 	return data.kind;
 }
 

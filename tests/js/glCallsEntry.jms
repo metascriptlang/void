@@ -11,11 +11,18 @@ import {
 } from "../../src/webgpu/gl/glCalls";
 
 function expect(what: string, got: float64, want: float64): void {
-	if (got != want) { throw new Error(`glCallsEntry: ${what}: got ${got}, wanted ${want}`); }
+	if (got != want) {
+		throw new Error(`glCallsEntry: ${what}: got ${got}, wanted ${want}`);
+	}
 }
 
 function main(): void {
-	acquireContext("canvas", 1, (): void => {}, (): void => {});
+	acquireContext(
+		"canvas",
+		1,
+		(): void => {},
+		(): void => {},
+	);
 	const buffer = oglCreateBuffer();
 
 	const floats: Vec<float32> = [0, 0, 1.5, 2.5, 3.5, 0];
@@ -33,7 +40,11 @@ function main(): void {
 
 	const destination: Vec<uint8> = new Array(8);
 	oglCopyBytes(destination[2], 1, bytes[4], 3);
-	expect("copy lands after the destination index", destination[3] as float64, 3);
+	expect(
+		"copy lands after the destination index",
+		destination[3] as float64,
+		3,
+	);
 	expect("copy lands all bytes", destination[5] as float64, 5);
 	expect("copy leaves the destination head", destination[2] as float64, 0);
 
@@ -77,7 +88,11 @@ function main(): void {
 		0x8D00,
 		0x8CD5,
 	];
-	expect("agreeing constants", (oglConstantsDisagreement(constants[0], 22) == "") ? 1 : 0, 1);
+	expect(
+		"agreeing constants",
+		(oglConstantsDisagreement(constants[0], 22) == "") ? 1 : 0,
+		1,
+	);
 	constants[9] = 5;
 	console.log(`constants: ${oglConstantsDisagreement(constants[0], 22)}`);
 	console.log(`constants: ${oglConstantsDisagreement(constants[0], 21)}`);
