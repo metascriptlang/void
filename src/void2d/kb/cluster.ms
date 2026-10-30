@@ -145,16 +145,16 @@ export function kbEndCluster(s: KbScratch, config: KbShapeConfig): void {
 }
 
 function useBeginCluster(s: KbScratch, start: int32): int32 {
-	const g = s.storage.glyphs;
+	const glyphs = s.storage.glyphs;
 
 	let glyph = start;
 	let nonCluster = false;
 	while (glyph != KB_GLYPH_SENTINEL &&
-		(g[glyph].useClass == KB_USE_SYLLABIC_CLASS_OTHER ||
-			g[glyph].useClass == KB_USE_SYLLABIC_CLASS_CONS_FINAL_MOD_POST)) {
+		(glyphs[glyph].useClass == KB_USE_SYLLABIC_CLASS_OTHER ||
+			glyphs[glyph].useClass == KB_USE_SYLLABIC_CLASS_CONS_FINAL_MOD_POST)) {
 		nonCluster = true;
 
-		glyph = g[glyph].next;
+		glyph = glyphs[glyph].next;
 	}
 
 	if (!nonCluster) {
@@ -162,19 +162,19 @@ function useBeginCluster(s: KbScratch, start: int32): int32 {
 
 		const startGlyph = glyph;
 		while (glyph != KB_GLYPH_SENTINEL && state < USE_STATE_COUNT) {
-			state = (transition(KB_USE_TRANSITION, g[glyph].useClass, KB_USE_SYLLABIC_CLASS_COUNT as int64,
+			state = (transition(KB_USE_TRANSITION, glyphs[glyph].useClass, KB_USE_SYLLABIC_CLASS_COUNT as int64,
 				USE_STATE_COUNT, state, "USE class outside the transition table") - 1) & 0xFF;
-			glyph = g[glyph].next;
+			glyph = glyphs[glyph].next;
 		}
 
 		if (state >= USE_STATE_COUNT) {
-			glyph = g[glyph].prev;
+			glyph = glyphs[glyph].prev;
 		}
-		if (glyph != KB_GLYPH_SENTINEL && g[glyph].useClass == KB_USE_SYLLABIC_CLASS_ZWNJ) {
-			glyph = g[glyph].next;
+		if (glyph != KB_GLYPH_SENTINEL && glyphs[glyph].useClass == KB_USE_SYLLABIC_CLASS_ZWNJ) {
+			glyph = glyphs[glyph].next;
 		}
 		if (glyph == startGlyph) {
-			glyph = g[glyph].next;
+			glyph = glyphs[glyph].next;
 		}
 
 		s.realCluster = true;
@@ -185,14 +185,14 @@ function useBeginCluster(s: KbScratch, start: int32): int32 {
 
 function khmerBeginCluster(s: KbScratch, config: KbShapeConfig, start: int32): int32 {
 	const storage = s.storage;
-	const g = storage.glyphs;
+	const glyphs = storage.glyphs;
 
 	let glyph = start;
 	let nonCluster = false;
 	while (glyph != KB_GLYPH_SENTINEL &&
-		(g[glyph].syllabicClass == KB_INDIC_SYLLABIC_CLASS_OTHER ||
-			g[glyph].syllabicClass >= KB_KHMER_SYLLABIC_CLASS_COUNT)) {
-		glyph = g[glyph].next;
+		(glyphs[glyph].syllabicClass == KB_INDIC_SYLLABIC_CLASS_OTHER ||
+			glyphs[glyph].syllabicClass >= KB_KHMER_SYLLABIC_CLASS_COUNT)) {
+		glyph = glyphs[glyph].next;
 		nonCluster = true;
 	}
 
@@ -203,27 +203,27 @@ function khmerBeginCluster(s: KbScratch, config: KbShapeConfig, start: int32): i
 	const stateCount = KB_KHMER_SYLLABIC_STATE_COUNT as int64;
 	let state: int64 = 0;
 	let firstGlyph = glyph;
-	const oneBeforeSyllableGlyph = g[glyph].prev;
+	const oneBeforeSyllableGlyph = glyphs[glyph].prev;
 
 	while (glyph != KB_GLYPH_SENTINEL && state < stateCount) {
-		state = (transition(KB_KHMER_TRANSITION, g[glyph].syllabicClass, KB_KHMER_SYLLABIC_CLASS_COUNT as int64,
+		state = (transition(KB_KHMER_TRANSITION, glyphs[glyph].syllabicClass, KB_KHMER_SYLLABIC_CLASS_COUNT as int64,
 			stateCount, state, "Khmer syllabic class outside the transition table") - 1) & 0xFF;
-		glyph = g[glyph].next;
+		glyph = glyphs[glyph].next;
 	}
 
 	if (state >= stateCount) {
-		glyph = g[glyph].prev;
+		glyph = glyphs[glyph].prev;
 	}
 	if (glyph == firstGlyph) {
-		glyph = g[glyph].next;
+		glyph = glyphs[glyph].next;
 	}
 
 	const onePastLastSyllableGlyph = glyph;
 
-	if (config.dottedCircle.id != 0 && !kbInSet64(g[firstGlyph].syllabicClass, KHMER_CLUSTER_START_CLASSES)) {
+	if (config.dottedCircle.id != 0 && !kbInSet64(glyphs[firstGlyph].syllabicClass, KHMER_CLUSTER_START_CLASSES)) {
 		const newFirstGlyph = kbInsertGlyphBefore(storage, firstGlyph, config.dottedCircle);
 
-		g[newFirstGlyph].userIdOrCodepointIndex = g[firstGlyph].userIdOrCodepointIndex;
+		glyphs[newFirstGlyph].userIdOrCodepointIndex = glyphs[firstGlyph].userIdOrCodepointIndex;
 		firstGlyph = newFirstGlyph;
 	}
 
@@ -234,15 +234,15 @@ function khmerBeginCluster(s: KbScratch, config: KbShapeConfig, start: int32): i
 	let addFlags: uint32 = KB_GLYPH_FLAG_ABVF | KB_GLYPH_FLAG_BLWF | KB_GLYPH_FLAG_PSTF;
 
 	let lastGlyph = onePastLastSyllableGlyph;
-	glyph = g[onePastLastSyllableGlyph].prev;
+	glyph = glyphs[onePastLastSyllableGlyph].prev;
 	while (glyph != oneBeforeSyllableGlyph) {
-		const classValue = g[glyph].syllabicClass as int64;
+		const classValue = glyphs[glyph].syllabicClass as int64;
 
 		if (glyph == firstGlyph) {
 			addFlags = 0;
 		}
 
-		g[glyph].flags |= addFlags;
+		glyphs[glyph].flags |= addFlags;
 
 		classes = ((classes << 8) | classValue) & 0xFFFF;
 
@@ -254,8 +254,8 @@ function khmerBeginCluster(s: KbScratch, config: KbShapeConfig, start: int32): i
 			preBaseGlyphs.push(glyph);
 		} else if (!sawHalantRa &&
 			classes == ((KB_INDIC_SYLLABIC_CLASS_HALANT as int64) | ((KB_INDIC_SYLLABIC_CLASS_RA as int64) << 8))) {
-			g[glyph].flags |= KB_GLYPH_FLAG_PREF;
-			g[lastGlyph].flags |= KB_GLYPH_FLAG_PREF;
+			glyphs[glyph].flags |= KB_GLYPH_FLAG_PREF;
+			glyphs[lastGlyph].flags |= KB_GLYPH_FLAG_PREF;
 
 			if (preBaseGlyphs.length + 2 > KHMER_PRE_BASE_GLYPH_CAPACITY) {
 				throw kbBoundsFail("Khmer syllable has more pre-base glyphs than the C buffer holds",
@@ -264,17 +264,17 @@ function khmerBeginCluster(s: KbScratch, config: KbShapeConfig, start: int32): i
 			preBaseGlyphs.push(glyph);
 			preBaseGlyphs.push(lastGlyph);
 
-			let postRaGlyph = g[lastGlyph].next;
+			let postRaGlyph = glyphs[lastGlyph].next;
 			while (postRaGlyph != onePastLastSyllableGlyph) {
-				g[postRaGlyph].flags |= KB_GLYPH_FLAG_CFAR;
-				postRaGlyph = g[postRaGlyph].next;
+				glyphs[postRaGlyph].flags |= KB_GLYPH_FLAG_CFAR;
+				postRaGlyph = glyphs[postRaGlyph].next;
 			}
 
 			sawHalantRa = true;
 		}
 
 		lastGlyph = glyph;
-		glyph = g[glyph].prev;
+		glyph = glyphs[glyph].prev;
 	}
 
 	while (preBaseGlyphs.length > 0) {
@@ -287,15 +287,15 @@ function khmerBeginCluster(s: KbScratch, config: KbShapeConfig, start: int32): i
 }
 
 function myanmarBeginCluster(s: KbScratch, start: int32): int32 {
-	const g = s.storage.glyphs;
+	const glyphs = s.storage.glyphs;
 
 	let glyph = start;
 	let nonCluster = false;
 	while (glyph != KB_GLYPH_SENTINEL &&
-		(g[glyph].syllabicClass == KB_INDIC_SYLLABIC_CLASS_OTHER ||
-			g[glyph].syllabicClass >= KB_MYANMAR_SYLLABIC_CLASS_COUNT)) {
+		(glyphs[glyph].syllabicClass == KB_INDIC_SYLLABIC_CLASS_OTHER ||
+			glyphs[glyph].syllabicClass >= KB_MYANMAR_SYLLABIC_CLASS_COUNT)) {
 		nonCluster = true;
-		glyph = g[glyph].next;
+		glyph = glyphs[glyph].next;
 	}
 
 	if (!nonCluster) {
@@ -303,18 +303,18 @@ function myanmarBeginCluster(s: KbScratch, start: int32): int32 {
 		let state: int64 = 0;
 		const firstGlyph = glyph;
 		while (glyph != KB_GLYPH_SENTINEL && state < stateCount) {
-			state = (transition(KB_MYANMAR_TRANSITION, g[glyph].syllabicClass,
+			state = (transition(KB_MYANMAR_TRANSITION, glyphs[glyph].syllabicClass,
 				KB_MYANMAR_SYLLABIC_CLASS_COUNT as int64, stateCount, state,
 				"Myanmar syllabic class outside the transition table") - 1) & 0xFF;
 
-			glyph = g[glyph].next;
+			glyph = glyphs[glyph].next;
 		}
 
 		if (state >= stateCount) {
-			glyph = g[glyph].prev;
+			glyph = glyphs[glyph].prev;
 		}
 		if (glyph == firstGlyph) {
-			glyph = g[glyph].next;
+			glyph = glyphs[glyph].next;
 		}
 
 		s.realCluster = true;
@@ -325,17 +325,17 @@ function myanmarBeginCluster(s: KbScratch, start: int32): int32 {
 
 function useEndCluster(s: KbScratch, config: KbShapeConfig): void {
 	const storage = s.storage;
-	const g = storage.glyphs;
+	const glyphs = storage.glyphs;
 
-	const repha = g[KB_GLYPH_SENTINEL].next;
-	if (g[repha].useClass == KB_USE_SYLLABIC_CLASS_REPHA || (g[repha].flags & KB_GLYPH_FLAG_RPHF) != 0) {
-		let to = g[repha].next;
+	const repha = glyphs[KB_GLYPH_SENTINEL].next;
+	if (glyphs[repha].useClass == KB_USE_SYLLABIC_CLASS_REPHA || (glyphs[repha].flags & KB_GLYPH_FLAG_RPHF) != 0) {
+		let to = glyphs[repha].next;
 		while (to != KB_GLYPH_SENTINEL) {
-			if (kbInSet64(g[to].useClass, USE_POST_BASE_CLASSES) ||
-				((g[to].flags & KB_GLYPH_FLAG_LIGATURE) == 0 && kbInSet64(g[to].useClass, USE_HALANT_CLASSES))) {
+			if (kbInSet64(glyphs[to].useClass, USE_POST_BASE_CLASSES) ||
+				((glyphs[to].flags & KB_GLYPH_FLAG_LIGATURE) == 0 && kbInSet64(glyphs[to].useClass, USE_HALANT_CLASSES))) {
 				break;
 			}
-			to = g[to].next;
+			to = glyphs[to].next;
 		}
 
 		kbDllistRemove(storage, repha);
@@ -344,18 +344,18 @@ function useEndCluster(s: KbScratch, config: KbShapeConfig): void {
 
 	let preBaseVowels: int32[] = [];
 	let sawBase = false;
-	let glyph = g[KB_GLYPH_SENTINEL].prev;
+	let glyph = glyphs[KB_GLYPH_SENTINEL].prev;
 	while (glyph != KB_GLYPH_SENTINEL) {
-		sawBase = sawBase || kbInSet64(g[glyph].useClass, USE_BASE_CLASSES);
+		sawBase = sawBase || kbInSet64(glyphs[glyph].useClass, USE_BASE_CLASSES);
 
-		const flags = g[glyph].flags;
+		const flags = glyphs[glyph].flags;
 		if (((flags & KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION) != 0 ||
 			(flags & KB_GLYPH_FLAG_MULTIPLE_SUBSTITUTION) == 0) &&
-			(kbInSet64(g[glyph].useClass, USE_PRE_BASE_CLASSES) || (flags & KB_GLYPH_FLAG_PREF) != 0)) {
+			(kbInSet64(glyphs[glyph].useClass, USE_PRE_BASE_CLASSES) || (flags & KB_GLYPH_FLAG_PREF) != 0)) {
 			if (preBaseVowels.length < USE_PRE_BASE_VOWEL_CAPACITY) {
 				preBaseVowels.push(glyph);
 			}
-		} else if ((g[glyph].flags & KB_GLYPH_FLAG_LIGATURE) == 0 && kbInSet64(g[glyph].useClass, USE_HALANT_CLASSES)) {
+		} else if ((glyphs[glyph].flags & KB_GLYPH_FLAG_LIGATURE) == 0 && kbInSet64(glyphs[glyph].useClass, USE_HALANT_CLASSES)) {
 			let insertAfter = glyph;
 			for (let preBaseVowelIndex = 0; preBaseVowelIndex < preBaseVowels.length; preBaseVowelIndex++) {
 				const preBaseVowel = preBaseVowels[preBaseVowelIndex];
@@ -369,10 +369,10 @@ function useEndCluster(s: KbScratch, config: KbShapeConfig): void {
 			sawBase = false;
 		}
 
-		glyph = g[glyph].prev;
+		glyph = glyphs[glyph].prev;
 	}
 
-	const dottedCircleInsertBefore = g[KB_GLYPH_SENTINEL].next;
+	const dottedCircleInsertBefore = glyphs[KB_GLYPH_SENTINEL].next;
 
 	let insertAfter = KB_GLYPH_SENTINEL;
 	for (let preBaseVowelIndex = 0; preBaseVowelIndex < preBaseVowels.length; preBaseVowelIndex++) {
@@ -387,7 +387,7 @@ function useEndCluster(s: KbScratch, config: KbShapeConfig): void {
 	if (s.realCluster && !sawBase && config.dottedCircle.id != 0) {
 		const dottedCircle = kbInsertGlyphBefore(storage, dottedCircleInsertBefore, config.dottedCircle);
 
-		g[dottedCircle].userIdOrCodepointIndex = g[dottedCircleInsertBefore].userIdOrCodepointIndex;
+		glyphs[dottedCircle].userIdOrCodepointIndex = glyphs[dottedCircleInsertBefore].userIdOrCodepointIndex;
 	}
 }
 
@@ -397,12 +397,12 @@ function myanmarEndCluster(s: KbScratch): void {
 	}
 
 	const storage = s.storage;
-	const g = storage.glyphs;
+	const glyphs = storage.glyphs;
 
 	let baseGlyph = KB_GLYPH_SENTINEL;
-	const first = g[baseGlyph].next;
-	const second = g[first].next;
-	const third = g[second].next;
+	const first = glyphs[baseGlyph].next;
+	const second = glyphs[first].next;
+	const third = glyphs[second].next;
 	let onePastReph = first;
 
 	let minimumGlyphCount = 0;
@@ -420,25 +420,25 @@ function myanmarEndCluster(s: KbScratch): void {
 	}
 
 	if (minimumGlyphCount == 3 &&
-		g[first].syllabicClass == KB_INDIC_SYLLABIC_CLASS_RA &&
-		g[second].syllabicClass == KB_INDIC_SYLLABIC_CLASS_ASAT &&
-		g[third].syllabicClass == KB_INDIC_SYLLABIC_CLASS_HALANT) {
-		g[first].syllabicPosition = KB_SYLLABIC_POSITION_AFTER_MAIN;
-		g[second].syllabicPosition = KB_SYLLABIC_POSITION_AFTER_MAIN;
-		g[third].syllabicPosition = KB_SYLLABIC_POSITION_AFTER_MAIN;
+		glyphs[first].syllabicClass == KB_INDIC_SYLLABIC_CLASS_RA &&
+		glyphs[second].syllabicClass == KB_INDIC_SYLLABIC_CLASS_ASAT &&
+		glyphs[third].syllabicClass == KB_INDIC_SYLLABIC_CLASS_HALANT) {
+		glyphs[first].syllabicPosition = KB_SYLLABIC_POSITION_AFTER_MAIN;
+		glyphs[second].syllabicPosition = KB_SYLLABIC_POSITION_AFTER_MAIN;
+		glyphs[third].syllabicPosition = KB_SYLLABIC_POSITION_AFTER_MAIN;
 
-		onePastReph = g[third].next;
+		onePastReph = glyphs[third].next;
 		baseGlyph = first;
 	}
 
 	let glyph = onePastReph;
 	while (glyph != KB_GLYPH_SENTINEL) {
-		if (baseGlyph == KB_GLYPH_SENTINEL && kbInSet64(g[glyph].syllabicClass, MYANMAR_BASE_CLASSES)) {
+		if (baseGlyph == KB_GLYPH_SENTINEL && kbInSet64(glyphs[glyph].syllabicClass, MYANMAR_BASE_CLASSES)) {
 			baseGlyph = glyph;
 
 			break;
 		}
-		glyph = g[glyph].next;
+		glyph = glyphs[glyph].next;
 	}
 
 	if (baseGlyph == KB_GLYPH_SENTINEL && onePastReph != first) {
@@ -449,11 +449,11 @@ function myanmarEndCluster(s: KbScratch): void {
 		let lastPosition: int32 = KB_SYLLABIC_POSITION_SYLLABLE_BASE;
 		let sectionPosition: int32 = KB_SYLLABIC_POSITION_AFTER_MAIN;
 		let lastPreBaseMatra = KB_GLYPH_SENTINEL;
-		glyph = g[baseGlyph].next;
+		glyph = glyphs[baseGlyph].next;
 		while (glyph != KB_GLYPH_SENTINEL) {
-			const next = g[glyph].next;
+			const next = glyphs[glyph].next;
 			let position = sectionPosition;
-			const classValue = g[glyph].syllabicClass;
+			const classValue = glyphs[glyph].syllabicClass;
 
 			if (classValue == KB_INDIC_SYLLABIC_CLASS_MEDIAL_RA) {
 				position = KB_SYLLABIC_POSITION_PREBASE_CONSONANT;
@@ -461,7 +461,7 @@ function myanmarEndCluster(s: KbScratch): void {
 				position = KB_SYLLABIC_POSITION_PREBASE_MATRA;
 
 				if (lastPreBaseMatra != KB_GLYPH_SENTINEL) {
-					kbDllistReverseSublist(storage, lastPreBaseMatra, g[glyph].next);
+					kbDllistReverseSublist(storage, lastPreBaseMatra, glyphs[glyph].next);
 				} else {
 					lastPreBaseMatra = glyph;
 				}
@@ -480,18 +480,18 @@ function myanmarEndCluster(s: KbScratch): void {
 			}
 
 			if (sectionPosition == KB_SYLLABIC_POSITION_BELOWBASE_CONSONANT &&
-				g[glyph].syllabicClass == KB_INDIC_SYLLABIC_CLASS_VEDIC_SIGN) {
+				glyphs[glyph].syllabicClass == KB_INDIC_SYLLABIC_CLASS_VEDIC_SIGN) {
 				sectionPosition = KB_SYLLABIC_POSITION_AFTER_SUBJOINED;
 				position = sectionPosition;
 			}
 
-			g[glyph].syllabicPosition = position as uint8;
+			glyphs[glyph].syllabicPosition = position as uint8;
 			lastPosition = position;
 			glyph = next;
 		}
 	}
 
 	if (minimumGlyphCount > 1) {
-		kbDllistSort(storage, g[KB_GLYPH_SENTINEL].next, KB_GLYPH_SENTINEL, true);
+		kbDllistSort(storage, glyphs[KB_GLYPH_SENTINEL].next, KB_GLYPH_SENTINEL, true);
 	}
 }
