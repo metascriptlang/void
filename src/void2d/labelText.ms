@@ -455,14 +455,7 @@ function lineDecorations(
 	slot: DecorationKind,
 	ref out: Vec<Decoration>,
 ): void {
-	let open: boolean = false;
-	let openKind: DecorationKind = slot;
-	let openX: float32 = 0.0;
-	let openRight: float32 = 0.0;
-	let openY: float32 = 0.0;
-	let openH: float32 = 0.0;
-	let openCell: float32 = 0.0;
-	let openColor: Color = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+	let pending: Decoration | null = null;
 	for (const segment of segments) {
 		const run: int32 = segment.run;
 		const x0: float32 = segment.x0;
@@ -479,53 +472,51 @@ function lineDecorations(
 			const style: TextRun = runs[run];
 			const face: int32 = fontFace(style.font);
 			const deco = decorationMetrics(face, size);
-			if (slot == DecorationKind.Underline) {
-				kind = underlineKind(style);
-				y = line.baseline + deco.underlineTop;
-				h = deco.underlineThickness;
-				if (kind == DecorationKind.DoubleUnderline) {
-					y = y - h;
-					h = h * 3.0;
-				}
-				if (kind == DecorationKind.DottedUnderline || kind == DecorationKind.DashedUnderline) {
-					cell = cellOf(face, size, gridCell);
-				}
-			} else if (slot == DecorationKind.Overline) {
-				y = line.baseline - faceMetrics(face, size).ascent;
-				h = deco.underlineThickness;
-			} else {
-				y = line.baseline + deco.strikethroughTop;
-				h = deco.strikethroughThickness;
+			match (slot) {
+				DecorationKind.Underline => {
+					kind = underlineKind(style);
+					y = line.baseline + deco.underlineTop;
+					h = deco.underlineThickness;
+					if (kind == DecorationKind.DoubleUnderline) {
+						y = y - h;
+						h = h * 3.0;
+					}
+					if (kind == DecorationKind.DottedUnderline || kind == DecorationKind.DashedUnderline) {
+						cell = cellOf(face, size, gridCell);
+					}
+				},
+				DecorationKind.Overline => {
+					y = line.baseline - faceMetrics(face, size).ascent;
+					h = deco.underlineThickness;
+				},
+				DecorationKind.Strikethrough => {
+					y = line.baseline + deco.strikethroughTop;
+					h = deco.strikethroughThickness;
+				},
+				DecorationKind.Background | DecorationKind.WavyUnderline |
+					DecorationKind.DoubleUnderline | DecorationKind.DottedUnderline |
+					DecorationKind.DashedUnderline => {
+					console.log(`void2d: no run decoration for slot ${slot}`);
+					unreachable;
+				},
 			}
 		}
-		const same: boolean = open && color.a > 0.0 && kind == openKind && y == openY &&
-			h == openH && cell == openCell && color.r == openColor.r && color.g == openColor.g &&
-			color.b == openColor.b && color.a == openColor.a;
-		if (same) {
-			openRight = right;
-			continue;
+		if (pending !== null) {
+			const same: boolean = color.a > 0.0 && kind == pending.kind && y == pending.y &&
+				h == pending.h && cell == pending.cell && color.r == pending.color.r &&
+				color.g == pending.color.g && color.b == pending.color.b &&
+				color.a == pending.color.a;
+			if (same) {
+				pending.w = right - pending.x;
+				continue;
+			}
+			out.push(pending);
 		}
-		if (open) {
-			out.push({
-				kind: openKind, x: openX, y: openY, w: openRight - openX, h: openH,
-				color: openColor, cell: openCell,
-			});
-		}
-		open = color.a > 0.0;
-		openKind = kind;
-		openX = x0;
-		openRight = right;
-		openY = y;
-		openH = h;
-		openCell = cell;
-		openColor = color;
+		pending = color.a > 0.0
+			? { kind: kind, x: x0, y: y, w: right - x0, h: h, color: color, cell: cell }
+			: null;
 	}
-	if (open) {
-		out.push({
-			kind: openKind, x: openX, y: openY, w: openRight - openX, h: openH, color: openColor,
-			cell: openCell,
-		});
-	}
+	if (pending !== null) { out.push(pending); }
 }
 
 function shapesAlike(stored: Readonly<Span<TextRun>>, runs: Readonly<Span<TextRun>>): boolean {
