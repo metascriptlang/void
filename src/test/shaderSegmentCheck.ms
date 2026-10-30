@@ -147,7 +147,8 @@ const DETAIL_MAP =
 
 function lowered(text: string): ShaderModule {
 	const m = irFromText(text);
-	return m.ok ? m.value : new ShaderModule();
+	if (!m.ok) { throw new Error("internal: segment text did not lower: " + m.error); }
+	return m.value;
 }
 
 function holdsSegment(m: ShaderModule, name: string, phase: string): boolean {
@@ -161,37 +162,42 @@ function holdsSegment(m: ShaderModule, name: string, phase: string): boolean {
 }
 
 test "a segment over its phase struct reads a frame time through its unnumbered bindings" {
-	assert glslSegmentIr(uvScroll) == UV_SCROLL;
+	assert glslSegmentIr(uvScroll) == UV_SCROLL, "uvScroll printed text";
 	const m = lowered(UV_SCROLL);
-	assert holdsSegment(m, "uvScroll", "UvStage");
-	assert m.resources.length == 1 && m.resources[0].kind == ResourceKind.UniformBlock;
-	assert m.resources[0].name == "frame";
+	assert holdsSegment(m, "uvScroll", "UvStage"), "uvScroll is a segment over UvStage";
+	assert m.resources.length == 1 && m.resources[0].kind == ResourceKind.UniformBlock,
+		"uvScroll reads one uniform block";
+	assert m.resources[0].name == "frame", "the block is named frame";
 	const moved = uvScroll({ uv: vec2f(0.25, 0.5) }, { frame: { time: 0.5 } });
-	assert moved.uv.x == 0.75 && moved.uv.y == 0.5;
+	assert moved.uv.x == 0.75 && moved.uv.y == 0.5, "uvScroll on the CPU";
 }
 
 test "a colour add segment returns the phase struct it was handed" {
-	assert glslSegmentIr(colourAdd) == COLOUR_ADD;
-	assert holdsSegment(lowered(COLOUR_ADD), "colourAdd", "Shaded");
+	assert glslSegmentIr(colourAdd) == COLOUR_ADD, "colourAdd printed text";
+	assert holdsSegment(lowered(COLOUR_ADD), "colourAdd", "Shaded"),
+		"colourAdd is a segment over Shaded";
 	const added = colourAdd({ color: vec4f(0.25, 0.25, 0.25, 1.0) },
 		{ tintParams: { tint: vec4f(0.5, 0.0, 0.25, 0.0) } });
-	assert added.color.x == 0.75 && added.color.z == 0.5 && added.color.w == 1.0;
+	assert added.color.x == 0.75 && added.color.z == 0.5 && added.color.w == 1.0,
+		"colourAdd on the CPU";
 }
 
 test "a segment without bindings discards" {
-	assert glslSegmentIr(killAlpha) == KILL_ALPHA;
+	assert glslSegmentIr(killAlpha) == KILL_ALPHA, "killAlpha printed text";
 	const m = lowered(KILL_ALPHA);
-	assert holdsSegment(m, "killAlpha", "Shaded");
-	assert m.resources.length == 0;
-	assert killAlpha({ color: vec4f(1.0, 0.0, 0.0, 1.0) }).color.x == 1.0;
+	assert holdsSegment(m, "killAlpha", "Shaded"), "killAlpha is a segment over Shaded";
+	assert m.resources.length == 0, "killAlpha reads no resource";
+	assert killAlpha({ color: vec4f(1.0, 0.0, 0.0, 1.0) }).color.x == 1.0,
+		"killAlpha keeps an opaque colour";
 }
 
 test "a nested phase struct and a texture, sampler and storage buffer, all unnumbered" {
-	assert glslSegmentIr(detailMap) == DETAIL_MAP;
+	assert glslSegmentIr(detailMap) == DETAIL_MAP, "detailMap printed text";
 	const m = lowered(DETAIL_MAP);
-	assert holdsSegment(m, "detailMap", "LitStage");
-	assert m.resources.map((r) => r.name).join(",") == "detail,detailSampler,lights";
-	assert m.resources[0].group == m.resources[2].group;
+	assert holdsSegment(m, "detailMap", "LitStage"), "detailMap is a segment over LitStage";
+	assert m.resources.map((r) => r.name).join(",") == "detail,detailSampler,lights",
+		"detailMap resources in declaration order";
+	assert m.resources[0].group == m.resources[2].group, "the texture and the buffer share a group";
 }
 
 struct GlowKey {
@@ -208,8 +214,10 @@ function glowOnly(shaded: Shaded, key: GlowKey): Shaded {
 
 test "a segment's key struct lowers to a feature branch its module names" {
 	const m = lowered(glslSegmentIr(glowOnly));
-	assert holdsSegment(m, "glowOnly", "Shaded");
-	assert m.features.join(",") == "GLOW";
-	assert m.functions[m.functions.length - 1].body.some((s) => s.kind == StmtKind.FeatureIf);
-	assert glowOnly({ color: vec4f(0.25) }, { glow: true }).color.x == 0.5;
+	assert holdsSegment(m, "glowOnly", "Shaded"), "glowOnly is a segment over Shaded";
+	assert m.features.join(",") == "GLOW", "the module names the GLOW feature";
+	assert m.functions[m.functions.length - 1].body.some((s) => s.kind == StmtKind.FeatureIf),
+		"the key branch lowers to a FeatureIf";
+	assert glowOnly({ color: vec4f(0.25) }, { glow: true }).color.x == 0.5,
+		"glowOnly on the CPU";
 }
