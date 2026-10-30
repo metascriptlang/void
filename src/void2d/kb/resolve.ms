@@ -36,6 +36,10 @@ export function kbRound32(x: float32): int32 {
 	return result;
 }
 
+function halfWordDelta(byte: int32): int32 {
+	return byte >= 0x80 ? byte - 0x100 : byte;
+}
+
 function fixed2_14ToFloat(x: int32): float32 {
 	return (x as float32) * FIXED_2_14_SCALE;
 }
@@ -69,13 +73,9 @@ export function kbItemVariationStoreDelta(
 		const regionIndex = m.kbU16(regionIndices + regionIndexIndex * 2) as int64;
 		const regionCoords = regionAxisCoordinates + regionIndex * axisCount * 6;
 
-		let regionDelta: float32 = 0;
-		if (regionIndexIndex < wordDeltaCount) {
-			regionDelta = m.kbS16(wordDeltas + regionIndexIndex * 2) as float32;
-		} else {
-			const half = m.kbU8(halfWordDeltas + (regionIndexIndex - wordDeltaCount));
-			regionDelta = (half >= 0x80 ? half - 0x100 : half) as float32;
-		}
+		const regionDelta = regionIndexIndex < wordDeltaCount ?
+			m.kbS16(wordDeltas + regionIndexIndex * 2) as float32 :
+			halfWordDelta(m.kbU8(halfWordDeltas + (regionIndexIndex - wordDeltaCount))) as float32;
 
 		let regionFactor: float32 = 1;
 
