@@ -10,7 +10,7 @@
 #   sh scripts/gate.sh --quick    skip the golden suite (T0 and bench only)
 #   sh scripts/gate.sh --window   also the macOS window behaviour tests, in a visible focused window
 #   sh scripts/gate.sh --ios      also the Metal goldens and view samples on an attached iOS device
-#   sh scripts/gate.sh --d3d12    also webgpuD3d12Check on WARP; needs the D3D12 debug layer (Graphics Tools)
+#   sh scripts/gate.sh --d3d12    also webgpuD3d12Check and the door checks on d3d12 WARP; needs the D3D12 debug layer (Graphics Tools)
 set -e
 cd "$(dirname "$0")/.."
 export VOID_QUIET_WINDOW=1
@@ -738,8 +738,12 @@ case "$(uname -s)" in
 		backend_check "d3d11 backend on WARP" webgpu-d3d11 src/test/webgpuD3d11Check.ms
 		if [ "$D3D12" -eq 1 ]; then
 			backend_check "d3d12 backend on WARP with the debug layer" webgpu-d3d12 -d:voidD3d12 src/test/webgpuD3d12Check.ms
+			backend_check "door handle 0 on d3d12 WARP" door-zero-handle-d3d12 -d:voidD3d12 src/test/doorZeroHandleCheck.ms
+			backend_check "door compute on d3d12 WARP" door-compute-d3d12 -d:voidD3d12 src/test/doorComputeCheck.ms
+			backend_check "door stencil on d3d12 WARP" door-stencil-d3d12 -d:voidD3d12 src/test/doorStencilCheck.ms
+			backend_check "pipeline prewarm on d3d12 WARP" pipeline-prewarm-d3d12 -d:voidD3d12 src/test/pipelinePrewarmCheck.ms
 		else
-			skip "d3d12 backend on WARP: pass --d3d12; every pin reads the D3D12 debug layer, which needs Graphics Tools installed"
+			skip "d3d12 backend and door checks on WARP: pass --d3d12; every pin reads the D3D12 debug layer, which needs Graphics Tools installed"
 		fi
 		backend_check "door handle 0 on WARP" door-zero-handle src/test/doorZeroHandleCheck.ms
 		backend_check "door compute on WARP" door-compute src/test/doorComputeCheck.ms
