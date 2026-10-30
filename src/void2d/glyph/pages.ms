@@ -108,9 +108,9 @@ export function void2dGlyphPageCreate(size: int32, kind: int32): int32 {
 	}
 	if (slot == (state.pages.length as int32)) { state.pages.push(new GlyphPage()); }
 	const p = state.pages[slot];
-	p.texels = new Array<uint8>(size * size * texelBytes(kind));
 	p.size = size;
 	p.kind = kind;
+	p.texels = new Array<uint8>(pageByteCount(p));
 	markDirtyWhole(p);
 	p.uploaded = false;
 	p.live = true;
@@ -124,8 +124,9 @@ export function void2dGlyphPageRelease(page: int32): int32 {
 		console.error(`void2d: glyph page ${page} cannot be released, it is not live`);
 		return -1;
 	}
-	state.pages[page].texels = [];
-	state.pages[page].live = false;
+	const p = state.pages[page];
+	p.texels = [];
+	p.live = false;
 	return 0;
 }
 
@@ -338,8 +339,9 @@ export function void2dGlyphPageUploaded(page: int32): int32 {
 }
 
 export function void2dGlyphPageTakeUpload(page: int32): int32 {
-	if (!validPage(page) || !state.pages[page].dirty || state.pages[page].uploaded) { return 0; }
+	if (!validPage(page)) { return 0; }
 	const p = state.pages[page];
+	if (!p.dirty || p.uploaded) { return 0; }
 	for (let k: int32 = 0; k < 4; k++) { p.takenBox[k] = p.dirtyBox[k]; }
 	p.dirty = false;
 	p.uploaded = true;
