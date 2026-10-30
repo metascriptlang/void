@@ -217,7 +217,7 @@ export function solveCubic(a: float32, b: float32, c: float32, r: float32[]): in
 	return 3;
 }
 
-function squaredDistance(px: float32, py: float32, sx: float32, sy: float32): float32 {
+export function squaredDistance(px: float32, py: float32, sx: float32, sy: float32): float32 {
 	return (px - sx) * (px - sx) + (py - sy) * (py - sy);
 }
 
@@ -305,7 +305,7 @@ export function getGlyphSDF(
 					const x1: float32 = (verts[i - 1].x as float32) * scaleX;
 					const y1: float32 = (verts[i - 1].y as float32) * scaleY;
 
-					const dist2: float32 = (x0 - sx) * (x0 - sx) + (y0 - sy) * (y0 - sy);
+					const dist2 = squaredDistance(x0, y0, sx, sy);
 					if (dist2 < minDist * minDist) { minDist = Math.sqrt(dist2 as float64) as float32; }
 
 					const dist: float32 = (Math.abs(((x1 - x0) * (y0 - sy) - (y1 - y0) * (x0 - sx)) as float64) as float32) *
@@ -365,7 +365,7 @@ export function getGlyphSDF(
 							const d: float32 = (mx * ax + my * ay) * aInv;
 							num = solveCubic(b, c, d, res);
 						}
-						let dist2: float32 = (x0 - sx) * (x0 - sx) + (y0 - sy) * (y0 - sy);
+						let dist2 = squaredDistance(x0, y0, sx, sy);
 						if (dist2 < minDist * minDist) { minDist = Math.sqrt(dist2 as float64) as float32; }
 
 						let k: int32 = 0;
