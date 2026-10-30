@@ -348,13 +348,14 @@ function enabledFeatureHits(
 	langsys: int64,
 	enabled: uint64[],
 ): KbFeatureHit[] {
-	let hits: KbFeatureHit[] = [];
+	const hits: KbFeatureHit[] = [];
 	if (gsubGpos == 0 || langsys == 0) { return hits; }
 
 	const featureList = gsubGpos + m.kbU16(gsubGpos + 6);
 	const count = m.kbU16(langsys + 4);
-	for (let i = 0; i < count; i++) {
-		const feature = kbGetFeature(m, featureList, m.kbU16(langsys + 6 + (i as int64) * 2));
+	for (let featureIndexIndex = 0; featureIndexIndex < count; featureIndexIndex++) {
+		const featureIndex = m.kbU16(langsys + 6 + (featureIndexIndex as int64) * 2);
+		const feature = kbGetFeature(m, featureList, featureIndex);
 		if (containsFeature(enabled, kbFeatureTagToId(feature.tag as uint32))) {
 			hits.push({ tag: feature.tag as uint32, feature: feature.at });
 		}
@@ -408,7 +409,7 @@ function substitutedFeature(
 
 function kbDummyScratch(font: KbFont, storage: KbGlyphStorage): KbScratch {
 	const result = new KbScratch(font, storage);
-	for (let i = 0; i < KB_LOOKUP_STACK_SIZE; i++) {
+	for (let frameIndex = 0; frameIndex < KB_LOOKUP_STACK_SIZE; frameIndex++) {
 		result.frames.push({
 			inputGlyph: 0, startIndex: 0, lookupIndex: 0, subtableIndex: 0, records: 0,
 			recordCount: 0, recordIndex: 0,
@@ -445,12 +446,12 @@ function startFrame(s: KbScratch, glyph: int32, lookupIndex: int32): void {
 }
 
 function featureLookupIndices(s: KbScratch, lookupList: int64, feature: int64): int32[] {
-	let result: int32[] = [];
+	const result: int32[] = [];
 	if (lookupList != 0 && feature != 0) {
 		const m: Span<uint8> = s.font.blob[0..s.font.blob.length];
 		const count = m.kbU16(feature + 2);
-		for (let i = 0; i < count; i++) {
-			result.push(m.kbU16(feature + 4 + (i as int64) * 2));
+		for (let lookupIndexIndex = 0; lookupIndexIndex < count; lookupIndexIndex++) {
+			result.push(m.kbU16(feature + 4 + (lookupIndexIndex as int64) * 2));
 		}
 	}
 	return result;
@@ -477,8 +478,8 @@ export function kbSubstitute1(
 	const list = kbPushGlyphList(storage, result, result);
 
 	let done = false;
-	for (let i = 0; i < lookupIndices.length && !done; i++) {
-		startFrame(s, result, lookupIndices[i]);
+	for (let lookupIndexIndex = 0; lookupIndexIndex < lookupIndices.length && !done; lookupIndexIndex++) {
+		startFrame(s, result, lookupIndices[lookupIndexIndex]);
 		while (s.frameCount != 0) {
 			const flags = kbDoSubstitution(s, lookupList, sequentialLookupIndex, 0, false,
 				skipFlags, 0);
@@ -519,24 +520,25 @@ export function kbWouldSubstitute(
 	let result = false;
 
 	const tempSentinel = takeGlyphSlot(storage);
-	let slots: int32[] = [];
-	for (let i = 0; i < count; i++) {
+	const slots: int32[] = [];
+	for (let slotIndex = 0; slotIndex < count; slotIndex++) {
 		slots.push(takeGlyphSlot(storage));
 	}
-	for (let i = 0; i < count; i++) {
-		storage.glyphs[slots[i]] = glyphs[first + i];
-		storage.glyphs[slots[i]].prev = i == 0 ? tempSentinel : slots[i - 1];
-		storage.glyphs[slots[i]].next = i == count - 1 ? tempSentinel : slots[i + 1];
+	for (let slotIndex = 0; slotIndex < count; slotIndex++) {
+		const slot = slots[slotIndex];
+		storage.glyphs[slot] = glyphs[first + slotIndex];
+		storage.glyphs[slot].prev = slotIndex == 0 ? tempSentinel : slots[slotIndex - 1];
+		storage.glyphs[slot].next = slotIndex == count - 1 ? tempSentinel : slots[slotIndex + 1];
 	}
 	storage.glyphs[tempSentinel].next = slots[0];
 	storage.glyphs[tempSentinel].prev = slots[count - 1];
 
 	const list = kbPushGlyphList(storage, slots[0], slots[count - 1]);
 
-	for (let i = 0; i < lookupIndices.length && !result; i++) {
+	for (let lookupIndexIndex = 0; lookupIndexIndex < lookupIndices.length && !result; lookupIndexIndex++) {
 		let current = slots[0];
 		while (kbGlyphIsValid(current) && !result) {
-			startFrame(s, current, lookupIndices[i]);
+			startFrame(s, current, lookupIndices[lookupIndexIndex]);
 			kbBeginLookupApplication(s, current);
 
 			while (s.frameCount != 0) {
@@ -554,8 +556,8 @@ export function kbWouldSubstitute(
 	s.frameCount = 0;
 
 	kbPopGlyphList(storage, list);
-	for (let i = 0; i < count; i++) {
-		releaseGlyphSlot(storage, slots[i]);
+	for (const slot of slots) {
+		releaseGlyphSlot(storage, slot);
 	}
 	releaseGlyphSlot(storage, tempSentinel);
 	return result;
@@ -628,8 +630,8 @@ function hashFontName(font: KbFont, murmur: KbMurmur): void {
 		}
 		if (left != 0) {
 			let lastBytes: int64 = 0;
-			for (let i: int64 = 0; i < left; i++) {
-				lastBytes |= (m.kbU8(at + i) as int64) << (i * 8);
+			for (let byteIndex: int64 = 0; byteIndex < left; byteIndex++) {
+				lastBytes |= (m.kbU8(at + byteIndex) as int64) << (byteIndex * 8);
 			}
 			kbMurmurAbsorb(murmur, lastBytes);
 		}
@@ -707,7 +709,7 @@ function bakeSequentialLookups(
 		sequentialLookups: [], idSequentialLookupMatrix: [], featureStageFirstLookupIndices: [],
 		glyphCount: 0, lookupCount: 0,
 	};
-	for (let i = 0; i <= opList.stageFeatureCounts.length; i++) {
+	for (let stageIndex = 0; stageIndex <= opList.stageFeatureCounts.length; stageIndex++) {
 		result.featureStageFirstLookupIndices.push(0);
 	}
 	if (shapingTables[0] == 0 && shapingTables[1] == 0) { return result; }
@@ -718,7 +720,7 @@ function bakeSequentialLookups(
 
 	let sequentialLookupCount: int64 = 0;
 
-	for (let iter = 0; iter < 2; iter++) {
+	for (let bakePass = 0; bakePass < 2; bakePass++) {
 		let thisSequentialLookupCount: int64 = 0;
 		let featureStageIndex = 0;
 
@@ -741,7 +743,7 @@ function bakeSequentialLookups(
 			const gsubGpos = shapingTables[shapingTableIndex];
 			const langsys = langsysList[shapingTableIndex];
 			let bakedFeatureLookupIndexCount: int64 = 0;
-			let baked: KbBakedFeature[] = [];
+			const baked: KbBakedFeature[] = [];
 
 			if (gsubGpos != 0 && langsys != 0) {
 				const featureList = gsubGpos + m.kbU16(gsubGpos + 6);
@@ -771,11 +773,8 @@ function bakeSequentialLookups(
 						containsFeature(stageFeatures, featureId))) {
 						kbMurmurAbsorb(murmur, featureAt);
 
-						let glyphFilter: uint32 = 0;
-						if (shaper != KB_SHAPER_MYANMAR && featureId >= 1 && featureId <= 32) {
-							const shift: uint32 = featureId - 1;
-							glyphFilter = ((1 as uint32) << shift) & KB_GLYPH_FEATURE_MASK;
-						}
+						const filtered = shaper != KB_SHAPER_MYANMAR && featureId >= 1 && featureId <= 32;
+						const glyphFilter: uint32 = filtered ? ((1 as uint32) << (featureId - 1)) & KB_GLYPH_FEATURE_MASK : 0;
 						baked.push({
 							indices: featureAt + 4, count: lookupIndexCount, id: featureId,
 							skipFlags: kbSkipFlags(featureId, shaper), glyphFilter,
@@ -786,8 +785,8 @@ function bakeSequentialLookups(
 					}
 				}
 
-				let lookupIndicesRead: int32[] = [];
-				for (let i = 0; i < baked.length; i++) {
+				const lookupIndicesRead: int32[] = [];
+				for (let bakedIndex = 0; bakedIndex < baked.length; bakedIndex++) {
 					lookupIndicesRead.push(0);
 				}
 
@@ -796,9 +795,9 @@ function bakeSequentialLookups(
 				while (lookupIndicesLeft != 0) {
 					let lowestLookupIndex = 0xFFFF;
 
-					for (let i = 0; i < baked.length; i++) {
-						if (lookupIndicesRead[i] < baked[i].count) {
-							const nextIndex = m.kbU16(baked[i].indices + (lookupIndicesRead[i] as int64) * 2);
+					for (let bakedIndex = 0; bakedIndex < baked.length; bakedIndex++) {
+						if (lookupIndicesRead[bakedIndex] < baked[bakedIndex].count) {
+							const nextIndex = m.kbU16(baked[bakedIndex].indices + (lookupIndicesRead[bakedIndex] as int64) * 2);
 							if (nextIndex < lowestLookupIndex) {
 								lowestLookupIndex = nextIndex;
 							}
@@ -808,15 +807,16 @@ function bakeSequentialLookups(
 					let glyphFilter: uint32 = 0;
 					let skipFlags: uint32 = 0;
 					let defaultEnabled = false;
-					for (let i = 0; i < baked.length; i++) {
-						if (lookupIndicesRead[i] < baked[i].count) {
-							const nextIndex = m.kbU16(baked[i].indices + (lookupIndicesRead[i] as int64) * 2);
+					for (let bakedIndex = 0; bakedIndex < baked.length; bakedIndex++) {
+						const bakedFeature = baked[bakedIndex];
+						if (lookupIndicesRead[bakedIndex] < bakedFeature.count) {
+							const nextIndex = m.kbU16(bakedFeature.indices + (lookupIndicesRead[bakedIndex] as int64) * 2);
 							if (nextIndex == lowestLookupIndex) {
-								glyphFilter |= baked[i].glyphFilter;
-								skipFlags |= baked[i].skipFlags;
-								lookupIndicesRead[i] += 1;
+								glyphFilter |= bakedFeature.glyphFilter;
+								skipFlags |= bakedFeature.skipFlags;
+								lookupIndicesRead[bakedIndex] += 1;
 								lookupIndicesLeft -= 1;
-								if (containsFeature(stageFeatures, baked[i].id)) {
+								if (containsFeature(stageFeatures, bakedFeature.id)) {
 									defaultEnabled = true;
 								}
 							}
@@ -824,7 +824,7 @@ function bakeSequentialLookups(
 					}
 
 					if (lowestLookupIndex != lastLowestLookupIndex) {
-						if (iter != 0 && defaultEnabled) {
+						if (bakePass != 0 && defaultEnabled) {
 							const flatLookupIndex = shapingTableIndex == KB_SHAPING_TABLE_GSUB ?
 								lowestLookupIndex as int64 :
 								(lowestLookupIndex as int64) + gposLookupIndexOffset;
@@ -842,7 +842,7 @@ function bakeSequentialLookups(
 							}
 						}
 
-						if (iter != 0) {
+						if (bakePass != 0) {
 							result.sequentialLookups[thisSequentialLookupCount as int32] = {
 								glyphFilter, skipFlags, lookupIndex: lowestLookupIndex as uint16,
 							};
@@ -854,7 +854,7 @@ function bakeSequentialLookups(
 				}
 			}
 
-			if (iter != 0) {
+			if (bakePass != 0) {
 				result.featureStageFirstLookupIndices[featureStageIndex + 1] =
 					(thisSequentialLookupCount & 0xFFFF) as uint16;
 			}
@@ -862,9 +862,9 @@ function bakeSequentialLookups(
 			featureStageIndex += 1;
 		}
 
-		if (iter == 0) {
+		if (bakePass == 0) {
 			sequentialLookupCount = thisSequentialLookupCount;
-			for (let i: int64 = 0; i < sequentialLookupCount; i++) {
+			for (let lookupIndex: int64 = 0; lookupIndex < sequentialLookupCount; lookupIndex++) {
 				result.sequentialLookups.push({ glyphFilter: 0, skipFlags: 0, lookupIndex: 0 });
 			}
 
@@ -872,7 +872,7 @@ function bakeSequentialLookups(
 			const lastGlyphIndex = glyphCount != 0 ? glyphCount - 1 : 0;
 			const sizeInWords = kbIdSequentialLookupMatrixWord(lastSequentialLookupIndex,
 				lastGlyphIndex, sequentialLookupCount) + 1;
-			for (let i: int64 = 0; i < sizeInWords; i++) {
+			for (let wordIndex: int64 = 0; wordIndex < sizeInWords; wordIndex++) {
 				result.idSequentialLookupMatrix.push(0);
 			}
 		}
@@ -898,8 +898,8 @@ export function kbPlaceShapeConfig(
 ): KbShapeConfig {
 	const axisCount = kbGetVariationInfo(font).axisCount;
 	const maxAxisCount = KB_MAX_VARIATION_AXIS_COUNT as int32;
-	let normalized: int32[] = [];
-	for (let i = 0; i < (axisCount > maxAxisCount ? axisCount : maxAxisCount); i++) {
+	const normalized: int32[] = [];
+	for (let axisIndex = 0; axisIndex < (axisCount > maxAxisCount ? axisCount : maxAxisCount); axisIndex++) {
 		normalized.push(0);
 	}
 	if (variationVector !== null) {
@@ -923,7 +923,7 @@ export function kbPlaceShapeConfig(
 	const shaper = choice.indic3 ? KB_SHAPER_USE : (KB_SCRIPT_SHAPERS[script] as uint32);
 	let opList = KB_SHAPER_OP_LISTS[shaper];
 
-	let features: uint64[] = [0, 0, 0, 0];
+	const features: uint64[] = [0, 0, 0, 0];
 	for (let stageIndex = 0; stageIndex < opList.stageFeatureCounts.length; stageIndex++) {
 		for (let wordIndex = 0; wordIndex < 4; wordIndex++) {
 			features[wordIndex] |= opList.stageFlags[stageIndex * 4 + wordIndex];
@@ -1019,12 +1019,12 @@ export function kbPlaceGlyphConfig(
 	const lastSequentialLookupIndex = sequentialLookupCount != 0 ? sequentialLookupCount - 1 : 0;
 	const rowWords = kbIdSequentialLookupMatrixWord(lastSequentialLookupIndex, 0,
 		sequentialLookupCount) + 1;
-	for (let i: int64 = 0; i < rowWords; i++) {
+	for (let wordIndex: int64 = 0; wordIndex < rowWords; wordIndex++) {
 		result.enabledLookupBits.push(0);
 		result.disabledLookupBits.push(0);
 	}
 
-	let overridden: uint64[] = [0, 0, 0, 0];
+	const overridden: uint64[] = [0, 0, 0, 0];
 	for (const override of overrides) {
 		addFeature(overridden, kbFeatureTagToId(override.tag));
 	}
@@ -1034,21 +1034,18 @@ export function kbPlaceGlyphConfig(
 		const gsubGpos = m.kbBlobTableData(shapingTable == KB_SHAPING_TABLE_GSUB ?
 			KB_BLOB_TABLE_ID_GSUB : KB_BLOB_TABLE_ID_GPOS);
 
-		let firstSequentialLookupIndex: int64 = 0;
-		let onePastLastSequentialLookupIndex = gsubSequentialLookupCount;
-		if (shapingTable == KB_SHAPING_TABLE_GPOS) {
-			firstSequentialLookupIndex = onePastLastSequentialLookupIndex;
-			onePastLastSequentialLookupIndex = sequentialLookupCount;
-		}
+		const gpos = shapingTable == KB_SHAPING_TABLE_GPOS;
+		const firstSequentialLookupIndex: int64 = gpos ? gsubSequentialLookupCount : 0;
+		const onePastLastSequentialLookupIndex = gpos ? sequentialLookupCount : gsubSequentialLookupCount;
 
 		const lookupList = kbGetLookupList(m, gsubGpos);
 		const hits = enabledFeatureHits(m, gsubGpos, config.langsys[shapingTable], overridden);
 
 		for (const hit of hits) {
 			let found = -1;
-			for (let i = 0; i < overrides.length; i++) {
-				if (overrides[i].tag == hit.tag) {
-					found = i;
+			for (let overrideIndex = 0; overrideIndex < overrides.length; overrideIndex++) {
+				if (overrides[overrideIndex].tag == hit.tag) {
+					found = overrideIndex;
 					break;
 				}
 			}
@@ -1060,9 +1057,9 @@ export function kbPlaceGlyphConfig(
 				const lookupIndex = m.kbU16(hit.feature + 4 + (lookupIndexIndex as int64) * 2);
 
 				let foundSequentialLookupIndex: int64 = -1;
-				for (let i = firstSequentialLookupIndex; i < onePastLastSequentialLookupIndex; i++) {
-					if ((config.sequentialLookups[i as int32].lookupIndex as int32) == lookupIndex) {
-						foundSequentialLookupIndex = i;
+				for (let sequentialLookupIndex = firstSequentialLookupIndex; sequentialLookupIndex < onePastLastSequentialLookupIndex; sequentialLookupIndex++) {
+					if ((config.sequentialLookups[sequentialLookupIndex as int32].lookupIndex as int32) == lookupIndex) {
+						foundSequentialLookupIndex = sequentialLookupIndex;
 						break;
 					}
 				}
