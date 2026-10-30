@@ -12,6 +12,9 @@ import { sinf, cosf, sqrtf } from "../math/mat4";
 
 const TAU: float32 = 6.2831853;
 const MESH_VERTEX_FLOATS: int32 = 8;
+const HALF_TURN: float32 = TAU * 0.5;
+const QUARTER_TURN: float32 = TAU * 0.25;
+const THREE_QUARTER_TURN: float32 = TAU * 0.75;
 const CIRCLE_MAX_SEG: int32 = 64;
 const DEGENERATE_LEN: float32 = 0.0001;
 const MITER_LIMIT: float32 = 4.0;
@@ -344,7 +347,7 @@ function cornerArc(
 	seg: int32,
 ): void {
 	for (let i: int32 = 0; i <= seg; i++) {
-		const a: float32 = a0 + TAU * 0.25 * ((i as float32) / (seg as float32));
+		const a: float32 = a0 + QUARTER_TURN * ((i as float32) / (seg as float32));
 		pts.push(vec2(ccx + cosf(a) * r, ccy + sinf(a) * r));
 	}
 }
@@ -991,12 +994,12 @@ export function fillRoundedRect(
 	let r: float32 = radius;
 	if (r > maxR) { r = maxR; }
 	if (r <= 0.0) { return g.fillRect(x, y, w, h, color); }
-	const seg: int32 = arcSegs(r, TAU * 0.25);
+	const seg: int32 = arcSegs(r, QUARTER_TURN);
 	const pts: Vec2[] = [];
-	cornerArc(pts, x + r,     y + r,     r, TAU * 0.5,  seg);
-	cornerArc(pts, x + w - r, y + r,     r, TAU * 0.75, seg);
-	cornerArc(pts, x + w - r, y + h - r, r, 0.0,        seg);
-	cornerArc(pts, x + r,     y + h - r, r, TAU * 0.25, seg);
+	cornerArc(pts, x + r,     y + r,     r, HALF_TURN, seg);
+	cornerArc(pts, x + w - r, y + r,     r, THREE_QUARTER_TURN, seg);
+	cornerArc(pts, x + w - r, y + h - r, r, 0.0, seg);
+	cornerArc(pts, x + r,     y + h - r, r, QUARTER_TURN, seg);
 	return g.fillConvex(pts, color);
 }
 
