@@ -11,6 +11,7 @@ import { EDGE_FLOATS, FRINGE_HALF_WIDTH } from "./draw";
 import { sinf, cosf, sqrtf } from "../math/mat4";
 
 const TAU: float32 = 6.2831853;
+const MESH_VERTEX_FLOATS: int32 = 8;
 const CIRCLE_MAX_SEG: int32 = 64;
 const DEGENERATE_LEN: float32 = 0.0001;
 const MITER_LIMIT: float32 = 4.0;
@@ -88,6 +89,10 @@ function rawVtx(n: GraphicsMesh, x: float32, y: float32, u: float32, v: float32,
 	for (let k: int32 = 0; k < EDGE_FLOATS; k++) { n.edges.push(0.0 as float32); }
 }
 
+function vertexTotal(this n: GraphicsMesh): int32 {
+	return (n.mesh.length as int32) / MESH_VERTEX_FLOATS;
+}
+
 function beginMeshVertex(n: GraphicsMesh): int32 {
 	const total: int32 = n.records.length as int32;
 	let base: int32 = total - GRAPHICS_OP_FLOATS;
@@ -95,7 +100,7 @@ function beginMeshVertex(n: GraphicsMesh): int32 {
 		base = total;
 		for (let i: int32 = 0; i < GRAPHICS_OP_FLOATS; i++) { n.records.push(0.0 as float32); }
 		n.records[base + GFX_OP_KIND] = (GraphicsOpKind.Mesh as int32) as float32;
-		n.records[base + GFX_OP_VERTEX_OFFSET] = ((n.mesh.length as int32) / 8) as float32;
+		n.records[base + GFX_OP_VERTEX_OFFSET] = n.vertexTotal() as float32;
 	}
 	n.records[base + GFX_OP_VERTEX_COUNT] = n.records[base + GFX_OP_VERTEX_COUNT] + 1.0;
 	return base;
@@ -593,9 +598,9 @@ export function fillGradientPolygonStops(
 	if (span > DEGENERATE_LEN) {
 		map = { ux: ax / span, uy: ay / span, uc: -minP / span, vx: 0.0, vy: 0.0, vc: 0.0 };
 	}
-	const start: int32 = (target.mesh.length as int32) / 8;
+	const start: int32 = target.vertexTotal();
 	contourFill(target, false, pts, [m], triangulate(pts), map, white, EdgeLimit.Convex);
-	const count: int32 = (target.mesh.length as int32) / 8 - start;
+	const count: int32 = target.vertexTotal() - start;
 	if (count > 0) {
 		appendOp(target, GraphicsOpKind.LinearGradient, start, count, space, true, middle,
 			c0, cMiddle, c1, 0.0, 0.0, 0.0, 0.0);
@@ -682,10 +687,10 @@ export function fillRadialGradientStops(
 	if (r <= 0.0) { return g; }
 	const seg: int32 = circleSegs(r);
 	const map: UvMap = { ux: 1.0 / r, uy: 0.0, uc: -cx / r, vx: 0.0, vy: 1.0 / r, vc: -cy / r };
-	const start: int32 = (target.mesh.length as int32) / 8;
+	const start: int32 = target.vertexTotal();
 	contourFill(target, false, ellipsePoints(cx, cy, r, r, seg), [seg], fanTris(seg), map, white,
 		EdgeLimit.Convex);
-	const count: int32 = (target.mesh.length as int32) / 8 - start;
+	const count: int32 = target.vertexTotal() - start;
 	appendOp(target, GraphicsOpKind.RadialGradient, start, count, space, true, middle,
 		c0, cMiddle, c1, 0.0, 0.0, 0.0, 0.0);
 	return g;
@@ -727,10 +732,10 @@ function fillPatternRect(
 ): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillPatternRect");
 	const map: UvMap = { ux: 1.0, uy: 0.0, uc: -x, vx: 0.0, vy: 1.0, vc: -y };
-	const start: int32 = (target.mesh.length as int32) / 8;
+	const start: int32 = target.vertexTotal();
 	contourFill(target, false, rectPoints(x, y, w, h), [4], RECT_TRIS, map, white,
 		EdgeLimit.Parallel);
-	const count: int32 = (target.mesh.length as int32) / 8 - start;
+	const count: int32 = target.vertexTotal() - start;
 	appendOp(target, kind, start, count, GradientSpace.Srgb, false, -1.0,
 		c0, c1, c1, p0, p1, 0.0, 0.0);
 	return g;
