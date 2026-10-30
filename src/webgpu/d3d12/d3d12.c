@@ -291,8 +291,110 @@ int32_t dx12MemoryRead(uint64_t pointer, void *out, uint64_t bytes) {
 	return DX12_OK;
 }
 
+int32_t dx12MemoryWriteRows(uint64_t pointer, void *data, uint64_t dataOffset, uint64_t dataPitch, uint64_t rowBytes, uint64_t rowPitch, uint32_t rows) {
+	uint8_t *target = (uint8_t *)(uintptr_t)pointer;
+	const uint8_t *source = (const uint8_t *)data + dataOffset;
+	for (uint32_t row = 0; row < rows; row++) memcpy(target + row * rowPitch, source + row * dataPitch, (size_t)rowBytes);
+	return DX12_OK;
+}
+
+int32_t dx12TextureCreate(uint64_t device, int32_t volume, uint32_t width, uint32_t height, uint32_t depthOrArraySize, uint32_t mipLevels, int32_t format, uint32_t sampleCount, uint32_t flags, uint64_t *resource) {
+	*resource = 0;
+	D3D12_HEAP_PROPERTIES properties = {0};
+	properties.Type = D3D12_HEAP_TYPE_DEFAULT;
+	D3D12_RESOURCE_DESC desc = {0};
+	desc.Dimension = volume ? D3D12_RESOURCE_DIMENSION_TEXTURE3D : D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	desc.Width = width;
+	desc.Height = height;
+	desc.DepthOrArraySize = (UINT16)depthOrArraySize;
+	desc.MipLevels = (UINT16)mipLevels;
+	desc.Format = (DXGI_FORMAT)format;
+	desc.SampleDesc.Count = sampleCount;
+	desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	desc.Flags = (D3D12_RESOURCE_FLAGS)flags;
+	ID3D12Resource *created = NULL;
+	HRESULT hr = ID3D12Device_CreateCommittedResource(DEVICE(device), &properties, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, NULL,
+		&IID_ID3D12Resource, (void **)&created);
+	if (FAILED(hr)) return failCall("ID3D12Device::CreateCommittedResource for a texture", hr);
+	*resource = NATIVE(created);
+	return DX12_OK;
+}
+
+int32_t dx12CopyableFootprint(uint64_t device, int32_t format, uint32_t width, uint32_t height, uint32_t *rowPitch, uint32_t *rows, uint64_t *rowBytes, uint64_t *totalBytes) {
+	D3D12_RESOURCE_DESC desc = {0};
+	desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	desc.Width = width;
+	desc.Height = height;
+	desc.DepthOrArraySize = 1;
+	desc.MipLevels = 1;
+	desc.Format = (DXGI_FORMAT)format;
+	desc.SampleDesc.Count = 1;
+	desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
+	UINT rowCount = 0;
+	UINT64 rowSize = 0;
+	UINT64 total = UINT64_MAX;
+	ID3D12Device_GetCopyableFootprints(DEVICE(device), &desc, 0, 1, 0, &footprint, &rowCount, &rowSize, &total);
+	if (total == UINT64_MAX) return fail(DX12_ERROR_CALL, "ID3D12Device::GetCopyableFootprints refused a %ux%u footprint of DXGI format %d", width, height, format);
+	*rowPitch = footprint.Footprint.RowPitch;
+	*rows = rowCount;
+	*rowBytes = rowSize;
+	*totalBytes = total;
+	return DX12_OK;
+}
+
+int32_t dx12FormatSupport(uint64_t device, int32_t format, uint32_t *support1, uint32_t *support2) {
+	*support1 = 0;
+	*support2 = 0;
+	D3D12_FEATURE_DATA_FORMAT_SUPPORT data = {0};
+	data.Format = (DXGI_FORMAT)format;
+	HRESULT hr = ID3D12Device_CheckFeatureSupport(DEVICE(device), D3D12_FEATURE_FORMAT_SUPPORT, &data, sizeof data);
+	if (hr == E_FAIL || hr == E_INVALIDARG) return DX12_OK;
+	if (FAILED(hr)) return failCall("ID3D12Device::CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT)", hr);
+	*support1 = (uint32_t)data.Support1;
+	*support2 = (uint32_t)data.Support2;
+	return DX12_OK;
+}
+
 int32_t dx12CopyBufferRegion(uint64_t list, uint64_t target, uint64_t targetOffset, uint64_t source, uint64_t sourceOffset, uint64_t bytes) {
 	ID3D12GraphicsCommandList_CopyBufferRegion(LIST(list), RESOURCE(target), targetOffset, RESOURCE(source), sourceOffset, bytes);
+	return DX12_OK;
+}
+
+static D3D12_TEXTURE_COPY_LOCATION subresourceLocation(uint64_t texture, uint32_t subresource) {
+	D3D12_TEXTURE_COPY_LOCATION location = {0};
+	location.pResource = RESOURCE(texture);
+	location.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+	location.SubresourceIndex = subresource;
+	return location;
+}
+
+int32_t dx12CopyBufferTexture(uint64_t list, int32_t toTexture, uint64_t texture, uint32_t subresource, uint32_t x, uint32_t y, uint32_t z, uint64_t buffer, uint64_t offset, int32_t format, uint32_t footprintWidth, uint32_t footprintHeight, uint32_t rowPitch, uint32_t bufferX, uint32_t bufferY, uint32_t width, uint32_t height) {
+	D3D12_TEXTURE_COPY_LOCATION textureLocation = subresourceLocation(texture, subresource);
+	D3D12_TEXTURE_COPY_LOCATION bufferLocation = {0};
+	bufferLocation.pResource = RESOURCE(buffer);
+	bufferLocation.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+	bufferLocation.PlacedFootprint.Offset = offset;
+	bufferLocation.PlacedFootprint.Footprint.Format = (DXGI_FORMAT)format;
+	bufferLocation.PlacedFootprint.Footprint.Width = footprintWidth;
+	bufferLocation.PlacedFootprint.Footprint.Height = footprintHeight;
+	bufferLocation.PlacedFootprint.Footprint.Depth = 1;
+	bufferLocation.PlacedFootprint.Footprint.RowPitch = rowPitch;
+	if (toTexture) {
+		D3D12_BOX box = { bufferX, bufferY, 0, bufferX + width, bufferY + height, 1 };
+		ID3D12GraphicsCommandList_CopyTextureRegion(LIST(list), &textureLocation, x, y, z, &bufferLocation, &box);
+	} else {
+		D3D12_BOX box = { x, y, z, x + width, y + height, z + 1 };
+		ID3D12GraphicsCommandList_CopyTextureRegion(LIST(list), &bufferLocation, bufferX, bufferY, 0, &textureLocation, &box);
+	}
+	return DX12_OK;
+}
+
+int32_t dx12CopyTexture(uint64_t list, uint64_t target, uint32_t targetSubresource, uint32_t targetX, uint32_t targetY, uint32_t targetZ, uint64_t source, uint32_t sourceSubresource, uint32_t sourceX, uint32_t sourceY, uint32_t sourceZ, uint32_t width, uint32_t height, uint32_t depth) {
+	D3D12_TEXTURE_COPY_LOCATION targetLocation = subresourceLocation(target, targetSubresource);
+	D3D12_TEXTURE_COPY_LOCATION sourceLocation = subresourceLocation(source, sourceSubresource);
+	D3D12_BOX box = { sourceX, sourceY, sourceZ, sourceX + width, sourceY + height, sourceZ + depth };
+	ID3D12GraphicsCommandList_CopyTextureRegion(LIST(list), &targetLocation, targetX, targetY, targetZ, &sourceLocation, &box);
 	return DX12_OK;
 }
 
