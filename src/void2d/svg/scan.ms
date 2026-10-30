@@ -1,6 +1,6 @@
 import { Str, eq, startsWith } from "./text";
 
-export const SVG_NOT_SVG: int32 = -1;
+const SVG_NOT_SVG: int32 = -1;
 export const SVG_REFUSED: int32 = -2;
 export const SVG_NO_SIZE: int32 = -3;
 export const SVG_NO_MEMORY: int32 = -4;
