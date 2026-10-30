@@ -129,7 +129,7 @@ export class KbFont {
 	error: int32 = 0;
 }
 
-export class KbLoadFontState {
+class KbLoadFontState {
 	tableOffsets: int64[] = [];
 	tableLengths: int64[] = [];
 	lookupCount: int64 = 0;
@@ -141,7 +141,7 @@ export class KbLoadFontState {
 	totalSize: int64 = 0;
 }
 
-export function kbNewLoadFontState(): KbLoadFontState {
+function kbNewLoadFontState(): KbLoadFontState {
 	const state = new KbLoadFontState();
 	state.tableOffsets = new Array<int64>(KB_BLOB_TABLE_ID_COUNT);
 	state.tableLengths = new Array<int64>(KB_BLOB_TABLE_ID_COUNT);
@@ -392,7 +392,7 @@ function loadFontUnchecked(
 	return result;
 }
 
-export function kbLoadFont(
+function kbLoadFont(
 	font: KbFont,
 	state: KbLoadFontState,
 	data: Readonly<Span<uint8>>,
@@ -1333,7 +1333,7 @@ function placeBlobUnchecked(
 	return result;
 }
 
-export function kbPlaceBlob(
+function kbPlaceBlob(
 	font: KbFont,
 	state: KbLoadFontState,
 	data: Readonly<Span<uint8>>,
@@ -1372,11 +1372,6 @@ export function kbFontFromMemory(data: Readonly<Span<uint8>>, fontIndex: int32):
 
 export function kbFontIsValid(font: KbFont): boolean {
 	return font.error == 0;
-}
-
-export function kbFreeFont(font: KbFont): void {
-	font.blob = [];
-	font.hasBlob = false;
 }
 
 export function kbCodepointToGlyphId(font: KbFont, iCodepoint: int32): int32 {
