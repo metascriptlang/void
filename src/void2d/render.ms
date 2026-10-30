@@ -276,8 +276,8 @@ when (voidTextOutline) {
 		const text: LabelText = labelTexts[payload];
 		if (!(text.outlineWidth > 0.0) || !(text.outlineColor.a > 0.0)) { return 0.0; }
 		const world = s.worlds[i];
-		const det: float32 = Math.abs(world.a * world.d - world.b * world.c) as float32;
-		const linear: float32 = Math.sqrt(det) as float32;
+		const det: float32 = world.a * world.d - world.b * world.c;
+		const linear: float32 = sqrtf(det < 0.0 ? -det : det);
 		const devicePerLocal: float32 = linear * currentRenderScale();
 		if (!(devicePerLocal > 0.0)) { return text.outlineWidth; }
 		return text.outlineWidth + 1.0 / devicePerLocal;
@@ -1531,11 +1531,11 @@ function enterScopeOf(s: Scene2D, i: int32): void {
 }
 
 export function refreshScopes(this s: Scene2D): void {
-	const l: DrawContext2D = s.context;
-	for (let k: int32 = 0; k < l.scopeTotal; k++) {
-		const r = l.scopes[k];
-		const by: Vec2 = k == l.cameraScope ? s.viewShift : localShift(s, r.row, r.scale);
-		l.scopes[k] = { ...r, dx: by.x, dy: by.y };
+	const context: DrawContext2D = s.context;
+	for (let k: int32 = 0; k < context.scopeTotal; k++) {
+		const r = context.scopes[k];
+		const by: Vec2 = k == context.cameraScope ? s.viewShift : localShift(s, r.row, r.scale);
+		context.scopes[k] = { ...r, dx: by.x, dy: by.y };
 	}
 }
 
@@ -2079,9 +2079,9 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 		rgba(f.color.r, f.color.g, f.color.b, 0.0), TRANSPARENT);
 	const ox: float32 = f.kind === FilterKind.DropShadow ? f.offsetX : 0.0;
 	const oy: float32 = f.kind === FilterKind.DropShadow ? f.offsetY : 0.0;
-	const fblend: BlendMode = f.kind === FilterKind.Glow ? BlendMode.Add : BlendMode.Alpha;
+	const silhouetteBlend: BlendMode = f.kind === FilterKind.Glow ? BlendMode.Add : BlendMode.Alpha;
 	imageQuad(rtTile, vec2(xMin + ox, yMin + oy), vec2(qx1 + ox, yMin + oy),
-		vec2(qx1 + ox, qy1 + oy), vec2(xMin + ox, qy1 + oy), rgba(1.0, 1.0, 1.0, na), fblend);
+		vec2(qx1 + ox, qy1 + oy), vec2(xMin + ox, qy1 + oy), rgba(1.0, 1.0, 1.0, na), silhouetteBlend);
 	setEffect(NO_COLOR_MATRIX, TRANSPARENT, TRANSPARENT);
 	const sharpTile: Tile = premultipliedTargetTile(sharp, rtW as float32, rtH as float32);
 	imageQuad(sharpTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
@@ -2196,8 +2196,8 @@ function filterStage(
 }
 
 function scopeShift(s: Scene2D, i: int32, world: Transform2D): Vec2 {
-	const sc: Scroll2D = s.scrolls[s.payloads[i]];
-	return vec2(-sc.x * world.a, -sc.y * world.d);
+	const scroll: Scroll2D = s.scrolls[s.payloads[i]];
+	return vec2(-scroll.x * world.a, -scroll.y * world.d);
 }
 
 // The world a query sees: composed from the live locals as syncOrder composes them, so a bounds
@@ -2387,8 +2387,8 @@ export function textHeight(this n: NodeRef): float32 {
 function layoutLike(
 	payload: int32, text: string, style: TextStyle,
 ): Result<TextLayout, TextError> {
-	const noRuns: Vec<TextRun> = new Array(0);
-	const noBreaks: Vec<int32> = new Array(0);
+	const noRuns: Vec<TextRun> = [];
+	const noBreaks: Vec<int32> = [];
 	const options: LineOptions = payload == NO_LABEL_TEXT ? PLAIN_LINES : labelLines(payload);
 	const direction: TextDirection =
 		payload == NO_LABEL_TEXT ? TextDirection.Auto : labelTexts[payload].direction;
