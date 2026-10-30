@@ -553,6 +553,46 @@ function markMatrixClassDef(
 	}
 }
 
+function markMatrixGlyphIds(
+	m: Span<uint8>,
+	matrix: int64,
+	row: int64,
+	glyphCount: int64,
+	glyphIds: int64,
+	count: int64,
+): void {
+	for (let glyphIndex: int64 = 0; glyphIndex < count; glyphIndex++) {
+		const glyphId = u16At(m, glyphIds + glyphIndex * 2);
+		setMatrixBit(m, matrix, row, glyphId, glyphCount);
+	}
+}
+
+function markMatrixCoverages(
+	m: Span<uint8>,
+	matrix: int64,
+	row: int64,
+	glyphCount: int64,
+	base: int64,
+	coverageOffsets: int64,
+	count: int64,
+): void {
+	for (let coverageIndex: int64 = 0; coverageIndex < count; coverageIndex++) {
+		const coverage = base + u16At(m, coverageOffsets + coverageIndex * 2);
+		markMatrixCoverage(m, matrix, row, glyphCount, coverage);
+	}
+}
+
+function includeClasses(
+	classesIncluded: int32[],
+	m: Span<uint8>,
+	classIds: int64,
+	count: int64,
+): void {
+	for (let classIndex: int64 = 0; classIndex < count; classIndex++) {
+		includeClass(classesIncluded, u16At(m, classIds + classIndex * 2));
+	}
+}
+
 struct KbTableHeader {
 	at: int64;
 	end: int64;
@@ -1052,54 +1092,67 @@ function bakeSequenceContext(
 	glyphCount: int64,
 ): int64 {
 	let coverage: int64 = 0;
-	const format = m.kbU16(base);
-	if (format == 1) {
-		for (let setIndex: int64 = 0; setIndex < u16At(m, base + 4); setIndex++) {
-			const set = kbGetSequenceRuleSet(m, base, setIndex);
+	match (m.kbU16(base)) {
+		1 => {
+			for (let setIndex: int64 = 0; setIndex < u16At(m, base + 4); setIndex++) {
+				const set = kbGetSequenceRuleSet(m, base, setIndex);
 
-			if (set != 0) {
-				for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
-					const rule = kbGetSequenceRule(m, set, ruleIndex);
+				if (set != 0) {
+					for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
+						const rule = kbGetSequenceRule(m, set, ruleIndex);
 
-					const sequenceGlyphIds = rule + 4;
-					for (let inputIndex: int64 = 1; inputIndex < u16At(m, rule); inputIndex++) {
-						const glyphId = u16At(m, sequenceGlyphIds + (inputIndex - 1) * 2);
-						setMatrixBit(m, subtableMatrix, runningSubtableIndex, glyphId, glyphCount);
+						markMatrixGlyphIds(
+							m,
+							subtableMatrix,
+							runningSubtableIndex,
+							glyphCount,
+							rule + 4,
+							u16At(m, rule) - 1,
+						);
 					}
 				}
 			}
-		}
-	} else if (format == 2) {
-		const classDefBase = base + u16At(m, base + 4);
+		},
+		2 => {
+			const classDefBase = base + u16At(m, base + 4);
 
-		const classesIncluded: int32[] = new Array<int32>(KB_CLASSES_INCLUDED_WORDS);
+			const classesIncluded: int32[] = new Array<int32>(KB_CLASSES_INCLUDED_WORDS);
 
-		for (let setIndex: int64 = 0; setIndex < u16At(m, base + 6); setIndex++) {
-			const set = kbGetClassSequenceRuleSet(m, base, setIndex);
-			if (set != 0) {
-				for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
-					const rule = kbGetClassSequenceRule(m, set, ruleIndex);
-					const sequenceClasses = rule + 4;
-
-					for (let sequenceIndex: int64 = 1; sequenceIndex < u16At(m, rule); sequenceIndex++) {
-						includeClass(classesIncluded, u16At(m, sequenceClasses + (sequenceIndex - 1) * 2));
+			for (let setIndex: int64 = 0; setIndex < u16At(m, base + 6); setIndex++) {
+				const set = kbGetClassSequenceRuleSet(m, base, setIndex);
+				if (set != 0) {
+					for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
+						const rule = kbGetClassSequenceRule(m, set, ruleIndex);
+						includeClasses(classesIncluded, m, rule + 4, u16At(m, rule) - 1);
 					}
 				}
 			}
-		}
 
-		markMatrixClassDef(m, subtableMatrix, runningSubtableIndex, glyphCount, classDefBase,
-			classesIncluded);
-	} else if (format == 3) {
-		const coverageOffsets = base + 6;
+			markMatrixClassDef(
+				m,
+				subtableMatrix,
+				runningSubtableIndex,
+				glyphCount,
+				classDefBase,
+				classesIncluded,
+			);
+		},
+		3 => {
+			const coverageOffsets = base + 6;
 
-		for (let coverageIndex: int64 = 1; coverageIndex < u16At(m, base + 2); coverageIndex++) {
-			const substCoverage = base + u16At(m, coverageOffsets + coverageIndex * 2);
+			markMatrixCoverages(
+				m,
+				subtableMatrix,
+				runningSubtableIndex,
+				glyphCount,
+				base,
+				coverageOffsets + 2,
+				u16At(m, base + 2) - 1,
+			);
 
-			markMatrixCoverage(m, subtableMatrix, runningSubtableIndex, glyphCount, substCoverage);
-		}
-
-		coverage = base + u16At(m, coverageOffsets);
+			coverage = base + u16At(m, coverageOffsets);
+		},
+		_ => {},
 	}
 	return coverage;
 }
@@ -1112,104 +1165,152 @@ function bakeChainedSequenceContext(
 	glyphCount: int64,
 ): int64 {
 	let coverage: int64 = 0;
-	const format = m.kbU16(base);
-	if (format == 1) {
-		const ruleSetOffsets = base + 6;
+	match (m.kbU16(base)) {
+		1 => {
+			const ruleSetOffsets = base + 6;
 
-		for (let setIndex: int64 = 0; setIndex < u16At(m, base + 4); setIndex++) {
-			const set = base + u16At(m, ruleSetOffsets + setIndex * 2);
-			for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
-				const rule = kbGetChainedClassSequenceRule(m, set, ruleIndex);
-				const unpacked = kbUnpackChainedSequenceRule(m, rule, false);
-
-				for (let backtrackIndex: int64 = 0; backtrackIndex < (unpacked.backtrackCount as int64);
-					backtrackIndex++) {
-					const glyphId = u16At(m, unpacked.backtrack + backtrackIndex * 2);
-					setMatrixBit(m, subtableMatrix, runningSubtableIndex, glyphId, glyphCount);
-				}
-
-				for (let inputIndex: int64 = 1; inputIndex < (unpacked.inputCount as int64); inputIndex++) {
-					const glyphId = u16At(m, unpacked.input + (inputIndex - 1) * 2);
-					setMatrixBit(m, subtableMatrix, runningSubtableIndex, glyphId, glyphCount);
-				}
-
-				for (let lookaheadIndex: int64 = 0; lookaheadIndex < (unpacked.lookaheadCount as int64);
-					lookaheadIndex++) {
-					const glyphId = u16At(m, unpacked.lookahead + lookaheadIndex * 2);
-					setMatrixBit(m, subtableMatrix, runningSubtableIndex, glyphId, glyphCount);
-				}
-			}
-		}
-	} else if (format == 2) {
-		const backtrackClassDefOffset = u16At(m, base + 4);
-		const inputClassDefOffset = u16At(m, base + 6);
-		const lookaheadClassDefOffset = u16At(m, base + 8);
-		let backtrackClassDefinition: int64 = 0;
-		if (backtrackClassDefOffset != 0) {
-			backtrackClassDefinition = base + backtrackClassDefOffset;
-		}
-		let inputClassDefinition: int64 = 0;
-		if (inputClassDefOffset != 0) {
-			inputClassDefinition = base + inputClassDefOffset;
-		}
-		let lookaheadClassDefinition: int64 = 0;
-		if (lookaheadClassDefOffset != 0) {
-			lookaheadClassDefinition = base + lookaheadClassDefOffset;
-		}
-
-		const backtrackClassesIncluded: int32[] = new Array<int32>(KB_CLASSES_INCLUDED_WORDS);
-		const inputClassesIncluded: int32[] = new Array<int32>(KB_CLASSES_INCLUDED_WORDS);
-		const lookaheadClassesIncluded: int32[] = new Array<int32>(KB_CLASSES_INCLUDED_WORDS);
-
-		for (let setIndex: int64 = 0; setIndex < u16At(m, base + 10); setIndex++) {
-			const set = kbGetChainedClassSequenceRuleSet(m, base, setIndex);
-			if (set != 0) {
+			for (let setIndex: int64 = 0; setIndex < u16At(m, base + 4); setIndex++) {
+				const set = base + u16At(m, ruleSetOffsets + setIndex * 2);
 				for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
-					const rule = kbGetChainedSequenceRule(m, set, ruleIndex);
+					const rule = kbGetChainedClassSequenceRule(m, set, ruleIndex);
 					const unpacked = kbUnpackChainedSequenceRule(m, rule, false);
 
-					for (let backtrackIndex: int64 = 0; backtrackIndex < (unpacked.backtrackCount as int64);
-						backtrackIndex++) {
-						includeClass(backtrackClassesIncluded, u16At(m, unpacked.backtrack + backtrackIndex * 2));
-					}
+					markMatrixGlyphIds(
+						m,
+						subtableMatrix,
+						runningSubtableIndex,
+						glyphCount,
+						unpacked.backtrack,
+						unpacked.backtrackCount as int64,
+					);
+					markMatrixGlyphIds(
+						m,
+						subtableMatrix,
+						runningSubtableIndex,
+						glyphCount,
+						unpacked.input,
+						(unpacked.inputCount as int64) - 1,
+					);
+					markMatrixGlyphIds(
+						m,
+						subtableMatrix,
+						runningSubtableIndex,
+						glyphCount,
+						unpacked.lookahead,
+						unpacked.lookaheadCount as int64,
+					);
+				}
+			}
+		},
+		2 => {
+			const backtrackClassDefOffset = u16At(m, base + 4);
+			const inputClassDefOffset = u16At(m, base + 6);
+			const lookaheadClassDefOffset = u16At(m, base + 8);
+			let backtrackClassDefinition: int64 = 0;
+			if (backtrackClassDefOffset != 0) {
+				backtrackClassDefinition = base + backtrackClassDefOffset;
+			}
+			let inputClassDefinition: int64 = 0;
+			if (inputClassDefOffset != 0) {
+				inputClassDefinition = base + inputClassDefOffset;
+			}
+			let lookaheadClassDefinition: int64 = 0;
+			if (lookaheadClassDefOffset != 0) {
+				lookaheadClassDefinition = base + lookaheadClassDefOffset;
+			}
 
-					for (let inputIndex: int64 = 1; inputIndex < (unpacked.inputCount as int64); inputIndex++) {
-						includeClass(inputClassesIncluded, u16At(m, unpacked.input + (inputIndex - 1) * 2));
-					}
+			const backtrackClassesIncluded: int32[] = new Array<int32>(KB_CLASSES_INCLUDED_WORDS);
+			const inputClassesIncluded: int32[] = new Array<int32>(KB_CLASSES_INCLUDED_WORDS);
+			const lookaheadClassesIncluded: int32[] = new Array<int32>(KB_CLASSES_INCLUDED_WORDS);
 
-					for (let lookaheadIndex: int64 = 0; lookaheadIndex < (unpacked.lookaheadCount as int64);
-						lookaheadIndex++) {
-						includeClass(lookaheadClassesIncluded, u16At(m, unpacked.lookahead + lookaheadIndex * 2));
+			for (let setIndex: int64 = 0; setIndex < u16At(m, base + 10); setIndex++) {
+				const set = kbGetChainedClassSequenceRuleSet(m, base, setIndex);
+				if (set != 0) {
+					for (let ruleIndex: int64 = 0; ruleIndex < u16At(m, set); ruleIndex++) {
+						const rule = kbGetChainedSequenceRule(m, set, ruleIndex);
+						const unpacked = kbUnpackChainedSequenceRule(m, rule, false);
+
+						includeClasses(
+							backtrackClassesIncluded,
+							m,
+							unpacked.backtrack,
+							unpacked.backtrackCount as int64,
+						);
+						includeClasses(
+							inputClassesIncluded,
+							m,
+							unpacked.input,
+							(unpacked.inputCount as int64) - 1,
+						);
+						includeClasses(
+							lookaheadClassesIncluded,
+							m,
+							unpacked.lookahead,
+							unpacked.lookaheadCount as int64,
+						);
 					}
 				}
 			}
-		}
 
-		markMatrixClassDef(m, subtableMatrix, runningSubtableIndex, glyphCount, backtrackClassDefinition,
-			backtrackClassesIncluded);
-		markMatrixClassDef(m, subtableMatrix, runningSubtableIndex, glyphCount, inputClassDefinition,
-			inputClassesIncluded);
-		markMatrixClassDef(m, subtableMatrix, runningSubtableIndex, glyphCount, lookaheadClassDefinition,
-			lookaheadClassesIncluded);
-	} else if (format == 3) {
-		const unpacked = kbUnpackChainedSequenceContext3(m, base, false);
+			markMatrixClassDef(
+				m,
+				subtableMatrix,
+				runningSubtableIndex,
+				glyphCount,
+				backtrackClassDefinition,
+				backtrackClassesIncluded,
+			);
+			markMatrixClassDef(
+				m,
+				subtableMatrix,
+				runningSubtableIndex,
+				glyphCount,
+				inputClassDefinition,
+				inputClassesIncluded,
+			);
+			markMatrixClassDef(
+				m,
+				subtableMatrix,
+				runningSubtableIndex,
+				glyphCount,
+				lookaheadClassDefinition,
+				lookaheadClassesIncluded,
+			);
+		},
+		3 => {
+			const unpacked = kbUnpackChainedSequenceContext3(m, base, false);
 
-		coverage = base + u16At(m, unpacked.inputCoverageOffsets);
+			coverage = base + u16At(m, unpacked.inputCoverageOffsets);
 
-		for (let index: int64 = 0; index < (unpacked.backtrackCount as int64); index++) {
-			const subCoverage = base + u16At(m, unpacked.backtrackCoverageOffsets + index * 2);
-			markMatrixCoverage(m, subtableMatrix, runningSubtableIndex, glyphCount, subCoverage);
-		}
-
-		for (let index: int64 = 1; index < (unpacked.inputCount as int64); index++) {
-			const subCoverage = base + u16At(m, unpacked.inputCoverageOffsets + index * 2);
-			markMatrixCoverage(m, subtableMatrix, runningSubtableIndex, glyphCount, subCoverage);
-		}
-
-		for (let index: int64 = 0; index < (unpacked.lookaheadCount as int64); index++) {
-			const subCoverage = base + u16At(m, unpacked.lookaheadCoverageOffsets + index * 2);
-			markMatrixCoverage(m, subtableMatrix, runningSubtableIndex, glyphCount, subCoverage);
-		}
+			markMatrixCoverages(
+				m,
+				subtableMatrix,
+				runningSubtableIndex,
+				glyphCount,
+				base,
+				unpacked.backtrackCoverageOffsets,
+				unpacked.backtrackCount as int64,
+			);
+			markMatrixCoverages(
+				m,
+				subtableMatrix,
+				runningSubtableIndex,
+				glyphCount,
+				base,
+				unpacked.inputCoverageOffsets + 2,
+				(unpacked.inputCount as int64) - 1,
+			);
+			markMatrixCoverages(
+				m,
+				subtableMatrix,
+				runningSubtableIndex,
+				glyphCount,
+				base,
+				unpacked.lookaheadCoverageOffsets,
+				unpacked.lookaheadCount as int64,
+			);
+		},
+		_ => {},
 	}
 	return coverage;
 }
@@ -1271,41 +1372,61 @@ function bakeMatrices(m: Span<uint8>, state: KbLoadFontState, bumpAfterTables: i
 					if (!inGpos && lookupType == 4) {
 						for (let setIndex: int64 = 0; setIndex < u16At(m, base + 4); setIndex++) {
 							const set = kbGetLigatureSet(m, base, setIndex);
-							for (let ligatureIndex: int64 = 0; ligatureIndex < u16At(m, set); ligatureIndex++) {
+							for (
+								let ligatureIndex: int64 = 0;
+								ligatureIndex < u16At(m, set);
+								ligatureIndex++
+							) {
 								const ligature = kbGetLigature(m, set, ligatureIndex);
-								const ids = ligature + 4;
-
-								for (let idIndex: int64 = 1; idIndex < u16At(m, ligature + 2); idIndex++) {
-									const glyphId = u16At(m, ids + (idIndex - 1) * 2);
-									setMatrixBit(m, glyphLookupSubtableMatrix, runningSubtableIndex, glyphId,
-										glyphCount);
-								}
+								markMatrixGlyphIds(
+									m,
+									glyphLookupSubtableMatrix,
+									runningSubtableIndex,
+									glyphCount,
+									ligature + 4,
+									u16At(m, ligature + 2) - 1,
+								);
 							}
 						}
 					} else if ((!inGpos && lookupType == 5) || (inGpos && lookupType == 7)) {
-						const contextCoverage = bakeSequenceContext(m, base, glyphLookupSubtableMatrix,
-							runningSubtableIndex, glyphCount);
+						const contextCoverage = bakeSequenceContext(
+							m,
+							base,
+							glyphLookupSubtableMatrix,
+							runningSubtableIndex,
+							glyphCount,
+						);
 						if (contextCoverage != 0) { coverage = contextCoverage; }
 					} else if ((!inGpos && lookupType == 6) || (inGpos && lookupType == 8)) {
-						const contextCoverage = bakeChainedSequenceContext(m, base, glyphLookupSubtableMatrix,
-							runningSubtableIndex, glyphCount);
+						const contextCoverage = bakeChainedSequenceContext(
+							m,
+							base,
+							glyphLookupSubtableMatrix,
+							runningSubtableIndex,
+							glyphCount,
+						);
 						if (contextCoverage != 0) { coverage = contextCoverage; }
 					} else if (!inGpos && lookupType == 8) {
 						const unpacked = kbUnpackReverseChainSubstitution(m, base, false);
 
-						for (let backtrackIndex: int64 = 0; backtrackIndex < (unpacked.backtrackCount as int64);
-							backtrackIndex++) {
-							const subCoverage = base + u16At(m, unpacked.backtrackCoverageOffsets + backtrackIndex * 2);
-							markMatrixCoverage(m, glyphLookupSubtableMatrix, runningSubtableIndex, glyphCount,
-								subCoverage);
-						}
-
-						for (let lookaheadIndex: int64 = 0; lookaheadIndex < (unpacked.lookaheadCount as int64);
-							lookaheadIndex++) {
-							const subCoverage = base + u16At(m, unpacked.lookaheadCoverageOffsets + lookaheadIndex * 2);
-							markMatrixCoverage(m, glyphLookupSubtableMatrix, runningSubtableIndex, glyphCount,
-								subCoverage);
-						}
+						markMatrixCoverages(
+							m,
+							glyphLookupSubtableMatrix,
+							runningSubtableIndex,
+							glyphCount,
+							base,
+							unpacked.backtrackCoverageOffsets,
+							unpacked.backtrackCount as int64,
+						);
+						markMatrixCoverages(
+							m,
+							glyphLookupSubtableMatrix,
+							runningSubtableIndex,
+							glyphCount,
+							base,
+							unpacked.lookaheadCoverageOffsets,
+							unpacked.lookaheadCount as int64,
+						);
 					}
 
 					markMatrixCoverage(m, glyphLookupMatrix, runningLookupIndex, glyphCount, coverage);
