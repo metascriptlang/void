@@ -2,10 +2,10 @@ import { NodeRef, GraphicsMesh, DrawKind, Changed } from "./node";
 import { Vec2, Color, Tile, vec2, rgba } from "./types";
 import { GradientSpace } from "./gradient";
 import { EDGE_FLOATS, FRINGE_HALF_WIDTH } from "./draw";
+import { VERTEX_FLOATS } from "./displayList";
 import { sinf, cosf, sqrtf } from "../math/mat4";
 
 const TAU: float32 = 6.2831853;
-const MESH_VERTEX_FLOATS: int32 = 8;
 const HALF_TURN: float32 = TAU * 0.5;
 const QUARTER_TURN: float32 = TAU * 0.25;
 const THREE_QUARTER_TURN: float32 = TAU * 0.75;
@@ -88,7 +88,7 @@ function rawVtx(n: GraphicsMesh, x: float32, y: float32, u: float32, v: float32,
 }
 
 function vertexTotal(this n: GraphicsMesh): int32 {
-	return (n.mesh.length as int32) / MESH_VERTEX_FLOATS;
+	return (n.mesh.length as int32) / VERTEX_FLOATS;
 }
 
 function beginMeshVertex(n: GraphicsMesh): int32 {
