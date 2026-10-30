@@ -304,37 +304,41 @@ function ownBounds(s: Scene2D, i: int32, query: boolean): Bounds2D {
 	const payload: int32 = s.payloads[i];
 	const w: float32 = s.contents[i].w;
 	const h: float32 = s.contents[i].h;
-	if (kind === DrawKind.Label && !query && showsEditing(s, i)) {
-		const lineSpacing: float32 = labelTexts[payload].style.lineSpacing;
-		const leading: float32 = lineSpacing > 0.0 ? lineSpacing * 0.5 : 0.0;
-		return {
-			xMin: s.bounds[i].xMin - SELECTION_GLOOP, yMin: s.bounds[i].yMin - leading,
-			xMax: labelTexts[payload].rowsXMax + SELECTION_GLOOP, yMax: s.bounds[i].yMax + leading,
-		};
+	match (kind) {
+		DrawKind.Label => {
+			if (!query && showsEditing(s, i)) {
+				const lineSpacing: float32 = labelTexts[payload].style.lineSpacing;
+				const leading: float32 = lineSpacing > 0.0 ? lineSpacing * 0.5 : 0.0;
+				return {
+					xMin: s.bounds[i].xMin - SELECTION_GLOOP, yMin: s.bounds[i].yMin - leading,
+					xMax: labelTexts[payload].rowsXMax + SELECTION_GLOOP, yMax: s.bounds[i].yMax + leading,
+				};
+			}
+			if (payload != NO_LABEL_TEXT && (labelTexts[payload].runs.length as int32) > 0) {
+				return {
+					xMin: s.bounds[i].xMin, yMin: s.bounds[i].yMin,
+					xMax: labelTexts[payload].rowsXMax, yMax: s.bounds[i].yMax,
+				};
+			}
+			return s.bounds[i];
+		},
+		DrawKind.TileGroup => {
+			tileBounds(s, i);
+			return s.bounds[i];
+		},
+		DrawKind.Graphics => { return s.bounds[i]; },
+		DrawKind.Selection => {
+			return { xMin: -SELECTION_GLOOP, yMin: 0.0, xMax: w + SELECTION_GLOOP, yMax: h };
+		},
+		DrawKind.Sprite | DrawKind.Anim | DrawKind.ScaleGrid => {
+			const frame: int32 = animFrame(s, i);
+			if (frame != NO_FRAME) { return placedBounds(s.anims[payload].frames[frame], w, h); }
+			return placedBounds(s.contents[i].tile, w, h);
+		},
+		DrawKind.Group | DrawKind.Rect | DrawKind.Mask | DrawKind.Underline | DrawKind.Icon => {
+			return { xMin: 0.0, yMin: 0.0, xMax: w, yMax: h };
+		},
 	}
-	if (kind === DrawKind.Label && payload != NO_LABEL_TEXT &&
-		(labelTexts[payload].runs.length as int32) > 0) {
-		return {
-			xMin: s.bounds[i].xMin, yMin: s.bounds[i].yMin,
-			xMax: labelTexts[payload].rowsXMax, yMax: s.bounds[i].yMax,
-		};
-	}
-	if (kind === DrawKind.TileGroup) {
-		tileBounds(s, i);
-		return s.bounds[i];
-	}
-	if (kind === DrawKind.Graphics || kind === DrawKind.Label) {
-		return s.bounds[i];
-	}
-	if (kind === DrawKind.Selection) {
-		return { xMin: -SELECTION_GLOOP, yMin: 0.0, xMax: w + SELECTION_GLOOP, yMax: h };
-	}
-	if (kind === DrawKind.Sprite || kind === DrawKind.Anim || kind === DrawKind.ScaleGrid) {
-		const frame: int32 = animFrame(s, i);
-		if (frame != NO_FRAME) { return placedBounds(s.anims[payload].frames[frame], w, h); }
-		return placedBounds(s.contents[i].tile, w, h);
-	}
-	return { xMin: 0.0, yMin: 0.0, xMax: w, yMax: h };
 }
 
 function fringeBounds(lb: Bounds2D, world: Transform2D): Bounds2D {
@@ -589,7 +593,8 @@ function linePattern(kind: DecorationKind): float32 {
 		DecorationKind.WavyUnderline => LINE_WAVY,
 		DecorationKind.DottedUnderline => LINE_DOTTED,
 		DecorationKind.DashedUnderline => LINE_DASHED,
-		_ => LINE_SOLID,
+		DecorationKind.Background | DecorationKind.Underline | DecorationKind.Strikethrough |
+			DecorationKind.DoubleUnderline | DecorationKind.Overline => LINE_SOLID,
 	};
 }
 
@@ -1470,19 +1475,25 @@ function panOrder(s: Scene2D, vw: float32, vh: float32): void {
 		const i: int32 = s.order[p];
 		const reach: Bounds2D = s.culls[i];
 		if (reach.xMin > reach.xMax) { continue; }
-		const state: PaintState = paintStateOf(i);
-		if (state == PaintState.InTarget) {
-			if (filtered(s, i)
-				&& targetRect(reach, was, vw, vh, dpi * s.filters[i].resolutionScale(), false)
-					!= targetRect(reach, now, vw, vh, dpi * s.filters[i].resolutionScale(), false)) {
-				s.scanNeeded = true;
-			}
-		} else if (state == PaintState.InLanes) {
-			if (seenAt(reach, was, vw, vh) != seenAt(reach, now, vw, vh)) { s.scanNeeded = true; }
-		} else if (state == PaintState.Painted && s.queued[i] != s.patchSerial
-			&& seenAt(reach, was, vw, vh) != seenAt(reach, now, vw, vh)) {
-			s.queued[i] = s.patchSerial;
-			s.repaint.push(i);
+		match (paintStateOf(i)) {
+			PaintState.InTarget => {
+				if (filtered(s, i)
+					&& targetRect(reach, was, vw, vh, dpi * s.filters[i].resolutionScale(), false)
+						!= targetRect(reach, now, vw, vh, dpi * s.filters[i].resolutionScale(), false)) {
+					s.scanNeeded = true;
+				}
+			},
+			PaintState.InLanes => {
+				if (seenAt(reach, was, vw, vh) != seenAt(reach, now, vw, vh)) { s.scanNeeded = true; }
+			},
+			PaintState.Painted => {
+				if (s.queued[i] != s.patchSerial
+					&& seenAt(reach, was, vw, vh) != seenAt(reach, now, vw, vh)) {
+					s.queued[i] = s.patchSerial;
+					s.repaint.push(i);
+				}
+			},
+			PaintState.Unpainted => {},
 		}
 	}
 }
@@ -2125,7 +2136,7 @@ function maskTarget(
 	const rtH: int32 = plan.height;
 	const mt: RenderTarget = acquireTarget(rtW, rtH);
 	beginTarget(mt, (rtW as float32) / plan.scale, (rtH as float32) / plan.scale, plan.scale,
-		xMin, yMin, transparent);
+		xMin, yMin, TRANSPARENT);
 	drawContent(s, m, 1.0, 1.0, vw, vh);
 	endTarget();
 	return mt;
@@ -2140,7 +2151,7 @@ function filterStage(
 	if (f.kind === FilterKind.Blur && f.radius <= 0.0) { return src; }
 	if (f.kind === FilterKind.Mask) {
 		const masked: RenderTarget = acquireTarget(w, h);
-		beginTarget(masked, wf, hf, 1.0, 0.0, 0.0, transparent);
+		beginTarget(masked, wf, hf, 1.0, 0.0, 0.0, TRANSPARENT);
 		blitTarget(src, wf, hf);
 		// Any alpha above zero keeps the pixel unless smoothAlpha: an 8-bit coverage of 1/255 or
 		// more saturates the gain, which is Heaps' `float(k.a > 0)`.
@@ -2156,7 +2167,7 @@ function filterStage(
 		blurred = blurTargetPooled(src, w, h, f.radius * scale);
 	}
 	const out: RenderTarget = acquireTarget(w, h);
-	beginTarget(out, wf, hf, 1.0, 0.0, 0.0, transparent);
+	beginTarget(out, wf, hf, 1.0, 0.0, 0.0, TRANSPARENT);
 	if (f.kind === FilterKind.Blur) {
 		blitTarget(blurred, wf, hf);
 		endTarget();
