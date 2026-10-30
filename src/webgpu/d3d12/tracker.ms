@@ -6,12 +6,20 @@ export const STATE_UNORDERED_ACCESS: uint32 = 0x8;
 export const STATE_COPY_DEST: uint32 = 0x400;
 export const STATE_COPY_SOURCE: uint32 = 0x800;
 export const STATE_GENERIC_READ: uint32 = 0xac3;
+const STATE_ALL_SHADER_RESOURCE: uint32 = 0xc0;
+const TEXTURE_PROMOTABLE_READS: uint32 = STATE_COPY_SOURCE | STATE_ALL_SHADER_RESOURCE;
 const DX12_OK: int32 = 0;
+
+export enum Tracking {
+	Buffer,
+	Texture,
+}
 
 struct Tracked {
 	native: uint64;
 	state: uint32;
 	target: uint32;
+	tracking: Tracking;
 	decays: boolean;
 }
 
@@ -22,14 +30,14 @@ export struct StateTracker {
 	uav: boolean;
 }
 
-const UNTRACKED: Tracked = { native: 0, state: STATE_COMMON, target: STATE_COMMON, decays: false };
+const UNTRACKED: Tracked = { native: 0, state: STATE_COMMON, target: STATE_COMMON, tracking: Tracking.Buffer, decays: false };
 
 export function newTracker(): StateTracker {
 	return { resources: [], free: [], queued: [], uav: false };
 }
 
-export function track(ref t: StateTracker, native: uint64, state: uint32, decays: boolean): int32 {
-	const tracked: Tracked = { native: native, state: state, target: state, decays: decays };
+export function track(ref t: StateTracker, native: uint64, state: uint32, tracking: Tracking): int32 {
+	const tracked: Tracked = { native: native, state: state, target: state, tracking: tracking, decays: tracking == Tracking.Buffer };
 	if (t.free.length > 0) {
 		const index = t.free[t.free.length - 1];
 		t.free.pop();
@@ -64,13 +72,21 @@ export function transition(ref t: StateTracker, index: int32, to: uint32): void 
 		cancelTransition(t, index);
 		return;
 	}
-	if (tracked.decays && tracked.state == STATE_COMMON && tracked.target == STATE_COMMON) {
+	if (tracked.state == STATE_COMMON && tracked.target == STATE_COMMON && promotes(tracked.tracking, to)) {
 		t.resources[index].state = to;
 		t.resources[index].target = to;
+		t.resources[index].decays = tracked.tracking == Tracking.Buffer || to != STATE_COPY_DEST;
 		return;
 	}
 	if (tracked.state == tracked.target) { t.queued.push(index); }
 	t.resources[index].target = to;
+}
+
+function promotes(tracking: Tracking, to: uint32): boolean {
+	return match (tracking) {
+		Tracking.Buffer => true,
+		Tracking.Texture => to == STATE_COPY_DEST || (to & ~TEXTURE_PROMOTABLE_READS) == 0,
+	};
 }
 
 export function queueUavBarrier(ref t: StateTracker): void { t.uav = true; }
@@ -85,6 +101,7 @@ export function flushTransitions(ref t: StateTracker, list: uint64): int32 {
 			return code;
 		}
 		t.resources[index].state = tracked.target;
+		if (tracked.tracking == Tracking.Texture) { t.resources[index].decays = false; }
 	}
 	t.queued.length = 0;
 	const uav = t.uav;
@@ -97,6 +114,7 @@ export function decay(ref t: StateTracker): void {
 		if (t.resources[i].decays) {
 			t.resources[i].state = STATE_COMMON;
 			t.resources[i].target = STATE_COMMON;
+			t.resources[i].decays = t.resources[i].tracking == Tracking.Buffer;
 		}
 	}
 }
