@@ -116,12 +116,12 @@ function tri(n: GraphicsMesh, a: Vec2, b: Vec2, c: Vec2, color: Color): void {
 	vtx(n, c.x, c.y, 0.0, 0.0, color);
 }
 
-function mapU(map: UvMap, p: Vec2): float32 { return map.ux * p.x + map.uy * p.y + map.uc; }
-function mapV(map: UvMap, p: Vec2): float32 { return map.vx * p.x + map.vy * p.y + map.vc; }
+function mapU(this map: UvMap, p: Vec2): float32 { return map.ux * p.x + map.uy * p.y + map.uc; }
+function mapV(this map: UvMap, p: Vec2): float32 { return map.vx * p.x + map.vy * p.y + map.vc; }
 
 function plainVtx(n: GraphicsMesh, counted: boolean, p: Vec2, map: UvMap, c: Color): void {
 	if (counted) { beginMeshVertex(n); }
-	rawVtx(n, p.x, p.y, mapU(map, p), mapV(map, p), c);
+	rawVtx(n, p.x, p.y, map.mapU(p), map.mapV(p), c);
 }
 
 function edgeVtx(
@@ -133,7 +133,7 @@ function edgeVtx(
 	shift: float32,
 ): void {
 	if (counted) { beginMeshVertex(n); }
-	pushMeshVertex(n, corner.p.x, corner.p.y, mapU(map, corner.p), mapV(map, corner.p), c);
+	pushMeshVertex(n, corner.p.x, corner.p.y, map.mapU(corner.p), map.mapV(corner.p), c);
 	n.edges.push(corner.before.x);
 	n.edges.push(corner.before.y);
 	n.edges.push(corner.after.x);
@@ -148,7 +148,7 @@ function edgeVtx(
 	n.fringed = true;
 }
 
-function transparent(c: Color): Color { return rgba(c.r, c.g, c.b, 0.0); }
+function transparent(this c: Color): Color { return rgba(c.r, c.g, c.b, 0.0); }
 
 function fringeQuad(
 	n: GraphicsMesh,
@@ -158,7 +158,7 @@ function fringeQuad(
 	map: UvMap,
 	color: Color,
 ): void {
-	const clear: Color = transparent(color);
+	const clear: Color = color.transparent();
 	edgeVtx(n, counted, a, map, color, -FRINGE_HALF_WIDTH);
 	edgeVtx(n, counted, a, map, clear, FRINGE_HALF_WIDTH);
 	edgeVtx(n, counted, b, map, color, -FRINGE_HALF_WIDTH);
@@ -167,13 +167,13 @@ function fringeQuad(
 	edgeVtx(n, counted, b, map, color, -FRINGE_HALF_WIDTH);
 }
 
-function halfLength(a: Vec2, b: Vec2): float32 {
+function halfLength(this a: Vec2, b: Vec2): float32 {
 	const dx: float32 = b.x - a.x;
 	const dy: float32 = b.y - a.y;
 	return sqrtf(dx * dx + dy * dy) * 0.5;
 }
 
-function isNormal(v: Vec2): boolean { return v.x != 0.0 || v.y != 0.0; }
+function isNormal(this v: Vec2): boolean { return v.x != 0.0 || v.y != 0.0; }
 
 function loopStart(loopEnds: Readonly<Span<int32>>, k: int32): int32 {
 	return k == 0 ? 0 : loopEnds[k - 1];
@@ -230,7 +230,7 @@ function contourFill(
 			let limitAfter: float32 = 0.0;
 			for (let step: int32 = 1; step <= size; step++) {
 				const edge: int32 = start + (i - start - step + size * 2) % size;
-				if (isNormal(edgeNormals[edge])) {
+				if (edgeNormals[edge].isNormal()) {
 					before = edgeNormals[edge];
 					limitBefore = edgeLimits[edge];
 					break;
@@ -238,7 +238,7 @@ function contourFill(
 			}
 			for (let step: int32 = 0; step < size; step++) {
 				const edge: int32 = start + (i - start + step) % size;
-				if (isNormal(edgeNormals[edge])) {
+				if (edgeNormals[edge].isNormal()) {
 					after = edgeNormals[edge];
 					limitAfter = edgeLimits[edge];
 					break;
@@ -254,7 +254,7 @@ function contourFill(
 		edgeVtx(n, counted, corners[k], map, color, -FRINGE_HALF_WIDTH);
 	}
 	for (let i: int32 = 0; i < total; i++) {
-		if (isNormal(edgeNormals[i])) {
+		if (edgeNormals[i].isNormal()) {
 			fringeQuad(n, counted, corners[i], corners[nextOf[i]], map, color);
 		}
 	}
@@ -859,7 +859,7 @@ export function strokeLine(
 	return g.strokePoly([a, b], width, color, false);
 }
 
-function negated(v: Vec2): Vec2 { return vec2(-v.x, -v.y); }
+function negated(this v: Vec2): Vec2 { return vec2(-v.x, -v.y); }
 
 export function strokePoly(
 	this g: NodeRef,
@@ -886,8 +886,8 @@ export function strokePoly(
 		let ny: float32 = 0.0;
 		let leftBefore: Vec2 = n1;
 		let leftAfter: Vec2 = n2;
-		let rightBefore: Vec2 = negated(n1);
-		let rightAfter: Vec2 = negated(n2);
+		let rightBefore: Vec2 = n1.negated();
+		let rightAfter: Vec2 = n2.negated();
 		let limitBefore: float32 = hw;
 		let limitAfter: float32 = hw;
 		if (hasPrev && hasNext) {
@@ -906,14 +906,14 @@ export function strokePoly(
 			const cap: Vec2 = vec2(-n2.y, n2.x);
 			leftBefore = cap;
 			rightBefore = cap;
-			limitBefore = halfLength(pts[i], pts[ni]);
+			limitBefore = pts[i].halfLength(pts[ni]);
 		} else {
 			nx = n1.x * hw;
 			ny = n1.y * hw;
 			const cap: Vec2 = vec2(n1.y, -n1.x);
 			leftAfter = cap;
 			rightAfter = cap;
-			limitAfter = halfLength(pts[pi], pts[i]);
+			limitAfter = pts[pi].halfLength(pts[i]);
 		}
 		left.push({
 			p: vec2(pts[i].x + nx, pts[i].y + ny), before: leftBefore, after: leftAfter,
