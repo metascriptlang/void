@@ -123,12 +123,11 @@ export function kbItemVariationStoreDelta(
 
 function resolveDevice(s: KbScratch, device: int64): float32 {
 	const m: Span<uint8> = s.font.blob[0..s.font.blob.length];
-	let result: float32 = 0;
-	if (s.hasVariationVector && m.kbU16(device + 4) == 0x8000 && s.gdefItemVariationStore != 0) {
-		result = kbItemVariationStoreDelta(m, s.gdefItemVariationStore, m.kbU16(device) as int64,
-			m.kbU16(device + 2) as int64, s.variationVectorNormalized);
+	if (!s.hasVariationVector || m.kbU16(device + 4) != 0x8000 || s.gdefItemVariationStore == 0) {
+		return 0;
 	}
-	return result;
+	return kbItemVariationStoreDelta(m, s.gdefItemVariationStore, m.kbU16(device) as int64,
+		m.kbU16(device + 2) as int64, s.variationVectorNormalized);
 }
 
 function adjustedByDevice(s: KbScratch, value: int32, device: int64): int32 {
@@ -157,18 +156,15 @@ export function kbResolveValueRecord(
 
 export function kbResolveAnchorXy(s: KbScratch, anchor: int64): KbAnchorXy {
 	const m: Span<uint8> = s.font.blob[0..s.font.blob.length];
-	let x = m.kbS16(anchor + 2);
-	let y = m.kbS16(anchor + 4);
+	const x = m.kbS16(anchor + 2);
+	const y = m.kbS16(anchor + 4);
+	if (m.kbU16(anchor) != 3) { return { x, y }; }
+	return {
+		x: x + anchorDeviceDelta(s, anchor, m.kbU16(anchor + 6)),
+		y: y + anchorDeviceDelta(s, anchor, m.kbU16(anchor + 8)),
+	};
+}
 
-	if (m.kbU16(anchor) == 3) {
-		const xDeviceOffset = m.kbU16(anchor + 6);
-		if (xDeviceOffset != 0) {
-			x += kbRound32(resolveDevice(s, anchor + xDeviceOffset));
-		}
-		const yDeviceOffset = m.kbU16(anchor + 8);
-		if (yDeviceOffset != 0) {
-			y += kbRound32(resolveDevice(s, anchor + yDeviceOffset));
-		}
-	}
-	return { x, y };
+function anchorDeviceDelta(s: KbScratch, anchor: int64, deviceOffset: int32): int32 {
+	return deviceOffset != 0 ? kbRound32(resolveDevice(s, anchor + deviceOffset)) : 0;
 }
