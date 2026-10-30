@@ -93,19 +93,19 @@ function matchIsolates(classes: Readonly<Span<BidiClass>>, ref matching: Vec<int
 
 function firstStrong(
 	classes: Readonly<Span<BidiClass>>, matching: Readonly<Span<int32>>, from: int32, to: int32,
-): BidiClass {
+): BidiClass | null {
 	let i: int32 = from;
 	while (i < to) {
 		const c: BidiClass = classes[i];
 		if (c == BidiClass.L) { return BidiClass.L; }
 		if (c == BidiClass.R || c == BidiClass.AL) { return BidiClass.R; }
 		if (isolateInitiator(c)) {
-			if (matching[i] == NO_MATCH) { return BidiClass.BN; }
+			if (matching[i] == NO_MATCH) { return null; }
 			i = matching[i];
 		}
 		i = i + 1;
 	}
-	return BidiClass.BN;
+	return null;
 }
 
 struct Status {
