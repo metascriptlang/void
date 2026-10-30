@@ -32,9 +32,12 @@ export const MAX_DEPTH: int32 = 125;
 export const MAX_BRACKET_STACK: int32 = 63;
 
 const NO_MATCH: int32 = -1;
-const NEUTRAL: int32 = 0;
-const OVERRIDE_L: int32 = 1;
-const OVERRIDE_R: int32 = 2;
+
+enum BidiOverride {
+	Neutral,
+	L,
+	R,
+}
 
 export function bidiClassOf(codepoint: int32): BidiClass {
 	if (codepoint < 0 || codepoint > 0x10FFFF) { return BidiClass.L; }
@@ -107,27 +110,29 @@ function firstStrong(
 
 struct Status {
 	level: Vec<int32>;
-	override: Vec<int32>;
+	override: Vec<BidiOverride>;
 	isolate: Vec<boolean>;
 }
 
-function pushStatus(ref s: Status, level: int32, override: int32, isolate: boolean): void {
+function push(
+	this ref s: Status, level: int32, override: BidiOverride, isolate: boolean,
+): void {
 	s.level.push(level);
 	s.override.push(override);
 	s.isolate.push(isolate);
 }
 
-function popStatus(ref s: Status): void {
+function pop(this ref s: Status): void {
 	s.level.pop();
 	s.override.pop();
 	s.isolate.pop();
 }
 
-function topLevel(s: Status): int32 {
+function topLevel(this s: Status): int32 {
 	return s.level[(s.level.length as int32) - 1];
 }
 
-function topOverride(s: Status): int32 {
+function topOverride(this s: Status): BidiOverride {
 	return s.override[(s.override.length as int32) - 1];
 }
 
@@ -136,10 +141,12 @@ function nextLevel(top: int32, odd: boolean): int32 {
 	return (top & 1) == 1 ? top + 1 : top + 2;
 }
 
-function overridden(c: BidiClass, override: int32): BidiClass {
-	if (override == OVERRIDE_L) { return BidiClass.L; }
-	if (override == OVERRIDE_R) { return BidiClass.R; }
-	return c;
+function overridden(c: BidiClass, override: BidiOverride): BidiClass {
+	return match (override) {
+		BidiOverride.Neutral => c,
+		BidiOverride.L => BidiClass.L,
+		BidiOverride.R => BidiClass.R,
+	};
 }
 
 function explicitLevels(
@@ -151,37 +158,37 @@ function explicitLevels(
 ): void {
 	const count: int32 = classes.length as int32;
 	let status: Status = { level: new Array(0), override: new Array(0), isolate: new Array(0) };
-	pushStatus(status, paragraph, NEUTRAL, false);
+	status.push(paragraph, BidiOverride.Neutral, false);
 	let overflowIsolates: int32 = 0;
 	let overflowEmbeddings: int32 = 0;
 	let validIsolates: int32 = 0;
 	for (let i = 0; i < count; i++) {
 		const c: BidiClass = classes[i];
 		if (c == BidiClass.RLE || c == BidiClass.LRE || c == BidiClass.RLO || c == BidiClass.LRO) {
-			levels.push(topLevel(status));
+			levels.push(status.topLevel());
 			types.push(c);
 			const odd: boolean = c == BidiClass.RLE || c == BidiClass.RLO;
-			const level: int32 = nextLevel(topLevel(status), odd);
+			const level: int32 = nextLevel(status.topLevel(), odd);
 			if (level <= MAX_DEPTH && overflowIsolates == 0 && overflowEmbeddings == 0) {
-				const override: int32 = c == BidiClass.RLO
-					? OVERRIDE_R
-					: (c == BidiClass.LRO ? OVERRIDE_L : NEUTRAL);
-				pushStatus(status, level, override, false);
+				const override: BidiOverride = c == BidiClass.RLO
+					? BidiOverride.R
+					: (c == BidiClass.LRO ? BidiOverride.L : BidiOverride.Neutral);
+				status.push(level, override, false);
 			} else if (overflowIsolates == 0) {
 				overflowEmbeddings = overflowEmbeddings + 1;
 			}
 		} else if (isolateInitiator(c)) {
-			levels.push(topLevel(status));
-			types.push(overridden(c, topOverride(status)));
+			levels.push(status.topLevel());
+			types.push(overridden(c, status.topOverride()));
 			let odd: boolean = c == BidiClass.RLI;
 			if (c == BidiClass.FSI) {
 				const end: int32 = matching[i] == NO_MATCH ? count : matching[i];
 				odd = firstStrong(classes, matching, i + 1, end) == BidiClass.R;
 			}
-			const level: int32 = nextLevel(topLevel(status), odd);
+			const level: int32 = nextLevel(status.topLevel(), odd);
 			if (level <= MAX_DEPTH && overflowIsolates == 0 && overflowEmbeddings == 0) {
 				validIsolates = validIsolates + 1;
-				pushStatus(status, level, NEUTRAL, true);
+				status.push(level, BidiOverride.Neutral, true);
 			} else {
 				overflowIsolates = overflowIsolates + 1;
 			}
@@ -190,35 +197,35 @@ function explicitLevels(
 				overflowIsolates = overflowIsolates - 1;
 			} else if (validIsolates > 0) {
 				overflowEmbeddings = 0;
-				while (!status.isolate[(status.isolate.length as int32) - 1]) { popStatus(status); }
-				popStatus(status);
+				while (!status.isolate[(status.isolate.length as int32) - 1]) { status.pop(); }
+				status.pop();
 				validIsolates = validIsolates - 1;
 			}
-			levels.push(topLevel(status));
-			types.push(overridden(c, topOverride(status)));
+			levels.push(status.topLevel());
+			types.push(overridden(c, status.topOverride()));
 		} else if (c == BidiClass.PDF) {
-			levels.push(topLevel(status));
+			levels.push(status.topLevel());
 			types.push(c);
 			if (overflowIsolates == 0 && overflowEmbeddings > 0) {
 				overflowEmbeddings = overflowEmbeddings - 1;
 			} else if (overflowIsolates == 0 &&
 				!status.isolate[(status.isolate.length as int32) - 1] &&
 				(status.level.length as int32) >= 2) {
-				popStatus(status);
+				status.pop();
 			}
 		} else if (c == BidiClass.B) {
 			levels.push(paragraph);
 			types.push(c);
-			while ((status.level.length as int32) > 1) { popStatus(status); }
+			while ((status.level.length as int32) > 1) { status.pop(); }
 			overflowIsolates = 0;
 			overflowEmbeddings = 0;
 			validIsolates = 0;
 		} else if (c == BidiClass.BN) {
-			levels.push(topLevel(status));
+			levels.push(status.topLevel());
 			types.push(c);
 		} else {
-			levels.push(topLevel(status));
-			types.push(overridden(c, topOverride(status)));
+			levels.push(status.topLevel());
+			types.push(overridden(c, status.topOverride()));
 		}
 	}
 }
