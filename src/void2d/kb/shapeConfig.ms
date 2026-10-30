@@ -156,7 +156,7 @@ struct KbBakedFeature {
 	glyphFilter: uint32;
 }
 
-export class KbMurmur {
+class KbMurmur {
 	state: int64 = 0;
 	bytesHashed: int64 = 0;
 }
@@ -210,7 +210,7 @@ function murmurBegin(murmur: KbMurmur, seed: int64): void {
 	murmur.bytesHashed = 0;
 }
 
-export function kbMurmurAbsorb(murmur: KbMurmur, value: int64): void {
+function kbMurmurAbsorb(murmur: KbMurmur, value: int64): void {
 	const k = mul32(rotl32(mul32(value, 0xCC9E2D51), 15), 0x1B873593);
 	murmur.state = (mul32(rotl32(murmur.state ^ k, 13), 5) + 0xE6546B64) & 0xFFFFFFFF;
 	murmur.bytesHashed = (murmur.bytesHashed + 4) & 0xFFFFFFFF;
@@ -224,7 +224,7 @@ function murmurFinalize(murmur: KbMurmur): uint32 {
 	return result as uint32;
 }
 
-export function kbSkipFlags(featureId: uint32, shaper: uint32): uint32 {
+function kbSkipFlags(featureId: uint32, shaper: uint32): uint32 {
 	match (featureId) {
 		KB_FEATURE_ID_nukt | KB_FEATURE_ID_akhn | KB_FEATURE_ID_rphf | KB_FEATURE_ID_rkrf |
 		KB_FEATURE_ID_pref | KB_FEATURE_ID_blwf | KB_FEATURE_ID_abvf | KB_FEATURE_ID_half |
@@ -415,7 +415,7 @@ function substitutedFeature(
 	return result;
 }
 
-export function kbDummyScratch(font: KbFont, storage: KbGlyphStorage): KbScratch {
+function kbDummyScratch(font: KbFont, storage: KbGlyphStorage): KbScratch {
 	const result = new KbScratch(font, storage);
 	for (let i = 0; i < KB_LOOKUP_STACK_SIZE; i++) {
 		result.frames.push({
@@ -570,7 +570,7 @@ export function kbWouldSubstitute(
 	return result;
 }
 
-export function kbIdSequentialLookupMatrixWord(
+function kbIdSequentialLookupMatrixWord(
 	sequentialLookupIndex: int64,
 	glyphIndex: int64,
 	sequentialLookupCount: int64,
