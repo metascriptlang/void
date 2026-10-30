@@ -1991,13 +1991,8 @@ function scaleToViewbox(p: Parser): void {
 	if (p.viewHeight > 0) { sy = p.imageHeight / p.viewHeight; }
 	const us: float32 = 1.0 / convertToPixels(p, 1.0, UNITS_PX, 0.0, 1.0);
 
-	if (p.alignType == ALIGN_MEET) {
-		sx = minf(sx, sy);
-		sy = sx;
-		tx = tx + viewAlign(p.viewWidth * sx, p.imageWidth, p.alignX) / sx;
-		ty = ty + viewAlign(p.viewHeight * sy, p.imageHeight, p.alignY) / sy;
-	} else if (p.alignType == ALIGN_SLICE) {
-		sx = maxf(sx, sy);
+	if (p.alignType == ALIGN_MEET || p.alignType == ALIGN_SLICE) {
+		sx = p.alignType == ALIGN_MEET ? minf(sx, sy) : maxf(sx, sy);
 		sy = sx;
 		tx = tx + viewAlign(p.viewWidth * sx, p.imageWidth, p.alignX) / sx;
 		ty = ty + viewAlign(p.viewHeight * sy, p.imageHeight, p.alignY) / sy;
