@@ -472,6 +472,14 @@ when (voidCff) {
 	}
 }
 
+test "the largest codepoint is keyed and resolved" {
+	const f = added(LATIN);
+	const probes = fallbackProbes();
+	assert faceSlotFor(f, 0x10FFFF, Presentation.Default) < 0;
+	assert faceSlotFor(f, 0x10FFFF, Presentation.Default) < 0;
+	assert fallbackProbes() == probes + 1;
+}
+
 test "a selector or joiner takes the face before it and loads no face of its own" {
 	const f = added(LATIN);
 	addFallbackFont(f, TEXT_SYMBOL);

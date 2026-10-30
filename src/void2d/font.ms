@@ -93,6 +93,7 @@ const PRIMARY_SLOT: int32 = -1;
 const NO_DISCOVERY: int32 = -1;
 const FONT_SHIFT: uint64 = 40;
 const MODE_SHIFT: uint64 = 32;
+const MAX_CODEPOINT: int32 = 0x10FFFF;
 
 struct RegisteredFace {
 	path: string;
@@ -544,13 +545,25 @@ export function faceDiscoveryAsks(): int32 {
 	return discoveryAsks;
 }
 
+function requireCodepoint(codepoint: int32): void {
+	if (codepoint < 0 || codepoint > MAX_CODEPOINT) {
+		console.log(`void2d font: codepoint ${codepoint} is outside 0..${MAX_CODEPOINT}`);
+		unreachable;
+	}
+}
+
 function discoveredFace(font: FontId, codepoint: int32, want: Presentation): int32 {
+	requireCodepoint(codepoint);
 	const resolver = faceResolver;
 	if (resolver === null) { return NO_DISCOVERY; }
 	const index: int32 = fontIndex(font);
 	const description = fonts[index].description;
 	const weight: int32 = description !== null ? description.weight : DEFAULT_WEIGHT;
 	const style: FontStyle = description !== null ? description.style : FontStyle.Normal;
+	if (weight < 0) {
+		console.log(`void2d font: weight ${weight} cannot be negative`);
+		unreachable;
+	}
 	const key: uint64 = ((weight as uint64) << 32) | (((style as int32) as uint64) << 28) |
 		(((want as int32) as uint64) << 24) | (codepoint as uint64);
 	const hit = discovered.get(key);
@@ -783,6 +796,7 @@ function primaryAnswers(
 }
 
 export function faceSlotFor(font: FontId, codepoint: int32, mode: Presentation): int32 {
+	requireCodepoint(codepoint);
 	const key: uint64 = (((font as int32) as uint64) << FONT_SHIFT) |
 		(((mode as int32) as uint64) << MODE_SHIFT) | (codepoint as uint64);
 	const hit = resolved.get(key);
