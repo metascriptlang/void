@@ -300,11 +300,13 @@ function cubicBezTo(
 	}
 }
 
-function actualLength(p: Parser): float32 {
-	const w = p.viewWidth;
-	const h = p.viewHeight;
-	const sum: float32 = w * w + h * h;
+function diagonalLength(width: float32, height: float32): float32 {
+	const sum: float32 = width * width + height * height;
 	return sqrtf(sum) / sqrtf(2.0);
+}
+
+function actualLength(p: Parser): float32 {
+	return diagonalLength(p.viewWidth, p.viewHeight);
 }
 
 function convertToPixels(
@@ -385,8 +387,7 @@ function createGradient(
 		sw = p.viewWidth;
 		sh = p.viewHeight;
 	}
-	const sumSq: float32 = sw * sw + sh * sh;
-	const sl: float32 = sqrtf(sumSq) / sqrtf(2.0);
+	const sl = diagonalLength(sw, sh);
 
 	const grad = new Gradient();
 	const c = data.coords;
