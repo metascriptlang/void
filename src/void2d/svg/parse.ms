@@ -433,7 +433,18 @@ function getAverageScale(t: float32[]): float32 {
 	return average;
 }
 
-// nsvg__getLocalBounds: false when the shape has no curve, as the untouched bounds are then unset.
+function copyBounds(target: float32[], source: float32[]): void {
+	for (let i: int32 = 0; i < 4; i++) { target[i] = source[i]; }
+}
+
+function growBounds(bounds: float32[], box: float32[]): void {
+	bounds[0] = minf(bounds[0], box[0]);
+	bounds[1] = minf(bounds[1], box[1]);
+	bounds[2] = maxf(bounds[2], box[2]);
+	bounds[3] = maxf(bounds[3], box[3]);
+}
+
+// nsvg__getLocalBounds: a shape with no curve leaves `bounds` as the caller set it.
 function getLocalBounds(bounds: float32[], shape: Shape, xform: float32[]): void {
 	const curve: float32[] = [0, 0, 0, 0, 0, 0, 0, 0];
 	const box: float32[] = [0, 0, 0, 0];
@@ -457,16 +468,10 @@ function getLocalBounds(bounds: float32[], shape: Shape, xform: float32[]): void
 			curve[7] = xformPointY(e, f, xform);
 			curveBounds(box, curve, 0);
 			if (first) {
-				bounds[0] = box[0];
-				bounds[1] = box[1];
-				bounds[2] = box[2];
-				bounds[3] = box[3];
+				copyBounds(bounds, box);
 				first = false;
 			} else {
-				bounds[0] = minf(bounds[0], box[0]);
-				bounds[1] = minf(bounds[1], box[1]);
-				bounds[2] = maxf(bounds[2], box[2]);
-				bounds[3] = maxf(bounds[3], box[3]);
+				growBounds(bounds, box);
 			}
 			curve[0] = curve[6];
 			curve[1] = curve[7];
@@ -498,17 +503,9 @@ function addShape(p: Parser): void {
 	for (let i = (p.plist.length as int32) - 1; i >= 0; i--) { shape.paths.push(p.plist[i]); }
 	p.plist = [];
 
-	const first = shape.paths[0];
-	shape.bounds[0] = first.bounds[0];
-	shape.bounds[1] = first.bounds[1];
-	shape.bounds[2] = first.bounds[2];
-	shape.bounds[3] = first.bounds[3];
+	copyBounds(shape.bounds, shape.paths[0].bounds);
 	for (let i: int32 = 1; i < (shape.paths.length as int32); i++) {
-		const path = shape.paths[i];
-		shape.bounds[0] = minf(shape.bounds[0], path.bounds[0]);
-		shape.bounds[1] = minf(shape.bounds[1], path.bounds[1]);
-		shape.bounds[2] = maxf(shape.bounds[2], path.bounds[2]);
-		shape.bounds[3] = maxf(shape.bounds[3], path.bounds[3]);
+		growBounds(shape.bounds, shape.paths[i].bounds);
 	}
 
 	if (attr.hasFill == 0) {
@@ -550,15 +547,9 @@ function addPath(p: Parser, closed: boolean): void {
 	for (let i: int32 = 0; i < path.npts - 1; i += 3) {
 		curveBounds(box, path.pts, i * 2);
 		if (i == 0) {
-			path.bounds[0] = box[0];
-			path.bounds[1] = box[1];
-			path.bounds[2] = box[2];
-			path.bounds[3] = box[3];
+			copyBounds(path.bounds, box);
 		} else {
-			path.bounds[0] = minf(path.bounds[0], box[0]);
-			path.bounds[1] = minf(path.bounds[1], box[1]);
-			path.bounds[2] = maxf(path.bounds[2], box[2]);
-			path.bounds[3] = maxf(path.bounds[3], box[3]);
+			growBounds(path.bounds, box);
 		}
 	}
 	p.plist.push(path);
@@ -1929,17 +1920,9 @@ function imageBounds(p: Parser, bounds: float32[]): void {
 		bounds[3] = 0.0;
 		return;
 	}
-	const first = p.shapes[0];
-	bounds[0] = first.bounds[0];
-	bounds[1] = first.bounds[1];
-	bounds[2] = first.bounds[2];
-	bounds[3] = first.bounds[3];
+	copyBounds(bounds, p.shapes[0].bounds);
 	for (let i: int32 = 1; i < (p.shapes.length as int32); i++) {
-		const shape = p.shapes[i];
-		bounds[0] = minf(bounds[0], shape.bounds[0]);
-		bounds[1] = minf(bounds[1], shape.bounds[1]);
-		bounds[2] = maxf(bounds[2], shape.bounds[2]);
-		bounds[3] = maxf(bounds[3], shape.bounds[3]);
+		growBounds(bounds, p.shapes[i].bounds);
 	}
 }
 
