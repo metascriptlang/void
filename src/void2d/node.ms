@@ -330,7 +330,7 @@ export function frameDelayMs(this a: AnimFrames, index: int32): float32 {
 	return 1000.0 / a.fps;
 }
 
-function cycleMs(a: AnimFrames): float32 {
+function cycleMs(this a: AnimFrames): float32 {
 	let total: float32 = 0.0;
 	for (let i: int32 = 0; i < (a.frames.length as int32); i++) {
 		total = total + a.frameDelayMs(i);
@@ -347,7 +347,7 @@ export function advanceAnim(this s: Scene2D, payload: int32, dt: float32): void 
 	if (s.anims[payload].paused || len == 0) { return; }
 	const step: float32 = dt * s.anims[payload].speed;
 	s.anims[payload].clock = s.anims[payload].clock + step;
-	const total: float32 = cycleMs(s.anims[payload]);
+	const total: float32 = s.anims[payload].cycleMs();
 	if (total <= 0.0) { return; }
 	const looping: boolean = s.anims[payload].looping;
 	let wide: float64 = (s.anims[payload].carryMs as float64) + (step as float64) * 1000.0;
@@ -403,7 +403,7 @@ function noLayout(): Layout2D {
 	return { style: null, lastStyle: null, yg: null };
 }
 
-function localMatrix(l: Local2D): Transform2D {
+function localMatrix(this l: Local2D): Transform2D {
 	return trs2d(l.x, l.y, l.rotation, l.scaleX, l.scaleY) *
 		trs2d(-l.pivotX, -l.pivotY, 0.0, 1.0, 1.0);
 }
@@ -553,7 +553,7 @@ export function clearChanges(this s: Scene2D): void {
 	s.structureChanged = false;
 }
 
-function requireKind(n: NodeRef, i: int32, kind: DrawKind, call: string, what: string): void {
+function requireKind(this n: NodeRef, i: int32, kind: DrawKind, call: string, what: string): void {
 	const actual: DrawKind = n.scene.kinds[i];
 	if (actual === kind) { return; }
 	console.log(
@@ -565,7 +565,7 @@ function requireKind(n: NodeRef, i: int32, kind: DrawKind, call: string, what: s
 
 export function labelRow(this n: NodeRef, call: string): int32 {
 	const i: int32 = n.liveRow(call);
-	requireKind(n, i, DrawKind.Label, call, "text");
+	n.requireKind(i, DrawKind.Label, call, "text");
 	return i;
 }
 
@@ -583,7 +583,7 @@ export function order(this n: NodeRef): Order2D { return n.scene.orders[n.liveRo
 function putLocal(this s: Scene2D, i: int32, l: Local2D): void {
 	if (s.locals[i] == l) { return; }
 	s.locals[i] = l;
-	s.localMatrices[i] = localMatrix(l);
+	s.localMatrices[i] = l.localMatrix();
 	s.markChanged(i, Changed.Local);
 }
 
@@ -966,7 +966,7 @@ export function icon(this s: Scene2D, id: IconId, w: float32, h: float32, color:
 
 export function setIcon(this n: NodeRef, id: IconId): NodeRef {
 	const i: int32 = n.liveRow("setIcon");
-	requireKind(n, i, DrawKind.Icon, "setIcon", "an icon");
+	n.requireKind(i, DrawKind.Icon, "setIcon", "an icon");
 	if (retargetIconPlacement(n.scene.payloads[i], id)) { n.scene.markChanged(i, Changed.Content); }
 	return n;
 }
@@ -1043,9 +1043,9 @@ export function settleTiles(this s: Scene2D, i: int32): void {
 	while ((s.tileEdits[p].length as int32) > 0) { s.tileEdits[p].pop(); }
 }
 
-function tileGroupRow(n: NodeRef, call: string): int32 {
+function tileGroupRow(this n: NodeRef, call: string): int32 {
 	const i: int32 = n.liveRow(call);
-	requireKind(n, i, DrawKind.TileGroup, call, "tiles");
+	n.requireKind(i, DrawKind.TileGroup, call, "tiles");
 	return i;
 }
 
@@ -1068,7 +1068,7 @@ function putTiles(this s: Scene2D, i: int32, cells: TileCell[]): void {
 }
 
 export function setTiles(this n: NodeRef, cells: TileCell[]): NodeRef {
-	n.scene.putTiles(tileGroupRow(n, "setTiles"), cells);
+	n.scene.putTiles(n.tileGroupRow("setTiles"), cells);
 	return n;
 }
 
@@ -1080,7 +1080,7 @@ function pushTiles(this s: Scene2D, i: int32, cells: TileCell[]): void {
 }
 
 export function appendTiles(this n: NodeRef, cells: TileCell[]): NodeRef {
-	n.scene.pushTiles(tileGroupRow(n, "appendTiles"), cells);
+	n.scene.pushTiles(n.tileGroupRow("appendTiles"), cells);
 	return n;
 }
 
@@ -1104,12 +1104,12 @@ function putTile(this s: Scene2D, i: int32, index: int32, cell: TileCell): void 
 }
 
 export function setTile(this n: NodeRef, index: int32, cell: TileCell): NodeRef {
-	n.scene.putTile(tileGroupRow(n, "setTile"), index, cell);
+	n.scene.putTile(n.tileGroupRow("setTile"), index, cell);
 	return n;
 }
 
 export function setRange(this n: NodeRef, first: int32, count: int32): NodeRef {
-	const i: int32 = tileGroupRow(n, "setRange");
+	const i: int32 = n.tileGroupRow("setRange");
 	if (first < 0 || count < 0) {
 		console.log(
 			`void2d: setRange(${first}, ${count}) on tile group ${i}: a range starts at tile 0 ` +
@@ -1127,7 +1127,7 @@ export function setRange(this n: NodeRef, first: int32, count: int32): NodeRef {
 }
 
 export function count(this n: NodeRef): int32 {
-	const i: int32 = tileGroupRow(n, "count");
+	const i: int32 = n.tileGroupRow("count");
 	return n.scene.tileCells[n.scene.payloads[i]].length as int32;
 }
 
@@ -1225,12 +1225,12 @@ export function selection(
 
 export function scroll(this n: NodeRef): Scroll2D {
 	const i: int32 = n.liveRow("scroll");
-	requireKind(n, i, DrawKind.Mask, "scroll", "a scroll");
+	n.requireKind(i, DrawKind.Mask, "scroll", "a scroll");
 	const payload: int32 = n.scene.payloads[i];
 	return payload == NO_PAYLOAD ? NO_SCROLL : n.scene.scrolls[payload];
 }
 
-function scrollRow(s: Scene2D, i: int32): int32 {
+function scrollRow(this s: Scene2D, i: int32): int32 {
 	if (s.payloads[i] != NO_PAYLOAD) { return s.payloads[i]; }
 	let row: int32 = s.scrolls.length as int32;
 	if ((s.freeScrolls.length as int32) > 0) {
@@ -1249,12 +1249,12 @@ function clampScroll(v: float32, min: float32, max: float32): float32 {
 	return v;
 }
 
-function putScroll(n: NodeRef, call: string, x: float32, y: float32): void {
+function putScroll(this n: NodeRef, call: string, x: float32, y: float32): void {
 	const i: int32 = n.liveRow(call);
-	requireKind(n, i, DrawKind.Mask, call, "a scroll");
+	n.requireKind(i, DrawKind.Mask, call, "a scroll");
 	const s: Scene2D = n.scene;
 	const fresh: boolean = s.payloads[i] == NO_PAYLOAD;
-	const row: int32 = scrollRow(s, i);
+	const row: int32 = s.scrollRow(i);
 	if (fresh) { s.markChanged(i, Changed.Local); }
 	const now: Scroll2D = s.scrolls[row];
 	let nx: float32 = x;
@@ -1307,31 +1307,31 @@ export function setMaskRadii(this n: NodeRef, radii: CornerRadii): NodeRef {
 }
 
 export function setScrollX(this n: NodeRef, x: float32): NodeRef {
-	putScroll(n, "setScrollX", x, n.scroll().y);
+	n.putScroll("setScrollX", x, n.scroll().y);
 	return n;
 }
 
 export function setScrollY(this n: NodeRef, y: float32): NodeRef {
-	putScroll(n, "setScrollY", n.scroll().x, y);
+	n.putScroll("setScrollY", n.scroll().x, y);
 	return n;
 }
 
 export function scrollTo(this n: NodeRef, x: float32, y: float32): NodeRef {
-	putScroll(n, "scrollTo", x, y);
+	n.putScroll("scrollTo", x, y);
 	return n;
 }
 
 export function scrollBy(this n: NodeRef, dx: float32, dy: float32): NodeRef {
 	const now: Scroll2D = n.scroll();
-	putScroll(n, "scrollBy", now.x + dx, now.y + dy);
+	n.putScroll("scrollBy", now.x + dx, now.y + dy);
 	return n;
 }
 
 export function setScrollBounds(this n: NodeRef, bounds: Bounds2D | null): NodeRef {
 	const i: int32 = n.liveRow("setScrollBounds");
-	requireKind(n, i, DrawKind.Mask, "setScrollBounds", "a scroll");
+	n.requireKind(i, DrawKind.Mask, "setScrollBounds", "a scroll");
 	const fresh: boolean = n.scene.payloads[i] == NO_PAYLOAD;
-	const row: int32 = scrollRow(n.scene, i);
+	const row: int32 = n.scene.scrollRow(i);
 	if (fresh) { n.scene.markChanged(i, Changed.Local); }
 	const now: Scroll2D = n.scene.scrolls[row];
 	if (bounds === null) {
@@ -1355,13 +1355,13 @@ export function childWorldOf(this s: Scene2D, up: int32, world: Transform2D): Tr
 
 export function animFrames(this n: NodeRef): AnimFrames {
 	const i: int32 = n.liveRow("animFrames");
-	requireKind(n, i, DrawKind.Anim, "animFrames", "frames");
+	n.requireKind(i, DrawKind.Anim, "animFrames", "frames");
 	return n.scene.anims[n.scene.payloads[i]];
 }
 
 export function setFrame(this n: NodeRef, index: int32): NodeRef {
 	const i: int32 = n.liveRow("setFrame");
-	requireKind(n, i, DrawKind.Anim, "setFrame", "frames");
+	n.requireKind(i, DrawKind.Anim, "setFrame", "frames");
 	const s: Scene2D = n.scene;
 	const payload: int32 = s.payloads[i];
 	const len: int32 = s.anims[payload].frames.length as int32;
@@ -1378,7 +1378,7 @@ export function setFrame(this n: NodeRef, index: int32): NodeRef {
 
 export function setFrameDelays(this n: NodeRef, delaysMs: Vec<int32>): NodeRef {
 	const i: int32 = n.liveRow("setFrameDelays");
-	requireKind(n, i, DrawKind.Anim, "setFrameDelays", "frames");
+	n.requireKind(i, DrawKind.Anim, "setFrameDelays", "frames");
 	const s: Scene2D = n.scene;
 	const payload: int32 = s.payloads[i];
 	const count: int32 = delaysMs.length as int32;
@@ -1400,7 +1400,7 @@ export function setFrameDelays(this n: NodeRef, delaysMs: Vec<int32>): NodeRef {
 
 export function setFrames(this n: NodeRef, frames: Tile[]): NodeRef {
 	const i: int32 = n.liveRow("setFrames");
-	requireKind(n, i, DrawKind.Anim, "setFrames", "frames");
+	n.requireKind(i, DrawKind.Anim, "setFrames", "frames");
 	const s: Scene2D = n.scene;
 	const payload: int32 = s.payloads[i];
 	const delays: int32 = s.anims[payload].delaysMs.length as int32;
@@ -1418,7 +1418,7 @@ export function setFrames(this n: NodeRef, frames: Tile[]): NodeRef {
 
 export function setFps(this n: NodeRef, fps: float32): NodeRef {
 	const i: int32 = n.liveRow("setFps");
-	requireKind(n, i, DrawKind.Anim, "setFps", "frames");
+	n.requireKind(i, DrawKind.Anim, "setFps", "frames");
 	if (!(fps >= 0.0)) {
 		console.log(`void2d: setFps(${fps}) on an Anim; a frame rate is 0 or more`);
 		unreachable;
@@ -1432,7 +1432,7 @@ export function setFps(this n: NodeRef, fps: float32): NodeRef {
 
 export function setSpeed(this n: NodeRef, speed: float32): NodeRef {
 	const i: int32 = n.liveRow("setSpeed");
-	requireKind(n, i, DrawKind.Anim, "setSpeed", "frames");
+	n.requireKind(i, DrawKind.Anim, "setSpeed", "frames");
 	if (speed < 0.0) {
 		console.log(`void2d: setSpeed(${speed}) on an Anim; a speed is 0 or more`);
 		unreachable;
@@ -1444,7 +1444,7 @@ export function setSpeed(this n: NodeRef, speed: float32): NodeRef {
 
 export function setLooping(this n: NodeRef, looping: boolean): NodeRef {
 	const i: int32 = n.liveRow("setLooping");
-	requireKind(n, i, DrawKind.Anim, "setLooping", "frames");
+	n.requireKind(i, DrawKind.Anim, "setLooping", "frames");
 	const s: Scene2D = n.scene;
 	s.anims[s.payloads[i]].looping = looping;
 	return n;
@@ -1452,7 +1452,7 @@ export function setLooping(this n: NodeRef, looping: boolean): NodeRef {
 
 export function setPaused(this n: NodeRef, paused: boolean): NodeRef {
 	const i: int32 = n.liveRow("setPaused");
-	requireKind(n, i, DrawKind.Anim, "setPaused", "frames");
+	n.requireKind(i, DrawKind.Anim, "setPaused", "frames");
 	const s: Scene2D = n.scene;
 	s.anims[s.payloads[i]].paused = paused;
 	return n;
@@ -1461,7 +1461,7 @@ export function setPaused(this n: NodeRef, paused: boolean): NodeRef {
 export function setBoxStyle(this n: NodeRef, style: BoxStyle): NodeRef {
 	const i: int32 = n.liveRow("setBoxStyle");
 	checkFill(style.fill);
-	takePaintable(n, i, "setBoxStyle");
+	n.takePaintable(i, "setBoxStyle");
 	const s: Scene2D = n.scene;
 	if (s.payloads[i] == NO_BOX_STYLE) {
 		s.payloads[i] = allocateBoxStyle(style);
@@ -1478,7 +1478,7 @@ function stopOnUnpaintable(call: string, actual: DrawKind): void {
 	unreachable;
 }
 
-function takePaintable(n: NodeRef, i: int32, call: string): void {
+function takePaintable(this n: NodeRef, i: int32, call: string): void {
 	const actual: DrawKind = n.scene.kinds[i];
 	match (actual) {
 		DrawKind.Rect => {},
@@ -1493,7 +1493,7 @@ function takePaintable(n: NodeRef, i: int32, call: string): void {
 
 export function setBackground(this n: NodeRef, c: Color): NodeRef {
 	const i: int32 = n.liveRow("setBackground");
-	takePaintable(n, i, "setBackground");
+	n.takePaintable(i, "setBackground");
 	n.scene.putPaint(i, { ...n.scene.paints[i], color: c });
 	return n;
 }
@@ -1557,11 +1557,11 @@ export function imageStyleOf(this s: Scene2D, i: int32): int32 {
 	}
 }
 
-function labelEntry(n: NodeRef, call: string): int32 {
+function labelEntry(this n: NodeRef, call: string): int32 {
 	return n.scene.payloads[n.labelRow(call)];
 }
 
-function textChanged(n: NodeRef, call: string): int32 {
+function textChanged(this n: NodeRef, call: string): int32 {
 	const i: int32 = n.labelRow(call);
 	const payload: int32 = n.scene.payloads[i];
 	labelTexts[payload].stale = true;
@@ -1570,11 +1570,11 @@ function textChanged(n: NodeRef, call: string): int32 {
 }
 
 export function text(this n: NodeRef): string {
-	return labelTexts[labelEntry(n, "text")].text;
+	return labelTexts[n.labelEntry("text")].text;
 }
 
 export function textStyle(this n: NodeRef): TextStyle {
-	return labelTexts[labelEntry(n, "textStyle")].style;
+	return labelTexts[n.labelEntry("textStyle")].style;
 }
 
 export function setText(this n: NodeRef, value: string): NodeRef {
@@ -1587,7 +1587,7 @@ export function setText(this n: NodeRef, value: string): NodeRef {
 	return n;
 }
 
-function putTextStyle(n: NodeRef, i: int32, style: TextStyle): void {
+function putTextStyle(this n: NodeRef, i: int32, style: TextStyle): void {
 	const entry: LabelText = labelTexts[n.scene.payloads[i]];
 	if (entry.style == style) { return; }
 	entry.style = style;
@@ -1596,37 +1596,37 @@ function putTextStyle(n: NodeRef, i: int32, style: TextStyle): void {
 }
 
 export function setTextStyle(this n: NodeRef, style: TextStyle): NodeRef {
-	putTextStyle(n, n.labelRow("setTextStyle"), style);
+	n.putTextStyle(n.labelRow("setTextStyle"), style);
 	return n;
 }
 
 export function setFont(this n: NodeRef, font: FontId): NodeRef {
 	const i: int32 = n.labelRow("setFont");
-	putTextStyle(n, i, { ...labelTexts[n.scene.payloads[i]].style, font: font });
+	n.putTextStyle(i, { ...labelTexts[n.scene.payloads[i]].style, font: font });
 	return n;
 }
 
 export function setTextAlign(this n: NodeRef, align: Align): NodeRef {
 	const i: int32 = n.labelRow("setTextAlign");
-	putTextStyle(n, i, { ...labelTexts[n.scene.payloads[i]].style, align: align });
+	n.putTextStyle(i, { ...labelTexts[n.scene.payloads[i]].style, align: align });
 	return n;
 }
 
 export function setLetterSpacing(this n: NodeRef, spacing: float32): NodeRef {
 	const i: int32 = n.labelRow("setLetterSpacing");
-	putTextStyle(n, i, { ...labelTexts[n.scene.payloads[i]].style, letterSpacing: spacing });
+	n.putTextStyle(i, { ...labelTexts[n.scene.payloads[i]].style, letterSpacing: spacing });
 	return n;
 }
 
 export function setLineSpacing(this n: NodeRef, spacing: float32): NodeRef {
 	const i: int32 = n.labelRow("setLineSpacing");
-	putTextStyle(n, i, { ...labelTexts[n.scene.payloads[i]].style, lineSpacing: spacing });
+	n.putTextStyle(i, { ...labelTexts[n.scene.payloads[i]].style, lineSpacing: spacing });
 	return n;
 }
 
 export function setMaxWidth(this n: NodeRef, width: float32): NodeRef {
 	const i: int32 = n.labelRow("setMaxWidth");
-	putTextStyle(n, i, { ...labelTexts[n.scene.payloads[i]].style, maxWidth: width });
+	n.putTextStyle(i, { ...labelTexts[n.scene.payloads[i]].style, maxWidth: width });
 	return n;
 }
 
@@ -1634,7 +1634,7 @@ export function setTextRuns(this n: NodeRef, runs: Readonly<Span<TextRun>>): Nod
 	const i: int32 = n.labelRow("setTextRuns");
 	const reshapes: boolean = setLabelRuns(n.scene.payloads[i], runs);
 	if (reshapes) {
-		textChanged(n, "setTextRuns");
+		n.textChanged("setTextRuns");
 	} else {
 		n.scene.markChanged(i, Changed.Paint);
 	}
@@ -1642,32 +1642,32 @@ export function setTextRuns(this n: NodeRef, runs: Readonly<Span<TextRun>>): Nod
 }
 
 export function setShapingBreaks(this n: NodeRef, breaks: Readonly<Span<int32>>): NodeRef {
-	setLabelShapingBreaks(textChanged(n, "setShapingBreaks"), breaks);
+	setLabelShapingBreaks(n.textChanged("setShapingBreaks"), breaks);
 	return n;
 }
 
 export function setCellWidths(this n: NodeRef, widths: Readonly<Span<uint8>>): NodeRef {
-	setLabelCellWidths(textChanged(n, "setCellWidths"), widths);
+	setLabelCellWidths(n.textChanged("setCellWidths"), widths);
 	return n;
 }
 
 export function setTextDirection(this n: NodeRef, direction: TextDirection): NodeRef {
-	setLabelDirection(textChanged(n, "setTextDirection"), direction);
+	setLabelDirection(n.textChanged("setTextDirection"), direction);
 	return n;
 }
 
 export function textDirection(this n: NodeRef): TextDirection {
-	return labelDirection(labelEntry(n, "textDirection"));
+	return labelDirection(n.labelEntry("textDirection"));
 }
 
 export function setTruncate(this n: NodeRef, truncate: Truncate): NodeRef {
-	const index: int32 = textChanged(n, "setTruncate");
+	const index: int32 = n.textChanged("setTruncate");
 	setLabelLines(index, { ...labelLines(index), truncate: truncate });
 	return n;
 }
 
 export function setHangingIndent(this n: NodeRef, indent: float32): NodeRef {
-	const index: int32 = textChanged(n, "setHangingIndent");
+	const index: int32 = n.textChanged("setHangingIndent");
 	setLabelLines(index, { ...labelLines(index), hangingIndent: indent });
 	return n;
 }
@@ -1703,7 +1703,7 @@ export function setCursorBlinkTime(this n: NodeRef, seconds: float32): NodeRef {
 }
 
 export function setForceWidth(this n: NodeRef, cell: float32): NodeRef {
-	const index: int32 = textChanged(n, "setForceWidth");
+	const index: int32 = n.textChanged("setForceWidth");
 	setLabelLines(index, { ...labelLines(index), forceWidth: cell });
 	return n;
 }
@@ -1889,18 +1889,18 @@ export function ownScroll(this s: Scene2D, i: int32): Vec2 {
 	return vec2(sc.x, sc.y);
 }
 
-function scrolledLocal(s: Scene2D, i: int32): Transform2D {
+function scrolledLocal(this s: Scene2D, i: int32): Transform2D {
 	const by: Vec2 = s.ownScroll(i);
 	if (by.x == 0.0 && by.y == 0.0) { return s.localMatrices[i]; }
 	return s.localMatrices[i] * trs2d(-by.x, -by.y, 0.0, 1.0, 1.0);
 }
 
-function absoluteMatrix(s: Scene2D, i: int32): Transform2D {
-	let m: Transform2D = scrolledLocal(s, i);
+function absoluteMatrix(this s: Scene2D, i: int32): Transform2D {
+	let m: Transform2D = s.scrolledLocal(i);
 	let top: int32 = i;
 	while (s.parents[top] != NO_NODE_2D) {
 		top = s.parents[top];
-		m = scrolledLocal(s, top) * m;
+		m = s.scrolledLocal(top) * m;
 	}
 	if (top != s.root) { return m; }
 	const view: Transform2D = { ...s.viewMat, tx: s.viewShift.x, ty: s.viewShift.y };
@@ -1908,11 +1908,11 @@ function absoluteMatrix(s: Scene2D, i: int32): Transform2D {
 }
 
 export function localToGlobal(this n: NodeRef, p: Vec2): Vec2 {
-	return p * absoluteMatrix(n.scene, n.liveRow("localToGlobal"));
+	return p * n.scene.absoluteMatrix(n.liveRow("localToGlobal"));
 }
 
 export function globalToLocal(this n: NodeRef, p: Vec2): Vec2 {
-	return p * inverse2d(absoluteMatrix(n.scene, n.liveRow("globalToLocal")));
+	return p * inverse2d(n.scene.absoluteMatrix(n.liveRow("globalToLocal")));
 }
 
 function releasePayload(this s: Scene2D, i: int32): void {
