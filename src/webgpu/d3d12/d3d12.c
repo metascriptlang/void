@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <d3d12.h>
 #include <d3d12sdklayers.h>
+#include <d3dcompiler.h>
 #include <dxgi1_6.h>
 #include <limits.h>
 #include <stdarg.h>
@@ -966,6 +967,48 @@ int32_t dx12Event(uint64_t list, int32_t kind, const char *label) {
 	else return fail(DX12_ERROR_CALL, "debug event kind %d is not begin, end or marker", kind);
 	return DX12_OK;
 }
+
+static HMODULE s_compilerDll;
+static pD3DCompile s_compile;
+static char s_compileLog[4096];
+
+int32_t dx12ShaderCompile(const char *source, const char *entryPoint, const char *target, uint64_t *blob, uint64_t *bytes, uint64_t *size) {
+	*blob = 0;
+	*bytes = 0;
+	*size = 0;
+	s_compileLog[0] = 0;
+	if (!s_compile) {
+		if (!s_compilerDll) s_compilerDll = LoadLibraryA("d3dcompiler_47.dll");
+		if (!s_compilerDll) {
+			strcpy(s_compileLog, "d3dcompiler_47.dll did not load");
+			return DX12_ERROR_CALL;
+		}
+		s_compile = (pD3DCompile)(void *)GetProcAddress(s_compilerDll, "D3DCompile");
+		if (!s_compile) {
+			strcpy(s_compileLog, "d3dcompiler_47.dll has no D3DCompile");
+			return DX12_ERROR_CALL;
+		}
+	}
+	ID3DBlob *output = NULL;
+	ID3DBlob *messages = NULL;
+	HRESULT hr = s_compile(source, strlen(source), NULL, NULL, D3D_COMPILE_STANDARD_FILE_INCLUDE, entryPoint, target,
+		D3DCOMPILE_PACK_MATRIX_COLUMN_MAJOR | D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &output, &messages);
+	if (messages) {
+		strncpy(s_compileLog, (const char *)ID3D10Blob_GetBufferPointer(messages), sizeof s_compileLog - 1);
+		s_compileLog[sizeof s_compileLog - 1] = 0;
+		ID3D10Blob_Release(messages);
+	}
+	if (FAILED(hr)) {
+		if (output) ID3D10Blob_Release(output);
+		return DX12_ERROR_CALL;
+	}
+	*blob = NATIVE(output);
+	*bytes = NATIVE(ID3D10Blob_GetBufferPointer(output));
+	*size = (uint64_t)ID3D10Blob_GetBufferSize(output);
+	return DX12_OK;
+}
+
+const char *dx12CompileLog(void) { return s_compileLog; }
 
 int32_t dx12Release(uint64_t object) {
 	if (object != 0) IUnknown_Release((IUnknown *)(uintptr_t)object);

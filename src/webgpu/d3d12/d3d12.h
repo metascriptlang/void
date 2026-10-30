@@ -66,6 +66,8 @@ int32_t dx12SetRootSignature(uint64_t list, int32_t compute, uint64_t signature)
 int32_t dx12SetRootConstantBufferView(uint64_t list, int32_t compute, uint32_t parameter, uint64_t address);
 int32_t dx12SetRootDescriptorTable(uint64_t list, int32_t compute, uint32_t parameter, uint64_t handle);
 
+int32_t dx12ShaderCompile(const char *source, const char *entryPoint, const char *target, uint64_t *blob, uint64_t *bytes, uint64_t *size);
+const char *dx12CompileLog(void);
 int32_t dx12RenderPipelineCreate(uint64_t device, uint64_t signature, const uint8_t *vertex, uint64_t vertexBytes, const uint8_t *pixel, uint64_t pixelBytes, const int32_t *elements, uint32_t elementCount, const int32_t *targets, uint32_t targetCount, const int32_t *words, uint32_t wordCount, double depthBiasSlopeScale, double depthBiasClamp, uint64_t *pipeline);
 int32_t dx12RenderTargetView(uint64_t device, uint64_t resource, int32_t format, int32_t dimension, int32_t multisampled, uint32_t mip, uint32_t layer, uint64_t handle);
 int32_t dx12DepthStencilView(uint64_t device, uint64_t resource, int32_t format, int32_t dimension, int32_t multisampled, uint32_t mip, uint32_t layer, uint64_t handle);
