@@ -1351,7 +1351,8 @@ export function irErrors(m: ShaderModule): string[] {
 		const owner = "resource '" + r.name + "'";
 		conditionErrors(c, r.condition, owner);
 		if (r.binding < 0 && m.entries.length > 0) {
-			c.errors.push(owner + ": an entry's binding is numbered; only a segment's waits for the linker");
+			c.errors.push(owner + ": an entry's binding is numbered; only a segment's waits " +
+				"for the linker");
 		}
 		for (let j = 0; j < i; j++) {
 			const other = m.resources[j];
