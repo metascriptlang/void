@@ -7,7 +7,7 @@ import {
 	startGraphemes,
 	breaksBefore,
 } from "../void2d/grapheme";
-import { lineBreaks } from "../void2d/lineBreak";
+import { LineClass, lineBreaks, lineProperty } from "../void2d/lineBreak";
 
 const GRAPHEME_ROWS: string = "tests/oracle/ucd/GraphemeBreakTest-18.0.0.txt";
 const LINE_ROWS: string = "tests/oracle/ucd/LineBreakTest-18.0.0.txt";
@@ -178,4 +178,13 @@ test "a break after a zero width space survives a long run of spaces" {
 	assert breaks.length as int32 == spaces + 3;
 	for (let i = 1; i <= spaces + 1; i++) { assert !breaks[i]; }
 	assert breaks[spaces + 2];
+}
+
+test "every codepoint's table value names a valid cluster, conjunct and line class" {
+	for (let codepoint = 0; codepoint <= 0x10FFFF; codepoint++) {
+		const grapheme = graphemeProperty(codepoint);
+		assert (grapheme.cluster as int32) <= (ClusterBreak.LVT as int32);
+		assert (grapheme.conjunct as int32) <= (ConjunctBreak.Extend as int32);
+		assert (lineProperty(codepoint).cls as int32) <= (LineClass.VI as int32);
+	}
 }
