@@ -1,5 +1,5 @@
 import { needSlots, validFace } from "./faces";
-import { markDirtyBox, pageKindName, tileOutside, validPage } from "./pages";
+import { pageKindName, tileOutside, validPage } from "./pages";
 import {
 	COLOUR_RASTER_BAD_HANDLE,
 	COLOUR_RASTER_NO_MEMORY,
@@ -42,6 +42,7 @@ when (voidColourEmoji) {
 	import { getGlyphBitmapBoxSubpixel, makeGlyphBitmapSubpixel } from "../trueType/rasterize";
 	import { scaleForMappingEmToPixels } from "../trueType";
 	import { u16At } from "../trueType/fontInfo";
+	import { rgbaTexelAt, writeRgbaTile } from "./pages";
 
 	export class ColourOpened {
 		status: int32 = COLOUR_NONE;
@@ -256,9 +257,7 @@ when (voidColourEmoji) {
 		const tile: uint32[] = new Array<uint32>(w * h);
 		for (let row: int32 = 0; row < h; row++) {
 			for (let col: int32 = 0; col < w; col++) {
-				const t: int32 = ((y + row) * p.size + x + col) * 4;
-				tile[row * w + col] = (p.texels[t] as uint32) | ((p.texels[t + 1] as uint32) << 8) |
-					((p.texels[t + 2] as uint32) << 16) | ((p.texels[t + 3] as uint32) << 24);
+				tile[row * w + col] = rgbaTexelAt(p, x + col, y + row);
 			}
 		}
 		let status = colourGlyphRender(colourOf(f), f.bytes.data, glyph, sizePx, tile, w, w, h);
@@ -271,17 +270,7 @@ when (voidColourEmoji) {
 		} else if (status != COLOUR_PRESENT) {
 			return COLOUR_RASTER_REFUSED;
 		}
-		for (let row: int32 = 0; row < h; row++) {
-			for (let col: int32 = 0; col < w; col++) {
-				const value: uint32 = tile[row * w + col];
-				const t: int32 = ((y + row) * p.size + x + col) * 4;
-				p.texels[t] = (value & 0xFF) as uint8;
-				p.texels[t + 1] = ((value >> 8) & 0xFF) as uint8;
-				p.texels[t + 2] = ((value >> 16) & 0xFF) as uint8;
-				p.texels[t + 3] = ((value >> 24) & 0xFF) as uint8;
-			}
-		}
-		markDirtyBox(p, x, y, w, h);
+		writeRgbaTile(p, x, y, w, h, tile, w);
 		return COLOUR_RASTER_OK;
 	}
 } else {
