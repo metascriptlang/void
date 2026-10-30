@@ -1,6 +1,7 @@
 import {
 	dx12AdapterDescribe,
 	dx12AdapterDescription,
+	dx12BufferCreate,
 	dx12ClearDepthStencil,
 	dx12ClearRenderTarget,
 	dx12CommandSignatureCreate,
@@ -13,12 +14,19 @@ import {
 	dx12ExecuteIndirect,
 	dx12FormatSupport,
 	dx12InfoDrain,
+	dx12MemoryRead,
 	dx12PointerBits,
+	dx12QueryBegin,
+	dx12QueryEnd,
+	dx12QueryHeapCreate,
+	dx12QueryResolve,
 	dx12QueueCreate,
 	dx12Release,
 	dx12RemovedReason,
 	dx12RenderTargetView,
 	dx12ResolveSubresource,
+	dx12ResourceMap,
+	dx12ResourceUnmap,
 	dx12SetBlendFactor,
 	dx12SetIndexBuffer,
 	dx12SetPipelineState,
@@ -29,6 +37,7 @@ import {
 	dx12SetViewport,
 	dx12SwapchainPresent,
 	dx12TearingSupported,
+	dx12TimestampFrequency,
 } from "./d3d12.h";
 import { formatInfo } from "./conv.ms";
 import {
@@ -48,6 +57,7 @@ import {
 	FRAMES_IN_FLIGHT,
 	FrameRing,
 	NativeError,
+	checked,
 	closeFrames,
 	closedFrames,
 	failure,
@@ -64,7 +74,7 @@ import * as resources from "./resources.ms";
 import * as pipeline from "./pipeline.ms";
 import * as surface from "./surface.ms";
 import { SubresourceRange, flushTransitions, queueUavBarrier, settledAt, transition, transitionRange, untrack } from "./tracker.ms";
-import { boundFacts, renderPassOpen } from "../validate.ms";
+import { boundFacts, occlusionQueryIndex, occlusionSetId, renderPassOpen } from "../validate.ms";
 import {
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
@@ -89,6 +99,7 @@ import {
 	GPUDevice,
 	GPUExtent3D,
 	GPUIndexFormat,
+	GPUPassTimestampWrites,
 	GPUQuerySet,
 	GPUQuerySetDescriptor,
 	GPURenderPassDescriptor,
@@ -175,6 +186,14 @@ const EVENT_MARKER: int32 = 2;
 const ARGUMENT_DRAW_INDEXED: int32 = 1;
 const ARGUMENT_DISPATCH: int32 = 2;
 const DISPATCH_INDIRECT_STRIDE: uint32 = 12;
+const QUERY_HEAP_OCCLUSION: int32 = 0;
+const QUERY_HEAP_TIMESTAMP: int32 = 1;
+const QUERY_OCCLUSION: int32 = 0;
+const QUERY_TIMESTAMP: int32 = 2;
+const QUERY_BYTES: uint64 = 8;
+const HEAP_READBACK: int32 = 3;
+const STATE_COPY_DEST: uint32 = 0x400;
+const NANOSECONDS: uint64 = 1000000000;
 
 export const BACKEND = "d3d12";
 
@@ -200,10 +219,21 @@ let canvasHeight: int32 = 0;
 let canvasSamples: int32 = 0;
 let removed = false;
 
+struct QuerySetNative {
+	heap: uint64;
+	readback: uint64;
+	timestamp: boolean;
+}
+
+const NO_QUERY_SET: QuerySetNative = { heap: 0, readback: 0, timestamp: false };
+let querySets: Vec<QuerySetNative> = [NO_QUERY_SET];
+
 struct PassState {
 	colorViews: uint32[GPU_MAX_COLOR_ATTACHMENTS];
 	resolveViews: uint32[GPU_MAX_COLOR_ATTACHMENTS];
 	labeled: boolean;
+	timestampSet: uint32;
+	timestampEnd: int32;
 	vertexDirty: boolean;
 	indexDirty: boolean;
 }
@@ -215,10 +245,6 @@ struct BufferUse {
 }
 
 let pass: PassState = { labeled: false };
-
-@noinline function notBuilt(call: string, step: string): never {
-	stop(`${call} not built yet (${step})`);
-}
 
 @noinline function stopOnFrame(call: string, error: NativeError): never {
 	match (error) {
@@ -431,6 +457,7 @@ export function shutdown(): void {
 	for (const native of pipelines) { dx12Release(native.state); }
 	pipelines = [pipeline.NO_PIPELINE];
 	shaders = [pipeline.NO_SHADER];
+	querySets = [NO_QUERY_SET];
 	dx12Release(drawIndexedSignature);
 	dx12Release(dispatchSignature);
 	drawIndexedSignature = 0;
@@ -634,10 +661,7 @@ export function submit(commandBuffer: GPUCommandBuffer): void {
 }
 
 export function beginRenderPass(encoder: GPUCommandEncoder, passDescriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {
-	if (passDescriptor.timestampWrites.querySet.id != 0 || passDescriptor.occlusionQuerySet.id != 0) {
-		notBuilt("a render pass with timestampWrites or occlusionQuerySet", "D6");
-	}
-	pass = { labeled: passDescriptor.label != null };
+	pass = openPass(passDescriptor.label != null, passDescriptor.timestampWrites);
 	let targets: uint64[GPU_MAX_COLOR_ATTACHMENTS] = [0];
 	let targetCount: int32 = 0;
 	for (let i: int32 = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
@@ -785,6 +809,16 @@ export function endPass(): void {
 		const t = textureRecords.slotIndex(targetView.texture);
 		resolveInto(source, sourceView, textureRecords.slots[s], attachedNative(targetView.texture, t), targetView, textureRecords.slots[t]);
 	}
+	closePass();
+}
+
+function openPass(labeled: boolean, writes: GPUPassTimestampWrites): PassState {
+	if (writes.querySet.id != 0 && writes.beginningOfPassWriteIndex >= 0) { writeTimestamp(writes.querySet.id, writes.beginningOfPassWriteIndex); }
+	return { labeled: labeled, timestampSet: writes.querySet.id, timestampEnd: writes.endOfPassWriteIndex };
+}
+
+function closePass(): void {
+	if (pass.timestampSet != 0 && pass.timestampEnd >= 0) { writeTimestamp(pass.timestampSet, pass.timestampEnd); }
 	if (pass.labeled) { commanded(dx12Event(ring.list, EVENT_END, "")); }
 	pass = { labeled: false };
 }
@@ -930,7 +964,7 @@ export function createComputePipeline(id: uint32, descriptor: GPUComputePipeline
 }
 
 export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
-	pass = { labeled: descriptor.label != null };
+	pass = openPass(descriptor.label != null, descriptor.timestampWrites);
 	d.bound.signature = 0;
 	const label = descriptor.label;
 	if (label != null) { commanded(dx12Event(ring.list, EVENT_BEGIN, label)); }
@@ -967,8 +1001,7 @@ export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): vo
 }
 
 export function endComputePass(): void {
-	if (pass.labeled) { commanded(dx12Event(ring.list, EVENT_END, "")); }
-	pass = { labeled: false };
+	closePass();
 }
 
 export function limits(): GPUSupportedLimits {
@@ -1004,6 +1037,8 @@ function sampledSupport(format: GPUTextureFormat): uint32 {
 
 export function features(): GPUSupportedFeatures {
 	let bits: uint32 = 0;
+	let frequency: uint64 = 0;
+	if (dx12TimestampFrequency(queue, frequency) == DX12_OK) { bits |= featureBit("timestamp-query"); }
 	const float32 = sampledSupport("r32float") & sampledSupport("rg32float") & sampledSupport("rgba32float");
 	if ((float32 & FORMAT_SUPPORT1_SHADER_SAMPLE) != 0) { bits |= featureBit("float32-filterable"); }
 	if ((float32 & FORMAT_SUPPORT1_BLENDABLE) != 0) { bits |= featureBit("float32-blendable"); }
@@ -1025,21 +1060,72 @@ export function insertDebugMarker(label: string): void {
 }
 
 export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
-	notBuilt("createQuerySet", "D6");
+	const kind: string = descriptor.type;
+	const made = makeQuerySet(kind == "timestamp", descriptor.count);
+	if (!made.ok) { stopOnFrame("createQuerySet", made.error); }
+	put(querySets, id, made.value);
+}
+
+function makeQuerySet(timestamp: boolean, count: int32): Result<QuerySetNative, NativeError> {
+	let heap: uint64 = 0;
+	try checked(dx12QueryHeapCreate(device, timestamp ? QUERY_HEAP_TIMESTAMP : QUERY_HEAP_OCCLUSION, count as uint32, heap));
+	let readback: uint64 = 0;
+	const created = checked(dx12BufferCreate(device, (count as uint64) * QUERY_BYTES, HEAP_READBACK, STATE_COPY_DEST, 0, readback));
+	if (!created.ok) {
+		dx12Release(heap);
+		return Result.err(created.error);
+	}
+	return Result.ok({ heap: heap, readback: readback, timestamp: timestamp });
 }
 
 export function destroyQuerySet(querySet: GPUQuerySet): void {
-	notBuilt("destroyQuerySet", "D6");
+	const set = querySets[slotOf(querySet.id)];
+	retire(ring, set.heap);
+	retire(ring, set.readback);
+	vacate(querySets, querySet.id);
+}
+
+function writeTimestamp(querySet: uint32, queryIndex: int32): void {
+	commanded(dx12QueryEnd(ring.list, querySets[slotOf(querySet)].heap, QUERY_TIMESTAMP, queryIndex as uint32));
+}
+
+function ticksToNanoseconds(ticks: uint64, frequency: uint64): uint64 {
+	return (ticks / frequency) * NANOSECONDS + (ticks % frequency) * NANOSECONDS / frequency;
+}
+
+function readQueries(set: QuerySetNative, firstQuery: int32, queryCount: int32): Result<Vec<uint64>, NativeError> {
+	const begin = (firstQuery as uint64) * QUERY_BYTES;
+	const bytes = (queryCount as uint64) * QUERY_BYTES;
+	let pointer: uint64 = 0;
+	try checked(dx12ResourceMap(set.readback, begin, begin + bytes, pointer));
+	let values: Vec<uint64> = new Array(queryCount);
+	try checked(dx12MemoryRead(pointer + begin, values[0], bytes));
+	try checked(dx12ResourceUnmap(set.readback, 0, 0));
+	if (!set.timestamp) { return Result.ok(values); }
+	let frequency: uint64 = 0;
+	try checked(dx12TimestampFrequency(queue, frequency));
+	for (let i: int32 = 0; i < queryCount; i++) { values[i] = ticksToNanoseconds(values[i], frequency); }
+	return Result.ok(values);
 }
 
 export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryCount: int32, destination: GPUBuffer, destinationOffset: int64): void {
-	notBuilt("resolveQuerySet", "D6");
+	const set = querySets[slotOf(querySet.id)];
+	const kind = set.timestamp ? QUERY_TIMESTAMP : QUERY_OCCLUSION;
+	commanded(dx12QueryResolve(ring.list, set.heap, kind, firstQuery as uint32, queryCount as uint32, set.readback, (firstQuery as uint64) * QUERY_BYTES));
+	const recording = encoding;
+	submitted("resolveQuerySet");
+	encoding = recording;
+	const waited = waitSerial(ring, ring.submitted);
+	if (!waited.ok) { stopOnFrame("resolveQuerySet", waited.error); }
+	const values = readQueries(set, firstQuery, queryCount);
+	if (!values.ok) { stopOnFrame("resolveQuerySet", values.error); }
+	ran("resolveQuerySet", resources.writeBuffer(r, ring, destination, destinationOffset, values.value));
 }
 
 export function beginOcclusionQuery(queryIndex: int32): void {
-	notBuilt("beginOcclusionQuery", "D6");
+	commanded(dx12QueryBegin(ring.list, querySets[slotOf(occlusionSetId())].heap, QUERY_OCCLUSION, queryIndex as uint32));
 }
 
 export function endOcclusionQuery(): void {
-	notBuilt("endOcclusionQuery", "D6");
+	commanded(dx12QueryEnd(ring.list, querySets[slotOf(occlusionSetId())].heap, QUERY_OCCLUSION, occlusionQueryIndex() as uint32));
 }

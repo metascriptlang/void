@@ -87,6 +87,11 @@ int32_t dx12DrawIndexed(uint64_t list, uint32_t indexCount, uint32_t instanceCou
 int32_t dx12Dispatch(uint64_t list, uint32_t x, uint32_t y, uint32_t z);
 int32_t dx12CommandSignatureCreate(uint64_t device, int32_t argumentType, uint32_t stride, uint64_t *signature);
 int32_t dx12ExecuteIndirect(uint64_t list, uint64_t signature, uint32_t count, uint64_t buffer, uint64_t offset);
+int32_t dx12QueryHeapCreate(uint64_t device, int32_t type, uint32_t count, uint64_t *heap);
+int32_t dx12QueryBegin(uint64_t list, uint64_t heap, int32_t type, uint32_t index);
+int32_t dx12QueryEnd(uint64_t list, uint64_t heap, int32_t type, uint32_t index);
+int32_t dx12QueryResolve(uint64_t list, uint64_t heap, int32_t type, uint32_t first, uint32_t count, uint64_t buffer, uint64_t offset);
+int32_t dx12TimestampFrequency(uint64_t queue, uint64_t *frequency);
 int32_t dx12ResolveSubresource(uint64_t list, uint64_t target, uint32_t targetSubresource, uint64_t source, uint32_t sourceSubresource, int32_t format);
 int32_t dx12Event(uint64_t list, int32_t kind, const char *label);
 

@@ -965,6 +965,44 @@ int32_t dx12ExecuteIndirect(uint64_t list, uint64_t signature, uint32_t count, u
 	return DX12_OK;
 }
 
+#define QUERY_HEAP(h) ((ID3D12QueryHeap *)(uintptr_t)(h))
+
+int32_t dx12QueryHeapCreate(uint64_t device, int32_t type, uint32_t count, uint64_t *heap) {
+	*heap = 0;
+	D3D12_QUERY_HEAP_DESC desc = {0};
+	desc.Type = (D3D12_QUERY_HEAP_TYPE)type;
+	desc.Count = count;
+	ID3D12QueryHeap *created = NULL;
+	HRESULT hr = ID3D12Device_CreateQueryHeap(DEVICE(device), &desc, &IID_ID3D12QueryHeap, (void **)&created);
+	if (FAILED(hr)) return failCall("ID3D12Device::CreateQueryHeap", hr);
+	*heap = NATIVE(created);
+	return DX12_OK;
+}
+
+int32_t dx12QueryBegin(uint64_t list, uint64_t heap, int32_t type, uint32_t index) {
+	ID3D12GraphicsCommandList_BeginQuery(LIST(list), QUERY_HEAP(heap), (D3D12_QUERY_TYPE)type, index);
+	return DX12_OK;
+}
+
+int32_t dx12QueryEnd(uint64_t list, uint64_t heap, int32_t type, uint32_t index) {
+	ID3D12GraphicsCommandList_EndQuery(LIST(list), QUERY_HEAP(heap), (D3D12_QUERY_TYPE)type, index);
+	return DX12_OK;
+}
+
+int32_t dx12QueryResolve(uint64_t list, uint64_t heap, int32_t type, uint32_t first, uint32_t count, uint64_t buffer, uint64_t offset) {
+	ID3D12GraphicsCommandList_ResolveQueryData(LIST(list), QUERY_HEAP(heap), (D3D12_QUERY_TYPE)type, first, count, RESOURCE(buffer), offset);
+	return DX12_OK;
+}
+
+int32_t dx12TimestampFrequency(uint64_t queue, uint64_t *frequency) {
+	*frequency = 0;
+	UINT64 ticks = 0;
+	HRESULT hr = ID3D12CommandQueue_GetTimestampFrequency(QUEUE(queue), &ticks);
+	if (FAILED(hr)) return failCall("ID3D12CommandQueue::GetTimestampFrequency", hr);
+	*frequency = ticks;
+	return DX12_OK;
+}
+
 int32_t dx12ResolveSubresource(uint64_t list, uint64_t target, uint32_t targetSubresource, uint64_t source, uint32_t sourceSubresource, int32_t format) {
 	ID3D12GraphicsCommandList_ResolveSubresource(LIST(list), RESOURCE(target), targetSubresource, RESOURCE(source), sourceSubresource, (DXGI_FORMAT)format);
 	return DX12_OK;
