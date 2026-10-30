@@ -1,15 +1,20 @@
 import {
+	GPUBindGroupDescriptor,
 	GPUBuffer,
 	GPUBufferUsage,
 	GPUDevice,
 	GPUMapMode,
+	GPUShaderBinding,
+	GPUShaderStage,
 	GPUTexture,
 	GPUTextureFormat,
 	GPUTextureUsage,
 } from "../webgpu/types.ms";
 import { requestDevice } from "../webgpu/device.ms";
-import { adapterDescription, drainDebugMessages, executedAllocator, frameAllocator, idleSerial, retiredCount } from "../webgpu/d3d12/backend.ms";
+import { adapterDescription, drainDebugMessages, executedAllocator, frameAllocator, idleSerial, retiredCount, samplerDescriptor, viewDescriptor } from "../webgpu/d3d12/backend.ms";
 import { splitTextureCopy } from "../webgpu/d3d12/resources.ms";
+import { newCursor, nextPair, serializeRootSignature, shaderLayout, tableEntries } from "../webgpu/d3d12/descriptor.ms";
+import { dx12Release } from "../webgpu/d3d12/d3d12.h";
 import { GREEN, RED, readBack, readbackBuffer, texelAt, texels } from "./webgpuFixtures.ms";
 
 function openDevice(): GPUDevice {
@@ -411,4 +416,70 @@ test "copyTextureToTexture copies array layer 0 into a region of array layer 1 o
 	assert texelAt(readTexture(device, texture, 0, 0, 8, 8), 256, 6, 6) == GREEN;
 	assert drainDebugMessages() == 0;
 	device.destroy();
+}
+
+test "a second sampler with the same descriptor reuses the first one's CPU descriptor, and a different one does not" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "sampled",
+		size: { width: 2, height: 2, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+	});
+	const view = texture.createView({ label: null });
+	const nearest = device.createSampler({ label: "nearest", magFilter: "nearest", minFilter: "nearest" });
+	const again = device.createSampler({ label: "again", magFilter: "nearest", minFilter: "nearest" });
+	const linear = device.createSampler({ label: "linear", magFilter: "linear", minFilter: "linear" });
+	assert viewDescriptor(view) != 0 && samplerDescriptor(nearest) != 0;
+	assert samplerDescriptor(again) == samplerDescriptor(nearest) && samplerDescriptor(linear) != samplerDescriptor(nearest);
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+function binding(group: int32, binding: int32, kind: GPUShaderBinding["kind"], visibility: int32, nativeSlot: int32): GPUShaderBinding {
+	return { group: group, binding: binding, kind: kind, visibility: visibility, size: 0, nativeSlot: nativeSlot };
+}
+
+function twoUniformsAndATexture(): GPUShaderBinding[] {
+	const both = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
+	return [
+		binding(0, 0, "uniform", both, 0),
+		binding(0, 1, "uniform", GPUShaderStage.FRAGMENT as int32, 1),
+		binding(1, 0, "texture", both, 0),
+		binding(1, 1, "sampler", both, 1),
+	];
+}
+
+test "a texture and sampler visible to both stages fill the vertex and the pixel tables with the same entries" {
+	const layout = shaderLayout(twoUniformsAndATexture(), false);
+	assert layout.uniforms.length == 2 && layout.tables.length == 4;
+	let descriptor: GPUBindGroupDescriptor = { label: "resources", layout: { id: 0 } };
+	descriptor.entries[0] = { binding: 1, sampler: { id: 3 } };
+	descriptor.entries[1] = { binding: 0, textureView: { id: 5 } };
+	const tables = tableEntries(layout, 1, descriptor);
+	assert layout.tables[0].stage == (GPUShaderStage.VERTEX as int32) && !layout.tables[0].samplers && tables[0].entries[0] == 1;
+	assert layout.tables[1].stage == (GPUShaderStage.VERTEX as int32) && layout.tables[1].samplers && tables[1].entries[0] == 0;
+	assert layout.tables[2].stage == (GPUShaderStage.FRAGMENT as int32) && !layout.tables[2].samplers && tables[2].entries[0] == 1;
+	assert layout.tables[3].stage == (GPUShaderStage.FRAGMENT as int32) && layout.tables[3].samplers && tables[3].entries[0] == 0;
+}
+
+test "the root signature for two uniform blocks and a texture with its sampler serializes" {
+	const serialized = serializeRootSignature(shaderLayout(twoUniformsAndATexture(), false));
+	assert serialized.ok && serialized.value.bytes > 0;
+	dx12Release(serialized.value.blob);
+}
+
+test "five groups of 3 views and a sampler switch to a fresh visible heap pair 3 times when a pair holds 8 views" {
+	let cursor = newCursor(8, 4);
+	let switches: int32 = 0;
+	for (let group: int32 = 0; group < 5; group++) {
+		if (!cursor.fits(3, 1)) {
+			nextPair(cursor, 3, 1);
+			switches += 1;
+		}
+		cursor.views += 3;
+		cursor.samplers += 1;
+	}
+	assert switches == 3 && cursor.pair == 2;
 }
