@@ -117,10 +117,10 @@ export function kbPlaceScratch(
 		result.gdefItemVariationStore = gdef + m.kbU32(gdef + 14);
 	}
 
-	for (let i = 0; i < sequentialLookupCount; i++) {
+	for (let bucketIndex = 0; bucketIndex < sequentialLookupCount; bucketIndex++) {
 		result.bucketBlocks.push([]);
 	}
-	for (let i = 0; i < KB_LOOKUP_STACK_SIZE; i++) {
+	for (let frameIndex = 0; frameIndex < KB_LOOKUP_STACK_SIZE; frameIndex++) {
 		result.frames.push({
 			inputGlyph: 0, startIndex: 0, lookupIndex: 0, subtableIndex: 0, records: 0,
 			recordCount: 0, recordIndex: 0,
@@ -210,7 +210,7 @@ function newBucketedGlyphBlock(s: KbScratch): int32 {
 	}
 	const block = s.blockCounts.length as int32;
 	s.blockCounts.push(0);
-	for (let i = 0; i < KB_BUCKETED_GLYPHS_PER_BLOCK; i++) {
+	for (let entryIndex = 0; entryIndex < KB_BUCKETED_GLYPHS_PER_BLOCK; entryIndex++) {
 		s.blockEntries.push({ glyph: 0, sortKey: 0, featureValue: 0 });
 	}
 	return block;
@@ -406,9 +406,8 @@ export function kbSortGlyphBucket(s: KbScratch, sequentialLookupIndex: int32): v
 }
 
 export function kbFreeGlyphBucket(s: KbScratch, sequentialLookupIndex: int32): void {
-	const blocks = s.bucketBlocks[sequentialLookupIndex];
-	for (let i = 0; i < blocks.length; i++) {
-		s.freeBlocks.push(blocks[i]);
+	for (const block of s.bucketBlocks[sequentialLookupIndex]) {
+		s.freeBlocks.push(block);
 	}
 	s.bucketBlocks[sequentialLookupIndex] = [];
 }
