@@ -1,8 +1,12 @@
 import {
+	GPUBindGroup,
 	GPUBindGroupDescriptor,
+	GPUBindGroupEntry,
 	GPUBuffer,
 	GPUBufferUsage,
+	GPUComputePipeline,
 	GPUDevice,
+	GPU_NO_QUERY_INDEX,
 	GPUMapMode,
 	GPURenderPassDescriptor,
 	GPURenderPipeline,
@@ -13,6 +17,7 @@ import {
 	GPUShaderStage,
 	GPUTexture,
 	GPUTextureFormat,
+	GPUTextureSampleType,
 	GPUTextureUsage,
 	GPUTextureView,
 } from "../webgpu/types.ms";
@@ -32,8 +37,11 @@ import {
 	colourTarget,
 	colourUniforms,
 	drawIndirectRows,
+	drawTriangleIn,
 	readBack,
+	readCounters,
 	readbackBuffer,
+	resolveBuffer,
 	texelAt,
 	texels,
 	uniformGroup,
@@ -865,4 +873,247 @@ test "a present inside a modal size loop does not wait, and any other keeps the 
 test "a flip swapchain takes bgra8 and rgba8 unorm, rgb10a2 and rgba16float, and refuses an sRGB format" {
 	assert flipFormat(87) && flipFormat(28) && flipFormat(24) && flipFormat(10);
 	assert !flipFormat(91) && !flipFormat(29);
+}
+
+function computeModule(device: GPUDevice, code: string, kind: string): GPUShaderModule {
+	let descriptor: GPUShaderModuleDescriptor = { label: "compute", computeCode: code, computeEntryPoint: "" };
+	if (kind == "storage-buffer") {
+		descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "storage", nativeSlot: 0 };
+	} else {
+		descriptor.bindings[0] = {
+			group: 1,
+			binding: 0,
+			kind: "storage-texture",
+			visibility: GPUShaderStage.COMPUTE as int32,
+			storageAccess: "write-only",
+			storageFormat: "r32uint",
+			nativeSlot: 0,
+		};
+	}
+	return device.createShaderModule(descriptor);
+}
+
+function storageGroup(device: GPUDevice, pipeline: GPUComputePipeline, entry: GPUBindGroupEntry): GPUBindGroup {
+	let descriptor: GPUBindGroupDescriptor = { label: "storage", layout: pipeline.getBindGroupLayout(1) };
+	descriptor.entries[0] = entry;
+	return device.createBindGroup(descriptor);
+}
+
+function dispatchTimes(device: GPUDevice, module: GPUShaderModule, entry: GPUBindGroupEntry, times: int32): void {
+	const pipeline = device.createComputePipeline({ label: "compute", compute: { module: module, entryPoint: "" } });
+	const group = storageGroup(device, pipeline, entry);
+	const noOffsets: Vec<uint32> = [];
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginComputePass({ label: null });
+	pass.setPipeline(pipeline);
+	pass.setBindGroup(1, group, noOffsets);
+	for (let i: int32 = 0; i < times; i++) { pass.dispatchWorkgroups(1, 1, 1); }
+	pass.end();
+	device.queue.submit(encoder.finish());
+}
+
+function storageBuffer(device: GPUDevice, values: Vec<uint32>): GPUBuffer {
+	const storage = device.createBuffer({
+		label: "storage",
+		size: 16,
+		usage: (GPUBufferUsage.STORAGE as int32) | (GPUBufferUsage.COPY_DST as int32) | (GPUBufferUsage.COPY_SRC as int32),
+	});
+	device.queue.writeBuffer(storage, 0, values);
+	return storage;
+}
+
+function readStorage(device: GPUDevice, storage: GPUBuffer): Vec<uint8> {
+	const readback = readbackBuffer(device, 16);
+	copyAndSubmit(device, storage, 0, readback, 0, 16);
+	return readBack(readback);
+}
+
+test "a compute pass doubles a storage buffer, directly and through an indirect dispatch" {
+	const device = openDevice();
+	const module = computeModule(device, DOUBLE_HLSL, "storage-buffer");
+	const values: Vec<uint32> = [1, 2, 3, 40000];
+	const storage = storageBuffer(device, values);
+	dispatchTimes(device, module, { binding: 0, buffer: storage }, 1);
+	let read = readStorage(device, storage);
+	assert read[0] == 2 && read[4] == 4 && read[8] == 6;
+	assert read[12] == 0x80 && read[13] == 0x38;
+
+	const pipeline = device.createComputePipeline({ label: "indirect", compute: { module: module, entryPoint: "" } });
+	const group = storageGroup(device, pipeline, { binding: 0, buffer: storage });
+	const arguments = device.createBuffer({
+		label: "arguments",
+		size: 12,
+		usage: (GPUBufferUsage.INDIRECT as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const counts: Vec<uint32> = [1, 1, 1];
+	device.queue.writeBuffer(arguments, 0, counts);
+	const noOffsets: Vec<uint32> = [];
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginComputePass({ label: null });
+	pass.setPipeline(pipeline);
+	pass.setBindGroup(1, group, noOffsets);
+	pass.dispatchWorkgroupsIndirect(arguments, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	read = readStorage(device, storage);
+	assert read[0] == 4 && read[4] == 8 && read[8] == 12;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "three dispatches in one pass on one storage buffer each see the last one's writes" {
+	const device = openDevice();
+	const values: Vec<uint32> = [1, 2, 3, 4];
+	const storage = storageBuffer(device, values);
+	dispatchTimes(device, computeModule(device, DOUBLE_HLSL, "storage-buffer"), { binding: 0, buffer: storage }, 3);
+	const read = readStorage(device, storage);
+	assert read[0] == 8 && read[4] == 16 && read[8] == 24 && read[12] == 32;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+const FILL_HLSL = "RWTexture2D<uint> image : register(u0);\n[numthreads(4, 4, 1)] void main(uint3 id : SV_DispatchThreadID) { image[id.xy] = id.x + id.y * 10; }";
+
+test "a compute pass writes a storage texture that copies back" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "image",
+		size: { width: 4, height: 4, depthOrArrayLayers: 1 },
+		format: "r32uint",
+		usage: (GPUTextureUsage.STORAGE_BINDING as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		sampleCount: 1,
+	});
+	dispatchTimes(device, computeModule(device, FILL_HLSL, "storage-texture"), { binding: 0, textureView: texture.createView({ label: null }) }, 1);
+	const read = readTexture(device, texture, 0, 0, 4, 4);
+	assert read[0] == 0 && read[4] == 1 && read[12] == 3;
+	assert read[256] == 10 && read[3 * 256 + 3 * 4] == 33;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+const LOAD_UINT_HLSL = "Texture2D<uint4> src : register(t0);\nRWByteAddressBuffer dst : register(u0);\n[numthreads(4, 2, 1)] void main(uint3 id : SV_DispatchThreadID) { dst.Store4((id.y * 4 + id.x) * 16, src.Load(int3(id.xy, 0))); }";
+const LOAD_FLOAT_HLSL = "Texture2D<float4> src : register(t0);\nRWByteAddressBuffer dst : register(u0);\n[numthreads(4, 2, 1)] void main(uint3 id : SV_DispatchThreadID) { dst.Store4((id.y * 4 + id.x) * 16, asuint(src.Load(int3(id.xy, 0)))); }";
+
+function u32At(bytes: Vec<uint8>, index: int32): uint32 {
+	const at = index * 4;
+	return (bytes[at] as uint32) | ((bytes[at + 1] as uint32) << 8) | ((bytes[at + 2] as uint32) << 16) | ((bytes[at + 3] as uint32) << 24);
+}
+
+function loadTexels<T>(device: GPUDevice, format: GPUTextureFormat, hlsl: string, sampleType: GPUTextureSampleType, values: Vec<T>): Vec<uint8> {
+	let descriptor: GPUShaderModuleDescriptor = { label: "load", computeCode: hlsl, computeEntryPoint: "" };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.COMPUTE as int32, sampleType: sampleType, nativeSlot: 0 };
+	descriptor.bindings[1] = { group: 1, binding: 1, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "storage", nativeSlot: 0 };
+	const module = device.createShaderModule(descriptor);
+	const texture = device.createTexture({
+		label: "data",
+		size: { width: 4, height: 2, depthOrArrayLayers: 1 },
+		format: format,
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+	});
+	device.queue.writeTexture({ texture: texture }, values, { offset: 0, bytesPerRow: 64, rowsPerImage: 2 }, { width: 4, height: 2, depthOrArrayLayers: 1 });
+	const storage = device.createBuffer({
+		label: "out",
+		size: 128,
+		usage: (GPUBufferUsage.STORAGE as int32) | (GPUBufferUsage.COPY_SRC as int32),
+	});
+	const pipeline = device.createComputePipeline({ label: "load", compute: { module: module, entryPoint: "" } });
+	let group: GPUBindGroupDescriptor = { label: "load", layout: pipeline.getBindGroupLayout(1) };
+	group.entries[0] = { binding: 0, textureView: texture.createView({ label: null }) };
+	group.entries[1] = { binding: 1, buffer: storage };
+	const noOffsets: Vec<uint32> = [];
+	const readback = readbackBuffer(device, 128);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginComputePass({ label: null });
+	pass.setPipeline(pipeline);
+	pass.setBindGroup(1, device.createBindGroup(group), noOffsets);
+	pass.dispatchWorkgroups(1, 1, 1);
+	pass.end();
+	encoder.copyBufferToBuffer(storage, 0, readback, 0, 128);
+	device.queue.submit(encoder.finish());
+	return readBack(readback);
+}
+
+test "an rgba32uint texture written by writeTexture loads exactly through a uint binding" {
+	const device = openDevice();
+	let values: Vec<uint32> = new Array(32);
+	for (let i = 0; i < 32; i++) { values[i] = 16777217 + (i as uint32); }
+	values[5] = 4294967295;
+	values[31] = 2147483648;
+	const read = loadTexels(device, "rgba32uint", LOAD_UINT_HLSL, "uint", values);
+	for (let i = 0; i < 32; i++) { assert u32At(read, i) == values[i]; }
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "an rgba32float texture loads bit-exact through an unfilterable-float binding" {
+	const device = openDevice();
+	const patterns: Vec<uint32> = [0x3F800000, 0x40200000, 0xC0000000, 0x3DCCCCCD];
+	const floats: Vec<float32> = [1.0, 2.5, -2.0, 0.1];
+	let values: Vec<float32> = new Array(32);
+	for (let i = 0; i < 32; i++) { values[i] = floats[i % 4]; }
+	const read = loadTexels(device, "rgba32float", LOAD_FLOAT_HLSL, "unfilterable-float", values);
+	for (let i = 0; i < 32; i++) { assert u32At(read, i) == patterns[i % 4]; }
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "two timestamps around a render pass and around a compute pass resolve to non-decreasing nanoseconds" {
+	const device = openDevice();
+	assert device.features().has("timestamp-query");
+	const set = device.createQuerySet({ label: "timing", type: "timestamp", count: 4 });
+	const pipeline = flatPipeline(device, flatShader(device), 1);
+	const target = colourTarget(device, 1);
+	let descriptor = clearingPass(target.createView({ label: null }), { id: 0 });
+	descriptor.timestampWrites = { querySet: set, beginningOfPassWriteIndex: 0, endOfPassWriteIndex: 1 };
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(descriptor);
+	drawTriangleIn(device, pipeline, pass);
+	pass.end();
+	const storage = device.createBuffer({ label: "storage", size: 16, usage: GPUBufferUsage.STORAGE as int32 });
+	const computePipeline = device.createComputePipeline({ label: "compute", compute: { module: computeModule(device, DOUBLE_HLSL, "storage-buffer"), entryPoint: "" } });
+	const noOffsets: Vec<uint32> = [];
+	const compute = encoder.beginComputePass({
+		label: "timed compute",
+		timestampWrites: { querySet: set, beginningOfPassWriteIndex: 2, endOfPassWriteIndex: GPU_NO_QUERY_INDEX },
+	});
+	compute.setPipeline(computePipeline);
+	compute.setBindGroup(1, storageGroup(device, computePipeline, { binding: 0, buffer: storage }), noOffsets);
+	compute.dispatchWorkgroups(1, 1, 1);
+	compute.end();
+	const resolved = resolveBuffer(device, 24);
+	encoder.resolveQuerySet(set, 0, 3, resolved, 0);
+	device.queue.submit(encoder.finish());
+	const times = readCounters(device, resolved, 3);
+	assert times[0] > 0;
+	assert times[1] >= times[0];
+	assert times[2] >= times[1];
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "an occlusion query counts samples over a drawn triangle and none over an empty pass" {
+	const device = openDevice();
+	const set = device.createQuerySet({ label: "occlusion", type: "occlusion", count: 2 });
+	const pipeline = flatPipeline(device, flatShader(device), 1);
+	const target = colourTarget(device, 1);
+	let descriptor = clearingPass(target.createView({ label: null }), { id: 0 });
+	descriptor.occlusionQuerySet = set;
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(descriptor);
+	pass.beginOcclusionQuery(0);
+	drawTriangleIn(device, pipeline, pass);
+	pass.endOcclusionQuery();
+	pass.beginOcclusionQuery(1);
+	pass.endOcclusionQuery();
+	pass.end();
+	const resolved = resolveBuffer(device, 512);
+	encoder.resolveQuerySet(set, 0, 2, resolved, 256);
+	encoder.resolveQuerySet(set, 0, 1, resolved, 0);
+	device.queue.submit(encoder.finish());
+	const counts = readCounters(device, resolved, 34);
+	assert counts[0] > 0 && counts[32] == counts[0];
+	assert counts[33] == 0;
+	assert drainDebugMessages() == 0;
+	device.destroy();
 }
