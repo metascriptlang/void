@@ -136,6 +136,10 @@ function topOverride(this s: Status): BidiOverride {
 	return s.override[(s.override.length as int32) - 1];
 }
 
+function topIsolate(this s: Status): boolean {
+	return s.isolate[(s.isolate.length as int32) - 1];
+}
+
 function nextLevel(top: int32, odd: boolean): int32 {
 	if (odd) { return (top & 1) == 1 ? top + 2 : top + 1; }
 	return (top & 1) == 1 ? top + 1 : top + 2;
@@ -164,68 +168,80 @@ function explicitLevels(
 	let validIsolates: int32 = 0;
 	for (let i = 0; i < count; i++) {
 		const c: BidiClass = classes[i];
-		if (c == BidiClass.RLE || c == BidiClass.LRE || c == BidiClass.RLO || c == BidiClass.LRO) {
-			levels.push(status.topLevel());
-			types.push(c);
-			const odd: boolean = c == BidiClass.RLE || c == BidiClass.RLO;
-			const level: int32 = nextLevel(status.topLevel(), odd);
-			if (level <= MAX_DEPTH && overflowIsolates == 0 && overflowEmbeddings == 0) {
-				const override: BidiOverride = c == BidiClass.RLO
-					? BidiOverride.R
-					: (c == BidiClass.LRO ? BidiOverride.L : BidiOverride.Neutral);
-				status.push(level, override, false);
-			} else if (overflowIsolates == 0) {
-				overflowEmbeddings = overflowEmbeddings + 1;
-			}
-		} else if (isolateInitiator(c)) {
-			levels.push(status.topLevel());
-			types.push(overridden(c, status.topOverride()));
-			let odd: boolean = c == BidiClass.RLI;
-			if (c == BidiClass.FSI) {
-				const end: int32 = matching[i] == NO_MATCH ? count : matching[i];
-				odd = firstStrong(classes, matching, i + 1, end) == BidiClass.R;
-			}
-			const level: int32 = nextLevel(status.topLevel(), odd);
-			if (level <= MAX_DEPTH && overflowIsolates == 0 && overflowEmbeddings == 0) {
-				validIsolates = validIsolates + 1;
-				status.push(level, BidiOverride.Neutral, true);
-			} else {
-				overflowIsolates = overflowIsolates + 1;
-			}
-		} else if (c == BidiClass.PDI) {
-			if (overflowIsolates > 0) {
-				overflowIsolates = overflowIsolates - 1;
-			} else if (validIsolates > 0) {
+		match (c) {
+			BidiClass.RLE | BidiClass.LRE | BidiClass.RLO | BidiClass.LRO => {
+				levels.push(status.topLevel());
+				types.push(c);
+				const odd: boolean = c == BidiClass.RLE || c == BidiClass.RLO;
+				const level: int32 = nextLevel(status.topLevel(), odd);
+				if (level <= MAX_DEPTH && overflowIsolates == 0 &&
+					overflowEmbeddings == 0) {
+					const override: BidiOverride = c == BidiClass.RLO
+						? BidiOverride.R
+						: (c == BidiClass.LRO ? BidiOverride.L : BidiOverride.Neutral);
+					status.push(level, override, false);
+				} else if (overflowIsolates == 0) {
+					overflowEmbeddings = overflowEmbeddings + 1;
+				}
+			},
+			BidiClass.LRI | BidiClass.RLI | BidiClass.FSI => {
+				levels.push(status.topLevel());
+				types.push(overridden(c, status.topOverride()));
+				let odd: boolean = c == BidiClass.RLI;
+				if (c == BidiClass.FSI) {
+					const end: int32 = matching[i] == NO_MATCH ? count : matching[i];
+					odd = firstStrong(classes, matching, i + 1, end) == BidiClass.R;
+				}
+				const level: int32 = nextLevel(status.topLevel(), odd);
+				if (level <= MAX_DEPTH && overflowIsolates == 0 &&
+					overflowEmbeddings == 0) {
+					validIsolates = validIsolates + 1;
+					status.push(level, BidiOverride.Neutral, true);
+				} else {
+					overflowIsolates = overflowIsolates + 1;
+				}
+			},
+			BidiClass.PDI => {
+				if (overflowIsolates > 0) {
+					overflowIsolates = overflowIsolates - 1;
+				} else if (validIsolates > 0) {
+					overflowEmbeddings = 0;
+					while (!status.topIsolate()) { status.pop(); }
+					status.pop();
+					validIsolates = validIsolates - 1;
+				}
+				levels.push(status.topLevel());
+				types.push(overridden(c, status.topOverride()));
+			},
+			BidiClass.PDF => {
+				levels.push(status.topLevel());
+				types.push(c);
+				if (overflowIsolates == 0 && overflowEmbeddings > 0) {
+					overflowEmbeddings = overflowEmbeddings - 1;
+				} else if (overflowIsolates == 0 &&
+					!status.topIsolate() &&
+					(status.level.length as int32) >= 2) {
+					status.pop();
+				}
+			},
+			BidiClass.B => {
+				levels.push(paragraph);
+				types.push(c);
+				while ((status.level.length as int32) > 1) { status.pop(); }
+				overflowIsolates = 0;
 				overflowEmbeddings = 0;
-				while (!status.isolate[(status.isolate.length as int32) - 1]) { status.pop(); }
-				status.pop();
-				validIsolates = validIsolates - 1;
-			}
-			levels.push(status.topLevel());
-			types.push(overridden(c, status.topOverride()));
-		} else if (c == BidiClass.PDF) {
-			levels.push(status.topLevel());
-			types.push(c);
-			if (overflowIsolates == 0 && overflowEmbeddings > 0) {
-				overflowEmbeddings = overflowEmbeddings - 1;
-			} else if (overflowIsolates == 0 &&
-				!status.isolate[(status.isolate.length as int32) - 1] &&
-				(status.level.length as int32) >= 2) {
-				status.pop();
-			}
-		} else if (c == BidiClass.B) {
-			levels.push(paragraph);
-			types.push(c);
-			while ((status.level.length as int32) > 1) { status.pop(); }
-			overflowIsolates = 0;
-			overflowEmbeddings = 0;
-			validIsolates = 0;
-		} else if (c == BidiClass.BN) {
-			levels.push(status.topLevel());
-			types.push(c);
-		} else {
-			levels.push(status.topLevel());
-			types.push(overridden(c, status.topOverride()));
+				validIsolates = 0;
+			},
+			BidiClass.BN => {
+				levels.push(status.topLevel());
+				types.push(c);
+			},
+			BidiClass.L | BidiClass.R | BidiClass.AL | BidiClass.EN | BidiClass.ES |
+			BidiClass.ET | BidiClass.AN | BidiClass.CS | BidiClass.NSM | BidiClass.S |
+			BidiClass.WS | BidiClass.ON => {
+				levels.push(status.topLevel());
+				types.push(overridden(c, status.topOverride()));
+			},
 		}
 	}
 }
@@ -425,14 +441,27 @@ function filled(count: int32, value: int32): Vec<int32> {
 	return out;
 }
 
+function levelOfDirection(
+	classes: Readonly<Span<BidiClass>>,
+	matching: Readonly<Span<int32>>,
+	direction: TextDirection,
+): int32 {
+	return match (direction) {
+		TextDirection.Ltr => 0,
+		TextDirection.Rtl => 1,
+		TextDirection.Auto => {
+			const first = firstStrong(classes, matching, 0, classes.length as int32);
+			first == BidiClass.R ? 1 : 0
+		},
+	};
+}
+
 export function paragraphLevel(
 	classes: Readonly<Span<BidiClass>>, direction: TextDirection,
 ): int32 {
-	if (direction == TextDirection.Ltr) { return 0; }
-	if (direction == TextDirection.Rtl) { return 1; }
 	let matching: Vec<int32> = new Array(0);
 	matchIsolates(classes, matching);
-	return firstStrong(classes, matching, 0, classes.length as int32) == BidiClass.R ? 1 : 0;
+	return levelOfDirection(classes, matching, direction);
 }
 
 // A character X9 removes takes the level of the one before it, or the paragraph level when it
@@ -446,12 +475,7 @@ export function resolveLevels(
 	const count: int32 = classes.length as int32;
 	let matching: Vec<int32> = new Array(0);
 	matchIsolates(classes, matching);
-	let paragraph: int32 = 0;
-	if (direction == TextDirection.Rtl) {
-		paragraph = 1;
-	} else if (direction == TextDirection.Auto) {
-		paragraph = firstStrong(classes, matching, 0, count) == BidiClass.R ? 1 : 0;
-	}
+	const paragraph: int32 = levelOfDirection(classes, matching, direction);
 	let explicit: Vec<int32> = new Array(0);
 	let types: Vec<BidiClass> = new Array(0);
 	explicitLevels(classes, matching, paragraph, explicit, types);
@@ -545,14 +569,21 @@ export function resetLineEnds(
 	let trailing: boolean = true;
 	for (let i = to - 1; i >= from; i--) {
 		const c: BidiClass = classes[i];
-		if (c == BidiClass.B || c == BidiClass.S) {
-			levels[i] = paragraph;
-			trailing = true;
-		} else if (c == BidiClass.WS || isolateInitiator(c) || c == BidiClass.PDI ||
-			removedByX9(c)) {
-			if (trailing) { levels[i] = paragraph; }
-		} else {
-			trailing = false;
+		match (c) {
+			BidiClass.B | BidiClass.S => {
+				levels[i] = paragraph;
+				trailing = true;
+			},
+			BidiClass.WS | BidiClass.LRI | BidiClass.RLI | BidiClass.FSI |
+			BidiClass.PDI | BidiClass.BN | BidiClass.LRE | BidiClass.RLE |
+			BidiClass.LRO | BidiClass.RLO | BidiClass.PDF => {
+				if (trailing) { levels[i] = paragraph; }
+			},
+			BidiClass.L | BidiClass.R | BidiClass.AL | BidiClass.EN | BidiClass.ES |
+			BidiClass.ET | BidiClass.AN | BidiClass.CS | BidiClass.NSM |
+			BidiClass.ON => {
+				trailing = false;
+			},
 		}
 	}
 }
