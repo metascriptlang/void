@@ -12,7 +12,7 @@ test "sphere point containment measures distance from its own center" {
 
 test "sphere surface points are excluded on every axis" {
 	const sphere: Sphere3D = { center: vec3(0.0, 0.0, 0.0), radius: 1.0 };
-	let surface: Vec<Vec3> = [
+	const surface: Vec<Vec3> = [
 		vec3(-1.0, 0.0, 0.0), vec3(1.0, 0.0, 0.0),
 		vec3(0.0, -1.0, 0.0), vec3(0.0, 1.0, 0.0),
 		vec3(0.0, 0.0, -1.0), vec3(0.0, 0.0, 1.0),
