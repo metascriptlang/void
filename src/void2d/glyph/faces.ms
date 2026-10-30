@@ -125,6 +125,10 @@ struct VMetrics {
 	lineGap: int32;
 }
 
+function lineUnits(this vertical: VMetrics): int32 {
+	return vertical.ascent - vertical.descent + vertical.lineGap;
+}
+
 function faceVMetrics(face: GlyphFace): VMetrics {
 	when (emcc) {
 		const platform = face.platform;
@@ -245,7 +249,7 @@ function measureHeights(face: GlyphFace): FaceHeights {
 		capEstimate: capEstimate,
 		exEstimate: exEstimate,
 		icEstimate: icEstimate,
-		lineHeight: (vertical.ascent - vertical.descent + vertical.lineGap) as float32,
+		lineHeight: vertical.lineUnits() as float32,
 	};
 }
 
@@ -427,7 +431,7 @@ export function void2dGlyphFaceSynthetic(face: int32, bold: int32, italic: int32
 	const synthetic = copyFace(faceAt(face));
 	if (bold != 0) {
 		const vertical = faceVMetrics(synthetic);
-		synthetic.emboldenUnits = ((vertical.ascent - vertical.descent + vertical.lineGap) as float32) / 32.0;
+		synthetic.emboldenUnits = (vertical.lineUnits() as float32) / 32.0;
 	}
 	if (italic != 0) { synthetic.skew = ITALIC_SKEW; }
 	state.faces.push(synthetic);
