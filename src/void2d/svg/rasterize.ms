@@ -985,30 +985,34 @@ function fillActiveEdges(r: Rasterizer, head: int32, fillRule: int32): void {
 	let x0: int32 = 0;
 	let w: int32 = 0;
 	let e = head;
-	if (fillRule == FILLRULE_NONZERO) {
-		while (e >= 0) {
-			if (w == 0) {
-				x0 = r.ax[e];
-				w += r.adir[e];
-			} else {
-				const x1 = r.ax[e];
-				w += r.adir[e];
-				if (w == 0) { fillScanline(r, x0, x1); }
+	match (fillRule) {
+		FILLRULE_NONZERO => {
+			while (e >= 0) {
+				if (w == 0) {
+					x0 = r.ax[e];
+					w += r.adir[e];
+				} else {
+					const x1 = r.ax[e];
+					w += r.adir[e];
+					if (w == 0) { fillScanline(r, x0, x1); }
+				}
+				e = r.anext[e];
 			}
-			e = r.anext[e];
-		}
-	} else if (fillRule == FILLRULE_EVENODD) {
-		while (e >= 0) {
-			if (w == 0) {
-				x0 = r.ax[e];
-				w = 1;
-			} else {
-				const x1 = r.ax[e];
-				w = 0;
-				fillScanline(r, x0, x1);
+		},
+		FILLRULE_EVENODD => {
+			while (e >= 0) {
+				if (w == 0) {
+					x0 = r.ax[e];
+					w = 1;
+				} else {
+					const x1 = r.ax[e];
+					w = 0;
+					fillScanline(r, x0, x1);
+				}
+				e = r.anext[e];
 			}
-			e = r.anext[e];
-		}
+		},
+		_ => {},
 	}
 }
 
@@ -1095,37 +1099,42 @@ function scanlineSolid(
 	scale: float32,
 	cache: Cache,
 ): void {
-	if (cache.kind == PAINT_COLOR) {
-		for (let i: int32 = 0; i < count; i++) {
-			blendAlpha(dst, row + x + i, r.scanline[x + i] as int32, cache.alpha);
-		}
-	} else if (cache.kind == PAINT_LINEAR_GRADIENT) {
-		const t = cache.xform;
-		let fx: float32 = ((x as float32) - tx) / scale;
-		const fy: float32 = ((y as float32) - ty) / scale;
-		const dx: float32 = 1.0 / scale;
-		for (let i: int32 = 0; i < count; i++) {
-			const gy: float32 = fx * t[1] + fy * t[3] + t[5];
-			const scaled: float32 = gy * 255.0;
-			const ca = cache.colors[floatToInt(clampf(scaled, 0.0, 255.0))];
-			blendAlpha(dst, row + x + i, r.scanline[x + i] as int32, ca);
-			fx = fx + dx;
-		}
-	} else if (cache.kind == PAINT_RADIAL_GRADIENT) {
-		const t = cache.xform;
-		let fx: float32 = ((x as float32) - tx) / scale;
-		const fy: float32 = ((y as float32) - ty) / scale;
-		const dx: float32 = 1.0 / scale;
-		for (let i: int32 = 0; i < count; i++) {
-			const gx: float32 = fx * t[0] + fy * t[2] + t[4];
-			const gy: float32 = fx * t[1] + fy * t[3] + t[5];
-			const gsq: float32 = gx * gx + gy * gy;
-			const gd: float32 = sqrtf(gsq);
-			const scaled: float32 = gd * 255.0;
-			const ca = cache.colors[floatToInt(clampf(scaled, 0.0, 255.0))];
-			blendAlpha(dst, row + x + i, r.scanline[x + i] as int32, ca);
-			fx = fx + dx;
-		}
+	match (cache.kind) {
+		PAINT_COLOR => {
+			for (let i: int32 = 0; i < count; i++) {
+				blendAlpha(dst, row + x + i, r.scanline[x + i] as int32, cache.alpha);
+			}
+		},
+		PAINT_LINEAR_GRADIENT => {
+			const t = cache.xform;
+			let fx: float32 = ((x as float32) - tx) / scale;
+			const fy: float32 = ((y as float32) - ty) / scale;
+			const dx: float32 = 1.0 / scale;
+			for (let i: int32 = 0; i < count; i++) {
+				const gy: float32 = fx * t[1] + fy * t[3] + t[5];
+				const scaled: float32 = gy * 255.0;
+				const ca = cache.colors[floatToInt(clampf(scaled, 0.0, 255.0))];
+				blendAlpha(dst, row + x + i, r.scanline[x + i] as int32, ca);
+				fx = fx + dx;
+			}
+		},
+		PAINT_RADIAL_GRADIENT => {
+			const t = cache.xform;
+			let fx: float32 = ((x as float32) - tx) / scale;
+			const fy: float32 = ((y as float32) - ty) / scale;
+			const dx: float32 = 1.0 / scale;
+			for (let i: int32 = 0; i < count; i++) {
+				const gx: float32 = fx * t[0] + fy * t[2] + t[4];
+				const gy: float32 = fx * t[1] + fy * t[3] + t[5];
+				const gsq: float32 = gx * gx + gy * gy;
+				const gd: float32 = sqrtf(gsq);
+				const scaled: float32 = gd * 255.0;
+				const ca = cache.colors[floatToInt(clampf(scaled, 0.0, 255.0))];
+				blendAlpha(dst, row + x + i, r.scanline[x + i] as int32, ca);
+				fx = fx + dx;
+			}
+		},
+		_ => {},
 	}
 }
 
