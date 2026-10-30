@@ -4,6 +4,7 @@
 #include <d3d12.h>
 #include <d3d12sdklayers.h>
 #include <dxgi1_6.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,9 +49,16 @@ static int32_t debugFilter(ID3D12Device *device) {
 	HRESULT hr = ID3D12Device_QueryInterface(device, &IID_ID3D12InfoQueue, (void **)&info);
 	if (FAILED(hr)) return fail(DX12_ERROR_DEBUG_LAYER, "ID3D12Device::QueryInterface(ID3D12InfoQueue) returned HRESULT 0x%08lX", (unsigned long)hr);
 	D3D12_MESSAGE_SEVERITY hidden[] = { D3D12_MESSAGE_SEVERITY_INFO, D3D12_MESSAGE_SEVERITY_MESSAGE };
+	D3D12_MESSAGE_ID silenced[] = {
+		D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
+		D3D12_MESSAGE_ID_CLEARDEPTHSTENCILVIEW_MISMATCHINGCLEARVALUE,
+		D3D12_MESSAGE_ID_DRAW_EMPTY_SCISSOR_RECTANGLE,
+	};
 	D3D12_INFO_QUEUE_FILTER filter = {0};
 	filter.DenyList.NumSeverities = 2;
 	filter.DenyList.pSeverityList = hidden;
+	filter.DenyList.NumIDs = sizeof silenced / sizeof silenced[0];
+	filter.DenyList.pIDList = silenced;
 	hr = ID3D12InfoQueue_PushStorageFilter(info, &filter);
 	if (SUCCEEDED(hr)) ID3D12InfoQueue_ClearStoredMessages(info);
 	ID3D12InfoQueue_Release(info);
@@ -674,6 +682,288 @@ int32_t dx12SetRootDescriptorTable(uint64_t list, int32_t compute, uint32_t para
 	D3D12_GPU_DESCRIPTOR_HANDLE gpu = { handle };
 	if (compute) ID3D12GraphicsCommandList_SetComputeRootDescriptorTable(LIST(list), parameter, gpu);
 	else ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(LIST(list), parameter, gpu);
+	return DX12_OK;
+}
+
+#define DX12_INPUT_ELEMENT_WORDS 5
+#define DX12_TARGET_WORDS 10
+
+enum {
+	PIPELINE_TOPOLOGY_TYPE,
+	PIPELINE_SAMPLE_COUNT,
+	PIPELINE_CULL,
+	PIPELINE_FRONT_CCW,
+	PIPELINE_DEPTH_BIAS,
+	PIPELINE_DSV_FORMAT,
+	PIPELINE_DEPTH_ENABLE,
+	PIPELINE_DEPTH_WRITE,
+	PIPELINE_DEPTH_FUNC,
+	PIPELINE_STENCIL_ENABLE,
+	PIPELINE_STENCIL_READ_MASK,
+	PIPELINE_STENCIL_WRITE_MASK,
+	PIPELINE_FRONT_FAIL,
+	PIPELINE_FRONT_DEPTH_FAIL,
+	PIPELINE_FRONT_PASS,
+	PIPELINE_FRONT_FUNC,
+	PIPELINE_BACK_FAIL,
+	PIPELINE_BACK_DEPTH_FAIL,
+	PIPELINE_BACK_PASS,
+	PIPELINE_BACK_FUNC,
+	PIPELINE_STRIP_CUT,
+	PIPELINE_WORDS,
+};
+
+int32_t dx12RenderPipelineCreate(uint64_t device, uint64_t signature, const uint8_t *vertex, uint64_t vertexBytes, const uint8_t *pixel, uint64_t pixelBytes,
+	const int32_t *elements, uint32_t elementCount, const int32_t *targets, uint32_t targetCount, const int32_t *words, uint32_t wordCount,
+	double depthBiasSlopeScale, double depthBiasClamp, uint64_t *pipeline) {
+	*pipeline = 0;
+	if (wordCount != PIPELINE_WORDS) return fail(DX12_ERROR_CALL, "a pipeline description has %u words, not %d", wordCount, PIPELINE_WORDS);
+	if (elementCount > D3D12_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT) return fail(DX12_ERROR_CALL, "a pipeline has %u vertex attributes, over %d", elementCount, D3D12_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT);
+	D3D12_INPUT_ELEMENT_DESC inputs[D3D12_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT];
+	for (uint32_t i = 0; i < elementCount; i++) {
+		const int32_t *e = &elements[i * DX12_INPUT_ELEMENT_WORDS];
+		inputs[i].SemanticName = "TEXCOORD";
+		inputs[i].SemanticIndex = (UINT)e[0];
+		inputs[i].Format = (DXGI_FORMAT)e[1];
+		inputs[i].InputSlot = (UINT)e[2];
+		inputs[i].AlignedByteOffset = (UINT)e[3];
+		inputs[i].InputSlotClass = e[4] ? D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA : D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
+		inputs[i].InstanceDataStepRate = e[4] ? 1 : 0;
+	}
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC desc;
+	memset(&desc, 0, sizeof desc);
+	desc.pRootSignature = (ID3D12RootSignature *)(uintptr_t)signature;
+	desc.VS.pShaderBytecode = vertex;
+	desc.VS.BytecodeLength = (SIZE_T)vertexBytes;
+	desc.PS.pShaderBytecode = pixel;
+	desc.PS.BytecodeLength = (SIZE_T)pixelBytes;
+	desc.BlendState.IndependentBlendEnable = TRUE;
+	for (int i = 0; i < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT; i++) {
+		D3D12_RENDER_TARGET_BLEND_DESC *target = &desc.BlendState.RenderTarget[i];
+		target->SrcBlend = target->SrcBlendAlpha = D3D12_BLEND_ONE;
+		target->DestBlend = target->DestBlendAlpha = D3D12_BLEND_ZERO;
+		target->BlendOp = target->BlendOpAlpha = D3D12_BLEND_OP_ADD;
+		target->LogicOp = D3D12_LOGIC_OP_NOOP;
+		target->RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	}
+	for (uint32_t i = 0; i < targetCount; i++) {
+		const int32_t *t = &targets[i * DX12_TARGET_WORDS];
+		if (t[0] < 0 || t[0] >= D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT) return fail(DX12_ERROR_CALL, "colour target index %d is outside 0..7", t[0]);
+		D3D12_RENDER_TARGET_BLEND_DESC *target = &desc.BlendState.RenderTarget[t[0]];
+		target->BlendEnable = t[1] ? TRUE : FALSE;
+		target->SrcBlend = (D3D12_BLEND)t[2];
+		target->DestBlend = (D3D12_BLEND)t[3];
+		target->BlendOp = (D3D12_BLEND_OP)t[4];
+		target->SrcBlendAlpha = (D3D12_BLEND)t[5];
+		target->DestBlendAlpha = (D3D12_BLEND)t[6];
+		target->BlendOpAlpha = (D3D12_BLEND_OP)t[7];
+		target->RenderTargetWriteMask = (UINT8)t[8];
+		desc.RTVFormats[t[0]] = (DXGI_FORMAT)t[9];
+		if ((UINT)t[0] + 1 > desc.NumRenderTargets) desc.NumRenderTargets = (UINT)t[0] + 1;
+	}
+	desc.SampleMask = UINT_MAX;
+	desc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+	desc.RasterizerState.CullMode = (D3D12_CULL_MODE)words[PIPELINE_CULL];
+	desc.RasterizerState.FrontCounterClockwise = words[PIPELINE_FRONT_CCW] ? TRUE : FALSE;
+	desc.RasterizerState.DepthBias = (INT)words[PIPELINE_DEPTH_BIAS];
+	desc.RasterizerState.DepthBiasClamp = (FLOAT)depthBiasClamp;
+	desc.RasterizerState.SlopeScaledDepthBias = (FLOAT)depthBiasSlopeScale;
+	desc.RasterizerState.DepthClipEnable = TRUE;
+	desc.RasterizerState.MultisampleEnable = words[PIPELINE_SAMPLE_COUNT] > 1 ? TRUE : FALSE;
+	desc.DepthStencilState.DepthEnable = words[PIPELINE_DEPTH_ENABLE] ? TRUE : FALSE;
+	desc.DepthStencilState.DepthWriteMask = words[PIPELINE_DEPTH_WRITE] ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+	desc.DepthStencilState.DepthFunc = (D3D12_COMPARISON_FUNC)words[PIPELINE_DEPTH_FUNC];
+	desc.DepthStencilState.StencilEnable = words[PIPELINE_STENCIL_ENABLE] ? TRUE : FALSE;
+	desc.DepthStencilState.StencilReadMask = (UINT8)words[PIPELINE_STENCIL_READ_MASK];
+	desc.DepthStencilState.StencilWriteMask = (UINT8)words[PIPELINE_STENCIL_WRITE_MASK];
+	desc.DepthStencilState.FrontFace.StencilFailOp = (D3D12_STENCIL_OP)words[PIPELINE_FRONT_FAIL];
+	desc.DepthStencilState.FrontFace.StencilDepthFailOp = (D3D12_STENCIL_OP)words[PIPELINE_FRONT_DEPTH_FAIL];
+	desc.DepthStencilState.FrontFace.StencilPassOp = (D3D12_STENCIL_OP)words[PIPELINE_FRONT_PASS];
+	desc.DepthStencilState.FrontFace.StencilFunc = (D3D12_COMPARISON_FUNC)words[PIPELINE_FRONT_FUNC];
+	desc.DepthStencilState.BackFace.StencilFailOp = (D3D12_STENCIL_OP)words[PIPELINE_BACK_FAIL];
+	desc.DepthStencilState.BackFace.StencilDepthFailOp = (D3D12_STENCIL_OP)words[PIPELINE_BACK_DEPTH_FAIL];
+	desc.DepthStencilState.BackFace.StencilPassOp = (D3D12_STENCIL_OP)words[PIPELINE_BACK_PASS];
+	desc.DepthStencilState.BackFace.StencilFunc = (D3D12_COMPARISON_FUNC)words[PIPELINE_BACK_FUNC];
+	desc.InputLayout.pInputElementDescs = elementCount > 0 ? inputs : NULL;
+	desc.InputLayout.NumElements = elementCount;
+	desc.IBStripCutValue = (D3D12_INDEX_BUFFER_STRIP_CUT_VALUE)words[PIPELINE_STRIP_CUT];
+	desc.PrimitiveTopologyType = (D3D12_PRIMITIVE_TOPOLOGY_TYPE)words[PIPELINE_TOPOLOGY_TYPE];
+	desc.DSVFormat = (DXGI_FORMAT)words[PIPELINE_DSV_FORMAT];
+	desc.SampleDesc.Count = (UINT)words[PIPELINE_SAMPLE_COUNT];
+	ID3D12PipelineState *created = NULL;
+	HRESULT hr = ID3D12Device_CreateGraphicsPipelineState(DEVICE(device), &desc, &IID_ID3D12PipelineState, (void **)&created);
+	if (FAILED(hr)) return failCall("ID3D12Device::CreateGraphicsPipelineState", hr);
+	*pipeline = NATIVE(created);
+	return DX12_OK;
+}
+
+int32_t dx12RenderTargetView(uint64_t device, uint64_t resource, int32_t format, int32_t dimension, int32_t multisampled, uint32_t mip, uint32_t layer, uint64_t handle) {
+	D3D12_RENDER_TARGET_VIEW_DESC desc;
+	memset(&desc, 0, sizeof desc);
+	desc.Format = (DXGI_FORMAT)format;
+	if (multisampled && dimension == DX12_VIEW_2D) {
+		desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DMS;
+	} else if (multisampled && dimension == DX12_VIEW_2D_ARRAY) {
+		desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DMSARRAY;
+		desc.Texture2DMSArray.FirstArraySlice = layer;
+		desc.Texture2DMSArray.ArraySize = 1;
+	} else if (multisampled) {
+		return fail(DX12_ERROR_CALL, "a multisampled render target view has view dimension %d, which is neither 2d nor 2d-array", dimension);
+	} else if (dimension == DX12_VIEW_2D) {
+		desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+		desc.Texture2D.MipSlice = mip;
+	} else if (dimension == DX12_VIEW_2D_ARRAY) {
+		desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
+		desc.Texture2DArray.MipSlice = mip;
+		desc.Texture2DArray.FirstArraySlice = layer;
+		desc.Texture2DArray.ArraySize = 1;
+	} else if (dimension == DX12_VIEW_3D) {
+		desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE3D;
+		desc.Texture3D.MipSlice = mip;
+		desc.Texture3D.FirstWSlice = layer;
+		desc.Texture3D.WSize = 1;
+	} else {
+		return fail(DX12_ERROR_CALL, "a render target view has view dimension %d, which is not 2d, 2d-array or 3d", dimension);
+	}
+	ID3D12Device_CreateRenderTargetView(DEVICE(device), RESOURCE(resource), &desc, cpuHandle(handle));
+	return DX12_OK;
+}
+
+int32_t dx12DepthStencilView(uint64_t device, uint64_t resource, int32_t format, int32_t dimension, int32_t multisampled, uint32_t mip, uint32_t layer, uint64_t handle) {
+	D3D12_DEPTH_STENCIL_VIEW_DESC desc;
+	memset(&desc, 0, sizeof desc);
+	desc.Format = (DXGI_FORMAT)format;
+	if (multisampled && dimension == DX12_VIEW_2D) {
+		desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DMS;
+	} else if (multisampled && dimension == DX12_VIEW_2D_ARRAY) {
+		desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DMSARRAY;
+		desc.Texture2DMSArray.FirstArraySlice = layer;
+		desc.Texture2DMSArray.ArraySize = 1;
+	} else if (dimension == DX12_VIEW_2D && !multisampled) {
+		desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+		desc.Texture2D.MipSlice = mip;
+	} else if (dimension == DX12_VIEW_2D_ARRAY && !multisampled) {
+		desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;
+		desc.Texture2DArray.MipSlice = mip;
+		desc.Texture2DArray.FirstArraySlice = layer;
+		desc.Texture2DArray.ArraySize = 1;
+	} else {
+		return fail(DX12_ERROR_CALL, "a depth stencil view has view dimension %d, which is neither 2d nor 2d-array", dimension);
+	}
+	ID3D12Device_CreateDepthStencilView(DEVICE(device), RESOURCE(resource), &desc, cpuHandle(handle));
+	return DX12_OK;
+}
+
+int32_t dx12SetRenderTargets(uint64_t list, const uint64_t *targets, uint32_t count, uint64_t depth) {
+	D3D12_CPU_DESCRIPTOR_HANDLE colors[D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT];
+	if (count > D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT) return fail(DX12_ERROR_CALL, "%u render targets are over %d", count, D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT);
+	for (uint32_t i = 0; i < count; i++) colors[i] = cpuHandle(targets[i]);
+	D3D12_CPU_DESCRIPTOR_HANDLE depthStencil = cpuHandle(depth);
+	ID3D12GraphicsCommandList_OMSetRenderTargets(LIST(list), count, count > 0 ? colors : NULL, FALSE, depth != 0 ? &depthStencil : NULL);
+	return DX12_OK;
+}
+
+int32_t dx12ClearRenderTarget(uint64_t list, uint64_t handle, double r, double g, double b, double a) {
+	const FLOAT color[4] = { (FLOAT)r, (FLOAT)g, (FLOAT)b, (FLOAT)a };
+	ID3D12GraphicsCommandList_ClearRenderTargetView(LIST(list), cpuHandle(handle), color, 0, NULL);
+	return DX12_OK;
+}
+
+int32_t dx12ClearDepthStencil(uint64_t list, uint64_t handle, int32_t flags, double depth, uint32_t stencil) {
+	ID3D12GraphicsCommandList_ClearDepthStencilView(LIST(list), cpuHandle(handle), (D3D12_CLEAR_FLAGS)flags, (FLOAT)depth, (UINT8)stencil, 0, NULL);
+	return DX12_OK;
+}
+
+int32_t dx12SetViewport(uint64_t list, double x, double y, double width, double height, double minDepth, double maxDepth) {
+	D3D12_VIEWPORT viewport = { (FLOAT)x, (FLOAT)y, (FLOAT)width, (FLOAT)height, (FLOAT)minDepth, (FLOAT)maxDepth };
+	ID3D12GraphicsCommandList_RSSetViewports(LIST(list), 1, &viewport);
+	return DX12_OK;
+}
+
+int32_t dx12SetScissorRect(uint64_t list, int32_t left, int32_t top, int32_t right, int32_t bottom) {
+	D3D12_RECT rect = { left, top, right, bottom };
+	ID3D12GraphicsCommandList_RSSetScissorRects(LIST(list), 1, &rect);
+	return DX12_OK;
+}
+
+int32_t dx12SetBlendFactor(uint64_t list, double r, double g, double b, double a) {
+	const FLOAT factor[4] = { (FLOAT)r, (FLOAT)g, (FLOAT)b, (FLOAT)a };
+	ID3D12GraphicsCommandList_OMSetBlendFactor(LIST(list), factor);
+	return DX12_OK;
+}
+
+int32_t dx12SetStencilReference(uint64_t list, uint32_t reference) {
+	ID3D12GraphicsCommandList_OMSetStencilRef(LIST(list), reference);
+	return DX12_OK;
+}
+
+int32_t dx12SetPipelineState(uint64_t list, uint64_t pipeline, int32_t topology) {
+	ID3D12GraphicsCommandList_SetPipelineState(LIST(list), (ID3D12PipelineState *)(uintptr_t)pipeline);
+	ID3D12GraphicsCommandList_IASetPrimitiveTopology(LIST(list), (D3D12_PRIMITIVE_TOPOLOGY)topology);
+	return DX12_OK;
+}
+
+int32_t dx12SetVertexBuffer(uint64_t list, uint32_t slot, uint64_t address, uint32_t bytes, uint32_t stride) {
+	D3D12_VERTEX_BUFFER_VIEW view = { address, bytes, stride };
+	ID3D12GraphicsCommandList_IASetVertexBuffers(LIST(list), slot, 1, &view);
+	return DX12_OK;
+}
+
+int32_t dx12SetIndexBuffer(uint64_t list, uint64_t address, uint32_t bytes, int32_t format) {
+	D3D12_INDEX_BUFFER_VIEW view = { address, bytes, (DXGI_FORMAT)format };
+	ID3D12GraphicsCommandList_IASetIndexBuffer(LIST(list), &view);
+	return DX12_OK;
+}
+
+int32_t dx12Draw(uint64_t list, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) {
+	ID3D12GraphicsCommandList_DrawInstanced(LIST(list), vertexCount, instanceCount, firstVertex, firstInstance);
+	return DX12_OK;
+}
+
+int32_t dx12DrawIndexed(uint64_t list, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t baseVertex, uint32_t firstInstance) {
+	ID3D12GraphicsCommandList_DrawIndexedInstanced(LIST(list), indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
+	return DX12_OK;
+}
+
+int32_t dx12DrawIndexedSignatureCreate(uint64_t device, uint32_t stride, uint64_t *signature) {
+	*signature = 0;
+	D3D12_INDIRECT_ARGUMENT_DESC argument = {0};
+	argument.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
+	D3D12_COMMAND_SIGNATURE_DESC desc = {0};
+	desc.ByteStride = stride;
+	desc.NumArgumentDescs = 1;
+	desc.pArgumentDescs = &argument;
+	ID3D12CommandSignature *created = NULL;
+	HRESULT hr = ID3D12Device_CreateCommandSignature(DEVICE(device), &desc, NULL, &IID_ID3D12CommandSignature, (void **)&created);
+	if (FAILED(hr)) return failCall("ID3D12Device::CreateCommandSignature", hr);
+	*signature = NATIVE(created);
+	return DX12_OK;
+}
+
+int32_t dx12ExecuteIndirect(uint64_t list, uint64_t signature, uint32_t count, uint64_t buffer, uint64_t offset) {
+	ID3D12GraphicsCommandList_ExecuteIndirect(LIST(list), (ID3D12CommandSignature *)(uintptr_t)signature, count, RESOURCE(buffer), offset, NULL, 0);
+	return DX12_OK;
+}
+
+int32_t dx12ResolveSubresource(uint64_t list, uint64_t target, uint32_t targetSubresource, uint64_t source, uint32_t sourceSubresource, int32_t format) {
+	ID3D12GraphicsCommandList_ResolveSubresource(LIST(list), RESOURCE(target), targetSubresource, RESOURCE(source), sourceSubresource, (DXGI_FORMAT)format);
+	return DX12_OK;
+}
+
+#define DX12_LABEL_UNITS 256
+
+int32_t dx12Event(uint64_t list, int32_t kind, const char *label) {
+	if (kind == DX12_EVENT_END) {
+		ID3D12GraphicsCommandList_EndEvent(LIST(list));
+		return DX12_OK;
+	}
+	wchar_t wide[DX12_LABEL_UNITS];
+	int units = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, label, -1, wide, DX12_LABEL_UNITS);
+	if (units == 0) return fail(DX12_ERROR_CALL, "debug label '%s' is not UTF-8 or is over %d characters in UTF-16", label, DX12_LABEL_UNITS - 1);
+	UINT bytes = (UINT)(units * sizeof(wchar_t));
+	if (kind == DX12_EVENT_BEGIN) ID3D12GraphicsCommandList_BeginEvent(LIST(list), 0, wide, bytes);
+	else if (kind == DX12_EVENT_MARKER) ID3D12GraphicsCommandList_SetMarker(LIST(list), 0, wide, bytes);
+	else return fail(DX12_ERROR_CALL, "debug event kind %d is not begin, end or marker", kind);
 	return DX12_OK;
 }
 
