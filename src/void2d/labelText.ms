@@ -1067,13 +1067,11 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 			const wrap: LineWrap = shapes.lines[li].wrap;
 			const first: int32 = entry.placed.length as int32;
 			const colourBefore: int32 = colourGlyphs;
-			const old: PlacedLine = keeps && li < (previousLines.length as int32)
+			const old: PlacedLine | null = keeps && li < (previousLines.length as int32)
 				? previousLines[li]
-				: {
-					wrap: wrap, top: top, x: x, first: NOT_KEPT, count: 0, colour: 0,
-					emitAt: NOT_EMITTED, emitCount: 0, emitPage: NO_GLYPH_PAGE,
-				};
-			if (old.first != NOT_KEPT && old.wrap === wrap && old.top == top && old.x == x) {
+				: null;
+			if (old !== null && old.first != NOT_KEPT && old.wrap === wrap && old.top == top &&
+				old.x == x) {
 				let k: int32 = old.first;
 				for (let gi: int32 = glyphStart; gi < glyphEnd; gi++) {
 					if (entry.layout.glyphs[gi].glyph == NO_GLYPH) { continue; }
