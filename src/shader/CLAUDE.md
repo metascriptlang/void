@@ -245,8 +245,8 @@ later replaces the hand-written GLSL source of each base.
   declares the descriptor as `shaderModule` does. `[]` skips `link`, so it registers what
   `shaderProgram` registers. `linkedProgram` (`link.ms`) is that path for `shaderBuild` and
   `tools/irPrograms.ms` alike: specialize per key, link, then drop the unread declarations; a
-  row of the tool links each `src/void3d/programEffects.ms` entry `[source, fragment, feature,
-  segment]` whose source and fragment entry are the row's and whose feature it has, in table
+  row of the tool links each `src/void3d/programEffects.ms` row (`source`, `fragment`, `feature`,
+  `segmentIr`) whose source and fragment entry are the row's and whose feature it has, in table
   order, so each pass names its own effects (CORE's `litTexturedFs` and `shadowLitTexturedFs`
   today; `shadowLitTexturedFs` has no `LitShaded` site, and PIXEL_ART's stages have none).
   A non-segment element is refused by its segment message at the function, a link refusal after "materialProgram '<name>': " at the name
