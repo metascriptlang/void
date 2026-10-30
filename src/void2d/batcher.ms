@@ -2,7 +2,7 @@ import { exit } from "std/process";
 import {
 	DOOR_BUFFER_TRANSIENT, DOOR_BUFFER_VERTEX, PixelFormat, PassState, doorValid, doorOriginTopLeft,
 	doorContextGeneration, doorMakeBuffer, doorMakeBufferOf, doorDestroyBuffer, doorAppendBufferOf,
-	doorUpdateBufferOf, doorMakeTexture, doorMakeTextureView, doorDestroyView, doorDestroyImage,
+	doorUpdateBufferOf, doorUpdateBufferRangeOf, doorMakeTexture, doorMakeTextureView, doorDestroyView, doorDestroyImage,
 	doorUpdateTexture, doorUpdateTextureRect, doorMakeSampler, doorViewIsColorAttachment,
 	doorApplyPipeline, doorApplyBindings, doorApplyUniformsOf, doorApplyScissor, doorDraw,
 	doorBeginColorPass, doorEndPass, doorPassState,
@@ -874,6 +874,38 @@ function writeListBuffer<T>(l: DisplayList, which: int32, data: Readonly<Span<T>
 	return true;
 }
 
+let uiRangeOrder: Vec<int32> = [];
+
+function writeUiRanges(l: DisplayList, ranges: Readonly<Span<int32>>, count: int32, uiCount: int32): boolean {
+	uiRangeOrder.length = 0;
+	for (let r: int32 = 0; r < count; r++) {
+		let at: int32 = uiRangeOrder.length as int32;
+		uiRangeOrder.push(r);
+		while (at > 0 && ranges[uiRangeOrder[at - 1] * 2] > ranges[r * 2]) {
+			uiRangeOrder[at] = uiRangeOrder[at - 1];
+			at--;
+		}
+		uiRangeOrder[at] = r;
+	}
+	let r: int32 = 0;
+	while (r < count) {
+		const from: int32 = ranges[uiRangeOrder[r] * 2];
+		let to: int32 = ranges[uiRangeOrder[r] * 2 + 1];
+		r++;
+		while (r < count && ranges[uiRangeOrder[r] * 2] <= to) {
+			to = Math.max(to, ranges[uiRangeOrder[r] * 2 + 1]);
+			r++;
+		}
+		to = Math.min(to, uiCount);
+		if (from >= to) { continue; }
+		const words = l.stage[from * UI_WORDS..to * UI_WORDS];
+		if (doorUpdateBufferRangeOf(l.buf[LIST_UI], (from * UI_STRIDE) as int64, words) == 0) { return false; }
+		uploadCount++;
+		uploadBytes += (to - from) * UI_STRIDE;
+	}
+	return true;
+}
+
 export function void2dReplayList(
 	list: int32,
 	targetCommands: Readonly<Span<float32>>, targetCommandCount: int32,
@@ -926,7 +958,12 @@ export function void2dReplayList(
 				packUiInstance(l.stage, i, uiInstances);
 			}
 		}
-		if (!writeListBuffer(l, LIST_UI, l.stage[0..uiCount * UI_WORDS])) {
+		const before: uint32 = l.buf[LIST_UI];
+		const fits: boolean = ensureListBuffer(l, LIST_UI, uiCount * UI_STRIDE);
+		const whole: boolean = uiRangeCount < 0 || l.buf[LIST_UI] != before;
+		if (!fits || !(whole
+			? writeListBuffer(l, LIST_UI, l.stage[0..uiCount * UI_WORDS])
+			: writeUiRanges(l, uiRanges, uiRangeCount, uiCount))) {
 			l.stale = true;
 			droppedFrames++;
 			return false;
