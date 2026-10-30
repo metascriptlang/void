@@ -718,11 +718,14 @@ function findCbdt(face: ColourFace, bytes: uint8[], strike: Strike, glyph: int32
 	return COLOUR_ABSENT;
 }
 
+function printable(code: int32): string {
+	return String.fromCharCode(code >= 32 && code < 127 ? code : 63);
+}
+
 function tagName(tag: int64): string {
 	let name = "";
 	for (let i: int32 = 0; i < 4; i++) {
-		const c = ((tag >> ((24 - 8 * i) as int64)) & 255) as int32;
-		name += String.fromCharCode(c >= 32 && c < 127 ? c : 63);
+		name += printable(((tag >> ((24 - 8 * i) as int64)) & 255) as int32);
 	}
 	return name;
 }
@@ -885,8 +888,7 @@ function pngReason(): string {
 	if (reason == null) { return "the decoded size changed"; }
 	let text = "";
 	for (let i: int32 = 0; i < reason.length && i < 63; i++) {
-		const c = reason.charCodeAt(i);
-		text += String.fromCharCode(c >= 32 && c < 127 ? c : 63);
+		text += printable(reason.charCodeAt(i));
 	}
 	return text;
 }
