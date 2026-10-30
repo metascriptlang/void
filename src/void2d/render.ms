@@ -1591,8 +1591,8 @@ function keyOf(b: Bounds2D, alongX: boolean): float32 { return alongX ? b.xMin :
 
 when (debug) {
 	function checkNoOverlap(s: Scene2D, parent: int32): void {
-		while ((overlapRows.length as int32) > 0) { overlapRows.pop(); }
-		while ((overlapBoxes.length as int32) > 0) { overlapBoxes.pop(); }
+		overlapRows.length = 0;
+		overlapBoxes.length = 0;
 		let spanX0: float32 = 1e30;
 		let spanX1: float32 = -1e30;
 		let spanY0: float32 = 1e30;
@@ -1951,8 +1951,8 @@ function emitsLines(s: Scene2D, i: int32): boolean {
 
 export function patchOrder(this s: Scene2D, vw: float32, vh: float32): boolean {
 	s.patchSerial = s.patchSerial + 1;
-	while ((s.repaint.length as int32) > 0) { s.repaint.pop(); }
-	while ((s.retile.length as int32) > 0) { s.retile.pop(); }
+	s.repaint.length = 0;
+	s.retile.length = 0;
 	s.scanNeeded = s.structureChanged;
 	let sorted: boolean = true;
 	let branch: boolean = false;
@@ -1982,7 +1982,7 @@ export function patchOrder(this s: Scene2D, vw: float32, vh: float32): boolean {
 		for (let k: int32 = 0; k < (s.dirtySlots.length as int32); k++) {
 			descend(s, s.order[s.dirtySlots[k] as int32], true);
 		}
-		while ((s.dirtySlots.length as int32) > 0) { s.dirtySlots.pop(); }
+		s.dirtySlots.length = 0;
 	}
 	if (s.viewShift != s.culledShift) { panOrder(s, vw, vh); }
 	if (s.scanNeeded) { return false; }
