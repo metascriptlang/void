@@ -18,15 +18,15 @@ export const CMD_CLIP_W: int32 = 10;
 export const CMD_CLIP_H: int32 = 11;
 export const CMD_ARG0: int32 = 12;
 export const CMD_ARG1: int32 = 13;
-export const CMD_RT_MODE: int32 = 14;
 // Zero for the swapchain; otherwise the render target's physical-pixels-per-logical-pixel
 // scale. The replay uses nonzero to choose the offscreen pipeline and the value to scale
 // logical scissors.
+export const CMD_RT_MODE: int32 = 14;
 export const CMD_CLEAR_R: int32 = 15;
 export const CMD_CLEAR_G: int32 = 16;
 export const CMD_CLEAR_B: int32 = 17;
 export const CMD_CLEAR_A: int32 = 18;
-// Which of P2's two pipelines the run wants, and the instance range inside the stream that
+// Which of the two instance pipelines the run wants, and the instance range inside the stream that
 // pipeline reads. A Draw carries either a vertex range or an instance range, never both;
 // the field says which, so the replay branches on the record rather than on a guess about
 // whether a count is zero.

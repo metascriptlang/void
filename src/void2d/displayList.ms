@@ -10,10 +10,10 @@
 // The streams:
 //   - `vertices`, 8 floats per vertex (x y u v r g b a) in WORLD space, shared by every
 //     command in the frame, so the whole frame is one upload and a command is a range.
-//   - `uiInstances` and `spriteInstances`, P2's two instance streams, in LOCAL space with the
+//   - `uiInstances` and `spriteInstances`, the two instance streams, in LOCAL space with the
 //     affine carried per instance — which is what lets the SDF be re-derived in local space
-//     and survive rotation. Separate rather than one wide record, because guardrail 8 says a
-//     sprite must not pay for the UI pipeline, and 36 floats to record 16 is paying.
+//     and survive rotation. Separate rather than one wide record, because a sprite
+//     must not pay for the UI pipeline, and 36 floats to record 16 is paying.
 //   - `commands`, COMMAND_FLOATS floats per command, fixed width. A fixed width costs a few
 //     zero fields on a scissor and buys an index that is arithmetic rather than a scan —
 //     and a snapshot whose lines are all the same shape.
@@ -103,7 +103,7 @@ export enum BreakReason {
 	Effect,
 	Clip,
 	Barrier,
-	// P2: the run changed pipeline. A sprite run and a vertex run read different streams
+	// The run changed pipeline. A sprite run and a vertex run read different streams
 	// and bind different programs, so they can never be one draw - and a T1 snapshot that
 	// says `break: pipeline` names that, instead of leaving a count to be explained.
 	Pipeline,
@@ -396,10 +396,6 @@ let contextIssuedHook: (id: int32) => void = noContextIssued;
 export function setContextIssuedHook(hook: (id: int32) => void): void { contextIssuedHook = hook; }
 export function contextCount(): int32 { return serials.length as int32; }
 
-// Each starts with one record's worth of zeros so that `arr[0]` is always in bounds: a
-// frame that records no effect at all would otherwise index an empty array to take its
-// address. Counts come from the `*Total` variables, never from `.length`, so the seed is
-// invisible to every reader.
 export function create(this typeof DrawContext2D): DrawContext2D {
 	if ((freeContextIds.length as int32) > 0) { return DrawContext2D.twin(freeContextIds.pop()); }
 	serials.push(0);
@@ -408,6 +404,10 @@ export function create(this typeof DrawContext2D): DrawContext2D {
 	return DrawContext2D.twin(id);
 }
 
+// Each starts with one record's worth of zeros so that `arr[0]` is always in bounds: a
+// frame that records no effect at all would otherwise index an empty array to take its
+// address. Counts come from the `*Total` variables, never from `.length`, so the seed is
+// invisible to every reader.
 export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 	return {
 		id: id,
@@ -841,7 +841,6 @@ export function vertexField(index: int32, field: int32): float32 {
 	return activeContext.vertices[index * VERTEX_FLOATS + field];
 }
 
-// Grown in place and never shrunk, so a frame that peaked once does not reallocate again.
 let spliceSource: DrawContext2D | null = null;
 
 export function setSpliceSource(old: DrawContext2D | null): void { spliceSource = old; }
@@ -1022,6 +1021,7 @@ function copyFloats(
 	for (let i: int32 = 0; i < count; i++) { to[at + i] = from[start + i]; }
 }
 
+// Grown in place and never shrunk, so a frame that peaked once does not reallocate again.
 function growTo(ref stream: Vec<float32>, length: int32): void {
 	while ((stream.length as int32) < length) { stream.push(0.0 as float32); }
 }
@@ -1158,9 +1158,9 @@ export function pushGlyphInstance(
 	activeContext.uiInstanceTotal = activeContext.uiInstanceTotal + 1;
 }
 
-// The sprite stream is separate rather than a wide record with unused lanes: guardrail 8
-// says a sprite-only scene must not pay for the UI pipeline, and paying 36 floats to record
-// 16 is exactly that. It is also what makes B5 assertable - a sprite-only frame has
+// The sprite stream is separate rather than a wide record with unused lanes: a sprite-only
+// scene must not pay for the UI pipeline, and paying 36 floats to record
+// 16 is exactly that. It is also what makes it assertable - a sprite-only frame has
 // uiInstanceCount() == 0, which no mode count could prove.
 export function pushSpriteInstance(
 	a: float32, b: float32, c: float32, d: float32,
@@ -1217,8 +1217,8 @@ export function instanceUploadBytes(): int32 {
 		activeContext.spriteInstanceTotal * SPRITE_STRIDE;
 }
 
-// How many instances carry each mode. The counter A4 asks for a negative control on: it
-// moves when an emitter changes mode, and a sprite-only frame reads zero across the board.
+// How many instances carry each mode: it moves when an emitter changes mode, and a
+// sprite-only frame reads zero across the board.
 export function uiModeCount(mode: int32): int32 {
 	let n: int32 = 0;
 	for (let i: int32 = 0; i < activeContext.uiInstanceTotal; i++) {
