@@ -130,8 +130,14 @@ export function kbPlaceScratch(
 
 export function kbPlaceShapeScratch(config: KbShapeConfig, storage: KbGlyphStorage): KbScratch {
 	const stageCount = config.opList.stageFeatureCounts.length as int32;
-	const result = kbPlaceScratch(config.font, storage, config.shaper, config.glyphCount,
-		config.idSequentialLookupMatrix, config.featureStageFirstLookupIndices[stageCount] as int32);
+	const result = kbPlaceScratch(
+		config.font,
+		storage,
+		config.shaper,
+		config.glyphCount,
+		config.idSequentialLookupMatrix,
+		config.featureStageFirstLookupIndices[stageCount] as int32,
+	);
 	result.config = config;
 	return result;
 }
@@ -147,7 +153,8 @@ export function kbGlyphIncludedInLookupSubtable(
 
 	const m: Span<uint8> = s.font.blob[0..s.font.blob.length];
 	const flatLookupIndex = gpos ? lookupIndex + s.gposLookupIndexOffset : lookupIndex;
-	const flatSubtableIndex = m.kbU32(s.lookupSubtableIndexOffsets + flatLookupIndex * 4) + subtableIndex;
+	const flatSubtableIndex =
+		m.kbU32(s.lookupSubtableIndexOffsets + flatLookupIndex * 4) + subtableIndex;
 
 	const id = s.storage.glyphs[glyph].id as int64;
 	if (id < s.glyphIdCount) {
@@ -250,6 +257,10 @@ function lsbPositionOrBitWidth32(value: uint32): int32 {
 	return at;
 }
 
+function maskBelowBit(bit: int32): uint32 {
+	return (((1 as int64) << (bit as int64)) - 1) as uint32;
+}
+
 export function kbBucketGlyph(
 	s: KbScratch,
 	glyph: int32,
@@ -269,9 +280,9 @@ export function kbBucketGlyph(
 			const matrixWord = flatIndex / 32;
 			const matrixBit = (flatIndex % 32) as int32;
 
+			const beforeFirstMask = maskBelowBit(matrixBit);
 			if (configPlusOne == 0) {
 				let at = matrixWord;
-				const beforeFirstMask: uint32 = (((1 as int64) << (matrixBit as int64)) - 1) as uint32;
 				let bits: uint32 = s.idSequentialLookupMatrix[at] & ~beforeFirstMask;
 				at++;
 				let offset: int64 = 0;
@@ -286,8 +297,9 @@ export function kbBucketGlyph(
 
 				if (bits != 0) {
 					offset += (lsbPositionOrBitWidth32(bits) - matrixBit) as int64;
-					insertGlyphIntoBucket(s, (minimumSequentialLookupIndex as int64 + offset) as int32,
-						glyph, 1);
+					const sequentialLookupIndex =
+						(minimumSequentialLookupIndex as int64 + offset) as int32;
+					insertGlyphIntoBucket(s, sequentialLookupIndex, glyph, 1);
 					result = true;
 				}
 			} else {
@@ -295,10 +307,10 @@ export function kbBucketGlyph(
 				const rowWord = (minimumSequentialLookupIndex as int64) / 32;
 				let at = matrixWord;
 				let atRow = rowWord;
-				const beforeFirstMask: uint32 = (((1 as int64) << (matrixBit as int64)) - 1) as uint32;
 
-				let bits: uint32 = ((s.idSequentialLookupMatrix[at] | config.enabledLookupBits[atRow]) &
-					~config.disabledLookupBits[atRow]) & ~beforeFirstMask;
+				let bits: uint32 =
+					((s.idSequentialLookupMatrix[at] | config.enabledLookupBits[atRow]) &
+						~config.disabledLookupBits[atRow]) & ~beforeFirstMask;
 				at++;
 				atRow++;
 				let offset: int64 = 0;
@@ -315,10 +327,12 @@ export function kbBucketGlyph(
 
 				if (bits != 0) {
 					offset += (lsbPositionOrBitWidth32(bits) - matrixBit) as int64;
-					const sequentialLookupIndex = (minimumSequentialLookupIndex as int64 + offset) as int32;
+					const sequentialLookupIndex =
+						(minimumSequentialLookupIndex as int64 + offset) as int32;
 					let featureValue: uint16 = 1;
 					for (let i = 0; i < config.nonBinaryEnabledLookups.length; i++) {
-						if (config.nonBinaryEnabledLookups[i].sequentialLookupIndex == sequentialLookupIndex) {
+						if (config.nonBinaryEnabledLookups[i].sequentialLookupIndex ==
+							sequentialLookupIndex) {
 							featureValue = config.nonBinaryEnabledLookups[i].value as uint16;
 							break;
 						}
@@ -345,7 +359,8 @@ export function kbGsubMutate(
 	const classes = kbGlyphClasses(s.font, newId as int32);
 	s.storage.glyphs[glyph].classValue = classes.classValue as uint16;
 	s.storage.glyphs[glyph].markAttachmentClass = classes.markAttachmentClass as uint16;
-	s.storage.glyphs[glyph].flags = (s.storage.glyphs[glyph].flags & ~KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION) | flags;
+	s.storage.glyphs[glyph].flags =
+		(s.storage.glyphs[glyph].flags & ~KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION) | flags;
 
 	kbUnbucketGlyph(s, glyph);
 	kbBucketGlyph(s, glyph, currentSequentialLookupIndex + 1);
