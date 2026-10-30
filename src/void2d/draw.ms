@@ -437,11 +437,7 @@ export function endPatch(end: PaintIndex): void {
 
 function openRun(reason: BreakReason): void {
 	const ctx: DrawContext2D = currentContext();
-	ctx.runStart = match (ctx.curPipeline) {
-		Pipeline.Sprite => spriteInstanceCount(),
-		Pipeline.Ui => uiInstanceCount(),
-		Pipeline.Vertex => vertexCount(),
-	};
+	ctx.runStart = runCursor();
 	ctx.runReason = reason;
 	ctx.runOpen = true;
 }
@@ -1500,10 +1496,8 @@ export function recordedSpriteInstanceCount(): int32 { return spriteInstanceCoun
 // origin as each vertex is written. An instance carries its origin once, so the same
 // subtraction applies there - and it has to be the same two numbers, or a filtered sprite
 // lands somewhere else than a filtered anything else.
-export function originXOffset(): float32 {
-	const ctx: DrawContext2D = currentContext(); return ctx.originX; }
-export function originYOffset(): float32 {
-	const ctx: DrawContext2D = currentContext(); return ctx.originY; }
+export function originXOffset(): float32 { return currentContext().originX; }
+export function originYOffset(): float32 { return currentContext().originY; }
 
 // True when the instanced path is legal for the state the emitter is in. The only thing that
 // disqualifies it is a colour pipeline, which the sprite program does not have.
