@@ -4,18 +4,42 @@ import {
 	GPUBufferUsage,
 	GPUDevice,
 	GPUMapMode,
+	GPURenderPassDescriptor,
+	GPURenderPipeline,
+	GPURenderPipelineDescriptor,
 	GPUShaderBinding,
+	GPUShaderModule,
+	GPUShaderModuleDescriptor,
 	GPUShaderStage,
 	GPUTexture,
 	GPUTextureFormat,
 	GPUTextureUsage,
+	GPUTextureView,
 } from "../webgpu/types.ms";
 import { requestDevice } from "../webgpu/device.ms";
 import { adapterDescription, drainDebugMessages, executedAllocator, frameAllocator, idleSerial, retiredCount, samplerDescriptor, viewDescriptor } from "../webgpu/d3d12/backend.ms";
 import { splitTextureCopy } from "../webgpu/d3d12/resources.ms";
 import { newCursor, nextPair, serializeRootSignature, shaderLayout, tableEntries } from "../webgpu/d3d12/descriptor.ms";
 import { dx12Release } from "../webgpu/d3d12/d3d12.h";
-import { GREEN, RED, readBack, readbackBuffer, texelAt, texels } from "./webgpuFixtures.ms";
+import { d3dBlobFree, d3dBlobRead, d3dCompile, d3dCompileLog } from "../webgpu/d3d11/d3d11.h";
+import {
+	BLUE,
+	GREEN,
+	RED,
+	SIZE,
+	clearingPass,
+	colourTarget,
+	colourUniforms,
+	drawIndirectRows,
+	readBack,
+	readbackBuffer,
+	texelAt,
+	texels,
+	uniformGroup,
+	vertexBuffer,
+} from "./webgpuFixtures.ms";
+
+@passL("-ld3d11");
 
 function openDevice(): GPUDevice {
 	return requestDevice({
@@ -482,4 +506,299 @@ test "five groups of 3 views and a sampler switch to a fresh visible heap pair 3
 		cursor.samplers += 1;
 	}
 	assert switches == 3 && cursor.pair == 2;
+}
+
+const VERTEX_HLSL = "float4 main(float2 position : TEXCOORD0) : SV_Position { return float4(position, 0.0, 1.0); }";
+const FRAGMENT_HLSL = "cbuffer params : register(b0) { float4 color; };\nfloat4 main() : SV_Target0 { return color; }";
+const GREEN_HLSL = "float4 main() : SV_Target0 { return float4(0.0, 1.0, 0.0, 1.0); }";
+const TEXTURED_FRAGMENT_HLSL = "Texture2D tex : register(t0);\nSamplerState smp : register(s0);\nfloat4 main(float4 p : SV_Position) : SV_Target0 { return tex.Sample(smp, p.xy / 64.0); }";
+const COLOURED_VERTEX_HLSL = "struct Out { float4 position : SV_Position; float4 color : TEXCOORD0; };\nOut main(float2 position : TEXCOORD0, float4 color : TEXCOORD1) { Out o; o.position = float4(position, 0.0, 1.0); o.color = color; return o; }";
+const COLOURED_FRAGMENT_HLSL = "float4 main(float4 p : SV_Position, float4 color : TEXCOORD0) : SV_Target0 { return color; }";
+
+@noinline function stopOnCompile(message: string): never {
+	console.log(`webgpuD3d12Check: ${message}`);
+	unreachable;
+}
+
+function dxbc(code: string, target: string): Vec<uint8> {
+	const blob = d3dCompile(code, "main", target);
+	if (blob == null) { stopOnCompile(`D3DCompile ${target} failed: ${d3dCompileLog()}`); }
+	let bytes: Vec<uint8> = new Array(65536);
+	const size = d3dBlobRead(blob, bytes[0], 65536);
+	d3dBlobFree(blob);
+	if (size <= 0) { stopOnCompile("the compiled blob did not fit 64 KiB"); }
+	bytes.setLength(size as number);
+	return bytes;
+}
+
+function blobModule(label: string, vertex: string, fragment: string): GPUShaderModuleDescriptor {
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: label,
+		vertexCode: "",
+		vertexEntryPoint: "",
+		fragmentCode: "",
+		fragmentEntryPoint: "",
+		vertexBytecode: dxbc(vertex, "vs_5_0"),
+		fragmentBytecode: dxbc(fragment, "ps_5_0"),
+	};
+	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	return descriptor;
+}
+
+function flatShader(device: GPUDevice): GPUShaderModule {
+	let descriptor = blobModule("flat", VERTEX_HLSL, FRAGMENT_HLSL);
+	descriptor.bindings[0] = { group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: 0 };
+	return device.createShaderModule(descriptor);
+}
+
+function flatPipeline(device: GPUDevice, module: GPUShaderModule, sampleCount: int32): GPURenderPipeline {
+	let descriptor: GPURenderPipelineDescriptor = { label: "flat" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	descriptor.multisample.count = sampleCount;
+	return device.createRenderPipeline(descriptor);
+}
+
+function colouredShader(device: GPUDevice): GPUShaderModule {
+	let descriptor = blobModule("coloured", COLOURED_VERTEX_HLSL, COLOURED_FRAGMENT_HLSL);
+	descriptor.attributes[1] = { location: 1, nativeName: null, semanticIndex: 1 };
+	return device.createShaderModule(descriptor);
+}
+
+function readTarget(device: GPUDevice, target: GPUTexture): Vec<uint8> {
+	return readTexture(device, target, 0, 0, SIZE, SIZE);
+}
+
+test "a pass that clears an rgba8 target reads back the clear colour" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 })).end();
+	device.queue.submit(encoder.finish());
+	const read = readTarget(device, target);
+	assert texelAt(read, 256, 0, 0) == BLUE && texelAt(read, 256, 10, 10) == BLUE && texelAt(read, 256, SIZE - 1, SIZE - 1) == BLUE;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a depth32float clear to 0.5 reads back as 0.5 in every texel" {
+	const device = openDevice();
+	const depth = device.createTexture({
+		label: "depth32",
+		size: { width: 4, height: 4, depthOrArrayLayers: 1 },
+		format: "depth32float",
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		sampleCount: 1,
+	});
+	let pass: GPURenderPassDescriptor = { label: "depth" };
+	pass.depthStencilAttachment = { view: depth.createView({ label: null }), depthClearValue: 0.5, depthLoadOp: "clear", depthStoreOp: "store" };
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(pass).end();
+	const floats = readbackBuffer(device, 1024);
+	encoder.copyTextureToBuffer({ texture: depth }, { buffer: floats, offset: 0, bytesPerRow: 256, rowsPerImage: 4 }, { width: 4, height: 4, depthOrArrayLayers: 1 });
+	device.queue.submit(encoder.finish());
+	const bits = readBack(floats);
+	assert bits[0] == 0 && bits[1] == 0 && bits[2] == 0 && bits[3] == 0x3F;
+	assert bits[3 * 256 + 12] == 0 && bits[3 * 256 + 15] == 0x3F;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a triangle from DXBC with an empty layout draws its colour at the centre" {
+	const device = openDevice();
+	const pipeline = flatPipeline(device, device.createShaderModule(blobModule("green", VERTEX_HLSL, GREEN_HLSL)), 1);
+	const vertices = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.draw(3, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const read = readTarget(device, target);
+	assert texelAt(read, 256, 0, 0) == BLUE && texelAt(read, 256, 32, 32) == GREEN;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "two draws with group 0 at dynamic offsets 0 and 256 take two colours" {
+	const device = openDevice();
+	const pipeline = flatPipeline(device, flatShader(device), 1);
+	const group = uniformGroup(device, pipeline, colourUniforms(device));
+	const vertices = vertexBuffer(device, 48);
+	const triangles: Vec<float32> = [-0.9, -0.5, -0.5, 0.5, -0.1, -0.5, 0.1, -0.5, 0.5, 0.5, 0.9, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangles);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	const red: Vec<uint32> = [0];
+	const green: Vec<uint32> = [256];
+	pass.setBindGroup(0, group, red);
+	pass.draw(3, 1, 0, 0);
+	pass.setBindGroup(0, group, green);
+	pass.draw(3, 1, 3, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const read = readTarget(device, target);
+	assert texelAt(read, 256, 16, 36) == RED && texelAt(read, 256, 48, 36) == GREEN && texelAt(read, 256, 2, 2) == BLUE;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a full-target quad samples a 2x2 texture through group 1 with a nearest sampler" {
+	const device = openDevice();
+	let descriptor = blobModule("textured", VERTEX_HLSL, TEXTURED_FRAGMENT_HLSL);
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, nativeSlot: 0 };
+	descriptor.bindings[1] = { group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, nativeSlot: 0 };
+	const pipeline = flatPipeline(device, device.createShaderModule(descriptor), 1);
+	const texture = device.createTexture({
+		label: "sampled",
+		size: { width: 2, height: 2, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+	});
+	const quadrants: Vec<uint8> = [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 0, 0, 255];
+	device.queue.writeTexture({ texture: texture }, quadrants, { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	let groupDescriptor: GPUBindGroupDescriptor = { label: "resources", layout: pipeline.getBindGroupLayout(1) };
+	groupDescriptor.entries[0] = { binding: 0, textureView: texture.createView({ label: null }) };
+	groupDescriptor.entries[1] = { binding: 32, sampler: device.createSampler({ label: "nearest", magFilter: "nearest", minFilter: "nearest" }) };
+	const group = device.createBindGroup(groupDescriptor);
+	const vertices = vertexBuffer(device, 48);
+	const quad: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0];
+	device.queue.writeBuffer(vertices, 0, quad);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	const noOffsets: Vec<uint32> = [];
+	pass.setBindGroup(1, group, noOffsets);
+	pass.draw(6, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const read = readTarget(device, target);
+	assert texelAt(read, 256, 16, 16) == RED && texelAt(read, 256, 48, 16) == GREEN;
+	assert texelAt(read, 256, 16, 48) == BLUE && texelAt(read, 256, 48, 48) == RED;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "an indexed uint16 quad draws from a vertex buffer at offset 64" {
+	const device = openDevice();
+	const pipeline = flatPipeline(device, flatShader(device), 1);
+	const group = uniformGroup(device, pipeline, colourUniforms(device));
+	const vertices = vertexBuffer(device, 128);
+	const junk: Vec<float32> = [9.0, 9.0, 9.0, 9.0];
+	const quad: Vec<float32> = [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, junk);
+	device.queue.writeBuffer(vertices, 64, quad);
+	const indices = device.createBuffer({
+		label: "indices",
+		size: 12,
+		usage: (GPUBufferUsage.INDEX as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const order: Vec<uint16> = [0, 1, 2, 0, 2, 3];
+	device.queue.writeBuffer(indices, 0, order);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 64);
+	pass.setIndexBuffer(indices, "uint16", 0);
+	const offsets: Vec<uint32> = [0];
+	pass.setBindGroup(0, group, offsets);
+	pass.drawIndexed(6, 1, 0, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const read = readTarget(device, target);
+	assert texelAt(read, 256, 4, 4) == BLUE && texelAt(read, 256, 20, 20) == RED;
+	assert texelAt(read, 256, 44, 44) == RED && texelAt(read, 256, 60, 32) == BLUE;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "an indexed draw of two instances leaves the colour of the second instance on top" {
+	const device = openDevice();
+	const module = colouredShader(device);
+	let descriptor: GPURenderPipelineDescriptor = { label: "instanced" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.vertex.buffers[1].arrayStride = 4;
+	descriptor.vertex.buffers[1].stepMode = "instance";
+	descriptor.vertex.buffers[1].attributes[0] = { format: "unorm8x4", offset: 0, shaderLocation: 1 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	const pipeline = device.createRenderPipeline(descriptor);
+	const positions = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(positions, 0, triangle);
+	const colours = vertexBuffer(device, 8);
+	const perInstance: Vec<uint8> = [255, 0, 0, 255, 0, 255, 0, 255];
+	device.queue.writeBuffer(colours, 0, perInstance);
+	const indices = device.createBuffer({
+		label: "indices",
+		size: 8,
+		usage: (GPUBufferUsage.INDEX as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const order: Vec<uint16> = [0, 1, 2, 0];
+	device.queue.writeBuffer(indices, 0, order);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, positions, 0);
+	pass.setVertexBuffer(1, colours, 0);
+	pass.setIndexBuffer(indices, "uint16", 0);
+	pass.drawIndexed(3, 2, 0, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const read = readTarget(device, target);
+	assert texelAt(read, 256, 32, 32) == GREEN && texelAt(read, 256, 2, 2) == BLUE;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "two indexed indirect records in one call honour firstIndex, baseVertex and firstInstance" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawIndirectRows(device, colouredShader(device), target);
+	const read = readTarget(device, target);
+	assert texelAt(read, 256, 2, 32) == GREEN && texelAt(read, 256, 61, 32) == RED && texelAt(read, 256, 32, 32) == BLUE;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a 4x multisampled triangle resolves into its single-sample resolve target" {
+	const device = openDevice();
+	const pipeline = flatPipeline(device, flatShader(device), 4);
+	const group = uniformGroup(device, pipeline, colourUniforms(device));
+	const vertices = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const multisampled = colourTarget(device, 4);
+	const resolved = colourTarget(device, 1);
+	const resolveView: GPUTextureView = resolved.createView({ label: null });
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(multisampled.createView({ label: null }), resolveView));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	const offsets: Vec<uint32> = [0];
+	pass.setBindGroup(0, group, offsets);
+	pass.draw(3, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const read = readTarget(device, resolved);
+	assert texelAt(read, 256, 0, 0) == BLUE && texelAt(read, 256, 32, 32) == RED;
+	assert drainDebugMessages() == 0;
+	device.destroy();
 }
