@@ -41,6 +41,12 @@ export struct GraphemeCursor {
 	linkerRun: boolean;
 }
 
+const CLUSTER_MASK: int32 = 15;
+const PICTOGRAPHIC_BIT: int32 = 16;
+const CONJUNCT_SHIFT: int32 = 5;
+const CONJUNCT_MASK: int32 = 3;
+const EMOJI_PRESENTATION_BIT: int32 = 128;
+
 const HANGUL_FIRST: int32 = 0xAC00;
 const HANGUL_LAST: int32 = 0xD7A3;
 const HANGUL_T_COUNT: int32 = 28;
@@ -66,10 +72,10 @@ export function graphemePacked(codepoint: int32): int32 {
 export function graphemeProperty(codepoint: int32): GraphemeProperty {
 	const packed: int32 = graphemePacked(codepoint);
 	return {
-		cluster: (packed & 15) as ClusterBreak,
-		pictographic: (packed & 16) != 0,
-		emojiPresentation: (packed & 128) != 0,
-		conjunct: ((packed >> 5) & 3) as ConjunctBreak,
+		cluster: (packed & CLUSTER_MASK) as ClusterBreak,
+		pictographic: (packed & PICTOGRAPHIC_BIT) != 0,
+		emojiPresentation: (packed & EMOJI_PRESENTATION_BIT) != 0,
+		conjunct: ((packed >> CONJUNCT_SHIFT) & CONJUNCT_MASK) as ConjunctBreak,
 	};
 }
 
@@ -85,7 +91,10 @@ export function startGraphemes(): GraphemeCursor {
 }
 
 function isBreakControl(c: ClusterBreak): boolean {
-	return c == ClusterBreak.Control || c == ClusterBreak.CR || c == ClusterBreak.LF;
+	return match (c) {
+		ClusterBreak.Control | ClusterBreak.CR | ClusterBreak.LF => true,
+		_ => false,
+	};
 }
 
 function boundaryBefore(this cursor: GraphemeCursor, next: GraphemeProperty): boolean {
@@ -113,7 +122,6 @@ function boundaryBefore(this cursor: GraphemeCursor, next: GraphemeProperty): bo
 	return true;
 }
 
-// Whether a grapheme boundary falls before `codepoint`, moving the cursor past it (UAX #29).
 export function breaksBefore(ref cursor: GraphemeCursor, codepoint: int32): boolean {
 	const next: GraphemeProperty = graphemeProperty(codepoint);
 	const boundary: boolean = !cursor.started || cursor.boundaryBefore(next);

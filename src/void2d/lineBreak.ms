@@ -63,10 +63,15 @@ struct Unit {
 
 const DOTTED_CIRCLE: int32 = 0x25CC;
 
+const CLASS_MASK: int32 = 63;
+const EAST_ASIAN_BIT: int32 = 64;
+const INITIAL_QUOTE_BIT: int32 = 128;
+const FINAL_QUOTE_BIT: int32 = 256;
+const UNASSIGNED_PICTOGRAPH_BIT: int32 = 512;
+
 const HANGUL_FIRST: int32 = 0xAC00;
 const HANGUL_LAST: int32 = 0xD7A3;
 const HANGUL_T_COUNT: int32 = 28;
-const EAST_ASIAN: int32 = 1 << 6;
 
 let lineBreakRangesCache: uint32[] = new Array(0);
 
@@ -80,7 +85,7 @@ export function lineBreakPacked(codepoint: int32): int32 {
 	if (codepoint >= HANGUL_FIRST && codepoint <= HANGUL_LAST) {
 		const syllable: LineClass = (codepoint - HANGUL_FIRST) % HANGUL_T_COUNT == 0 ?
 			LineClass.H2 : LineClass.H3;
-		return (syllable as int32) | EAST_ASIAN;
+		return (syllable as int32) | EAST_ASIAN_BIT;
 	}
 	return rangeValue(lineBreakRanges(), 11, 0x7FF, codepoint);
 }
@@ -88,28 +93,41 @@ export function lineBreakPacked(codepoint: int32): int32 {
 export function lineProperty(codepoint: int32): LineProperty {
 	const packed: int32 = lineBreakPacked(codepoint);
 	return {
-		cls: (packed & 63) as LineClass,
-		eastAsian: (packed & 64) != 0,
-		initialQuote: (packed & 128) != 0,
-		finalQuote: (packed & 256) != 0,
-		unassignedPictograph: (packed & 512) != 0,
+		cls: (packed & CLASS_MASK) as LineClass,
+		eastAsian: (packed & EAST_ASIAN_BIT) != 0,
+		initialQuote: (packed & INITIAL_QUOTE_BIT) != 0,
+		finalQuote: (packed & FINAL_QUOTE_BIT) != 0,
+		unassignedPictograph: (packed & UNASSIGNED_PICTOGRAPH_BIT) != 0,
 	};
 }
 
 function isHardBreak(c: LineClass): boolean {
-	return c == LineClass.BK || c == LineClass.CR || c == LineClass.LF || c == LineClass.NL;
+	return match (c) {
+		LineClass.BK | LineClass.CR | LineClass.LF | LineClass.NL => true,
+		_ => false,
+	};
 }
 
 function carriesMarks(c: LineClass): boolean {
-	return !isHardBreak(c) && c != LineClass.SP && c != LineClass.ZW;
+	return match (c) {
+		LineClass.BK | LineClass.CR | LineClass.LF | LineClass.NL => false,
+		LineClass.SP | LineClass.ZW => false,
+		_ => true,
+	};
 }
 
 function isAlphabetic(c: LineClass): boolean {
-	return c == LineClass.AL || c == LineClass.HL;
+	return match (c) {
+		LineClass.AL | LineClass.HL => true,
+		_ => false,
+	};
 }
 
 function isHyphen(c: LineClass): boolean {
-	return c == LineClass.HY || c == LineClass.HH;
+	return match (c) {
+		LineClass.HY | LineClass.HH => true,
+		_ => false,
+	};
 }
 
 function isKorean(c: LineClass): boolean {
