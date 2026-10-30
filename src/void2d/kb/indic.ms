@@ -184,26 +184,31 @@ export function kbIndicBeginCluster(s: KbScratch, m: Span<uint8>, config: KbShap
 		const rphf = config.rphf;
 		const encoding = config.indicScriptProperties.rephEncoding;
 
-		if (encoding == KB_REPH_ENCODING_LOGICAL_REPHA) {
-			if (g[firstGlyph].syllabicClass == KB_INDIC_SYLLABIC_CLASS_REPHA) {
-				rephFlags = 0;
-				onePastRephIndex = 1;
-			}
-		} else if (encoding == KB_REPH_ENCODING_IMPLICIT) {
-			if (scanGlyphIndex >= 2 && g[firstGlyphs[1]].syllabicClass == KB_INDIC_SYLLABIC_CLASS_HALANT) {
-				const scratch: KbGlyph[] = [g[firstGlyphs[0]], g[firstGlyphs[1]]];
-				if (kbWouldSubstitute(s, lookupList, rphf, 0, scratch, 0, 2)) {
-					onePastRephIndex = 2;
+		match (encoding) {
+			KB_REPH_ENCODING_LOGICAL_REPHA => {
+				if (g[firstGlyph].syllabicClass == KB_INDIC_SYLLABIC_CLASS_REPHA) {
+					rephFlags = 0;
+					onePastRephIndex = 1;
 				}
-			}
-		} else if (encoding == KB_REPH_ENCODING_EXPLICIT) {
-			if (scanGlyphIndex >= 3 && g[firstGlyphs[1]].syllabicClass == KB_INDIC_SYLLABIC_CLASS_HALANT &&
-				g[firstGlyphs[2]].syllabicClass == KB_INDIC_SYLLABIC_CLASS_ZWJ) {
-				const scratch: KbGlyph[] = [g[firstGlyphs[0]], g[firstGlyphs[1]], g[firstGlyphs[2]]];
-				if (kbWouldSubstitute(s, lookupList, rphf, 0, scratch, 0, 3)) {
-					onePastRephIndex = 3;
+			},
+			KB_REPH_ENCODING_IMPLICIT => {
+				if (scanGlyphIndex >= 2 && g[firstGlyphs[1]].syllabicClass == KB_INDIC_SYLLABIC_CLASS_HALANT) {
+					const scratch: KbGlyph[] = [g[firstGlyphs[0]], g[firstGlyphs[1]]];
+					if (kbWouldSubstitute(s, lookupList, rphf, 0, scratch, 0, 2)) {
+						onePastRephIndex = 2;
+					}
 				}
-			}
+			},
+			KB_REPH_ENCODING_EXPLICIT => {
+				if (scanGlyphIndex >= 3 && g[firstGlyphs[1]].syllabicClass == KB_INDIC_SYLLABIC_CLASS_HALANT &&
+					g[firstGlyphs[2]].syllabicClass == KB_INDIC_SYLLABIC_CLASS_ZWJ) {
+					const scratch: KbGlyph[] = [g[firstGlyphs[0]], g[firstGlyphs[1]], g[firstGlyphs[2]]];
+					if (kbWouldSubstitute(s, lookupList, rphf, 0, scratch, 0, 3)) {
+						onePastRephIndex = 3;
+					}
+				}
+			},
+			_ => {},
 		}
 
 		if (onePastRephIndex != 0) {
@@ -663,26 +668,30 @@ export function kbIndicEndCluster(s: KbScratch, config: KbShapeConfig): void {
 		}
 
 		if (to == NO_GLYPH) {
-			if (rephPosition == KB_REPH_POSITION_AFTER_SUBJOINED) {
-				glyph = baseGlyph;
-				while (glyph != KB_GLYPH_SENTINEL) {
-					if (kbInSet32(g[glyph].syllabicPosition, REPH_AFTER_SUBJOINED_POSITIONS)) {
-						to = g[glyph].prev;
+			match (rephPosition) {
+				KB_REPH_POSITION_AFTER_SUBJOINED => {
+					glyph = baseGlyph;
+					while (glyph != KB_GLYPH_SENTINEL) {
+						if (kbInSet32(g[glyph].syllabicPosition, REPH_AFTER_SUBJOINED_POSITIONS)) {
+							to = g[glyph].prev;
 
-						break;
+							break;
+						}
+						glyph = g[glyph].next;
 					}
-					glyph = g[glyph].next;
-				}
-			} else if (rephPosition == KB_REPH_POSITION_AFTER_MAIN) {
-				glyph = baseGlyph;
-				while (glyph != KB_GLYPH_SENTINEL) {
-					if (g[glyph].syllabicPosition > KB_SYLLABIC_POSITION_AFTER_MAIN) {
-						to = g[glyph].prev;
+				},
+				KB_REPH_POSITION_AFTER_MAIN => {
+					glyph = baseGlyph;
+					while (glyph != KB_GLYPH_SENTINEL) {
+						if (g[glyph].syllabicPosition > KB_SYLLABIC_POSITION_AFTER_MAIN) {
+							to = g[glyph].prev;
 
-						break;
+							break;
+						}
+						glyph = g[glyph].next;
 					}
-					glyph = g[glyph].next;
-				}
+				},
+				_ => {},
 			}
 		}
 
