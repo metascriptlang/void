@@ -51,7 +51,9 @@ class BrowserPlatform extends ViewsPlatform {
 		return true;
 	}
 
-	surfaceResize(slot: int32, width: int32, height: int32): void { surfaceReconfigure(this.surfaceAt(slot)); }
+	surfaceResize(slot: int32, width: int32, height: int32): void {
+		surfaceReconfigure(this.surfaceAt(slot));
+	}
 
 	surfaceReady(slot: int32): boolean {
 		if (gpuState.lost) { return false; }
@@ -109,7 +111,9 @@ async function beginViews(canvas: CanvasView, start: ViewStart): Promise<void> {
 	start.view = view;
 	enter(
 		canvas,
-		(resized: CanvasSize): void => { views.resize(view, resized.width, resized.height, resized.scale); },
+		(resized: CanvasSize): void => {
+			views.resize(view, resized.width, resized.height, resized.scale);
+		},
 		(time: float64): void => { views.frame(view); },
 	);
 }
@@ -118,7 +122,10 @@ function open(canvas: CanvasView, onError: (message: string) => void): () => voi
 	claimDriver(Driver.Views);
 	if (starts.length > 0) {
 		when (webgl2) {
-			fail(`voidViewCreate: WebGL2 runs one view at a time; stop view ${starts[0].canvas.id} first`);
+			fail(
+				"voidViewCreate: WebGL2 runs one view at a time; " +
+					`stop view ${starts[0].canvas.id} first`,
+			);
 		}
 	}
 	if (starts.length == 0) {

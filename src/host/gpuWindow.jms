@@ -4,7 +4,15 @@
 // the views driver.
 
 import { AppEventType } from "../platform/appEvent";
-import { CanvasSize, CanvasView, detach, enter, leave, pageCanvas, publishRun } from "../platform/web/window";
+import {
+	CanvasSize,
+	CanvasView,
+	detach,
+	enter,
+	leave,
+	pageCanvas,
+	publishRun,
+} from "../platform/web/window";
 import { doorShutdown } from "../gpu/doorGpu";
 import { appWindow, browserWindow } from "./appWindowBrowser";
 import {
@@ -35,7 +43,12 @@ class WindowRun extends Start {
 	inited: boolean = false;
 	surface: GpuSurface | null = null;
 
-	constructor(canvas: CanvasView, onError: (message: string) => void, init: () => void, frame: () => void) {
+	constructor(
+		canvas: CanvasView,
+		onError: (message: string) => void,
+		init: () => void,
+		frame: () => void,
+	) {
 		super(canvas, onError);
 		this.init = init;
 		this.frame = frame;
@@ -106,11 +119,20 @@ async function beginWindow(canvas: CanvasView, run: WindowRun): Promise<void> {
 
 function fatal(message: string): void { throw new Error(message); }
 
-function voidRunConfigured(width: int32, height: int32, samples: int32, highDpi: int32, init: () => void, frame: () => void): void {
+function voidRunConfigured(
+	width: int32,
+	height: int32,
+	samples: int32,
+	highDpi: int32,
+	init: () => void,
+	frame: () => void,
+): void {
 	claimDriver(Driver.Window);
 	if (starts.length > 0) { fail("voidWebRun: the browser window already runs"); }
 	const canvas = pageCanvas(WINDOW_CANVAS, highDpi != 0);
-	if (canvas === null) { return fail(`no canvas ${WINDOW_CANVAS}: the page has no ${WINDOW_CANVAS}`); }
+	if (canvas === null) {
+		return fail(`no canvas ${WINDOW_CANVAS}: the page has no ${WINDOW_CANVAS}`);
+	}
 	windowSamples = samples <= 0 ? 1 : samples;
 	const run = new WindowRun(canvas, fatal, init, frame);
 	starts.push(run);
