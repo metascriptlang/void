@@ -133,13 +133,17 @@ export function kbGlyphClasses(font: KbFont, id: int32): KbGlyphClasses {
 	return result;
 }
 
+function unsignedCodepoint(codepoint: int32): uint32 {
+	return ((codepoint as int64) & 0xFFFFFFFF) as uint32;
+}
+
 export function kbCodepointToGlyph(
 	font: KbFont,
 	iCodepoint: int32,
 	configPlusOne: int32,
 	userId: int32,
 ): KbGlyph {
-	const codepoint = ((iCodepoint as int64) & 0xFFFFFFFF) as uint32;
+	const codepoint = unsignedCodepoint(iCodepoint);
 
 	let result = kbZeroGlyph();
 	result.codepoint = codepoint;
@@ -217,13 +221,13 @@ export function kbPushGlyph(
 	configPlusOne: int32,
 	userId: int32,
 ): int32 {
-	let template = kbZeroGlyph();
 	if (font !== null) {
-		template = kbCodepointToGlyph(font, codepoint, configPlusOne, userId);
-	} else {
-		template.codepoint = ((codepoint as int64) & 0xFFFFFFFF) as uint32;
-		template.configPlusOne = configPlusOne;
+		const glyph = kbCodepointToGlyph(font, codepoint, configPlusOne, userId);
+		return kbInsertGlyphBefore(storage, KB_GLYPH_SENTINEL, glyph);
 	}
+	let template = kbZeroGlyph();
+	template.codepoint = unsignedCodepoint(codepoint);
+	template.configPlusOne = configPlusOne;
 	return kbInsertGlyphBefore(storage, KB_GLYPH_SENTINEL, template);
 }
 
