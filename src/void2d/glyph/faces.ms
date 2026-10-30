@@ -438,10 +438,6 @@ export function void2dGlyphFaceIsPlatform(face: int32): int32 {
 	return validFace(face) && state.faces[face].platform != null ? 1 : 0;
 }
 
-export function void2dGlyphFaceCount(): int32 {
-	return state.faces.length as int32;
-}
-
 export function void2dGlyphColourOnly(face: int32): int32 {
 	return validFace(face) && state.faces[face].colourOnly ? 1 : 0;
 }
