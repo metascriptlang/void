@@ -1100,3 +1100,10 @@ export function cubicBezier(a: Vec2, c1: Vec2, c2: Vec2, b: Vec2, segments: int3
 	}
 	return pts;
 }
+
+test "the op kinds keep the ordinals shader2d's fs switches on" {
+	assert (GraphicsOpKind.LinearGradient as int32) == 1;
+	assert (GraphicsOpKind.RadialGradient as int32) == 2;
+	assert (GraphicsOpKind.SlashPattern as int32) == 3;
+	assert (GraphicsOpKind.CheckerPattern as int32) == 4;
+}
