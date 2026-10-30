@@ -990,8 +990,6 @@ when (voidShaper) {
 	): void {}
 }
 
-// Shapes once: one slot per codepoint, x measured from the start of its paragraph. A width,
-// alignment or truncation change wraps these again without a glyph lookup (GPUI.md:49).
 export function shapeText(
 	text: string,
 	style: TextStyle,
@@ -1159,9 +1157,7 @@ function lineValues(shaped: Readonly<ShapedText>): Vec<int32> {
 	return out;
 }
 
-// GPUI's LineLayoutCache (line_layout.rs:457-719, shape_text text_system.rs:750): the text is
-// shaped one hard line at a time and a line whose text, run slice, shaping breaks and style are
-// unchanged keeps its shape, so an edit shapes only the lines it touched.
+// GPUI's LineLayoutCache (line_layout.rs:457-719, shape_text text_system.rs:750).
 export function shapeLines(
 	text: string,
 	style: TextStyle,
@@ -1385,11 +1381,9 @@ function lineWidthOf(glyphs: Readonly<Span<LaidGlyph>>, first: int32): float32 {
 	return width;
 }
 
-// GPUI's force_width (line_layout.rs:898-921): a base moves onto the grid unless it is within a
-// pixel of it, a combining mark keeps its offset. A base is a grapheme's first glyph: GPUI finds
-// it by x, which holds only once a shaper has put the marks over their base. A sprite always
-// moves onto the grid: its tile fills the cell, so a base left within a pixel of it would open
-// a seam against its neighbour.
+// GPUI's force_width (line_layout.rs:898-921), except that a base is a grapheme's first glyph
+// where GPUI finds it by x. A sprite always moves onto the grid: its tile fills the cell, and
+// a base left within a pixel of it would open a seam against its neighbour.
 function forceCells(
 	glyphs: Span<LaidGlyph>, first: int32, cell: float32, cellWidths: Readonly<Span<uint8>>,
 ): float32 {
@@ -1897,9 +1891,7 @@ function wrapLine(
 	return rows;
 }
 
-// GPUI's WrappedLineLayout (line_layout.rs:277), cached with its wrap width per line
-// (line_layout.rs:457-719): each hard line wraps on its own and keeps its rows while its shape,
-// width, options and cells hold.
+// GPUI's WrappedLineLayout (line_layout.rs:277, cached per line at line_layout.rs:457-719).
 export function wrapLines(
 	ref shapes: LineShapes,
 	style: TextStyle,
