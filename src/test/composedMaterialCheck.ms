@@ -1,6 +1,3 @@
-// A typed block value writes the floats the MOVING_* offsets write today: a dissolve and a UV
-// transform over one value, on the lit, the unlit and the emissive moving blocks.
-
 import {
 	EMISSIVE_COLOR,
 	EMISSIVE_STRENGTH,
@@ -31,8 +28,7 @@ import {
 } from "../void3d/shader3d";
 import { sameLanes } from "./helpers";
 
-// Today's path: the defaults of the key, then each parameter at its constant.
-function todaysFloats(key: ProgramKey): Vec<float32> {
+function movingOffsetFloats(key: ProgramKey): Vec<float32> {
 	let values: Vec<float32> = movingDefaults(key);
 	const base: int32 = movingBase(key);
 	values[base + MOVING_UV_MATRIX] = 0.5;
@@ -70,7 +66,7 @@ test "a lit dissolve with a UV transform writes the floats the MOVING_ offsets w
 	params.uvMotion = { x: 0.25, y: 0.75, z: 0, w: 0 };
 	params.dissolve = { x: 0.4, y: 0.125, z: 0, w: 0 };
 	params.dissolveEdge = { x: 1, y: 0.45, z: 0.05, w: 1 };
-	assert sameLanes(writtenFloats(key, params), todaysFloats(key)), "lit moving block lanes";
+	assert sameLanes(writtenFloats(key, params), movingOffsetFloats(key)), "lit moving block lanes";
 }
 
 test "an unlit dissolve with a UV transform writes the floats the MOVING_ offsets write" {
@@ -81,7 +77,8 @@ test "an unlit dissolve with a UV transform writes the floats the MOVING_ offset
 	params.uvMotion = { x: 0.25, y: 0.75, z: 0, w: 0 };
 	params.dissolve = { x: 0.4, y: 0.125, z: 0, w: 0 };
 	params.dissolveEdge = { x: 1, y: 0.45, z: 0.05, w: 1 };
-	assert sameLanes(writtenFloats(key, params), todaysFloats(key)), "unlit moving block lanes";
+	assert sameLanes(writtenFloats(key, params), movingOffsetFloats(key)),
+		"unlit moving block lanes";
 }
 
 test "an emissive dissolve adds the emissive vec4 after the moving floats" {
@@ -93,7 +90,7 @@ test "an emissive dissolve adds the emissive vec4 after the moving floats" {
 	params.dissolve = { x: 0.4, y: 0.125, z: 0, w: 0 };
 	params.dissolveEdge = { x: 1, y: 0.45, z: 0.05, w: 1 };
 	params.emissive = { x: 0.1, y: 0.2, z: 0.3, w: 5 };
-	let expected: Vec<float32> = todaysFloats(key);
+	let expected: Vec<float32> = movingOffsetFloats(key);
 	const at: int32 = emissiveBase(key);
 	expected[at + EMISSIVE_COLOR] = 0.1;
 	expected[at + EMISSIVE_COLOR + 1] = 0.2;
