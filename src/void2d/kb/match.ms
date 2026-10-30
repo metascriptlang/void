@@ -16,7 +16,7 @@ import {
 } from "./shapeTables";
 
 export const KB_LOOKUP_FLAG_RIGHT_TO_LEFT: int32 = 1 << 0;
-export const KB_LOOKUP_FLAG_MARK_ATTACHMENT_CLASS_FILTER: int32 = 0xFF00;
+const KB_LOOKUP_FLAG_MARK_ATTACHMENT_CLASS_FILTER: int32 = 0xFF00;
 
 export function kbSkipFlagsGsubRegular(requestedFlags: uint32): uint32 {
 	return requestedFlags & KB_SKIP_FLAG_ZWJ;
