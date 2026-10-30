@@ -1896,3 +1896,80 @@ test "a depth16unorm texture round-trips a buffer copy" {
 	assert drainDebugMessages() == 0;
 	device.destroy();
 }
+
+test "a MAP_READ buffer mapped over its first 8 bytes returns exactly those bytes" {
+	const device = openDevice();
+	const source = copyBuffer(device, 16);
+	const bytes: Vec<uint8> = [9, 8, 7, 6, 5, 4, 3, 2, 1, 1, 1, 1, 1, 1, 1, 1];
+	device.queue.writeBuffer(source, 0, bytes);
+	const destination = readbackBuffer(device, 16);
+	copyAndSubmit(device, source, 0, destination, 0, 16);
+	destination.mapAsync(GPUMapMode.READ as int32, 0, 8);
+	const read = destination.getMappedRange(0, 8);
+	destination.unmap();
+	assert read.length == 8;
+	for (let i = 0; i < 8; i++) { assert read[i] == (9 - i) as uint8; }
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "a compute module built from precompiled DXBC with empty text doubles a storage buffer" {
+	const device = openDevice();
+	let descriptor: GPUShaderModuleDescriptor = { label: "compute", computeCode: "", computeEntryPoint: "", computeBytecode: dxbc(DOUBLE_HLSL, "cs_5_0") };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "storage", nativeSlot: 0 };
+	const values: Vec<uint32> = [1, 2, 3, 4];
+	const storage = storageBuffer(device, values);
+	dispatchTimes(device, device.createShaderModule(descriptor), { binding: 0, buffer: storage }, 1);
+	const read = readStorage(device, storage);
+	assert read[0] == 2 && read[4] == 4 && read[8] == 6 && read[12] == 8;
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "the limits are the constants the backend enforces, and the features say what the device can do" {
+	const device = openDevice();
+	const limits = device.limits();
+	assert limits.maxTextureDimension1D > 0 && limits.maxTextureDimension2D == 16384 && limits.maxTextureDimension3D == 2048;
+	assert limits.maxTextureArrayLayers == 2048 && limits.maxBindGroups == 2;
+	assert limits.maxSampledTexturesPerShaderStage > 0 && limits.maxSamplersPerShaderStage > 0;
+	assert limits.maxStorageBuffersPerShaderStage > 0 && limits.maxStorageTexturesPerShaderStage > 0;
+	assert limits.maxUniformBuffersPerShaderStage > 0 && limits.maxUniformBufferBindingSize == 65536;
+	assert limits.maxStorageBufferBindingSize > 0 && limits.maxVertexBuffers == 2 && limits.maxVertexAttributes == 16;
+	assert limits.maxColorAttachments == 4 && limits.maxComputeWorkgroupSizeX == 1024 && limits.maxComputeWorkgroupSizeY == 1024;
+	assert limits.maxComputeWorkgroupSizeZ == 64 && limits.maxComputeInvocationsPerWorkgroup == 1024;
+	assert limits.maxComputeWorkgroupsPerDimension == 65535;
+	assert limits.minUniformBufferOffsetAlignment == 256 && limits.minStorageBufferOffsetAlignment == 256;
+	const widest = device.createTexture({
+		label: "widest",
+		size: { width: limits.maxTextureDimension2D, height: 1, depthOrArrayLayers: 1 },
+		format: "r8unorm",
+		usage: GPUTextureUsage.TEXTURE_BINDING as int32,
+	});
+	assert widest.width() == limits.maxTextureDimension2D;
+	const features = device.features();
+	assert features.has("timestamp-query") && features.has("float32-filterable") && features.has("rg11b10ufloat-renderable");
+	assert !features.has("texture-compression-bc") && !features.has("depth32float-stencil8") && !features.has("shader-f16");
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
+test "debug groups and markers in the encoder, a labelled render pass and a labelled compute pass balance" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	encoder.pushDebugGroup("frame");
+	encoder.insertDebugMarker("before");
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.pushDebugGroup("inside");
+	pass.insertDebugMarker("marker");
+	pass.popDebugGroup();
+	pass.end();
+	const compute = encoder.beginComputePass({ label: "compute" });
+	compute.pushDebugGroup("compute group");
+	compute.popDebugGroup();
+	compute.end();
+	encoder.popDebugGroup();
+	device.queue.submit(encoder.finish());
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
