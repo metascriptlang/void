@@ -603,6 +603,13 @@ function fontIndex(font: FontId): int32 {
 	return index;
 }
 
+export function isFontFace(face: int32): boolean {
+	for (let i = 0; i < (fonts.length as int32); i++) {
+		if (fonts[i].face == face) { return true; }
+	}
+	return false;
+}
+
 export function fontFace(font: FontId): int32 {
 	const index: int32 = fontIndex(font);
 	if (fonts[index].face == NOT_LOADED) { fonts[index].face = defaultFace(); }
