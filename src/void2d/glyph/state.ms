@@ -1,4 +1,4 @@
-import { FontInfo } from "../trueType";
+import { FontInfo, newBuf } from "../trueType";
 
 export const FACE_UNREADABLE: int32 = -1;
 export const FACE_NOT_A_FONT: int32 = -2;
@@ -132,12 +132,12 @@ export function blankInfo(data: Readonly<Span<uint8>>): FontInfo {
 		svg: 0,
 		indexMap: 0,
 		indexToLocFormat: 0,
-		cff: { data: data, base: 0, size: 0, cursor: 0 },
-		charstrings: { data: data, base: 0, size: 0, cursor: 0 },
-		gsubrs: { data: data, base: 0, size: 0, cursor: 0 },
-		subrs: { data: data, base: 0, size: 0, cursor: 0 },
-		fontdicts: { data: data, base: 0, size: 0, cursor: 0 },
-		fdselect: { data: data, base: 0, size: 0, cursor: 0 },
+		cff: newBuf(data),
+		charstrings: newBuf(data),
+		gsubrs: newBuf(data),
+		subrs: newBuf(data),
+		fontdicts: newBuf(data),
+		fdselect: newBuf(data),
 	};
 }
 
