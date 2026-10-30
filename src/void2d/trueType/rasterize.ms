@@ -142,36 +142,53 @@ function flattenCurves(vertices: Readonly<Span<Vertex>>, flatness: float32): Fla
 	let y: float32 = 0;
 	for (let i: int32 = 0; i < (vertices.length as int32); i++) {
 		const v = vertices[i];
-		if (v.kind == VERTEX_MOVE) {
-			if (n >= 0) { flat.lengths.push((flat.points.length as int32) - start); }
-			n += 1;
-			start = flat.points.length as int32;
-			x = v.x as float32;
-			y = v.y as float32;
-			addCurvePoint(flat.points, x, y);
-		} else if (v.kind == VERTEX_LINE) {
-			x = v.x as float32;
-			y = v.y as float32;
-			addCurvePoint(flat.points, x, y);
-		} else if (v.kind == VERTEX_CURVE) {
-			tesselateCurve(
-				flat.points, x, y,
-				v.cx as float32, v.cy as float32,
-				v.x as float32, v.y as float32,
-				flatnessSquared, 0,
-			);
-			x = v.x as float32;
-			y = v.y as float32;
-		} else if (v.kind == VERTEX_CUBIC) {
-			tesselateCubic(
-				flat.points, x, y,
-				v.cx as float32, v.cy as float32,
-				v.cx1 as float32, v.cy1 as float32,
-				v.x as float32, v.y as float32,
-				flatnessSquared, 0,
-			);
-			x = v.x as float32;
-			y = v.y as float32;
+		match (v.kind) {
+			VERTEX_MOVE => {
+				if (n >= 0) { flat.lengths.push((flat.points.length as int32) - start); }
+				n += 1;
+				start = flat.points.length as int32;
+				x = v.x as float32;
+				y = v.y as float32;
+				addCurvePoint(flat.points, x, y);
+			},
+			VERTEX_LINE => {
+				x = v.x as float32;
+				y = v.y as float32;
+				addCurvePoint(flat.points, x, y);
+			},
+			VERTEX_CURVE => {
+				tesselateCurve(
+					flat.points,
+					x,
+					y,
+					v.cx as float32,
+					v.cy as float32,
+					v.x as float32,
+					v.y as float32,
+					flatnessSquared,
+					0,
+				);
+				x = v.x as float32;
+				y = v.y as float32;
+			},
+			VERTEX_CUBIC => {
+				tesselateCubic(
+					flat.points,
+					x,
+					y,
+					v.cx as float32,
+					v.cy as float32,
+					v.cx1 as float32,
+					v.cy1 as float32,
+					v.x as float32,
+					v.y as float32,
+					flatnessSquared,
+					0,
+				);
+				x = v.x as float32;
+				y = v.y as float32;
+			},
+			_ => {},
 		}
 	}
 	flat.lengths.push((flat.points.length as int32) - start);
