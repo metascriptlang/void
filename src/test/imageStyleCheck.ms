@@ -1,7 +1,10 @@
 import { Color, tile, rgba, whiteTile } from "../void2d/types";
 import { Scene2D } from "../void2d/node";
 import "../void2d/scene";
-import { ObjectFit, imageStyle, fitImage, NO_IMAGE_STYLE } from "../void2d/imageStyle";
+import {
+	ObjectFit, imageStyle, fitImage, NO_IMAGE_STYLE, allocateImageStyle, releaseImageStyle,
+} from "../void2d/imageStyle";
+import { uniformRadii } from "../void2d/boxStyle";
 
 function tileClear(): Color { return rgba(0.0, 0.0, 0.0, 1.0); }
 
@@ -98,4 +101,11 @@ test "image styles update in place and dispose returns their side-table slot" {
 
 	const notImage = s.graphics();
 	assert s.imageStyleOf(notImage.id.index) == NO_IMAGE_STYLE;
+}
+
+test "a released image style slot is reused by the next allocation" {
+	const style = imageStyle(uniformRadii(0.0), false, ObjectFit.Fill);
+	const a: int32 = allocateImageStyle(style);
+	releaseImageStyle(a);
+	assert allocateImageStyle(style) == a;
 }

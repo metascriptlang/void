@@ -117,6 +117,7 @@ export function fitImage(t: Tile, boxW: float32, boxH: float32, fit: ObjectFit):
 
 export let imageStyles: Vec<ImageStyle> = [];
 let freeImageStyles: Vec<int32> = [];
+let liveImageStyles: Vec<boolean> = [];
 
 export function allocateImageStyle(style: ImageStyle): int32 {
 	const freeCount: int32 = freeImageStyles.length as int32;
@@ -124,10 +125,12 @@ export function allocateImageStyle(style: ImageStyle): int32 {
 		const index: int32 = freeImageStyles[freeCount - 1];
 		freeImageStyles.pop();
 		imageStyles[index] = style;
+		liveImageStyles[index] = true;
 		return index;
 	}
 	const index: int32 = imageStyles.length as int32;
 	imageStyles.push(style);
+	liveImageStyles.push(true);
 	return index;
 }
 
@@ -137,5 +140,10 @@ export function updateImageStyle(index: int32, style: ImageStyle): void {
 
 export function releaseImageStyle(index: int32): void {
 	if (index == NO_IMAGE_STYLE) { return; }
+	if (!liveImageStyles[index]) {
+		console.log(`void2d: releaseImageStyle got slot ${index}, which is already released`);
+		unreachable;
+	}
+	liveImageStyles[index] = false;
 	freeImageStyles.push(index);
 }
