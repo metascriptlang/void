@@ -15,6 +15,7 @@ import { KbFont } from "./font";
 import {
 	KB_DELETED_SORT_KEY,
 	KB_FREE_GLYPH_SENTINEL,
+	KbGlyphConfig,
 	KbGlyphList,
 	KbGlyphStorage,
 	kbGlyphClasses,
@@ -261,6 +262,26 @@ function maskBelowBit(bit: int32): uint32 {
 	return (((1 as int64) << (bit as int64)) - 1) as uint32;
 }
 
+function lookupWordBits(
+	s: KbScratch,
+	config: KbGlyphConfig | null,
+	matrixWord: int64,
+	rowWord: int64,
+): uint32 {
+	if (config === null) { return s.idSequentialLookupMatrix[matrixWord]; }
+	return (s.idSequentialLookupMatrix[matrixWord] | config.enabledLookupBits[rowWord]) &
+		~config.disabledLookupBits[rowWord];
+}
+
+function nonBinaryFeatureValue(config: KbGlyphConfig, sequentialLookupIndex: int32): uint16 {
+	for (const enabledLookup of config.nonBinaryEnabledLookups) {
+		if (enabledLookup.sequentialLookupIndex == sequentialLookupIndex) {
+			return enabledLookup.value as uint16;
+		}
+	}
+	return 1;
+}
+
 export function kbBucketGlyph(
 	s: KbScratch,
 	glyph: int32,
@@ -281,65 +302,32 @@ export function kbBucketGlyph(
 			const matrixBit = (flatIndex % 32) as int32;
 
 			const beforeFirstMask = maskBelowBit(matrixBit);
-			if (configPlusOne == 0) {
-				let at = matrixWord;
-				let bits: uint32 = s.idSequentialLookupMatrix[at] & ~beforeFirstMask;
-				at++;
-				let offset: int64 = 0;
+			const config = configPlusOne != 0 ? s.storage.configs[configPlusOne - 1] : null;
+			let at = matrixWord;
+			let atRow = (minimumSequentialLookupIndex as int64) / 32;
 
-				let wordIndex = matrixWord + 1;
-				while (wordIndex < onePastLastWordIndex && bits == 0) {
-					bits = s.idSequentialLookupMatrix[at];
-					at++;
-					wordIndex++;
-					offset += 32;
-				}
+			let bits: uint32 = lookupWordBits(s, config, at, atRow) & ~beforeFirstMask;
+			at++;
+			atRow++;
+			let offset: int64 = 0;
 
-				if (bits != 0) {
-					offset += (lsbPositionOrBitWidth32(bits) - matrixBit) as int64;
-					const sequentialLookupIndex =
-						(minimumSequentialLookupIndex as int64 + offset) as int32;
-					insertGlyphIntoBucket(s, sequentialLookupIndex, glyph, 1);
-					result = true;
-				}
-			} else {
-				const config = s.storage.configs[configPlusOne - 1];
-				const rowWord = (minimumSequentialLookupIndex as int64) / 32;
-				let at = matrixWord;
-				let atRow = rowWord;
-
-				let bits: uint32 =
-					((s.idSequentialLookupMatrix[at] | config.enabledLookupBits[atRow]) &
-						~config.disabledLookupBits[atRow]) & ~beforeFirstMask;
+			let wordIndex = matrixWord + 1;
+			while (wordIndex < onePastLastWordIndex && bits == 0) {
+				bits = lookupWordBits(s, config, at, atRow);
 				at++;
 				atRow++;
-				let offset: int64 = 0;
+				wordIndex++;
+				offset += 32;
+			}
 
-				let wordIndex = matrixWord + 1;
-				while (wordIndex < onePastLastWordIndex && bits == 0) {
-					bits = (s.idSequentialLookupMatrix[at] | config.enabledLookupBits[atRow]) &
-						~config.disabledLookupBits[atRow];
-					at++;
-					atRow++;
-					wordIndex++;
-					offset += 32;
-				}
-
-				if (bits != 0) {
-					offset += (lsbPositionOrBitWidth32(bits) - matrixBit) as int64;
-					const sequentialLookupIndex =
-						(minimumSequentialLookupIndex as int64 + offset) as int32;
-					let featureValue: uint16 = 1;
-					for (let i = 0; i < config.nonBinaryEnabledLookups.length; i++) {
-						if (config.nonBinaryEnabledLookups[i].sequentialLookupIndex ==
-							sequentialLookupIndex) {
-							featureValue = config.nonBinaryEnabledLookups[i].value as uint16;
-							break;
-						}
-					}
-					insertGlyphIntoBucket(s, sequentialLookupIndex, glyph, featureValue);
-					result = true;
-				}
+			if (bits != 0) {
+				offset += (lsbPositionOrBitWidth32(bits) - matrixBit) as int64;
+				const sequentialLookupIndex =
+					(minimumSequentialLookupIndex as int64 + offset) as int32;
+				const featureValue: uint16 =
+					config !== null ? nonBinaryFeatureValue(config, sequentialLookupIndex) : 1;
+				insertGlyphIntoBucket(s, sequentialLookupIndex, glyph, featureValue);
+				result = true;
 			}
 		} else {
 			insertGlyphIntoBucket(s, minimumSequentialLookupIndex, glyph, 1);
