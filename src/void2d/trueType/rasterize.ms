@@ -46,12 +46,20 @@ export function getGlyphBitmapBoxSubpixel(
 	shiftY: float32,
 ): GlyphBox {
 	const box = getGlyphBox(info, glyph);
-	if (box == null) { return { x0: 0, y0: 0, x1: 0, y1: 0 }; }
+	if (box == null) {
+		return { x0: 0, y0: 0, x1: 0, y1: 0 };
+	}
 	return {
-		x0: truncInt(Math.floor(((box.x0 as float32) * scaleX + shiftX) as float64)),
-		y0: truncInt(Math.floor((((0 - box.y1) as float32) * scaleY + shiftY) as float64)),
+		x0: truncInt(
+			Math.floor(((box.x0 as float32) * scaleX + shiftX) as float64),
+		),
+		y0: truncInt(
+			Math.floor((((0 - box.y1) as float32) * scaleY + shiftY) as float64),
+		),
 		x1: truncInt(Math.ceil(((box.x1 as float32) * scaleX + shiftX) as float64)),
-		y1: truncInt(Math.ceil((((0 - box.y0) as float32) * scaleY + shiftY) as float64)),
+		y1: truncInt(
+			Math.ceil((((0 - box.y0) as float32) * scaleY + shiftY) as float64),
+		),
 	};
 }
 
@@ -74,7 +82,9 @@ function tesselateCurve(
 	const my: float32 = (y0 + 2 * y1 + y2) / 4;
 	const dx: float32 = (x0 + x2) / 2 - mx;
 	const dy: float32 = (y0 + y2) / 2 - my;
-	if (n > MAX_TESSELLATION_DEPTH) { return; }
+	if (n > MAX_TESSELLATION_DEPTH) {
+		return;
+	}
 	if (dx * dx + dy * dy > flatnessSquared) {
 		tesselateCurve(
 			points,
@@ -128,9 +138,13 @@ export function tesselateCubic(
 	const longlen: float32 = (Math.sqrt((dx0 * dx0 + dy0 * dy0) as float64) +
 		Math.sqrt((dx1 * dx1 + dy1 * dy1) as float64) +
 		Math.sqrt((dx2 * dx2 + dy2 * dy2) as float64)) as float32;
-	const shortlen: float32 = Math.sqrt((dx * dx + dy * dy) as float64) as float32;
+	const shortlen: float32 = Math.sqrt(
+		(dx * dx + dy * dy) as float64,
+	) as float32;
 	const flatness: float32 = longlen * longlen - shortlen * shortlen;
-	if (n > MAX_TESSELLATION_DEPTH) { return; }
+	if (n > MAX_TESSELLATION_DEPTH) {
+		return;
+	}
 	if (flatness > flatnessSquared) {
 		const x01: float32 = (x0 + x1) / 2;
 		const y01: float32 = (y0 + y1) / 2;
@@ -144,8 +158,32 @@ export function tesselateCubic(
 		const yb: float32 = (y12 + y23) / 2;
 		const mx: float32 = (xa + xb) / 2;
 		const my: float32 = (ya + yb) / 2;
-		tesselateCubic(points, x0, y0, x01, y01, xa, ya, mx, my, flatnessSquared, n + 1);
-		tesselateCubic(points, mx, my, xb, yb, x23, y23, x3, y3, flatnessSquared, n + 1);
+		tesselateCubic(
+			points,
+			x0,
+			y0,
+			x01,
+			y01,
+			xa,
+			ya,
+			mx,
+			my,
+			flatnessSquared,
+			n + 1,
+		);
+		tesselateCubic(
+			points,
+			mx,
+			my,
+			xb,
+			yb,
+			x23,
+			y23,
+			x3,
+			y3,
+			flatnessSquared,
+			n + 1,
+		);
 	} else {
 		addCurvePoint(points, x3, y3);
 	}
@@ -157,13 +195,20 @@ struct Flattened {
 }
 
 // stbtt_FlattenCurves: the contours' points and their lengths; no lengths when there is no move.
-function flattenCurves(vertices: Readonly<Span<Vertex>>, flatness: float32): Flattened {
+function flattenCurves(
+	vertices: Readonly<Span<Vertex>>,
+	flatness: float32,
+): Flattened {
 	let flat: Flattened = { points: [], lengths: [] };
 	let moves: int32 = 0;
 	for (let i: int32 = 0; i < (vertices.length as int32); i++) {
-		if (vertices[i].kind == VERTEX_MOVE) { moves += 1; }
+		if (vertices[i].kind == VERTEX_MOVE) {
+			moves += 1;
+		}
 	}
-	if (moves == 0) { return flat; }
+	if (moves == 0) {
+		return flat;
+	}
 	const flatnessSquared: float32 = flatness * flatness;
 	let start: int32 = 0;
 	let n: int32 = -1;
@@ -173,7 +218,9 @@ function flattenCurves(vertices: Readonly<Span<Vertex>>, flatness: float32): Fla
 		const v = vertices[i];
 		match (v.kind) {
 			VERTEX_MOVE => {
-				if (n >= 0) { flat.lengths.push((flat.points.length as int32) - start); }
+				if (n >= 0) {
+					flat.lengths.push((flat.points.length as int32) - start);
+				}
 				n += 1;
 				start = flat.points.length as int32;
 				x = v.x as float32;
@@ -217,8 +264,9 @@ function flattenCurves(vertices: Readonly<Span<Vertex>>, flatness: float32): Fla
 				x = v.x as float32;
 				y = v.y as float32;
 			},
-			_ => {},
-		}
+			_ => {
+			},
+		};
 	}
 	flat.lengths.push((flat.points.length as int32) - start);
 	return flat;
@@ -239,11 +287,15 @@ function insertionSortEdges(edges: Edge[], n: int32): void {
 		const t = edges[i];
 		let j = i;
 		while (j > 0) {
-			if (!edgeBefore(t, edges[j - 1])) { break; }
+			if (!edgeBefore(t, edges[j - 1])) {
+				break;
+			}
 			edges[j] = edges[j - 1];
 			j -= 1;
 		}
-		if (i != j) { edges[j] = t; }
+		if (i != j) {
+			edges[j] = t;
+		}
 	}
 }
 
@@ -263,9 +315,15 @@ function quicksortEdges(edges: Edge[], first: int32, count: int32): void {
 		let i: int32 = 1;
 		let j: int32 = n - 1;
 		while (true) {
-			while (edgeBefore(edges[p + i], edges[p])) { i += 1; }
-			while (edgeBefore(edges[p], edges[p + j])) { j -= 1; }
-			if (i >= j) { break; }
+			while (edgeBefore(edges[p + i], edges[p])) {
+				i += 1;
+			}
+			while (edgeBefore(edges[p], edges[p + j])) {
+				j -= 1;
+			}
+			if (i >= j) {
+				break;
+			}
 			swapEdges(edges, p + i, p + j);
 			i += 1;
 			j -= 1;
@@ -304,19 +362,25 @@ function handleClippedEdge(
 	endX: float32,
 	endY: float32,
 ): void {
-	if (startY == endY) { return; }
-	if (startY > e.ey) { return; }
-	if (endY < e.sy) { return; }
+	if (startY == endY) {
+		return;
+	}
+	if (startY > e.ey) {
+		return;
+	}
+	if (endY < e.sy) {
+		return;
+	}
 	let x0 = startX;
 	let y0 = startY;
 	let x1 = endX;
 	let y1 = endY;
 	if (y0 < e.sy) {
-		x0 += (x1 - x0) * (e.sy - y0) / (y1 - y0);
+		x0 += ((x1 - x0) * (e.sy - y0)) / (y1 - y0);
 		y0 = e.sy;
 	}
 	if (y1 > e.ey) {
-		x1 += (x1 - x0) * (e.ey - y1) / (y1 - y0);
+		x1 += ((x1 - x0) * (e.ey - y1)) / (y1 - y0);
 		y1 = e.ey;
 	}
 	const left = x as float32;
@@ -327,12 +391,16 @@ function handleClippedEdge(
 	} else if (x0 >= right && x1 >= right) {
 		return;
 	} else {
-		buf[slot] += e.direction * (y1 - y0) * (1 - ((x0 - left) + (x1 - left)) / 2);
+		buf[slot] += e.direction * (y1 - y0) * (1 - (x0 - left + (x1 - left)) / 2);
 	}
 }
 
-function trapezoidArea(height: float32, topWidth: float32, bottomWidth: float32): float32 {
-	return (topWidth + bottomWidth) / 2.0 * height;
+function trapezoidArea(
+	height: float32,
+	topWidth: float32,
+	bottomWidth: float32,
+): float32 {
+	return ((topWidth + bottomWidth) / 2.0) * height;
 }
 
 function positionTrapezoidArea(
@@ -346,7 +414,7 @@ function positionTrapezoidArea(
 }
 
 function triangleArea(height: float32, width: float32): float32 {
-	return height * width / 2;
+	return (height * width) / 2;
 }
 
 // stbtt__fill_active_edges_new: scanline is buf[0..], the fill row starts at buf[fillBase].
@@ -366,7 +434,16 @@ function fillActiveEdges(
 			const x0 = e.fx;
 			if (x0 < (len as float32)) {
 				if (x0 >= 0) {
-					handleClippedEdge(buf, 0, truncInt(x0 as float64), e, x0, yTop, x0, yBottom);
+					handleClippedEdge(
+						buf,
+						0,
+						truncInt(x0 as float64),
+						e,
+						x0,
+						yTop,
+						x0,
+						yBottom,
+					);
 					handleClippedEdge(
 						buf,
 						fillBase - 1,
@@ -404,8 +481,12 @@ function fillActiveEdges(
 				xBottom = xb;
 				sy1 = yBottom;
 			}
-			if (xTop >= 0 && xBottom >= 0 &&
-				xTop < (len as float32) && xBottom < (len as float32)) {
+			if (
+				xTop >= 0 &&
+				xBottom >= 0 &&
+				xTop < (len as float32) &&
+				xBottom < (len as float32)
+			) {
 				if (truncInt(xTop as float64) == truncInt(xBottom as float64)) {
 					const x = truncInt(xTop as float64);
 					const height: float32 = (sy1 - sy0) * e.direction;
@@ -433,7 +514,9 @@ function fillActiveEdges(
 					const x2 = truncInt(xBottom as float64);
 					let yCrossing: float32 = yTop + dy * (((x1 + 1) as float32) - x0);
 					let yFinal: float32 = yTop + dy * ((x2 as float32) - x0);
-					if (yCrossing > yBottom) { yCrossing = yBottom; }
+					if (yCrossing > yBottom) {
+						yCrossing = yBottom;
+					}
 					const sign = e.direction;
 					let area: float32 = sign * (yCrossing - sy0);
 					buf[x1] += triangleArea(area, ((x1 + 1) as float32) - xTop);
@@ -447,13 +530,16 @@ function fillActiveEdges(
 						area += step;
 					}
 					const rightEdge = (x2 as float32) + 1.0;
-					buf[x2] += area + sign * positionTrapezoidArea(
-						sy1 - yFinal,
-						x2 as float32,
-						rightEdge,
-						xBottom,
-						rightEdge,
-					);
+					buf[x2] +=
+						area +
+						sign *
+							positionTrapezoidArea(
+								sy1 - yFinal,
+								x2 as float32,
+								rightEdge,
+								xBottom,
+								rightEdge,
+							);
 					const filledEnd = fillBase + x2;
 					buf[filledEnd] += sign * (sy1 - sy0);
 				}
@@ -518,7 +604,9 @@ function rasterizeSortedEdges(
 	for (let j: int32 = 0; j < height; j++) {
 		const scanYTop: float32 = (y as float32) + 0.0;
 		const scanYBottom: float32 = (y as float32) + 1.0;
-		for (let i: int32 = 0; i < width * 2 + 1; i++) { buf[i] = 0; }
+		for (let i: int32 = 0; i < width * 2 + 1; i++) {
+			buf[i] = 0;
+		}
 		let previous: int32 = -1;
 		let at = active;
 		while (at >= 0) {
@@ -538,7 +626,9 @@ function rasterizeSortedEdges(
 			if (edges[ei].y0 != edges[ei].y1) {
 				let z = newActive(edges[ei], offX, scanYTop);
 				if (j == 0 && offY != 0) {
-					if (z.ey < scanYTop) { z.ey = scanYTop; }
+					if (z.ey < scanYTop) {
+						z.ey = scanYTop;
+					}
 				}
 				z.next = active;
 				arena.push(z);
@@ -546,14 +636,18 @@ function rasterizeSortedEdges(
 			}
 			ei += 1;
 		}
-		if (active >= 0) { fillActiveEdges(buf, width + 1, width, arena, active, scanYTop); }
+		if (active >= 0) {
+			fillActiveEdges(buf, width + 1, width, arena, active, scanYTop);
+		}
 		let sum: float32 = 0;
 		for (let i: int32 = 0; i < width; i++) {
 			sum += buf[width + i];
 			let k: float32 = buf[i] + sum;
 			k = (Math.abs(k as float64) as float32) * 255 + 0.5;
 			let m = truncInt(k as float64);
-			if (m > 255) { m = 255; }
+			if (m > 255) {
+				m = 255;
+			}
 			pixels[j * stride + i] = (m & 0xFF) as uint8;
 		}
 		at = active;
@@ -589,7 +683,9 @@ function rasterizeContours(
 			const pj = flat.points[m + j];
 			const pk = flat.points[m + k];
 			j = k;
-			if (pj.y == pk.y) { continue; }
+			if (pj.y == pk.y) {
+				continue;
+			}
 			const flip = invert ? pj.y > pk.y : pj.y < pk.y;
 			const a = flip ? pj : pk;
 			const b = flip ? pk : pj;
@@ -628,7 +724,9 @@ export function rasterize(
 ): void {
 	const scale: float32 = scaleX > scaleY ? scaleY : scaleX;
 	const flat = flattenCurves(vertices, flatnessInPixels / scale);
-	if (flat.lengths.length == 0) { return; }
+	if (flat.lengths.length == 0) {
+		return;
+	}
 	rasterizeContours(
 		pixels,
 		width,
@@ -659,7 +757,14 @@ export function makeGlyphBitmapSubpixel(
 	glyph: int32,
 ): void {
 	const vertices = getGlyphShape(info, glyph);
-	const box = getGlyphBitmapBoxSubpixel(info, glyph, scaleX, scaleY, shiftX, shiftY);
+	const box = getGlyphBitmapBoxSubpixel(
+		info,
+		glyph,
+		scaleX,
+		scaleY,
+		shiftX,
+		shiftY,
+	);
 	if (outWidth != 0 && outHeight != 0) {
 		rasterize(
 			pixels,

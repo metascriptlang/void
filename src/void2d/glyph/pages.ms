@@ -33,7 +33,13 @@ function releasedPage(page: int32): boolean {
 	return false;
 }
 
-export function markDirtyBox(p: GlyphPage, x: int32, y: int32, w: int32, h: int32): void {
+export function markDirtyBox(
+	p: GlyphPage,
+	x: int32,
+	y: int32,
+	w: int32,
+	h: int32,
+): void {
 	if (!p.dirty) {
 		p.dirtyBox[0] = x;
 		p.dirtyBox[1] = y;
@@ -42,10 +48,18 @@ export function markDirtyBox(p: GlyphPage, x: int32, y: int32, w: int32, h: int3
 		p.dirty = true;
 		return;
 	}
-	if (x < p.dirtyBox[0]) { p.dirtyBox[0] = x; }
-	if (y < p.dirtyBox[1]) { p.dirtyBox[1] = y; }
-	if (x + w > p.dirtyBox[2]) { p.dirtyBox[2] = x + w; }
-	if (y + h > p.dirtyBox[3]) { p.dirtyBox[3] = y + h; }
+	if (x < p.dirtyBox[0]) {
+		p.dirtyBox[0] = x;
+	}
+	if (y < p.dirtyBox[1]) {
+		p.dirtyBox[1] = y;
+	}
+	if (x + w > p.dirtyBox[2]) {
+		p.dirtyBox[2] = x + w;
+	}
+	if (y + h > p.dirtyBox[3]) {
+		p.dirtyBox[3] = y + h;
+	}
 }
 
 function markDirtyWhole(p: GlyphPage): void {
@@ -54,18 +68,18 @@ function markDirtyWhole(p: GlyphPage): void {
 }
 
 export function validPage(page: int32): boolean {
-	if (page < 0 || page >= (state.pages.length as int32)) { return false; }
-	if (!state.pages[page].live) { return releasedPage(page); }
+	if (page < 0 || page >= (state.pages.length as int32)) {
+		return false;
+	}
+	if (!state.pages[page].live) {
+		return releasedPage(page);
+	}
 	return true;
 }
 
 export function pageKindName(kind: int32): string {
 	return match (kind) {
-		0 => "Coverage",
-		1 => "Sdf",
-		2 => "Rgba",
-		3 => "Mask",
-		_ => "unknown",
+		0 => "Coverage",1 => "Sdf",2 => "Rgba",3 => "Mask",_ => "unknown",
 	};
 }
 
@@ -95,18 +109,28 @@ function pageByteCount(p: GlyphPage): int32 {
 }
 
 export function void2dGlyphPageCreate(size: int32, kind: int32): int32 {
-	if (size <= 0) { return -1; }
+	if (size <= 0) {
+		return -1;
+	}
 	if (!pageKindBuilt(kind)) {
-		console.error(`void2d: glyph page kind ${pageKindName(kind)} (${kind}) is not built`);
+		console.error(
+			`void2d: glyph page kind ${pageKindName(kind)} (${kind}) is not built`,
+		);
 		return -1;
 	}
 	let slot: int32 = 0;
-	while (slot < (state.pages.length as int32) && state.pages[slot].live) { slot++; }
+	while (slot < (state.pages.length as int32) && state.pages[slot].live) {
+		slot++;
+	}
 	if (slot >= MAX_GLYPH_PAGES) {
-		console.error(`void2d: glyph page ${slot} refused, the renderer binds at most ${MAX_GLYPH_PAGES}`);
+		console.error(
+			`void2d: glyph page ${slot} refused, the renderer binds at most ${MAX_GLYPH_PAGES}`,
+		);
 		return -1;
 	}
-	if (slot == (state.pages.length as int32)) { state.pages.push(new GlyphPage()); }
+	if (slot == (state.pages.length as int32)) {
+		state.pages.push(new GlyphPage());
+	}
 	const p = state.pages[slot];
 	p.size = size;
 	p.kind = kind;
@@ -121,7 +145,9 @@ export function void2dGlyphPageCreate(size: int32, kind: int32): int32 {
 
 export function void2dGlyphPageRelease(page: int32): int32 {
 	if (!validPage(page)) {
-		console.error(`void2d: glyph page ${page} cannot be released, it is not live`);
+		console.error(
+			`void2d: glyph page ${page} cannot be released, it is not live`,
+		);
 		return -1;
 	}
 	const p = state.pages[page];
@@ -131,14 +157,20 @@ export function void2dGlyphPageRelease(page: int32): int32 {
 }
 
 export function void2dGlyphPageGeneration(page: int32): uint32 {
-	if (page < 0 || page >= (state.pages.length as int32) || !state.pages[page].live) { return 0; }
+	if (
+		page < 0 || page >= (state.pages.length as int32) || !state.pages[page].live
+	) {
+		return 0;
+	}
 	return state.pages[page].generation;
 }
 
 export function void2dGlyphPageLiveCount(): int32 {
 	let live: int32 = 0;
 	for (const p of state.pages) {
-		if (p.live) { live++; }
+		if (p.live) {
+			live++;
+		}
 	}
 	return live;
 }
@@ -160,30 +192,51 @@ export function void2dGlyphPageBytes(page: int32): int32 {
 }
 
 export function void2dGlyphPageClear(page: int32): void {
-	if (!validPage(page)) { return; }
+	if (!validPage(page)) {
+		return;
+	}
 	const p = state.pages[page];
-	for (let i: int32 = 0; i < (p.texels.length as int32); i++) { p.texels[i] = 0; }
+	for (let i: int32 = 0; i < (p.texels.length as int32); i++) {
+		p.texels[i] = 0;
+	}
 	markDirtyWhole(p);
 }
 
-export function tileOutside(p: GlyphPage, x: int32, y: int32, w: int32, h: int32): boolean {
+export function tileOutside(
+	p: GlyphPage,
+	x: int32,
+	y: int32,
+	w: int32,
+	h: int32,
+): boolean {
 	return x < 0 || y < 0 || x + w > p.size || y + h > p.size;
 }
 
 export function void2dGlyphRasterize(
-	face: int32, glyph: int32, sizePx: float32, shiftX: float32,
-	page: int32, x: int32, y: int32, w: int32, h: int32,
+	face: int32,
+	glyph: int32,
+	sizePx: float32,
+	shiftX: float32,
+	page: int32,
+	x: int32,
+	y: int32,
+	w: int32,
+	h: int32,
 ): int32 {
 	if (!validFace(face) || !validPage(page) || w <= 0 || h <= 0) {
 		return COVERAGE_RASTER_BAD_HANDLE;
 	}
 	const p = state.pages[page];
 	if (p.kind != PAGE_COVERAGE) {
-		console.error(`void2d: a coverage tile was aimed at a ${pageKindName(p.kind)} page`);
+		console.error(
+			`void2d: a coverage tile was aimed at a ${pageKindName(p.kind)} page`,
+		);
 		return COVERAGE_RASTER_WRONG_PAGE_KIND;
 	}
 	if (tileOutside(p, x, y, w, h)) {
-		console.error(`void2d: glyph tile ${w}x${h} at (${x},${y}) falls outside its ${p.size} page`);
+		console.error(
+			`void2d: glyph tile ${w}x${h} at (${x},${y}) falls outside its ${p.size} page`,
+		);
 		return COVERAGE_RASTER_OUTSIDE_PAGE;
 	}
 	const scale = void2dGlyphScale(face, sizePx);
@@ -224,13 +277,33 @@ export function void2dGlyphRasterize(
 			const box = shapeBox(vertices, scale, shiftX);
 			if (vertices.length > 0) {
 				rasterize(
-					p.texels[at..p.texels.length], w, h, p.size, 0.35, vertices,
-					scale, scale, shiftX, 0.0, box.x0, box.y0, true,
+					p.texels[at .. p.texels.length],
+					w,
+					h,
+					p.size,
+					0.35,
+					vertices,
+					scale,
+					scale,
+					shiftX,
+					0.0,
+					box.x0,
+					box.y0,
+					true,
 				);
 			}
 		} else {
 			makeGlyphBitmapSubpixel(
-				f.info, p.texels[at..p.texels.length], w, h, p.size, scale, scale, shiftX, 0.0, glyph,
+				f.info,
+				p.texels[at .. p.texels.length],
+				w,
+				h,
+				p.size,
+				scale,
+				scale,
+				shiftX,
+				0.0,
+				glyph,
 			);
 		}
 	}
@@ -239,11 +312,17 @@ export function void2dGlyphRasterize(
 }
 
 export function void2dGlyphPageTexel(page: int32, x: int32, y: int32): int32 {
-	if (!validPage(page)) { return -1; }
+	if (!validPage(page)) {
+		return -1;
+	}
 	const p = state.pages[page];
-	if (x < 0 || y < 0 || x >= p.size || y >= p.size) { return -1; }
+	if (x < 0 || y < 0 || x >= p.size || y >= p.size) {
+		return -1;
+	}
 	if (p.kind == PAGE_RGBA) {
-		console.error(`void2d: page ${page} is Rgba, its texels are read with PageTexelRgba`);
+		console.error(
+			`void2d: page ${page} is Rgba, its texels are read with PageTexelRgba`,
+		);
 		return -1;
 	}
 	return p.texels[y * p.size + x] as int32;
@@ -339,10 +418,16 @@ export function void2dGlyphPageUploaded(page: int32): int32 {
 }
 
 export function void2dGlyphPageTakeUpload(page: int32): int32 {
-	if (!validPage(page)) { return 0; }
+	if (!validPage(page)) {
+		return 0;
+	}
 	const p = state.pages[page];
-	if (!p.dirty || p.uploaded) { return 0; }
-	for (let k: int32 = 0; k < 4; k++) { p.takenBox[k] = p.dirtyBox[k]; }
+	if (!p.dirty || p.uploaded) {
+		return 0;
+	}
+	for (let k: int32 = 0; k < 4; k++) {
+		p.takenBox[k] = p.dirtyBox[k];
+	}
 	p.dirty = false;
 	p.uploaded = true;
 	return 1;
@@ -355,7 +440,9 @@ export function void2dGlyphPageUploadBox(page: int32): Vec<int32> {
 
 export function void2dGlyphPagesMarkDirty(): void {
 	for (const p of state.pages) {
-		if (p.live) { markDirtyWhole(p); }
+		if (p.live) {
+			markDirtyWhole(p);
+		}
 	}
 }
 

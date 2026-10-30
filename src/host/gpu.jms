@@ -15,8 +15,9 @@ import {
 	doorShutdown,
 } from "../gpu/doorGpu";
 
-extern function thrownText(error: Error): string
-	from "((e)=>''+(e&&e.message||e))(#)";
+extern function thrownText(
+	error: Error,
+): string from "((e)=>''+(e&&e.message||e))(#)";
 
 when (!webgl2 && !webgpu) {
 	requireBrowserBackend();
@@ -77,7 +78,9 @@ export class Start {
 	release(): void {}
 
 	stop(): void {
-		if (this.stopped) { return; }
+		if (this.stopped) {
+			return;
+		}
 		this.stopped = true;
 		starts.splice(starts.indexOf(this), 1);
 		this.release();
@@ -87,19 +90,35 @@ export class Start {
 export class HostDriver {
 	name: string;
 
-	constructor(name: string) { this.name = name; }
+	constructor(name: string) {
+		this.name = name;
+	}
 
 	absent(operation: string): never {
 		return fail(`${operation}: this bundle has no ${this.name}`);
 	}
 
-	live(): boolean { return this.absent("live"); }
-	sampleCount(): int32 { return this.absent("sampleCount"); }
-	fbWidth(): int32 { return this.absent("fbWidth"); }
-	fbHeight(): int32 { return this.absent("fbHeight"); }
-	dpiScale(): float32 { return this.absent("dpiScale"); }
-	keyDown(code: int32): boolean { return this.absent("keyDown"); }
-	present(): void { this.absent("present"); }
+	live(): boolean {
+		return this.absent("live");
+	}
+	sampleCount(): int32 {
+		return this.absent("sampleCount");
+	}
+	fbWidth(): int32 {
+		return this.absent("fbWidth");
+	}
+	fbHeight(): int32 {
+		return this.absent("fbHeight");
+	}
+	dpiScale(): float32 {
+		return this.absent("dpiScale");
+	}
+	keyDown(code: int32): boolean {
+		return this.absent("keyDown");
+	}
+	present(): void {
+		this.absent("present");
+	}
 }
 
 class GpuState {
@@ -112,13 +131,23 @@ class GpuState {
 export const gpuState = new GpuState();
 export const starts: Start[] = [];
 let driver = Driver.None;
-let windowDriver = new HostDriver("window driver; its entry imports src/host/gpuWindow");
-let viewsDriver = new HostDriver("views driver; its entry imports src/host/gpuViews");
+let windowDriver = new HostDriver(
+	"window driver; its entry imports src/host/gpuWindow",
+);
+let viewsDriver = new HostDriver(
+	"views driver; its entry imports src/host/gpuViews",
+);
 
-export function useWindowDriver(hooks: HostDriver): void { windowDriver = hooks; }
-export function useViewsDriver(hooks: HostDriver): void { viewsDriver = hooks; }
+export function useWindowDriver(hooks: HostDriver): void {
+	windowDriver = hooks;
+}
+export function useViewsDriver(hooks: HostDriver): void {
+	viewsDriver = hooks;
+}
 
-export function fail(message: string): never { throw new Error(`void: ${message}`); }
+export function fail(message: string): never {
+	throw new Error(`void: ${message}`);
+}
 
 function refuseBesideOther(kind: Driver): void {
 	if (kind == Driver.Views && driver == Driver.Window) {
@@ -135,7 +164,9 @@ export function claimDriver(kind: Driver): void {
 }
 
 function sampleCount(): int32 {
-	return driver == Driver.Window ? windowDriver.sampleCount() : viewsDriver.sampleCount();
+	return driver == Driver.Window
+		? windowDriver.sampleCount()
+		: viewsDriver.sampleCount();
 }
 
 function doorOpen(): void {
@@ -159,12 +190,15 @@ export function doorEnsure(): void {
 }
 
 export function restoreStale(): void {
-	if (gpuState.doorStale) { doorRestore(); }
+	if (gpuState.doorStale) {
+		doorRestore();
+	}
 }
 
 function driverFor(operation: string): HostDriver {
-	if (driver == Driver.None ||
-		(driver == Driver.Views && !viewsDriver.live())) {
+	if (
+		driver == Driver.None || (driver == Driver.Views && !viewsDriver.live())
+	) {
 		fail(`${operation} before voidRun or voidViewCreate chose a driver`);
 	}
 	if (driver == Driver.Window && !windowDriver.live()) {
@@ -178,17 +212,25 @@ function driverFor(operation: string): HostDriver {
 
 function onLost(): void {
 	gpuState.doorUp = false;
-	if (starts.length == 0 || gpuState.lost) { return; }
+	if (starts.length == 0 || gpuState.lost) {
+		return;
+	}
 	gpuState.lost = true;
-	for (const start of starts.slice(0)) { start.suspend(); }
+	for (const start of starts.slice(0)) {
+		start.suspend();
+	}
 	recoverDevice(gpuState.runEpoch);
 }
 
 function onRestored(): void {
-	if (starts.length == 0) { return; }
+	if (starts.length == 0) {
+		return;
+	}
 	gpuState.lost = false;
 	gpuState.doorStale = true;
-	for (const start of starts.slice(0)) { start.resume(); }
+	for (const start of starts.slice(0)) {
+		start.resume();
+	}
 }
 
 when (webgl2) {
@@ -212,7 +254,10 @@ when (webgl2) {
 	}
 }
 
-export async function acquire(canvas: CanvasView, start: Start): Promise<boolean> {
+export async function acquire(
+	canvas: CanvasView,
+	start: Start,
+): Promise<boolean> {
 	try {
 		when (webgl2) {
 			acquireContext(canvas.selector, sampleCount(), onLost, onRestored);
@@ -221,7 +266,9 @@ export async function acquire(canvas: CanvasView, start: Start): Promise<boolean
 		}
 	} catch (error) {
 		if (!start.stopped) {
-			start.onError(`void: this browser gave no GPU backend: ${thrownText(error)}`);
+			start.onError(
+				`void: this browser gave no GPU backend: ${thrownText(error)}`,
+			);
 		}
 		return false;
 	}
@@ -252,23 +299,39 @@ function noWindowRunConfigured(
 
 publishRun(noWindowRun, noWindowRunConfigured);
 
-export function viewSampleCount(): int32 { return sampleCount(); }
+export function viewSampleCount(): int32 {
+	return sampleCount();
+}
 export function viewsPresent(): void {
-	if (driver == Driver.Views) { viewsDriver.present(); }
+	if (driver == Driver.Views) {
+		viewsDriver.present();
+	}
 }
 
 export function gfxSetup(): void {
 	driverFor("gfxSetup");
-	if (driver == Driver.Window) { doorOpen(); }
+	if (driver == Driver.Window) {
+		doorOpen();
+	}
 }
-export function fbWidth(): int32 { return driverFor("fbWidth").fbWidth(); }
-export function fbHeight(): int32 { return driverFor("fbHeight").fbHeight(); }
-export function dpiScale(): float32 { return driverFor("dpiScale").dpiScale(); }
+export function fbWidth(): int32 {
+	return driverFor("fbWidth").fbWidth();
+}
+export function fbHeight(): int32 {
+	return driverFor("fbHeight").fbHeight();
+}
+export function dpiScale(): float32 {
+	return driverFor("dpiScale").dpiScale();
+}
 export function keyDown(code: int32): boolean {
 	return driver == Driver.Window && windowDriver.keyDown(code);
 }
 
-export function makeImage(rgba: Readonly<Span<uint32>>, w: int32, h: int32): uint32 {
+export function makeImage(
+	rgba: Readonly<Span<uint32>>,
+	w: int32,
+	h: int32,
+): uint32 {
 	return doorMakeImage(rgba, w, h);
 }
 export function makeView(image: uint32): uint32 {

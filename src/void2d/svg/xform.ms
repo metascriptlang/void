@@ -24,7 +24,11 @@ export function xformIdentity(t: float32[]): void {
 	setXform(t, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
 }
 
-export function xformSetTranslation(t: float32[], tx: float32, ty: float32): void {
+export function xformSetTranslation(
+	t: float32[],
+	tx: float32,
+	ty: float32,
+): void {
 	setXform(t, 1.0, 0.0, 0.0, 1.0, tx, ty);
 }
 
@@ -63,7 +67,9 @@ export function xformMultiply(t: float32[], s: float32[]): void {
 
 // nsvg__xformInverse: a singular matrix turns `t` into the identity and leaves `inv` as it was.
 export function xformInverse(inv: float32[], t: float32[]): void {
-	const det: float64 = (t[0] as float64) * (t[3] as float64) - (t[2] as float64) * (t[1] as float64);
+	const det: float64 =
+		(t[0] as float64) * (t[3] as float64) -
+		(t[2] as float64) * (t[1] as float64);
 	if (det > -1e-6 && det < 1e-6) {
 		xformIdentity(t);
 		return;
@@ -71,18 +77,22 @@ export function xformInverse(inv: float32[], t: float32[]): void {
 	const invdet: float64 = 1.0 / det;
 	inv[0] = ((t[3] as float64) * invdet) as float32;
 	inv[2] = (-(t[2] as float64) * invdet) as float32;
-	inv[4] = (((t[2] as float64) * (t[5] as float64) - (t[3] as float64) * (t[4] as float64)) *
+	inv[4] = (((t[2] as float64) * (t[5] as float64) -
+		(t[3] as float64) * (t[4] as float64)) *
 		invdet) as float32;
 	inv[1] = (-(t[1] as float64) * invdet) as float32;
 	inv[3] = ((t[0] as float64) * invdet) as float32;
-	inv[5] = (((t[1] as float64) * (t[4] as float64) - (t[0] as float64) * (t[5] as float64)) *
+	inv[5] = (((t[1] as float64) * (t[4] as float64) -
+		(t[0] as float64) * (t[5] as float64)) *
 		invdet) as float32;
 }
 
 export function xformPremultiply(t: float32[], s: float32[]): void {
 	const s2: float32[] = [s[0], s[1], s[2], s[3], s[4], s[5]];
 	xformMultiply(s2, t);
-	for (let i: int32 = 0; i < 6; i++) { t[i] = s2[i]; }
+	for (let i: int32 = 0; i < 6; i++) {
+		t[i] = s2[i];
+	}
 }
 
 // x*t[0] + y*t[2] + t[4] and x*t[1] + y*t[3] + t[5], as float32.
@@ -108,13 +118,28 @@ function ptInBounds(x: float32, y: float32, bounds: float32[]): boolean {
 	return x >= bounds[0] && x <= bounds[2] && y >= bounds[1] && y <= bounds[3];
 }
 
-function evalBezier(t: float64, p0: float64, p1: float64, p2: float64, p3: float64): float64 {
+function evalBezier(
+	t: float64,
+	p0: float64,
+	p1: float64,
+	p2: float64,
+	p3: float64,
+): float64 {
 	const it: float64 = 1.0 - t;
-	return it * it * it * p0 + 3.0 * it * it * t * p1 + 3.0 * it * t * t * p2 + t * t * t * p3;
+	return (
+		it * it * it * p0 +
+		3.0 * it * it * t * p1 +
+		3.0 * it * t * t * p2 +
+		t * t * t * p3
+	);
 }
 
 // nsvg__curveBounds over the cubic curve[base .. base+7].
-export function curveBounds(bounds: float32[], curve: float32[], base: int32): void {
+export function curveBounds(
+	bounds: float32[],
+	curve: float32[],
+	base: int32,
+): void {
 	bounds[0] = minf(curve[base], curve[base + 6]);
 	bounds[1] = minf(curve[base + 1], curve[base + 7]);
 	bounds[2] = maxf(curve[base], curve[base + 6]);
@@ -122,7 +147,9 @@ export function curveBounds(bounds: float32[], curve: float32[], base: int32): v
 	if (
 		ptInBounds(curve[base + 2], curve[base + 3], bounds) &&
 		ptInBounds(curve[base + 4], curve[base + 5], bounds)
-	) { return; }
+	) {
+		return;
+	}
 	for (let i: int32 = 0; i < 2; i++) {
 		const v0 = curve[base + i] as float64;
 		const v1 = curve[base + 2 + i] as float64;

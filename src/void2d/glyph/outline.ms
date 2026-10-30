@@ -46,7 +46,7 @@ function pushPoint(
 			points.x.push(vertex.cx1 as float32);
 			points.y.push(vertex.cy1 as float32);
 		},
-	}
+	};
 	points.slot.push(v * 3 + k);
 }
 
@@ -74,8 +74,9 @@ function outlinePoints(
 				pushPoint(points, vertices, i, 2);
 				n += 2;
 			},
-			_ => {},
-		}
+			_ => {
+			},
+		};
 		pushPoint(points, vertices, i, 0);
 		n++;
 	}
@@ -122,7 +123,9 @@ function emboldenContour(
 			outX = px[j] - px[i];
 			outY = py[j] - py[i];
 			lOut = normLen(outX, outY);
-			if (lOut == 0.0) { continue; }
+			if (lOut == 0.0) {
+				continue;
+			}
 		} else {
 			outX = anchorX;
 			outY = anchorY;
@@ -142,12 +145,18 @@ function emboldenContour(
 				d = d + 1.0;
 				shiftX = inY + outY;
 				shiftY = inX + outX;
-				if (trueType) { shiftX = -shiftX; } else { shiftY = -shiftY; }
+				if (trueType) {
+					shiftX = -shiftX;
+				} else {
+					shiftY = -shiftY;
+				}
 				let q: float32 = outX * inY - outY * inX;
-				if (trueType) { q = -q; }
+				if (trueType) {
+					q = -q;
+				}
 				const l: float32 = lIn < lOut ? lIn : lOut;
-				shiftX = xs * q <= l * d ? shiftX * xs / d : shiftX * l / q;
-				shiftY = ys * q <= l * d ? shiftY * ys / d : shiftY * l / q;
+				shiftX = xs * q <= l * d ? (shiftX * xs) / d : (shiftX * l) / q;
+				shiftY = ys * q <= l * d ? (shiftY * ys) / d : (shiftY * l) / q;
 			}
 			for (let inner: int32 = 0; i != j; i = i < last ? i + 1 : first) {
 				px[i] = px[i] + (xs + shiftX);
@@ -171,7 +180,8 @@ function embolden(ref vertices: Vec<Vertex>, strength: float32): void {
 	for (let c: int32 = 0; c < contours; c++) {
 		let prev: int32 = ends[c];
 		for (let i: int32 = first; i <= ends[c]; i++) {
-			area = area + (points.y[i] - points.y[prev]) * (points.x[i] + points.x[prev]);
+			area =
+				area + (points.y[i] - points.y[prev]) * (points.x[i] + points.x[prev]);
 			prev = i;
 		}
 		first = ends[c] + 1;
@@ -180,7 +190,9 @@ function embolden(ref vertices: Vec<Vertex>, strength: float32): void {
 		first = 0;
 		for (let c: int32 = 0; c < contours; c++) {
 			const last = ends[c];
-			const closed = last > first && points.x[last] == points.x[first] &&
+			const closed =
+				last > first &&
+				points.x[last] == points.x[first] &&
 				points.y[last] == points.y[first];
 			emboldenContour(
 				points.x,
@@ -217,7 +229,7 @@ function embolden(ref vertices: Vec<Vertex>, strength: float32): void {
 				vertices[v].cx1 = x;
 				vertices[v].cy1 = y;
 			},
-		}
+		};
 	}
 }
 
@@ -231,8 +243,12 @@ export function applySynthetic(
 	skew: float32,
 ): void {
 	const count = vertices.length as int32;
-	if (count <= 0) { return; }
-	if (emboldenUnits > 0.0) { embolden(vertices, emboldenUnits); }
+	if (count <= 0) {
+		return;
+	}
+	if (emboldenUnits > 0.0) {
+		embolden(vertices, emboldenUnits);
+	}
 	if (skew != 0.0) {
 		for (let i: int32 = 0; i < count; i++) {
 			const v = vertices[i];
@@ -253,7 +269,9 @@ export function shapeBox(
 	shiftX: float32,
 ): GlyphBox {
 	const count = vertices.length as int32;
-	if (count <= 0) { return { x0: 0, y0: 0, x1: 0, y1: 0 }; }
+	if (count <= 0) {
+		return { x0: 0, y0: 0, x1: 0, y1: 0 };
+	}
 	let x0: float32 = vertices[0].x as float32;
 	let x1: float32 = x0;
 	let y0: float32 = vertices[0].y as float32;
@@ -261,27 +279,25 @@ export function shapeBox(
 	for (let i: int32 = 0; i < count; i++) {
 		const v = vertices[i];
 		const used: int32 = match (v.kind) {
-			VERTEX_CUBIC => 3,
-			VERTEX_CURVE => 2,
-			_ => 1,
+			VERTEX_CUBIC => 3,VERTEX_CURVE => 2,_ => 1,
 		};
 		for (let k: int32 = 0; k < used; k++) {
-			const unitsX: int16 = match (k) {
-				0 => v.x,
-				1 => v.cx,
-				_ => v.cx1,
-			};
-			const unitsY: int16 = match (k) {
-				0 => v.y,
-				1 => v.cy,
-				_ => v.cy1,
-			};
+			const unitsX: int16 = match (k) {0 => v.x,1 => v.cx,_ => v.cx1,};
+			const unitsY: int16 = match (k) {0 => v.y,1 => v.cy,_ => v.cy1,};
 			const x = unitsX as float32;
 			const y = unitsY as float32;
-			if (x < x0) { x0 = x; }
-			if (x > x1) { x1 = x; }
-			if (y < y0) { y0 = y; }
-			if (y > y1) { y1 = y; }
+			if (x < x0) {
+				x0 = x;
+			}
+			if (x > x1) {
+				x1 = x;
+			}
+			if (y < y0) {
+				y0 = y;
+			}
+			if (y > y1) {
+				y1 = y;
+			}
 		}
 	}
 	const left: float32 = x0 * scale + shiftX;
@@ -298,7 +314,9 @@ export function shapeBox(
 
 export function hasCubic(vertices: Readonly<Span<Vertex>>): boolean {
 	for (let i: int32 = 0; i < (vertices.length as int32); i++) {
-		if (vertices[i].kind == VERTEX_CUBIC) { return true; }
+		if (vertices[i].kind == VERTEX_CUBIC) {
+			return true;
+		}
 	}
 	return false;
 }

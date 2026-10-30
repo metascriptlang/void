@@ -2,7 +2,11 @@ import { elementKind } from "../js/elementKind";
 
 extern class Js {
 	extern bufferSubData(target: number, offset: number, data: Js): void;
-	extern getBufferSubData(target: number, offset: number, destination: Js): void;
+	extern getBufferSubData(
+		target: number,
+		offset: number,
+		destination: Js,
+	): void;
 	extern uniform4fv(location: Js, data: Js): void;
 	extern createVertexArray(): Js;
 	extern bindVertexArray(vertexArray: Js): void;
@@ -11,21 +15,73 @@ extern class Js {
 	extern bindBuffer(target: number, buffer: Js): void;
 	extern bufferData(target: number, size: number, usage: number): void;
 	extern deleteBuffer(buffer: Js): void;
-	extern copyBufferSubData(readTarget: number, writeTarget: number, readOffset: number, writeOffset: number, size: number): void;
+	extern copyBufferSubData(
+		readTarget: number,
+		writeTarget: number,
+		readOffset: number,
+		writeOffset: number,
+		size: number,
+	): void;
 	extern createTexture(): Js;
 	extern activeTexture(unit: number): void;
 	extern bindTexture(target: number, texture: Js): void;
-	extern texStorage2D(target: number, levels: number, internalFormat: number, width: number, height: number): void;
-	extern texStorage3D(target: number, levels: number, internalFormat: number, width: number, height: number, depth: number): void;
+	extern texStorage2D(
+		target: number,
+		levels: number,
+		internalFormat: number,
+		width: number,
+		height: number,
+	): void;
+	extern texStorage3D(
+		target: number,
+		levels: number,
+		internalFormat: number,
+		width: number,
+		height: number,
+		depth: number,
+	): void;
 	extern texParameteri(target: number, name: number, value: number): void;
 	extern deleteTexture(texture: Js): void;
 	extern createRenderbuffer(): Js;
 	extern bindRenderbuffer(target: number, renderbuffer: Js): void;
-	extern renderbufferStorageMultisample(target: number, samples: number, internalFormat: number, width: number, height: number): void;
+	extern renderbufferStorageMultisample(
+		target: number,
+		samples: number,
+		internalFormat: number,
+		width: number,
+		height: number,
+	): void;
 	extern deleteRenderbuffer(renderbuffer: Js): void;
-	extern framebufferRenderbuffer(target: number, attachment: number, renderbufferTarget: number, renderbuffer: Js): void;
-	extern texSubImage2D(target: number, level: number, x: number, y: number, width: number, height: number, format: number, type: number, offset: number): void;
-	extern texSubImage3D(target: number, level: number, x: number, y: number, z: number, width: number, height: number, depth: number, format: number, type: number, offset: number): void;
+	extern framebufferRenderbuffer(
+		target: number,
+		attachment: number,
+		renderbufferTarget: number,
+		renderbuffer: Js,
+	): void;
+	extern texSubImage2D(
+		target: number,
+		level: number,
+		x: number,
+		y: number,
+		width: number,
+		height: number,
+		format: number,
+		type: number,
+		offset: number,
+	): void;
+	extern texSubImage3D(
+		target: number,
+		level: number,
+		x: number,
+		y: number,
+		z: number,
+		width: number,
+		height: number,
+		depth: number,
+		format: number,
+		type: number,
+		offset: number,
+	): void;
 	extern createSampler(): Js;
 	extern samplerParameteri(sampler: Js, name: number, value: number): void;
 	extern samplerParameterf(sampler: Js, name: number, value: number): void;
@@ -53,9 +109,24 @@ extern class Js {
 	extern stencilMask(mask: number): void;
 	extern stencilFunc(compare: number, reference: number, mask: number): void;
 	extern stencilOp(fail: number, depthFail: number, pass: number): void;
-	extern stencilFuncSeparate(face: number, compare: number, reference: number, mask: number): void;
-	extern stencilOpSeparate(face: number, fail: number, depthFail: number, pass: number): void;
-	extern blendFuncSeparate(sourceColor: number, destinationColor: number, sourceAlpha: number, destinationAlpha: number): void;
+	extern stencilFuncSeparate(
+		face: number,
+		compare: number,
+		reference: number,
+		mask: number,
+	): void;
+	extern stencilOpSeparate(
+		face: number,
+		fail: number,
+		depthFail: number,
+		pass: number,
+	): void;
+	extern blendFuncSeparate(
+		sourceColor: number,
+		destinationColor: number,
+		sourceAlpha: number,
+		destinationAlpha: number,
+	): void;
 	extern blendEquationSeparate(color: number, alpha: number): void;
 	extern blendColor(r: number, g: number, b: number, a: number): void;
 	extern colorMask(r: boolean, g: boolean, b: boolean, a: boolean): void;
@@ -67,24 +138,81 @@ extern class Js {
 	extern createFramebuffer(): Js;
 	extern bindFramebuffer(target: number, framebuffer: Js): void;
 	extern deleteFramebuffer(framebuffer: Js): void;
-	extern framebufferTexture2D(target: number, attachment: number, textureTarget: number, texture: Js, level: number): void;
-	extern framebufferTextureLayer(target: number, attachment: number, texture: Js, level: number, layer: number): void;
+	extern framebufferTexture2D(
+		target: number,
+		attachment: number,
+		textureTarget: number,
+		texture: Js,
+		level: number,
+	): void;
+	extern framebufferTextureLayer(
+		target: number,
+		attachment: number,
+		texture: Js,
+		level: number,
+		layer: number,
+	): void;
 	extern checkFramebufferStatus(target: number): int32;
 	extern drawBuffers(buffers: Js): void;
 	extern readBuffer(attachment: number): void;
-	extern blitFramebuffer(srcX0: number, srcY0: number, srcX1: number, srcY1: number, dstX0: number, dstY0: number, dstX1: number, dstY1: number, mask: number, filter: number): void;
+	extern blitFramebuffer(
+		srcX0: number,
+		srcY0: number,
+		srcX1: number,
+		srcY1: number,
+		dstX0: number,
+		dstY0: number,
+		dstX1: number,
+		dstY1: number,
+		mask: number,
+		filter: number,
+	): void;
 	extern clearBufferfv(buffer: number, drawBuffer: number, value: Js): void;
 	extern clearBufferiv(buffer: number, drawBuffer: number, value: Js): void;
-	extern clearBufferfi(buffer: number, drawBuffer: number, depth: number, stencil: number): void;
-	extern vertexAttribPointer(index: number, size: number, type: number, normalized: boolean, stride: number, offset: number): void;
-	extern vertexAttribIPointer(index: number, size: number, type: number, stride: number, offset: number): void;
+	extern clearBufferfi(
+		buffer: number,
+		drawBuffer: number,
+		depth: number,
+		stencil: number,
+	): void;
+	extern vertexAttribPointer(
+		index: number,
+		size: number,
+		type: number,
+		normalized: boolean,
+		stride: number,
+		offset: number,
+	): void;
+	extern vertexAttribIPointer(
+		index: number,
+		size: number,
+		type: number,
+		stride: number,
+		offset: number,
+	): void;
 	extern vertexAttribDivisor(index: number, divisor: number): void;
 	extern enableVertexAttribArray(index: number): void;
 	extern disableVertexAttribArray(index: number): void;
 	extern drawArrays(mode: number, first: number, count: number): void;
-	extern drawArraysInstanced(mode: number, first: number, count: number, instances: number): void;
-	extern drawElements(mode: number, count: number, type: number, offset: number): void;
-	extern drawElementsInstanced(mode: number, count: number, type: number, offset: number, instances: number): void;
+	extern drawArraysInstanced(
+		mode: number,
+		first: number,
+		count: number,
+		instances: number,
+	): void;
+	extern drawElements(
+		mode: number,
+		count: number,
+		type: number,
+		offset: number,
+	): void;
+	extern drawElementsInstanced(
+		mode: number,
+		count: number,
+		type: number,
+		offset: number,
+		instances: number,
+	): void;
 	extern createQuery(): Js;
 	extern deleteQuery(query: Js): void;
 	extern beginQuery(target: number, query: Js): void;
@@ -95,30 +223,92 @@ extern class Js {
 	extern disable(capability: number): void;
 	extern pixelStorei(name: number, value: number): void;
 	extern getExtension(name: string): Js;
-	extern readPixels(x: number, y: number, width: number, height: number, format: number, type: number, offset: number): void;
-	extern copyTexSubImage2D(target: number, level: number, xOffset: number, yOffset: number, x: number, y: number, width: number, height: number): void;
-	extern copyTexSubImage3D(target: number, level: number, xOffset: number, yOffset: number, zOffset: number, x: number, y: number, width: number, height: number): void;
+	extern readPixels(
+		x: number,
+		y: number,
+		width: number,
+		height: number,
+		format: number,
+		type: number,
+		offset: number,
+	): void;
+	extern copyTexSubImage2D(
+		target: number,
+		level: number,
+		xOffset: number,
+		yOffset: number,
+		x: number,
+		y: number,
+		width: number,
+		height: number,
+	): void;
+	extern copyTexSubImage3D(
+		target: number,
+		level: number,
+		xOffset: number,
+		yOffset: number,
+		zOffset: number,
+		x: number,
+		y: number,
+		width: number,
+		height: number,
+	): void;
 }
 
 extern function canvasOf(selector: string): Js from "document.querySelector(#)";
-extern function contextOf(canvas: Js, antialias: boolean): Js from "#.getContext('webgl2',{alpha:true,depth:true,stencil:false,antialias:#,premultipliedAlpha:true,preserveDrawingBuffer:false})";
-extern function watchContext(canvas: Js, onLost: () => void, onRestored: () => void): () => void
-	from "((c,l,r)=>{const lost=(e)=>{e.preventDefault();l();};const back=()=>r();c.addEventListener('webglcontextlost',lost);c.addEventListener('webglcontextrestored',back);return ()=>{c.removeEventListener('webglcontextlost',lost);c.removeEventListener('webglcontextrestored',back);};})(#,#,#)";
-extern function enableExtensions(context: Js): void from "((g)=>{for(const n of ['EXT_color_buffer_float','EXT_color_buffer_half_float','EXT_float_blend','EXT_texture_norm16','OES_texture_float_linear','EXT_texture_filter_anisotropic','EXT_texture_compression_bptc','EXT_texture_compression_rgtc','WEBGL_compressed_texture_astc','WEBGL_compressed_texture_etc','WEBGL_compressed_texture_etc1','WEBGL_compressed_texture_s3tc','WEBGL_compressed_texture_s3tc_srgb'])g.getExtension(n);})(#)";
+extern function contextOf(
+	canvas: Js,
+	antialias: boolean,
+): Js from "#.getContext('webgl2',{alpha:true,depth:true,stencil:false,antialias:#,premultipliedAlpha:true,preserveDrawingBuffer:false})";
+extern function watchContext(
+	canvas: Js,
+	onLost: () => void,
+	onRestored: () => void,
+): () => void from "((c,l,r)=>{const lost=(e)=>{e.preventDefault();l();};const back=()=>r();c.addEventListener('webglcontextlost',lost);c.addEventListener('webglcontextrestored',back);return ()=>{c.removeEventListener('webglcontextlost',lost);c.removeEventListener('webglcontextrestored',back);};})(#,#,#)";
+extern function enableExtensions(
+	context: Js,
+): void from "((g)=>{for(const n of ['EXT_color_buffer_float','EXT_color_buffer_half_float','EXT_float_blend','EXT_texture_norm16','OES_texture_float_linear','EXT_texture_filter_anisotropic','EXT_texture_compression_bptc','EXT_texture_compression_rgtc','WEBGL_compressed_texture_astc','WEBGL_compressed_texture_etc','WEBGL_compressed_texture_etc1','WEBGL_compressed_texture_s3tc','WEBGL_compressed_texture_s3tc_srgb'])g.getExtension(n);})(#)";
 extern function isNone(value: Js): boolean from "(# == null)";
 extern function jsNull(): Js from "(null)";
 extern function jsList(): Js from "([])";
 extern function emptyTable(): Js from "([null])";
-extern function register(table: Js, object: Js): uint32 from "((t,o)=>{t.push(o);return t.length-1;})(#,#)";
+extern function register(
+	table: Js,
+	object: Js,
+): uint32 from "((t,o)=>{t.push(o);return t.length-1;})(#,#)";
 extern function lookup(table: Js, id: int32): Js from "#[#]";
-extern function release(table: Js, id: uint32): void from "((t,i)=>{t[i]=null;})(#,#)";
-extern function floats(a: float64, b: float64, c: float64, d: float64): Js from "new Float32Array([#,#,#,#])";
+extern function release(
+	table: Js,
+	id: uint32,
+): void from "((t,i)=>{t[i]=null;})(#,#)";
+extern function floats(
+	a: float64,
+	b: float64,
+	c: float64,
+	d: float64,
+): Js from "new Float32Array([#,#,#,#])";
 extern function integers(a: int32): Js from "new Int32Array([#])";
-extern function drawTargets(count: int32, colorMask: int32): Js from "((n,m)=>{const a=[];for(let i=0;i<n;i++)a.push((m&(1<<i))?0x8CE0+i:0);return a;})(#,#)";
-extern function parameter(context: Js, name: int32): int32 from "((g,n)=>{if(n===0x821B)return 3;if(n===0x821C)return 0;const v=g.getParameter(n);return typeof v==='number'?v|0:0;})(#,#)";
-extern function parameterBig(context: Js, name: int32): int64 from "BigInt(Math.trunc(#.getParameter(#)))";
-extern function boundObject(context: Js, table: Js, name: int32): int32 from "((g,t,n)=>t.indexOf(g.getParameter(n)))(#,#,#)";
-extern function parameterObject(context: Js, name: int32): Js from "#.getParameter(#)";
+extern function drawTargets(
+	count: int32,
+	colorMask: int32,
+): Js from "((n,m)=>{const a=[];for(let i=0;i<n;i++)a.push((m&(1<<i))?0x8CE0+i:0);return a;})(#,#)";
+extern function parameter(
+	context: Js,
+	name: int32,
+): int32 from "((g,n)=>{if(n===0x821B)return 3;if(n===0x821C)return 0;const v=g.getParameter(n);return typeof v==='number'?v|0:0;})(#,#)";
+extern function parameterBig(
+	context: Js,
+	name: int32,
+): int64 from "BigInt(Math.trunc(#.getParameter(#)))";
+extern function boundObject(
+	context: Js,
+	table: Js,
+	name: int32,
+): int32 from "((g,t,n)=>t.indexOf(g.getParameter(n)))(#,#,#)";
+extern function parameterObject(
+	context: Js,
+	name: int32,
+): Js from "#.getParameter(#)";
 extern function queryNumber(value: Js): uint64 from "BigInt(#)";
 extern function num(value: int64): number from "Number(#)";
 extern function queryFlag(value: Js): boolean from "(#===true)";
@@ -170,50 +360,123 @@ let locations: Js = jsList();
 let log = "";
 let unwatch: () => void = (): void => {};
 
-function stop(message: string): never { throw new Error(`webgpu gl js: ${message}`); }
+function stop(message: string): never {
+	throw new Error(`webgpu gl js: ${message}`);
+}
 
 function unavailable(what: string): never {
-	return stop(`${what} is not built into this GL target; the backend checks oglCapabilities before it calls`);
+	return stop(
+		`${what} is not built into this GL target; the backend checks oglCapabilities before it calls`,
+	);
 }
 
 const KIND_SIZES: int32[] = [4, 8, 1, 1, 2, 2, 4, 4, 8, 8];
 
-extern function typedOf(items: Js, kind: int32): Js from "((a,k)=>{switch(k){case 0:return Float32Array.from(a);case 1:return Float64Array.from(a);case 2:return Int8Array.from(a);case 3:return Uint8Array.from(a);case 4:return Int16Array.from(a);case 5:return Uint16Array.from(a);case 6:return Int32Array.from(a);case 7:return Uint32Array.from(a);case 8:return BigInt64Array.from(a,(v)=>BigInt.asIntN(64,BigInt(v)));default:return BigUint64Array.from(a,(v)=>BigInt.asUintN(64,BigInt(v)));}})(#,#)";
-extern function typedOver(bytes: Js, kind: int32): Js from "((b,k)=>{const C=[Float32Array,Float64Array,Int8Array,Uint8Array,Int16Array,Uint16Array,Int32Array,Uint32Array,BigInt64Array,BigUint64Array][k];return new C(b.buffer,b.byteOffset,b.byteLength/C.BYTES_PER_ELEMENT);})(#,#)";
-extern function asBytes(typed: Js): Js from "((t)=>new Uint8Array(t.buffer,t.byteOffset,t.byteLength))(#)";
+extern function typedOf(
+	items: Js,
+	kind: int32,
+): Js from "((a,k)=>{switch(k){case 0:return Float32Array.from(a);case 1:return Float64Array.from(a);case 2:return Int8Array.from(a);case 3:return Uint8Array.from(a);case 4:return Int16Array.from(a);case 5:return Uint16Array.from(a);case 6:return Int32Array.from(a);case 7:return Uint32Array.from(a);case 8:return BigInt64Array.from(a,(v)=>BigInt.asIntN(64,BigInt(v)));default:return BigUint64Array.from(a,(v)=>BigInt.asUintN(64,BigInt(v)));}})(#,#)";
+extern function typedOver(
+	bytes: Js,
+	kind: int32,
+): Js from "((b,k)=>{const C=[Float32Array,Float64Array,Int8Array,Uint8Array,Int16Array,Uint16Array,Int32Array,Uint32Array,BigInt64Array,BigUint64Array][k];return new C(b.buffer,b.byteOffset,b.byteLength/C.BYTES_PER_ELEMENT);})(#,#)";
+extern function asBytes(
+	typed: Js,
+): Js from "((t)=>new Uint8Array(t.buffer,t.byteOffset,t.byteLength))(#)";
 extern function newBytes(count: int64): Js from "new Uint8Array(Number(#))";
-extern function elementsAt<T>(location: Borrow<T>, first: int64, count: int64): Js from "((l,f,n)=>{const i=l[1]+Number(f);return l[0].slice(i,i+Number(n));})(#,#,#)";
-extern function tailAt<T>(location: Borrow<T>): Js from "((l)=>l[0].slice(l[1]))(#)";
-extern function elementAt<T>(location: Borrow<T>, at: int32): number from "((l,i)=>l[0][l[1]+i])(#,#)";
-extern function storeAt<T>(location: Borrow<T>, first: int64, items: Js): void from "((l,f,t)=>{const a=l[0],i=l[1]+Number(f);for(let j=0;j<t.length;j++)a[i+j]=t[j];})(#,#,#)";
-extern function texSubImageView(context: Js, target: int32, level: int32, x: int32, y: int32, z: int32, width: int32, height: int32, depth: int32, format: int32, type: int32, view: Js, offset: int64): void
-	from "((g,t,l,x,y,z,w,h,d,f,p,v,o)=>{if(t===0x806F||t===0x8C1A)g.texSubImage3D(t,l,x,y,z,w,h,d,f,p,v,Number(o));else g.texSubImage2D(t,l,x,y,w,h,f,p,v,Number(o));})(#,#,#,#,#,#,#,#,#,#,#,#,#)";
+extern function elementsAt<T>(
+	location: Borrow<T>,
+	first: int64,
+	count: int64,
+): Js from "((l,f,n)=>{const i=l[1]+Number(f);return l[0].slice(i,i+Number(n));})(#,#,#)";
+extern function tailAt<T>(
+	location: Borrow<T>,
+): Js from "((l)=>l[0].slice(l[1]))(#)";
+extern function elementAt<T>(
+	location: Borrow<T>,
+	at: int32,
+): number from "((l,i)=>l[0][l[1]+i])(#,#)";
+extern function storeAt<T>(
+	location: Borrow<T>,
+	first: int64,
+	items: Js,
+): void from "((l,f,t)=>{const a=l[0],i=l[1]+Number(f);for(let j=0;j<t.length;j++)a[i+j]=t[j];})(#,#,#)";
+extern function texSubImageView(
+	context: Js,
+	target: int32,
+	level: int32,
+	x: int32,
+	y: int32,
+	z: int32,
+	width: int32,
+	height: int32,
+	depth: int32,
+	format: int32,
+	type: int32,
+	view: Js,
+	offset: int64,
+): void from "((g,t,l,x,y,z,w,h,d,f,p,v,o)=>{if(t===0x806F||t===0x8C1A)g.texSubImage3D(t,l,x,y,z,w,h,d,f,p,v,Number(o));else g.texSubImage2D(t,l,x,y,w,h,f,p,v,Number(o));})(#,#,#,#,#,#,#,#,#,#,#,#,#)";
 
-function checkAligned(call: string, kind: int32, byteOffset: int64, bytes: int64): int64 {
+function checkAligned(
+	call: string,
+	kind: int32,
+	byteOffset: int64,
+	bytes: int64,
+): int64 {
 	const size = KIND_SIZES[kind] as int64;
 	if (byteOffset % size != 0 || bytes % size != 0) {
-		stop(`${call}: byte offset ${byteOffset} and size ${bytes} must be multiples of the ${size}-byte element`);
+		stop(
+			`${call}: byte offset ${byteOffset} and size ${bytes} must be multiples of the ${size}-byte element`,
+		);
 	}
 	return size;
 }
 
-function bytesOf<T>(location: Borrow<T>, kind: int32, byteOffset: int64, bytes: int64, call: string): Js {
+function bytesOf<T>(
+	location: Borrow<T>,
+	kind: int32,
+	byteOffset: int64,
+	bytes: int64,
+	call: string,
+): Js {
 	const size = checkAligned(call, kind, byteOffset, bytes);
-	return asBytes(typedOf(elementsAt(location, byteOffset / size, bytes / size), kind));
+	return asBytes(
+		typedOf(elementsAt(location, byteOffset / size, bytes / size), kind),
+	);
 }
 
-function writeBytes<T>(location: Borrow<T>, kind: int32, byteOffset: int64, bytes: Js, count: int64, call: string): void {
+function writeBytes<T>(
+	location: Borrow<T>,
+	kind: int32,
+	byteOffset: int64,
+	bytes: Js,
+	count: int64,
+	call: string,
+): void {
 	const size = checkAligned(call, kind, byteOffset, count);
 	storeAt(location, byteOffset / size, typedOver(bytes, kind));
 }
 
-function handle(id: uint32): Js { return lookup(objects, id as int32); }
+function handle(id: uint32): Js {
+	return lookup(objects, id as int32);
+}
 
-export function acquireContext(canvasSelector: string, sampleCount: int32, onLost: () => void, onRestored: () => void): void {
+export function acquireContext(
+	canvasSelector: string,
+	sampleCount: int32,
+	onLost: () => void,
+	onRestored: () => void,
+): void {
 	const canvas = canvasOf(canvasSelector);
-	if (isNone(canvas)) { stop(`the selector '${canvasSelector}' matches no canvas`); }
+	if (isNone(canvas)) {
+		stop(`the selector '${canvasSelector}' matches no canvas`);
+	}
 	const opened = contextOf(canvas, sampleCount > 1);
-	if (isNone(opened)) { stop("canvas.getContext('webgl2') gave no context: this browser has no WebGL2"); }
+	if (isNone(opened)) {
+		stop(
+			"canvas.getContext('webgl2') gave no context: this browser has no WebGL2",
+		);
+	}
 	context = opened;
 	objects = emptyTable();
 	enableExtensions(opened);
@@ -225,24 +488,42 @@ export function acquireContext(canvasSelector: string, sampleCount: int32, onLos
 	});
 }
 
-export function oglLoad(): int32 { return isNone(context) ? 0 : 1; }
-export function oglLoadMissing(): string { return "the WebGL2 context that acquireContext opens"; }
+export function oglLoad(): int32 {
+	return isNone(context) ? 0 : 1;
+}
+export function oglLoadMissing(): string {
+	return "the WebGL2 context that acquireContext opens";
+}
 export function oglUnload(): void {}
-export function oglCapabilities(): int32 { return 0; }
+export function oglCapabilities(): int32 {
+	return 0;
+}
 
 export function oglGetInteger(name: int32): int32 {
-	if (name == GL_CURRENT_PROGRAM) { return boundObject(context, objects, name); }
+	if (name == GL_CURRENT_PROGRAM) {
+		return boundObject(context, objects, name);
+	}
 	return parameter(context, name);
 }
 
-export function oglGetInteger64(name: int32): int64 { return parameterBig(context, name); }
+export function oglGetInteger64(name: int32): int64 {
+	return parameterBig(context, name);
+}
 export function oglGetIntegeri(name: int32, index: int32): int32 {
 	return unavailable("glGetIntegeri_v");
 }
-export function oglGetError(): int32 { return context.getError(); }
-export function oglEnable(capability: int32): void { context.enable(capability); }
-export function oglDisable(capability: int32): void { context.disable(capability); }
-export function oglPixelStore(name: int32, value: int32): void { context.pixelStorei(name, value); }
+export function oglGetError(): int32 {
+	return context.getError();
+}
+export function oglEnable(capability: int32): void {
+	context.enable(capability);
+}
+export function oglDisable(capability: int32): void {
+	context.disable(capability);
+}
+export function oglPixelStore(name: int32, value: int32): void {
+	context.pixelStorei(name, value);
+}
 export function oglHasExtension(name: string): int32 {
 	return isNone(context.getExtension(name)) ? 0 : 1;
 }
@@ -251,51 +532,140 @@ export function oglTextureNative(texture: uint32): Ptr<void> {
 }
 
 const DRIVER_NAMES: string[] = [
-	"OGL_CAPABILITY_COMPUTE", "OGL_CAPABILITY_DEBUG", "OGL_CAPABILITY_TIMER", "OGL_CAPABILITY_EXACT_SAMPLES",
-	"GL_TEXTURE_3D", "GL_TEXTURE_2D_ARRAY", "GL_TEXTURE_CUBE_MAP", "GL_TEXTURE_CUBE_MAP_POSITIVE_X", "GL_BACK",
-	"GL_TEXTURE_2D", "GL_RENDERBUFFER", "GL_DEPTH_COMPONENT", "GL_DEPTH_STENCIL", "GL_UNPACK_ROW_LENGTH",
-	"GL_UNPACK_IMAGE_HEIGHT", "GL_NEAREST", "GL_FRAMEBUFFER", "GL_READ_FRAMEBUFFER", "GL_DRAW_FRAMEBUFFER",
-	"GL_COLOR_ATTACHMENT0", "GL_DEPTH_ATTACHMENT", "GL_FRAMEBUFFER_COMPLETE",
+	"OGL_CAPABILITY_COMPUTE",
+	"OGL_CAPABILITY_DEBUG",
+	"OGL_CAPABILITY_TIMER",
+	"OGL_CAPABILITY_EXACT_SAMPLES",
+	"GL_TEXTURE_3D",
+	"GL_TEXTURE_2D_ARRAY",
+	"GL_TEXTURE_CUBE_MAP",
+	"GL_TEXTURE_CUBE_MAP_POSITIVE_X",
+	"GL_BACK",
+	"GL_TEXTURE_2D",
+	"GL_RENDERBUFFER",
+	"GL_DEPTH_COMPONENT",
+	"GL_DEPTH_STENCIL",
+	"GL_UNPACK_ROW_LENGTH",
+	"GL_UNPACK_IMAGE_HEIGHT",
+	"GL_NEAREST",
+	"GL_FRAMEBUFFER",
+	"GL_READ_FRAMEBUFFER",
+	"GL_DRAW_FRAMEBUFFER",
+	"GL_COLOR_ATTACHMENT0",
+	"GL_DEPTH_ATTACHMENT",
+	"GL_FRAMEBUFFER_COMPLETE",
 ];
 const DRIVER_VALUES: int32[] = [
-	1, 2, 4, 8,
-	GL_TEXTURE_3D, GL_TEXTURE_2D_ARRAY, GL_TEXTURE_CUBE_MAP, GL_TEXTURE_CUBE_MAP_POSITIVE_X, GL_BACK,
-	GL_TEXTURE_2D, GL_RENDERBUFFER, GL_DEPTH_COMPONENT, GL_DEPTH_STENCIL, GL_UNPACK_ROW_LENGTH,
-	GL_UNPACK_IMAGE_HEIGHT, GL_NEAREST, GL_FRAMEBUFFER, GL_READ_FRAMEBUFFER, GL_DRAW_FRAMEBUFFER,
-	GL_COLOR_ATTACHMENT0, GL_DEPTH_ATTACHMENT, GL_FRAMEBUFFER_COMPLETE,
+	1,
+	2,
+	4,
+	8,
+	GL_TEXTURE_3D,
+	GL_TEXTURE_2D_ARRAY,
+	GL_TEXTURE_CUBE_MAP,
+	GL_TEXTURE_CUBE_MAP_POSITIVE_X,
+	GL_BACK,
+	GL_TEXTURE_2D,
+	GL_RENDERBUFFER,
+	GL_DEPTH_COMPONENT,
+	GL_DEPTH_STENCIL,
+	GL_UNPACK_ROW_LENGTH,
+	GL_UNPACK_IMAGE_HEIGHT,
+	GL_NEAREST,
+	GL_FRAMEBUFFER,
+	GL_READ_FRAMEBUFFER,
+	GL_DRAW_FRAMEBUFFER,
+	GL_COLOR_ATTACHMENT0,
+	GL_DEPTH_ATTACHMENT,
+	GL_FRAMEBUFFER_COMPLETE,
 ];
 
-export function oglConstantsDisagreement(values: Borrow<int32>, count: int32): string {
+export function oglConstantsDisagreement(
+	values: Borrow<int32>,
+	count: int32,
+): string {
 	const known = DRIVER_VALUES.length as int32;
-	if (count != known) { return `backend.ms lists ${count} constants and glCalls.jms checks ${known}`; }
+	if (count != known) {
+		return (
+			`backend.ms lists ${count} constants and glCalls.jms checks ${known}`
+		);
+	}
 	for (let i = 0; i < known; i++) {
 		const mine = DRIVER_VALUES[i];
 		const theirs = elementAt(values, i) as int32;
-		if (mine != theirs) { return `entry ${i}: ${DRIVER_NAMES[i]} is ${mine} in glCalls.jms and ${theirs} in backend.ms`; }
+		if (mine != theirs) {
+			return (
+				`entry ${i}: ${DRIVER_NAMES[i]} is ${mine} in glCalls.jms and ${theirs} in backend.ms`
+			);
+		}
 	}
 	return "";
 }
 
-export function oglCopyBytes<D, S>(destination: Borrow<D>, destinationOffset: int64, source: Borrow<S>, bytes: int64): void {
+export function oglCopyBytes<D, S>(
+	destination: Borrow<D>,
+	destinationOffset: int64,
+	source: Borrow<S>,
+	bytes: int64,
+): void {
 	const copy = bytesOf(source, elementKind(source), 0, bytes, "oglCopyBytes");
-	writeBytes(destination, elementKind(destination), destinationOffset, copy, bytes, "oglCopyBytes");
+	writeBytes(
+		destination,
+		elementKind(destination),
+		destinationOffset,
+		copy,
+		bytes,
+		"oglCopyBytes",
+	);
 }
 
-export function oglBufferSubData<T>(target: int32, offset: int64, data: Borrow<T>, bytes: int64): void {
-	context.bufferSubData(target, num(offset), bytesOf(data, elementKind(data), 0, bytes, "oglBufferSubData"));
+export function oglBufferSubData<T>(
+	target: int32,
+	offset: int64,
+	data: Borrow<T>,
+	bytes: int64,
+): void {
+	context.bufferSubData(
+		target,
+		num(offset),
+		bytesOf(data, elementKind(data), 0, bytes, "oglBufferSubData"),
+	);
 }
 
-export function oglGetBufferDataUncached<T>(buffer: uint32, offset: int64, destination: Borrow<T>, bytes: int64): int32 {
+export function oglGetBufferDataUncached<T>(
+	buffer: uint32,
+	offset: int64,
+	destination: Borrow<T>,
+	bytes: int64,
+): int32 {
 	const read = newBytes(bytes);
 	context.bindBuffer(GL_COPY_READ_BUFFER, handle(buffer));
 	context.getBufferSubData(GL_COPY_READ_BUFFER, num(offset), read);
 	context.bindBuffer(GL_COPY_READ_BUFFER, NONE);
-	writeBytes(destination, elementKind(destination), 0, read, bytes, "oglGetBufferDataUncached");
+	writeBytes(
+		destination,
+		elementKind(destination),
+		0,
+		read,
+		bytes,
+		"oglGetBufferDataUncached",
+	);
 	return 1;
 }
 
-export function oglUniform4fv<T>(location: int32, count: int32, data: Borrow<T>, offset: int64): void {
-	const bytes = bytesOf(data, elementKind(data), offset, (count as int64) * 16, "oglUniform4fv");
+export function oglUniform4fv<T>(
+	location: int32,
+	count: int32,
+	data: Borrow<T>,
+	offset: int64,
+): void {
+	const bytes = bytesOf(
+		data,
+		elementKind(data),
+		offset,
+		(count as int64) * 16,
+		"oglUniform4fv",
+	);
 	context.uniform4fv(lookup(locations, location), typedOver(bytes, 0));
 }
 
@@ -315,9 +685,27 @@ export function oglTexSubImage<T>(
 ): void {
 	const kind = elementKind(data);
 	const size = KIND_SIZES[kind] as int64;
-	if (offset % size != 0) { stop(`oglTexSubImage: byte offset ${offset} must be a multiple of the ${size}-byte element`); }
+	if (offset % size != 0) {
+		stop(
+			`oglTexSubImage: byte offset ${offset} must be a multiple of the ${size}-byte element`,
+		);
+	}
 	const pixels = asBytes(typedOf(tailAt(data), kind));
-	texSubImageView(context, target, level, x, y, z, width, height, depth, format, type, pixels, offset);
+	texSubImageView(
+		context,
+		target,
+		level,
+		x,
+		y,
+		z,
+		width,
+		height,
+		depth,
+		format,
+		type,
+		pixels,
+		offset,
+	);
 }
 
 export function oglCreateVertexArray(): uint32 {
@@ -328,12 +716,16 @@ export function oglBindVertexArray(vertexArray: uint32): void {
 }
 
 export function oglDeleteVertexArray(vertexArray: uint32): void {
-	if (vertexArray == 0) { return; }
+	if (vertexArray == 0) {
+		return;
+	}
 	context.deleteVertexArray(handle(vertexArray));
 	release(objects, vertexArray);
 }
 
-export function oglCreateBuffer(): uint32 { return register(objects, context.createBuffer()); }
+export function oglCreateBuffer(): uint32 {
+	return register(objects, context.createBuffer());
+}
 export function oglBindBuffer(target: int32, buffer: uint32): void {
 	context.bindBuffer(target, handle(buffer));
 }
@@ -342,26 +734,51 @@ export function oglBufferData(target: int32, bytes: int64, usage: int32): void {
 }
 
 export function oglDeleteBuffer(buffer: uint32): void {
-	if (buffer == 0) { return; }
+	if (buffer == 0) {
+		return;
+	}
 	context.deleteBuffer(handle(buffer));
 	release(objects, buffer);
 }
 
-export function oglCopyBufferDataUncached(source: uint32, sourceOffset: int64, destination: uint32, destinationOffset: int64, bytes: int64): void {
+export function oglCopyBufferDataUncached(
+	source: uint32,
+	sourceOffset: int64,
+	destination: uint32,
+	destinationOffset: int64,
+	bytes: int64,
+): void {
 	context.bindBuffer(GL_COPY_READ_BUFFER, handle(source));
 	context.bindBuffer(GL_COPY_WRITE_BUFFER, handle(destination));
-	context.copyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, num(sourceOffset), num(destinationOffset), num(bytes));
+	context.copyBufferSubData(
+		GL_COPY_READ_BUFFER,
+		GL_COPY_WRITE_BUFFER,
+		num(sourceOffset),
+		num(destinationOffset),
+		num(bytes),
+	);
 	context.bindBuffer(GL_COPY_READ_BUFFER, NONE);
 	context.bindBuffer(GL_COPY_WRITE_BUFFER, NONE);
 }
 
-export function oglCreateTexture(): uint32 { return register(objects, context.createTexture()); }
-export function oglActiveTexture(unit: int32): void { context.activeTexture(GL_TEXTURE0 + unit); }
+export function oglCreateTexture(): uint32 {
+	return register(objects, context.createTexture());
+}
+export function oglActiveTexture(unit: int32): void {
+	context.activeTexture(GL_TEXTURE0 + unit);
+}
 export function oglBindTexture(target: int32, texture: uint32): void {
 	context.bindTexture(target, handle(texture));
 }
 
-export function oglTexStorage(target: int32, levels: int32, internalFormat: int32, width: int32, height: int32, depth: int32): void {
+export function oglTexStorage(
+	target: int32,
+	levels: int32,
+	internalFormat: int32,
+	width: int32,
+	height: int32,
+	depth: int32,
+): void {
 	if (target == GL_TEXTURE_3D || target == GL_TEXTURE_2D_ARRAY) {
 		context.texStorage3D(target, levels, internalFormat, width, height, depth);
 	} else {
@@ -369,39 +786,100 @@ export function oglTexStorage(target: int32, levels: int32, internalFormat: int3
 	}
 }
 
-export function oglTexParameteri(target: int32, name: int32, value: int32): void {
+export function oglTexParameteri(
+	target: int32,
+	name: int32,
+	value: int32,
+): void {
 	context.texParameteri(target, name, value);
 }
 
 export function oglDeleteTexture(texture: uint32): void {
-	if (texture == 0) { return; }
+	if (texture == 0) {
+		return;
+	}
 	context.deleteTexture(handle(texture));
 	release(objects, texture);
 }
 
-export function oglCreateRenderbufferUncached(samples: int32, internalFormat: int32, width: int32, height: int32): uint32 {
+export function oglCreateRenderbufferUncached(
+	samples: int32,
+	internalFormat: int32,
+	width: int32,
+	height: int32,
+): uint32 {
 	const renderbuffer = context.createRenderbuffer();
 	context.bindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
-	context.renderbufferStorageMultisample(GL_RENDERBUFFER, samples, internalFormat, width, height);
+	context.renderbufferStorageMultisample(
+		GL_RENDERBUFFER,
+		samples,
+		internalFormat,
+		width,
+		height,
+	);
 	context.bindRenderbuffer(GL_RENDERBUFFER, NONE);
 	return register(objects, renderbuffer);
 }
 
 export function oglDeleteRenderbuffer(renderbuffer: uint32): void {
-	if (renderbuffer == 0) { return; }
+	if (renderbuffer == 0) {
+		return;
+	}
 	context.deleteRenderbuffer(handle(renderbuffer));
 	release(objects, renderbuffer);
 }
 
-export function oglFramebufferRenderbuffer(attachment: int32, renderbuffer: uint32): void {
-	context.framebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, handle(renderbuffer));
+export function oglFramebufferRenderbuffer(
+	attachment: int32,
+	renderbuffer: uint32,
+): void {
+	context.framebufferRenderbuffer(
+		GL_FRAMEBUFFER,
+		attachment,
+		GL_RENDERBUFFER,
+		handle(renderbuffer),
+	);
 }
 
-function texSubImageAt(target: int32, level: int32, x: int32, y: int32, z: int32, width: int32, height: int32, depth: int32, format: int32, type: int32, offset: int64): void {
+function texSubImageAt(
+	target: int32,
+	level: int32,
+	x: int32,
+	y: int32,
+	z: int32,
+	width: int32,
+	height: int32,
+	depth: int32,
+	format: int32,
+	type: int32,
+	offset: int64,
+): void {
 	if (target == GL_TEXTURE_3D || target == GL_TEXTURE_2D_ARRAY) {
-		context.texSubImage3D(target, level, x, y, z, width, height, depth, format, type, num(offset));
+		context.texSubImage3D(
+			target,
+			level,
+			x,
+			y,
+			z,
+			width,
+			height,
+			depth,
+			format,
+			type,
+			num(offset),
+		);
 	} else {
-		context.texSubImage2D(target, level, x, y, width, height, format, type, num(offset));
+		context.texSubImage2D(
+			target,
+			level,
+			x,
+			y,
+			width,
+			height,
+			format,
+			type,
+			num(offset),
+		);
 	}
 }
 
@@ -420,15 +898,37 @@ export function oglTexSubImageFromBufferUncached(
 	offset: int64,
 ): void {
 	context.bindBuffer(GL_PIXEL_UNPACK_BUFFER, handle(buffer));
-	texSubImageAt(target, level, x, y, z, width, height, depth, format, type, offset);
+	texSubImageAt(
+		target,
+		level,
+		x,
+		y,
+		z,
+		width,
+		height,
+		depth,
+		format,
+		type,
+		offset,
+	);
 	context.bindBuffer(GL_PIXEL_UNPACK_BUFFER, NONE);
 }
 
-export function oglCreateSampler(): uint32 { return register(objects, context.createSampler()); }
-export function oglSamplerParameteri(sampler: uint32, name: int32, value: int32): void {
+export function oglCreateSampler(): uint32 {
+	return register(objects, context.createSampler());
+}
+export function oglSamplerParameteri(
+	sampler: uint32,
+	name: int32,
+	value: int32,
+): void {
 	context.samplerParameteri(handle(sampler), name, value);
 }
-export function oglSamplerParameterf(sampler: uint32, name: int32, value: float64): void {
+export function oglSamplerParameterf(
+	sampler: uint32,
+	name: int32,
+	value: float64,
+): void {
 	context.samplerParameterf(handle(sampler), name, value);
 }
 export function oglBindSampler(unit: int32, sampler: uint32): void {
@@ -436,7 +936,9 @@ export function oglBindSampler(unit: int32, sampler: uint32): void {
 }
 
 export function oglDeleteSampler(sampler: uint32): void {
-	if (sampler == 0) { return; }
+	if (sampler == 0) {
+		return;
+	}
 	context.deleteSampler(handle(sampler));
 	release(objects, sampler);
 }
@@ -454,7 +956,10 @@ export function oglCompileShader(stage: int32, source: string): uint32 {
 	return register(objects, shader);
 }
 
-export function oglLinkProgram(vertexShader: uint32, fragmentShader: uint32): uint32 {
+export function oglLinkProgram(
+	vertexShader: uint32,
+	fragmentShader: uint32,
+): uint32 {
 	log = "";
 	const program = context.createProgram();
 	context.attachShader(program, handle(vertexShader));
@@ -475,15 +980,21 @@ export function oglLinkProgram(vertexShader: uint32, fragmentShader: uint32): ui
 export function oglLinkComputeProgram(computeShader: uint32): uint32 {
 	return unavailable("compute shaders");
 }
-export function oglLog(): string { return log; }
+export function oglLog(): string {
+	return log;
+}
 
 export function oglDeleteProgram(program: uint32): void {
-	if (program == 0) { return; }
+	if (program == 0) {
+		return;
+	}
 	context.deleteProgram(handle(program));
 	release(objects, program);
 }
 
-export function oglUseProgram(program: uint32): void { context.useProgram(handle(program)); }
+export function oglUseProgram(program: uint32): void {
+	context.useProgram(handle(program));
+}
 
 export function oglUniformLocation(program: uint32, name: string): int32 {
 	const location = context.getUniformLocation(handle(program), name);
@@ -497,21 +1008,41 @@ export function oglUniform1i(location: int32, value: int32): void {
 	context.uniform1i(lookup(locations, location), value);
 }
 
-export function oglDepthFunc(compare: int32): void { context.depthFunc(compare); }
-export function oglDepthMask(write: int32): void { context.depthMask(write != 0); }
-export function oglStencilMask(mask: int32): void { context.stencilMask(mask); }
-export function oglStencilFunc(compare: int32, reference: int32, mask: int32): void {
+export function oglDepthFunc(compare: int32): void {
+	context.depthFunc(compare);
+}
+export function oglDepthMask(write: int32): void {
+	context.depthMask(write != 0);
+}
+export function oglStencilMask(mask: int32): void {
+	context.stencilMask(mask);
+}
+export function oglStencilFunc(
+	compare: int32,
+	reference: int32,
+	mask: int32,
+): void {
 	context.stencilFunc(compare, reference, mask);
 }
 export function oglStencilOp(fail: int32, depthFail: int32, pass: int32): void {
 	context.stencilOp(fail, depthFail, pass);
 }
 
-export function oglStencilFuncSeparate(face: int32, compare: int32, reference: int32, mask: int32): void {
+export function oglStencilFuncSeparate(
+	face: int32,
+	compare: int32,
+	reference: int32,
+	mask: int32,
+): void {
 	context.stencilFuncSeparate(face, compare, reference, mask);
 }
 
-export function oglStencilOpSeparate(face: int32, fail: int32, depthFail: int32, pass: int32): void {
+export function oglStencilOpSeparate(
+	face: int32,
+	fail: int32,
+	depthFail: int32,
+	pass: int32,
+): void {
 	context.stencilOpSeparate(face, fail, depthFail, pass);
 }
 
@@ -519,30 +1050,64 @@ export function oglDepthRange(nearDepth: float64, farDepth: float64): void {
 	context.depthRange(nearDepth, farDepth);
 }
 
-export function oglBlendFuncSeparate(sourceColor: int32, destinationColor: int32, sourceAlpha: int32, destinationAlpha: int32): void {
-	context.blendFuncSeparate(sourceColor, destinationColor, sourceAlpha, destinationAlpha);
+export function oglBlendFuncSeparate(
+	sourceColor: int32,
+	destinationColor: int32,
+	sourceAlpha: int32,
+	destinationAlpha: int32,
+): void {
+	context.blendFuncSeparate(
+		sourceColor,
+		destinationColor,
+		sourceAlpha,
+		destinationAlpha,
+	);
 }
 
 export function oglBlendEquationSeparate(color: int32, alpha: int32): void {
 	context.blendEquationSeparate(color, alpha);
 }
-export function oglBlendColor(r: float64, g: float64, b: float64, a: float64): void {
+export function oglBlendColor(
+	r: float64,
+	g: float64,
+	b: float64,
+	a: float64,
+): void {
 	context.blendColor(r, g, b, a);
 }
 
 export function oglColorMask(mask: int32): void {
-	context.colorMask((mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0, (mask & 8) != 0);
+	context.colorMask(
+		(mask & 1) != 0,
+		(mask & 2) != 0,
+		(mask & 4) != 0,
+		(mask & 8) != 0,
+	);
 }
 
 export function oglPolygonOffset(factor: float64, units: float64): void {
 	context.polygonOffset(factor, units);
 }
-export function oglCullFace(face: int32): void { context.cullFace(face); }
-export function oglFrontFace(winding: int32): void { context.frontFace(winding); }
-export function oglViewport(x: int32, y: int32, width: int32, height: int32): void {
+export function oglCullFace(face: int32): void {
+	context.cullFace(face);
+}
+export function oglFrontFace(winding: int32): void {
+	context.frontFace(winding);
+}
+export function oglViewport(
+	x: int32,
+	y: int32,
+	width: int32,
+	height: int32,
+): void {
 	context.viewport(x, y, width, height);
 }
-export function oglScissor(x: int32, y: int32, width: int32, height: int32): void {
+export function oglScissor(
+	x: int32,
+	y: int32,
+	width: int32,
+	height: int32,
+): void {
 	context.scissor(x, y, width, height);
 }
 
@@ -554,22 +1119,57 @@ export function oglBindFramebuffer(target: int32, framebuffer: uint32): void {
 }
 
 export function oglDeleteFramebuffer(framebuffer: uint32): void {
-	if (framebuffer == 0) { return; }
+	if (framebuffer == 0) {
+		return;
+	}
 	context.deleteFramebuffer(handle(framebuffer));
 	release(objects, framebuffer);
 }
 
-export function oglFramebufferTexture2D(attachment: int32, textureTarget: int32, texture: uint32, level: int32): void {
-	context.framebufferTexture2D(GL_FRAMEBUFFER, attachment, textureTarget, handle(texture), level);
+export function oglFramebufferTexture2D(
+	attachment: int32,
+	textureTarget: int32,
+	texture: uint32,
+	level: int32,
+): void {
+	context.framebufferTexture2D(
+		GL_FRAMEBUFFER,
+		attachment,
+		textureTarget,
+		handle(texture),
+		level,
+	);
 }
 
-export function oglFramebufferTextureLayer(attachment: int32, texture: uint32, level: int32, layer: int32): void {
-	context.framebufferTextureLayer(GL_FRAMEBUFFER, attachment, handle(texture), level, layer);
+export function oglFramebufferTextureLayer(
+	attachment: int32,
+	texture: uint32,
+	level: int32,
+	layer: int32,
+): void {
+	context.framebufferTextureLayer(
+		GL_FRAMEBUFFER,
+		attachment,
+		handle(texture),
+		level,
+		layer,
+	);
 }
 
 export function oglFramebufferDetach(attachment: int32): void {
-	context.framebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, NONE);
-	context.framebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, NONE, 0);
+	context.framebufferRenderbuffer(
+		GL_FRAMEBUFFER,
+		attachment,
+		GL_RENDERBUFFER,
+		NONE,
+	);
+	context.framebufferTexture2D(
+		GL_FRAMEBUFFER,
+		attachment,
+		GL_TEXTURE_2D,
+		NONE,
+		0,
+	);
 }
 
 export function oglCheckFramebufferStatus(): int32 {
@@ -578,28 +1178,69 @@ export function oglCheckFramebufferStatus(): int32 {
 export function oglDrawBuffers(count: int32, colorMask: int32): void {
 	context.drawBuffers(drawTargets(count > 8 ? 8 : count, colorMask));
 }
-export function oglReadBuffer(attachment: int32): void { context.readBuffer(attachment); }
+export function oglReadBuffer(attachment: int32): void {
+	context.readBuffer(attachment);
+}
 
-function attachTexel(texture: uint32, target: int32, level: int32, layer: int32, attachment: int32): void {
+function attachTexel(
+	texture: uint32,
+	target: int32,
+	level: int32,
+	layer: int32,
+	attachment: int32,
+): void {
 	if (target == GL_TEXTURE_2D) {
-		context.framebufferTexture2D(GL_READ_FRAMEBUFFER, attachment, GL_TEXTURE_2D, handle(texture), level);
+		context.framebufferTexture2D(
+			GL_READ_FRAMEBUFFER,
+			attachment,
+			GL_TEXTURE_2D,
+			handle(texture),
+			level,
+		);
 	} else if (target == GL_TEXTURE_CUBE_MAP) {
-		context.framebufferTexture2D(GL_READ_FRAMEBUFFER, attachment, GL_TEXTURE_CUBE_MAP_POSITIVE_X + layer, handle(texture), level);
+		context.framebufferTexture2D(
+			GL_READ_FRAMEBUFFER,
+			attachment,
+			GL_TEXTURE_CUBE_MAP_POSITIVE_X + layer,
+			handle(texture),
+			level,
+		);
 	} else {
-		context.framebufferTextureLayer(GL_READ_FRAMEBUFFER, attachment, handle(texture), level, layer);
+		context.framebufferTextureLayer(
+			GL_READ_FRAMEBUFFER,
+			attachment,
+			handle(texture),
+			level,
+			layer,
+		);
 	}
 }
 
-function beginTexelRead(readFramebuffer: uint32, texture: uint32, target: int32, level: int32, layer: int32, attachment: int32): Js {
+function beginTexelRead(
+	readFramebuffer: uint32,
+	texture: uint32,
+	target: int32,
+	level: int32,
+	layer: int32,
+	attachment: int32,
+): Js {
 	const previous = parameterObject(context, GL_READ_FRAMEBUFFER_BINDING);
 	context.bindFramebuffer(GL_READ_FRAMEBUFFER, handle(readFramebuffer));
 	attachTexel(texture, target, level, layer, attachment);
-	context.readBuffer(attachment == GL_COLOR_ATTACHMENT0 ? GL_COLOR_ATTACHMENT0 : GL_NONE);
+	context.readBuffer(
+		attachment == GL_COLOR_ATTACHMENT0 ? GL_COLOR_ATTACHMENT0 : GL_NONE,
+	);
 	return previous;
 }
 
 function endTexelRead(attachment: int32, previous: Js): void {
-	context.framebufferTexture2D(GL_READ_FRAMEBUFFER, attachment, GL_TEXTURE_2D, NONE, 0);
+	context.framebufferTexture2D(
+		GL_READ_FRAMEBUFFER,
+		attachment,
+		GL_TEXTURE_2D,
+		NONE,
+		0,
+	);
 	context.bindFramebuffer(GL_READ_FRAMEBUFFER, previous);
 }
 
@@ -623,10 +1264,21 @@ export function oglReadTexelsToBufferUncached(
 	buffer: uint32,
 	offset: int64,
 ): int32 {
-	const attachment = format == GL_DEPTH_COMPONENT ? GL_DEPTH_ATTACHMENT : GL_COLOR_ATTACHMENT0;
-	const previous = beginTexelRead(readFramebuffer, texture, target, level, layer, attachment);
+	const attachment =
+		format == GL_DEPTH_COMPONENT ? GL_DEPTH_ATTACHMENT : GL_COLOR_ATTACHMENT0;
+	const previous = beginTexelRead(
+		readFramebuffer,
+		texture,
+		target,
+		level,
+		layer,
+		attachment,
+	);
 	let result = 1;
-	if (context.checkFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+	if (
+		context.checkFramebufferStatus(GL_READ_FRAMEBUFFER) !=
+		GL_FRAMEBUFFER_COMPLETE
+	) {
 		result = 0;
 	} else {
 		context.pixelStorei(GL_PACK_ALIGNMENT, 1);
@@ -634,7 +1286,9 @@ export function oglReadTexelsToBufferUncached(
 		context.bindBuffer(GL_PIXEL_PACK_BUFFER, handle(buffer));
 		clearErrors();
 		context.readPixels(x, y, width, height, format, type, num(offset));
-		if (context.getError() != GL_NO_ERROR) { result = -1; }
+		if (context.getError() != GL_NO_ERROR) {
+			result = -1;
+		}
 		context.bindBuffer(GL_PIXEL_PACK_BUFFER, NONE);
 		context.pixelStorei(GL_PACK_ROW_LENGTH, 0);
 		context.pixelStorei(GL_PACK_ALIGNMENT, 4);
@@ -643,7 +1297,17 @@ export function oglReadTexelsToBufferUncached(
 	return result;
 }
 
-export function oglReadScreenRectUncached(x: int32, y: int32, width: int32, height: int32, format: int32, type: int32, rowLength: int32, buffer: uint32, offset: int64): int32 {
+export function oglReadScreenRectUncached(
+	x: int32,
+	y: int32,
+	width: int32,
+	height: int32,
+	format: int32,
+	type: int32,
+	rowLength: int32,
+	buffer: uint32,
+	offset: int64,
+): int32 {
 	const previous = parameterObject(context, GL_READ_FRAMEBUFFER_BINDING);
 	context.bindFramebuffer(GL_READ_FRAMEBUFFER, NONE);
 	context.readBuffer(GL_BACK);
@@ -677,22 +1341,70 @@ export function oglCopyTexels(
 	height: int32,
 	count: int32,
 ): int32 {
-	const previous = beginTexelRead(readFramebuffer, source, sourceTarget, sourceLevel, sourceLayer, GL_COLOR_ATTACHMENT0);
+	const previous = beginTexelRead(
+		readFramebuffer,
+		source,
+		sourceTarget,
+		sourceLevel,
+		sourceLayer,
+		GL_COLOR_ATTACHMENT0,
+	);
 	let result = 1;
-	if (context.checkFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+	if (
+		context.checkFramebufferStatus(GL_READ_FRAMEBUFFER) !=
+		GL_FRAMEBUFFER_COMPLETE
+	) {
 		result = 0;
 	} else {
 		clearErrors();
 		for (let i = 0; i < count && result == 1; i++) {
-			if (i > 0) { attachTexel(source, sourceTarget, sourceLevel, sourceLayer + i, GL_COLOR_ATTACHMENT0); }
-			if (destinationTarget == GL_TEXTURE_2D) {
-				context.copyTexSubImage2D(GL_TEXTURE_2D, destinationLevel, destinationX, destinationY, sourceX, sourceY, width, height);
-			} else if (destinationTarget == GL_TEXTURE_CUBE_MAP) {
-				context.copyTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + destinationLayer + i, destinationLevel, destinationX, destinationY, sourceX, sourceY, width, height);
-			} else {
-				context.copyTexSubImage3D(destinationTarget, destinationLevel, destinationX, destinationY, destinationLayer + i, sourceX, sourceY, width, height);
+			if (i > 0) {
+				attachTexel(
+					source,
+					sourceTarget,
+					sourceLevel,
+					sourceLayer + i,
+					GL_COLOR_ATTACHMENT0,
+				);
 			}
-			if (context.getError() != GL_NO_ERROR) { result = -1; }
+			if (destinationTarget == GL_TEXTURE_2D) {
+				context.copyTexSubImage2D(
+					GL_TEXTURE_2D,
+					destinationLevel,
+					destinationX,
+					destinationY,
+					sourceX,
+					sourceY,
+					width,
+					height,
+				);
+			} else if (destinationTarget == GL_TEXTURE_CUBE_MAP) {
+				context.copyTexSubImage2D(
+					GL_TEXTURE_CUBE_MAP_POSITIVE_X + destinationLayer + i,
+					destinationLevel,
+					destinationX,
+					destinationY,
+					sourceX,
+					sourceY,
+					width,
+					height,
+				);
+			} else {
+				context.copyTexSubImage3D(
+					destinationTarget,
+					destinationLevel,
+					destinationX,
+					destinationY,
+					destinationLayer + i,
+					sourceX,
+					sourceY,
+					width,
+					height,
+				);
+			}
+			if (context.getError() != GL_NO_ERROR) {
+				result = -1;
+			}
 		}
 	}
 	endTexelRead(GL_COLOR_ATTACHMENT0, previous);
@@ -700,10 +1412,27 @@ export function oglCopyTexels(
 }
 
 export function oglBlitColor(width: int32, height: int32): void {
-	context.blitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	context.blitFramebuffer(
+		0,
+		0,
+		width,
+		height,
+		0,
+		0,
+		width,
+		height,
+		GL_COLOR_BUFFER_BIT,
+		GL_NEAREST,
+	);
 }
 
-export function oglClearColor(attachment: int32, r: float64, g: float64, b: float64, a: float64): void {
+export function oglClearColor(
+	attachment: int32,
+	r: float64,
+	g: float64,
+	b: float64,
+	a: float64,
+): void {
 	context.clearBufferfv(GL_COLOR, attachment, floats(r, g, b, a));
 }
 
@@ -717,11 +1446,31 @@ export function oglClearStencil(stencil: int32): void {
 	context.clearBufferiv(GL_STENCIL, 0, integers(stencil));
 }
 
-export function oglVertexAttribPointer(index: int32, size: int32, type: int32, normalized: int32, stride: int32, offset: int64): void {
-	context.vertexAttribPointer(index, size, type, normalized != 0, stride, num(offset));
+export function oglVertexAttribPointer(
+	index: int32,
+	size: int32,
+	type: int32,
+	normalized: int32,
+	stride: int32,
+	offset: int64,
+): void {
+	context.vertexAttribPointer(
+		index,
+		size,
+		type,
+		normalized != 0,
+		stride,
+		num(offset),
+	);
 }
 
-export function oglVertexAttribIPointer(index: int32, size: int32, type: int32, stride: int32, offset: int64): void {
+export function oglVertexAttribIPointer(
+	index: int32,
+	size: int32,
+	type: int32,
+	stride: int32,
+	offset: int64,
+): void {
 	context.vertexAttribIPointer(index, size, type, stride, num(offset));
 }
 
@@ -739,25 +1488,46 @@ export function oglDrawArrays(mode: int32, first: int32, count: int32): void {
 	context.drawArrays(mode, first, count);
 }
 
-export function oglDrawArraysInstanced(mode: int32, first: int32, count: int32, instances: int32): void {
+export function oglDrawArraysInstanced(
+	mode: int32,
+	first: int32,
+	count: int32,
+	instances: int32,
+): void {
 	context.drawArraysInstanced(mode, first, count, instances);
 }
 
-export function oglDrawElements(mode: int32, count: int32, type: int32, offset: int64): void {
+export function oglDrawElements(
+	mode: int32,
+	count: int32,
+	type: int32,
+	offset: int64,
+): void {
 	context.drawElements(mode, count, type, num(offset));
 }
 
-export function oglDrawElementsInstanced(mode: int32, count: int32, type: int32, offset: int64, instances: int32): void {
+export function oglDrawElementsInstanced(
+	mode: int32,
+	count: int32,
+	type: int32,
+	offset: int64,
+	instances: int32,
+): void {
 	context.drawElementsInstanced(mode, count, type, num(offset), instances);
 }
 
 export function oglDispatchCompute(x: int32, y: int32, z: int32): void {
 	unavailable("glDispatchCompute");
 }
-export function oglDispatchComputeIndirectUncached(buffer: uint32, offset: int64): void {
+export function oglDispatchComputeIndirectUncached(
+	buffer: uint32,
+	offset: int64,
+): void {
 	unavailable("glDispatchComputeIndirect");
 }
-export function oglMemoryBarrier(barriers: int32): void { unavailable("glMemoryBarrier"); }
+export function oglMemoryBarrier(barriers: int32): void {
+	unavailable("glMemoryBarrier");
+}
 export function oglBindBufferRange(
 	target: int32,
 	index: uint32,
@@ -768,14 +1538,26 @@ export function oglBindBufferRange(
 	unavailable("glBindBufferRange");
 }
 
-export function oglBindImageTexture(unit: int32, texture: uint32, level: int32, layered: int32, layer: int32, access: int32, format: int32): void {
+export function oglBindImageTexture(
+	unit: int32,
+	texture: uint32,
+	level: int32,
+	layered: int32,
+	layer: int32,
+	access: int32,
+	format: int32,
+): void {
 	unavailable("glBindImageTexture");
 }
 
-export function oglCreateQuery(): uint32 { return register(objects, context.createQuery()); }
+export function oglCreateQuery(): uint32 {
+	return register(objects, context.createQuery());
+}
 
 export function oglDeleteQuery(query: uint32): void {
-	if (query == 0) { return; }
+	if (query == 0) {
+		return;
+	}
 	context.deleteQuery(handle(query));
 	release(objects, query);
 }
@@ -783,19 +1565,39 @@ export function oglDeleteQuery(query: uint32): void {
 export function oglBeginQuery(target: int32, query: uint32): void {
 	context.beginQuery(target, handle(query));
 }
-export function oglEndQuery(target: int32): void { context.endQuery(target); }
+export function oglEndQuery(target: int32): void {
+	context.endQuery(target);
+}
 export function oglQueryAvailable(query: uint32): int32 {
-	return queryFlag(context.getQueryParameter(handle(query), GL_QUERY_RESULT_AVAILABLE)) ? 1 : 0;
+	return queryFlag(
+		context.getQueryParameter(handle(query), GL_QUERY_RESULT_AVAILABLE),
+	)
+		? 1
+		: 0;
 }
 export function oglQueryResult(query: uint32): uint64 {
 	return queryNumber(context.getQueryParameter(handle(query), GL_QUERY_RESULT));
 }
-export function oglQueryCounter(query: uint32): void { unavailable("glQueryCounter"); }
-export function oglQueryCounterBits(): int32 { return unavailable("glGetQueryiv(GL_TIMESTAMP)"); }
+export function oglQueryCounter(query: uint32): void {
+	unavailable("glQueryCounter");
+}
+export function oglQueryCounterBits(): int32 {
+	return unavailable("glGetQueryiv(GL_TIMESTAMP)");
+}
 
-export function oglPushDebugGroup(label: string): void { unavailable("glPushDebugGroup"); }
-export function oglPopDebugGroup(): void { unavailable("glPopDebugGroup"); }
-export function oglDebugMarker(label: string): void { unavailable("glDebugMessageInsert"); }
-export function oglObjectLabel(identifier: int32, name: uint32, label: string): void {
+export function oglPushDebugGroup(label: string): void {
+	unavailable("glPushDebugGroup");
+}
+export function oglPopDebugGroup(): void {
+	unavailable("glPopDebugGroup");
+}
+export function oglDebugMarker(label: string): void {
+	unavailable("glDebugMessageInsert");
+}
+export function oglObjectLabel(
+	identifier: int32,
+	name: uint32,
+	label: string,
+): void {
 	unavailable("glObjectLabel");
 }
