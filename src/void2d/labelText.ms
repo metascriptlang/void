@@ -660,18 +660,16 @@ function rowSpans(entry: LabelText, li: int32, ref out: Vec<float32>): void {
 export function refreshSelection(entry: LabelText): void {
 	if (!entry.selectionStale) { return; }
 	entry.selectionStale = false;
-	let spans: Vec<float32> = new Array(0);
-	let first: Vec<int32> = new Array(0);
+	entry.selectionSpans.length = 0;
+	entry.selectionRowFirst.length = 0;
 	const rows: int32 = entry.layout.lines.length as int32;
 	if (entry.selectionLength > 0) {
 		for (let li = 0; li < rows; li++) {
-			first.push(spans.length as int32);
-			rowSpans(entry, li, spans);
+			entry.selectionRowFirst.push(entry.selectionSpans.length as int32);
+			rowSpans(entry, li, entry.selectionSpans);
 		}
 	}
-	first.push(spans.length as int32);
-	entry.selectionSpans = spans;
-	entry.selectionRowFirst = first;
+	entry.selectionRowFirst.push(entry.selectionSpans.length as int32);
 	entry.cursorX = entry.cursorIndex == NO_CURSOR || rows == 0
 		? 0.0
 		: entry.layout.xForIndex(entry.cursorIndex);
