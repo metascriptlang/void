@@ -918,7 +918,7 @@ when (voidShaper) {
 		if (count == 1 && graphemes > 1) {
 			const whole: float32 = glyphs[0].advanceOf(perUnit, bold);
 			const share: float32 = whole / (graphemes as float32);
-			cells[first] = { ...cells[first], glyph: glyphs[0].glyph };
+			cells[first].glyph = glyphs[0].glyph;
 			cells[first].offsetX = (glyphs[0].offsetX as float32) * perUnit;
 			cells[first].offsetY = -(glyphs[0].offsetY as float32) * perUnit;
 			for (let k = first; k < end; k++) {
@@ -933,10 +933,10 @@ when (voidShaper) {
 			const offsetY: float32 = -(g.offsetY as float32) * perUnit;
 			const glyph: int32 = inkless(cps, origin, g) ? NO_GLYPH : g.glyph;
 			if (j < slots) {
-				cells[first + j] = {
-					...cells[first + j], glyph: glyph, advance: advance, offsetX: offsetX,
-					offsetY: offsetY,
-				};
+				cells[first + j].glyph = glyph;
+				cells[first + j].advance = advance;
+				cells[first + j].offsetX = offsetX;
+				cells[first + j].offsetY = offsetY;
 				continue;
 			}
 			if (cells[end - 1].extraTo == cells[end - 1].extraFrom) {
@@ -1580,7 +1580,7 @@ function pushTruncated(
 	if (full <= room || to <= from) { return; }
 	let line: Vec<LaidGlyph> = new Array(0);
 	for (let k = first; k < (out.length as int32); k++) { line.push(out[k]); }
-	while ((out.length as int32) > first) { out.pop(); }
+	out.length = first;
 	ensureEllipsis(shaped);
 	const dots: float32 = shaped.ellipsis[0].advance;
 	const count: int32 = line.length as int32;
