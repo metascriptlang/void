@@ -93,6 +93,7 @@ import {
 import {
 	cachedCanvas,
 	currentFrame,
+	replacesWrittenBytes,
 	entryOf,
 	clampedAnisotropy,
 	checkedComputeModule,
@@ -119,6 +120,7 @@ import {
 	MtlSamplerImpl,
 	MtlTextureImpl,
 	mtlBeginCommandBuffer,
+	mtlBeginUploadCommandBuffer,
 	mtlBlitBufferToBuffer,
 	mtlBlitBufferToTexture,
 	mtlBlitTextureToBuffer,
@@ -344,6 +346,7 @@ struct BufferSlot {
 	active: int32;
 	inPlace: boolean;
 	gpuUseFrame: int64;
+	cpuWriteFrame: int64;
 }
 
 struct TextureSlot {
@@ -468,6 +471,7 @@ let device: Ptr<MtlDeviceImpl> = null as unknown as Ptr<MtlDeviceImpl>;
 let queue: Ptr<MtlQueueImpl> = null as unknown as Ptr<MtlQueueImpl>;
 let sharedStorage = true;
 let commandBuffer: Ptr<MtlCommandBufferImpl> = NO_COMMAND_BUFFER;
+let uploads: Ptr<MtlCommandBufferImpl> = NO_COMMAND_BUFFER;
 let encoder: Ptr<MtlEncoderImpl> = NO_ENCODER;
 let pass: PassState = { width: 0 };
 let computeBound: ComputeState = { dirty: false };
@@ -757,6 +761,7 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	sharedStorage = mtlUsesSharedStorage(device) == 1;
 	mtlFrameSemaphoreCreate(FRAMES_IN_FLIGHT);
 	commandBuffer = NO_COMMAND_BUFFER;
+	uploads = NO_COMMAND_BUFFER;
 	encoder = NO_ENCODER;
 	pass = { width: 0 };
 	computeBound = { dirty: false };
@@ -788,10 +793,7 @@ export function formatRenderable(format: GPUTextureFormat): boolean {
 }
 
 export function shutdown(): void {
-	if (commandBuffer != null) {
-		mtlCommit(commandBuffer);
-		commandBuffer = NO_COMMAND_BUFFER;
-	}
+	commitFrame();
 	mtlFrameSemaphoreWaitAll();
 	mtlForgetCommitted();
 	mtlReleaseQueue(queue);
@@ -829,6 +831,7 @@ export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void 
 		active: 0,
 		inPlace: mapped || has(usage, GPUBufferUsage.STORAGE as int32) || has(usage, GPUBufferUsage.QUERY_RESOLVE as int32),
 		gpuUseFrame: -1,
+		cpuWriteFrame: -1,
 	};
 	put(buffers, id, slot);
 }
@@ -848,11 +851,26 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 		writeBufferInPlace(index, offset, data, bytes);
 		return;
 	}
+	const record = bufferRecords.slots[index];
+	if (!record.transient && buffers[index].cpuWriteFrame != currentFrame() && !replacesWrittenBytes(index, offset, bytes)) {
+		uploadBuffer(index, offset, data, bytes);
+		return;
+	}
 	beginFrame();
-	const written = bufferRecords.slots[index].writtenFrame;
-	if (written >= 0 && written != currentFrame()) { nextBufferCopy(index); }
+	if (record.writtenFrame >= 0 && record.writtenFrame != currentFrame()) { nextBufferCopy(index); }
+	buffers[index].cpuWriteFrame = currentFrame();
 	const native = buffers[index].natives[buffers[index].active];
 	mtlWriteBuffer(native, offset, data[0], bytes, sharedStorage ? 0 : 1);
+}
+
+// Committed ahead of the frame's command buffer, so the write lands before every command of the
+// frame, as WebGPU orders queue.writeBuffer before the submit that follows it.
+function uploadBuffer<T>(index: int32, offset: int64, data: Readonly<Span<T>>, bytes: int64): void {
+	if (uploads == null) { uploads = mtlBeginUploadCommandBuffer(queue); }
+	const staging = mtlNewStagingBuffer(device, data[0], 0, bytes);
+	if (staging == null) { stop(`newBufferWithBytes failed for the write to GPUBuffer ${bufferRecords.slots[index].id}`); }
+	mtlBlitBufferToBuffer(uploads, staging, 0, buffers[index].natives[buffers[index].active], offset, bytes);
+	mtlReleaseBuffer(staging);
 }
 
 // A buffer a GPU copy writes, or a mappable one, keeps one live copy, so a CPU write joins the
@@ -1457,6 +1475,14 @@ export function finish(encoder: GPUCommandEncoder): GPUCommandBuffer {
 }
 
 export function submit(submitted: GPUCommandBuffer): void {
+	commitFrame();
+}
+
+function commitFrame(): void {
+	if (uploads != null) {
+		mtlCommit(uploads);
+		uploads = NO_COMMAND_BUFFER;
+	}
 	if (commandBuffer != null) {
 		mtlCommit(commandBuffer);
 		commandBuffer = NO_COMMAND_BUFFER;

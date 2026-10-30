@@ -1408,6 +1408,31 @@ test "copyBufferToBuffer moves a range into a MAP_READ buffer at an offset, and 
 	device.destroy();
 }
 
+test "a later frame's first writeBuffer of a range keeps the bytes around it" {
+	const device = openDevice();
+	const vertices = device.createBuffer({ label: "vertices", size: 64, usage: COPY_BUFFER_USAGE });
+	const read = device.createBuffer({ label: "read", size: 64, usage: MAP_READ_USAGE });
+	let expected = ramp(64, 0);
+	device.queue.writeBuffer(vertices, 0, expected);
+	device.queue.submit(device.createCommandEncoder().finish());
+	device.queue.writeBuffer(vertices, 8, fill(4, 200));
+	for (let i = 8; i < 12; i++) { expected[i] = 200; }
+	assert same(readBack(device, vertices, read), expected);
+	device.queue.writeBuffer(vertices, 0, ramp(32, 100));
+	device.queue.writeBuffer(vertices, 40, fill(4, 7));
+	for (let i = 0; i < 32; i++) { expected[i] = (100 + i) as uint8; }
+	for (let i = 40; i < 44; i++) { expected[i] = 7; }
+	assert same(readBack(device, vertices, read), expected);
+	device.destroy();
+}
+
+function readBack(device: GPUDevice, buffer: GPUBuffer, read: GPUBuffer): Vec<uint8> {
+	const encoder = device.createCommandEncoder();
+	encoder.copyBufferToBuffer(buffer, 0, read, 0, 64);
+	device.queue.submit(encoder.finish());
+	return mappedRead(read, 0, 64);
+}
+
 test "a MAP_WRITE buffer takes mapped bytes and a MAP_READ buffer gives a mapped sub-range back" {
 	const device = openDevice();
 	const upload = device.createBuffer({ label: "upload", size: 32, usage: (GPUBufferUsage.MAP_WRITE as int32) | (GPUBufferUsage.COPY_SRC as int32) });
