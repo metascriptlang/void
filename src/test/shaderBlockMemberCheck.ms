@@ -1,6 +1,3 @@
-// The float offsets a material writes by (MOVING_*, PBR_*, MATERIAL_*, EMISSIVE_* in gpu3d.ms) are
-// the member offsets of the block the printers lay out, read off the linked program.
-
 import { glslIr, glslLinkedIr } from "../shader/emit";
 import { BlockMember } from "../shader/blockMember";
 import { ResourceKind } from "../shader/ir";
@@ -125,7 +122,6 @@ function indexOf(members: BlockMember[], name: string): int32 {
 	return -1;
 }
 
-// A constant names a float: the member's offset plus the component inside it, from `base`.
 function disagreements(members: BlockMember[], base: int32, rows: ConstantRow[]): string {
 	let out = "";
 	for (const row of rows) {
@@ -210,55 +206,59 @@ function emissiveRows(): ConstantRow[] {
 
 test "a moving key block holds the floats the MOVING_ constants name" {
 	const members = litMoving();
-	assert members.length == 13;
-	assert disagreements(members, 0, headRows(MATERIAL_COLOR)) == "";
-	assert disagreements(members, MATERIAL_UNIFORM_LENGTH, movingRows()) == "";
-	assert lengthOf(members) == MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH;
+	assert members.length == 13, "lit moving member count";
+	assert disagreements(members, 0, headRows(MATERIAL_COLOR)) == "", "head constants";
+	assert disagreements(members, MATERIAL_UNIFORM_LENGTH, movingRows()) == "",
+		"MOVING_ constants";
+	assert lengthOf(members) == MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH, "lit moving length";
 }
 
 test "an unlit moving block shares the offsets, from its own base" {
 	const members = unlitMoving();
-	assert members.length == 13;
-	assert disagreements(members, 0, headRows(UNLIT_MATERIAL_COLOR)) == "";
-	assert disagreements(members, UNLIT_MATERIAL_UNIFORM_LENGTH, movingRows()) == "";
-	assert lengthOf(members) == UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH;
+	assert members.length == 13, "unlit moving member count";
+	assert disagreements(members, 0, headRows(UNLIT_MATERIAL_COLOR)) == "", "head constants";
+	assert disagreements(members, UNLIT_MATERIAL_UNIFORM_LENGTH, movingRows()) == "",
+		"MOVING_ constants";
+	assert lengthOf(members) == UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH,
+		"unlit moving length";
 }
 
 test "an emissive moving block is the moving block and then the emissive vec4" {
 	const members = litMovingEmissive();
 	const plain = litMoving();
-	assert members.length == plain.length + 1;
+	assert members.length == plain.length + 1, "one member more than the plain block";
 	for (let i = 0; i < plain.length; i++) {
-		assert members[i].name == plain[i].name;
-		assert members[i].offset == plain[i].offset;
-		assert members[i].count == plain[i].count;
+		assert members[i].name == plain[i].name, "member name " + String(i);
+		assert members[i].offset == plain[i].offset, "member offset " + String(i);
+		assert members[i].count == plain[i].count, "member count " + String(i);
 	}
-	assert disagreements(members, MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH, emissiveRows()) == "";
-	assert lengthOf(members) == MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH + EMISSIVE_LENGTH;
+	assert disagreements(members, MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH, emissiveRows()) == "",
+		"EMISSIVE_ constants";
+	assert lengthOf(members) == MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH + EMISSIVE_LENGTH,
+		"emissive moving length";
 }
 
 test "a pbr key block holds the floats the PBR_ constants name" {
 	const members = litPbr();
-	assert members.length == 6;
-	assert disagreements(members, 0, headRows(MATERIAL_COLOR)) == "";
-	assert disagreements(members, 0, pbrRows()) == "";
-	assert lengthOf(members) == PBR_MATERIAL_UNIFORM_LENGTH;
+	assert members.length == 6, "pbr member count";
+	assert disagreements(members, 0, headRows(MATERIAL_COLOR)) == "", "head constants";
+	assert disagreements(members, 0, pbrRows()) == "", "PBR_ constants";
+	assert lengthOf(members) == PBR_MATERIAL_UNIFORM_LENGTH, "pbr length";
 }
 
 test "an emissive pbr block is the pbr block and then the emissive vec4" {
 	const members = litPbrEmissive();
 	const plain = litPbr();
-	assert members.length == plain.length + 1;
+	assert members.length == plain.length + 1, "one member more than the plain block";
 	for (let i = 0; i < plain.length; i++) {
-		assert members[i].offset == plain[i].offset;
+		assert members[i].offset == plain[i].offset, "member offset " + String(i);
 	}
-	assert disagreements(members, PBR_MATERIAL_UNIFORM_LENGTH, emissiveRows()) == "";
-	assert lengthOf(members) == PBR_MATERIAL_UNIFORM_LENGTH + EMISSIVE_LENGTH;
+	assert disagreements(members, PBR_MATERIAL_UNIFORM_LENGTH, emissiveRows()) == "",
+		"EMISSIVE_ constants";
+	assert lengthOf(members) == PBR_MATERIAL_UNIFORM_LENGTH + EMISSIVE_LENGTH,
+		"emissive pbr length";
 }
 
-// A host write of a block struct against the block the printers lay out. Member k of the struct
-// holds the lanes 10 * (k + 1) to 10 * (k + 1) + 3, so a lane read at a printed offset names the
-// member it came from.
 function stamp(k: int32): Vec4f {
 	const at: float32 = (10 * (k + 1)) as float32;
 	return { x: at, y: at + 1, z: at + 2, w: at + 3 };
@@ -273,14 +273,11 @@ const PBR_FIELDS: string[] = [
 	"material", "materialColor", "pbr", "uvMatrix", "uvMotion", "parallax", "emissive",
 ];
 
-function bufferOf(size: int32): Vec<float32> {
-	let values: Vec<float32> = new Array(size / 4);
-	for (let i = 0; i < values.length; i++) { values[i] = -7.0; }
-	return values;
-}
-
-function writeDisagreements(members: BlockMember[], fields: string[], written: Vec<float32>,
-	size: int32): string {
+function writeDisagreements<T>(members: BlockMember[], fields: string[], value: T): string {
+	const size: int32 = uniformSize<T>();
+	let written: Vec<float32> = new Array(size / 4);
+	for (let i = 0; i < written.length; i++) { written[i] = -7.0; }
+	writeUniform<T>(written, 0, value);
 	let out = "";
 	if (members.length > fields.length) { out += " the program has more members;"; }
 	if (lengthOf(members) * 4 != size) {
@@ -314,10 +311,8 @@ test "a MovingMaterialParams write lands where the lit moving block lays its mem
 		dissolveEdge: stamp(7), flipbookGrid: stamp(8), flipbookPlay: stamp(9),
 		distanceFade: stamp(10), colorKey: stamp(11), sinusDeform: stamp(12),
 	};
-	let values: Vec<float32> = bufferOf(uniformSize<MovingMaterialParams>());
-	writeUniform<MovingMaterialParams>(values, 0, value);
-	assert writeDisagreements(litMoving(), MOVING_FIELDS, values,
-		uniformSize<MovingMaterialParams>()) == "";
+	assert writeDisagreements(litMoving(), MOVING_FIELDS, value) == "",
+		"MovingMaterialParams write layout";
 }
 
 test "a MovingUnlitMaterialParams write lands where the unlit moving block lays its members" {
@@ -327,10 +322,8 @@ test "a MovingUnlitMaterialParams write lands where the unlit moving block lays 
 		dissolveEdge: stamp(7), flipbookGrid: stamp(8), flipbookPlay: stamp(9),
 		distanceFade: stamp(10), colorKey: stamp(11), sinusDeform: stamp(12),
 	};
-	let values: Vec<float32> = bufferOf(uniformSize<MovingUnlitMaterialParams>());
-	writeUniform<MovingUnlitMaterialParams>(values, 0, value);
-	assert writeDisagreements(unlitMoving(), MOVING_FIELDS, values,
-		uniformSize<MovingUnlitMaterialParams>()) == "";
+	assert writeDisagreements(unlitMoving(), MOVING_FIELDS, value) == "",
+		"MovingUnlitMaterialParams write layout";
 }
 
 test "a MovingEmissiveMaterialParams write lands where the emissive moving block lays its members" {
@@ -340,10 +333,8 @@ test "a MovingEmissiveMaterialParams write lands where the emissive moving block
 		dissolveEdge: stamp(7), flipbookGrid: stamp(8), flipbookPlay: stamp(9),
 		distanceFade: stamp(10), colorKey: stamp(11), sinusDeform: stamp(12), emissive: stamp(13),
 	};
-	let values: Vec<float32> = bufferOf(uniformSize<MovingEmissiveMaterialParams>());
-	writeUniform<MovingEmissiveMaterialParams>(values, 0, value);
-	assert writeDisagreements(litMovingEmissive(), MOVING_FIELDS, values,
-		uniformSize<MovingEmissiveMaterialParams>()) == "";
+	assert writeDisagreements(litMovingEmissive(), MOVING_FIELDS, value) == "",
+		"MovingEmissiveMaterialParams write layout";
 }
 
 test "a PbrMaterialParams write lands where the pbr block lays its members" {
@@ -351,9 +342,8 @@ test "a PbrMaterialParams write lands where the pbr block lays its members" {
 		material: stamp(0), materialColor: stamp(1), pbr: stamp(2), uvMatrix: stamp(3),
 		uvMotion: stamp(4), parallax: stamp(5),
 	};
-	let values: Vec<float32> = bufferOf(uniformSize<PbrMaterialParams>());
-	writeUniform<PbrMaterialParams>(values, 0, value);
-	assert writeDisagreements(litPbr(), PBR_FIELDS, values, uniformSize<PbrMaterialParams>()) == "";
+	assert writeDisagreements(litPbr(), PBR_FIELDS, value) == "",
+		"PbrMaterialParams write layout";
 }
 
 test "a PbrEmissiveMaterialParams write lands where the emissive pbr block lays its members" {
@@ -361,8 +351,6 @@ test "a PbrEmissiveMaterialParams write lands where the emissive pbr block lays 
 		material: stamp(0), materialColor: stamp(1), pbr: stamp(2), uvMatrix: stamp(3),
 		uvMotion: stamp(4), parallax: stamp(5), emissive: stamp(6),
 	};
-	let values: Vec<float32> = bufferOf(uniformSize<PbrEmissiveMaterialParams>());
-	writeUniform<PbrEmissiveMaterialParams>(values, 0, value);
-	assert writeDisagreements(litPbrEmissive(), PBR_FIELDS, values,
-		uniformSize<PbrEmissiveMaterialParams>()) == "";
+	assert writeDisagreements(litPbrEmissive(), PBR_FIELDS, value) == "",
+		"PbrEmissiveMaterialParams write layout";
 }
