@@ -3,11 +3,12 @@ import {
 	dx12AdapterDescription,
 	dx12ClearDepthStencil,
 	dx12ClearRenderTarget,
+	dx12CommandSignatureCreate,
 	dx12DepthStencilView,
 	dx12DeviceCreate,
+	dx12Dispatch,
 	dx12Draw,
 	dx12DrawIndexed,
-	dx12DrawIndexedSignatureCreate,
 	dx12Event,
 	dx12ExecuteIndirect,
 	dx12FormatSupport,
@@ -62,7 +63,7 @@ import * as descriptor from "./descriptor.ms";
 import * as resources from "./resources.ms";
 import * as pipeline from "./pipeline.ms";
 import * as surface from "./surface.ms";
-import { SubresourceRange, flushTransitions, settledAt, transition, transitionRange, untrack } from "./tracker.ms";
+import { SubresourceRange, flushTransitions, queueUavBarrier, settledAt, transition, transitionRange, untrack } from "./tracker.ms";
 import { boundFacts, renderPassOpen } from "../validate.ms";
 import {
 	GPU_MAX_BIND_GROUP_ENTRIES,
@@ -72,6 +73,7 @@ import {
 	GPU_MAX_VERTEX_BUFFERS,
 	GPU_DRAW_INDEXED_INDIRECT_STRIDE,
 	GPU_RESOURCE_GROUP,
+	GPU_UNIFORM_GROUP,
 	GPUAdapterInfo,
 	GPUBindGroup,
 	GPUBindGroupDescriptor,
@@ -170,6 +172,9 @@ const CLEAR_STENCIL: int32 = 2;
 const EVENT_BEGIN: int32 = 0;
 const EVENT_END: int32 = 1;
 const EVENT_MARKER: int32 = 2;
+const ARGUMENT_DRAW_INDEXED: int32 = 1;
+const ARGUMENT_DISPATCH: int32 = 2;
+const DISPATCH_INDIRECT_STRIDE: uint32 = 12;
 
 export const BACKEND = "d3d12";
 
@@ -186,6 +191,7 @@ let swapchainDepth: uint32 = 0;
 let shaders: Vec<pipeline.ShaderNative> = [pipeline.NO_SHADER];
 let pipelines: Vec<pipeline.PipelineNative> = [pipeline.NO_PIPELINE];
 let drawIndexedSignature: uint64 = 0;
+let dispatchSignature: uint64 = 0;
 let surfaces: Vec<surface.Swapchain> = [];
 let surfaceCount: uint32 = 0;
 let canvasMsaa: resources.TextureNative = resources.NO_TEXTURE;
@@ -246,10 +252,15 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	const heaps = descriptor.openDescriptors(device, FRAMES_IN_FLIGHT);
 	if (!heaps.ok) { stopOnFrame("requestDevice", heaps.error); }
 	d = heaps.value;
-	let signature: uint64 = 0;
-	commanded(dx12DrawIndexedSignatureCreate(device, GPU_DRAW_INDEXED_INDIRECT_STRIDE as uint32, signature));
-	drawIndexedSignature = signature;
+	drawIndexedSignature = commandSignature(ARGUMENT_DRAW_INDEXED, GPU_DRAW_INDEXED_INDIRECT_STRIDE as uint32);
+	dispatchSignature = commandSignature(ARGUMENT_DISPATCH, DISPATCH_INDIRECT_STRIDE);
 	return { id: 1, queue: { id: 1 } };
+}
+
+function commandSignature(argument: int32, stride: uint32): uint64 {
+	let signature: uint64 = 0;
+	commanded(dx12CommandSignatureCreate(device, argument, stride, signature));
+	return signature;
 }
 
 export function adoptSwapchain(color: uint32, depth: uint32): void {
@@ -421,7 +432,9 @@ export function shutdown(): void {
 	pipelines = [pipeline.NO_PIPELINE];
 	shaders = [pipeline.NO_SHADER];
 	dx12Release(drawIndexedSignature);
+	dx12Release(dispatchSignature);
 	drawIndexedSignature = 0;
+	dispatchSignature = 0;
 	encoding = false;
 	dx12Release(queue);
 	dx12Release(device);
@@ -911,31 +924,51 @@ export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Read
 }
 
 export function createComputePipeline(id: uint32, descriptor: GPUComputePipelineDescriptor): void {
-	notBuilt("createComputePipeline", "D6");
+	const shader = shaders[slotOf(descriptor.compute.module.id)];
+	adoptPipelineLayout(id, shader.bindings, true);
+	ran("createComputePipeline", pipeline.createComputePipeline(pipelines, device, layouts[slotOf(id)].signature, shader, id, descriptor));
 }
 
 export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
-	notBuilt("beginComputePass", "D6");
+	pass = { labeled: descriptor.label != null };
+	d.bound.signature = 0;
+	const label = descriptor.label;
+	if (label != null) { commanded(dx12Event(ring.list, EVENT_BEGIN, label)); }
+	return { id: 1 };
 }
 
-export function setComputePipeline(pipeline: GPUComputePipeline): void {
-	notBuilt("setComputePipeline", "D6");
+export function setComputePipeline(bound: GPUComputePipeline): void {
+	commanded(dx12SetPipelineState(ring.list, pipelines[slotOf(bound.id)].state, 0));
 }
 
 export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	notBuilt("setComputeBindGroup", "D6");
+	descriptor.setGroup(d, index, bindGroup.id, dynamicOffsets);
+}
+
+function prepareDispatch(): void {
+	d.bound.dirty[GPU_UNIFORM_GROUP] = true;
+	d.bound.dirty[GPU_RESOURCE_GROUP] = true;
+	applyBindings(boundFacts.pipeline);
+	commanded(flushTransitions(r.tracker, ring.list));
 }
 
 export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
-	notBuilt("dispatchWorkgroups", "D6");
+	if (x == 0 || y == 0 || z == 0) { return; }
+	prepareDispatch();
+	commanded(dx12Dispatch(ring.list, x as uint32, y as uint32, z as uint32));
+	queueUavBarrier(r.tracker);
 }
 
 export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void {
-	notBuilt("dispatchWorkgroupsIndirect", "D6");
+	const used = usedBuffer(buffer.id, STATE_INDIRECT_ARGUMENT);
+	prepareDispatch();
+	commanded(dx12ExecuteIndirect(ring.list, dispatchSignature, 1, used.native, offset as uint64));
+	queueUavBarrier(r.tracker);
 }
 
 export function endComputePass(): void {
-	notBuilt("endComputePass", "D6");
+	if (pass.labeled) { commanded(dx12Event(ring.list, EVENT_END, "")); }
+	pass = { labeled: false };
 }
 
 export function limits(): GPUSupportedLimits {

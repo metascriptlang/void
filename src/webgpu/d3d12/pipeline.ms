@@ -1,4 +1,4 @@
-import { dx12CompileLog, dx12MemoryRead, dx12Release, dx12RenderPipelineCreate, dx12ShaderCompile } from "./d3d12.h";
+import { dx12CompileLog, dx12ComputePipelineCreate, dx12MemoryRead, dx12Release, dx12RenderPipelineCreate, dx12ShaderCompile } from "./d3d12.h";
 import { formatInfo } from "./conv.ms";
 import { DX12_OK, NativeError, checked, stop } from "./frame.ms";
 import {
@@ -7,6 +7,7 @@ import {
 	GPU_MAX_VERTEX_ATTRIBUTES,
 	GPU_MAX_VERTEX_BUFFERS,
 	GPUBlendComponent,
+	GPUComputePipelineDescriptor,
 	GPURenderPipelineDescriptor,
 	GPUShaderAttribute,
 	GPUShaderBinding,
@@ -21,7 +22,7 @@ import {
 	topologyIndex,
 	vertexFormatNative,
 } from "../types.ms";
-import { checkedRenderModule, colorWriteBits, stencil8Mask } from "../validate.ms";
+import { checkedComputeModule, checkedRenderModule, colorWriteBits, stencil8Mask } from "../validate.ms";
 import { put, vacate } from "../pool.ms";
 
 const DXGI_R32G32B32A32_FLOAT = 2;
@@ -121,6 +122,7 @@ export struct ShaderNative {
 	vertex: Vec<uint8>;
 	pixel: Vec<uint8>;
 	computeBytes: Vec<uint8>;
+	computeEntry: string;
 	bindings: GPUShaderBinding[GPU_MAX_SHADER_BINDINGS];
 	attributes: GPUShaderAttribute[GPU_MAX_VERTEX_ATTRIBUTES];
 }
@@ -131,7 +133,7 @@ export struct PipelineNative {
 	strides: int32[GPU_MAX_VERTEX_BUFFERS];
 }
 
-export const NO_SHADER: ShaderNative = { compute: false, vertex: [], pixel: [], computeBytes: [] };
+export const NO_SHADER: ShaderNative = { compute: false, vertex: [], pixel: [], computeBytes: [], computeEntry: "" };
 export const NO_PIPELINE: PipelineNative = { state: 0, topology: 0 };
 
 @noinline function stopOnMember(member: string, value: string): never {
@@ -141,7 +143,11 @@ export const NO_PIPELINE: PipelineNative = { state: 0, topology: 0 };
 // A stage's precompiled bytes skip D3DCompile; no stage reaching it loads d3dcompiler_47.dll.
 function stageBytes(code: string, bytecode: Vec<uint8>, entryPoint: string, target: string, label: string | null): Vec<uint8> {
 	if (bytecode.length > 0) { return bytecode; }
-	return compileStage(code, entryPoint == "" ? "main" : entryPoint, target, label);
+	return compileStage(code, entryName(entryPoint), target, label);
+}
+
+function entryName(entryPoint: string): string {
+	return entryPoint == "" ? "main" : entryPoint;
 }
 
 function compileStage(code: string, entryPoint: string, target: string, label: string | null): Vec<uint8> {
@@ -167,6 +173,7 @@ export function createShaderModule(ref shaders: Vec<ShaderNative>, id: uint32, d
 		vertex: compute ? [] : stageBytes(descriptor.vertexCode, descriptor.vertexBytecode, descriptor.vertexEntryPoint, "vs_5_0", label),
 		pixel: compute ? [] : stageBytes(descriptor.fragmentCode, descriptor.fragmentBytecode, descriptor.fragmentEntryPoint, "ps_5_0", label),
 		computeBytes: compute ? stageBytes(descriptor.computeCode, descriptor.computeBytecode, descriptor.computeEntryPoint, "cs_5_0", label) : [],
+		computeEntry: entryName(descriptor.computeEntryPoint),
 		bindings: descriptor.bindings,
 		attributes: descriptor.attributes,
 	});
@@ -324,5 +331,20 @@ export function createRenderPipeline(
 	));
 	native.state = state;
 	put(pipelines, id, native);
+	return Result.ok(null);
+}
+
+export function createComputePipeline(
+	ref pipelines: Vec<PipelineNative>,
+	device: uint64,
+	signature: uint64,
+	shader: ShaderNative,
+	id: uint32,
+	descriptor: GPUComputePipelineDescriptor,
+): Result<void, NativeError> {
+	checkedComputeModule(shader.compute, entryName(descriptor.compute.entryPoint), shader.computeEntry);
+	let state: uint64 = 0;
+	try checked(dx12ComputePipelineCreate(device, signature, shader.computeBytes[0], shader.computeBytes.length as uint64, state));
+	put(pipelines, id, { state: state, topology: 0 });
 	return Result.ok(null);
 }

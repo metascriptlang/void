@@ -69,6 +69,7 @@ int32_t dx12SetRootDescriptorTable(uint64_t list, int32_t compute, uint32_t para
 int32_t dx12ShaderCompile(const char *source, const char *entryPoint, const char *target, uint64_t *blob, uint64_t *bytes, uint64_t *size);
 const char *dx12CompileLog(void);
 int32_t dx12RenderPipelineCreate(uint64_t device, uint64_t signature, const uint8_t *vertex, uint64_t vertexBytes, const uint8_t *pixel, uint64_t pixelBytes, const int32_t *elements, uint32_t elementCount, const int32_t *targets, uint32_t targetCount, const int32_t *words, uint32_t wordCount, double depthBiasSlopeScale, double depthBiasClamp, uint64_t *pipeline);
+int32_t dx12ComputePipelineCreate(uint64_t device, uint64_t signature, const uint8_t *compute, uint64_t computeBytes, uint64_t *pipeline);
 int32_t dx12RenderTargetView(uint64_t device, uint64_t resource, int32_t format, int32_t dimension, int32_t multisampled, uint32_t mip, uint32_t layer, uint64_t handle);
 int32_t dx12DepthStencilView(uint64_t device, uint64_t resource, int32_t format, int32_t dimension, int32_t multisampled, uint32_t mip, uint32_t layer, uint64_t handle);
 int32_t dx12SetRenderTargets(uint64_t list, const uint64_t *targets, uint32_t count, uint64_t depth);
@@ -83,7 +84,8 @@ int32_t dx12SetVertexBuffer(uint64_t list, uint32_t slot, uint64_t address, uint
 int32_t dx12SetIndexBuffer(uint64_t list, uint64_t address, uint32_t bytes, int32_t format);
 int32_t dx12Draw(uint64_t list, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance);
 int32_t dx12DrawIndexed(uint64_t list, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t baseVertex, uint32_t firstInstance);
-int32_t dx12DrawIndexedSignatureCreate(uint64_t device, uint32_t stride, uint64_t *signature);
+int32_t dx12Dispatch(uint64_t list, uint32_t x, uint32_t y, uint32_t z);
+int32_t dx12CommandSignatureCreate(uint64_t device, int32_t argumentType, uint32_t stride, uint64_t *signature);
 int32_t dx12ExecuteIndirect(uint64_t list, uint64_t signature, uint32_t count, uint64_t buffer, uint64_t offset);
 int32_t dx12ResolveSubresource(uint64_t list, uint64_t target, uint32_t targetSubresource, uint64_t source, uint32_t sourceSubresource, int32_t format);
 int32_t dx12Event(uint64_t list, int32_t kind, const char *label);
