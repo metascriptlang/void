@@ -48,4 +48,18 @@ int32_t dx12CopyTexture(uint64_t list, uint64_t target, uint32_t targetSubresour
 int32_t dx12BarrierTransition(uint64_t resource, uint32_t subresource, uint32_t before, uint32_t after);
 int32_t dx12BarrierFlush(uint64_t list, int32_t uav);
 
+int32_t dx12DescriptorHeapCreate(uint64_t device, int32_t type, uint32_t count, int32_t shaderVisible, uint64_t *heap, uint64_t *cpuStart, uint64_t *gpuStart, uint32_t *increment);
+int32_t dx12DescriptorsCopy(uint64_t device, uint32_t count, uint64_t target, uint64_t source, int32_t type);
+int32_t dx12TextureSrv(uint64_t device, uint64_t resource, int32_t format, int32_t dimension, int32_t multisampled, uint32_t baseMip, uint32_t mipCount, uint32_t baseLayer, uint32_t layerCount, uint64_t handle);
+int32_t dx12TextureUav(uint64_t device, uint64_t resource, int32_t format, int32_t dimension, uint32_t mip, uint32_t baseLayer, uint32_t layerCount, uint64_t handle);
+int32_t dx12BufferSrv(uint64_t device, uint64_t resource, uint64_t offset, uint64_t bytes, uint64_t handle);
+int32_t dx12BufferUav(uint64_t device, uint64_t resource, uint64_t offset, uint64_t bytes, uint64_t handle);
+int32_t dx12SamplerCreate(uint64_t device, int32_t filter, int32_t addressU, int32_t addressV, int32_t addressW, uint32_t maxAnisotropy, int32_t comparison, double minLod, double maxLod, uint64_t handle);
+int32_t dx12RootSignatureSerialize(const uint32_t *parameters, uint32_t parameterCount, const uint32_t *ranges, uint32_t rangeCount, uint32_t flags, uint64_t *blob, uint64_t *bytes);
+int32_t dx12RootSignatureCreate(uint64_t device, uint64_t blob, uint64_t *signature);
+int32_t dx12SetDescriptorHeaps(uint64_t list, uint64_t views, uint64_t samplers);
+int32_t dx12SetRootSignature(uint64_t list, int32_t compute, uint64_t signature);
+int32_t dx12SetRootConstantBufferView(uint64_t list, int32_t compute, uint32_t parameter, uint64_t address);
+int32_t dx12SetRootDescriptorTable(uint64_t list, int32_t compute, uint32_t parameter, uint64_t handle);
+
 int32_t dx12Release(uint64_t object);

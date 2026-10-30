@@ -438,6 +438,245 @@ int32_t dx12BarrierFlush(uint64_t list, int32_t uav) {
 	return DX12_OK;
 }
 
+int32_t dx12DescriptorHeapCreate(uint64_t device, int32_t type, uint32_t count, int32_t shaderVisible, uint64_t *heap, uint64_t *cpuStart, uint64_t *gpuStart, uint32_t *increment) {
+	*heap = 0;
+	*cpuStart = 0;
+	*gpuStart = 0;
+	*increment = 0;
+	D3D12_DESCRIPTOR_HEAP_DESC desc = {0};
+	desc.Type = (D3D12_DESCRIPTOR_HEAP_TYPE)type;
+	desc.NumDescriptors = count;
+	desc.Flags = shaderVisible ? D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE : D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	ID3D12DescriptorHeap *created = NULL;
+	HRESULT hr = ID3D12Device_CreateDescriptorHeap(DEVICE(device), &desc, &IID_ID3D12DescriptorHeap, (void **)&created);
+	if (FAILED(hr)) return failCall("ID3D12Device::CreateDescriptorHeap", hr);
+	D3D12_CPU_DESCRIPTOR_HANDLE cpu;
+	created->lpVtbl->GetCPUDescriptorHandleForHeapStart(created, &cpu);
+	if (shaderVisible) {
+		D3D12_GPU_DESCRIPTOR_HANDLE gpu;
+		created->lpVtbl->GetGPUDescriptorHandleForHeapStart(created, &gpu);
+		*gpuStart = gpu.ptr;
+	}
+	*heap = NATIVE(created);
+	*cpuStart = (uint64_t)cpu.ptr;
+	*increment = ID3D12Device_GetDescriptorHandleIncrementSize(DEVICE(device), desc.Type);
+	return DX12_OK;
+}
+
+static D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle(uint64_t handle) {
+	D3D12_CPU_DESCRIPTOR_HANDLE cpu = { (SIZE_T)handle };
+	return cpu;
+}
+
+int32_t dx12DescriptorsCopy(uint64_t device, uint32_t count, uint64_t target, uint64_t source, int32_t type) {
+	ID3D12Device_CopyDescriptorsSimple(DEVICE(device), count, cpuHandle(target), cpuHandle(source), (D3D12_DESCRIPTOR_HEAP_TYPE)type);
+	return DX12_OK;
+}
+
+#define DX12_VIEW_2D 0
+#define DX12_VIEW_2D_ARRAY 1
+#define DX12_VIEW_CUBE 2
+#define DX12_VIEW_CUBE_ARRAY 3
+#define DX12_VIEW_3D 4
+
+int32_t dx12TextureSrv(uint64_t device, uint64_t resource, int32_t format, int32_t dimension, int32_t multisampled, uint32_t baseMip, uint32_t mipCount, uint32_t baseLayer, uint32_t layerCount, uint64_t handle) {
+	D3D12_SHADER_RESOURCE_VIEW_DESC desc = {0};
+	desc.Format = (DXGI_FORMAT)format;
+	desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	if (multisampled && dimension == DX12_VIEW_2D) {
+		desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DMS;
+	} else if (multisampled && dimension == DX12_VIEW_2D_ARRAY) {
+		desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DMSARRAY;
+		desc.Texture2DMSArray.FirstArraySlice = baseLayer;
+		desc.Texture2DMSArray.ArraySize = layerCount;
+	} else if (multisampled) {
+		return fail(DX12_ERROR_CALL, "a multisampled shader resource view has view dimension %d, which is neither 2d nor 2d-array", dimension);
+	} else if (dimension == DX12_VIEW_2D) {
+		desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		desc.Texture2D.MostDetailedMip = baseMip;
+		desc.Texture2D.MipLevels = mipCount;
+	} else if (dimension == DX12_VIEW_2D_ARRAY) {
+		desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+		desc.Texture2DArray.MostDetailedMip = baseMip;
+		desc.Texture2DArray.MipLevels = mipCount;
+		desc.Texture2DArray.FirstArraySlice = baseLayer;
+		desc.Texture2DArray.ArraySize = layerCount;
+	} else if (dimension == DX12_VIEW_CUBE) {
+		desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+		desc.TextureCube.MostDetailedMip = baseMip;
+		desc.TextureCube.MipLevels = mipCount;
+	} else if (dimension == DX12_VIEW_CUBE_ARRAY) {
+		desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBEARRAY;
+		desc.TextureCubeArray.MostDetailedMip = baseMip;
+		desc.TextureCubeArray.MipLevels = mipCount;
+		desc.TextureCubeArray.First2DArrayFace = baseLayer;
+		desc.TextureCubeArray.NumCubes = layerCount / 6;
+	} else if (dimension == DX12_VIEW_3D) {
+		desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+		desc.Texture3D.MostDetailedMip = baseMip;
+		desc.Texture3D.MipLevels = mipCount;
+	} else {
+		return fail(DX12_ERROR_CALL, "a shader resource view has the unknown view dimension %d", dimension);
+	}
+	ID3D12Device_CreateShaderResourceView(DEVICE(device), RESOURCE(resource), &desc, cpuHandle(handle));
+	return DX12_OK;
+}
+
+int32_t dx12TextureUav(uint64_t device, uint64_t resource, int32_t format, int32_t dimension, uint32_t mip, uint32_t baseLayer, uint32_t layerCount, uint64_t handle) {
+	D3D12_UNORDERED_ACCESS_VIEW_DESC desc = {0};
+	desc.Format = (DXGI_FORMAT)format;
+	if (dimension == DX12_VIEW_3D) {
+		desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;
+		desc.Texture3D.MipSlice = mip;
+		desc.Texture3D.WSize = (UINT)-1;
+	} else if (dimension == DX12_VIEW_2D_ARRAY) {
+		desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
+		desc.Texture2DArray.MipSlice = mip;
+		desc.Texture2DArray.FirstArraySlice = baseLayer;
+		desc.Texture2DArray.ArraySize = layerCount;
+	} else if (dimension == DX12_VIEW_2D) {
+		desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+		desc.Texture2D.MipSlice = mip;
+	} else {
+		return fail(DX12_ERROR_CALL, "an unordered access view has view dimension %d, which is not 2d, 2d-array or 3d", dimension);
+	}
+	ID3D12Device_CreateUnorderedAccessView(DEVICE(device), RESOURCE(resource), NULL, &desc, cpuHandle(handle));
+	return DX12_OK;
+}
+
+int32_t dx12BufferSrv(uint64_t device, uint64_t resource, uint64_t offset, uint64_t bytes, uint64_t handle) {
+	D3D12_SHADER_RESOURCE_VIEW_DESC desc = {0};
+	desc.Format = DXGI_FORMAT_R32_TYPELESS;
+	desc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+	desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	desc.Buffer.FirstElement = offset / 4;
+	desc.Buffer.NumElements = (UINT)(bytes / 4);
+	desc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
+	ID3D12Device_CreateShaderResourceView(DEVICE(device), RESOURCE(resource), &desc, cpuHandle(handle));
+	return DX12_OK;
+}
+
+int32_t dx12BufferUav(uint64_t device, uint64_t resource, uint64_t offset, uint64_t bytes, uint64_t handle) {
+	D3D12_UNORDERED_ACCESS_VIEW_DESC desc = {0};
+	desc.Format = DXGI_FORMAT_R32_TYPELESS;
+	desc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+	desc.Buffer.FirstElement = offset / 4;
+	desc.Buffer.NumElements = (UINT)(bytes / 4);
+	desc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
+	ID3D12Device_CreateUnorderedAccessView(DEVICE(device), RESOURCE(resource), NULL, &desc, cpuHandle(handle));
+	return DX12_OK;
+}
+
+int32_t dx12SamplerCreate(uint64_t device, int32_t filter, int32_t addressU, int32_t addressV, int32_t addressW, uint32_t maxAnisotropy, int32_t comparison, double minLod, double maxLod, uint64_t handle) {
+	D3D12_SAMPLER_DESC desc = {0};
+	desc.Filter = (D3D12_FILTER)filter;
+	desc.AddressU = (D3D12_TEXTURE_ADDRESS_MODE)addressU;
+	desc.AddressV = (D3D12_TEXTURE_ADDRESS_MODE)addressV;
+	desc.AddressW = (D3D12_TEXTURE_ADDRESS_MODE)addressW;
+	desc.MaxAnisotropy = maxAnisotropy;
+	desc.ComparisonFunc = (D3D12_COMPARISON_FUNC)comparison;
+	desc.BorderColor[3] = 1.0f;
+	desc.MinLOD = (FLOAT)minLod;
+	desc.MaxLOD = (FLOAT)maxLod;
+	ID3D12Device_CreateSampler(DEVICE(device), &desc, cpuHandle(handle));
+	return DX12_OK;
+}
+
+#define DX12_ROOT_PARAMETER_WORDS 5
+#define DX12_ROOT_RANGE_WORDS 3
+#define DX12_MAX_ROOT_PARAMETERS 64
+#define DX12_MAX_ROOT_RANGES 256
+
+int32_t dx12RootSignatureSerialize(const uint32_t *parameters, uint32_t parameterCount, const uint32_t *ranges, uint32_t rangeCount, uint32_t flags, uint64_t *blob, uint64_t *bytes) {
+	*blob = 0;
+	*bytes = 0;
+	if (parameterCount > DX12_MAX_ROOT_PARAMETERS || rangeCount > DX12_MAX_ROOT_RANGES) {
+		return fail(DX12_ERROR_CALL, "a root signature of %u parameters and %u ranges is over %d and %d", parameterCount, rangeCount, DX12_MAX_ROOT_PARAMETERS, DX12_MAX_ROOT_RANGES);
+	}
+	D3D12_ROOT_PARAMETER rootParameters[DX12_MAX_ROOT_PARAMETERS];
+	D3D12_DESCRIPTOR_RANGE descriptorRanges[DX12_MAX_ROOT_RANGES];
+	memset(rootParameters, 0, sizeof rootParameters);
+	for (uint32_t r = 0; r < rangeCount; r++) {
+		const uint32_t *words = ranges + r * DX12_ROOT_RANGE_WORDS;
+		descriptorRanges[r].RangeType = (D3D12_DESCRIPTOR_RANGE_TYPE)words[0];
+		descriptorRanges[r].NumDescriptors = 1;
+		descriptorRanges[r].BaseShaderRegister = words[1];
+		descriptorRanges[r].RegisterSpace = 0;
+		descriptorRanges[r].OffsetInDescriptorsFromTableStart = words[2];
+	}
+	for (uint32_t p = 0; p < parameterCount; p++) {
+		const uint32_t *words = parameters + p * DX12_ROOT_PARAMETER_WORDS;
+		D3D12_ROOT_PARAMETER *parameter = &rootParameters[p];
+		parameter->ParameterType = (D3D12_ROOT_PARAMETER_TYPE)words[0];
+		parameter->ShaderVisibility = (D3D12_SHADER_VISIBILITY)words[1];
+		if (parameter->ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE) {
+			if (words[3] + words[4] > rangeCount) return fail(DX12_ERROR_CALL, "root parameter %u names ranges %u..%u of %u", p, words[3], words[3] + words[4], rangeCount);
+			parameter->DescriptorTable.NumDescriptorRanges = words[4];
+			parameter->DescriptorTable.pDescriptorRanges = descriptorRanges + words[3];
+		} else if (parameter->ParameterType == D3D12_ROOT_PARAMETER_TYPE_CBV) {
+			parameter->Descriptor.ShaderRegister = words[2];
+			parameter->Descriptor.RegisterSpace = 0;
+		} else {
+			return fail(DX12_ERROR_CALL, "root parameter %u has type %u, which is neither a descriptor table nor a CBV", p, words[0]);
+		}
+	}
+	D3D12_ROOT_SIGNATURE_DESC desc = {0};
+	desc.NumParameters = parameterCount;
+	desc.pParameters = rootParameters;
+	desc.Flags = (D3D12_ROOT_SIGNATURE_FLAGS)flags;
+	ID3DBlob *serialized = NULL;
+	ID3DBlob *error = NULL;
+	HRESULT hr = D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1_0, &serialized, &error);
+	if (FAILED(hr)) {
+		int32_t status = error
+			? fail(DX12_ERROR_CALL, "D3D12SerializeRootSignature returned HRESULT 0x%08lX: %s", (unsigned long)hr, (const char *)ID3D10Blob_GetBufferPointer(error))
+			: failCall("D3D12SerializeRootSignature", hr);
+		if (error) ID3D10Blob_Release(error);
+		return status;
+	}
+	if (error) ID3D10Blob_Release(error);
+	*blob = NATIVE(serialized);
+	*bytes = (uint64_t)ID3D10Blob_GetBufferSize(serialized);
+	return DX12_OK;
+}
+
+int32_t dx12RootSignatureCreate(uint64_t device, uint64_t blob, uint64_t *signature) {
+	*signature = 0;
+	ID3DBlob *serialized = (ID3DBlob *)(uintptr_t)blob;
+	ID3D12RootSignature *created = NULL;
+	HRESULT hr = ID3D12Device_CreateRootSignature(DEVICE(device), 0, ID3D10Blob_GetBufferPointer(serialized), ID3D10Blob_GetBufferSize(serialized),
+		&IID_ID3D12RootSignature, (void **)&created);
+	if (FAILED(hr)) return failCall("ID3D12Device::CreateRootSignature", hr);
+	*signature = NATIVE(created);
+	return DX12_OK;
+}
+
+int32_t dx12SetDescriptorHeaps(uint64_t list, uint64_t views, uint64_t samplers) {
+	ID3D12DescriptorHeap *heaps[] = { (ID3D12DescriptorHeap *)(uintptr_t)views, (ID3D12DescriptorHeap *)(uintptr_t)samplers };
+	ID3D12GraphicsCommandList_SetDescriptorHeaps(LIST(list), 2, heaps);
+	return DX12_OK;
+}
+
+int32_t dx12SetRootSignature(uint64_t list, int32_t compute, uint64_t signature) {
+	ID3D12RootSignature *root = (ID3D12RootSignature *)(uintptr_t)signature;
+	if (compute) ID3D12GraphicsCommandList_SetComputeRootSignature(LIST(list), root);
+	else ID3D12GraphicsCommandList_SetGraphicsRootSignature(LIST(list), root);
+	return DX12_OK;
+}
+
+int32_t dx12SetRootConstantBufferView(uint64_t list, int32_t compute, uint32_t parameter, uint64_t address) {
+	if (compute) ID3D12GraphicsCommandList_SetComputeRootConstantBufferView(LIST(list), parameter, address);
+	else ID3D12GraphicsCommandList_SetGraphicsRootConstantBufferView(LIST(list), parameter, address);
+	return DX12_OK;
+}
+
+int32_t dx12SetRootDescriptorTable(uint64_t list, int32_t compute, uint32_t parameter, uint64_t handle) {
+	D3D12_GPU_DESCRIPTOR_HANDLE gpu = { handle };
+	if (compute) ID3D12GraphicsCommandList_SetComputeRootDescriptorTable(LIST(list), parameter, gpu);
+	else ID3D12GraphicsCommandList_SetGraphicsRootDescriptorTable(LIST(list), parameter, gpu);
+	return DX12_OK;
+}
+
 int32_t dx12Release(uint64_t object) {
 	if (object != 0) IUnknown_Release((IUnknown *)(uintptr_t)object);
 	return DX12_OK;
