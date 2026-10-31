@@ -133,6 +133,10 @@ void mtlWriteBuffer(MtlBuffer buffer, int64_t offset, void *data, int64_t bytes,
 #endif
 }
 
+void mtlCarryBytes(MtlBuffer from, MtlBuffer to, int64_t offset, int64_t bytes, int32_t managed) {
+	mtlWriteBuffer(to, offset, (uint8_t *)[(id<MTLBuffer>)from contents] + offset, bytes, managed);
+}
+
 MtlTexture mtlNewTexture(
 	MtlDevice device,
 	int32_t width,
