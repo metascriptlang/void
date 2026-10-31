@@ -4085,8 +4085,7 @@ equivalent to reference construction followed by `lineStyle()`, not uninitialize
 contain directions and positions do not yet contain expanded corners/endpoints. Do not draw
 it with Lit, recompute its normals, or claim triangle picking from those coincident roots.
 Heaps `LineShader.hx` supplies endpoint extension and pixel/depth-dependent expansion.
-That program is not implemented here yet. `is3D=true` world-width XY-plane miter is a separate
-future row; no world-width substitute, h2d rectangle or filled polygon was added.
+That program is not implemented here yet. `is3D=true` world-width miter is `flushGraphics` (ground plane, below); no world-width substitute, h2d rectangle or filled polygon was added.
 
 Actual missing-module exit1 precedes implementation. Native **308/308**, CLIJS **70/70**,
 actual Heaps **13/13**, **117 fields Haxe/C/JS exactly equal**. Coverage includes all four
@@ -5634,7 +5633,8 @@ This does not claim a rendered asset or bind the actual exported node hierarchy 
 
 `addGltfBoundNodes` retains source-index→generation-checked scene-node ids; legacy
 `addGltfNodes` still returns its count. Unselected nodes remain NO_NODE_ID. `gltfPose.ms`
-shares immutable curves, owns each instance's target map/scratch and validates every target
+copies the clip's curves into each bound pose (Heaps shares them, `LinearAnimation.hx:37-48`; open),
+samples them in place, owns each instance's target map/scratch and validates every target
 and sample before committing TRS. Six pins pass DRC/ORC304: duplicate names, clone independence,
 independent channels, combined TRS, recycled-node refusal and atomic late-quaternion failure.
 `skinPose.ms` gathers joint worlds from that scene, owns copied IBM/palette maps and separate
@@ -6810,8 +6810,7 @@ equivalent to reference construction followed by `lineStyle()`, not uninitialize
 contain directions and positions do not yet contain expanded corners/endpoints. Do not draw
 it with Lit, recompute its normals, or claim triangle picking from those coincident roots.
 Heaps `LineShader.hx` supplies endpoint extension and pixel/depth-dependent expansion.
-That program is not implemented here yet. `is3D=true` world-width XY-plane miter is a separate
-future row; no world-width substitute, h2d rectangle or filled polygon was added.
+That program is not implemented here yet. `is3D=true` world-width miter is `flushGraphics` (ground plane, below); no world-width substitute, h2d rectangle or filled polygon was added.
 
 Actual missing-module exit1 precedes implementation. Native **308/308**, CLIJS **70/70**,
 actual Heaps **13/13**, **117 fields Haxe/C/JS exactly equal**. Coverage includes all four
@@ -6884,8 +6883,8 @@ The port, in steps:
 
 With `is3D` set, Heaps' `Graphics` drops `LineShader` and draws a white texture
 (`h3d/scene/Graphics.hx:63-76`). `lineTo` gathers points, and `flushLine` (`:78-187`) turns them
-into a strip `lineSize` wide. The strip lies in the XY plane with a Z-up normal and is mitred at
-every joint. It is closed when the last point equals the first, and its v alternates 0 and 1.
+into a strip `lineSize` wide. The strip lies in Heaps' ground, the XY plane with a Z-up normal;
+void3d is Y-up, so `graphics3d.ms` lays it in XZ with a +Y normal. It is mitred at every joint. It is closed when the last point equals the first, and its v alternates 0 and 1.
 `graphics3d.ms` ports this:
 
 - `setIs3D` and the `points` field;
