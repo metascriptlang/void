@@ -1,5 +1,5 @@
 import { sha256 } from "std/crypto/sha256";
-import { ensureDir, exists, readDir, remove, writeFile } from "std/fs";
+import { ensureDir, exists, readDir, remove, rename, writeFile } from "std/fs";
 import { execFileResult } from "std/process";
 
 class DxbcStage {
@@ -44,13 +44,18 @@ export function dxbcStage(
 		stage.error = "cannot write " + source;
 		return stage;
 	}
+	const partial = made + ".part";
 	const run = execFileResult(
 		fxc,
-		["-nologo", "-T", profile, "-E", entry].concat(fxcFlags()).concat(["-Fo", made, source]),
+		["-nologo", "-T", profile, "-E", entry].concat(fxcFlags()).concat(["-Fo", partial, source]),
 	);
 	if (!run.started || run.exitCode != 0) {
 		stage.error = "fxc " + profile + " refused " + source + ":\n" + run.output +
 			run.errorOutput;
+		return stage;
+	}
+	if (!rename(partial, made).ok) {
+		stage.error = "cannot move " + partial + " to " + made;
 		return stage;
 	}
 	const _source = remove(source);
