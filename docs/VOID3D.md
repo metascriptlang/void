@@ -5707,11 +5707,11 @@ joint's box of weighted vertices along its long axis, each transformed by the jo
 the radius scaled by the matrix's stretch bound. A joint that weighs no vertex adds nothing.
 Culling, alpha depth and shadow fitting read those bounds; a pick runs `deformIfStale` and tests
 the deformed triangles, so the CPU deform is paid once per pose and only when something picks.
-The radius differs from the reference on purpose: the reference takes half the larger side of
-the box's cross-section and insets the spheres, which leaves the box's edges outside once the
-joint turns about its long axis, so a posed mesh is culled while in view. Ours is half the
-cross-section's diagonal with the spheres on the box faces; `skinGeometryCheck.ms` pins it with
-a square bar turned about its long side.
+The radius differs from the reference on purpose (approved 2026-11-01): the reference takes half
+the larger side of the box's cross-section and insets the spheres, which leaves the box's edges
+outside once the joint turns about its long axis, so a posed mesh is culled while in view. Ours is
+half the cross-section's diagonal with the spheres on the box faces; `skinGeometryCheck.ms` pins
+it with a square bar turned about its long side.
 
 Tangent split provenance is now available through `meshData.ms` `addTangentsWithSources`,
 reusing the existing MikkTSpace split rather than inferring a source from position/UV. The
