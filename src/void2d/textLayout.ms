@@ -647,14 +647,19 @@ function assignRuns(cps: Span<Codepoint>, runs: Readonly<Span<TextRun>>, units: 
 	}
 }
 
-function markShapingBreaks(cps: Span<Codepoint>, breaks: Readonly<Span<int32>>): void {
-	const count: int32 = cps.length as int32;
-	const units: int32 = count > 0 ? cps[count - 1].unitEnd() : 0;
+function refuseBreaksOutside(breaks: Readonly<Span<int32>>, units: int32): void {
 	for (const at of breaks) {
 		if (at < 0 || at >= units) {
 			console.log(`void2d: shaping break ${at} falls outside the text's ${units} UTF-16 units`);
 			unreachable;
 		}
+	}
+}
+
+function markShapingBreaks(cps: Span<Codepoint>, breaks: Readonly<Span<int32>>): void {
+	const count: int32 = cps.length as int32;
+	refuseBreaksOutside(breaks, count > 0 ? cps[count - 1].unitEnd() : 0);
+	for (const at of breaks) {
 		let lo: int32 = 0;
 		let hi: int32 = count;
 		while (lo < hi) {
@@ -1170,6 +1175,7 @@ export function shapeLines(
 	let shift: int32 = 0;
 	const bytes: Readonly<Span<uint8>> = text.asBytes();
 	const total: int32 = bytes.length as int32;
+	refuseBreaksOutside(shapingBreaks, unitsOf(bytes, 0, total));
 	let lines: Vec<ShapedLine> = new Array(0);
 	cache.runMap.length = 0;
 	cache.runMapStarts.length = 0;
