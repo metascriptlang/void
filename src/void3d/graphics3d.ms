@@ -204,10 +204,11 @@ function mirrored(at: Vec3, from: Vec3): Vec3 {
 	return vec3(at.x * 2 - from.x, at.y * 2 - from.y, at.z * 2 - from.z);
 }
 
-// Graphics.flush: the points lineTo gathered while is3D become a strip `lineSize` wide in the XY
-// plane, mitred at every joint, closed when the last point is the first, with v alternating 0
-// and 1 along it. A joint whose miter has no direction (a point repeated, a single point, a
-// turn back on itself) is refused and its points are dropped, where Graphics.flushLine writes
+// Graphics.flush: the points lineTo gathered while is3D become a strip `lineSize` wide in the
+// ground plane (XZ, normal +Y: Heaps' XY plane and Z up, turned onto this Y-up frame), mitred
+// at every joint, closed when the last point is the first, with v alternating 0 and 1 along it.
+// A joint whose miter has no direction (a point repeated, a single point, a turn back on
+// itself) is refused and its points are dropped, where Graphics.flushLine writes
 // NaN vertices.
 export function flushGraphics(ref graphics: Graphics3D): Result<void, GraphicsError> {
 	if (graphics.points.length == 0 || !graphics.is3D) {
@@ -232,26 +233,26 @@ export function flushGraphics(ref graphics: Graphics3D): Result<void, GraphicsEr
 	let offsets: Vec<float32> = [];
 	for (let i = 0; i < count; i++) {
 		const next: Vec3 = positions[(i + 1) % (positions.length as int32)];
-		const nx1: float64 = prev.y - p.y;
-		const ny1: float64 = p.x - prev.x;
-		const ns1: float64 = 1 / Math.sqrt(nx1 * nx1 + ny1 * ny1);
-		const nx2: float64 = p.y - next.y;
-		const ny2: float64 = next.x - p.x;
-		const ns2: float64 = 1 / Math.sqrt(nx2 * nx2 + ny2 * ny2);
+		const nx1: float64 = (p.z as float64) - prev.z;
+		const nz1: float64 = (prev.x as float64) - p.x;
+		const ns1: float64 = 1 / Math.sqrt(nx1 * nx1 + nz1 * nz1);
+		const nx2: float64 = (next.z as float64) - p.z;
+		const nz2: float64 = (p.x as float64) - next.x;
+		const ns2: float64 = 1 / Math.sqrt(nx2 * nx2 + nz2 * nz2);
 		let nx: float64 = nx1 * ns1 + nx2 * ns2;
-		let ny: float64 = ny1 * ns1 + ny2 * ns2;
-		const ns: float64 = 1 / Math.sqrt(nx * nx + ny * ny);
+		let nz: float64 = nz1 * ns1 + nz2 * ns2;
+		const ns: float64 = 1 / Math.sqrt(nx * nx + nz * nz);
 		nx = nx * ns;
-		ny = ny * ns;
-		const d: float64 = graphics.lineSize * 0.5 / (nx * nx1 * ns1 + ny * ny1 * ns1);
+		nz = nz * ns;
+		const d: float64 = graphics.lineSize * 0.5 / (nx * nx1 * ns1 + nz * nz1 * ns1);
 		const ox: float32 = (nx * d) as float32;
-		const oy: float32 = (ny * d) as float32;
-		if (!Number.isFinite(ox) || !Number.isFinite(oy)) {
+		const oz: float32 = (nz * d) as float32;
+		if (!Number.isFinite(ox) || !Number.isFinite(oz)) {
 			graphics.points = [];
 			return Result.err(GraphicsError.Degenerate);
 		}
 		offsets.push(ox);
-		offsets.push(oy);
+		offsets.push(oz);
 		prev = p;
 		p = next;
 	}
@@ -266,23 +267,23 @@ export function flushGraphics(ref graphics: Graphics3D): Result<void, GraphicsEr
 		return Result.err(GraphicsError.Capacity);
 	}
 	const start: int32 = graphics.data.vertexCount();
-	const up: Vec3 = vec3(0, 0, 1);
+	const up: Vec3 = vec3(0, 1, 0);
 	let v: float32 = 0;
 	for (let i = 0; i < count; i++) {
 		const point: GraphicsPoint = graphics.points[i];
 		const at: Vec3 = point.position;
 		const ox: float32 = offsets[i * 2];
-		const oy: float32 = offsets[i * 2 + 1];
+		const oz: float32 = offsets[i * 2 + 1];
 		const left = addTexturedVertex(
 			graphics.data,
-			vec3(at.x + ox, at.y + oy, at.z),
+			vec3(at.x + ox, at.y, at.z + oz),
 			up,
 			{ u: 0, v: v },
 			point.color,
 		);
 		const right = addTexturedVertex(
 			graphics.data,
-			vec3(at.x - ox, at.y - oy, at.z),
+			vec3(at.x - ox, at.y, at.z - oz),
 			up,
 			{ u: 1, v: v },
 			point.color,

@@ -124,12 +124,12 @@ test "Graphics3D reuses MeshData wide index promotion without a second stream AB
 }
 
 function vertexAt(
-	g: Graphics3D, v: int32, x: float32, y: float32, u: float32, side: float32,
+	g: Graphics3D, v: int32, x: float32, z: float32, u: float32, side: float32,
 ): boolean {
 	const at: int32 = v * 12;
-	return near(g.data.vertices[at], x) && near(g.data.vertices[at + 1], y) &&
-		g.data.vertices[at + 3] == 0 && g.data.vertices[at + 4] == 0 &&
-		g.data.vertices[at + 5] == 1 &&
+	return near(g.data.vertices[at], x) && near(g.data.vertices[at + 2], z) &&
+		g.data.vertices[at + 3] == 0 && g.data.vertices[at + 4] == 1 &&
+		g.data.vertices[at + 5] == 0 &&
 		g.data.vertices[at + 6] == u && g.data.vertices[at + 7] == side;
 }
 
@@ -141,26 +141,44 @@ function indicesAre(g: Graphics3D, expected: int32[]): boolean {
 	return true;
 }
 
-test "Graphics3D in 3D waits for a flush, then mitres an open polyline in the XY plane" {
+test "Graphics3D in 3D waits for a flush, then mitres an open polyline in the ground plane" {
 	let g = Graphics3D.create();
 	assert g.lineSize == 0 && !g.is3D && g.points.length == 0;
 	setIs3D(g, true);
 	assert lineStyle(g, 1, 0xff0000).ok;
-	assert moveTo(g, 0, 0, 3).ok;
-	assert lineTo(g, 2, 0, 3).ok;
-	assert lineTo(g, 2, 2, 3).ok;
+	assert moveTo(g, 0, 3, 0).ok;
+	assert lineTo(g, 2, 3, 0).ok;
+	assert lineTo(g, 2, 3, -2).ok;
 	assert g.data.vertexCount() == 0 && g.points.length == 3;
 	assert flushGraphics(g).ok;
 	assert g.points.length == 0 && g.data.vertexCount() == 6;
-	assert vertexAt(g, 0, 0, 0.5, 0, 0);
-	assert vertexAt(g, 1, 0, -0.5, 1, 0);
-	assert vertexAt(g, 2, 1.5, 0.5, 0, 1);
-	assert vertexAt(g, 3, 2.5, -0.5, 1, 1);
-	assert vertexAt(g, 4, 1.5, 2, 0, 0);
-	assert vertexAt(g, 5, 2.5, 2, 1, 0);
-	assert g.data.vertices[2] == 3 && g.data.vertices[8] == 1 && g.data.vertices[9] == 0;
+	assert vertexAt(g, 0, 0, -0.5, 0, 0);
+	assert vertexAt(g, 1, 0, 0.5, 1, 0);
+	assert vertexAt(g, 2, 1.5, -0.5, 0, 1);
+	assert vertexAt(g, 3, 2.5, 0.5, 1, 1);
+	assert vertexAt(g, 4, 1.5, -2, 0, 0);
+	assert vertexAt(g, 5, 2.5, -2, 1, 0);
+	for (let v = 0; v < 6; v++) { assert g.data.vertices[v * 12 + 1] == 3; }
+	assert g.data.vertices[8] == 1 && g.data.vertices[9] == 0;
 	assert indicesAre(g, [0, 1, 2, 2, 1, 3, 2, 3, 4, 4, 3, 5]);
 	assert g.width == 1.5;
+}
+
+test "Graphics3D in 3D tessellates a path along Z flat on the ground, faces up" {
+	let g = Graphics3D.create();
+	setIs3D(g, true);
+	assert lineStyle(g, 2).ok;
+	assert moveTo(g, 1, 4, 0).ok;
+	assert lineTo(g, 1, 4, 3).ok;
+	assert flushGraphics(g).ok;
+	assert g.data.vertexCount() == 4;
+	assert vertexAt(g, 0, 2, 0, 0, 0);
+	assert vertexAt(g, 1, 0, 0, 1, 0);
+	assert vertexAt(g, 2, 2, 3, 0, 1);
+	assert vertexAt(g, 3, 0, 3, 1, 1);
+	for (let v = 0; v < 4; v++) { assert g.data.vertices[v * 12 + 1] == 4; }
+	const first: float32 = g.data.vertices[0] - g.data.vertices[12];
+	assert first > 0 && indicesAre(g, [0, 1, 2, 2, 1, 3]);
 }
 
 test "Graphics3D in 3D closes a loop whose last point is its first and wraps to the start" {
@@ -169,14 +187,14 @@ test "Graphics3D in 3D closes a loop whose last point is its first and wraps to 
 	assert lineStyle(g, 2).ok;
 	assert moveTo(g, 0, 0, 0).ok;
 	assert lineTo(g, 2, 0, 0).ok;
-	assert lineTo(g, 2, 2, 0).ok;
-	assert lineTo(g, 0, 2, 0).ok;
+	assert lineTo(g, 2, 0, -2).ok;
+	assert lineTo(g, 0, 0, -2).ok;
 	assert lineTo(g, 0, 0, 0).ok;
 	assert flushGraphics(g).ok;
 	assert g.data.vertexCount() == 8;
-	assert vertexAt(g, 0, 1, 1, 0, 0);
-	assert vertexAt(g, 1, -1, -1, 1, 0);
-	assert vertexAt(g, 6, 1, 1, 0, 1);
+	assert vertexAt(g, 0, 1, -1, 0, 0);
+	assert vertexAt(g, 1, -1, 1, 1, 0);
+	assert vertexAt(g, 6, 1, -1, 0, 1);
 	assert indicesAre(g, [
 		0, 1, 2, 2, 1, 3, 2, 3, 4, 4, 3, 5, 4, 5, 6, 6, 5, 7, 6, 7, 0, 0, 7, 1,
 	]);
