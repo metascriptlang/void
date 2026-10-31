@@ -767,6 +767,8 @@ function colorFormatAt(targets: TargetLayout, index: int32): PixelFormat {
 			format: depthTextureFormat(depthFormat),
 			depthWriteEnabled: state.depthWrite,
 			depthCompare: COMPARE_FUNCTIONS[state.depthTest as int32],
+			depthBias: state.depthBias,
+			depthBiasSlopeScale: state.depthSlope,
 			stencilFront: stencilFaceOf(KEEP_STENCIL_FACE),
 			stencilBack: stencilFaceOf(KEEP_STENCIL_FACE),
 		};

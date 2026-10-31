@@ -32,6 +32,8 @@ export struct PipelineKey {
 	// RenderState.stencilOps / stencilMasks: both 0 without a stencil.
 	stencilOps: uint32;
 	stencilMasks: uint32;
+	depthBias: int32;
+	depthSlope: float32;
 }
 
 export struct PipelineEntry {
@@ -86,6 +88,8 @@ export function pipelineKey(
 		targets: targets.formatBits(),
 		stencilOps: state.stencilOps(),
 		stencilMasks: state.stencilMasks(),
+		depthBias: state.depthBias,
+		depthSlope: state.depthSlope,
 	};
 }
 
@@ -95,7 +99,8 @@ export function targetLayout(this key: PipelineKey): TargetLayout {
 
 export function renderState(this key: PipelineKey): RenderState {
 	return RenderState.fromBits(key.state)
-		.withStencil(RenderState.fromStencilWords(key.stencilOps, key.stencilMasks));
+		.withStencil(RenderState.fromStencilWords(key.stencilOps, key.stencilMasks))
+		.withDepthBias(key.depthBias, key.depthSlope);
 }
 
 // `program=<id> layout=<id> colors=… depth=… sampleCount=… culling=…`: which pipeline a cache
@@ -118,6 +123,8 @@ export function keyHash(key: PipelineKey): uint32 {
 	h = (h ^ key.targets) * 16777619;
 	h = (h ^ key.stencilOps) * 16777619;
 	h = (h ^ key.stencilMasks) * 16777619;
+	h = (h ^ (key.depthBias as uint32)) * 16777619;
+	h = (h ^ ((key.depthSlope * 1024.0) as int32 as uint32)) * 16777619;
 	return h ^ (h >> 15);
 }
 
@@ -278,9 +285,10 @@ export function pipelineFor(
 // by the same makePipeline a miss uses
 // (h3d/impl/DX12Driver.hx PSOConfigCache :22-145, :76-91, :3427).
 
-const KEYS_MAGIC: string = "pipelines-1";
+const KEYS_MAGIC: string = "pipelines-2";
 const KEY_FIELDS: Vec<string> = [
 	"program", "layout", "indexType", "state", "targets", "stencilOps", "stencilMasks",
+	"depthBias", "depthSlope",
 ];
 const INT32_MAX: int64 = 2147483647;
 const UINT32_MAX: int64 = 4294967295;
@@ -300,13 +308,28 @@ export function keysOf(this cache: PipelineCache): PipelineKey[] {
 	return keys;
 }
 
-// `program=3 layout=1 indexType=2 state=… targets=… stencilOps=… stencilMasks=…`, every field a
-// decimal number: the program and layout are door registry ids, so the text belongs to the build
-// whose registrations made it.
+// The text keeps the depth bias and slope as their 32 bits, as Heaps' signature keeps them
+// (h3d/impl/PipelineCache.hx setDepthBias), so a key read back is the key written.
+function slopeBits(slope: float32): uint32 {
+	const bytes = Buffer.alloc(4);
+	bytes.writeFloatLE(slope, 0);
+	return bytes.readUInt32LE(0) as uint32;
+}
+
+function slopeOfBits(bits: uint32): float32 {
+	const bytes = Buffer.alloc(4);
+	bytes.writeUInt32LE(bits, 0);
+	return bytes.readFloatLE(0) as float32;
+}
+
+// `program=3 layout=1 indexType=2 state=… targets=… stencilOps=… stencilMasks=… depthBias=…
+// depthSlope=…`, every field a decimal number: the program and layout are door registry ids, so
+// the text belongs to the build whose registrations made it.
 export function keyText(key: PipelineKey): string {
 	return `program=${key.program} layout=${key.layout} indexType=${key.indexType as int32} ` +
 		`state=${key.state} targets=${key.targets} stencilOps=${key.stencilOps} ` +
-		`stencilMasks=${key.stencilMasks}`;
+		`stencilMasks=${key.stencilMasks} depthBias=${key.depthBias as uint32} ` +
+		`depthSlope=${slopeBits(key.depthSlope)}`;
 }
 
 // A decimal number of at most `limit`, -1 for anything else: empty, a sign, a prefix, a trailing
@@ -344,6 +367,10 @@ export function parseKey(text: string): Result<PipelineKey, string> {
 		}
 		values.push(value);
 	}
+	const slope: float32 = slopeOfBits(values[8] as uint32);
+	if (!Number.isFinite(slope)) {
+		return Result.err(`pipeline key text "${text}": depthSlope ${values[8]} is not a finite number`);
+	}
 	return Result.ok({
 		program: values[0] as int32,
 		layout: values[1] as int32,
@@ -352,6 +379,8 @@ export function parseKey(text: string): Result<PipelineKey, string> {
 		targets: values[4] as uint32,
 		stencilOps: values[5] as uint32,
 		stencilMasks: values[6] as uint32,
+		depthBias: (values[7] >= 0x80000000 ? values[7] - 0x100000000 : values[7]) as int32,
+		depthSlope: slope,
 	});
 }
 

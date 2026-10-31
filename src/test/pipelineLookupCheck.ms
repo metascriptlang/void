@@ -10,6 +10,8 @@ function keyOf(n: int32): PipelineKey {
 		targets: (n / 11) as uint32,
 		stencilOps: (n % 3) as uint32,
 		stencilMasks: (n % 5) as uint32,
+		depthBias: 0,
+		depthSlope: 0.0,
 	};
 }
 

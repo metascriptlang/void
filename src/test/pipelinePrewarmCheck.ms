@@ -32,7 +32,7 @@ when (windows && !voidDummy && !voidVulkan) {
 
 const RGBA8 = 2;
 const DEPTH_STENCIL = 5;
-const GOOD = "program=1 layout=2 indexType=1 state=3 targets=4 stencilOps=0 stencilMasks=0";
+const GOOD = "program=1 layout=2 indexType=1 state=3 targets=4 stencilOps=0 stencilMasks=0 depthBias=0 depthSlope=0";
 
 function maskWriter(): Stencil {
 	return Stencil.defaults().withFunc(Compare.Always, 0xF0, 0x0F).withOps(
@@ -51,10 +51,12 @@ function sampleKey(n: int32): PipelineKey {
 		targets: (n * 104729) as uint32,
 		stencilOps: 0,
 		stencilMasks: 0,
+		depthBias: n - 20,
+		depthSlope: (n as float32) * 0.25,
 	};
 }
 
-test "a key's text names its seven fields and reads back the same key" {
+test "a key's text names its nine fields and reads back the same key" {
 	const key: PipelineKey = {
 		program: 12,
 		layout: 3,
@@ -63,11 +65,32 @@ test "a key's text names its seven fields and reads back the same key" {
 		targets: 65537,
 		stencilOps: 0,
 		stencilMasks: 255,
+		depthBias: -2,
+		depthSlope: 1.5,
 	};
 	assert keyText(key) ==
-		"program=12 layout=3 indexType=2 state=4294967295 targets=65537 stencilOps=0 stencilMasks=255";
+		"program=12 layout=3 indexType=2 state=4294967295 targets=65537 stencilOps=0 stencilMasks=255" +
+		" depthBias=4294967294 depthSlope=1069547520";
 	assert keyFromText(keyText(key)) == key;
 	for (let n = 0; n < 40; n++) { assert keyFromText(keyText(sampleKey(n))) == sampleKey(n); }
+}
+
+test "a depth bias keys its own pipeline and survives the text" {
+	const plain: RenderState = RenderState.defaults();
+	const biased: RenderState = plain.withDepthBias(2, 1.5);
+	const key: PipelineKey = pipelineKey(4, 2, true, biased, SWAPCHAIN_LAYOUT);
+	assert key != pipelineKey(4, 2, true, plain, SWAPCHAIN_LAYOUT);
+	assert key != pipelineKey(4, 2, true, plain.withDepthBias(2, 0.0), SWAPCHAIN_LAYOUT);
+	assert key != pipelineKey(4, 2, true, plain.withDepthBias(0, 1.5), SWAPCHAIN_LAYOUT);
+	assert key.state == pipelineKey(4, 2, true, plain, SWAPCHAIN_LAYOUT).state;
+	const back: PipelineKey = keyFromText(keyText(key));
+	assert back == key;
+	assert back.renderState().depthBias == 2 && back.renderState().depthSlope == 1.5;
+}
+
+test "a depth slope that is not a finite number is refused in the text" {
+	assert refusal(mutated("depthSlope=0", "depthSlope=2143289344")) ==
+		`pipeline key text "${mutated("depthSlope=0", "depthSlope=2143289344")}": depthSlope 2143289344 is not a finite number`;
 }
 
 test "the stencil words of a real render state survive the text" {
@@ -95,13 +118,13 @@ function badNumber(text: string, name: string, digits: string, limit: string): s
 
 test "text that is not a key is refused naming the field and the text" {
 	assert refusal(GOOD) == "";
-	assert refusal("") == "pipeline key text \"\" has 1 fields, a key has 7";
+	assert refusal("") == "pipeline key text \"\" has 1 fields, a key has 9";
 	assert refusal("program=1 layout=2") ==
-		"pipeline key text \"program=1 layout=2\" has 2 fields, a key has 7";
+		"pipeline key text \"program=1 layout=2\" has 2 fields, a key has 9";
 	assert refusal(GOOD + " extra=1") ==
-		`pipeline key text "${GOOD} extra=1" has 8 fields, a key has 7`;
+		`pipeline key text "${GOOD} extra=1" has 10 fields, a key has 9`;
 	assert refusal(mutated(" layout", "  layout")) ==
-		`pipeline key text "${mutated(" layout", "  layout")}" has 8 fields, a key has 7`;
+		`pipeline key text "${mutated(" layout", "  layout")}" has 10 fields, a key has 9`;
 	assert refusal(mutated("layout=2", "layer=2")) ==
 		`pipeline key text "${mutated("layout=2", "layer=2")}": field 2 is "layer=2", expected layout=<number>`;
 	assert refusal(mutated("state=3", "state=")) ==
@@ -121,7 +144,7 @@ test "text that is not a key is refused naming the field and the text" {
 test "a set of keys is a magic line then one key per line, and reads back in order" {
 	const keys: PipelineKey[] = [sampleKey(1), sampleKey(2), sampleKey(3)];
 	const text = keysText(keys);
-	assert text == `pipelines-1\n${keyText(sampleKey(1))}\n${keyText(sampleKey(2))}\n${keyText(sampleKey(3))}\n`;
+	assert text == `pipelines-2\n${keyText(sampleKey(1))}\n${keyText(sampleKey(2))}\n${keyText(sampleKey(3))}\n`;
 	const back = keysFromText(text);
 	assert back.length == 3;
 	for (let i = 0; i < 3; i++) { assert back[i] == keys[i]; }
@@ -134,16 +157,16 @@ function keysRefusal(text: string): string {
 }
 
 test "a set of keys that is not one is refused naming the line" {
-	const one = `pipelines-1\n${GOOD}\n`;
+	const one = `pipelines-2\n${GOOD}\n`;
 	assert keysRefusal(one) == "";
-	assert keysRefusal("") == "pipeline keys text starts with \"\", expected \"pipelines-1\"";
-	assert keysRefusal(`pipelines-2\n${GOOD}\n`) ==
-		"pipeline keys text starts with \"pipelines-2\", expected \"pipelines-1\"";
-	assert keysRefusal(`pipelines-1\n${GOOD}`) == "pipeline keys text does not end with a newline";
-	assert keysRefusal(`pipelines-1\n${GOOD}\n\n${GOOD}\n`) ==
-		`line 3: pipeline key text "" has 1 fields, a key has 7`;
-	assert keysRefusal(`pipelines-1\n${GOOD}\nprogram=1\n`) ==
-		"line 3: pipeline key text \"program=1\" has 1 fields, a key has 7";
+	assert keysRefusal("") == "pipeline keys text starts with \"\", expected \"pipelines-2\"";
+	assert keysRefusal(`pipelines-1\n${GOOD}\n`) ==
+		"pipeline keys text starts with \"pipelines-1\", expected \"pipelines-2\"";
+	assert keysRefusal(`pipelines-2\n${GOOD}`) == "pipeline keys text does not end with a newline";
+	assert keysRefusal(`pipelines-2\n${GOOD}\n\n${GOOD}\n`) ==
+		`line 3: pipeline key text "" has 1 fields, a key has 9`;
+	assert keysRefusal(`pipelines-2\n${GOOD}\nprogram=1\n`) ==
+		"line 3: pipeline key text \"program=1\" has 1 fields, a key has 9";
 }
 
 test "keysOf answers the keys the cache holds, in the order they were recorded" {

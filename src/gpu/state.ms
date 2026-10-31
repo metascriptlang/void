@@ -112,6 +112,11 @@ export struct RenderState {
 	blendAlphaOperation: Operation;
 	colorMask: BitSet<ColorChannel>;
 	stencil: Stencil | null;
+	// Pass.setDepthBias / h3d.impl.PipelineCache.setDepthBias: outside `bits()`, keyed on its own.
+	// The constant is in the API's depth units (D3D: the format's minimum resolvable step, GL:
+	// implementation defined), so only the slope scale means the same on every backend.
+	depthBias: int32;
+	depthSlope: float32;
 }
 
 // One face of h3d.mat.Stencil: frontTest/frontSTfail/frontDPfail/frontPass.
@@ -213,12 +218,19 @@ export function defaults(this typeof RenderState): RenderState {
 		blendAlphaOperation: Operation.Add,
 		colorMask: COLOR_MASK_ALL,
 		stencil: null,
+		depthBias: 0,
+		depthSlope: 0.0,
 	};
 }
 
 // Pass.depth(write, test)
 export function withDepth(this state: RenderState, write: boolean, test: Compare): RenderState {
 	return { ...state, depthWrite: write, depthTest: test };
+}
+
+export function withDepthBias(this state: RenderState, bias: int32, slope: float32): RenderState {
+	if (!Number.isFinite(slope)) { stop(`depth bias slope ${slope} is not a finite number`); }
+	return { ...state, depthBias: bias, depthSlope: slope };
 }
 
 export function withStencil(this state: RenderState, stencil: Stencil | null): RenderState {
@@ -335,7 +347,9 @@ export function toString(this state: RenderState): string {
 		`,${state.blendAlphaDestination.toString()}` +
 		` operation=${state.blendOperation.toString()},${state.blendAlphaOperation.toString()}` +
 		` colorMask=${state.colorMask as uint32}` +
-		(state.stencil == null ? "" : ` stencil=${state.stencil.toString()}`);
+		(state.stencil == null ? "" : ` stencil=${state.stencil.toString()}`) +
+		(state.depthBias == 0 && state.depthSlope == 0.0 ? "" :
+			` depthBias=${state.depthBias},${state.depthSlope}`);
 }
 
 function faceToString(face: StencilFace): string {
@@ -362,6 +376,8 @@ export function fromBits(this typeof RenderState, bits: uint32): RenderState {
 		blendAlphaOperation: extract(bits, BLEND_ALPHA_OPERATION) as Operation,
 		colorMask: (extract(bits, COLOR_MASK) as uint8) as BitSet<ColorChannel>,
 		stencil: null,
+		depthBias: 0,
+		depthSlope: 0.0,
 	};
 }
 
