@@ -6467,7 +6467,11 @@ Wired on the CPU (2026-10-24), shaders not regenerated, nothing run on a GPU yet
   visible light is collected in scene order; the four point slots, the priority sort and
   `LightError.TooManyPointLights` of the `collectLights` note above are gone.
 - `clusterFrame.ms` is the renderer's per-frame side: it counts the records, turns each into a
-  `ClusterLight` (a spot by its cone, any other shape by its range sphere), assigns them to the
+  `ClusterLight` (a spot by its cone, any other shape by the sphere that holds what it lights: its
+  range for a point, plus the half length for a capsule and the centre-to-corner distance for a
+  rectangle, because both light out to range from the nearest point of the shape; Heaps'
+  `CapsuleLight.hx:89` bounds a capsule by `range + length`, and Bevy clusters only point and spot
+  lights by `range`), assigns them to the
   view's clusters, writes the header's cluster fields and rewrites the three data images. A frame
   with no record lists one empty cluster and needs no view.
 - The renderer takes the view with `setCameraView` and refuses a frame with records and no view

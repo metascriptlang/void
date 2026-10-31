@@ -41,6 +41,8 @@ import {
 	LIGHT_CLUSTER_GRID,
 	LIGHT_CLUSTER_SCREEN,
 	LIGHT_CLUSTER_VIEW,
+	LIGHT_KIND_CAPSULE,
+	LIGHT_KIND_RECTANGLE,
 	LIGHT_KIND_SPOT,
 	LIGHT_RECORD_COLOR,
 	LIGHT_RECORD_LENGTH,
@@ -100,20 +102,22 @@ export function recordCountOf(lights: Readonly<Span<float32>>): Result<int32, Cl
 	return Result.ok(extra / LIGHT_RECORD_LENGTH);
 }
 
-// Each record as clusters.ms sees it: a spot by its cone, any other shape by the sphere its range
-// reaches, which holds every point it lights. The cookie spot lights its square pyramid, so its
-// cone is the one through the pyramid's corners.
+// Each record as clusters.ms sees it: a spot by its cone, any other shape by the sphere that holds
+// every point it lights. A capsule or rectangle lights out to range from its nearest point, so
+// its sphere grows by the shape's farthest reach from the centre. The cookie spot lights its
+// square pyramid, so its cone is the one through the pyramid's corners.
 export function clusterLightsOf(lights: Readonly<Span<float32>>, count: int32): Vec<ClusterLight> {
 	let out: Vec<ClusterLight> = [];
 	for (let i = 0; i < count; i++) {
 		const cookie: boolean = lights[LIGHT_COOKIE] == (i + 1) as float32;
 		const at: int32 = LIGHT_UNIFORM_LENGTH + i * LIGHT_RECORD_LENGTH;
 		const shape: int32 = at + LIGHT_RECORD_SHAPE;
-		const spot: boolean = lights[shape + 3] == LIGHT_KIND_SPOT;
+		const kind: float32 = lights[shape + 3];
+		const spot: boolean = kind == LIGHT_KIND_SPOT;
 		out.push({
 			kind: spot ? ClusterLightKind.Spot : ClusterLightKind.Point,
 			position: vec3(lights[at], lights[at + 1], lights[at + 2]),
-			range: lights[at + LIGHT_RECORD_COLOR + 3],
+			range: lights[at + LIGHT_RECORD_COLOR + 3] + shapeReach(lights, shape, kind),
 			direction: spot ? vec3(lights[shape], lights[shape + 1], lights[shape + 2])
 				: vec3(0.0, 0.0, 1.0),
 			outerHalfAngle: !spot ? 0.0 : cookie ? cornerHalfAngle(lights[shape + 7]) :
@@ -121,6 +125,14 @@ export function clusterLightsOf(lights: Readonly<Span<float32>>, count: int32): 
 		});
 	}
 	return out;
+}
+
+function shapeReach(lights: Readonly<Span<float32>>, shape: int32, kind: float32): float32 {
+	if (kind == LIGHT_KIND_CAPSULE) { return lights[shape + 4]; }
+	if (kind == LIGHT_KIND_RECTANGLE) {
+		return Math.hypot(lights[shape + 7], lights[shape + 11]) as float32;
+	}
+	return 0.0;
 }
 
 function cornerHalfAngle(fullAngle: float32): float32 {

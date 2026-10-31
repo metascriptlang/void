@@ -102,6 +102,33 @@ test "a spot record clusters by its cone and a point record by its range" {
 	assert approx(made[1].outerHalfAngle, 0.6);
 }
 
+function shapedLight(kind: LightKind): Vec<ClusterLight> {
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const light: LightInstance = {
+		...POINT, kind: kind,
+		shape: {
+			...POINT.shape, angle: 1.0, verticalAngle: 1.0, falloff: 0.1,
+			width: 6.0, height: 8.0, length: 4.0, capsuleRadius: 0.1,
+		},
+	};
+	const _added = addLightNode(scene, scene.rootId(),
+		Transform3D.fromTranslation(vec3(0.0, 0.0, -2.0)), light);
+	let lights: Vec<float32> = [];
+	const collected: Result<int32, LightError> = collectLights(scene, lights);
+	if (!collected.ok || collected.value != 1) { unreachable; }
+	return clusterLightsOf(lights, 1);
+}
+
+test "a capsule clusters by its range plus its half length, where its end lights" {
+	const made: Vec<ClusterLight> = shapedLight(LightKind.Capsule);
+	assert made[0].kind == ClusterLightKind.Point && approx(made[0].range, 5.0);
+}
+
+test "a rectangle clusters by its range plus the distance to its corner" {
+	const made: Vec<ClusterLight> = shapedLight(LightKind.Rectangle);
+	assert made[0].kind == ClusterLightKind.Point && approx(made[0].range, 8.0);
+}
+
 test "the record texture starts at the first record, past the header" {
 	const lights: Vec<float32> = lightsOf();
 	const texture: RecordTexture = recordTexture(lights, LIGHT_UNIFORM_LENGTH);
