@@ -14,7 +14,7 @@ import {
 	rootOf,
 } from "../shader/ir";
 import { irFromText, irText } from "../shader/irText";
-import { ShaderTarget } from "../shader/layout";
+import { MAX_VIEW_SLOTS, ShaderTarget } from "../shader/layout";
 import { link, linkedProgram } from "../shader/link";
 import {
 	Sampler,
@@ -836,13 +836,14 @@ test "two texture effects get distinct views and samplers" {
 
 test "an effect past the last view binding is refused" {
 	let effects: ShaderModule[] = [];
-	for (let i = 0; i < 33; i++) {
+	for (let i = 0; i <= MAX_VIEW_SLOTS; i++) {
 		let e = moduleOf(DETAIL_A);
 		e.resources[0].name = "detail" + String(i);
 		effects.push(e);
 	}
 	assert refusal(baseOf(), effects) ==
-		"link: effect 'detailA' finds no binding for Texture 'detail32': bindings 0..31 are taken";
+		"link: effect 'detailA' finds no binding for Texture 'detail" + String(MAX_VIEW_SLOTS) +
+		"': bindings 0.." + String(MAX_VIEW_SLOTS - 1) + " are taken";
 }
 
 struct VPhase {
