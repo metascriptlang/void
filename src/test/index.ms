@@ -72,6 +72,7 @@ import "./pipelinePrewarmCheck";
 import "./instanceLayoutCheck";
 import "./instanceAttributeCheck";
 import "./instanceStreamCheck";
+import "./uiRecordPinCheck";
 import "./coverageOracleCheck";
 import "./gradientCheck";
 import "./imageStyleCheck";
