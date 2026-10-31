@@ -199,6 +199,8 @@ export const NO_CLIP: Clip = {
 	round: NO_ROUND_CLIP,
 };
 
+export const EMPTY_CLIP: Clip = { ...NO_CLIP, w: -1.0, h: -1.0 };
+
 export struct MaskClip {
 	x0: float32;
 	y0: float32;

@@ -35,12 +35,14 @@ export type QuadOf = (
 ) => float64;
 
 // Digests of the C arithmetic of batcher.c (scissor, coverage, buffer growth) recorded over these
-// inputs before the port replaced it. Each FNV-1a is 32 bits over little-endian ints; an area is
-// mixed as its round to 2^-20 pixel, high then low word, so float64 needs no bit cast.
+// inputs before the port replaced it, except `rect`, re-pinned when a clip with a negative size
+// became an empty scissor where the C gave the whole target. Each FNV-1a is 32 bits over
+// little-endian ints; an area is mixed as its round to 2^-20 pixel, high then low word, so float64
+// needs no bit cast.
 const COVERAGE_PINS: string[] = [
 	"minMax b845b83a",
 	"growth 6f2204e4",
-	"rect 2662c7c6",
+	"rect 435bb4e2",
 	"area 6c62535d",
 	"quad 7f9b55c3",
 ];
