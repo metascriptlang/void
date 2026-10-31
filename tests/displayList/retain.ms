@@ -636,23 +636,17 @@ test "a label carried into the spare context by a splice writes its lines again"
 
 test "an edit that changes a label's glyph count copies its written lines into the new context" {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
-	const editor = s.label("alpha
-beta
-gamma", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 4.0);
+	const editor = s.label("alpha\nbeta\ngamma", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 4.0);
 	editor.setCursorIndex(2, rgba(1.0, 0.8, 0.3, 1.0));
 	editor.setCursorBlinkTime(0.0);
 	s.add(editor);
 	frame(s);
 	frame(s);
 	const copied: int32 = s.context.uiCopied + s.spareContext.uiCopied;
-	editor.setText("alpha
-xbeta
-gamma");
+	editor.setText("alpha\nxbeta\ngamma");
 	assert check(s, "a glyph inserted in the middle line", "splice");
 	assert s.context.uiCopied + s.spareContext.uiCopied - copied == 10;
-	editor.setText("alpha
-xbeta
-gam");
+	editor.setText("alpha\nxbeta\ngam");
 	assert check(s, "a shorter last line", "splice");
 	assert s.context.uiCopied + s.spareContext.uiCopied - copied == 23;
 }
