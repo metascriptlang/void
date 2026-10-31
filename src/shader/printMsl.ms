@@ -190,6 +190,8 @@ class Printer {
 	taken: string[] = [];
 	structs: string[] = [];
 	members: string[][] = [];
+	packed: boolean[][] = [];
+	structAligns: int32[] = [];
 	constants: string[] = [];
 	resources: string[] = [];
 	ios: string[] = [];
@@ -690,6 +692,26 @@ function memberName(p: Printer, t: ShaderType, member: int32): string {
 	return p.members[t.structIndex][member];
 }
 
+function isPackedMember(p: Printer, t: ShaderType, member: int32): boolean {
+	return t.kind == ShaderTypeKind.Struct && p.packed[t.structIndex][member];
+}
+
+function placeText(p: Printer, e: ShaderExpr): string {
+	const o = e.operands;
+	if (e.kind == ExprKind.BlockMember) {
+		return p.resources[e.index] + "." +
+			memberName(p, p.module.resources[e.index].type, e.member);
+	}
+	if (e.kind == ExprKind.Field) {
+		return placeText(p, o[0]) + "." + memberName(p, o[0].type, e.index);
+	}
+	if (e.kind == ExprKind.Swizzle) { return placeText(p, o[0]) + "." + swizzleText(e.components); }
+	if (e.kind == ExprKind.Index) {
+		return placeText(p, o[0]) + "[" + exprText(p, o[1]) + "]";
+	}
+	return exprText(p, e);
+}
+
 function swizzleText(components: int32[]): string {
 	return components.map((c) => "xyzw".substring(c, c + 1)).join("");
 }
@@ -737,8 +759,8 @@ function exprText(p: Printer, e: ShaderExpr): string {
 		ExprKind.Workgroup => p.workgroups[e.index],
 		ExprKind.Private => fail(p, "private variable '" + m.privates[e.index].name +
 			"' has no MSL form yet"),
-		ExprKind.BlockMember => p.resources[e.index] + "." +
-			memberName(p, m.resources[e.index].type, e.member),
+		ExprKind.BlockMember => isPackedMember(p, m.resources[e.index].type, e.member) ?
+			typeText(p, e.type) + "(" + placeText(p, e) + ")" : placeText(p, e),
 		ExprKind.Unary => match (e.unary) {
 			UnaryOp.Negate => "(-" + exprText(p, o[0]) + ")",
 			UnaryOp.Not => (o[0].type.scalar == ScalarKind.Bool ? "(!" : "(~") +
@@ -753,7 +775,9 @@ function exprText(p: Printer, e: ShaderExpr): string {
 		ExprKind.Convert => e.type.kind == ShaderTypeKind.Matrix &&
 			!sameShaderType(e.type, o[0].type) ? fail(p, "Convert between matrix sizes") :
 			typeText(p, e.type) + "(" + exprText(p, o[0]) + ")",
-		ExprKind.Field => exprText(p, o[0]) + "." + memberName(p, o[0].type, e.index),
+		ExprKind.Field => isPackedMember(p, o[0].type, e.index) ?
+			typeText(p, e.type) + "(" + placeText(p, e) + ")" : exprText(p, o[0]) + "." +
+			memberName(p, o[0].type, e.index),
 		ExprKind.Swizzle => exprText(p, o[0]) + "." + swizzleText(e.components),
 		ExprKind.Index => exprText(p, o[0]) + "[" + exprText(p, o[1]) + "]",
 	};
@@ -768,7 +792,7 @@ function emit(p: Printer, depth: int32, text: string): void {
 }
 
 function assignText(p: Printer, s: ShaderStmt): string {
-	const target = exprText(p, s.target);
+	const target = placeText(p, s.target);
 	if (s.target.type.kind == ShaderTypeKind.Array) {
 		return fail(p, "an assignment of a whole array");
 	}
@@ -980,24 +1004,35 @@ function naturalExtent(m: ShaderModule, t: ShaderType): [int32, int32] {
 	return [align, (end + align - 1) / align * align];
 }
 
+// A vec3 followed closer than 16 bytes by the next member keeps its 12 bytes as a packed vector.
+function packedMembers(m: ShaderModule, structIndex: int32, layout: StructLayout): boolean[] {
+	const members = m.structs[structIndex].members;
+	return members.map((f, k) => f.type.kind == ShaderTypeKind.Vector && f.type.rows == 3 &&
+		k + 1 < members.length && layout.offsets[k + 1] < layout.offsets[k] + 16);
+}
+
 function layoutError(m: ShaderModule, structIndex: int32, layout: StructLayout, owner: string,
 	sized: boolean): string {
 	const s = m.structs[structIndex];
+	const packed = packedMembers(m, structIndex, layout);
 	let end = 0;
+	let maxAlign = 1;
 	for (let k = 0; k < s.members.length; k++) {
 		const f = s.members[k];
 		if (f.type.kind == ShaderTypeKind.Struct) {
 			return owner + " nests struct '" + f.name + "'";
 		}
-		const [align, size] = naturalExtent(m, f.type);
+		const [align, size] = packed[k] ? [4, 12] : naturalExtent(m, f.type);
 		const offset = (end + align - 1) / align * align;
 		if (offset != layout.offsets[k]) {
 			return owner + ": member '" + f.name + "' sits at byte " + String(layout.offsets[k]) +
 				" in the host layout and " + String(offset) + " in MSL";
 		}
 		end = offset + size;
+		maxAlign = align > maxAlign ? align : maxAlign;
 	}
-	const [_align, natural] = naturalExtent(m, structType(structIndex));
+	const align = packed.includes(true) ? layout.align : maxAlign;
+	const natural = (end + align - 1) / align * align;
 	if (sized && natural != layout.size) {
 		return owner + ": an element is " + String(layout.size) + " bytes in the host layout and " +
 			String(natural) + " in MSL";
@@ -1005,21 +1040,21 @@ function layoutError(m: ShaderModule, structIndex: int32, layout: StructLayout, 
 	return "";
 }
 
-function bufferLayoutError(m: ShaderModule, index: int32): string {
+function bufferStruct(m: ShaderModule, index: int32): int32 {
 	const r = m.resources[index];
-	if (r.kind == ResourceKind.UniformBlock) {
-		const layout = uniformBlockLayout(m, index);
-		if (!layout.ok) { return layout.error; }
-		return layoutError(m, r.type.structIndex, layout.value, "uniform block '" + r.name + "'",
-			false);
-	}
-	if (r.kind == ResourceKind.StorageBuffer) {
-		const layout = storageElementLayout(m, index);
-		if (!layout.ok) { return layout.error; }
-		return layoutError(m, r.type.element[0].structIndex, layout.value,
-			"storage buffer '" + r.name + "'", true);
-	}
-	return "";
+	return r.kind == ResourceKind.UniformBlock ? r.type.structIndex : r.type.element[0].structIndex;
+}
+
+function bufferLayout(m: ShaderModule, index: int32): Result<StructLayout, string> {
+	return m.resources[index].kind == ResourceKind.UniformBlock ? uniformBlockLayout(m, index) :
+		storageElementLayout(m, index);
+}
+
+function bufferLayoutError(m: ShaderModule, index: int32, layout: StructLayout): string {
+	const r = m.resources[index];
+	const uniform = r.kind == ResourceKind.UniformBlock;
+	return layoutError(m, bufferStruct(m, index), layout,
+		(uniform ? "uniform block '" : "storage buffer '") + r.name + "'", !uniform);
 }
 
 function builtinAttribute(b: Builtin): string {
@@ -1101,17 +1136,31 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 	if (!printable.ok) { return Result.err("printMsl: " + printable.error); }
 	const reads = printable.value;
 	const e = m.entries[entry];
+	let packed = m.structs.map((s) => s.members.map((f) => false));
+	let aligns = m.structs.map((s) => 0);
 	for (const index of reads.resources) {
 		const slots = bindings.filter((s) => s.resource == index);
 		if (slots.length == 0 || slots[0].nativeSlot < 0) {
 			return Result.err("printMsl: resource '" + m.resources[index].name +
 				"' has no MSL slot");
 		}
-		const error = bufferLayoutError(m, index);
+		if (m.resources[index].kind != ResourceKind.UniformBlock &&
+			m.resources[index].kind != ResourceKind.StorageBuffer) { continue; }
+		const layout = bufferLayout(m, index);
+		if (!layout.ok) { return Result.err("printMsl: " + layout.error); }
+		const error = bufferLayoutError(m, index, layout.value);
 		if (error != "") { return Result.err("printMsl: " + error); }
+		const structIndex = bufferStruct(m, index);
+		const flags = packedMembers(m, structIndex, layout.value);
+		if (flags.includes(true)) {
+			packed[structIndex] = flags;
+			aligns[structIndex] = layout.value.align;
+		}
 	}
 
 	let p = new Printer();
+	p.packed = packed;
+	p.structAligns = aligns;
 	p.reserved = mslReservedWords();
 	p.module = m;
 	p.stage = e.stage;
@@ -1178,9 +1227,11 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 
 	let decls = ["#include <metal_stdlib>\n\nusing namespace metal;"];
 	for (const i of structs) {
-		let text = "struct " + p.structs[i] + " {\n";
+		let text = "struct " + (p.structAligns[i] > 0 ? "alignas(" + String(p.structAligns[i]) +
+			") " : "") + p.structs[i] + " {\n";
 		for (let k = 0; k < m.structs[i].members.length; k++) {
-			text += "  " + declText(p, m.structs[i].members[k].type, p.members[i][k]) + ";\n";
+			text += "  " + (p.packed[i][k] ? "packed_" : "") +
+				declText(p, m.structs[i].members[k].type, p.members[i][k]) + ";\n";
 		}
 		decls.push(text + "};");
 	}
