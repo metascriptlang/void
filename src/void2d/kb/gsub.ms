@@ -295,277 +295,273 @@ function substitution(
 				let onePastLastGlyphOffset: int64 = 1;
 				let onePastLastGlyph = glyphs[currentGlyph].next;
 
-				if (lookup.type == 5 || lookup.type == 6) {
-					const sequenceLookup = kbDoSequenceLookup(
-						s,
-						lookup,
-						subtable,
-						coverIndex,
-						currentGlyph,
-						sequenceSkipFlags,
-						skipUnicodeFlags,
-					);
+				match (lookup.type) {
+					5 | 6 => {
+						const sequenceLookup = kbDoSequenceLookup(
+							s,
+							lookup,
+							subtable,
+							coverIndex,
+							currentGlyph,
+							sequenceSkipFlags,
+							skipUnicodeFlags,
+						);
 
-					if (sequenceLookup.matched) {
-						s.frames[frameIndex].records = sequenceLookup.records;
-						s.frames[frameIndex].recordCount = sequenceLookup.recordCount;
-						s.frames[frameIndex].recordIndex = 0;
+						if (sequenceLookup.matched) {
+							s.frames[frameIndex].records = sequenceLookup.records;
+							s.frames[frameIndex].recordCount = sequenceLookup.recordCount;
+							s.frames[frameIndex].recordIndex = 0;
 
-						s.frames[frameIndex].subtableIndex = SUBTABLE_DONE;
+							s.frames[frameIndex].subtableIndex = SUBTABLE_DONE;
 
-						onePastLastGlyphOffset =
-							sequenceLookup.inputSequenceCountIncludingSkippedGlyphs as int64;
-						onePastLastGlyph = sequenceLookup.onePastLastGlyphMatched;
-					}
-				} else {
-					match (lookup.type) {
-						1 => {
-							result |= KB_SUBSTITUTION_RESULT_FLAG_MATCHED_SUBSTITUTION;
+							onePastLastGlyphOffset =
+								sequenceLookup.inputSequenceCountIncludingSkippedGlyphs as int64;
+							onePastLastGlyph = sequenceLookup.onePastLastGlyphMatched;
+						}
+					},
+					1 => {
+						result |= KB_SUBSTITUTION_RESULT_FLAG_MATCHED_SUBSTITUTION;
 
-							if (!checkOnly) {
-								const format = m.kbU16(subtable);
-								const newId: int32 = match (format) {
-									1 => ((glyphs[currentGlyph].id as int32) +
-										m.kbS16(subtable + 4)) &
-										0xFFFF,
-									2 => m.kbU16(subtable + 6 + coverIndex * 2),
-									_ => unhandledSingleSubstitutionFormat(format, subtable),
-								};
+						if (!checkOnly) {
+							const format = m.kbU16(subtable);
+							const newId: int32 = match (format) {
+								1 => ((glyphs[currentGlyph].id as int32) +
+									m.kbS16(subtable + 4)) &
+									0xFFFF,
+								2 => m.kbU16(subtable + 6 + coverIndex * 2),
+								_ => unhandledSingleSubstitutionFormat(format, subtable),
+							};
 
-								kbGsubMutate(
-									s,
-									currentGlyph,
-									sequentialLookupIndex,
-									newId as uint16,
-									generatedGlyphFlags,
-								);
-							}
-						},
-						2 => {
-							const sequence = kbGetSequence(m, subtable, coverIndex);
-							result |= KB_SUBSTITUTION_RESULT_FLAG_MATCHED_SUBSTITUTION;
-							const glyphCount = m.kbU16(sequence);
-
-							if (!checkOnly) {
-								const substGlyphIds = sequence + 2;
-								const growCount: int64 = (glyphCount as int64) - 1;
-
-								if (glyphCount != 0) {
-									const originalGlyph = glyphs[currentGlyph];
-									let lastInsert = currentGlyph;
-
-									let runningSortKey: int64 = glyphs[currentGlyph]
-										.sortKey as int64;
-									const sortKeyInterval: int64 =
-										(glyphs[currentGlyph].sortKeyInterval as int64) /
-										glyphCount;
-									for (let substGlyphIndex = 0; substGlyphIndex <
-									glyphCount; substGlyphIndex++) {
-										let newGlyphFlags =
-											generatedGlyphFlags | KB_GLYPH_FLAG_MULTIPLE_SUBSTITUTION;
-										const newGlyphId = m.kbU16(
-											substGlyphIds + (substGlyphIndex as int64) * 2,
-										);
-
-										let newGlyph = currentGlyph;
-										if (substGlyphIndex != 0) {
-											newGlyph = kbInsertGlyphAfter(
-												s.storage,
-												lastInsert,
-												originalGlyph,
-											);
-											glyphs[newGlyph].uid = kbNextGlyphUid(s);
-										} else {
-											newGlyphFlags |=
-												KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION;
-										}
-
-										glyphs[newGlyph].sortKey = (runningSortKey &
-											0xFFFFFFFF) as uint32;
-										glyphs[newGlyph].sortKeyInterval = (sortKeyInterval &
-											0xFFFFFFFF) as uint32;
-
-										kbGsubMutate(
-											s,
-											newGlyph,
-											sequentialLookupIndex,
-											newGlyphId as uint16,
-											generatedGlyphFlags | newGlyphFlags,
-										);
-
-										lastInsert = newGlyph;
-										runningSortKey += sortKeyInterval;
-									}
-
-									onePastLastGlyph = glyphs[lastInsert].next;
-								} else {
-									kbFreeGlyph(s, currentGlyph);
-								}
-
-								onePastLastGlyphOffset = 1 + growCount;
-
-								for (let otherIndex = 0; otherIndex <
-								s.frameCount - 1; otherIndex++) {
-									if (
-										s.frames[otherIndex].startIndex >
-										s.frames[frameIndex].startIndex
-									) {
-										s.frames[otherIndex].startIndex = ((s.frames[otherIndex]
-											.startIndex as int64 +
-											growCount) &
-											0xFFFF) as uint32;
-									}
-								}
-							} else if (glyphCount > 1) {
-								result |=
-									KB_SUBSTITUTION_RESULT_FLAG_TRIED_TO_INSERT_WHILE_CHECK_ONLY;
-							}
-						},
-						3 => {
-							result |= KB_SUBSTITUTION_RESULT_FLAG_MATCHED_SUBSTITUTION;
-
-							if (!checkOnly) {
-								const set = kbGetAlternateSet(m, subtable, coverIndex);
-								let alternateIndex = featureValue - 1;
-								if (alternateIndex < 0 || alternateIndex >= m.kbU16(set)) {
-									alternateIndex = 0;
-								}
-
-								const newId = m.kbU16(set + 2 + (alternateIndex as int64) * 2);
-								kbGsubMutate(
-									s,
-									currentGlyph,
-									sequentialLookupIndex,
-									newId as uint16,
-									generatedGlyphFlags,
-								);
-							}
-						},
-						4 => {
-							const set = kbGetLigatureSet(m, subtable, coverIndex);
-							const ligatureCount = m.kbU16(set);
-
-							for (let ligatureIndex = 0; ligatureIndex <
-							ligatureCount; ligatureIndex++) {
-								const ligature = kbGetLigature(m, set, ligatureIndex);
-								const componentIds = ligature + 4;
-								const componentCount = m.kbU16(ligature + 2);
-
-								let matchingGlyphCount = 1;
-
-								{
-									let ligatureGlyphCursor = glyphs[currentGlyph].next;
-									while (
-										ligatureGlyphCursor != KB_GLYPH_SENTINEL &&
-										matchingGlyphCount < componentCount
-									) {
-										if (
-											(glyphs[ligatureGlyphCursor].id as int32) ==
-											m.kbU16(
-												componentIds + ((matchingGlyphCount - 1) as int64) * 2,
-											)
-										) {
-											matchingGlyphCount += 1;
-										} else if (
-											!kbSkipGlyph(
-												s,
-												ligatureGlyphCursor,
-												lookup,
-												regularSkipFlags,
-												skipUnicodeFlags,
-											)
-										) {
-											break;
-										}
-
-										ligatureGlyphCursor = glyphs[ligatureGlyphCursor].next;
-									}
-								}
-
-								if (matchingGlyphCount == componentCount) {
-									result |= KB_SUBSTITUTION_RESULT_FLAG_MATCHED_SUBSTITUTION;
-
-									if (!checkOnly) {
-										onePastLastGlyph = formLigature(
-											s,
-											m,
-											lookup,
-											frameIndex,
-											currentGlyph,
-											ligature,
-											componentCount,
-											sequentialLookupIndex,
-											generatedGlyphFlags,
-											regularSkipFlags,
-											skipUnicodeFlags,
-										);
-									}
-
-									break;
-								}
-							}
-						},
-						8 => {
-							const unpacked = kbUnpackReverseChainSubstitution(
-								m,
-								subtable,
-								false,
+							kbGsubMutate(
+								s,
+								currentGlyph,
+								sequentialLookupIndex,
+								newId as uint16,
+								generatedGlyphFlags,
 							);
+						}
+					},
+					2 => {
+						const sequence = kbGetSequence(m, subtable, coverIndex);
+						result |= KB_SUBSTITUTION_RESULT_FLAG_MATCHED_SUBSTITUTION;
+						const glyphCount = m.kbU16(sequence);
 
-							if (coverIndex < (unpacked.glyphCount as int64)) {
-								const backtrackMatch = kbMatchCoverageSequence(
-									s,
-									lookup,
-									regularSkipFlags,
-									skipUnicodeFlags,
-									subtable,
-									unpacked.backtrackCoverageOffsets,
-									unpacked.backtrackCount,
-									glyphs[currentGlyph].prev,
-									true,
-								);
-								const lookaheadMatch = kbMatchCoverageSequence(
-									s,
-									lookup,
-									regularSkipFlags,
-									skipUnicodeFlags,
-									subtable,
-									unpacked.lookaheadCoverageOffsets,
-									unpacked.lookaheadCount,
-									glyphs[currentGlyph].next,
-									false,
-								);
-								if (
-									backtrackMatch.matchCount == unpacked.backtrackCount &&
-									lookaheadMatch.matchCount == unpacked.lookaheadCount
-								) {
-									result |= KB_SUBSTITUTION_RESULT_FLAG_MATCHED_SUBSTITUTION;
-									const substituteGlyphId = m.kbU16(
-										unpacked.substituteGlyphIds + coverIndex * 2,
+						if (!checkOnly) {
+							const substGlyphIds = sequence + 2;
+							const growCount: int64 = (glyphCount as int64) - 1;
+
+							if (glyphCount != 0) {
+								const originalGlyph = glyphs[currentGlyph];
+								let lastInsert = currentGlyph;
+
+								let runningSortKey: int64 = glyphs[currentGlyph]
+									.sortKey as int64;
+								const sortKeyInterval: int64 =
+									(glyphs[currentGlyph].sortKeyInterval as int64) / glyphCount;
+								for (let substGlyphIndex = 0; substGlyphIndex <
+								glyphCount; substGlyphIndex++) {
+									let newGlyphFlags =
+										generatedGlyphFlags | KB_GLYPH_FLAG_MULTIPLE_SUBSTITUTION;
+									const newGlyphId = m.kbU16(
+										substGlyphIds + (substGlyphIndex as int64) * 2,
 									);
+
+									let newGlyph = currentGlyph;
+									if (substGlyphIndex != 0) {
+										newGlyph = kbInsertGlyphAfter(
+											s.storage,
+											lastInsert,
+											originalGlyph,
+										);
+										glyphs[newGlyph].uid = kbNextGlyphUid(s);
+									} else {
+										newGlyphFlags |=
+											KB_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION;
+									}
+
+									glyphs[newGlyph].sortKey = (runningSortKey &
+										0xFFFFFFFF) as uint32;
+									glyphs[newGlyph].sortKeyInterval = (sortKeyInterval &
+										0xFFFFFFFF) as uint32;
+
 									kbGsubMutate(
 										s,
-										currentGlyph,
+										newGlyph,
 										sequentialLookupIndex,
-										substituteGlyphId as uint16,
-										generatedGlyphFlags,
+										newGlyphId as uint16,
+										generatedGlyphFlags | newGlyphFlags,
 									);
+
+									lastInsert = newGlyph;
+									runningSortKey += sortKeyInterval;
+								}
+
+								onePastLastGlyph = glyphs[lastInsert].next;
+							} else {
+								kbFreeGlyph(s, currentGlyph);
+							}
+
+							onePastLastGlyphOffset = 1 + growCount;
+
+							for (let otherIndex = 0; otherIndex <
+							s.frameCount - 1; otherIndex++) {
+								if (
+									s.frames[otherIndex].startIndex >
+									s.frames[frameIndex].startIndex
+								) {
+									s.frames[otherIndex].startIndex = ((s.frames[otherIndex]
+										.startIndex as int64 +
+										growCount) &
+										0xFFFF) as uint32;
 								}
 							}
-						},
-						_ => {
-							throw kbBoundsFail(
-								`unhandled gsub lookup type ${lookup.type}`,
-								subtable,
-							);
-						},
-					};
+						} else if (glyphCount > 1) {
+							result |=
+								KB_SUBSTITUTION_RESULT_FLAG_TRIED_TO_INSERT_WHILE_CHECK_ONLY;
+						}
+					},
+					3 => {
+						result |= KB_SUBSTITUTION_RESULT_FLAG_MATCHED_SUBSTITUTION;
 
-					if (
-						(result & KB_SUBSTITUTION_RESULT_FLAG_MATCHED_SUBSTITUTION) != 0
-					) {
-						s.frames[frameIndex].subtableIndex = SUBTABLE_DONE;
-					}
+						if (!checkOnly) {
+							const set = kbGetAlternateSet(m, subtable, coverIndex);
+							let alternateIndex = featureValue - 1;
+							if (alternateIndex < 0 || alternateIndex >= m.kbU16(set)) {
+								alternateIndex = 0;
+							}
+
+							const newId = m.kbU16(set + 2 + (alternateIndex as int64) * 2);
+							kbGsubMutate(
+								s,
+								currentGlyph,
+								sequentialLookupIndex,
+								newId as uint16,
+								generatedGlyphFlags,
+							);
+						}
+					},
+					4 => {
+						const set = kbGetLigatureSet(m, subtable, coverIndex);
+						const ligatureCount = m.kbU16(set);
+
+						for (let ligatureIndex = 0; ligatureIndex <
+						ligatureCount; ligatureIndex++) {
+							const ligature = kbGetLigature(m, set, ligatureIndex);
+							const componentIds = ligature + 4;
+							const componentCount = m.kbU16(ligature + 2);
+
+							let matchingGlyphCount = 1;
+
+							{
+								let ligatureGlyphCursor = glyphs[currentGlyph].next;
+								while (
+									ligatureGlyphCursor != KB_GLYPH_SENTINEL &&
+									matchingGlyphCount < componentCount
+								) {
+									if (
+										(glyphs[ligatureGlyphCursor].id as int32) ==
+										m.kbU16(
+											componentIds + ((matchingGlyphCount - 1) as int64) * 2,
+										)
+									) {
+										matchingGlyphCount += 1;
+									} else if (
+										!kbSkipGlyph(
+											s,
+											ligatureGlyphCursor,
+											lookup,
+											regularSkipFlags,
+											skipUnicodeFlags,
+										)
+									) {
+										break;
+									}
+
+									ligatureGlyphCursor = glyphs[ligatureGlyphCursor].next;
+								}
+							}
+
+							if (matchingGlyphCount == componentCount) {
+								result |= KB_SUBSTITUTION_RESULT_FLAG_MATCHED_SUBSTITUTION;
+
+								if (!checkOnly) {
+									onePastLastGlyph = formLigature(
+										s,
+										m,
+										lookup,
+										frameIndex,
+										currentGlyph,
+										ligature,
+										componentCount,
+										sequentialLookupIndex,
+										generatedGlyphFlags,
+										regularSkipFlags,
+										skipUnicodeFlags,
+									);
+								}
+
+								break;
+							}
+						}
+					},
+					8 => {
+						const unpacked = kbUnpackReverseChainSubstitution(
+							m,
+							subtable,
+							false,
+						);
+
+						if (coverIndex < (unpacked.glyphCount as int64)) {
+							const backtrackMatch = kbMatchCoverageSequence(
+								s,
+								lookup,
+								regularSkipFlags,
+								skipUnicodeFlags,
+								subtable,
+								unpacked.backtrackCoverageOffsets,
+								unpacked.backtrackCount,
+								glyphs[currentGlyph].prev,
+								true,
+							);
+							const lookaheadMatch = kbMatchCoverageSequence(
+								s,
+								lookup,
+								regularSkipFlags,
+								skipUnicodeFlags,
+								subtable,
+								unpacked.lookaheadCoverageOffsets,
+								unpacked.lookaheadCount,
+								glyphs[currentGlyph].next,
+								false,
+							);
+							if (
+								backtrackMatch.matchCount == unpacked.backtrackCount &&
+								lookaheadMatch.matchCount == unpacked.lookaheadCount
+							) {
+								result |= KB_SUBSTITUTION_RESULT_FLAG_MATCHED_SUBSTITUTION;
+								const substituteGlyphId = m.kbU16(
+									unpacked.substituteGlyphIds + coverIndex * 2,
+								);
+								kbGsubMutate(
+									s,
+									currentGlyph,
+									sequentialLookupIndex,
+									substituteGlyphId as uint16,
+									generatedGlyphFlags,
+								);
+							}
+						}
+					},
+					_ => {
+						throw kbBoundsFail(
+							`unhandled gsub lookup type ${lookup.type}`,
+							subtable,
+						);
+					},
+				};
+
+				if ((result & KB_SUBSTITUTION_RESULT_FLAG_MATCHED_SUBSTITUTION) != 0) {
+					s.frames[frameIndex].subtableIndex = SUBTABLE_DONE;
 				}
 
 				kbSetLookupOnePastLastGlyph(
