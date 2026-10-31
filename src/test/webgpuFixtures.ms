@@ -243,3 +243,44 @@ export function uniformGroupAt(device: GPUDevice, pipeline: GPURenderPipeline, u
 export function uniformGroup(device: GPUDevice, pipeline: GPURenderPipeline, uniforms: GPUBuffer): GPUBindGroup {
 	return uniformGroupAt(device, pipeline, uniforms, 0);
 }
+
+function filled(value: uint8, count: int32): Vec<uint8> {
+	let bytes: Vec<uint8> = new Array(count);
+	for (let i = 0; i < count; i++) { bytes[i] = value; }
+	return bytes;
+}
+
+function submitEmpty(device: GPUDevice): void {
+	device.queue.submit(device.createCommandEncoder().finish());
+}
+
+// Frame 0 writes all 64 bytes as 1; two frames later 16 bytes at 16 become 2, the next frame
+// 16 bytes at 48 become 3, each the first write of its frame. Read back, the 64 bytes are
+// 1, 2, 1, 3 by 16.
+export function partialWritesReadBack(device: GPUDevice, usage: int32): Vec<uint8> {
+	const buffer = device.createBuffer({
+		label: "partial",
+		size: 64,
+		usage: usage | (GPUBufferUsage.COPY_DST as int32) | (GPUBufferUsage.COPY_SRC as int32),
+	});
+	device.queue.writeBuffer(buffer, 0, filled(1, 64));
+	submitEmpty(device);
+	submitEmpty(device);
+	device.queue.writeBuffer(buffer, 16, filled(2, 16));
+	submitEmpty(device);
+	device.queue.writeBuffer(buffer, 48, filled(3, 16));
+	const destination = readbackBuffer(device, 64);
+	const encoder = device.createCommandEncoder();
+	encoder.copyBufferToBuffer(buffer, 0, destination, 0, 64);
+	device.queue.submit(encoder.finish());
+	return readBack(destination);
+}
+
+export function keptOutsideWrites(read: Readonly<Span<uint8>>): boolean {
+	if (read.length != 64) { return false; }
+	for (let i = 0; i < 64; i++) {
+		const expected: uint8 = i >= 48 ? 3 : (i >= 16 && i < 32 ? 2 : 1);
+		if (read[i] != expected) { return false; }
+	}
+	return true;
+}
