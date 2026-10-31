@@ -12,11 +12,13 @@ import { runPin, PinRun } from "./batcherPortScript";
 // FNV-1a over the door's eleven frame stats and the ten counters void2d keeps (draws, uploads,
 // bytes, buffers, atlas images, glyph pages), each as its low then high 32-bit word; a pixel
 // digest is an FNV-1a over the RGBA bytes read back from the 128x96 target, 0 where the frame
-// drew into the large target and was not read.
+// drew into the large target and was not read. The stats of frames 0-5, 18 and 19 were recorded again
+// after sprite and UI runs began to skip a params block equal to the bound one: each of those
+// frames makes two uniform applies (512 ring bytes) fewer than batcher.c did, and draws the same pixels.
 const STATS_PINS: uint32[] = [
-	4024651159, 650172362, 4182532266, 1341702672, 2115513041, 115799565, 3196029135,
+	3708416059, 1134072702, 3254103638, 811191696, 735628205, 4149706689, 3196029135,
 	3196029135, 73455003, 2218285850, 4141310964, 708066378, 1263971339, 708066378,
-	1350250673, 3961606470, 603858565, 3604346767, 324314176, 3957270277, 3196029135,
+	1350250673, 3961606470, 603858565, 3604346767, 622906644, 2574877897, 3196029135,
 ];
 const PIXEL_PINS: uint32[] = [
 	914777899, 914777899, 798363115, 1578569633, 1963176038, 798363115, 1077462645, 414271032,
