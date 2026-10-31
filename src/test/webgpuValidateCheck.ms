@@ -704,6 +704,24 @@ test "a render pipeline blends only a target whose format is not an integer one"
 	assert renderPipelineRefusal(pipeline) == "fragment.targets[2] blends r32uint, an integer format";
 }
 
+test "a depth bias is taken on triangles only, with a finite slope and clamp" {
+	let pipeline: GPURenderPipelineDescriptor = { vertex: { module: { id: 3 } }, fragment: { module: { id: 3 } } };
+	pipeline.depthStencil = { format: "depth32float", depthBias: 2, depthBiasSlopeScale: 1.5 };
+	assert renderPipelineRefusal(pipeline) == "";
+	pipeline.primitive = { topology: "triangle-strip" };
+	assert renderPipelineRefusal(pipeline) == "";
+	pipeline.primitive = { topology: "line-list" };
+	assert renderPipelineRefusal(pipeline) == "a depth bias on primitive.topology 'line-list': only triangles take one";
+	pipeline.primitive = { topology: "point-list" };
+	pipeline.depthStencil = { format: "depth32float", depthBiasClamp: 0.5 };
+	assert renderPipelineRefusal(pipeline) == "a depth bias on primitive.topology 'point-list': only triangles take one";
+	pipeline.depthStencil = { format: "depth32float" };
+	assert renderPipelineRefusal(pipeline) == "";
+	pipeline.primitive = { topology: "triangle-list" };
+	pipeline.depthStencil = { format: "depth32float", depthBiasSlopeScale: (0.0 / 0.0) as float32 };
+	assert renderPipelineRefusal(pipeline) == "depthStencil.depthBiasSlopeScale NaN is not a finite number";
+}
+
 test "a stripIndexFormat needs a strip topology" {
 	assert isStripTopology("line-strip");
 	assert isStripTopology("triangle-strip");

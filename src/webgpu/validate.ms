@@ -632,6 +632,20 @@ export function stencilMask(mask: uint32 | null): uint32 { return mask ?? 0xFFFF
 export function colorWriteBits(mask: int32 | null): int32 { return mask ?? GPUColorWrite.ALL as int32; }
 export function stencil8Mask(mask: uint32 | null): int32 { return (stencilMask(mask) & 0xFF) as int32; }
 
+// A depth bias only offsets triangles, and its slope and clamp are finite numbers (Dawn
+// RenderPipeline.cpp:342-343, :390-400).
+export function depthBiasRefusal(descriptor: GPURenderPipelineDescriptor): string {
+	const depth = descriptor.depthStencil;
+	if (!Number.isFinite(depth.depthBiasSlopeScale)) { return `depthStencil.depthBiasSlopeScale ${depth.depthBiasSlopeScale} is not a finite number`; }
+	if (!Number.isFinite(depth.depthBiasClamp)) { return `depthStencil.depthBiasClamp ${depth.depthBiasClamp} is not a finite number`; }
+	const biased = depth.depthBias != 0 || depth.depthBiasSlopeScale != 0.0 || depth.depthBiasClamp != 0.0;
+	const topology: string = descriptor.primitive.topology;
+	if (biased && (topology == "point-list" || topology == "line-list" || topology == "line-strip")) {
+		return `a depth bias on primitive.topology '${topology}': only triangles take one`;
+	}
+	return "";
+}
+
 export function renderPipelineRefusal(descriptor: GPURenderPipelineDescriptor): string {
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		return "vertex and fragment stages come from one GPUShaderModule in Void";
@@ -640,6 +654,8 @@ export function renderPipelineRefusal(descriptor: GPURenderPipelineDescriptor): 
 		const format: string = descriptor.fragment.targets[i].format;
 		if (descriptor.fragment.targets[i].blendEnabled && isIntegerFormat(format)) { return `fragment.targets[${i}] blends ${format}, an integer format`; }
 	}
+	const bias = depthBiasRefusal(descriptor);
+	if (bias != "") { return bias; }
 	return primitiveRefusal(descriptor.primitive);
 }
 
