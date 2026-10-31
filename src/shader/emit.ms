@@ -22,6 +22,7 @@ import {
 	typeKind,
 } from "std/meta";
 import { hasEffect } from "./irWalk";
+import { readsFrom } from "./specialize";
 import {
 	AtomicExchangeI32,
 	AtomicExchangeU32,
@@ -142,6 +143,8 @@ import {
 	literal,
 	maskedShiftAmount,
 	saturatingToInt,
+	workgroupBytes,
+	WORKGROUP_STORAGE_LIMIT,
 	matrixType,
 	modfResultType,
 	offsetRows,
@@ -2768,6 +2771,21 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	const broken = irErrors(m);
 	if (broken.length > 0) {
 		fail(entry, "internal: the lowered module breaks the IR: " + broken[0]);
+	}
+	if (compute) {
+		const reads = readsFrom(m, stageEntry.functionIndex);
+		let bytes: int32 = 0;
+		let names: string[] = [];
+		for (const w of reads.ok ? reads.value.workgroups : []) {
+			bytes += workgroupBytes(m.workgroups[w].type);
+			names.push(m.workgroups[w].name);
+		}
+		if (bytes > WORKGROUP_STORAGE_LIMIT) {
+			fail(entry, "compute entry reads workgroup variables '" + names.join("', '") +
+				"' of " + String(bytes) + " bytes, past " + String(WORKGROUP_STORAGE_LIMIT) +
+				": WebGPU's default maxComputeWorkgroupStorageSize is 16384 (D3D11 and GL " +
+				"guarantee 32768), and a program must run on every backend");
+		}
 	}
 	return { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column,
 		value: formName == "glsl" ? printGlsl450(m) : irText(m) };

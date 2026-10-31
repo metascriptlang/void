@@ -1095,21 +1095,22 @@ function isWorkgroupType(t: ShaderType): boolean {
 		own.kind == ShaderTypeKind.Atomic;
 }
 
-const WORKGROUP_STORAGE_LIMIT = 16384;
+export const WORKGROUP_STORAGE_LIMIT = 16384;
 
 function workgroupAlign(t: ShaderType): int32 {
 	if (t.kind != ShaderTypeKind.Vector) { return 4; }
 	return t.rows > 2 ? 16 : 8;
 }
 
-function workgroupBytes(t: ShaderType): int32 {
+export function workgroupBytes(t: ShaderType): int32 {
 	if (t.kind == ShaderTypeKind.Array) {
 		const element = t.element[0];
 		const align = workgroupAlign(element);
 		const size = workgroupBytes(element);
 		return (size + align - 1) / align * align * t.length;
 	}
-	return t.kind == ShaderTypeKind.Vector ? 4 * t.rows : 4;
+	if (t.kind == ShaderTypeKind.Vector) { return 4 * t.rows; }
+	return t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Atomic ? 4 : -1;
 }
 
 function holdsAtomic(m: ShaderModule, t: ShaderType): boolean {
@@ -1517,15 +1518,6 @@ export function irErrors(m: ShaderModule): string[] {
 			c.errors.push("workgroup variable '" + w.name + "': it holds a scalar, a vector or " +
 				"an array of them");
 		}
-	}
-	let workgroupTotal: int32 = 0;
-	for (const w of m.workgroups) {
-		if (isWorkgroupType(w.type)) { workgroupTotal += workgroupBytes(w.type); }
-	}
-	if (workgroupTotal > WORKGROUP_STORAGE_LIMIT) {
-		c.errors.push("workgroup variables hold " + String(workgroupTotal) + " bytes, past " +
-			String(WORKGROUP_STORAGE_LIMIT) + ": WebGPU's default maxComputeWorkgroupStorageSize " +
-			"is 16384 (D3D11 and GL guarantee 32768), and a program must run on every backend");
 	}
 	for (const v of m.privates) {
 		if (v.type.kind != ShaderTypeKind.Scalar && v.type.kind != ShaderTypeKind.Vector) {

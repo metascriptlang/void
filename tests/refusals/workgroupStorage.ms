@@ -1,4 +1,4 @@
-// expect: 11:25 internal: the lowered module breaks the IR: workgroup variables hold 20000 bytes, past 16384
+// expect: 11:25 compute entry reads workgroup variables 'tile' of 20000 bytes, past 16384
 import { glslCompute } from "../../src/shader/emit";
 import { Vec3u, binding, builtin } from "../../src/shader/std";
 struct Id {
