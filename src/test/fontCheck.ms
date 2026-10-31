@@ -757,3 +757,18 @@ when (voidSprites) {
 		assert spriteCellFor(f, 14.0 * 1.25).height == 21;
 	}
 }
+
+when (voidColourEmoji) {
+	test "sizeAdjust scales a text fallback and leaves a colour emoji fallback at the label's size" {
+		registerFace("tests/fonts/cbdtSynthetic.ttf", "Test Emoji", 400, FontStyle.Normal);
+		let f = font("Test Sans", 400, FontStyle.Normal);
+		f.fallbacks.push("Test Hanzi");
+		f.fallbacks.push("Test Emoji");
+		f.sizeAdjust = SizeAdjust.IcWidth;
+		const id = resolved(f);
+		const l = layoutWith(id, "A你😀");
+		assert l.glyphs[1].face != fontFace(id) && l.glyphs[1].size != 13.0;
+		assert l.glyphs[2].face != fontFace(id) && l.glyphs[2].face != l.glyphs[1].face;
+		assert l.glyphs[2].size == 13.0;
+	}
+}
