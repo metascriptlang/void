@@ -103,7 +103,19 @@ test "each effect adds its block, view and sampler past the base's bindings" {
 	assert samplerSlotMask(detailedCrate) == 1, "the detail sampler takes sampler slot 0";
 }
 
+function sameBytes(a: Vec<uint8>, b: Vec<uint8>): boolean {
+	if (a.length != b.length) { return false; }
+	for (let i = 0; i < a.length; i++) { if (a[i] != b[i]) { return false; } }
+	return true;
+}
+
 test "the effects chain at the hook site in the author's order" {
+	if (detailedModule.fragmentCode == "") {
+		assert detailedModule.fragmentBytecode.length > 0, "the stage is bytecode or text";
+		assert !sameBytes(detailedModule.fragmentBytecode, swappedModule.fragmentBytecode),
+			"the order reaches the bytecode";
+		return;
+	}
 	assert detailedModule.fragmentCode.includes("detailMul(colourAdd(phase))"),
 		"colourAdd runs first";
 	assert swappedModule.fragmentCode.includes("colourAdd(detailMul(phase))"),

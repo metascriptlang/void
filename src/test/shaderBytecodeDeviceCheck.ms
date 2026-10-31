@@ -63,7 +63,8 @@ function countCs(input: CountInput, b: CountBindings): void {
 
 shaderModule(constant, pointVs, constantFs);
 shaderModule(tinted, pointVs, tintFs);
-const counted = shaderBuild("counted", glslComputeIr(countCs, [64, 1, 1]), "", "", "shaderComputeModule");
+const counted = shaderBuild("counted", glslComputeIr(countCs, [64, 1, 1]), "", "",
+	"shaderComputeModule", []);
 
 when (windows && !voidVulkan) {
 	import { GPUDevice } from "../webgpu/types.ms";

@@ -25,9 +25,9 @@ function countCs(input: CountInput, b: CountBindings): void {
 }
 
 const countedModule = shaderBuild("counted", glslComputeIr(countCs, [64, 1, 1]), "", "",
-	"shaderComputeModule");
+	"shaderComputeModule", []);
 const volumeModule = shaderBuild("volume", glslComputeIr(countCs, [8, 4, 2]), "", "",
-	"shaderComputeModule");
+	"shaderComputeModule", []);
 
 test "a compute descriptor carries the kernel as text or bytecode, with its entry and no render stage" {
 	assert (countedModule.computeCode != "") != (countedModule.computeBytecode.length > 0);
