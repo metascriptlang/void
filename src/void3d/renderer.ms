@@ -37,7 +37,6 @@ import {
 	CLUSTER_SCENE_VIEWS,
 	CLUSTER_SCENE_SAMPLERS,
 	SHADOW_UNIFORM_SLOT,
-	SHADOW_VIEW_SLOT,
 	FRAME_UNIFORM_SLOT,
 	FRAME_UNIFORM_LENGTH,
 	FRAME_TIME,
@@ -61,7 +60,6 @@ import {
 	MOVING_FLIPBOOK_SPEED,
 	PBR_UV_SCROLL,
 	movingBase,
-	SHADOW_SAMPLER_SLOT,
 	SHADOW_SCENE_VIEWS,
 	SHADOW_SCENE_SAMPLERS,
 	SCENE_DEPTH_SCENE_VIEWS,
@@ -76,7 +74,6 @@ import {
 	Phase,
 	isDecalPhase,
 	UniformBlock,
-	NO_UNIFORMS,
 	MATERIAL_TEXTURE_ROLES,
 	viewSlotOf,
 	samplerSlotOf,
@@ -124,7 +121,6 @@ import {
 	drawItem,
 	validSkin,
 	validRange,
-	elementCount,
 	SceneTexture,
 	NO_SCENE_TEXTURE,
 	slotBit,
@@ -1084,7 +1080,6 @@ export function drawScreen(
 	return Result.ok(1);
 }
 
-// Whether material `index`, drawn as `key`, scrolls its UV with the frame's time.
 // The program `material` draws `mesh` with this frame, once the pair passes every check
 // beginFrame makes of a mesh and a material together.
 function pairProgram(
