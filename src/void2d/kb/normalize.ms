@@ -404,32 +404,38 @@ function reorderArabicMarks(s: KbScratch): void {
 
 				let markOrdering: uint8 = 3;
 
-				if (sequenceGlyphCombiningClass == REMAPPED_CCC_33) {
-					markOrdering = 2;
-				} else if (sequenceGlyphCombiningClass == 220) {
-					mcm220SequenceState = nextMcmSequenceState(
-						mcm220SequenceState,
-						sequenceGlyphFlags,
-					);
-					if (mcm220SequenceState == KB_MCM_SEQUENCE_STATE_IN) {
-						markOrdering = 0;
-					}
+				match (sequenceGlyphCombiningClass) {
+					REMAPPED_CCC_33 => {
+						markOrdering = 2;
+					},
+					220 => {
+						mcm220SequenceState = nextMcmSequenceState(
+							mcm220SequenceState,
+							sequenceGlyphFlags,
+						);
+						if (mcm220SequenceState == KB_MCM_SEQUENCE_STATE_IN) {
+							markOrdering = 0;
+						}
 
-					mcm230SequenceState = KB_MCM_SEQUENCE_STATE_NONE;
-				} else if (sequenceGlyphCombiningClass == 230) {
-					mcm230SequenceState = nextMcmSequenceState(
-						mcm230SequenceState,
-						sequenceGlyphFlags,
-					);
-					if (mcm230SequenceState == KB_MCM_SEQUENCE_STATE_IN) {
-						markOrdering = 1;
-					}
-				} else if (sequenceGlyphCombiningClass != 0) {
-					mcm220SequenceState = KB_MCM_SEQUENCE_STATE_NONE;
-					mcm230SequenceState = KB_MCM_SEQUENCE_STATE_NONE;
-				} else {
-					break;
-				}
+						mcm230SequenceState = KB_MCM_SEQUENCE_STATE_NONE;
+					},
+					230 => {
+						mcm230SequenceState = nextMcmSequenceState(
+							mcm230SequenceState,
+							sequenceGlyphFlags,
+						);
+						if (mcm230SequenceState == KB_MCM_SEQUENCE_STATE_IN) {
+							markOrdering = 1;
+						}
+					},
+					0 => {
+						break;
+					},
+					_ => {
+						mcm220SequenceState = KB_MCM_SEQUENCE_STATE_NONE;
+						mcm230SequenceState = KB_MCM_SEQUENCE_STATE_NONE;
+					},
+				};
 
 				storage.glyphs[sequenceGlyph].markOrdering = markOrdering;
 				sequenceGlyph = storage.glyphs[sequenceGlyph].next;
