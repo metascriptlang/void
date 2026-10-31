@@ -673,11 +673,12 @@ function fallbackFace(index: int32): int32 {
 		} else {
 			fallbacks[index].face = face.value;
 			const primary: int32 = fontFace(fallbacks[index].font);
-			fallbacks[index].scale = adjustedScale(
-				primary,
-				face.value,
-				fonts[fontIndex(fallbacks[index].font)].sizeAdjust,
-			);
+			const emoji: boolean = presentationOfPath(
+				fallbacks[index].path, fallbacks[index].collectionIndex,
+			) == Presentation.Emoji;
+			fallbacks[index].scale = emoji
+				? 1.0
+				: adjustedScale(primary, face.value, fonts[fontIndex(fallbacks[index].font)].sizeAdjust);
 		}
 	}
 	return fallbacks[index].face;
