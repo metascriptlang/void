@@ -166,8 +166,7 @@ test "a label takes the constraint widths and draws its symbol into them" {
 test "a label's second line takes the constraint widths from its own bytes" {
 	const index = allocateLabelText();
 	setLabelLines(index, { ...labelLines(index), forceWidth: CELL });
-	const text: string = "ab
-" + ARROW;
+	const text: string = "ab\n" + ARROW;
 	const widths: uint8[] = [0, 0, 0];
 	for (const w of THREE_BYTES_ONE_CELL) { widths.push(w); }
 	setLabelConstraintWidths(index, widths);

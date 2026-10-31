@@ -248,9 +248,7 @@ test "a line inserted above keeps the shapes of the lines below it" {
 }
 
 test "a line whose runs or shaping breaks change shapes again although its text is kept" {
-	const text: string = "alpha
-beta
-gamma";
+	const text: string = "alpha\nbeta\ngamma";
 	let runs: Vec<TextRun> = new Array(0);
 	runs.push(runOf(6, DEFAULT_FONT));
 	runs.push(runOf(5, DEFAULT_FONT));
