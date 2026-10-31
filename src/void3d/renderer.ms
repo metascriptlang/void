@@ -222,6 +222,9 @@ export interface Renderer {
 	screenMesh: MeshId;
 	// The GPU context the handles in play belong to; 0 before the first frame.
 	generation: int32;
+	// The handles beginFrame rebuilt for a new context are still to be reported as new: set when
+	// it adopts one, cleared when a frame is accepted, so a refused frame loses nothing.
+	adoptPending: boolean;
 	// Something changed since the last frame (V6: the host skips frames that would draw the
 	// same image).
 	changed: boolean;
@@ -374,6 +377,7 @@ export function createDrawing(
 		clearTexelView: 0,
 		screenMesh: screen.value,
 		generation: 0,
+		adoptPending: false,
 		changed: true,
 		prepared: false,
 		preparedFrame: 0,
@@ -664,6 +668,7 @@ export function pickMeshLods(
 // them again before drawing. The core has already dropped the pipelines, remade the screen
 // triangle, and remade every mesh and texture that carries its CPU data (draw.ms rebuildMeshes,
 // rebuildTextures); what is left is whatever the caller uploaded from buffers only it keeps.
+// A frame refused after the switch answers true on the next one accepted.
 export function beginFrame(
 	renderer: Renderer,
 	items: Readonly<Span<DrawItem>>,
@@ -832,19 +837,21 @@ export function beginFrame(
 	renderer.readsTime = readsTime;
 	const generation: int32 = contextGeneration();
 	const _buried: int32 = buryDoomed(context, generation);
-	const fresh: boolean = generation != renderer.generation;
-	if (fresh) {
+	if (generation != renderer.generation) {
 		rebuildMeshes(context);
 		rebuildTextures(context);
 		context.meshes[renderer.screenMesh.index].vertexBuffer = makeScreenTriangle();
 		makeStandIns(renderer);
 		renderer.generation = generation;
+		renderer.adoptPending = true;
 		renderer.changed = true;
 	}
 	if (!uploadDirtyMeshes(context).ok) { return Result.err(RendererError.MeshWrite); }
 	if (!renderer.clusters.uploadFrame(lights, assigned.value).ok) {
 		return Result.err(RendererError.ClusterUpload);
 	}
+	const fresh: boolean = renderer.adoptPending;
+	renderer.adoptPending = false;
 	const environment: Environment | null = renderer.environment;
 	if (environment !== null && !environment.isCurrent()) { environment.compute(); }
 	let viewProj: Mat4 = {
