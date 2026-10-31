@@ -16,9 +16,9 @@ function pinnedBytes(): uint32 {
 
 function pinnedFiles(): uint32 {
 	when (voidCff) {
-		return 2444016670;
+		return 78011311;
 	} else {
-		return 904936238;
+		return 2429432316;
 	}
 }
 
