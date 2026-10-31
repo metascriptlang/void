@@ -1,4 +1,4 @@
-import { readFile } from "std/fs";
+import { readFileBytes } from "std/fs";
 import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3, eulerQuat, srgbToLinear } from "../../src/math/math3d";
 import { RenderState } from "../../src/gpu/state";
@@ -148,12 +148,12 @@ export function configureGltf(throughPixelArt: boolean, rebuildFrame: int32): vo
 }
 
 function decoded(): GltfData {
-	let file = readFile(FIXTURE);
+	let file = readFileBytes(FIXTURE);
 	if (!file.ok) {
 		fail(`${FIXTURE} could not be read`);
 		unreachable;
 	}
-	const bytes: Vec<uint8> = [...file.value.asBytes()];
+	const bytes: Vec<uint8> = [...file.value];
 	let data: Result<GltfData, GltfDiagnostic> = loadGlbDetailed(bytes, FIXTURE);
 	if (data.ok) { return data.value; }
 	fail(data.error.describe());

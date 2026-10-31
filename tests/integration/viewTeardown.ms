@@ -1,4 +1,4 @@
-import { readFile } from "std/fs";
+import { readFileBytes } from "std/fs";
 import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3 } from "../../src/math/math3d";
 import { RenderState } from "../../src/gpu/state";
@@ -118,12 +118,12 @@ function check(name: string, value: boolean): void {
 }
 
 function decoded(): GltfData {
-	let file = readFile(FIXTURE);
+	let file = readFileBytes(FIXTURE);
 	if (!file.ok) {
 		console.log(`UNEXPECTED view teardown: ${FIXTURE} could not be read`);
 		unreachable;
 	}
-	const bytes: Vec<uint8> = [...file.value.asBytes()];
+	const bytes: Vec<uint8> = [...file.value];
 	let loaded: Result<GltfData, GltfError> = loadGlb(bytes);
 	if (loaded.ok) { return loaded.value; }
 	console.log(`UNEXPECTED view teardown: the fixture was refused: ${loaded.error.toString()}`);
