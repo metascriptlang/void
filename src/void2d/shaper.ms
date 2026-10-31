@@ -295,53 +295,57 @@ when (voidShaper) {
 	}
 
 	function endCoreText(platform: Ptr<void>): int32 {
-		const count = input.length as int32;
-		const direction: ShapeDirection =
-			forcedDirection == 2 ? ShapeDirection.Rtl : ShapeDirection.Ltr;
-		let from: int32 = 0;
-		let segment: int32 = 0;
-		while (from < count) {
-			let to: int32 = from + 1;
-			while (to < count && !inputBreak[to]) { to++; }
-			const n: int32 = to - from;
-			const capacity: int32 = 2 * n + 8;
-			let cps: int32[] = new Array<int32>(n);
-			for (let k: int32 = 0; k < n; k++) {
-				const value: int32 = input[from + k];
-				cps[k] = value;
+		when (macos || ios) {
+			const count = input.length as int32;
+			const direction: ShapeDirection =
+				forcedDirection == 2 ? ShapeDirection.Rtl : ShapeDirection.Ltr;
+			let from: int32 = 0;
+			let segment: int32 = 0;
+			while (from < count) {
+				let to: int32 = from + 1;
+				while (to < count && !inputBreak[to]) { to++; }
+				const n: int32 = to - from;
+				const capacity: int32 = 2 * n + 8;
+				let cps: int32[] = new Array<int32>(n);
+				for (let k: int32 = 0; k < n; k++) {
+					const value: int32 = input[from + k];
+					cps[k] = value;
+				}
+				let glyphs: int32[] = new Array<int32>(capacity);
+				let advances: int32[] = new Array<int32>(capacity);
+				let offsetsX: int32[] = new Array<int32>(capacity);
+				let offsetsY: int32[] = new Array<int32>(capacity);
+				let indices: int32[] = new Array<int32>(capacity);
+				const total: int32 = void2dPlatformShape(
+					platform, cps[0], n, capacity, (glyphs as Span<int32>) as Ptr<int32>,
+					(advances as Span<int32>) as Ptr<int32>, (offsetsX as Span<int32>) as Ptr<int32>,
+					(offsetsY as Span<int32>) as Ptr<int32>, (indices as Span<int32>) as Ptr<int32>,
+				);
+				if (total < 0) {
+					return total == -1 ? CT_OVERFLOW : total == -2 ? CT_SUBSTITUTED : CT_FAILED;
+				}
+				for (let j: int32 = 0; j < total; j++) {
+					const at: int32 = direction == ShapeDirection.Rtl ? total - 1 - j : j;
+					const origin: int32 = from + indices[at];
+					shaped.push({
+						glyph: glyphs[at],
+						advanceX: advances[at],
+						advanceY: 0,
+						offsetX: offsetsX[at],
+						offsetY: offsetsY[at],
+						index: origin,
+						codepoint: input[origin],
+						direction,
+						run: segment,
+					});
+				}
+				segment++;
+				from = to;
 			}
-			let glyphs: int32[] = new Array<int32>(capacity);
-			let advances: int32[] = new Array<int32>(capacity);
-			let offsetsX: int32[] = new Array<int32>(capacity);
-			let offsetsY: int32[] = new Array<int32>(capacity);
-			let indices: int32[] = new Array<int32>(capacity);
-			const total: int32 = void2dPlatformShape(
-				platform, cps[0], n, capacity, (glyphs as Span<int32>) as Ptr<int32>,
-				(advances as Span<int32>) as Ptr<int32>, (offsetsX as Span<int32>) as Ptr<int32>,
-				(offsetsY as Span<int32>) as Ptr<int32>, (indices as Span<int32>) as Ptr<int32>,
-			);
-			if (total < 0) {
-				return total == -1 ? CT_OVERFLOW : total == -2 ? CT_SUBSTITUTED : CT_FAILED;
-			}
-			for (let j: int32 = 0; j < total; j++) {
-				const at: int32 = direction == ShapeDirection.Rtl ? total - 1 - j : j;
-				const origin: int32 = from + indices[at];
-				shaped.push({
-					glyph: glyphs[at],
-					advanceX: advances[at],
-					advanceY: 0,
-					offsetX: offsetsX[at],
-					offsetY: offsetsY[at],
-					index: origin,
-					codepoint: input[origin],
-					direction,
-					run: segment,
-				});
-			}
-			segment++;
-			from = to;
+			return 0;
+		} else {
+			unreachable;
 		}
-		return 0;
 	}
 
 	function endCode(): int32 {
