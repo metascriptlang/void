@@ -1,5 +1,5 @@
 import { sha256 } from "std/crypto/sha256";
-import { ensureDir, exists, writeFile } from "std/fs";
+import { ensureDir, exists, rename, writeFile } from "std/fs";
 import { execFileResult } from "std/process";
 
 class MetallibStage {
@@ -11,15 +11,15 @@ class MetallibStage {
 }
 
 // What each Metal language compiles with: the SDK, MSL 2.4 and the OS it starts on (iOS 15.0 as in
-// scripts/iosDevice.sh, macOS 12.0; the printed stages compile down to MSL 2.2), and the fast math
-// newLibraryWithSource defaults to in src/webgpu/metal/metal.m. A blob built for a newer OS or MSL
+// scripts/iosDevice.sh, macOS 12.0; the printed stages compile down to MSL 2.2) and safe math, so a
+// NaN compare gives the result the other backends give. A blob built for a newer OS or MSL
 // than the device has fails newLibraryWithData.
 export function metalFlags(language: string): string[] {
 	if (language == "metal_macos") {
-		return ["macosx", "-std=macos-metal2.4", "-mmacosx-version-min=12.0", "-ffast-math"];
+		return ["macosx", "-std=macos-metal2.4", "-mmacosx-version-min=12.0", "-fno-fast-math"];
 	}
 	if (language == "metal_ios") {
-		return ["iphoneos", "-std=ios-metal2.4", "-miphoneos-version-min=15.0", "-ffast-math"];
+		return ["iphoneos", "-std=ios-metal2.4", "-miphoneos-version-min=15.0", "-fno-fast-math"];
 	}
 	if (language == "spirv" || language == "wgsl" || language == "glsl300es" || language == "glsl430" ||
 		language == "hlsl5") { return []; }
@@ -87,9 +87,14 @@ export function metallibStage(
 		stage.error = compile + " (" + source + ")";
 		return stage;
 	}
-	const link = xcrunMetal(sdk, ["metallib", air, "-o", made]);
+	const partial = made + ".part";
+	const link = xcrunMetal(sdk, ["metallib", air, "-o", partial]);
 	if (link != "") {
 		stage.error = link;
+		return stage;
+	}
+	if (!rename(partial, made).ok) {
+		stage.error = "cannot move " + partial + " to " + made;
 		return stage;
 	}
 	stage.path = made;
