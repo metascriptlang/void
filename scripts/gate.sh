@@ -842,12 +842,14 @@ for program in tests/aborts/cases/*.ms; do
 done
 
 root=$(pwd -W 2>/dev/null || pwd)
-for program in tests/refusals/*.ms; do
+for program in tests/refusals/*.ms tests/refusals/webgl2/*.ms; do
 	name=$(basename "$program" .ms)
+	flags=""
+	case "$program" in */webgl2/*) flags="-d:webgl2" ;; esac
 	expected=$(sed -n '1s#^// expect: ##p' "$program")
 	log="out/gate-refusal-$name.log"
 	status=0
-	"$MSC" check "$program" > "$log" 2>&1 || status=$?
+	"$MSC" check $flags "$program" > "$log" 2>&1 || status=$?
 	plain=$(sed 's/\[[0-9;]*m//g' "$log")
 	message=$(echo "$plain" | grep -m1 "Macro '" || true)
 	at=$(echo "$plain" | grep -m1 -- "-->" | sed 's/.*--> //' || true)
