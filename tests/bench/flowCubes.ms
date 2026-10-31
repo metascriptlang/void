@@ -8,9 +8,9 @@
 // cubes move; FLOW_CUBES_GROUP=n puts the cubes under groups of n, so the move descends into one
 // group instead of the root's every child. FLOW_CUBES_SORT=1 adds `flow.sortByMaterial`, the
 // opaque list's sort after collectVisible; FLOW_CUBES_SHADOW=1 makes the cubes cast and adds
-// `flow.shadowLayers`, a four-cascade sun's CPU work per frame (collectCasters, filterFrustum
-// and sortCasters for each layer, as DirShadowMap's drawLayers runs them, with no pass) and,
-// once, `flow.shadowLayer<i> <casters>` for each layer's caster count.
+// `flow.shadowLayers`, a four-cascade sun's CPU work per frame (collectCasters and sortCasters
+// once, then filterFrustumInto per layer, as drawLayers runs them, with no pass) and, once,
+// `flow.shadowLayer<i> <casters>` for each layer's caster count.
 
 import { env, exit } from "std/process";
 import { Mat4, vec3, identityQuat, quatBetween } from "../../src/math/math3d";
@@ -34,7 +34,7 @@ import {
 	Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame, setCameraPosition,
 } from "../../src/void3d/renderer";
 import {
-	PassList, collectVisible, collectCasters, filterFrustum, sortCasters, sortByMaterial,
+	PassList, collectVisible, collectCasters, filterFrustumInto, sortCasters, sortByMaterial,
 } from "../../src/void3d/passList";
 import {
 	CascadeConfig, CascadeError, Cascade, cascadeBounds, cascadesOf,
@@ -178,15 +178,16 @@ function shadowFlow(): void {
 	let frusta: Vec<Frustum3D> = [];
 	for (const cascade of made.value) { frusta.push(Frustum3D.fromMatrix(cascade.clipFromWorld)); }
 	let casters: PassList = PassList.forPhase(Phase.Opaque);
+	let inLayer: PassList = PassList.forPhase(Phase.Opaque);
 	let layered: Vec<float64> = [];
 	for (let frame = 0; frame <= frames; frame++) {
 		const t0: float64 = performance.now();
+		collectCasters(casters, items, context.materials);
+		sortCasters(casters, items);
 		for (let layer = 0; layer < (frusta.length as int32); layer++) {
-			collectCasters(casters, items, context.materials);
 			const _culled: int32 =
-				filterFrustum(casters, items, context.meshData, frusta[layer]);
-			sortCasters(casters, items);
-			if (frame == 0) { console.log(`flow.shadowLayer${layer} ${casters.count}`); }
+				filterFrustumInto(inLayer, casters, items, context.meshData, frusta[layer]);
+			if (frame == 0) { console.log(`flow.shadowLayer${layer} ${inLayer.count}`); }
 		}
 		const t1: float64 = performance.now();
 		if (frame > 0) { layered.push(t1 - t0); }

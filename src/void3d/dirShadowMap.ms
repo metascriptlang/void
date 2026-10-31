@@ -66,7 +66,7 @@ import {
 	drawItemWith,
 } from "./draw";
 import { UniformError, ownRange, disownRange } from "./uniformPool";
-import { PassList, collectCasters, filterFrustum, sortCasters } from "./passList";
+import { PassList, collectCasters, filterFrustumInto, sortCasters } from "./passList";
 import { Bounds3D, addPos, addBounds } from "./bounds";
 import { Frustum3D } from "./frustum";
 import { CameraBasis, CameraView, OrthoBounds } from "./camera";
@@ -107,6 +107,7 @@ export interface DirShadowMap {
 	depthTarget: ArrayTarget;
 	sampler: Sampler;
 	casters: PassList;
+	layerCasters: PassList;
 	cast: Vec<ProgramKey>;
 	cameraBlock: UniformBlock;
 	shadowBlock: UniformBlock;
@@ -213,6 +214,7 @@ function buildMap(
 		depthTarget: ArrayTarget.unallocated(size, 1, PixelFormat.Depth),
 		sampler: { filter: FilterMode.Nearest, wrap: Wrap.Clamp, handle: 0, generation: 0 },
 		casters: PassList.forPhase(Phase.Opaque),
+		layerCasters: PassList.forPhase(Phase.Opaque),
 		cast: [],
 		cameraBlock: cameraBlock,
 		shadowBlock: shadowBlock,
@@ -681,12 +683,14 @@ function drawLayers(
 		shadow.sampler = Sampler.create(shadow.sampler.filter, shadow.sampler.wrap);
 	}
 	const anyCasters: boolean = shadow.casters.count > 0;
+	if (anyCasters) { sortCasters(shadow.casters, items); }
+	shadow.layerCasters.count = 0;
 	let drawn: int32 = 0;
 	for (let layer = 0; layer < (clips.length as int32); layer++) {
 		if (anyCasters) {
-			collectCasters(shadow.casters, items, context.materials);
-			const _culled: int32 = filterFrustum(
-				shadow.casters, items, context.meshData, Frustum3D.fromMatrix(clips[layer]),
+			const _culled: int32 = filterFrustumInto(
+				shadow.layerCasters, shadow.casters, items, context.meshData,
+				Frustum3D.fromMatrix(clips[layer]),
 			);
 		}
 		clips[layer].writeTo(shadow.cameraValues[0..16], 0);
@@ -702,10 +706,9 @@ function drawLayers(
 		beginPass(NO_COLORS, shadow.depthTarget.asDepth(
 			layer, LoadAction.Clear, FAR_DEPTH, StoreAction.Store,
 		));
-		sortCasters(shadow.casters, items);
 		drawCasters(shadow, items);
 		endPass();
-		drawn = drawn + shadow.casters.count;
+		drawn = drawn + shadow.layerCasters.count;
 	}
 	shadow.casterCount = drawn;
 	return drawn;
@@ -715,13 +718,13 @@ function drawLayers(
 function drawCasters(shadow: DirShadowMap, items: Readonly<Span<DrawItem>>): void {
 	const context: DrawContext = shadow.context;
 	let i: int32 = 0;
-	while (i < shadow.casters.count) {
-		const index: int32 = shadow.casters.indices[i];
+	while (i < shadow.layerCasters.count) {
+		const index: int32 = shadow.layerCasters.indices[i];
 		const material: Material = context.materials[items[index].material.index];
 		const state: RenderState = RenderState.defaults().withCulling(material.shadowFace());
 		let end: int32 = i + 1;
-		while (end < shadow.casters.count &&
-			items[index].sameBatch(items[shadow.casters.indices[end]])) {
+		while (end < shadow.layerCasters.count &&
+			items[index].sameBatch(items[shadow.layerCasters.indices[end]])) {
 			end = end + 1;
 		}
 		if (end - i == 1) {
@@ -729,7 +732,7 @@ function drawCasters(shadow: DirShadowMap, items: Readonly<Span<DrawItem>>): voi
 				shadow.globals, NO_SCENE_TEXTURE);
 		} else {
 			drawBatchWith(
-				context, items, shadow.casters.indices[i..end], shadow.cast[index], state,
+				context, items, shadow.layerCasters.indices[i..end], shadow.cast[index], state,
 				SHADOW_LAYOUT, shadow.globals, NO_SCENE_TEXTURE,
 			);
 		}

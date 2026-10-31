@@ -4,8 +4,12 @@ import { Material, Phase, ShadowCasting } from "../void3d/material";
 import { TextureId } from "../void3d/texture";
 import { Program, ProgramKey } from "../void3d/gpu3d";
 import { RenderState, Face } from "../gpu/state";
+import { Bounds3D } from "../void3d/bounds";
+import { Frustum3D } from "../void3d/frustum";
+import { MeshData } from "../void3d/meshData";
 import {
-	PassList, collectCasters, sortBackToFront, sortByLayer, sortByMaterial, sortCasters,
+	PassList, collectCasters, filterFrustum, filterFrustumInto, sortBackToFront, sortByLayer,
+	sortByMaterial, sortCasters,
 } from "../void3d/passList";
 import { collect } from "./drawHelpers";
 
@@ -127,6 +131,60 @@ test "casters collected A, B, A, B draw A, A, B, B, whatever their layer and ord
 	assert list.count == 4;
 	sortCasters(list, items);
 	assert same(indicesOf(list), [0, 2, 1, 3]);
+}
+
+function boundedMeshes(): Vec<MeshData> {
+	const cube: Bounds3D = Bounds3D.fromValues(-0.25, -0.25, -0.25, 0.5, 0.5, 0.5);
+	return [
+		{ vertices: [], indices: [], bounds: cube },
+		{ vertices: [], indices: [], bounds: cube },
+	];
+}
+
+function casterAt(material: int32, mesh: int32, x: float32): DrawItem {
+	return { ...meshItem(material, mesh), world: translation(x, 0.0, 0.5) };
+}
+
+function layersAsBefore(items: Vec<DrawItem>, centres: Vec<float32>): boolean {
+	const casting: Vec<Material> = [
+		{ ...materials()[0], castShadows: ShadowCasting.On },
+		{ ...materials()[1], castShadows: ShadowCasting.On },
+		{ ...materials()[2], castShadows: ShadowCasting.On },
+	];
+	const meshes: Vec<MeshData> = boundedMeshes();
+	let kept: PassList = PassList.forPhase(Phase.Opaque);
+	let layer: PassList = PassList.forPhase(Phase.Opaque);
+	let old: PassList = PassList.forPhase(Phase.Opaque);
+	collectCasters(kept, items, casting);
+	sortCasters(kept, items);
+	const total: int32 = kept.count;
+	for (const centre of centres) {
+		const frustum: Frustum3D = Frustum3D.fromMatrix(translation(-centre, 0.0, 0.0));
+		collectCasters(old, items, casting);
+		const oldExcluded: int32 = filterFrustum(old, items, meshes, frustum);
+		sortCasters(old, items);
+		const excluded: int32 = filterFrustumInto(layer, kept, items, meshes, frustum);
+		if (!same(indicesOf(layer), indicesOf(old)) || excluded != oldExcluded ||
+			kept.count != total) { return false; }
+	}
+	return true;
+}
+
+test "each layer's casters filtered from the once-sorted list equal the per-layer sort" {
+	const items: Vec<DrawItem> = [
+		casterAt(2, 0, 0.0), casterAt(0, 1, 1.0), casterAt(1, 0, 2.0), casterAt(0, 0, 3.0),
+		casterAt(2, 1, 4.0), casterAt(1, 1, 0.5), casterAt(0, 0, 2.5), casterAt(2, 0, 5.0),
+		casterAt(1, 0, 9.0), casterAt(0, 1, 3.5), casterAt(2, 0, 1.5), casterAt(1, 1, 4.5),
+	];
+	assert layersAsBefore(items, [0.0, 2.0, 4.0, 6.0]);
+}
+
+test "a material cast only in a later layer still orders that layer as the per-layer sort" {
+	const items: Vec<DrawItem> = [
+		casterAt(0, 0, 0.0), casterAt(1, 0, 0.1), casterAt(0, 1, 0.2), casterAt(1, 1, 0.3),
+		casterAt(2, 1, 4.0), casterAt(0, 0, 4.1), casterAt(2, 0, 4.2), casterAt(1, 1, 4.3),
+	];
+	assert layersAsBefore(items, [0.0, 4.0]);
 }
 
 test "equal keys keep item order" {

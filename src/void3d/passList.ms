@@ -226,6 +226,28 @@ export function filterFrustum(
 	return excluded;
 }
 
+export function filterFrustumInto(
+	ref list: PassList,
+	from: PassList,
+	items: Readonly<Span<DrawItem>>,
+	meshes: Readonly<Span<MeshData>>,
+	frustum: Frustum3D,
+): int32 {
+	reserve(list, from.count);
+	let count: int32 = 0;
+	for (let i = 0; i < from.count; i++) {
+		const index: int32 = from.indices[i];
+		if (visibleIn(items[index], meshes, frustum)) {
+			list.indices[count] = index;
+			list.layers[count] = from.layers[i];
+			list.orders[count] = from.orders[i];
+			count = count + 1;
+		}
+	}
+	list.count = count;
+	return from.count - count;
+}
+
 function place(ref list: PassList, index: int32, layer: int32, order: int32): void {
 	if (list.count == (list.indices.length as int32)) {
 		list.indices.push(index);

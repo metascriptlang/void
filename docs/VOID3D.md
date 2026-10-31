@@ -6277,7 +6277,10 @@ is a new mechanism.
   `fetch_directional_shadow` is. A block nobody wrote has count 0 and shades nothing.
 - `DirShadowMap.setCascades` takes a config (null keeps one map fitted to the casters in view,
   Heaps' default); `drawShadows` draws each cascade into its layer with the casters re-culled to
-  its box. The spot's map is a one-layer array, so both maps bind as arrays and a frame that has
+  its box. The casters are collected and sorted once per map, and each layer keeps the entries
+  inside its box in that order (`passList.ms` `filterFrustumInto`), as Heaps culls once, saves
+  the list and reloads it before each cascade (`CascadeShadowMap.hx:353-387`); the sort key
+  reads only the item, so every layer draws in the order a per-layer sort gave. The spot's map is a one-layer array, so both maps bind as arrays and a frame that has
   only one of them substitutes it into the other's slot unchanged.
 - One cascade with an unbounded far bound is today's sun map, so no program key bit is added.
 
@@ -7013,7 +7016,8 @@ visible object once into the pass it belongs to (`RenderContext.hx:200-214`), wh
 walked the items once per phase (`collect`, then `filterFrustum`).
 
 - The per-phase `collect` stays as the tests' oracle (`src/test/drawHelpers.ms`); the pins check
-  the one walk against it per phase. `filterFrustum` stays for `dirShadowMap.ms`'s casters.
+  the one walk against it per phase. `filterFrustum` stays as the oracle too; the shadow
+  casters filter with `filterFrustumInto`.
 - `scene.ms` `refreshItemsSynced` rewrites only the slots in `Scene3D.dirtySlots`, plus every LOD
   item (`lodSlots`), whose level is picked per frame. `syncWorld` queues a mesh's slot when it
   recomputes its world matrix, and so do `setRenderOrder`, `setMeshOf` and `setMaterialOf`, the
