@@ -40,6 +40,7 @@ import {
 	dynamicRoomRefusal,
 	groupOwnerRefusal,
 	markBindGroupSet,
+	bindGroupRedundant,
 	markVertexSet,
 	shaderBindingAt,
 	copyBufferRefusal,
@@ -113,7 +114,7 @@ import {
 	viewportRefusal,
 	writeBufferRefusal,
 } from "../webgpu/validate";
-import { BufferRecord, PipelineRecord, QuerySetRecord, QueryState, ShaderRecord, TextureRecord, VertexBufferRecord } from "../webgpu/pool";
+import { BufferRecord, PipelineRecord, QuerySetRecord, QueryState, ShaderRecord, TextureRecord, VertexBufferRecord, allocate, bindGroupRecords, free, store } from "../webgpu/pool";
 
 function openEncoder(): EncoderState {
 	let s: EncoderState = { open: false };
@@ -266,6 +267,27 @@ test "a draw or dispatch is refused for a vertex buffer or bind group its pipeli
 	assert boundRefusal(3, 0, false) == "the pipeline reads vertex buffer 1, which is not set";
 	markVertexSet(0, 0, 0);
 	assert boundRefusal(1, 0, false) == "the pipeline reads vertex buffer 0, which is not set";
+}
+
+test "a bind group set again with the same offsets is redundant while it lives" {
+	const id = allocate(bindGroupRecords);
+	store(bindGroupRecords, { id: id, group: 0, dynamicCount: 1 });
+	const offsets: Vec<uint32> = [256];
+	const moved: Vec<uint32> = [512];
+	const none: Vec<uint32> = [];
+	assert !bindGroupRedundant(0, id, offsets);
+	markBindGroupSet(0, id, offsets);
+	assert bindGroupRedundant(0, id, offsets);
+	assert !bindGroupRedundant(0, id, moved);
+	assert !bindGroupRedundant(1, id, none);
+	assert !bindGroupRedundant(0, 0, none);
+	markBindGroupSet(1, id, none);
+	assert bindGroupRedundant(1, id, none);
+	free(bindGroupRecords, id);
+	assert !bindGroupRedundant(0, id, offsets);
+	assert !bindGroupRedundant(1, id, none);
+	markBindGroupSet(0, 0, none);
+	markBindGroupSet(1, 0, none);
 }
 
 test "a draw needs every vertex buffer slot whose layout is not empty, attributes or not" {
