@@ -18,9 +18,9 @@ function pinnedBytes(): uint32 {
 // output, recorded with no stb_truetype run, until a dump from the C reference replaces it.
 function pinnedFiles(): uint32 {
 	when (voidCff) {
-		return 78011311;
+		return 3134188005;
 	} else {
-		return 2429432316;
+		return 2339484085;
 	}
 }
 
