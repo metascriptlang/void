@@ -1068,10 +1068,13 @@ bench_build() {  # bench_build <log> <output> <msc build arguments...>
 }
 : > out/gate-bench.log
 : > out/gate-bench-profiler.log
-for scene in Ui Sprites Text Editor Scroll; do
+for scene in Ui Sprites Text Editor Scroll EditorTyping EditorBlink; do
 	bench_build out/gate-bench.log "out/bench$scene.exe" "tests/bench/bench$scene.ms"
 	bench_build out/gate-bench-profiler.log "out/bench${scene}Profiler.exe" -d:voidProfiler "tests/bench/bench$scene.ms"
 done
+bench_build out/gate-bench.log out/benchEditorChrome.exe -d:voidSvg tests/bench/benchEditorChrome.ms
+bench_build out/gate-bench-profiler.log out/benchEditorChromeProfiler.exe -d:voidProfiler -d:voidSvg \
+	tests/bench/benchEditorChrome.ms
 for module in ColourEmoji:Emoji TextOutline:Outline SdfText:Sdf; do
 	bench_build out/gate-bench.log "out/benchText${module#*:}.exe" "-d:void${module%%:*}" "tests/bench/benchText${module#*:}.ms"
 	bench_build out/gate-bench-profiler.log "out/benchText${module#*:}Profiler.exe" -d:voidProfiler \

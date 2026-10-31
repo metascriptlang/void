@@ -33,6 +33,7 @@ import { Color, rgba, tile } from "../void2d/types";
 import { Align, TextRun, calcTextWidth, describe } from "../void2d/textLayout";
 import { glyphLookups } from "../void2d/face";
 import { loadImageFile } from "../assets/imageFile";
+import { IconId, registerIcon } from "../void2d/icon";
 when (voidProfiler) {
 	import { frameStats, profilerCollect } from "../void2d/frameMarks";
 	import { ringCount, ringPercentile } from "../void2d/profiler";
@@ -50,6 +51,9 @@ export enum BenchKind {
 	TextEmoji,
 	TextSdf,
 	TextOutline,
+	EditorTyping,
+	EditorBlink,
+	EditorChrome,
 }
 
 const COLUMNS: int32 = 100;
@@ -87,34 +91,121 @@ function editorRun(len: int32, color: Color): TextRun {
 	};
 }
 
-// 200 lines of 80 columns, three syntax colours per line, a selection over 12 rows and a
-// caret at its end: the editor scene P4 closes on and P5's scroll is measured against.
-function editorLabel(s: Scene2D): NodeRef {
+const EDITOR_CARET: Color = rgba(1.0, 0.85, 0.3, 1.0);
+const EDITOR_LINE_UNITS: int32 = EDITOR_COLUMNS + 1;
+const EDITOR_CARET_INDEX: int32 = EDITOR_SELECTION_FIRST_LINE * EDITOR_LINE_UNITS + 6 +
+	EDITOR_SELECTION_LINES * EDITOR_LINE_UNITS;
+const TYPING_LINE: int32 = EDITOR_LINES / 2;
+const TYPING_INDEX: int32 = TYPING_LINE * EDITOR_LINE_UNITS + 20;
+
+function editorText(): string {
 	let text: string = "";
+	for (let line: int32 = 0; line < EDITOR_LINES; line++) {
+		let row: string = EDITOR_KEYWORD + EDITOR_BODY + EDITOR_COMMENT;
+		while ((row.length as int32) < EDITOR_COLUMNS) { row += "."; }
+		text += row + (line + 1 < EDITOR_LINES ? "\n" : "");
+	}
+	return text;
+}
+
+function editorRuns(typedLine: int32): TextRun[] {
 	const runs: TextRun[] = [];
 	const keyword: Color = rgba(0.78, 0.55, 0.95, 1.0);
 	const plain: Color = rgba(0.86, 0.90, 0.98, 1.0);
 	const comment: Color = rgba(0.50, 0.56, 0.62, 1.0);
 	for (let line: int32 = 0; line < EDITOR_LINES; line++) {
-		let row: string = EDITOR_KEYWORD + EDITOR_BODY + EDITOR_COMMENT;
-		while ((row.length as int32) < EDITOR_COLUMNS) { row += "."; }
 		const newline: int32 = line + 1 < EDITOR_LINES ? 1 : 0;
-		text += row + (newline == 1 ? "\n" : "");
+		const typed: int32 = line == typedLine ? 1 : 0;
 		runs.push(editorRun(EDITOR_KEYWORD.length as int32, keyword));
-		runs.push(editorRun(EDITOR_BODY.length as int32, plain));
+		runs.push(editorRun((EDITOR_BODY.length as int32) + typed, plain));
 		const rest: int32 = EDITOR_COLUMNS - (EDITOR_KEYWORD.length as int32) -
 			(EDITOR_BODY.length as int32) + newline;
 		runs.push(editorRun(rest, comment));
 	}
-	const lineUnits: int32 = EDITOR_COLUMNS + 1;
-	const start: int32 = EDITOR_SELECTION_FIRST_LINE * lineUnits + 6;
-	const length: int32 = EDITOR_SELECTION_LINES * lineUnits;
-	const editor = s.label(text, 13.0, rgba(1.0, 1.0, 1.0, 1.0)).at(8.0, 8.0);
-	editor.setTextRuns(runs);
+	return runs;
+}
+
+// 200 lines of 80 columns, three syntax colours per line, a selection over 12 rows and a
+// caret at its end: the editor scene P4 closes on and P5's scroll is measured against.
+function editorLabel(s: Scene2D): NodeRef {
+	const start: int32 = EDITOR_SELECTION_FIRST_LINE * EDITOR_LINE_UNITS + 6;
+	const length: int32 = EDITOR_SELECTION_LINES * EDITOR_LINE_UNITS;
+	const editor = s.label(editorText(), 13.0, rgba(1.0, 1.0, 1.0, 1.0)).at(8.0, 8.0);
+	editor.setTextRuns(editorRuns(-1));
 	editor.setSelectionRange({ start: start, length: length }, rgba(0.30, 0.50, 0.90, 0.45));
 	editor.setCursorBlinkTime(0.0);
-	editor.setCursorIndex(start + length, rgba(1.0, 0.85, 0.3, 1.0));
+	editor.setCursorIndex(EDITOR_CARET_INDEX, EDITOR_CARET);
 	return editor;
+}
+
+const CHECK_ICON: string = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" ` +
+	`viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" ` +
+	`stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5 L11 15.5 L16 9"/>` +
+	`</svg>`;
+const TRIANGLE_ICON: string = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" ` +
+	`viewBox="0 0 24 24"><path d="M12 3 L21 20 L3 20 Z" fill="#000"/></svg>`;
+const CHROME_FILES: int32 = 4;
+const CHROME_TABS: int32 = 2;
+const CHROME_CODE_LINES: int32 = 30;
+const CHROME_BADGE_TURN: float32 = 0.2;
+
+function chromeIcon(source: string): IconId {
+	const r = registerIcon(source);
+	if (!r.ok) {
+		console.log(`bench2d: the chrome icon was refused, ${r.error.what}`);
+		unreachable;
+	}
+	return r.value;
+}
+
+function chromeEntry(s: Scene2D, id: IconId, name: string): NodeRef {
+	const entry = s.group();
+	entry.addChild(s.icon(id, 16.0, 16.0, rgba(0.62, 0.70, 0.82, 1.0)).at(0.0, 1.0));
+	entry.addChild(s.label(name, 13.0, rgba(0.86, 0.90, 0.98, 1.0)).at(22.0, 0.0));
+	return entry;
+}
+
+function editorChromeLabels(s: Scene2D): int32 {
+	const file: IconId = chromeIcon(TRIANGLE_ICON);
+	const check: IconId = chromeIcon(CHECK_ICON);
+	const text: Color = rgba(0.86, 0.90, 0.98, 1.0);
+	s.add(s.rect(1280.0, 720.0, rgba(0.10, 0.11, 0.13, 1.0)));
+	s.add(s.rect(1280.0, 28.0, rgba(0.14, 0.15, 0.18, 1.0)));
+	s.add(s.label("void2d - editorChrome.ms", 13.0, text).at(12.0, 7.0));
+
+	const sidebar = s.add(s.mask(240.0, 664.0).at(0.0, 28.0));
+	sidebar.addChild(s.rect(240.0, 664.0, rgba(0.12, 0.13, 0.16, 1.0)));
+	for (let k: int32 = 0; k < CHROME_FILES; k++) {
+		const name: string = `module${k}.ms`;
+		sidebar.addChild(chromeEntry(s, file, name).at(12.0, 12.0 + (k as float32) * 24.0));
+	}
+	sidebar.scrollTo(0.0, 6.0);
+
+	const panel = s.add(s.mask(1040.0, 664.0).at(240.0, 28.0));
+	panel.addChild(s.rect(1040.0, 32.0, rgba(0.13, 0.14, 0.17, 1.0)));
+	for (let k: int32 = 0; k < CHROME_TABS; k++) {
+		const tab = panel.addChild(s.mask(150.0, 28.0).at(8.0 + (k as float32) * 156.0, 4.0));
+		tab.setMaskRadii({ topLeft: 6.0, topRight: 6.0, bottomRight: 0.0, bottomLeft: 0.0 });
+		tab.addChild(s.rect(150.0, 28.0, rgba(0.18, 0.20, 0.24, 1.0)));
+		tab.addChild(chromeEntry(s, file, `tab${k}.ms`).at(10.0, 7.0));
+	}
+	const code = panel.addChild(s.mask(1040.0, 600.0).at(0.0, 32.0));
+	let source: string = "";
+	for (let line: int32 = 0; line < CHROME_CODE_LINES; line++) {
+		source += CODE_LINE + (line + 1 < CHROME_CODE_LINES ? "\n" : "");
+	}
+	code.addChild(s.label(source, 13.0, text).at(8.0, 0.0));
+	code.scrollTo(0.0, 20.0);
+	const badge = panel.addChild(s.mask(84.0, 20.0).at(940.0, 6.0));
+	badge.setPivot(42.0, 10.0);
+	badge.setRotation(CHROME_BADGE_TURN);
+	badge.addChild(s.rect(84.0, 20.0, rgba(0.75, 0.45, 0.20, 1.0)));
+	badge.addChild(s.label("modified", 12.0, text).at(10.0, 3.0));
+
+	s.add(s.rect(1280.0, 28.0, rgba(0.14, 0.15, 0.18, 1.0)).at(0.0, 692.0));
+	s.add(chromeEntry(s, check, "0 problems").at(12.0, 698.0));
+	s.add(chromeEntry(s, file, "Ln 101, Col 21").at(1120.0, 698.0));
+	return CHROME_FILES + CHROME_TABS + 5;
 }
 
 let benchScene: Scene2D | null = null;
@@ -137,6 +228,12 @@ let outlineBeforeMeasure: int32 = 0;
 let codeBlock: NodeRef | null = null;
 let turnsCodeBlock: boolean = false;
 let scrollArea: NodeRef | null = null;
+let editedLabel: NodeRef | null = null;
+let blinksOnly: boolean = false;
+let plainText: string = "";
+let typedText: string = "";
+let plainRuns: TextRun[] = [];
+let typedRuns: TextRun[] = [];
 let warmupFrames: int32 = WARMUP_FRAMES;
 
 export function benchInit(kind: BenchKind): void {
@@ -165,6 +262,22 @@ export function benchInit(kind: BenchKind): void {
 		area.addChild(editorLabel(s));
 		s.add(area);
 		scrollArea = area;
+	} else if (kind === BenchKind.EditorTyping || kind === BenchKind.EditorBlink) {
+		blinksOnly = kind === BenchKind.EditorBlink;
+		benchName = blinksOnly ? "editorBlink" : "editorTyping";
+		const editor = s.add(editorLabel(s));
+		if (!blinksOnly) {
+			plainText = editorText();
+			typedText = plainText.slice(0, TYPING_INDEX) + "x" +
+				plainText.slice(TYPING_INDEX, plainText.length as int32);
+			plainRuns = editorRuns(-1);
+			typedRuns = editorRuns(TYPING_LINE);
+			editor.setCursorIndex(TYPING_INDEX, EDITOR_CARET);
+		}
+		editedLabel = editor;
+	} else if (kind === BenchKind.EditorChrome) {
+		benchName = "editorChrome";
+		retainedNodeCount = editorChromeLabels(s);
 	} else if (kind === BenchKind.Text) {
 		benchName = "text";
 		const block = s.group();
@@ -228,9 +341,12 @@ export function benchInit(kind: BenchKind): void {
 	if (kind === BenchKind.Ui) {
 		nodeCount = ROWS * COLUMNS * 2;
 		retainedNodeCount = ROWS * COLUMNS;
-	} else if (kind === BenchKind.Editor) {
+	} else if (kind === BenchKind.Editor || kind === BenchKind.EditorTyping ||
+		kind === BenchKind.EditorBlink) {
 		nodeCount = 1;
 		retainedNodeCount = 1;
+	} else if (kind === BenchKind.EditorChrome) {
+		nodeCount = s.nodeCount() - 1;
 	} else if (kind === BenchKind.Scroll) {
 		nodeCount = 2;
 		retainedNodeCount = 1;
@@ -380,6 +496,16 @@ function sweep(frame: int32): void {
 	if (turnsCodeBlock) { codeBlock.setRotation(angle); }
 }
 
+function edit(editor: NodeRef, flip: boolean): void {
+	if (blinksOnly) {
+		editor.setCursorIndex(flip ? -1 : EDITOR_CARET_INDEX, EDITOR_CARET);
+		return;
+	}
+	editor.setText(flip ? typedText : plainText);
+	editor.setTextRuns(flip ? typedRuns : plainRuns);
+	editor.setCursorIndex(flip ? TYPING_INDEX + 1 : TYPING_INDEX, EDITOR_CARET);
+}
+
 export function benchFrame(): void {
 	if (benchScene === null) { return; }
 	frameIndex = frameIndex + 1;
@@ -408,6 +534,7 @@ export function benchFrame(): void {
 	if (scrollArea !== null) {
 		(scrollArea as NodeRef).scrollTo(0.0, ((frameIndex * 37) % 2600) as float32);
 	}
+	if (editedLabel !== null) { edit(editedLabel as NodeRef, frameIndex % 2 == 0); }
 	const started: float64 = performance.now();
 	benchScene.present();
 	presentMs = presentMs + (performance.now() - started);

@@ -104,6 +104,42 @@ function reportFirstPaint(rows: BenchRow[], scene: string): void {
 	if (reported) { console.log(`REPORT ${scene}.firstPaint.ms ${firstPaint}`); }
 }
 
+function checkScene(
+	entry: string,
+	scene: string,
+	metrics: string[],
+	counters: JsonValue,
+	milliseconds: JsonValue,
+): int32 {
+	const rows = runBench(binary(entry));
+	if ((rows.length as int32) == 0) { return 1; }
+	const recorded = counters.getDynamicField(scene);
+	let failed: int32 = 0;
+	if (recorded.kind != JsonKind.Object) {
+		console.log(`FAIL ${scene} has no counters in ${BASELINE_PATH}; it measured:`);
+		for (const metric of metrics) {
+			const [reported, actual] = rowValue(rows, scene, metric);
+			console.log(`REPORT ${scene}.${metric} ${reported ? `${actual as int32}` : "unreported"}`);
+		}
+		failed = 1;
+	} else {
+		for (const metric of metrics) {
+			const expected: int32 = recorded.getDynamicField(metric).asInt32();
+			if (!checkCounter(rows, scene, metric, expected)) { failed = failed + 1; }
+		}
+	}
+	const timed = milliseconds.getDynamicField(scene);
+	if (timed.kind == JsonKind.Object) {
+		reportMilliseconds(rows, scene, timed.present.asNumber(), milliseconds.warnFactor.asNumber());
+	} else {
+		const [reported, actual] = rowValue(rows, scene, "present");
+		console.log(`REPORT ${scene}.present.ms ${reported ? `${actual}` : "unreported"} (no baseline)`);
+	}
+	reportFirstPaint(rows, scene);
+	reportProfile(rows, scene);
+	return failed;
+}
+
 function runCheck(): int32 {
 	const text = readFile(BASELINE_PATH);
 	if (!text.ok) {
@@ -162,6 +198,9 @@ function runCheck(): int32 {
 		const expected: int32 = counters.scroll.getDynamicField(metric).asInt32();
 		if (!checkCounter(scrollRows, "scroll", metric, expected)) { failed = failed + 1; }
 	}
+	failed = failed + checkScene("EditorTyping", "editorTyping", metrics, counters, milliseconds);
+	failed = failed + checkScene("EditorBlink", "editorBlink", metrics, counters, milliseconds);
+	failed = failed + checkScene("EditorChrome", "editorChrome", metrics, counters, milliseconds);
 	const emojiRows = runBench(binary("TextEmoji"));
 	if ((emojiRows.length as int32) == 0) {
 		failed = failed + 1;
