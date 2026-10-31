@@ -209,9 +209,19 @@ export function reserve(this typeof BloomPass, context: DrawContext): BloomPass 
 function stopOnSettings(settings: BloomSettings): void {
 	console.log(`void3d: setBloom with intensity ${settings.intensity}, max mip dimension ` +
 		`${settings.maxMipDimension} and high-pass frequency ${settings.highPassFrequency}; ` +
-		"intensity is finite and not negative, the dimension at least 4, the frequency above 0 " +
-		"and the curvature below 1");
+		"intensity, low-frequency boost, threshold and softness are finite, intensity is not " +
+		"negative, the dimension at least 8 (two mips), the frequency above 0 and the curvature " +
+		"below 1");
 	unreachable;
+}
+
+// A one-mip chain (dimension 4..7) makes the final blend factor mip / maxMip = 0 / 0.
+export function bloomSettingsValid(settings: BloomSettings): boolean {
+	return Number.isFinite(settings.intensity) && settings.intensity >= 0.0 &&
+		Number.isFinite(settings.lowFrequencyBoost) && Number.isFinite(settings.threshold) &&
+		Number.isFinite(settings.thresholdSoftness) &&
+		settings.maxMipDimension >= 8 && settings.highPassFrequency > 0.0 &&
+		settings.lowFrequencyBoostCurvature < 1.0;
 }
 
 // Turns bloom on with `settings`, or off with null, which releases the mips.
@@ -221,10 +231,7 @@ export function setSettings(
 	settings: BloomSettings | null,
 ): void {
 	if (settings !== null) {
-		const valid: boolean = Number.isFinite(settings.intensity) && settings.intensity >= 0.0 &&
-			settings.maxMipDimension >= 4 && settings.highPassFrequency > 0.0 &&
-			settings.lowFrequencyBoostCurvature < 1.0;
-		if (!valid) { stopOnSettings(settings); }
+		if (!bloomSettingsValid(settings)) { stopOnSettings(settings); }
 		context.materials[pass.up.index].pass = upsampleState(settings.compositeMode);
 	} else {
 		pass.closeMips();

@@ -7,6 +7,7 @@ import {
 	BloomSettings,
 	BloomCompositeMode,
 	bloomMipCount,
+	bloomSettingsValid,
 	bloomMipWidth,
 	bloomBlendFactor,
 	thresholdOf,
@@ -126,4 +127,21 @@ test "the tone map block is the exposure multiplier and the curve's number, the 
 		assert writeBlock(pool, reserved.value, toneParamsOf(2.5, modes[m])).ok;
 		assert sameLanes(pool.values, [2.5, m as float32, 0, 0]);
 	}
+}
+
+test "bloom refuses a chain of one mip, whose final blend factor is 0 / 0, and non-finite inputs" {
+	const natural: BloomSettings = BloomSettings.natural();
+	const nan: float32 = Number.NaN as float32;
+	assert !Number.isFinite(bloomBlendFactor(natural, 0.0, 0.0));
+	for (let dimension = 4; dimension < 8; dimension++) {
+		assert !bloomSettingsValid({ ...natural, maxMipDimension: dimension });
+	}
+	for (let dimension = 8; dimension <= 600; dimension++) {
+		assert bloomSettingsValid({ ...natural, maxMipDimension: dimension });
+		const maxMip: float32 = (bloomMipCount(dimension) - 1) as float32;
+		assert Number.isFinite(bloomBlendFactor(natural, 0.0, maxMip));
+	}
+	assert !bloomSettingsValid({ ...natural, lowFrequencyBoost: nan });
+	assert !bloomSettingsValid({ ...natural, threshold: nan });
+	assert !bloomSettingsValid({ ...natural, thresholdSoftness: nan });
 }
