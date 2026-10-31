@@ -1193,11 +1193,9 @@ function lineWidthOf(glyphs: Readonly<Span<LaidGlyph>>, first: int32): float32 {
 	return width;
 }
 
-// GPUI's force_width (line_layout.rs:898-921): a base moves onto the grid unless it is within a
-// pixel of it, a combining mark keeps its offset. A base is a grapheme's first glyph: GPUI finds
-// it by x, which holds only once a shaper has put the marks over their base. A sprite always
-// moves onto the grid: its tile fills the cell, so a base left within a pixel of it would open
-// a seam against its neighbour.
+// Ghostty's coretext.zig:436-512 (b58ef1d67): a cluster's glyph takes its grid column and keeps
+// only its own offset from the cluster's shaped start, so an earlier glyph's advance never moves
+// a later cell. A base is a grapheme's first glyph, a combining mark keeps its offset from it.
 function forceCells(
 	glyphs: Span<LaidGlyph>, first: int32, cell: float32, cellWidths: Readonly<Span<uint8>>,
 ): float32 {
@@ -1212,10 +1210,7 @@ function forceCells(
 			glyphs[head].advance = ((cells - headCells) as float32) * cell;
 			head = k;
 			headCells = cells;
-			const forced: float32 = (cells as float32) * cell;
-			if (Math.abs(shaped - forced) > 1.0 || isSpriteFace(glyphs[k].face)) {
-				glyphs[k].x = forced;
-			}
+			glyphs[k].x = (cells as float32) * cell;
 			lastShaped = shaped;
 			lastActual = glyphs[k].x;
 		} else {

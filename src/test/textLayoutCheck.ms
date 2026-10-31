@@ -537,6 +537,20 @@ test "under force_width a fallback-face glyph wider than its cell and a quarter 
 	assert box[2] - box[0] > 8.0 * 1.25 - 2.0;
 }
 
+test "under force_width a base after a fallback glyph lands on its cell, like one after a primary glyph" {
+	addFallbackFont(cellRow().font, "tests/fonts/NotoSansSC-subset.ttf");
+	const noRuns: TextRun[] = [];
+	const noBreaks: int32[] = [];
+	const cell: float32 = (widthOf("a t", cellRow()) - widthOf("t", cellRow()) + 0.5) / 2.0;
+	const cells: LineOptions = { ...PLAIN_LINES, forceWidth: cell };
+	const primary = wrapText(shapedOf("a tail", cellRow(), noRuns, noBreaks), cellRow(), cells);
+	const fallback = wrapText(shapedOf("\u4F60 tail", cellRow(), noRuns, noBreaks), cellRow(), cells);
+	assert fallback.glyphs[0].face != fontFace(cellRow().font);
+	assert primary.glyphs[2].codepoint == "t".code && fallback.glyphs[2].codepoint == "t".code;
+	assert primary.glyphs[2].x == 2.0 * cell;
+	assert fallback.glyphs[2].x == primary.glyphs[2].x;
+}
+
 test "under force_width a row holding a taller fallback face keeps the primary face's baseline and height" {
 	addFallbackFont(cellRow().font, "tests/fonts/NotoSansSC-subset.ttf");
 	const own = faceMetrics(fontFace(cellRow().font), 20.0);
