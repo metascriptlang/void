@@ -318,3 +318,11 @@ test "the binding limits equal the slots the door builds bind groups for" {
 	assert MAX_UNIFORM_SLOTS == DOOR_UNIFORM_SLOTS;
 	assert slotLimit(ResourceKind.Sampler) == 8;
 }
+
+test "GLSL ES refuses the blocks a stage reads past its uniform vector budget" {
+	let m = slotModule();
+	m.structs[0].members[1].type = arrayType(vectorType(ScalarKind.F32, 4), 300);
+	assert slots(m, ShaderTarget.Glsl300es) ==
+		"the vertex stage reads 307 uniform vec4s; GLSL ES 3.0 guarantees 256";
+	assert !slots(m, ShaderTarget.Wgsl).includes("uniform vec4s");
+}
