@@ -943,14 +943,13 @@ export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void 
 			miscFlags |= MISC_ALLOW_RAW_VIEWS;
 		}
 		if (indirect) { miscFlags |= MISC_DRAWINDIRECT_ARGS; }
-		slot.updatable = (bindFlags == 0 || storage) && (has(usage, GPUBufferUsage.COPY_DST as int32) || resolve);
-		const writable = has(usage, GPUBufferUsage.COPY_DST as int32) && !slot.updatable;
+		slot.updatable = has(usage, GPUBufferUsage.COPY_DST as int32) || resolve;
 		slot.native = d3dCreateBuffer(
 			device,
 			storage ? (descriptor.size + 3) / 4 * 4 : descriptor.size,
-			writable ? USAGE_DYNAMIC : USAGE_DEFAULT,
+			USAGE_DEFAULT,
 			bindFlags,
-			writable ? CPU_ACCESS_WRITE : 0,
+			0,
 			miscFlags,
 		);
 		if (slot.native == null) { stop(`CreateBuffer failed for ${labelOf(descriptor.label)}`); }
@@ -1279,7 +1278,7 @@ function copyableBuffer(buffer: GPUBuffer, member: string): int32 {
 function copyDestinationBuffer(buffer: GPUBuffer, member: string): int32 {
 	const index = copyableBuffer(buffer, member);
 	if (!buffers[index].staging && !buffers[index].updatable) {
-		stop(`${member}: GPUBuffer ${buffer.id} is a DYNAMIC VERTEX or INDEX buffer written by writeBuffer and cannot take a GPU copy on d3d11 yet`);
+		stop(`${member}: GPUBuffer ${buffer.id} is a DYNAMIC uniform buffer written by writeBuffer and cannot take a GPU copy on d3d11 yet`);
 	}
 	return index;
 }

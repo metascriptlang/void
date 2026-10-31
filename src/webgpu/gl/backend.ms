@@ -84,6 +84,7 @@ import {
 	checkedComputeModule,
 	checkedRenderModule,
 	markBufferWritten,
+	wholeBufferWrite,
 	occlusionSetId,
 	openDebugGroups,
 	stencil8Mask,
@@ -1285,7 +1286,7 @@ export function destroyBuffer(buffer: GPUBuffer): void {
 export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
 	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = bufferRecords.slotIndex(buffer.id);
-	rotateOnFirstWrite(index);
+	rotateOnWholeWrite(index, offset, bytes);
 	if (buffers[index].uniform) {
 		oglCopyBytes(buffers[index].shadow[0], offset, data[0], bytes);
 		bound.uniformsDirty = true;
@@ -1298,8 +1299,9 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 	cacheRestoreBuffer(target);
 }
 
-function rotateOnFirstWrite(index: int32): void {
+function rotateOnWholeWrite(index: int32, offset: int64, bytes: int64): void {
 	if (buffers[index].uniform || bufferRecords.slots[index].writtenFrame == currentFrame()) { return; }
+	if (!wholeBufferWrite(index, offset, bytes)) { return; }
 	buffers[index].activeSlot = (buffers[index].activeSlot + 1) % buffers[index].slotCount;
 	bound.vertexDirty = true;
 	bound.indexDirty = true;
@@ -1308,7 +1310,7 @@ function rotateOnFirstWrite(index: int32): void {
 function claimBufferCopy(index: int32, offset: int64, bytes: int64, member: string): void {
 	if (buffers[index].mapRead) { return; }
 	checkedBufferRewrite(index, member, offset);
-	rotateOnFirstWrite(index);
+	rotateOnWholeWrite(index, offset, bytes);
 	markBufferWritten(index, offset, bytes);
 }
 

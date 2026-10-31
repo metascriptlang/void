@@ -116,6 +116,7 @@ export struct BufferRecord {
 	size: int64;
 	usage: int32;
 	writtenFrame: int64;
+	writtenStart: int64;
 	writtenEnd: int64;
 	mapMode: int32;
 	mapOffset: int64;

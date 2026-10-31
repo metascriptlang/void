@@ -92,6 +92,7 @@ import {
 import {
 	cachedCanvas,
 	currentFrame,
+	wholeBufferWrite,
 	entryOf,
 	clampedAnisotropy,
 	checkedComputeModule,
@@ -217,6 +218,7 @@ import {
 	mtlUsesSharedStorage,
 	mtlWriteBuffer,
 	mtlWriteTexture,
+	mtlCarryBytes,
 } from "./metal.h";
 
 @compile("./metal.m");
@@ -831,7 +833,7 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 	}
 	beginFrame();
 	const written = bufferRecords.slots[index].writtenFrame;
-	if (written >= 0 && written != currentFrame()) { nextBufferCopy(index); }
+	if (written >= 0 && written != currentFrame()) { nextBufferCopy(index, wholeBufferWrite(index, offset, bytes)); }
 	const native = buffers[index].natives[buffers[index].active];
 	mtlWriteBuffer(native, offset, data[0], bytes, sharedStorage ? 0 : 1);
 }
@@ -848,11 +850,16 @@ function writeBufferInPlace<T>(index: int32, offset: int64, data: Readonly<Span<
 	buffers[index].gpuUseFrame = currentFrame();
 }
 
-function nextBufferCopy(index: int32): void {
+// The other copy lacks only the last written frame's range, so a partial write carries that range over first.
+function nextBufferCopy(index: int32, whole: boolean): void {
 	const next = 1 - buffers[index].active;
 	if (buffers[index].natives[next] == null) {
 		buffers[index].natives[next] = mtlNewBuffer(device, bufferRecords.slots[index].size, sharedStorage ? 1 : 0);
 		if (buffers[index].natives[next] == null) { stop(`newBufferWithLength failed for GPUBuffer ${bufferRecords.slots[index].id}`); }
+	}
+	if (!whole) {
+		const record = bufferRecords.slots[index];
+		mtlCarryBytes(buffers[index].natives[buffers[index].active], buffers[index].natives[next], record.writtenStart, record.writtenEnd - record.writtenStart, sharedStorage ? 0 : 1);
 	}
 	buffers[index].active = next;
 	bound.vertexDirty = true;

@@ -583,10 +583,16 @@ export function checkedBuffer(size: int64, usage: int32): void { refuse(bufferRe
 export function checkedWriteBuffer(index: int32, offset: int64, bytes: int64): void { refuse(writeBufferRefusal(bufferRecords.slots[index], offset, bytes, frame)); }
 export function checkedBufferRewrite(index: int32, member: string, offset: int64): void { refuse(bufferRewriteRefusal(bufferRecords.slots[index], member, offset, frame)); }
 
-// Runs after the backend's write: a backend reads writtenFrame to tell a frame's first write (sokol_gfx.h:27536).
+// Runs after the backend's write, so a backend sees the last written frame's range [writtenStart, writtenEnd).
 export function markBufferWritten(index: int32, offset: int64, bytes: int64): void {
+	if (bufferRecords.slots[index].writtenFrame != frame) { bufferRecords.slots[index].writtenStart = offset; }
 	bufferRecords.slots[index].writtenFrame = frame;
 	bufferRecords.slots[index].writtenEnd = offset + bytes;
+}
+// Bytes outside a write keep their value (WebGPU writeBuffer), so only a write of every byte may
+// move a buffer to other memory.
+@inline export function wholeBufferWrite(index: int32, offset: int64, bytes: int64): boolean {
+	return offset == 0 && bytes >= bufferRecords.slots[index].size;
 }
 export function checkedTexture(descriptor: GPUTextureDescriptor, limits: GPUSupportedLimits): void { refuse(textureRefusal(descriptor, limits)); }
 

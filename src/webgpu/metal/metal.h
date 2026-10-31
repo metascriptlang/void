@@ -39,6 +39,7 @@ void mtlCopyOut(MtlBuffer buffer, int64_t offset, void *bytes, int64_t length);
 void mtlCopyIn(MtlBuffer buffer, int64_t offset, const void *bytes, int64_t length);
 void mtlReleaseBuffer(MtlBuffer buffer);
 void mtlWriteBuffer(MtlBuffer buffer, int64_t offset, void *data, int64_t bytes, int32_t managed);
+void mtlCarryBytes(MtlBuffer from, MtlBuffer to, int64_t offset, int64_t bytes, int32_t managed);
 
 MtlTexture mtlNewTexture(
 	MtlDevice device,
