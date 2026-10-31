@@ -74,6 +74,7 @@ export function scissorRectOf(
 	let y: float32 = cmd[CMD_CLIP_Y];
 	let w: float32 = cmd[CMD_CLIP_W];
 	let h: float32 = cmd[CMD_CLIP_H];
+	if (w < 0.0 || h < 0.0) { return { x0: 0, y0: 0, x1: 0, y1: 0 }; }
 	if (scope >= 0) {
 		const shiftX: float32 = scopes[scope];
 		const shiftY: float32 = scopes[scope + 1];

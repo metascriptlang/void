@@ -35,7 +35,15 @@ import {
 	growthTarget,
 	currentRenderScale,
 	setSceneSmooth,
+	pushClip,
+	pushRoundedClip,
+	popClip,
+	enterScope,
+	leaveScope,
+	roundClipOf,
 } from "../../src/void2d/draw";
+import { scissorRectOf, scopeAt, ScissorRect } from "../../src/void2d/coverage";
+import { COMMAND_FLOATS, SCOPE_FLOATS } from "../../src/void2d/commandFields";
 import {
 	commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
 	commandField, targetCommandField, effectField, vertexField, commandView,
@@ -49,7 +57,7 @@ import {
 	commandKindName, breakReasonName, SOURCE_PREMULTIPLIED,
 	Pipeline, BreakReason, CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT,
 	uiInstanceCount, spriteInstanceCount, spriteInstanceField, uiInstanceField, NO_EFFECT,
-	targetDepth,
+	targetDepth, currentContext, resolveScopes, DrawContext2D,
 } from "../../src/void2d/displayList";
 import {
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
@@ -809,6 +817,70 @@ function clipWidthOfDraws(): float32 {
 test "T1 a Mask nested outside its parent's clip draws none of its children" {
 	record(disjointMaskScene(), 256.0, 150.0, 1.0);
 	assert uiInstanceCount() == 0;
+}
+
+function scissoredDrawArea(fbW: float32, fbH: float32): int32 {
+	const l: DrawContext2D = currentContext();
+	resolveScopes();
+	const scopes: Readonly<Span<float32>> = l.scopeValues[0..l.scopeTotal * SCOPE_FLOATS];
+	let area: int32 = 0;
+	for (let i: int32 = 0; i < commandCount(); i++) {
+		if (commandField(i, CMD_VERTEX_COUNT) <= 0.0 && commandField(i, CMD_INSTANCE_COUNT) <= 0.0) {
+			continue;
+		}
+		const cmd: Readonly<Span<float32>> = l.commands[i * COMMAND_FLOATS..(i + 1) * COMMAND_FLOATS];
+		const r: ScissorRect = scissorRectOf(cmd, scopes, scopeAt(cmd, l.scopeTotal, l.scopeTotal > 0),
+			1.0, fbW, fbH);
+		area += (r.x1 - r.x0) * (r.y1 - r.y0);
+	}
+	return area;
+}
+
+function boxAt(x0: float32, y0: float32, x1: float32, y1: float32, rounding: float32): boolean {
+	const tl: Vec2 = vec2(x0, y0);
+	const tr: Vec2 = vec2(x1, y0);
+	const bl: Vec2 = vec2(x0, y1);
+	return pushRoundedClip(tl, tr, vec2(x1, y1), bl,
+		roundClipOf(tl, tr, bl, x1 - x0, y1 - y0, uniformRadii(rounding)));
+}
+
+function nestedClipArea(scoped: boolean, outer: float32[4], inner: float32[4], rounding: float32): int32 {
+	begin2d(64.0, 64.0, 1.0);
+	if (scoped) {
+		enterScope(0, vec2(0.0, 0.0), vec2(64.0, 0.0), vec2(64.0, 64.0), vec2(0.0, 64.0), 0.0, 0.0);
+	}
+	boxAt(outer[0], outer[1], outer[2], outer[3], rounding);
+	boxAt(inner[0], inner[1], inner[2], inner[3], rounding);
+	drawRect(vec2(0.0, 0.0), vec2(64.0, 64.0), rgba(1.0, 1.0, 1.0, 1.0), BlendMode.Alpha);
+	popClip();
+	popClip();
+	if (scoped) { leaveScope(); }
+	finishRecording();
+	const area: int32 = scissoredDrawArea(64.0, 64.0);
+	frameEnd();
+	return area;
+}
+
+test "T1 a draw under nested Masks that meet replays inside their overlap" {
+	for (const scoped of [false, true]) {
+		assert nestedClipArea(scoped, [0.0, 0.0, 30.0, 30.0], [10.0, 10.0, 40.0, 40.0], 0.0) == 400;
+	}
+}
+
+test "T1 a draw under nested Masks that do not meet replays no pixel" {
+	for (const scoped of [false, true]) {
+		const area: int32 = nestedClipArea(scoped, [0.0, 0.0, 20.0, 20.0], [40.0, 40.0, 60.0, 60.0], 0.0);
+		console.log(`disjoint Masks, scoped ${scoped}: ${area} px scissored`);
+		assert area == 0;
+	}
+}
+
+test "T1 a draw under nested rounded Masks that cross at a corner replays no pixel" {
+	for (const scoped of [false, true]) {
+		const area: int32 = nestedClipArea(scoped, [0.0, 0.0, 40.0, 40.0], [20.0, 20.0, 60.0, 60.0], 10.0);
+		console.log(`crossing rounded Masks, scoped ${scoped}: ${area} px scissored`);
+		assert area == 0;
+	}
 }
 
 test "T1 a Mask left of the viewport keeps its clip, so what it reaches on screen is cut" {

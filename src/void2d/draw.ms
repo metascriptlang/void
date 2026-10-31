@@ -46,7 +46,7 @@ import {
 	targetDepth, renderTargetScaleNow, beginTargetList, endTargetList,
 	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
 	Pipeline, NO_CLIP, Clip, MaskClip, NO_MASK_CLIP, NO_MASK, PaintIndex, pushMaskClip, maskClipAt,
-	RoundClip, NO_ROUND_CLIP,
+	RoundClip, NO_ROUND_CLIP, EMPTY_CLIP,
 	ScopeRecord, NO_SCOPE, pushScope, scopeRow, resolveScopes,
 	pushSpriteInstance, putSpriteInstance, recordSpriteDraw, pipelineAt, runOffset, commandView,
 	Program2D, PROGRAMS_2D, BLEND_MODES, PIPELINE_SLOTS, pipelineWanted,
@@ -721,13 +721,12 @@ function maxFour(a: float32, b: float32, c: float32, d: float32): float32 {
 }
 
 function clipOf(c: MaskClip): Clip {
+	if (c.x1 <= c.x0 || c.y1 <= c.y0) { return EMPTY_CLIP; }
 	const ctx: DrawContext2D = currentContext();
 	const ix: float32 = c.x0;
 	const iy: float32 = c.y0;
-	let iw: float32 = c.x1 - c.x0;
-	let ih: float32 = c.y1 - c.y0;
-	if (iw < 0.0) { iw = 0.0; }
-	if (ih < 0.0) { ih = 0.0; }
+	const iw: float32 = c.x1 - c.x0;
+	const ih: float32 = c.y1 - c.y0;
 	const uShift: float32 = ctx.originX * c.ux + ctx.originY * c.uy;
 	const vShift: float32 = ctx.originX * c.vx + ctx.originY * c.vy;
 	const r: RoundClip = c.round;
