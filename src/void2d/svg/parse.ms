@@ -88,6 +88,10 @@ const ALIGN_NONE: int32 = 0;
 const ALIGN_MEET: int32 = 1;
 const ALIGN_SLICE: int32 = 2;
 
+const PRESENCE_NONE: int32 = 0;
+const PRESENCE_COLOR: int32 = 1;
+const PRESENCE_URL: int32 = 2;
+
 const COORD_SLOTS: int32 = 5;
 
 struct Attr {
@@ -113,8 +117,8 @@ class Attrib {
 	fontSize: float32 = 0.0;
 	stopOpacity: float32 = 1.0;
 	stopOffset: float32 = 0.0;
-	hasFill: int32 = 1;
-	hasStroke: int32 = 0;
+	hasFill: int32 = PRESENCE_COLOR;
+	hasStroke: int32 = PRESENCE_NONE;
 	visible: boolean = true;
 	paintOrder: int32 = 0;
 }
@@ -505,15 +509,15 @@ function getLocalBounds(
 
 function setPaint(paint: Paint, has: int32, opacity: float32): void {
 	match (has) {
-		0 => {
+		PRESENCE_NONE => {
 			paint.kind = PAINT_NONE;
 		},
-		1 => {
+		PRESENCE_COLOR => {
 			paint.kind = PAINT_COLOR;
 			const scaled: float32 = opacity * 255;
 			paint.alpha = floatToByte(scaled);
 		},
-		2 => {
+		PRESENCE_URL => {
 			paint.kind = PAINT_UNDEF;
 		},
 		_ => {
@@ -1027,12 +1031,12 @@ function parseAttr(p: Parser, name: Str, value: Str): boolean {
 		}
 	} else if (name.eq("fill")) {
 		if (value.eq("none")) {
-			attr.hasFill = 0;
+			attr.hasFill = PRESENCE_NONE;
 		} else if (value.startsWith("url(")) {
-			attr.hasFill = 2;
+			attr.hasFill = PRESENCE_URL;
 			attr.fillGradient = parseUrl(value);
 		} else {
-			attr.hasFill = 1;
+			attr.hasFill = PRESENCE_COLOR;
 		}
 	} else if (name.eq("opacity")) {
 		attr.opacity = parseOpacity(value);
@@ -1040,12 +1044,12 @@ function parseAttr(p: Parser, name: Str, value: Str): boolean {
 		attr.fillOpacity = parseOpacity(value);
 	} else if (name.eq("stroke")) {
 		if (value.eq("none")) {
-			attr.hasStroke = 0;
+			attr.hasStroke = PRESENCE_NONE;
 		} else if (value.startsWith("url(")) {
-			attr.hasStroke = 2;
+			attr.hasStroke = PRESENCE_URL;
 			attr.strokeGradient = parseUrl(value);
 		} else {
-			attr.hasStroke = 1;
+			attr.hasStroke = PRESENCE_COLOR;
 		}
 	} else if (name.eq("stroke-width")) {
 		attr.strokeWidth = parseCoordinate(p, value, 0.0, actualLength(p));
