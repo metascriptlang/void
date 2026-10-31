@@ -139,12 +139,12 @@ import {
 	hasOffset,
 	holds,
 	intrinsicOf,
-	irErrors,
+	shapeErrors,
 	isSampling,
 	literal,
 	maskedShiftAmount,
 	saturatingToInt,
-	NON_UNIFORM_FLOW,
+	uniformityErrors,
 	WORKGROUP_STORAGE_LIMIT,
 	matrixType,
 	modfResultType,
@@ -2774,11 +2774,12 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		}
 	}
 	if (!segment) { m.entries.push(stageEntry); }
-	const broken = irErrors(m);
+	const broken = shapeErrors(m);
 	if (broken.length > 0) {
-		fail(entry, broken[0].includes(NON_UNIFORM_FLOW) ? broken[0] :
-			"internal: the lowered module breaks the IR: " + broken[0]);
+		fail(entry, "internal: the lowered module breaks the IR: " + broken[0]);
 	}
+	const nonUniform = uniformityErrors(m);
+	if (nonUniform.length > 0) { fail(entry, nonUniform[0]); }
 	if (compute) {
 		const reads = readsFrom(m, stageEntry.functionIndex);
 		if (!reads.ok) { fail(entry, reads.error); }
