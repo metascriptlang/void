@@ -47,6 +47,8 @@ function vertexFormat(kind: LaneKind): string {
 	}
 }
 
+function words(kind: LaneKind): int32 { return gpuBytes(kind) / 4; }
+
 function cField(l: Lane): string {
 	match (l.kind) {
 		LaneKind.Float4 => { return `\tfloat ${l.field}[4];\n`; },
@@ -84,6 +86,16 @@ function msConstants(prefix: string, lanes: Lane[]): string {
 	return out;
 }
 
+function msWords(prefix: string, lanes: Lane[]): string {
+	let out: string = "";
+	let at: int32 = 0;
+	for (const l of lanes) {
+		out += `export const WORD_${prefix}_${l.constant}: int32 = ${at};\n`;
+		at += words(l.kind);
+	}
+	return out + `export const ${prefix}_WORDS: int32 = ${at};\n`;
+}
+
 function cStruct(name: string, lanes: Lane[]): string {
 	let out: string = "typedef struct {\n";
 	for (const l of lanes) { out += cField(l); }
@@ -96,24 +108,6 @@ function cOffsets(name: string, lanes: Lane[]): string {
 	return out + "};\n";
 }
 
-function cPack(name: string, instance: string, lanes: Lane[]): string {
-	let out: string = `static inline void ${name}(\n`;
-	out += `\t${instance} *dst, const float *rec, uint32_t (*packColor)(const float *)) {\n`;
-	let floats: int32 = 0;
-	for (const l of lanes) {
-		match (l.kind) {
-			LaneKind.Float4 => {
-				out += `\tmemcpy(dst->${l.field}, rec + ${floats}, 4 * sizeof(float));\n`;
-			},
-			LaneKind.Color => {
-				out += `\tdst->${l.field} = packColor(rec + ${floats});\n`;
-			},
-		}
-		floats += 4;
-	}
-	return out + "}\n";
-}
-
 function recFloats(lanes: Lane[]): int32 { return (lanes.length as int32) * 4; }
 
 const dirSetting: string = env.get("INSTANCE_LAYOUT_DIR");
@@ -123,15 +117,15 @@ let ms: string = "import { GPUVertexFormat } from \"../webgpu/types.ms\";\n\n";
 ms += `export const INSTANCE_CORNER_LOCATION: int32 = ${cornerLocation};
 `;
 ms += msConstants("UI", uiLanes);
+ms += msWords("UI", uiLanes);
 ms += msConstants("SPRITE", spriteLanes);
 writeFile(`${dir}/instanceLayout.ms`, ms);
 
-let h: string = "#pragma once\n#include <stddef.h>\n#include <stdint.h>\n#include <string.h>\n\n";
+let h: string = "#pragma once\n#include <stddef.h>\n#include <stdint.h>\n\n";
 h += cStruct("void2dUiInstance", uiLanes) + "\n";
 h += cStruct("void2dSpriteInstance", spriteLanes) + "\n";
 h += cOffsets("void2dUiInstance", uiLanes) + "\n";
 h += cOffsets("void2dSpriteInstance", spriteLanes) + "\n";
 h += `#define VOID2D_UI_REC_FLOATS ${recFloats(uiLanes)}\n`;
-h += `#define VOID2D_SPRITE_REC_FLOATS ${recFloats(spriteLanes)}\n\n`;
-h += cPack("void2dPackUiInstance", "void2dUiInstance", uiLanes);
+h += `#define VOID2D_SPRITE_REC_FLOATS ${recFloats(spriteLanes)}\n`;
 writeFile(`${dir}/instanceLayout.h`, h);

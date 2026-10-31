@@ -1,7 +1,6 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 
 typedef struct {
 	float affine[4];
@@ -43,16 +42,3 @@ static const size_t void2dSpriteInstanceOffsets[4] = {
 
 #define VOID2D_UI_REC_FLOATS 36
 #define VOID2D_SPRITE_REC_FLOATS 16
-
-static inline void void2dPackUiInstance(
-	void2dUiInstance *dst, const float *rec, uint32_t (*packColor)(const float *)) {
-	memcpy(dst->affine, rec + 0, 4 * sizeof(float));
-	memcpy(dst->originSize, rec + 4, 4 * sizeof(float));
-	memcpy(dst->uvRadii, rec + 8, 4 * sizeof(float));
-	memcpy(dst->borders, rec + 12, 4 * sizeof(float));
-	memcpy(dst->params0, rec + 16, 4 * sizeof(float));
-	memcpy(dst->params1, rec + 20, 4 * sizeof(float));
-	dst->colorFill = packColor(rec + 24);
-	dst->colorBorder = packColor(rec + 28);
-	dst->colorExtra = packColor(rec + 32);
-}
