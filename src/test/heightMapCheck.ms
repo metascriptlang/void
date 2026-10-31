@@ -67,3 +67,17 @@ test "height map refuses a bad step, precision, range and a non-finite height by
 	assert !d.ok && d.error == HeightMapError.NonFiniteHeight;
 	assert !e.ok && e.error == HeightMapError.NonFinite;
 }
+
+test "height map ray ends when its precision is finer than the doubles at the hit" {
+	const fine = heightMapRayIntersection(ground, downward(0, 0, 1000, 0, -1), 1.0, 1e-13, 2000.0);
+	assert fine.ok && Math.abs(fine.value - 1000.0) <= 1e-9;
+	const high = downward(0, 0, 40000, 0, -1);
+	const farther = heightMapRayIntersection(ground, high, 1.0, 1e-13, 50000.0);
+	assert farther.ok && Math.abs(farther.value - 40000.0) <= 1e-9;
+}
+
+test "height map refuses a march of more than 2^53 steps, which would stop advancing" {
+	const ray = downward(0, 0, 2.5, 0, -1);
+	const tiny = heightMapRayIntersection(ground, ray, 1e-30, 0.01, 1e10);
+	assert !tiny.ok && tiny.error == HeightMapError.InvalidStep;
+}

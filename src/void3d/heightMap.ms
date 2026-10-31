@@ -12,6 +12,8 @@ export enum HeightMapError {
 	NonFiniteHeight,
 }
 
+const MAX_MARCH_STEPS: float64 = 9007199254740992.0;
+
 // HeightMap.hx:29-31.
 export function heightMapContains(getZ: (x: float32, y: float32) => float32, point: Vec3): boolean {
 	return getZ(point.x, point.y) > point.z;
@@ -23,7 +25,10 @@ export function heightMapContains(getZ: (x: float32, y: float32) => float32, poi
 //    so it always narrows toward the last sample before the surface and answers up to one step
 //    short; this evaluates at the midpoint;
 //  - its march has no end (a flat or rising surface below a falling ray is the only exit, and a
-//    NaN height never exits), so the march stops at `maxDistance` and answers a miss.
+//    NaN height never exits), so the march stops at `maxDistance` and answers a miss;
+//  - its bisection ends once the midpoint is an end of the interval, because a precision under
+//    the spacing of doubles at the hit would never be reached, and a march of more than 2^53
+//    steps is refused as InvalidStep, where `dist += step` would stop advancing.
 // A ray looking up or nearly level, or starting under the surface, is a miss as in Heaps.
 // PENDING3D: heightmap-bisect-at-interval-end
 export function heightMapRayIntersection(
@@ -55,6 +60,7 @@ export function heightMapRayIntersection(
 	if (start > ray.origin.z) { return Result.ok(-1.0); }
 	const stride: float64 = step as float64;
 	const limit: float64 = maxDistance as float64;
+	if (limit / stride > MAX_MARCH_STEPS) { return Result.err(HeightMapError.InvalidStep); }
 	let dist: float64 = stride;
 	let found: boolean = false;
 	while (dist <= limit + stride) {
@@ -69,7 +75,7 @@ export function heightMapRayIntersection(
 	const prec: float64 = precision as float64;
 	while (true) {
 		const d: float64 = (dmin + dmax) * 0.5;
-		if (dmax - dmin < prec) { return Result.ok(d as float32); }
+		if (dmax - dmin < prec || d == dmin || d == dmax) { return Result.ok(d as float32); }
 		const h: float32 = getZ((px + lx * d) as float32, (py + ly * d) as float32);
 		if (!Number.isFinite(h)) { return Result.err(HeightMapError.NonFiniteHeight); }
 		if ((h as float64) > pz + lz * d) { dmax = d; } else { dmin = d; }
