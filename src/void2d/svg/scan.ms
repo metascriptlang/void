@@ -280,6 +280,12 @@ function findText(sc: Scan, limit: int32, from: int32, needle: string): int32 {
 	return limit;
 }
 
+function refuseComment(sc: Scan, at: int32, to: int32): int32 {
+	const close = findText(sc, to, at + 2, "*/");
+	if (close == to) { return notSvg(sc, "an unterminated css comment"); }
+	return refuse(sc, SVG_REFUSED, "css comment ", { b: sc.bytes, s: at, e: close + 2 }, "");
+}
+
 function checkStyleElement(sc: Scan, from: int32, to: int32): int32 {
 	let i = from;
 	while (i < to) {
@@ -287,19 +293,9 @@ function checkStyleElement(sc: Scan, from: int32, to: int32): int32 {
 			i += 1;
 			continue;
 		}
-		if (startsAt(sc, i, to, "/*")) {
-			const close = findText(sc, to, i + 2, "*/");
-			if (close == to) { return notSvg(sc, "an unterminated css comment"); }
-			i = close + 2;
-			continue;
-		}
+		if (startsAt(sc, i, to, "/*")) { return refuseComment(sc, i, to); }
 		if (startsAt(sc, i, to, "<![CDATA[")) {
-			i += 9;
-			continue;
-		}
-		if (startsAt(sc, i, to, "]]>")) {
-			i += 3;
-			continue;
+			return refuse(sc, SVG_REFUSED, "css in a CDATA section", emptyAt(sc), "");
 		}
 		if (sc.bytes[i] == 64) {
 			return refuse(sc, SVG_REFUSED, "css at-rule ", { b: sc.bytes, s: i, e: to }, "");
@@ -312,6 +308,8 @@ function checkStyleElement(sc: Scan, from: int32, to: int32): int32 {
 		let close = open + 1;
 		while (close < to && sc.bytes[close] != 125) { close += 1; }
 		if (close == to) { return notSvg(sc, "a css block without its closing brace"); }
+		const comment = findText(sc, close, open + 1, "/*");
+		if (comment < close) { return refuseComment(sc, comment, to); }
 		sc.opacityRefusedAs = OPACITY_IN_STYLE_RULE;
 		code = checkDeclarations(sc, { b: sc.bytes, s: open + 1, e: close });
 		sc.opacityRefusedAs = 0;
@@ -375,6 +373,10 @@ function scanTag(sc: Scan, cursor: int32[]): int32 {
 			if (i >= length) { return notSvg(sc, "an unterminated attribute value"); }
 			value = { b: s, s: valueStart, e: i };
 			i += 1;
+			if (findText(sc, value.e, value.s, ">") < value.e) {
+				sc.opacityRefusedAs = 0;
+				return refuse(sc, SVG_REFUSED, "attribute ", attr, " value holding '>'");
+			}
 		}
 		const code = checkProperty(sc, attr, value, false);
 		if (code != 0) {

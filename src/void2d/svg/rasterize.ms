@@ -32,6 +32,9 @@ const PT_LEFT: int32 = 4;
 const NORMALIZE_EPSILON: float32 = 1e-6;
 const MITER_EPSILON: float32 = 0.000001;
 const MITER_SCALE_LIMIT: float32 = 600.0;
+const MITER_REACH: float32 = (Math.sqrt(MITER_SCALE_LIMIT as float64) * 0.5) as float32;
+const INT32_LIMIT: float32 = 2147483648.0;
+const EDGE_REACH: float32 = INT32_LIMIT / (FIX as float32) / 2.0;
 const MIN_STROKE_WIDTH: float32 = 0.01;
 const TESSELLATION_TOLERANCE: float32 = 0.05;
 const DISTANCE_TOLERANCE: float32 = 0.01;
@@ -928,6 +931,34 @@ function sortEdges(r: Rasterizer): void {
 	r.edir = dir;
 }
 
+function rowStepToInt(value: float32): int32 {
+	if (value >= INT32_LIMIT) { return 2147483647; }
+	if (value <= -INT32_LIMIT) { return -2147483647 - 1; }
+	return floatToInt(value);
+}
+
+export function fixedPointRefusal(image: SvgImage, scale: float32, offset: float32): string {
+	for (const shape of image.shapes) {
+		if (!shape.visible) { continue; }
+		const stroked = shape.stroke.kind != PAINT_NONE && shape.strokeWidth * scale > MIN_STROKE_WIDTH;
+		if (!stroked && shape.fill.kind == PAINT_NONE) { continue; }
+		const reach: float32 = stroked ? shape.strokeWidth * scale * MITER_REACH : 0.0;
+		if (!(offset + reach < EDGE_REACH)) {
+			return "a stroke width past the rasterizer's fixed-point reach at the largest mask";
+		}
+		for (const path of shape.paths) {
+			for (let i: int32 = 0; i < path.npts * 2; i++) {
+				const v = path.pts[i];
+				if (v != v) { return "a non-finite coordinate"; }
+				if (!(absf(v) * scale + offset + reach < EDGE_REACH)) {
+					return "a coordinate past the rasterizer's fixed-point reach at the largest mask";
+				}
+			}
+		}
+	}
+	return "";
+}
+
 function addActive(r: Rasterizer, e: int32, startPoint: float32): int32 {
 	let z: int32 = 0;
 	if (r.freelist >= 0) {
@@ -947,10 +978,10 @@ function addActive(r: Rasterizer, e: int32, startPoint: float32): int32 {
 	const dxdy: float32 = (r.ex1[e] - r.ex0[e]) / (r.ey1[e] - r.ey0[e]);
 	if (dxdy < 0) {
 		const scaled: float32 = (FIX as float32) * -dxdy;
-		r.adx[z] = floatToInt(-roundf(scaled));
+		r.adx[z] = rowStepToInt(-roundf(scaled));
 	} else {
 		const scaled: float32 = (FIX as float32) * dxdy;
-		r.adx[z] = floatToInt(roundf(scaled));
+		r.adx[z] = rowStepToInt(roundf(scaled));
 	}
 	const run: float32 = dxdy * (startPoint - r.ey0[e]);
 	const at: float32 = r.ex0[e] + run;
