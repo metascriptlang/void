@@ -1138,6 +1138,7 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 	const e = m.entries[entry];
 	let packed = m.structs.map((s) => s.members.map((f) => false));
 	let aligns = m.structs.map((s) => 0);
+	let laidOut = m.structs.map((s) => false);
 	for (const index of reads.resources) {
 		const slots = bindings.filter((s) => s.resource == index);
 		if (slots.length == 0 || slots[0].nativeSlot < 0) {
@@ -1152,8 +1153,13 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 		if (error != "") { return Result.err("printMsl: " + error); }
 		const structIndex = bufferStruct(m, index);
 		const flags = packedMembers(m, structIndex, layout.value);
+		if (laidOut[structIndex] && packed[structIndex].join(",") != flags.join(",")) {
+			return Result.err("printMsl: struct '" + m.structs[structIndex].name + "' is laid out " +
+				"two ways by its buffers, so one MSL declaration cannot match both");
+		}
+		laidOut[structIndex] = true;
+		packed[structIndex] = flags;
 		if (flags.includes(true)) {
-			packed[structIndex] = flags;
 			aligns[structIndex] = layout.value.align;
 		}
 	}
