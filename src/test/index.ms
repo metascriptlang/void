@@ -95,6 +95,7 @@ import "./clusterLookupCheck";
 import "./clusterFrameCheck";
 import "./cameraCheck";
 import "./frustumCheck";
+import "./gpuCullCheck";
 import "./planeProjectionCheck";
 import "./rayPlaneCheck";
 import "./boundsCheck";
