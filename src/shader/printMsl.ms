@@ -1022,7 +1022,8 @@ function layoutError(m: ShaderModule, structIndex: int32, layout: StructLayout, 
 		if (f.type.kind == ShaderTypeKind.Struct) {
 			return owner + " nests struct '" + f.name + "'";
 		}
-		const [align, size] = packed[k] ? [4, 12] : naturalExtent(m, f.type);
+		const extent: [int32, int32] = packed[k] ? [4, 12] : naturalExtent(m, f.type);
+		const [align, size] = extent;
 		const offset = (end + align - 1) / align * align;
 		if (offset != layout.offsets[k]) {
 			return owner + ": member '" + f.name + "' sits at byte " + String(layout.offsets[k]) +
