@@ -21,6 +21,7 @@ import {
 	symKind,
 	typeKind,
 } from "std/meta";
+import { hasEffect } from "./irWalk";
 import {
 	AtomicExchangeI32,
 	AtomicExchangeU32,
@@ -1903,6 +1904,16 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			(t.scalar == ScalarKind.I32 || t.scalar == ScalarKind.U32);
 	}
 
+	function saturated(x: ShaderExpr, to: ScalarKind, at: Node): ShaderExpr {
+		let effects: int32[] = [];
+		for (const _f of m.functions) { effects.push(0); }
+		if (hasEffect(m, effects, x)) {
+			fail(at, "a float to integer conversion reads its operand three times to saturate " +
+				"it: bind an operand with an effect to a const first");
+		}
+		return saturatingToInt(x, to);
+	}
+
 	function shiftAmount(n: Node): ShaderExpr {
 		const e = lower(n);
 		if (e.kind == ExprKind.Literal) {
@@ -1994,7 +2005,12 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		const type = looseType(getType(n));
 		const made = constructors.indexOf(name);
 		if (name != "" && made >= 0) {
-			return exprOf(ExprKind.Construct, vectorAt(typeNodes, made), -1, args);
+			const madeType = vectorAt(typeNodes, made);
+			if (madeType.scalar == ScalarKind.I32 || madeType.scalar == ScalarKind.U32) {
+				args = args.map((a, i) => a.type.scalar == ScalarKind.F32 && a.kind != ExprKind.Literal ?
+					saturated(a, madeType.scalar, n.arguments[i]) : a);
+			}
+			return exprOf(ExprKind.Construct, madeType, -1, args);
 		}
 		const direct = intrinsicNames.indexOf(name);
 		if (direct >= 0) { return intrinsicOf(intrinsics[direct], type, args); }
@@ -2182,7 +2198,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 					const type = glslType(getType(n), n);
 					const operand = lower(n.asExpr);
 					return from == TypeKind.Float32 && operand.kind != ExprKind.Literal ?
-						saturatingToInt(operand, type.scalar) :
+						saturated(operand, type.scalar, n.asExpr) :
 						exprOf(ExprKind.Convert, type, -1, [operand]);
 				}
 				if (to == TypeKind.Uint32 && n.asExpr.kind == NodeKind.NumberLiteral &&

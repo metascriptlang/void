@@ -381,6 +381,7 @@ export struct IntLanes {
 	word: uint32;
 	amount: uint32;
 	ratio: float32;
+	cell: Vec2f;
 }
 
 export struct IntPlaced {
@@ -388,6 +389,7 @@ export struct IntPlaced {
 	word: uint32;
 	amount: uint32;
 	ratio: float32;
+	cell: Vec2f;
 }
 
 export function intVs(input: Corner): IntPlaced {
@@ -396,6 +398,7 @@ export function intVs(input: Corner): IntPlaced {
 		word: 3,
 		amount: 33,
 		ratio: 3000000000.0,
+		cell: vec2f(1.5, -2.5),
 	};
 }
 
@@ -404,7 +407,9 @@ export function intFs(input: IntLanes): Vec4f {
 	const quotient = input.word / input.amount;
 	const rest = input.word % input.amount;
 	const whole = input.ratio as int32;
-	return vec4f(shifted as float32, quotient as float32, rest as float32, whole as float32);
+	const cell = vec2i(input.cell);
+	return vec4f(shifted as float32, quotient as float32, rest as float32,
+		(whole + cell.x) as float32);
 }
 
 function intProgram(): ShaderModule {
@@ -440,5 +445,16 @@ test "float32 as int32 saturates and maps NaN to 0 in the IR on every target" {
 		ShaderTarget.Msl]) {
 		const text = printedFor(m, 1, target, "int");
 		assert text.includes("ratio == ratio") && text.includes("2147483520");
+	}
+}
+
+test "vec2i of a vec2f saturates per component through the same IR form" {
+	const m = intProgram();
+	assert glslLinked(intFs, intVs).includes(
+		"ivec2(mix(vec2(0.0), clamp(cell, vec2(-2147483648.0), vec2(2147483520.0)), " +
+		"equal(cell, cell)))");
+	for (const target of [ShaderTarget.Wgsl, ShaderTarget.Hlsl5, ShaderTarget.Msl]) {
+		const text = printedFor(m, 1, target, "int");
+		assert text.includes("2147483520") && text.includes("cell");
 	}
 }
