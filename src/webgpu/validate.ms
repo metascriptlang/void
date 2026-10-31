@@ -315,6 +315,18 @@ export function markIndexSet(buffer: uint32, format: GPUIndexFormat, offset: int
 	boundFacts.stale |= ASPECT_INDEX;
 }
 
+// The pass already holds this live group with these offsets, so a set would change nothing
+// (Dawn BindGroupTracker::OnSetBindGroup, Bevy TrackedRenderPass::set_bind_group).
+export function bindGroupRedundant(index: int32, bindGroup: uint32, dynamicOffsets: Readonly<Span<uint32>>): boolean {
+	if (bindGroup == 0 || boundFacts.bindGroups[index] != bindGroup || !bindGroupRecords.alive(bindGroup)) { return false; }
+	if (dynamicOffsets.length == 0) { return true; }
+	if (index != GPU_UNIFORM_GROUP) { return false; }
+	for (let i = 0; i < (dynamicOffsets.length as int32); i++) {
+		if (boundFacts.dynamicOffsets[i] != dynamicOffsets[i]) { return false; }
+	}
+	return true;
+}
+
 export function markBindGroupSet(index: int32, bindGroup: uint32, dynamicOffsets: Readonly<Span<uint32>>): void {
 	if (boundFacts.bindGroups[index] != bindGroup) {
 		boundFacts.bindGroups[index] = bindGroup;
