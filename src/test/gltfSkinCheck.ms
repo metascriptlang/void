@@ -317,7 +317,8 @@ test "imported skin Scene rolls back missing bindings and keeps independent worl
 			setLocal(scene, actorA.value.nodes[2], Transform3D.fromTranslation(vec3(2, 0, 0)));
 			assert geometryA.pose.revision == 1 && geometryA.pose.blocks[0][3] == accepted;
 			assert refreshChecked(scene, items).ok;
-			assert geometryA.pose.revision == 2 && geometryB.pose.revision == 2;
+			assert geometryA.pose.revision == 2;
+			assert geometryB.pose.revision == 1;
 			assert approx(geometryA.mesh.vertices[0], 4.0);
 			assert approx(geometryB.mesh.vertices[0], 3.0);
 			assert (geometryA.mesh.wideIndices !== null) == index32;
