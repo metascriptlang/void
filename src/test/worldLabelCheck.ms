@@ -8,6 +8,7 @@ import {
 import { MeshData, MeshError, LIT_TEXTURED_VERTEX_STRIDE } from "../void3d/meshData";
 import {
 	LabelUv, labelKey, labelParams, facingRotation, labelQuad, localFor, grown, uvOfSubRect,
+	chainWorld,
 } from "../void3d/worldLabel";
 import { approx, sameLanes } from "./helpers";
 import { Rgba } from "../void3d/meshData";
@@ -18,6 +19,10 @@ import {
 	DrawContext, MaterialId, MaterialError, HandleError, addMaterial, releaseMaterial,
 	reserveBlock as reserveContextBlock, writeBlock as writeContextBlock, releaseBlock,
 } from "../void3d/draw";
+import {
+	Scene3D, NodeId3D, Transform3D, NodeFlag, addGroup, setLocal, syncWorld,
+} from "../void3d/scene";
+import { contextOf } from "./drawHelpers";
 import { MovingUnlitMaterialParams } from "../void3d/shader3d";
 import { UniformPool, UniformError, reserveBlock, writeBlock } from "../void3d/uniformPool";
 
@@ -220,4 +225,23 @@ test "a block whose material was refused is still the label's to release" {
 	assert !refused.ok && !context.uniforms.isOwned(block.block);
 	assert releaseBlock(context, block).ok;
 	assert context.uniforms.freeRanges() == 1 && context.uniforms.liveRanges() == 0;
+}
+
+test "a parent's world read along its chain is the synced one, and syncs nothing" {
+	const scene: Scene3D = Scene3D.create(contextOf(1, 1));
+	const outer: NodeId3D = addGroup(scene, scene.rootId(), {
+		position: vec3(-4.0, 0.5, 2.0), rotation: eulerQuat(-0.3, 1.1, 0.2),
+		scale: vec3(2.0, 2.0, 2.0),
+	});
+	const at: Transform3D = Transform3D.fromTranslation(vec3(1.0, 2.0, 3.0));
+	const inner: NodeId3D = addGroup(scene, outer, at);
+	const sibling: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const _first: int32 = syncWorld(scene);
+	setLocal(scene, outer, Transform3D.fromTranslation(vec3(7.0, 0.0, -1.0)));
+	setLocal(scene, sibling, Transform3D.fromTranslation(vec3(0.0, 9.0, 0.0)));
+	const chained: Mat4 = chainWorld(scene, inner.index);
+	assert scene.posChanged && scene.nodes[outer.index].flags.has(NodeFlag.PosChanged);
+	const _second: int32 = syncWorld(scene);
+	assert sameMatrix(chained, scene.nodes[inner.index].world);
+	assert chained.m41 == 8.0 && chained.m42 == 2.0 && chained.m43 == 2.0;
 }

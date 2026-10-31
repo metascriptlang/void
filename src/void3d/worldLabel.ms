@@ -23,7 +23,6 @@ import {
 import { UniformError, stopOnFailedWrite } from "./uniformPool";
 import {
 	Scene3D, Transform3D, NodeId3D, SceneError, NO_NODE_3D, addMeshNode, setLocal, remove,
-	syncWorld,
 } from "./scene";
 
 export const LABEL_PAD: int32 = 2;
@@ -328,6 +327,15 @@ function stopOnMirroredParent(): void {
 	unreachable;
 }
 
+// A node's world matrix from its own and its ancestors' local transforms, one step per level,
+// the way Object.syncPos reads a parent. syncWorld would walk every dirty sibling the labels
+// just marked, once for each label.
+export function chainWorld(scene: Scene3D, row: int32): Mat4 {
+	const local: Mat4 = scene.nodes[row].local.toMatrix();
+	const parent: int32 = scene.nodes[row].parent;
+	return parent == NO_NODE_3D ? local : local.multiplyAffine(chainWorld(scene, parent));
+}
+
 function place(this label: WorldLabel): void {
 	const scene: Scene3D = label.scene;
 	const row: int32 = scene.liveRow(label.node, "faceCamera");
@@ -336,8 +344,7 @@ function place(this label: WorldLabel): void {
 	const world: Mat4 = composeTransform(label.position, label.rotation, vec3(width, height, 1.0));
 	const parent: int32 = scene.nodes[row].parent;
 	if (parent == NO_NODE_3D) { stopOnMirroredParent(); }
-	const _synced: int32 = syncWorld(scene);
-	const parentWorld: Mat4 = scene.nodes[parent].world;
+	const parentWorld: Mat4 = chainWorld(scene, parent);
 	if (parentWorld.determinant3x3() < 0.0) { stopOnMirroredParent(); }
 	setLocal(scene, label.node, localFor(world, parentWorld));
 }
