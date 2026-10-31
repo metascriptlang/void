@@ -126,9 +126,10 @@ test "integer '|', '^', '<<', '>>' and '~' keep their bits, scalar and per compo
 		"void main() {\n" +
 		"    ivec2 at = ivec2(gl_GlobalInvocationID.xy);\n" +
 		"    int x = at.x;\n" +
-		"    int mixed = (((x | 4) ^ (x << 2)) ^ ((~x) >> 1)) ^ (x >> (uint(x & 7) & 31u));\n" +
+		"    int mixed = (((x | 4) ^ (x << 2)) ^ ((~x) >> 1)) ^ (x >> (uint(x & 7) & 31));\n" +
 		"    uvec2 u = uvec2(ivec2(x, 3));\n" +
-		"    uvec2 v = (u << (uvec2(1, 3) & 31u)) | ((u >> (u & 31u)) ^ (u & uvec2(6, 6)));\n" +
+		"    uvec2 v = (u << (uvec2(1, 3) & uvec2(31))) | " +
+			"((u >> (u & uvec2(31))) ^ (u & uvec2(6, 6)));\n" +
 		"    uint w = v.x ^ v.y;\n" +
 		"    imageStore(image, at, vec4(((float(mixed) * 2.0) + float(w))));\n" +
 		"}\n";
@@ -137,18 +138,24 @@ test "integer '|', '^', '<<', '>>' and '~' keep their bits, scalar and per compo
 test "every target spells the bit operators, a shift amount as a masked uint" {
 	const m = computeOf(glslComputeIr(bitsCs, [32, 1, 1]));
 	const wgsl = printedFor(m, ShaderTarget.Wgsl, "bits");
-	assert wgsl.includes("((((x | 4i) ^ (x << 2u)) ^ ((~x) >> 1u)) ^ (x >> u32((x & 7i))))");
-	assert wgsl.includes("((u << vec2u(1u, 3u)) | ((u >> u) ^ (u & vec2u(6u, 6u))))");
+	assert wgsl.includes(
+		"((((x | 4i) ^ (x << 2u)) ^ ((~x) >> 1u)) ^ (x >> (u32((x & 7i)) & 31u)))");
+	assert wgsl.includes(
+		"((u << (vec2u(1u, 3u) & vec2u(31u))) | ((u >> (u & vec2u(31u))) ^ (u & vec2u(6u, 6u))))");
 	const hlsl = printedFor(m, ShaderTarget.Hlsl5, "bits");
-	assert hlsl.includes("(((x | 4) ^ (x << 2u)) ^ ((~x) >> 1u)) ^ (x >> uint(x & 7))");
-	assert hlsl.includes("(u << uint2(1u, 3u)) | ((u >> u) ^ (u & uint2(6u, 6u)))");
+	assert hlsl.includes(
+		"(((x | 4) ^ (x << 2u)) ^ ((~x) >> 1u)) ^ (x >> (uint(x & 7) & 31u))");
+	assert hlsl.includes(
+		"(u << (uint2(1u, 3u) & ((uint2)31u))) | ((u >> (u & ((uint2)31u))) ^ (u & uint2(6u, 6u)))");
 	const gl = printedFor(m, ShaderTarget.Glsl430, "bits");
 	assert gl.includes("(((x | 4) ^ (x << 2u)) ^ ((~x) >> 1u)) ^ (x >> (uint(x & 7) & 31u))");
-	assert gl.includes("(u << (uvec2(1u, 3u) & 31u)) | ((u >> (u & 31u)) ^ (u & uvec2(6u, 6u)))");
+	assert gl.includes(
+		"(u << (uvec2(1u, 3u) & uvec2(31u))) | ((u >> (u & uvec2(31u))) ^ (u & uvec2(6u, 6u)))");
 	const msl = printedFor(m, ShaderTarget.Msl, "bits");
 	assert msl.includes("((((x | 4) ^ (x << 2u)) ^ ((~x) >> 1u)) ^ (x >> (uint((x & 7)) & 31u)))");
 	assert msl.includes(
-		"((u << (uint2(1u, 3u) & 31u)) | ((u >> (u & 31u)) ^ (u & uint2(6u, 6u))))");
+		"((u << (uint2(1u, 3u) & uint2(31u))) | ((u >> (u & uint2(31u))) ^ " +
+		"(u & uint2(6u, 6u))))");
 }
 
 export function barrierCs(input: OpsInput, b: OpsBindings): void {
