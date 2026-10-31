@@ -863,10 +863,10 @@ export function bindMorphPose(
 export function sampleMorphPose(
 	this pose: GltfMorphPose, seconds: float64,
 ): Result<int32, GltfMorphPoseError> {
-	for (const track of pose.tracks) {
-		const morph = pose.morphs[track.sourceNode];
+	for (let i = 0; i < pose.tracks.length; i++) {
+		const morph = pose.morphs[pose.tracks[i].sourceNode];
 		if (morph === null) { return Result.err(GltfMorphPoseError.Target); }
-		const weights = track.curve.sampleWeights(seconds);
+		const weights = pose.tracks[i].curve.sampleWeights(seconds);
 		if (!weights.ok) { return Result.err(GltfMorphPoseError.Curve); }
 		if (!setMorphWeights(morph, weights.value).ok) {
 			return Result.err(GltfMorphPoseError.Publish);

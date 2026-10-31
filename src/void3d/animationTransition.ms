@@ -279,12 +279,11 @@ export function sampleSide(
 		side.child.samples[i].present = noComponents();
 	}
 	for (let i = 0; i < side.clip.tracks.length; i++) {
-		const track = side.clip.tracks[i];
 		const at: int32 = side.trackTarget[i];
-		const sampled = track.curve.sample(seconds);
+		const sampled = side.clip.tracks[i].curve.sample(seconds);
 		if (!sampled.ok) { return Result.err(AnimationTransitionError.Curve); }
 		const value = sampled.value;
-		match (track.curve.path) {
+		match (side.clip.tracks[i].curve.path) {
 			GltfCurvePath.Translation => {
 				side.child.samples[at].value.position = vec3(value.x, value.y, value.z);
 				side.child.samples[at].present =

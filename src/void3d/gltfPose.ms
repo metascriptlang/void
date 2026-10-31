@@ -81,10 +81,9 @@ export function stageTrsChild(
 	if (!captured.ok) { return Result.err(GltfPoseError.Compose); }
 	let resolved: Vec<AnimationTrsSample> = captured.value.output;
 	for (let i = 0; i < pose.tracks.length; i++) {
-		const track = pose.tracks[i];
 		let targetIndex: int32 = -1;
 		for (let target = 0; target < targets.length; target++) {
-			if (targets[target].sourceNode == track.sourceNode) {
+			if (targets[target].sourceNode == pose.tracks[i].sourceNode) {
 				targetIndex = target as int32;
 				break;
 			}
@@ -93,9 +92,9 @@ export function stageTrsChild(
 		if (duplicatesEarlier(pose.tracks, i as int32)) {
 			return Result.err(GltfPoseError.DuplicateTrack);
 		}
-		const sampled = track.curve.sample(seconds);
+		const sampled = pose.tracks[i].curve.sample(seconds);
 		if (!sampled.ok) { return Result.err(GltfPoseError.Curve); }
-		const path = track.curve.path;
+		const path = pose.tracks[i].curve.path;
 		resolved[targetIndex].value = resolved[targetIndex].value.withSample(path, sampled.value);
 		resolved[targetIndex].present =
 			resolved[targetIndex].present.incl(animatedComponent(path));
@@ -197,17 +196,18 @@ export function samplePose(this pose: GltfPose, seconds: float64): Result<int32,
 		return Result.err(GltfPoseError.Shape);
 	}
 	for (let node = 0; node < pose.nodes.length; node++) { pose.touched[node] = false; }
-	for (const track of pose.tracks) {
-		const source: int32 = track.sourceNode;
+	for (let i = 0; i < pose.tracks.length; i++) {
+		const source: int32 = pose.tracks[i].sourceNode;
 		if (source < 0 || source >= pose.nodes.length ||
 			!pose.scene.isLive(pose.nodes[source])) { return Result.err(GltfPoseError.Target); }
 		pose.pending[source] = pose.scene.nodes[pose.nodes[source].index].local;
 	}
-	for (const track of pose.tracks) {
-		const sampled = track.curve.sample(seconds);
+	for (let i = 0; i < pose.tracks.length; i++) {
+		const sampled = pose.tracks[i].curve.sample(seconds);
 		if (!sampled.ok) { return Result.err(GltfPoseError.Curve); }
-		const source: int32 = track.sourceNode;
-		pose.pending[source] = pose.pending[source].withSample(track.curve.path, sampled.value);
+		const source: int32 = pose.tracks[i].sourceNode;
+		pose.pending[source] =
+			pose.pending[source].withSample(pose.tracks[i].curve.path, sampled.value);
 		pose.touched[source] = true;
 	}
 	let written: int32 = 0;
