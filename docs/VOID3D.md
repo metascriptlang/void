@@ -2596,9 +2596,11 @@ shift in C is undefined.
 
 **Not inherited, as in three.js.** `WebGLRenderer.projectObject` (`:1873-1877`) returns for
 `object.visible === false`, which drops the subtree, but a layer mismatch only skips that object:
-the `children` loop at `:1981` runs either way. `collect` does the same: `Visible` and `Culled`
-still end a subtree, a node whose own layers miss the camera's emits no item and its children
-are still walked, each against its own mask. Each node tests only its own mask. A group's layer
+the `children` loop at `:1981` runs either way. `collect` does the same: `Visible` ends a subtree,
+while `Culled` hides only the node's own item or light and its children are still walked, as
+Heaps' `emitRec` does (`Object.hx:871, 891-897`); `setInheritCulled` makes `Culled` end the
+subtree too, as Heaps' `inheritCulled` does. A node whose own layers miss the camera's emits no
+item and its children are still walked, each against its own mask. Each node tests only its own mask. A group's layer
 therefore neither hides nor shows what is under it.
 
 **The camera's mask is tested where the draw list is collected.** `scene.ms` `fillDrawList`

@@ -89,6 +89,7 @@ export enum NodeFlag {
 	Culled,
 	Pickable,
 	TreeChanged,
+	InheritCulled,
 }
 
 export const NO_NODE_3D: int32 = -1;
@@ -337,6 +338,15 @@ function freshNode(kind: NodeKind, parent: int32, payload: int32, local: Transfo
 
 export function isVisible(this node: Object3D): boolean {
 	return node.flags.has(NodeFlag.Visible) && !node.flags.has(NodeFlag.Culled);
+}
+
+export function endsSubtree(this node: Object3D): boolean {
+	return !node.flags.has(NodeFlag.Visible) ||
+		(node.flags.has(NodeFlag.Culled) && node.flags.has(NodeFlag.InheritCulled));
+}
+
+export function emitsSelf(this node: Object3D): boolean {
+	return !node.flags.has(NodeFlag.Culled);
 }
 
 export function nodeCount(this scene: Scene3D): int32 {
@@ -1207,12 +1217,23 @@ export function setVisible(scene: Scene3D, id: NodeId3D, visible: boolean): void
 }
 
 // Heaps' `culled`, written through the scene so the draw list hears of it, like Bevy's change
-// detection: rewriting the value a node already holds leaves the list's shape alone.
+// detection: rewriting the value a node already holds leaves the list's shape alone. A culled
+// node emits nothing itself and its children are still walked, unless `setInheritCulled`.
 export function setCulled(scene: Scene3D, id: NodeId3D, culled: boolean): void {
 	const row: int32 = scene.liveRow(id, "setCulled");
 	const flags: BitSet<NodeFlag> = scene.nodes[row].flags;
 	if (flags.has(NodeFlag.Culled) == culled) { return; }
 	scene.nodes[row].flags = culled ? flags.incl(NodeFlag.Culled) : flags.excl(NodeFlag.Culled);
+	markStructureChanged(scene);
+}
+
+export function setInheritCulled(scene: Scene3D, id: NodeId3D, inherit: boolean): void {
+	const row: int32 = scene.liveRow(id, "setInheritCulled");
+	const flags: BitSet<NodeFlag> = scene.nodes[row].flags;
+	if (flags.has(NodeFlag.InheritCulled) == inherit) { return; }
+	scene.nodes[row].flags = inherit ?
+		flags.incl(NodeFlag.InheritCulled) :
+		flags.excl(NodeFlag.InheritCulled);
 	markStructureChanged(scene);
 }
 
@@ -1549,8 +1570,9 @@ function fillDrawList(
 		top = top - 1;
 		const index: int32 = scene.stack[top];
 		let source: int32 = scene.stackSources[top];
-		if (!scene.nodes[index].isVisible()) { continue; }
-		const shown: boolean = layersTest(scene.nodes[index].layers, layers);
+		if (scene.nodes[index].endsSubtree()) { continue; }
+		const shown: boolean = scene.nodes[index].emitsSelf() &&
+			layersTest(scene.nodes[index].layers, layers);
 		if (shown && scene.nodes[index].kind == NodeKind.Mesh) {
 			const payload: int32 = scene.nodes[index].payload;
 			const at: int32 = items.length as int32;
@@ -1760,8 +1782,10 @@ function keepLightNodes(scene: Scene3D): void {
 	while (top > 0) {
 		top = top - 1;
 		const index: int32 = scene.stack[top];
-		if (!scene.nodes[index].isVisible()) { continue; }
-		if (scene.nodes[index].kind == NodeKind.Light) { scene.lightNodes.push(index); }
+		if (scene.nodes[index].endsSubtree()) { continue; }
+		if (scene.nodes[index].kind == NodeKind.Light && scene.nodes[index].emitsSelf()) {
+			scene.lightNodes.push(index);
+		}
 		const count: int32 = scene.nodes[index].children.length as int32;
 		for (let i = count - 1; i >= 0; i--) {
 			scene.stack[top] = scene.nodes[index].children[i];

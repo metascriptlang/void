@@ -29,6 +29,7 @@ import {
 	setAmbient,
 	setVisible,
 	setCulled,
+	setInheritCulled,
 	setName,
 	nameOf,
 	findByName,
@@ -406,6 +407,62 @@ test "culling marks the list for a rebuild only when the flag changes" {
 	assert !scene.structureChanged;
 }
 
+function childMesh(scene: Scene3D, context: DrawContext, parent: NodeId3D, mesh: int32): NodeId3D {
+	const added: Result<NodeId3D, SceneError> = addMeshNode(
+		scene, parent, Transform3D.identity(), context.meshAt(mesh), context.materialAt(0),
+	);
+	return added.ok ? added.value : NO_NODE_ID;
+}
+
+test "a culled mesh hides only itself, its child mesh is still drawn" {
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const parent: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
+	const _child: NodeId3D = childMesh(scene, context, parent, 22);
+	let items: Vec<DrawItem> = [];
+	assert refresh(scene, items) == 2;
+	setCulled(scene, parent, true);
+	assert refresh(scene, items) == 1;
+	assert items[0].mesh.index == 22;
+}
+
+test "a culled mesh with inheritCulled ends its subtree, and clearing it brings the child back" {
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const parent: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
+	const _child: NodeId3D = childMesh(scene, context, parent, 22);
+	let items: Vec<DrawItem> = [];
+	setInheritCulled(scene, parent, true);
+	setCulled(scene, parent, true);
+	assert refresh(scene, items) == 0;
+	setInheritCulled(scene, parent, false);
+	assert refresh(scene, items) == 1;
+	assert items[0].mesh.index == 22;
+}
+
+test "inheritCulled does nothing to a node that is not culled, and changes only when written" {
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const parent: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
+	const _child: NodeId3D = childMesh(scene, context, parent, 22);
+	let items: Vec<DrawItem> = [];
+	setInheritCulled(scene, parent, true);
+	assert refresh(scene, items) == 2;
+	setInheritCulled(scene, parent, true);
+	assert !scene.structureChanged;
+}
+
+test "a culled mesh still ends its subtree when it is invisible" {
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const parent: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
+	const _child: NodeId3D = childMesh(scene, context, parent, 22);
+	let items: Vec<DrawItem> = [];
+	setCulled(scene, parent, true);
+	setVisible(scene, parent, false);
+	assert refresh(scene, items) == 0;
+}
+
 test "a mesh node can swap which mesh it draws without the structure changing" {
 	const context: DrawContext = contextOf(64, 1);
 	const scene: Scene3D = Scene3D.create(context);
@@ -774,6 +831,20 @@ test "a light culled or added after a collect is seen by the next collect" {
 	assert collectLights(scene, block).ok && holdsRecords(block, 1);
 	setCulled(scene, first, false);
 	assert collectLights(scene, block).ok && holdsRecords(block, 2);
+}
+
+test "a culled mesh leaves its child light lit, and inheritCulled puts the light out" {
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const parent: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
+	const _light: NodeId3D = addLightNode(scene, parent, Transform3D.identity(), {
+		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
+	});
+	let block: Vec<float32> = blockOf();
+	setCulled(scene, parent, true);
+	assert collectLights(scene, block).ok && holdsRecords(block, 1);
+	setInheritCulled(scene, parent, true);
+	assert collectLights(scene, block).ok && holdsRecords(block, 0);
 }
 
 test "ambient comes from the scene and zeroed slots mean unlit" {
