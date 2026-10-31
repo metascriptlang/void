@@ -1298,8 +1298,7 @@ export function createShaderModule(
 		uniformLayout: NONE,
 		resourceLayout: NONE,
 	};
-	for (let i = 0; i < descriptor.bindings.length; i++) {
-		const source = descriptor.bindings[i];
+	for (const source of descriptor.bindings) {
 		const kindName = source.kind;
 		if (kindName == null) {
 			continue;
