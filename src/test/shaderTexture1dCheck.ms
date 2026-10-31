@@ -3,7 +3,7 @@
 // pinned as GLSL and printed for every target into out/<target>Probe/ for scripts/validateWgsl.sh,
 // scripts/validateHlsl.sh and spirv-val.
 
-import { mkdir, writeFile } from "std/fs";
+import { mkdir, writeFile, writeFileBytes } from "std/fs";
 import { Wrap } from "../gpu/state";
 import {
 	computeModule,
@@ -254,7 +254,7 @@ test "SPIR-V declares a Dim1D image under the 1D capabilities" {
 	assert capabilities.includes(44) && !capabilities.includes(43), capabilities.join(",");
 	const _out = mkdir("out");
 	const _folder = mkdir("out/spirvProbe");
-	const _written = writeFile(probePath("strip", ShaderTarget.Spirv, "Cs"),
+	const _written = writeFileBytes(probePath("strip", ShaderTarget.Spirv, "Cs"),
 		Buffer.fromString(wordsBase64(words.value), "base64"));
 }
 

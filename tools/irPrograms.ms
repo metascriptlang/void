@@ -3,7 +3,7 @@
 
 import { Buffer } from "std/core/buffer";
 import { sha256 } from "std/crypto/sha256";
-import { mkdir, readFile, writeFile } from "std/fs";
+import { mkdir, readFile, readFileBytes, writeFile, writeFileBytes } from "std/fs";
 import { argv, exit } from "std/process";
 import { glslIr, glslLinkedIr } from "../src/shader/emit";
 import {
@@ -314,6 +314,11 @@ function keep(path: string, text: string): void {
 	if (!writeFile(path, text).ok) { fail("cannot write " + path); }
 }
 
+function keepStage(path: string, language: string, words: uint32[], code: string): void {
+	if (language != "spirv") { keep(path, code); return; }
+	if (!writeFileBytes(path, spirvFile(words)).ok) { fail("cannot write " + path); }
+}
+
 class Agreement {
 	layoutSlots: Map<string, string> = new Map();
 	layoutOwner: Map<string, string> = new Map();
@@ -370,7 +375,7 @@ class Dxbc {
 function blobReference(constants: Map<string, string>, prefix: string, key: string,
 	path: string): string {
 	if (!constants.has(key)) {
-		const blob = readFile(path);
+		const blob = readFileBytes(path);
 		if (!blob.ok) { fail("cannot read " + path); }
 		constants.set(key, blob.value.toBase64());
 	}
@@ -471,7 +476,7 @@ function blobPrefix(language: string): string {
 	fail("no blob prefix for " + language);
 }
 
-function spirvFile(words: uint32[]): string {
+function spirvFile(words: uint32[]): Buffer {
 	return Buffer.fromString(wordsBase64(words), "base64");
 }
 
@@ -513,10 +518,8 @@ function moduleText(
 				fail(program.name + " " + language + ": " + printed.refusal);
 			}
 			const files = stageFiles(language);
-			keep("out/irPrograms/" + program.name + files[0],
-				language == "spirv" ? spirvFile(printed.vertexWords) : printed.vertexCode);
-			keep("out/irPrograms/" + program.name + files[1],
-				language == "spirv" ? spirvFile(printed.fragmentWords) : printed.fragmentCode);
+			keepStage("out/irPrograms/" + program.name + files[0], language, printed.vertexWords, printed.vertexCode);
+			keepStage("out/irPrograms/" + program.name + files[1], language, printed.fragmentWords, printed.fragmentCode);
 			counts.printed += 2;
 			row.push(printed);
 		}

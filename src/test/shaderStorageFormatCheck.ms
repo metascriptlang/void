@@ -6,7 +6,7 @@
 // and is printed for every target into out/<target>Probe/ for scripts/validateWgsl.sh,
 // scripts/validateHlsl.sh and spirv-val.
 
-import { mkdir, writeFile } from "std/fs";
+import { mkdir, writeFile, writeFileBytes } from "std/fs";
 import { Buffer } from "std/core/buffer";
 import { computeModule, stageSource, stageWords, wordsBase64 } from "../shader/descriptor";
 import { glslCompute, glslComputeIr } from "../shader/emit";
@@ -167,7 +167,7 @@ function spirvOf(m: ShaderModule, name: string): uint32[][] {
 	const words = printed.value;
 	const _out = mkdir("out");
 	const _folder = mkdir("out/spirvProbe");
-	const _written = writeFile(probePath(ShaderTarget.Spirv, name),
+	const _written = writeFileBytes(probePath(ShaderTarget.Spirv, name),
 		Buffer.fromString(wordsBase64(words), "base64"));
 	let out: uint32[][] = [];
 	let at = 5;
