@@ -31,25 +31,11 @@ import { packChannel } from "./instance";
 import { floatBits } from "./floatBits";
 import { copyFloatWords } from "./floatWords";
 import { zeroFloats, zeroWords } from "./zeros";
+import { Mat4x4f, Vec4f, mat4x4f, vec4f } from "../shader/std";
+import { uniformSize, writeUniform } from "../shader/uniform";
 import {
-	UB_void2d_params, UB_void2d_fx, UB_sprite_params, UB_ui_params, UB_ui_fx, UB_blur_params,
-	VIEW_tex, VIEW_spriteTex, VIEW_uiTex, VIEW_srcTex, SMP_smp, SMP_spriteSmp, SMP_uiSmp, SMP_srcSmp,
-	void2d_params_FLOATS, void2d_params_viewport, void2d_params_model0, void2d_params_model1,
-	void2d_params_globalColor, void2d_params_clipU, void2d_params_clipV, void2d_params_clipRoundU,
-	void2d_params_clipRoundV, void2d_params_clipRadii, void2d_params_shift,
-	void2d_fx_FLOATS, void2d_fx_colorMatrix, void2d_fx_colorAdd, void2d_fx_colorKey,
-	void2d_fx_gradientMeta, void2d_fx_gradientParams, void2d_fx_gradientColor0,
-	void2d_fx_gradientColor1, void2d_fx_gradientColor2, void2d_fx_gammaRatios,
-	void2d_fx_textParams, void2d_fx_sourceParams,
-	sprite_params_FLOATS, sprite_params_viewport, sprite_params_clipU, sprite_params_clipV,
-	sprite_params_clipRoundU, sprite_params_clipRoundV, sprite_params_clipRadii,
-	sprite_params_shift,
-	ui_params_FLOATS, ui_params_viewport, ui_params_clipU, ui_params_clipV, ui_params_clipRoundU,
-	ui_params_clipRoundV, ui_params_clipRadii, ui_params_shift,
-	ui_fx_FLOATS, ui_fx_gammaRatios, ui_fx_textParams, ui_fx_colorMatrix, ui_fx_colorAdd,
-	ui_fx_colorKey, ui_fx_effectParams,
-	blur_params_FLOATS, blur_params_dir,
-} from "./shader2dSlots";
+	BatchEffect, BatchParams, BlurParams, SpriteParams, UiEffect, UiParams,
+} from "./shader2d";
 import {
 	MAX_GLYPH_PAGES, PAGE_COVERAGE, PAGE_SDF, PAGE_RGBA, PAGE_MASK, state,
 } from "./glyph/state";
@@ -207,17 +193,30 @@ let lastPipeline: uint32 = 0;
 let paramsValid: boolean = false;
 let fxValid: boolean = false;
 let scissorApplied: boolean = false;
-const vertexParams: float32[] = zeroFloats(void2d_params_FLOATS);
-const lastVertexParams: float32[] = zeroFloats(void2d_params_FLOATS);
-const vertexFx: float32[] = zeroFloats(void2d_fx_FLOATS);
-const lastVertexFx: float32[] = zeroFloats(void2d_fx_FLOATS);
-const spriteParams: float32[] = zeroFloats(sprite_params_FLOATS);
-const uiParams: float32[] = zeroFloats(ui_params_FLOATS);
-const uiFx: float32[] = zeroFloats(ui_fx_FLOATS);
-const lastSpriteParams: float32[] = zeroFloats(sprite_params_FLOATS);
-const lastUiParams: float32[] = zeroFloats(ui_params_FLOATS);
-const lastUiFx: float32[] = zeroFloats(ui_fx_FLOATS);
-const blurParams: float32[] = zeroFloats(blur_params_FLOATS);
+// The @binding slots shader2d.ms gives each program's blocks, views and samplers.
+const PARAMS_SLOT: int32 = 0;
+const EFFECT_SLOT: int32 = 1;
+const VIEW_SLOT: int32 = 0;
+const SAMPLER_SLOT: int32 = 0;
+
+const BATCH_PARAMS_FLOATS: int32 = uniformSize<BatchParams>() / 4;
+const BATCH_EFFECT_FLOATS: int32 = uniformSize<BatchEffect>() / 4;
+const SPRITE_PARAMS_FLOATS: int32 = uniformSize<SpriteParams>() / 4;
+const UI_PARAMS_FLOATS: int32 = uniformSize<UiParams>() / 4;
+const UI_EFFECT_FLOATS: int32 = uniformSize<UiEffect>() / 4;
+const BLUR_PARAMS_FLOATS: int32 = uniformSize<BlurParams>() / 4;
+
+const vertexParams: float32[] = zeroFloats(BATCH_PARAMS_FLOATS);
+const lastVertexParams: float32[] = zeroFloats(BATCH_PARAMS_FLOATS);
+const vertexFx: float32[] = zeroFloats(BATCH_EFFECT_FLOATS);
+const lastVertexFx: float32[] = zeroFloats(BATCH_EFFECT_FLOATS);
+const spriteParams: float32[] = zeroFloats(SPRITE_PARAMS_FLOATS);
+const uiParams: float32[] = zeroFloats(UI_PARAMS_FLOATS);
+const uiFx: float32[] = zeroFloats(UI_EFFECT_FLOATS);
+const lastSpriteParams: float32[] = zeroFloats(SPRITE_PARAMS_FLOATS);
+const lastUiParams: float32[] = zeroFloats(UI_PARAMS_FLOATS);
+const lastUiFx: float32[] = zeroFloats(UI_EFFECT_FLOATS);
+const blurParams: float32[] = zeroFloats(BLUR_PARAMS_FLOATS);
 const bindWords: uint32[] = [];
 const bindOffsets: int32[] = [0, 0];
 
@@ -671,17 +670,12 @@ function applyBindings(
 	doorApplyBindings(bindWords[0..DOOR_BINDING_LENGTH], bindOffsets[0..2]);
 }
 
-function clearFloats(values: float32[]): void {
-	for (let i: int32 = 0; i < (values.length as int32); i++) { values[i] = 0.0; }
-}
-
 function void2dBlur(srcView: uint32, dirX: float32, dirY: float32, blend: int32): void {
 	doorApplyPipeline(pipelineAt(PROGRAM_BLUR, 1, blend));
-	applyBindings(fsQuad, 0, 0, 0, VIEW_srcTex, srcView, SMP_srcSmp, samplers[2]);
-	clearFloats(blurParams);
-	blurParams[blur_params_dir] = dirX;
-	blurParams[blur_params_dir + 1] = dirY;
-	doorApplyUniformsOf(UB_blur_params, blurParams[0..blur_params_FLOATS]);
+	applyBindings(fsQuad, 0, 0, 0, VIEW_SLOT, srcView, SAMPLER_SLOT, samplers[2]);
+	const params: BlurParams = { dir: vec4f(dirX, dirY, 0.0, 0.0) };
+	writeUniform<BlurParams>(blurParams, 0, params);
+	doorApplyUniformsOf(PARAMS_SLOT, blurParams[0..BLUR_PARAMS_FLOATS]);
 	doorDraw(0, 6, 1);
 }
 
@@ -1075,20 +1069,28 @@ export function void2dReplay(
 	);
 }
 
-function copyClipParams(
-	block: float32[], clipU: int32, clipV: int32, roundU: int32, roundV: int32, radii: int32,
-	cmd: Readonly<Span<float32>>,
-): void {
-	for (let i: int32 = 0; i < 4; i++) {
-		block[clipU + i] = cmd[CMD_CLIP_U_X + i];
-		block[clipV + i] = cmd[CMD_CLIP_U_X + 4 + i];
-	}
-	const scale: float32 = deviceScaleOf(cmd, dpiScale);
-	for (let i: int32 = 0; i < 4; i++) {
-		block[roundU + i] = cmd[CMD_CLIP_ROUND_U + i] * scale;
-		block[roundV + i] = cmd[CMD_CLIP_ROUND_U + 4 + i] * scale;
-		block[radii + i] = cmd[CMD_CLIP_ROUND_U + 8 + i] * scale;
-	}
+function flag(on: boolean): float32 {
+	return on ? 1.0 : 0.0;
+}
+
+function vec4At(values: Readonly<Span<float32>>, at: int32): Vec4f {
+	return vec4f(values[at], values[at + 1], values[at + 2], values[at + 3]);
+}
+
+function scaledVec4At(values: Readonly<Span<float32>>, at: int32, scale: float32): Vec4f {
+	return vec4f(
+		values[at] * scale, values[at + 1] * scale, values[at + 2] * scale, values[at + 3] * scale,
+	);
+}
+
+function matrixAt(values: Readonly<Span<float32>>, at: int32): Mat4x4f {
+	return mat4x4f(
+		vec4At(values, at), vec4At(values, at + 4), vec4At(values, at + 8), vec4At(values, at + 12),
+	);
+}
+
+function shiftOf(scopes: Readonly<Span<float32>>, scope: int32): Vec4f {
+	return scope >= 0 ? vec4f(scopes[scope], scopes[scope + 1], 0.0, 0.0) : vec4f(0.0);
 }
 
 function pipelineChanged(pip: uint32): void {
@@ -1111,28 +1113,28 @@ function drawSpriteRun(
 	pipelineChanged(pipelineAt(PROGRAM_SPRITE, rt ? 1 : 0, blend));
 	applyBindings(
 		unitQuad, srcSprite, 0, srcSpriteBase + field(cmd, CMD_INSTANCE_OFFSET) * SPRITE_STRIDE,
-		VIEW_spriteTex, view, SMP_spriteSmp, samplers[samplerOf(cmd)],
+		VIEW_SLOT, view, SAMPLER_SLOT, samplers[samplerOf(cmd)],
 	);
 	if (!scissorApplied) {
 		applyScissor(cmd, scopes, scopeCount, fbW, fbH);
 		scissorApplied = true;
 	}
-	clearFloats(spriteParams);
-	spriteParams[sprite_params_viewport] = fbW;
-	spriteParams[sprite_params_viewport + 1] = fbH;
-	spriteParams[sprite_params_viewport + 2] = (sampledTarget(view) && !originTopLeft) ? 1.0 : 0.0;
-	spriteParams[sprite_params_viewport + 3] = premultipliedSource(cmd) ? 1.0 : 0.0;
-	const scope: int32 = scopeAt(cmd, scopeCount, scopes.length > 0);
-	if (scope >= 0) {
-		spriteParams[sprite_params_shift] = scopes[scope];
-		spriteParams[sprite_params_shift + 1] = scopes[scope + 1];
-	}
-	copyClipParams(
-		spriteParams, sprite_params_clipU, sprite_params_clipV, sprite_params_clipRoundU,
-		sprite_params_clipRoundV, sprite_params_clipRadii, cmd,
-	);
+	const scale: float32 = deviceScaleOf(cmd, dpiScale);
+	const params: SpriteParams = {
+		viewport: vec4f(
+			fbW, fbH, flag(sampledTarget(view) && !originTopLeft),
+			flag(premultipliedSource(cmd)),
+		),
+		clipU: vec4At(cmd, CMD_CLIP_U_X),
+		clipV: vec4At(cmd, CMD_CLIP_U_X + 4),
+		clipRoundU: scaledVec4At(cmd, CMD_CLIP_ROUND_U, scale),
+		clipRoundV: scaledVec4At(cmd, CMD_CLIP_ROUND_U + 4, scale),
+		clipRadii: scaledVec4At(cmd, CMD_CLIP_ROUND_U + 8, scale),
+		shift: shiftOf(scopes, scopeAt(cmd, scopeCount, scopes.length > 0)),
+	};
+	writeUniform<SpriteParams>(spriteParams, 0, params);
 	if (!paramsValid || !sameFloats(spriteParams, lastSpriteParams)) {
-		doorApplyUniformsOf(UB_sprite_params, spriteParams[0..sprite_params_FLOATS]);
+		doorApplyUniformsOf(PARAMS_SLOT, spriteParams[0..SPRITE_PARAMS_FLOATS]);
 		copyFloats(lastSpriteParams, spriteParams);
 		paramsValid = true;
 	}
@@ -1154,46 +1156,43 @@ function drawUiRun(
 	pipelineChanged(pipelineAt(PROGRAM_UI, rt ? 1 : 0, blend));
 	applyBindings(
 		unitQuad, srcUi, 0, srcUiBase + field(cmd, CMD_INSTANCE_OFFSET) * UI_STRIDE,
-		VIEW_uiTex, view, SMP_uiSmp, samplers[samplerOf(cmd)],
+		VIEW_SLOT, view, SAMPLER_SLOT, samplers[samplerOf(cmd)],
 	);
 	if (!scissorApplied) {
 		applyScissor(cmd, scopes, scopeCount, fbW, fbH);
 		scissorApplied = true;
 	}
-	clearFloats(uiParams);
-	uiParams[ui_params_viewport] = fbW;
-	uiParams[ui_params_viewport + 1] = fbH;
-	uiParams[ui_params_viewport + 2] = (sampledTarget(view) && !originTopLeft) ? 1.0 : 0.0;
-	uiParams[ui_params_viewport + 3] = deviceScaleOf(cmd, dpiScale);
-	const scope: int32 = scopeAt(cmd, scopeCount, scopes.length > 0);
-	if (scope >= 0) {
-		uiParams[ui_params_shift] = scopes[scope];
-		uiParams[ui_params_shift + 1] = scopes[scope + 1];
-	}
-	copyClipParams(
-		uiParams, ui_params_clipU, ui_params_clipV, ui_params_clipRoundU, ui_params_clipRoundV,
-		ui_params_clipRadii, cmd,
-	);
+	const scale: float32 = deviceScaleOf(cmd, dpiScale);
+	const params: UiParams = {
+		viewport: vec4f(fbW, fbH, flag(sampledTarget(view) && !originTopLeft), scale),
+		clipU: vec4At(cmd, CMD_CLIP_U_X),
+		clipV: vec4At(cmd, CMD_CLIP_U_X + 4),
+		clipRoundU: scaledVec4At(cmd, CMD_CLIP_ROUND_U, scale),
+		clipRoundV: scaledVec4At(cmd, CMD_CLIP_ROUND_U + 4, scale),
+		clipRadii: scaledVec4At(cmd, CMD_CLIP_ROUND_U + 8, scale),
+		shift: shiftOf(scopes, scopeAt(cmd, scopeCount, scopes.length > 0)),
+	};
+	writeUniform<UiParams>(uiParams, 0, params);
 	if (!paramsValid || !sameFloats(uiParams, lastUiParams)) {
-		doorApplyUniformsOf(UB_ui_params, uiParams[0..ui_params_FLOATS]);
+		doorApplyUniformsOf(PARAMS_SLOT, uiParams[0..UI_PARAMS_FLOATS]);
 		copyFloats(lastUiParams, uiParams);
 		paramsValid = true;
 	}
-	clearFloats(uiFx);
-	for (let i: int32 = 0; i < 4; i++) { uiFx[ui_fx_gammaRatios + i] = textGamma[i]; }
-	uiFx[ui_fx_textParams] = textContrast;
 	const effectIndex: int32 = field(cmd, CMD_EFFECT);
-	if (effectIndex >= 0 && effectIndex < effectCount) {
-		const at: int32 = effectIndex * EFFECT_FLOATS;
-		for (let i: int32 = 0; i < 16; i++) { uiFx[ui_fx_colorMatrix + i] = effects[at + i]; }
-		for (let i: int32 = 0; i < 4; i++) {
-			uiFx[ui_fx_colorAdd + i] = effects[at + 16 + i];
-			uiFx[ui_fx_colorKey + i] = effects[at + 20 + i];
-		}
-		uiFx[ui_fx_effectParams] = 1.0;
-	}
+	const hasFx: boolean = effectIndex >= 0 && effectIndex < effectCount;
+	const at: int32 = effectIndex * EFFECT_FLOATS;
+	const zero: Vec4f = vec4f(0.0);
+	const fx: UiEffect = {
+		gammaRatios: vec4At(textGamma[0..4], 0),
+		textParams: vec4f(textContrast, 0.0, 0.0, 0.0),
+		colorMatrix: hasFx ? matrixAt(effects, at) : mat4x4f(zero, zero, zero, zero),
+		colorAdd: hasFx ? vec4At(effects, at + 16) : zero,
+		colorKey: hasFx ? vec4At(effects, at + 20) : zero,
+		effectParams: vec4f(flag(hasFx), 0.0, 0.0, 0.0),
+	};
+	writeUniform<UiEffect>(uiFx, 0, fx);
 	if (!fxValid || !sameFloats(uiFx, lastUiFx)) {
-		doorApplyUniformsOf(UB_ui_fx, uiFx[0..ui_fx_FLOATS]);
+		doorApplyUniformsOf(EFFECT_SLOT, uiFx[0..UI_EFFECT_FLOATS]);
 		copyFloats(lastUiFx, uiFx);
 		fxValid = true;
 	}
@@ -1238,7 +1237,7 @@ function drawVertexRun(
 	pipelineChanged(pipelineAt(PROGRAM_VERTEX, rt ? 1 : 0, blend));
 	applyBindings(
 		srcVertex, 0, srcVertexBase + field(cmd, CMD_VERTEX_OFFSET) * VERTEX_FLOATS * 4, 0,
-		VIEW_tex, view, SMP_smp, samplers[samplerOf(cmd)],
+		VIEW_SLOT, view, SAMPLER_SLOT, samplers[samplerOf(cmd)],
 	);
 	if (!scissorApplied) {
 		applyScissor(cmd, scopes, scopeCount, fbW, fbH);
@@ -1252,58 +1251,52 @@ function drawVertexRun(
 	const addB: float32 = hasFx ? effects[fx + 18] : 0.0;
 	const addA: float32 = hasFx ? effects[fx + 19] : 0.0;
 
-	clearFloats(vertexParams);
-	vertexParams[void2d_params_viewport] = fbW;
-	vertexParams[void2d_params_viewport + 1] = fbH;
 	const isRT: boolean = sampledTarget(view);
 	const noEffect: boolean = (!hasFx || identityMatrix(effects, fx)) && addR == 0.0 && addG == 0.0 &&
 		addB == 0.0 && addA == 0.0 && (!hasFx || effects[fx + 23] <= 0.5);
 	const premultiplied: boolean = premultipliedSource(cmd);
-	vertexParams[void2d_params_viewport + 2] = (isRT && !originTopLeft) ? 1.0 : 0.0;
-	vertexParams[void2d_params_viewport + 3] = (premultiplied && noEffect) ? 1.0 : 0.0;
-	vertexParams[void2d_params_model0] = 1.0;
-	vertexParams[void2d_params_model0 + 3] = 1.0;
-	vertexParams[void2d_params_model1 + 2] = glyphPageViewMode(view);
-	vertexParams[void2d_params_model1 + 3] = deviceScaleOf(cmd, dpiScale);
-	for (let i: int32 = 0; i < 4; i++) { vertexParams[void2d_params_globalColor + i] = 1.0; }
-	const scope: int32 = scopeAt(cmd, scopeCount, scopes.length > 0);
-	if (scope >= 0) {
-		vertexParams[void2d_params_shift] = scopes[scope];
-		vertexParams[void2d_params_shift + 1] = scopes[scope + 1];
-	}
-	copyClipParams(
-		vertexParams, void2d_params_clipU, void2d_params_clipV, void2d_params_clipRoundU,
-		void2d_params_clipRoundV, void2d_params_clipRadii, cmd,
-	);
+	const scale: float32 = deviceScaleOf(cmd, dpiScale);
+	const params: BatchParams = {
+		viewport: vec4f(
+			fbW, fbH, flag(isRT && !originTopLeft), flag(premultiplied && noEffect),
+		),
+		model0: vec4f(1.0, 0.0, 0.0, 1.0),
+		model1: vec4f(0.0, 0.0, glyphPageViewMode(view), scale),
+		globalColor: vec4f(1.0),
+		clipU: vec4At(cmd, CMD_CLIP_U_X),
+		clipV: vec4At(cmd, CMD_CLIP_U_X + 4),
+		clipRoundU: scaledVec4At(cmd, CMD_CLIP_ROUND_U, scale),
+		clipRoundV: scaledVec4At(cmd, CMD_CLIP_ROUND_U + 4, scale),
+		clipRadii: scaledVec4At(cmd, CMD_CLIP_ROUND_U + 8, scale),
+		shift: shiftOf(scopes, scopeAt(cmd, scopeCount, scopes.length > 0)),
+	};
+	writeUniform<BatchParams>(vertexParams, 0, params);
 	if (!paramsValid || !sameFloats(vertexParams, lastVertexParams)) {
-		doorApplyUniformsOf(UB_void2d_params, vertexParams[0..void2d_params_FLOATS]);
+		doorApplyUniformsOf(PARAMS_SLOT, vertexParams[0..BATCH_PARAMS_FLOATS]);
 		copyFloats(lastVertexParams, vertexParams);
 		paramsValid = true;
 	}
 
-	clearFloats(vertexFx);
-	for (let i: int32 = 0; i < 16; i++) {
-		vertexFx[void2d_fx_colorMatrix + i] = hasFx ? effects[fx + i] : (i % 5 == 0 ? 1.0 : 0.0);
-	}
-	vertexFx[void2d_fx_colorAdd] = addR;
-	vertexFx[void2d_fx_colorAdd + 1] = addG;
-	vertexFx[void2d_fx_colorAdd + 2] = addB;
-	vertexFx[void2d_fx_colorAdd + 3] = addA;
-	if (hasFx) {
-		for (let i: int32 = 0; i < 4; i++) {
-			vertexFx[void2d_fx_colorKey + i] = effects[fx + 20 + i];
-			vertexFx[void2d_fx_gradientMeta + i] = effects[fx + 24 + i];
-			vertexFx[void2d_fx_gradientParams + i] = effects[fx + 28 + i];
-			vertexFx[void2d_fx_gradientColor0 + i] = effects[fx + 32 + i];
-			vertexFx[void2d_fx_gradientColor1 + i] = effects[fx + 36 + i];
-			vertexFx[void2d_fx_gradientColor2 + i] = effects[fx + 40 + i];
-		}
-	}
-	for (let i: int32 = 0; i < 4; i++) { vertexFx[void2d_fx_gammaRatios + i] = textGamma[i]; }
-	vertexFx[void2d_fx_textParams] = textContrast;
-	vertexFx[void2d_fx_sourceParams] = (premultiplied && !noEffect) ? 1.0 : 0.0;
+	const zero: Vec4f = vec4f(0.0);
+	const effect: BatchEffect = {
+		colorMatrix: hasFx ? matrixAt(effects, fx) : mat4x4f(
+			vec4f(1.0, 0.0, 0.0, 0.0), vec4f(0.0, 1.0, 0.0, 0.0), vec4f(0.0, 0.0, 1.0, 0.0),
+			vec4f(0.0, 0.0, 0.0, 1.0),
+		),
+		colorAdd: vec4f(addR, addG, addB, addA),
+		colorKey: hasFx ? vec4At(effects, fx + 20) : zero,
+		gradientMeta: hasFx ? vec4At(effects, fx + 24) : zero,
+		gradientParams: hasFx ? vec4At(effects, fx + 28) : zero,
+		gradientColor0: hasFx ? vec4At(effects, fx + 32) : zero,
+		gradientColor1: hasFx ? vec4At(effects, fx + 36) : zero,
+		gradientColor2: hasFx ? vec4At(effects, fx + 40) : zero,
+		gammaRatios: vec4At(textGamma[0..4], 0),
+		textParams: vec4f(textContrast, 0.0, 0.0, 0.0),
+		sourceParams: vec4f(flag(premultiplied && !noEffect), 0.0, 0.0, 0.0),
+	};
+	writeUniform<BatchEffect>(vertexFx, 0, effect);
 	if (!fxValid || !sameFloats(vertexFx, lastVertexFx)) {
-		doorApplyUniformsOf(UB_void2d_fx, vertexFx[0..void2d_fx_FLOATS]);
+		doorApplyUniformsOf(EFFECT_SLOT, vertexFx[0..BATCH_EFFECT_FLOATS]);
 		copyFloats(lastVertexFx, vertexFx);
 		fxValid = true;
 	}
