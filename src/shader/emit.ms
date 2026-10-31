@@ -1404,6 +1404,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		const predeclared = predeclaredType(t);
 		if (predeclared != null) { return predeclared; }
 		if (isAuthorStruct(t)) { return structType(knownStruct(t)); }
+		if (typeKind(t) != TypeKind.Void) {
+			fail(t, "a shader has no type for a " + typeKind(t).toString());
+		}
 		return new ShaderType();
 	}
 
