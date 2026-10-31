@@ -329,16 +329,12 @@ function coveredRange(this setup: ClusterSetup, sphere: ViewSphere): ClusterRang
 	const high: Vec3 = sphere.center + vec3(sphere.radius, sphere.radius, sphere.radius);
 	const nearDepth: float32 = setup.orthographic ? low.z : Math.max(low.z, MIN_POSITIVE);
 	const farDepth: float32 = setup.orthographic ? high.z : Math.max(high.z, MIN_POSITIVE);
-	const corners: Vec<Vec3> = [
-		vec3(low.x, low.y, nearDepth),
-		vec3(low.x, low.y, farDepth),
-		vec3(high.x, high.y, nearDepth),
-		vec3(high.x, high.y, farDepth),
-	];
 	let ndcMin: Vec3 = vec3(1e30, 1e30, 1e30);
 	let ndcMax: Vec3 = vec3(-1e30, -1e30, -1e30);
-	for (const corner of corners) {
-		const clip: Vec4 = vec4(corner.x, corner.y, corner.z, 1.0) * setup.clipFromView;
+	for (let corner = 0; corner < 4; corner++) {
+		const upper: boolean = corner >= 2;
+		const clip: Vec4 = vec4(upper ? high.x : low.x, upper ? high.y : low.y,
+			corner % 2 == 0 ? nearDepth : farDepth, 1.0) * setup.clipFromView;
 		const ndc: Vec3 = vec3(clip.x / clip.w, clip.y / clip.w, 0.0);
 		ndcMin = minOf(ndcMin, ndc);
 		ndcMax = maxOf(ndcMax, ndc);
@@ -546,9 +542,59 @@ function setupOf(
 	};
 }
 
+// The per-cluster and per-pair storage assignLightsInto rebuilds each frame, kept by its caller
+// and grown only when the grid or the pair count outgrows it.
+export struct ClusterScratch {
+	known: Vec<boolean>;
+	spheres: Vec<ViewSphere>;
+	filled: Vec<int32>;
+	pairClusters: Vec<int32>;
+	pairLights: Vec<int32>;
+}
+
+export function create(this typeof ClusterScratch): ClusterScratch {
+	return { known: [], spheres: [], filled: [], pairClusters: [], pairLights: [] };
+}
+
+function resetClusters(ref scratch: ClusterScratch, clusterCount: int32): void {
+	while ((scratch.known.length as int32) < clusterCount) {
+		scratch.known.push(false);
+		scratch.spheres.push({ center: vec3(0.0, 0.0, 0.0), radius: 0.0 });
+		scratch.filled.push(0);
+	}
+	for (let i = 0; i < clusterCount; i++) {
+		scratch.known[i] = false;
+		scratch.filled[i] = 0;
+	}
+}
+
+function setPair(ref scratch: ClusterScratch, at: int32, cluster: int32, light: int32): void {
+	if (at < (scratch.pairClusters.length as int32)) {
+		scratch.pairClusters[at] = cluster;
+		scratch.pairLights[at] = light;
+	} else {
+		scratch.pairClusters.push(cluster);
+		scratch.pairLights.push(light);
+	}
+}
+
+export function assignLights(
+	config: ClusterConfig,
+	view: CameraView,
+	screenWidth: int32,
+	screenHeight: int32,
+	previousFarthestZ: float32 | null,
+	lights: Readonly<Span<ClusterLight>>,
+): Result<ClusterAssignment, ClusterError> {
+	let scratch: ClusterScratch = ClusterScratch.create();
+	return assignLightsInto(scratch, config, view, screenWidth, screenHeight, previousFarthestZ,
+		lights);
+}
+
 // The clusters, in z-fastest order, that each light reaches: Bevy visits every point light and
 // then every spot light, so a cluster lists its point lights first.
-export function assignLights(
+export function assignLightsInto(
+	ref scratch: ClusterScratch,
 	config: ClusterConfig,
 	view: CameraView,
 	screenWidth: int32,
@@ -562,19 +608,13 @@ export function assignLights(
 		setupOf(config, grid, view, screenWidth, screenHeight, previousFarthestZ);
 	const frustum: Frustum3D = Frustum3D.fromMatrix(view.viewProj);
 	const clusterCount: int32 = grid.x * grid.y * grid.z;
-	let known: Vec<boolean> = [];
-	let spheres: Vec<ViewSphere> = [];
+	resetClusters(scratch, clusterCount);
 	let pointCounts: Vec<int32> = [];
-	for (let i = 0; i < clusterCount; i++) {
-		known.push(false);
-		spheres.push({ center: vec3(0.0, 0.0, 0.0), radius: 0.0 });
-		pointCounts.push(0);
-	}
-	let pairClusters: Vec<int32> = [];
-	let pairLights: Vec<int32> = [];
+	for (let i = 0; i < clusterCount; i++) { pointCounts.push(0); }
+	let pairCount: int32 = 0;
 	let farthestZ: float32 = 0.0;
-	const kinds: Vec<ClusterLightKind> = [ClusterLightKind.Point, ClusterLightKind.Spot];
-	for (const kind of kinds) {
+	for (let pass = 0; pass < 2; pass++) {
+		const kind: ClusterLightKind = pass == 0 ? ClusterLightKind.Point : ClusterLightKind.Spot;
 		for (let light = 0; light < lights.length; light++) {
 			const source: ClusterLight = lights[light];
 			if (source.kind != kind) { continue; }
@@ -635,19 +675,19 @@ export function assignLights(
 					for (let x = minX; x <= maxX; x++) {
 						const cluster: int32 = (y * grid.x + x) * grid.z + z;
 						if (kind == ClusterLightKind.Spot) {
-							if (!known[cluster]) {
-								spheres[cluster] = setup.clusterSphere(x, y, z);
-								known[cluster] = true;
+							if (!scratch.known[cluster]) {
+								scratch.spheres[cluster] = setup.clusterSphere(x, y, z);
+								scratch.known[cluster] = true;
 							}
 							if (!spotReaches(sphere, source.range, back, angleSin, angleCos,
-								spheres[cluster])) {
+								scratch.spheres[cluster])) {
 								continue;
 							}
 						} else {
 							pointCounts[cluster] += 1;
 						}
-						pairClusters.push(cluster);
-						pairLights.push(light as int32);
+						setPair(scratch, pairCount, cluster, light as int32);
+						pairCount += 1;
 					}
 				}
 			}
@@ -655,24 +695,22 @@ export function assignLights(
 	}
 	let counts: Vec<int32> = [];
 	let offsets: Vec<int32> = [];
-	let filled: Vec<int32> = [];
 	for (let i = 0; i < clusterCount; i++) {
 		counts.push(0);
 		offsets.push(0);
-		filled.push(0);
 	}
-	for (const cluster of pairClusters) { counts[cluster] += 1; }
+	for (let i = 0; i < pairCount; i++) { counts[scratch.pairClusters[i]] += 1; }
 	let running: int32 = 0;
 	for (let i = 0; i < clusterCount; i++) {
 		offsets[i] = running;
 		running += counts[i];
 	}
 	let lightIndices: Vec<int32> = [];
-	for (let i = 0; i < pairClusters.length; i++) { lightIndices.push(0); }
-	for (let i = 0; i < pairClusters.length; i++) {
-		const cluster: int32 = pairClusters[i];
-		lightIndices[offsets[cluster] + filled[cluster]] = pairLights[i];
-		filled[cluster] += 1;
+	for (let i = 0; i < pairCount; i++) { lightIndices.push(0); }
+	for (let i = 0; i < pairCount; i++) {
+		const cluster: int32 = scratch.pairClusters[i];
+		lightIndices[offsets[cluster] + scratch.filled[cluster]] = scratch.pairLights[i];
+		scratch.filled[cluster] += 1;
 	}
 	return Result.ok({
 		grid: grid,

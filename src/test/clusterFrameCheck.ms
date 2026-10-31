@@ -4,7 +4,7 @@ import {
 	ClusterAssignment, ClusterConfig, ClusterLight, ClusterLightKind,
 } from "../void3d/clusters";
 import {
-	ClusterFrame, ClusterFrameError, assignFrame, clusterLightsOf, recordCountOf,
+	ClusterFrame, ClusterFrameError, assignFrame, clusterLightsOf, fillClusterLights, recordCountOf,
 } from "../void3d/clusterFrame";
 import { clusterIndexOf } from "../void3d/clusterLookup";
 import { RecordTexture, recordTexture } from "../void3d/clusterTextures";
@@ -216,4 +216,41 @@ test "a refused frame leaves the pass lists as the last frame left them" {
 	const began: Result<boolean, RendererError> = beginFrame(core, items, camera, lightsOf());
 	assert !began.ok && began.error == RendererError.ClusterViewStale;
 	assert core.opaque.count == 2 && core.opaque.indices[1] == 7 && core.culledCount == 5;
+}
+
+function sameInts(a: Readonly<Span<int32>>, b: Readonly<Span<int32>>): boolean {
+	if (a.length != b.length) { return false; }
+	for (let i = 0; i < a.length; i++) {
+		if (a[i] != b[i]) { return false; }
+	}
+	return true;
+}
+
+test "refilled cluster lights keep their storage and drop the records that went away" {
+	const lights: Vec<float32> = lightsOf();
+	let kept: Vec<ClusterLight> = [];
+	fillClusterLights(kept, lights, 2);
+	fillClusterLights(kept, lights, 1);
+	assert kept.length == 1 && approx(kept[0].range, 3.0);
+	fillClusterLights(kept, lights, 2);
+	const fresh: Vec<ClusterLight> = clusterLightsOf(lights, 2);
+	assert kept.length == 2 && kept[1].kind == fresh[1].kind && approx(kept[1].range, 5.0);
+	assert near(kept[1].direction, fresh[1].direction);
+}
+
+test "a second frame with the same lights grows none of the frame's scratch" {
+	const frame: ClusterFrame = ClusterFrame.create(ClusterConfig.defaults());
+	const view: CameraView = viewOf(false, 0.5);
+	let block: Vec<float32> = headerOnly();
+	const first = assignFrame(frame, lightsOf(), view, false, block);
+	assert first.ok;
+	const clusters: int32 = frame.scratch.known.length as int32;
+	const pairs: int32 = frame.scratch.pairClusters.length as int32;
+	const second = assignFrame(frame, lightsOf(), view, false, block);
+	assert second.ok;
+	if (!first.ok || !second.ok) { return; }
+	assert frame.scratch.known.length == clusters && frame.scratch.pairClusters.length == pairs;
+	assert frame.clusterLights.length == 2;
+	assert sameInts(first.value.lightIndices, second.value.lightIndices);
+	assert sameInts(first.value.offsets, second.value.offsets);
 }

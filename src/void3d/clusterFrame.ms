@@ -24,16 +24,17 @@ import {
 	ClusterError,
 	ClusterLight,
 	ClusterLightKind,
-	assignLights,
+	ClusterScratch,
+	assignLightsInto,
 } from "./clusters";
 import {
 	DATA_TEXTURE_WIDTH,
 	DataTexture,
 	RecordTexture,
 	clusterParamsOf,
-	clusterTexture,
-	indexTexture,
-	recordTexture,
+	fillClusterTexture,
+	fillIndexTexture,
+	fillRecordTexture,
 } from "./clusterTextures";
 import {
 	LIGHT_COOKIE,
@@ -78,6 +79,11 @@ export interface ClusterFrame {
 	writtenFrame: uint32;
 	farthestZ: float32 | null;
 	closed: boolean;
+	scratch: ClusterScratch;
+	clusterLights: Vec<ClusterLight>;
+	recordStaging: RecordTexture;
+	clusterStaging: DataTexture;
+	indexStaging: DataTexture;
 }
 
 export function create(this typeof ClusterFrame, config: ClusterConfig): ClusterFrame {
@@ -91,6 +97,11 @@ export function create(this typeof ClusterFrame, config: ClusterConfig): Cluster
 		writtenFrame: 0,
 		farthestZ: null,
 		closed: false,
+		scratch: ClusterScratch.create(),
+		clusterLights: [],
+		recordStaging: { width: DATA_TEXTURE_WIDTH, height: 0, floats: [] },
+		clusterStaging: { width: DATA_TEXTURE_WIDTH, height: 0, words: [] },
+		indexStaging: { width: DATA_TEXTURE_WIDTH, height: 0, words: [] },
 	};
 }
 
@@ -108,13 +119,23 @@ export function recordCountOf(lights: Readonly<Span<float32>>): Result<int32, Cl
 // square pyramid, so its cone is the one through the pyramid's corners.
 export function clusterLightsOf(lights: Readonly<Span<float32>>, count: int32): Vec<ClusterLight> {
 	let out: Vec<ClusterLight> = [];
+	fillClusterLights(out, lights, count);
+	return out;
+}
+
+// clusterLightsOf into `out`, which keeps its storage from frame to frame.
+export function fillClusterLights(
+	ref out: Vec<ClusterLight>,
+	lights: Readonly<Span<float32>>,
+	count: int32,
+): void {
 	for (let i = 0; i < count; i++) {
 		const cookie: boolean = lights[LIGHT_COOKIE] == (i + 1) as float32;
 		const at: int32 = LIGHT_UNIFORM_LENGTH + i * LIGHT_RECORD_LENGTH;
 		const shape: int32 = at + LIGHT_RECORD_SHAPE;
 		const kind: float32 = lights[shape + 3];
 		const spot: boolean = kind == LIGHT_KIND_SPOT;
-		out.push({
+		const light: ClusterLight = {
 			kind: spot ? ClusterLightKind.Spot : ClusterLightKind.Point,
 			position: vec3(lights[at], lights[at + 1], lights[at + 2]),
 			range: lights[at + LIGHT_RECORD_COLOR + 3] + shapeReach(lights, shape, kind),
@@ -122,9 +143,10 @@ export function clusterLightsOf(lights: Readonly<Span<float32>>, count: int32): 
 				: vec3(0.0, 0.0, 1.0),
 			outerHalfAngle: !spot ? 0.0 : cookie ? cornerHalfAngle(lights[shape + 7]) :
 				lights[shape + 7] * 0.5,
-		});
+		};
+		if (i < (out.length as int32)) { out[i] = light; } else { out.push(light); }
 	}
-	return out;
+	while ((out.length as int32) > count) { const _dropped = out.pop(); }
 }
 
 function shapeReach(lights: Readonly<Span<float32>>, shape: int32, kind: float32): float32 {
@@ -190,8 +212,10 @@ export function assignFrame(
 		return Result.ok(emptyAssignment());
 	}
 	if (view === null) { return Result.err(ClusterFrameError.NoView); }
-	const assigned: Result<ClusterAssignment, ClusterError> = assignLights(frame.config, view,
-		view.texelWidth, view.texelHeight, frame.farthestZ, clusterLightsOf(lights, count));
+	fillClusterLights(frame.clusterLights, lights, count);
+	const assigned: Result<ClusterAssignment, ClusterError> = assignLightsInto(frame.scratch,
+		frame.config, view, view.texelWidth, view.texelHeight, frame.farthestZ,
+		frame.clusterLights);
 	if (!assigned.ok) { return Result.err(ClusterFrameError.Clusters); }
 	const assignment: ClusterAssignment = assigned.value;
 	frame.farthestZ = assignment.farthestZ;
@@ -249,24 +273,27 @@ export function uploadFrame(
 	if (frame.closed) { stopOnClosed("uploadFrame"); }
 	const now: uint32 = frameIndex();
 	const rewrite: boolean = frame.writtenFrame == now;
-	const records: RecordTexture = recordTexture(lights, LIGHT_UNIFORM_LENGTH);
-	const clusters: DataTexture = clusterTexture(assignment);
-	const indices: DataTexture = indexTexture(assignment);
+	fillRecordTexture(frame.recordStaging, lights, LIGHT_UNIFORM_LENGTH);
+	fillClusterTexture(frame.clusterStaging, assignment);
+	fillIndexTexture(frame.indexStaging, assignment);
 	if (frame.generation != contextGeneration()) { frame.sampler = 0; }
+	const recordRows: int32 = frame.recordStaging.height;
+	const clusterRows: int32 = frame.clusterStaging.height;
+	const indexRows: int32 = frame.indexStaging.height;
 	frame.recordImage =
-		imageFor(frame, frame.recordImage, records.height, PixelFormat.Rgba32f, rewrite);
+		imageFor(frame, frame.recordImage, recordRows, PixelFormat.Rgba32f, rewrite);
 	frame.clusterImage =
-		imageFor(frame, frame.clusterImage, clusters.height, PixelFormat.Rgba32ui, rewrite);
+		imageFor(frame, frame.clusterImage, clusterRows, PixelFormat.Rgba32ui, rewrite);
 	frame.indexImage =
-		imageFor(frame, frame.indexImage, indices.height, PixelFormat.Rgba32ui, rewrite);
+		imageFor(frame, frame.indexImage, indexRows, PixelFormat.Rgba32ui, rewrite);
 	if (frame.sampler == 0) {
 		frame.sampler = makeSampler(FilterMode.Nearest, Wrap.Clamp);
 		if (frame.sampler == 0) { stopOnRefusedImage(); }
 	}
 	frame.generation = contextGeneration();
-	if (!updateDataFloats(frame.recordImage.image, records.floats) ||
-		!updateDataWords(frame.clusterImage.image, clusters.words) ||
-		!updateDataWords(frame.indexImage.image, indices.words)) {
+	if (!updateDataFloats(frame.recordImage.image, frame.recordStaging.floats) ||
+		!updateDataWords(frame.clusterImage.image, frame.clusterStaging.words) ||
+		!updateDataWords(frame.indexImage.image, frame.indexStaging.words)) {
 		return Result.err(ClusterFrameError.ImageRefused);
 	}
 	frame.writtenFrame = now;

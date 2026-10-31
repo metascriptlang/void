@@ -12,7 +12,9 @@ import {
 	ClusterLayoutKind,
 	ClusterLight,
 	ClusterLightKind,
+	ClusterScratch,
 	assignLights,
+	assignLightsInto,
 	clusterFactors,
 	depthToZSlice,
 	gridFor,
@@ -425,4 +427,51 @@ test "input Bevy would clamp or turn into NaN is refused by name" {
 	const nan: float32 = zero / zero;
 	const stale = assignLights(defaults, camera(false), WIDTH, HEIGHT, nan, [light]);
 	assert !stale.ok && stale.error == ClusterError.FarDepth;
+}
+
+function sameInts(a: Readonly<Span<int32>>, b: Readonly<Span<int32>>): boolean {
+	if (a.length != b.length) { return false; }
+	for (let i = 0; i < a.length; i++) {
+		if (a[i] != b[i]) { return false; }
+	}
+	return true;
+}
+
+function sameAssignment(a: ClusterAssignment, b: ClusterAssignment): boolean {
+	return sameInts(a.offsets, b.offsets) && sameInts(a.counts, b.counts) &&
+		sameInts(a.pointCounts, b.pointCounts) && sameInts(a.lightIndices, b.lightIndices);
+}
+
+test "a second frame through the same scratch grows nothing and matches a fresh assignment" {
+	const config: ClusterConfig = ClusterConfig.defaults();
+	let scratch: ClusterScratch = ClusterScratch.create();
+	const lights: Vec<ClusterLight> = [
+		pointLight(20.0, 5.0), spotLight(15.0, 9.0, vec3(0.0, 0.0, -1.0)), pointLight(8.0, 3.0),
+	];
+	const first = assignLightsInto(scratch, config, camera(false), WIDTH, HEIGHT, null, lights);
+	if (!first.ok) { unreachable; }
+	const clusters: int32 = scratch.known.length as int32;
+	const pairs: int32 = scratch.pairClusters.length as int32;
+	assert clusters == first.value.counts.length && pairs >= first.value.lightIndices.length;
+	const second = assignLightsInto(scratch, config, camera(false), WIDTH, HEIGHT, null, lights);
+	if (!second.ok) { unreachable; }
+	assert scratch.known.length == clusters && scratch.spheres.length == clusters;
+	assert scratch.filled.length == clusters && scratch.pairClusters.length == pairs;
+	assert scratch.pairLights.length == pairs;
+	assert sameAssignment(first.value, second.value);
+	assert sameAssignment(second.value, assign(config, false, null, lights));
+}
+
+test "a scratch left by many lights leaves no trace in a frame of one light or none" {
+	const config: ClusterConfig = ClusterConfig.defaults();
+	let scratch: ClusterScratch = ClusterScratch.create();
+	const many: Vec<ClusterLight> = [
+		pointLight(20.0, 9.0), spotLight(15.0, 9.0, vec3(0.0, 0.0, -1.0)), pointLight(8.0, 6.0),
+	];
+	const _warm = assignLightsInto(scratch, config, camera(false), WIDTH, HEIGHT, null, many);
+	for (const kept of [[pointLight(12.0, 2.0)], []]) {
+		const reused = assignLightsInto(scratch, config, camera(false), WIDTH, HEIGHT, null, kept);
+		if (!reused.ok) { unreachable; }
+		assert sameAssignment(reused.value, assign(config, false, null, kept));
+	}
 }

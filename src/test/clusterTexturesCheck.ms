@@ -3,7 +3,8 @@
 
 import { ClusterAssignment } from "../void3d/clusters";
 import {
-	DATA_TEXTURE_WIDTH, DataTexture, clusterTexture, indexTexture,
+	DATA_TEXTURE_WIDTH, DataTexture, clusterTexture, fillClusterTexture, fillIndexTexture,
+	indexTexture,
 } from "../void3d/clusterTextures";
 
 function assignment(clusters: int32): ClusterAssignment {
@@ -60,4 +61,28 @@ test "the index list fills four indices a texel, and an empty list still makes o
 	}
 	const empty: DataTexture = indexTexture(assignment(1));
 	assert empty.height == 1 && empty.words.length == DATA_TEXTURE_WIDTH * 4;
+}
+
+function sameWords(a: Readonly<Span<uint32>>, b: Readonly<Span<uint32>>): boolean {
+	if (a.length != b.length) { return false; }
+	for (let i = 0; i < a.length; i++) {
+		if (a[i] != b[i]) { return false; }
+	}
+	return true;
+}
+
+test "a staging texture refilled with a smaller assignment holds no word of the larger one" {
+	const big: ClusterAssignment = assignment(DATA_TEXTURE_WIDTH * 2);
+	const small: ClusterAssignment = assignment(DATA_TEXTURE_WIDTH);
+	let clusters: DataTexture = { width: 0, height: 0, words: [] };
+	let indices: DataTexture = { width: 0, height: 0, words: [] };
+	fillClusterTexture(clusters, big);
+	fillIndexTexture(indices, big);
+	fillClusterTexture(clusters, small);
+	fillIndexTexture(indices, small);
+	assert sameWords(clusters.words, clusterTexture(small).words) && clusters.height == 1;
+	assert sameWords(indices.words, indexTexture(small).words);
+	fillClusterTexture(clusters, big);
+	fillClusterTexture(clusters, big);
+	assert sameWords(clusters.words, clusterTexture(big).words) && clusters.height == 2;
 }
