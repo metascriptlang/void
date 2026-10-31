@@ -54,7 +54,7 @@ import {
 	beginPass,
 } from "../gpu/target";
 import { ArrayTarget } from "../gpu/arrayTarget";
-import { Material, UniformBlock, Phase, ShadowCasting, shadowFace } from "./material";
+import { UniformBlock, Phase, ShadowCasting, shadowFace } from "./material";
 import {
 	DrawContext,
 	DrawItem,
@@ -108,7 +108,9 @@ export interface DirShadowMap {
 	sampler: Sampler;
 	casters: PassList;
 	layerCasters: PassList;
+	// Both are indexed like the context's materials; castChecked is castsAll's per-call memo.
 	cast: Vec<ProgramKey>;
+	castChecked: Vec<boolean>;
 	cameraBlock: UniformBlock;
 	shadowBlock: UniformBlock;
 	cameraValues: Vec<float32>;
@@ -216,6 +218,7 @@ function buildMap(
 		casters: PassList.forPhase(Phase.Opaque),
 		layerCasters: PassList.forPhase(Phase.Opaque),
 		cast: [],
+		castChecked: [],
 		cameraBlock: cameraBlock,
 		shadowBlock: shadowBlock,
 		cameraValues: zeroed(VERTEX_UNIFORM_LENGTH),
@@ -233,20 +236,26 @@ export function castsAll(
 ): Result<int32, ProgramError> {
 	if (shadow.closed) { stopOnClosed("castsAll"); }
 	const context: DrawContext = shadow.context;
-	while ((shadow.cast.length as int32) < (items.length as int32)) {
+	const materials: int32 = context.materials.length as int32;
+	while ((shadow.cast.length as int32) < materials) {
 		shadow.cast.push(ProgramKey.of(Program.Lit));
+		shadow.castChecked.push(false);
 	}
+	for (let m = 0; m < materials; m++) { shadow.castChecked[m] = false; }
 	let count: int32 = 0;
 	for (let i = 0; i < (items.length as int32); i++) {
-		const material: Material = context.materials[items[i].material.index];
-		if (material.castShadows == ShadowCasting.Off) { continue; }
-		const key: Result<ProgramKey, ProgramError> = castIn(material.program);
-		if (!key.ok) { return Result.err(key.error); }
-		const block: UniformBlock = material.uniforms;
-		if (block.length > 0 && block.length < uniformBlockLength(key.value, block.slot)) {
-			return Result.err(ProgramError.BlockShort);
+		const at: int32 = items[i].material.index;
+		if (context.materials[at].castShadows == ShadowCasting.Off) { continue; }
+		if (!shadow.castChecked[at]) {
+			const key: Result<ProgramKey, ProgramError> = castIn(context.materials[at].program);
+			if (!key.ok) { return Result.err(key.error); }
+			const block: Readonly<UniformBlock> = context.materials[at].uniforms;
+			if (block.length > 0 && block.length < uniformBlockLength(key.value, block.slot)) {
+				return Result.err(ProgramError.BlockShort);
+			}
+			shadow.cast[at] = key.value;
+			shadow.castChecked[at] = true;
 		}
-		shadow.cast[i] = key.value;
 		count = count + 1;
 	}
 	return Result.ok(count);
@@ -720,19 +729,20 @@ function drawCasters(shadow: DirShadowMap, items: Readonly<Span<DrawItem>>): voi
 	let i: int32 = 0;
 	while (i < shadow.layerCasters.count) {
 		const index: int32 = shadow.layerCasters.indices[i];
-		const material: Material = context.materials[items[index].material.index];
-		const state: RenderState = RenderState.defaults().withCulling(material.shadowFace());
+		const at: int32 = items[index].material.index;
+		const state: RenderState =
+			RenderState.defaults().withCulling(context.materials[at].shadowFace());
 		let end: int32 = i + 1;
 		while (end < shadow.layerCasters.count &&
 			items[index].sameBatch(items[shadow.layerCasters.indices[end]])) {
 			end = end + 1;
 		}
 		if (end - i == 1) {
-			drawItemWith(context, items[index], shadow.cast[index], state, SHADOW_LAYOUT,
+			drawItemWith(context, items[index], shadow.cast[at], state, SHADOW_LAYOUT,
 				shadow.globals, NO_SCENE_TEXTURE);
 		} else {
 			drawBatchWith(
-				context, items, shadow.layerCasters.indices[i..end], shadow.cast[index], state,
+				context, items, shadow.layerCasters.indices[i..end], shadow.cast[at], state,
 				SHADOW_LAYOUT, shadow.globals, NO_SCENE_TEXTURE,
 			);
 		}

@@ -320,6 +320,79 @@ test "a caster whose material block is shorter than its shadow program's is refu
 	assert !refused.ok && refused.error == ProgramError.BlockShort;
 }
 
+function castingMaterial(context: DrawContext, key: ProgramKey, block: UniformBlock): MaterialId {
+	const made: Result<MaterialId, MaterialError> = addMaterial(context, {
+		...Material.keyed(key, RenderState.defaults(), Phase.Opaque)
+			.withShadows(ShadowCasting.On, false),
+		uniforms: block,
+	});
+	if (!made.ok) { unreachable; }
+	return made.value;
+}
+
+test "castsAll returns the error of the first failing item in item order" {
+	const context: DrawContext = DrawContext.withUniformCapacity(
+		DIR_SHADOW_UNIFORM_LENGTH + 2 * MOVING_MATERIAL_UNIFORM_LENGTH + BILLBOARD_UNIFORM_LENGTH,
+	);
+	const map: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 64);
+	const moving: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MOVING_MATERIAL_UNIFORM_LENGTH);
+	const dissolving: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MOVING_MATERIAL_UNIFORM_LENGTH);
+	const flat: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, BILLBOARD_UNIFORM_SLOT, BILLBOARD_UNIFORM_LENGTH);
+	assert map.ok && moving.ok && dissolving.ok && flat.ok;
+	if (!map.ok || !moving.ok || !dissolving.ok || !flat.ok) { return; }
+	const fine: MaterialId = castingMaterial(context, ProgramKey.of(Program.Lit), moving.value);
+	const short: MaterialId = castingMaterial(
+		context, ProgramKey.of(Program.LitTextured).withDissolve(), dissolving.value);
+	const refused: MaterialId = castingMaterial(context, cutBillboard(), flat.value);
+	context.materials[short.index].uniforms = { ...dissolving.value, length: 4 };
+	const notCast: Result<ProgramKey, ProgramError> = castIn(cutBillboard());
+	assert !notCast.ok;
+	if (notCast.ok) { return; }
+	const shortFirst: Vec<DrawItem> = [
+		itemOf(context, fine), itemOf(context, short), itemOf(context, refused),
+		itemOf(context, short),
+	];
+	const first: Result<int32, ProgramError> = map.value.castsAll(shortFirst);
+	assert !first.ok && first.error == ProgramError.BlockShort;
+	const refusedFirst: Vec<DrawItem> = [
+		itemOf(context, fine), itemOf(context, refused), itemOf(context, short),
+		itemOf(context, refused),
+	];
+	const second: Result<int32, ProgramError> = map.value.castsAll(refusedFirst);
+	assert !second.ok && second.error == notCast.error;
+	const again: Result<int32, ProgramError> = map.value.castsAll(shortFirst);
+	assert !again.ok && again.error == ProgramError.BlockShort;
+}
+
+test "castsAll keys each material once, counts every caster, and rereads a changed material" {
+	const context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
+	const map: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 64);
+	assert map.ok;
+	if (!map.ok) { return; }
+	const none: UniformBlock = { store: 0, slot: 0, offset: 0, length: 0, generation: 0 };
+	const lit: MaterialId = castingMaterial(context, ProgramKey.of(Program.Lit), none);
+	const silent: MaterialId = castingMaterial(context, ProgramKey.of(Program.Lit), none);
+	context.materials[silent.index].castShadows = ShadowCasting.Off;
+	let items: Vec<DrawItem> = [
+		itemOf(context, lit), itemOf(context, silent), itemOf(context, lit), itemOf(context, lit),
+		itemOf(context, silent),
+	];
+	const counted: Result<int32, ProgramError> = map.value.castsAll(items);
+	assert counted.ok && counted.value == 3;
+	assert map.value.cast[lit.index] == castAs(ProgramKey.of(Program.Lit));
+	const textured: ProgramKey = ProgramKey.of(Program.LitTextured);
+	context.materials[lit.index].program = textured;
+	const later: MaterialId = castingMaterial(context, ProgramKey.of(Program.UnlitTextured), none);
+	items.push(itemOf(context, later));
+	const recounted: Result<int32, ProgramError> = map.value.castsAll(items);
+	assert recounted.ok && recounted.value == 4;
+	assert map.value.cast[lit.index] == castAs(textured);
+	assert map.value.cast[later.index] == castAs(ProgramKey.of(Program.UnlitTextured));
+}
+
 test "a frame with a shadow map refuses a caster with no shadow output before it writes" {
 	const context: DrawContext = DrawContext.withUniformCapacity(
 		RENDERER_UNIFORM_LENGTH + DIR_SHADOW_UNIFORM_LENGTH + BILLBOARD_UNIFORM_LENGTH,
