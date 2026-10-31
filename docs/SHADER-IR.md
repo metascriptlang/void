@@ -153,6 +153,10 @@ same keys while msc compiles the app, through `stageBlob`. A stage's blob is loo
 `out/shaders/` on a miss: nothing is ever written outside `out/`. `<cwd>` is the directory msc runs
 in, so the cache is per project, not per module. A compute stage uses profile `cs_5_0`.
 
+The build prints its own arm, then prints every other arm and drops the text, so a program one
+target refuses stops the build on every host, with the target named (a compute program skips
+GLSL ES 3.00, which has no compute). Four programs cost about 0.6 s more to check (2026-10-31).
+
 - fxc is the path `-d:fxc=<path>` names, else the newest Windows Kit's (`findFxc`). Metal compiles
   with `xcrun -sdk macosx|iphoneos metal` and `metallib` (`metallibStage`, flags in `metalFlags`).
 - A host without the tool keeps that stage's text and says so in a warning naming the program, the
