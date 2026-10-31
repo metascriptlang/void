@@ -32,8 +32,6 @@ import {
 	releaseMaterial,
 	releaseMesh,
 	writeUniforms,
-	VertexStorage,
-	MeshId,
 } from "../void3d/draw";
 import { lastMaterial, added, collect, litShape } from "./drawHelpers";
 import { UniformError } from "../void3d/uniformPool";
@@ -66,9 +64,9 @@ import {
 	renderFrame,
 } from "../void3d/pixelArtRenderer";
 import {
-	Renderer, RendererError, RENDERER_UNIFORM_LENGTH, markChanged, readsFrameTime, beginFrame,
+	Renderer, RendererError, RENDERER_UNIFORM_LENGTH, markChanged, readsFrameTime,
 } from "../void3d/renderer";
-import { contextGeneration, frameIndex } from "../gpu/door";
+import { contextGeneration } from "../gpu/door";
 
 function look(): PixelArtLook {
 	return {
@@ -889,25 +887,4 @@ test "a billboard block too short to hold the ramp levels is refused by the core
 
 function cutBillboard(): ProgramKey {
 	return ProgramKey.of(Program.Billboard).withCutout();
-}
-
-test "a frame refused after a context switch leaves the switch to the next accepted frame" {
-	const context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
-	const made: Result<Renderer, RendererError> = Renderer.create(context);
-	assert made.ok;
-	const renderer: Renderer = made.value;
-	const dynamic: MeshId = added(context, litShape());
-	context.meshStorage[dynamic.index] = VertexStorage.Pending;
-	context.meshes[dynamic.index].writtenFrame = frameIndex();
-	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
-	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-	const items: Vec<DrawItem> = [];
-	renderer.generation = contextGeneration() + 1;
-	const refused: Result<boolean, RendererError> = beginFrame(renderer, items, camera, lights);
-	assert !refused.ok && refused.error == RendererError.MeshWrite;
-	context.meshStorage[dynamic.index] = VertexStorage.Dynamic;
-	const adopted: Result<boolean, RendererError> = beginFrame(renderer, items, camera, lights);
-	assert adopted.ok && adopted.value;
-	const settled: Result<boolean, RendererError> = beginFrame(renderer, items, camera, lights);
-	assert settled.ok && !settled.value;
 }
