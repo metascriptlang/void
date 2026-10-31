@@ -88,7 +88,6 @@ export enum NodeFlag {
 	PosChanged,
 	Culled,
 	Pickable,
-	TreeChanged,
 	InheritCulled,
 }
 
@@ -299,6 +298,9 @@ export interface Scene3D {
 	lightNodes: Vec<int32>;
 	lightNodesRevision: uint64;
 	posChanged: boolean;
+	// Rows a writer moved since the last `syncWorld`, in write order and possibly twice; the sync
+	// starts its descents here.
+	moved: Vec<int32>;
 	closed: boolean;
 }
 
@@ -421,7 +423,7 @@ function newSlot(scene: Scene3D, node: Object3D): NodeId3D {
 	} else {
 		scene.nodes[index] = node;
 	}
-	scene.markTreeChanged(node.parent);
+	scene.markMoved(index);
 	return scene.nodeIdAt(index);
 }
 
@@ -460,6 +462,7 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 		lightNodes: [],
 		lightNodesRevision: 0,
 		posChanged: true,
+		moved: [],
 		closed: false,
 	};
 	const root: NodeId3D = newSlot(
@@ -1037,7 +1040,7 @@ function placeNode(
 	scene.nodes[under].children[position] = row;
 	scene.nodes[row].parent = under;
 	scene.nodes[row].flags = scene.nodes[row].flags.incl(NodeFlag.PosChanged);
-	scene.markTreeChanged(under);
+	scene.markMoved(row);
 	if (!connectedRow(scene, under)) {
 		const count: int32 = collectSubtree(scene, row);
 		for (let i = 0; i < count; i++) {
@@ -1191,18 +1194,12 @@ export function setLocal(scene: Scene3D, id: NodeId3D, local: Transform3D): void
 	const row: int32 = scene.liveRow(id, "setLocal");
 	scene.nodes[row].local = local;
 	scene.nodes[row].flags = scene.nodes[row].flags.incl(NodeFlag.PosChanged);
-	scene.markTreeChanged(scene.nodes[row].parent);
+	scene.markMoved(row);
 }
 
-// Bevy's `mark_dirty_trees` (bevy_transform systems.rs): every ancestor of a moved node is marked
-// up to the first one already marked, so `syncWorld` descends only into marked subtrees.
-function markTreeChanged(this scene: Scene3D, from: int32): void {
+function markMoved(this scene: Scene3D, row: int32): void {
 	scene.posChanged = true;
-	let at: int32 = from;
-	while (at != NO_NODE_3D && !scene.nodes[at].flags.has(NodeFlag.TreeChanged)) {
-		scene.nodes[at].flags = scene.nodes[at].flags.incl(NodeFlag.TreeChanged);
-		at = scene.nodes[at].parent;
-	}
+	scene.moved.push(row);
 }
 
 export function setVisible(scene: Scene3D, id: NodeId3D, visible: boolean): void {
@@ -1483,9 +1480,11 @@ export function worldOf(this scene: Scene3D, id: NodeId3D): Result<Mat4, SceneEr
 
 // h3d.scene.Object.syncRec, minus the animation, culling-collider and follow machinery M6 has no
 // use for. `calcAbsPos` is `local * parent` in row-vector order, Heaps' `multiply3x4inline`
-// (Object.hx:772); the descent propagates `posChanged` to children and clears it on the way down
-// (Object.hx:833-841). Heaps visits every node; this skips a subtree no moved node is under,
-// Bevy's `propagate_parent_transforms` reading the `TreeChanged` marks (`markTreeChanged`).
+// (Object.hx:772); a moved node propagates `posChanged` to its whole subtree and clears it on the
+// way down (Object.hx:833-841). Heaps visits every node; this starts at the moved rows and
+// descends only below the topmost one of each chain, as Bevy's `propagate_parent_transforms`
+// descends from the changed roots. A moved row with a moved ancestor is reached from that
+// ancestor, and one cut off from the scene root waits: `placeNode` lists it again on attach.
 //
 // Allocates nothing: the descent stack is `scene.stack`, sized when nodes were added.
 export function syncWorld(scene: Scene3D): int32 {
@@ -1493,15 +1492,23 @@ export function syncWorld(scene: Scene3D): int32 {
 	if (scene.root == NO_NODE_3D || !scene.posChanged) { return 0; }
 	scene.posChanged = false;
 	let synced: int32 = 0;
-	let top: int32 = 0;
-	scene.stack[top] = scene.root;
-	top = top + 1;
-	while (top > 0) {
-		top = top - 1;
-		const index: int32 = scene.stack[top];
-		const changed: boolean = scene.nodes[index].flags.has(NodeFlag.PosChanged);
-		scene.nodes[index].flags = scene.nodes[index].flags.excl(NodeFlag.TreeChanged);
-		if (changed) {
+	const listed: int32 = scene.moved.length as int32;
+	for (let k = 0; k < listed; k++) {
+		const row: int32 = scene.moved[k];
+		if (!scene.nodes[row].flags.has(NodeFlag.PosChanged)) { continue; }
+		let top: int32 = row;
+		let above: boolean = false;
+		for (let at = scene.nodes[row].parent; at != NO_NODE_3D; at = scene.nodes[at].parent) {
+			if (scene.nodes[at].flags.has(NodeFlag.PosChanged)) { above = true; break; }
+			top = at;
+		}
+		if (above || top != scene.root) { continue; }
+		let depth: int32 = 0;
+		scene.stack[depth] = row;
+		depth = depth + 1;
+		while (depth > 0) {
+			depth = depth - 1;
+			const index: int32 = scene.stack[depth];
 			const local: Mat4 = scene.nodes[index].local.toMatrix();
 			const parent: int32 = scene.nodes[index].parent;
 			const parentWorld: Mat4 = parent == NO_NODE_3D ? identity() : scene.nodes[parent].world;
@@ -1510,18 +1517,13 @@ export function syncWorld(scene: Scene3D): int32 {
 			scene.nodes[index].flags = scene.nodes[index].flags.excl(NodeFlag.PosChanged);
 			synced = synced + 1;
 			scene.markItemDirty(index);
-		}
-		for (const child of scene.nodes[index].children) {
-			if (changed) {
-				scene.nodes[child].flags = scene.nodes[child].flags.incl(NodeFlag.PosChanged);
-			} else if (!scene.nodes[child].flags.has(NodeFlag.PosChanged)
-				&& !scene.nodes[child].flags.has(NodeFlag.TreeChanged)) {
-				continue;
+			for (const child of scene.nodes[index].children) {
+				scene.stack[depth] = child;
+				depth = depth + 1;
 			}
-			scene.stack[top] = child;
-			top = top + 1;
 		}
 	}
+	while ((scene.moved.length as int32) > 0) { scene.moved.pop(); }
 	return synced;
 }
 

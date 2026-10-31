@@ -51,6 +51,10 @@ function translationOf(m: Mat4): Vec3 {
 	return vec3(m.m41, m.m42, m.m43);
 }
 
+function at(x: float32, y: float32, z: float32): Transform3D {
+	return Transform3D.fromTranslation(vec3(x, y, z));
+}
+
 function near(a: Vec3, x: float32, y: float32, z: float32): boolean {
 	return approx(a.x, x) && approx(a.y, y) && approx(a.z, z);
 }
@@ -183,6 +187,57 @@ test "a move descends only into the subtrees a moved node is under" {
 	const world: Result<Mat4, SceneError> = scene.worldOf(below.value);
 	assert world.ok;
 	if (world.ok) { assert near(translationOf(world.value), 5.0, 4.0, 0.0); }
+}
+
+test "a moved leaf deep in a tree is the only listed row, and its siblings keep their world" {
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const high: NodeId3D = addGroup(scene, scene.rootId(), at(1.0, 0.0, 0.0));
+	const low: NodeId3D = addGroup(scene, high, at(0.0, 1.0, 0.0));
+	const leaf: NodeId3D = addGroup(scene, low, at(0.0, 0.0, 1.0));
+	const sibling: NodeId3D = addGroup(scene, low, at(0.0, 0.0, 2.0));
+	assert syncWorld(scene) == 5 && scene.moved.length == 0;
+	setLocal(scene, leaf, at(0.0, 0.0, 7.0));
+	assert scene.moved.length == 1;
+	assert syncWorld(scene) == 1 && scene.moved.length == 0;
+	const moved: Result<Mat4, SceneError> = scene.worldOf(leaf);
+	const still: Result<Mat4, SceneError> = scene.worldOf(sibling);
+	assert moved.ok && still.ok;
+	if (moved.ok) { assert near(translationOf(moved.value), 1.0, 1.0, 7.0); }
+	if (still.ok) { assert near(translationOf(still.value), 1.0, 1.0, 2.0); }
+}
+
+test "a moved parent and a moved child in one frame sync once each, whatever the write order" {
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const group: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const child: NodeId3D = addGroup(scene, group, at(0.0, 1.0, 0.0));
+	assert syncWorld(scene) == 3;
+	setLocal(scene, child, Transform3D.fromTranslation(vec3(0.0, 2.0, 0.0)));
+	setLocal(scene, group, Transform3D.fromTranslation(vec3(5.0, 0.0, 0.0)));
+	assert syncWorld(scene) == 2;
+	const world: Result<Mat4, SceneError> = scene.worldOf(child);
+	assert world.ok;
+	if (world.ok) { assert near(translationOf(world.value), 5.0, 2.0, 0.0); }
+}
+
+test "a node removed after it moved is not synced, and its recycled row syncs as the new node" {
+	const context: DrawContext = contextOf(64, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const gone: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const keep: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	assert syncWorld(scene) == 3;
+	setLocal(scene, gone, Transform3D.fromTranslation(vec3(9.0, 0.0, 0.0)));
+	setLocal(scene, keep, Transform3D.fromTranslation(vec3(4.0, 0.0, 0.0)));
+	assert remove(scene, gone) == 1;
+	assert syncWorld(scene) == 1;
+	const fresh: NodeId3D = addGroup(scene, scene.rootId(), at(0.0, 3.0, 0.0));
+	assert fresh.index == gone.index;
+	setLocal(scene, fresh, at(0.0, 6.0, 0.0));
+	assert syncWorld(scene) == 1;
+	const world: Result<Mat4, SceneError> = scene.worldOf(fresh);
+	assert world.ok;
+	if (world.ok) { assert near(translationOf(world.value), 0.0, 6.0, 0.0); }
 }
 
 test "moving a parent re-syncs its children and nothing above it" {
