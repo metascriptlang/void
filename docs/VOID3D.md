@@ -903,6 +903,10 @@ The control fails where the fire lights the ground and holds elsewhere, which is
   together. Touching remains visible, Heaps' strict-negative rejection instead of
   Bevy's non-positive rejection. Reflection, nonuniform scale, rotation and shear use
   the transformed local axes; no inverse, eight-corner expansion or new frame scratch.
+  The sphere pre-test before the box (Bevy `check_visibility`, unit planes, a corner radius
+  that holds under shear) was measured and dropped on 2026-11-01: flowCubes at 1.6M items,
+  all in view, collectVisible 11.0/12.0 ms without it and 23.1/23.2 ms with it, because a
+  visible item pays both tests.
   Alpha sorting now uses Heaps' `scene/Renderer.hx` `depthSort` (`z / abs(w)`), not the
   orthographic-only clip z.
 - **D3D11 consumer measured before the full gate.**
