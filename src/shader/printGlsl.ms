@@ -22,7 +22,6 @@ import {
 	TexelFormat,
 	TextureShape,
 	UnaryOp,
-	isShift,
 	isArrayTexture,
 	hasOffset,
 	offsetOf,
@@ -355,9 +354,6 @@ function binaryText(p: Printer, e: ShaderExpr): string {
 	const b = e.operands[1];
 	const op = binaryOperator(e.binary);
 	if (e.binary == BinaryOp.Mod) { return remainder(p, a, b); }
-	if (isShift(e.binary) && b.kind != ExprKind.Literal) {
-		return operand(p, a) + " " + op + " (" + operand(p, b) + " & 31u)";
-	}
 	const folds = e.type.kind == ShaderTypeKind.Scalar && a.type.kind == ShaderTypeKind.Vector;
 	if (folds && e.binary != BinaryOp.Equal && e.binary != BinaryOp.NotEqual) {
 		return fail(p, "'" + op + "' of two vectors into one bool");

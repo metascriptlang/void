@@ -392,7 +392,7 @@ test "conversionShader" {
 		"void main() {\n" +
 		"    float f = gl_FragCoord.x;\n" +
 		"    float f2 = float(someInt_1);\n" +
-		"    int i2 = int(f);\n" +
+		"    int i2 = int(((f == f) ? clamp(f, -2147483648.0, 2147483520.0) : 0.0));\n" +
 		"    fragColor = vec4(f2, float(i2), (-f), 1.0);\n" +
 		"    return;\n" +
 		"}\n";

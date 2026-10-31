@@ -23,7 +23,6 @@ import {
 	UnaryOp,
 	sameShaderType,
 	hasOffset,
-	isShift,
 	offsetOf,
 	isAtomic,
 	isUniformLoad,
@@ -384,9 +383,8 @@ function binaryText(p: Printer, e: ShaderExpr): string {
 		return "fmod(" + argsText(p, e.operands) + ")";
 	}
 	const right = e.operands[1];
-	const amount = isShift(e.binary) && right.kind != ExprKind.Literal ?
-		"(" + exprText(p, right) + " & 31u)" : exprText(p, right);
-	const text = "(" + exprText(p, left) + " " + binaryOperator(e.binary) + " " + amount + ")";
+	const text = "(" + exprText(p, left) + " " + binaryOperator(e.binary) + " " +
+		exprText(p, right) + ")";
 	const whole = (e.binary == BinaryOp.Equal || e.binary == BinaryOp.NotEqual) &&
 		e.type.kind == ShaderTypeKind.Scalar;
 	if (!whole || left.type.kind == ShaderTypeKind.Scalar) { return text; }

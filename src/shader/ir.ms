@@ -1009,6 +1009,28 @@ export function intrinsicOf(op: Intrinsic, type: ShaderType, args: ShaderExpr[])
 	return e;
 }
 
+export function maskedShiftAmount(amount: ShaderExpr): ShaderExpr {
+	const mask = exprOf(ExprKind.Construct, amount.type, -1,
+		[literal(scalarType(ScalarKind.U32), 31.0)]);
+	return binaryOf(BinaryOp.BitAnd, amount.type, amount,
+		amount.type.kind == ShaderTypeKind.Scalar ? mask.operands[0] : mask);
+}
+
+export function saturatingToInt(x: ShaderExpr, to: ScalarKind): ShaderExpr {
+	const signed = to == ScalarKind.I32;
+	const f32 = scalarType(ScalarKind.F32);
+	const bounded = intrinsicOf(Intrinsic.Clamp, f32, [x,
+		literal(f32, signed ? -2147483648.0 : 0.0),
+		literal(f32, signed ? 2147483520.0 : 4294967040.0)]);
+	const finite = binaryOf(BinaryOp.Equal, scalarType(ScalarKind.Bool), x, x);
+	const picked = intrinsicOf(Intrinsic.Select, f32, [literal(f32, 0.0), bounded, finite]);
+	return exprOf(ExprKind.Convert, scalarType(to), -1, [picked]);
+}
+
+export function definedUnsignedDivisor(divisor: ShaderExpr): ShaderExpr {
+	return intrinsicOf(Intrinsic.Max, divisor.type, [divisor, literal(divisor.type, 1.0)]);
+}
+
 export function stmtOf(kind: StmtKind, expr: ShaderExpr, body: ShaderStmt[]): ShaderStmt {
 	let s = new ShaderStmt();
 	s.kind = kind;

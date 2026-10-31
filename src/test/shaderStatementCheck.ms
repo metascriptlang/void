@@ -152,7 +152,7 @@ test "switch ends every case in a break, and a break inside a case leaves the sw
 	assert glsl(switchFs) ==
 		"layout(location=0) out float fragColor;\n" +
 		"void main() {\n" +
-		"    int column = int(gl_FragCoord.x);\n" +
+		"    int column = int(((gl_FragCoord.x == gl_FragCoord.x) ? clamp(gl_FragCoord.x, -2147483648.0, 2147483520.0) : 0.0));\n" +
 		"    float shade = 0.0;\n" +
 		"    switch (column) {\n" +
 		"        case 0: {\n" +
@@ -187,7 +187,7 @@ test "stacked case labels are one GLSL case that runs for each label" {
 	assert glsl(stackedFs) ==
 		"layout(location=0) out float fragColor;\n" +
 		"void main() {\n" +
-		"    switch (int(gl_FragCoord.x)) {\n" +
+		"    switch (int(((gl_FragCoord.x == gl_FragCoord.x) ? clamp(gl_FragCoord.x, -2147483648.0, 2147483520.0) : 0.0))) {\n" +
 		"        case 1: case 2: {\n" +
 		"            fragColor = 0.5;\n" +
 		"            return;\n" +
@@ -206,7 +206,7 @@ test "a statement match is a switch whose or-pattern shares one case, a continue
 	assert glsl(matchFs) ==
 		"layout(location=0) out float fragColor;\n" +
 		"void main() {\n" +
-		"    int column = int(gl_FragCoord.x);\n" +
+		"    int column = int(((gl_FragCoord.x == gl_FragCoord.x) ? clamp(gl_FragCoord.x, -2147483648.0, 2147483520.0) : 0.0));\n" +
 		"    float shade = 0.0;\n" +
 		"    for (int i = 0; i < 2; i++) {\n" +
 		"        switch (column + i) {\n" +
@@ -347,7 +347,7 @@ test "'&' masks an int32 by its bits, and select picks per component where le ho
 	assert glsl(maskFs) ==
 		"layout(location=0) out float fragColor;\n" +
 		"void main() {\n" +
-		"    int cell = int(gl_FragCoord.x) & 3;\n" +
+		"    int cell = int(((gl_FragCoord.x == gl_FragCoord.x) ? clamp(gl_FragCoord.x, -2147483648.0, 2147483520.0) : 0.0)) & 3;\n" +
 		"    vec3 level = vec3(gl_FragCoord.y);\n" +
 		"    vec3 picked = mix(vec3(2.0), level, lessThanEqual(level, vec3(0.5)));\n" +
 		"    fragColor = (float(cell) + picked.x) + picked.z;\n" +

@@ -127,6 +127,7 @@ import {
 	assignOf,
 	atomicType,
 	binaryOf,
+	definedUnsignedDivisor,
 	conditionOf,
 	exchangeResultType,
 	exprOf,
@@ -138,6 +139,8 @@ import {
 	irErrors,
 	isSampling,
 	literal,
+	maskedShiftAmount,
+	saturatingToInt,
 	matrixType,
 	modfResultType,
 	offsetRows,
@@ -1905,10 +1908,10 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		if (e.kind == ExprKind.Literal) {
 			return literal(scalarType(ScalarKind.U32), ((e.value as int64) & 31) as float64);
 		}
-		if (e.type.scalar == ScalarKind.U32) { return e; }
+		if (e.type.scalar == ScalarKind.U32) { return maskedShiftAmount(e); }
 		const type = e.type.kind == ShaderTypeKind.Vector ?
 			vectorType(ScalarKind.U32, e.type.rows) : scalarType(ScalarKind.U32);
-		return exprOf(ExprKind.Convert, type, -1, [e]);
+		return maskedShiftAmount(exprOf(ExprKind.Convert, type, -1, [e]));
 	}
 
 	function condition(n: Node): ShaderExpr {
@@ -1954,7 +1957,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				(op == "/" ? "division" : "remainder") +
 				" of const-expressions by zero is a shader-creation error in WGSL");
 		}
-		return binaryOf(binaryOps[binaryTexts.indexOf(op)], type, left, right);
+		const guarded = (op == "/" || op == "%") && type.scalar == ScalarKind.U32 &&
+			!(constantExpr(right) && !zeroComponent(right)) ? definedUnsignedDivisor(right) : right;
+		return binaryOf(binaryOps[binaryTexts.indexOf(op)], type, left, guarded);
 	}
 
 	function hookSite(n: Node, args: ShaderExpr[]): ShaderExpr {
@@ -2175,7 +2180,10 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 					from == TypeKind.Uint32 && to == TypeKind.Float32;
 				if (exact) {
 					const type = glslType(getType(n), n);
-					return exprOf(ExprKind.Convert, type, -1, [lower(n.asExpr)]);
+					const operand = lower(n.asExpr);
+					return from == TypeKind.Float32 && operand.kind != ExprKind.Literal ?
+						saturatingToInt(operand, type.scalar) :
+						exprOf(ExprKind.Convert, type, -1, [operand]);
 				}
 				if (to == TypeKind.Uint32 && n.asExpr.kind == NodeKind.NumberLiteral &&
 					from != TypeKind.Float32 && from != TypeKind.Float64 &&

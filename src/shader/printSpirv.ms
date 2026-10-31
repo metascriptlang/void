@@ -1186,12 +1186,7 @@ function converted(p: Spirv, from: ShaderType, t: ShaderType, x: int32): int32 {
 		return typed(p, OP_SELECT, type, [x, one, zero]);
 	}
 	if (s == ScalarKind.F32) {
-		const signed = d == ScalarKind.I32;
-		const low = splat(p, from, scalarConstant(p, ScalarKind.F32, signed ? -2147483648.0 : 0.0));
-		const high = splat(p, from, scalarConstant(p, ScalarKind.F32,
-			signed ? 2147483520.0 : 4294967040.0));
-		const clamped = ext(p, from, GLSL_F_CLAMP, [x, low, high]);
-		return typed(p, signed ? OP_CONVERT_F_TO_S : OP_CONVERT_F_TO_U, type, [clamped]);
+		return typed(p, d == ScalarKind.I32 ? OP_CONVERT_F_TO_S : OP_CONVERT_F_TO_U, type, [x]);
 	}
 	if (d == ScalarKind.F32) {
 		return typed(p, s == ScalarKind.I32 ? OP_CONVERT_S_TO_F : OP_CONVERT_U_TO_F, type, [x]);

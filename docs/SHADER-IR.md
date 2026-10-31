@@ -77,6 +77,15 @@ program refuses one uniform declared at two bindings.
   (`printWgsl.ms` `isHoisted`, `hoistReason`).
 - **An attribute, varying or output is a scalar or vector,** WGSL's user-defined IO: refused at
   the author's field and in `irErrors` (src/shader/CLAUDE.md, "An author struct is a GLSL struct").
+- **Integer operations have WGSL's result on every target.** `emit.ms` writes the rewrite into the
+  IR, so no printer carries one (`ir.ms` `maskedShiftAmount`, `saturatingToInt`,
+  `definedUnsignedDivisor`). A shift amount that is no literal is `amount & 31u`, as WGSL's
+  shift takes it. `float32 as int32` is `Convert(Select(0.0, Clamp(x, lo, hi), x == x))`: WGSL
+  saturates, and NaN is 0 here (the WGSL text was not read for NaN; the form is the one place to
+  change). A uint32 `/` or `%` whose divisor is not a nonzero constant divides by
+  `max(divisor, 1u)`, which is WGSL's `x / 0u == x` and `x % 0u == 0u` and evaluates the divisor
+  once. The cost is the longer text of each; `x == x` assumes the target's compiler keeps NaN
+  compares, which no run has measured.
 - **A discard demotes the invocation to a helper,** WGSL's meaning: it runs on, so a derivative
   its quad takes afterwards stays defined. GLSL, HLSL and SPIR-V end the invocation instead, and
   the void2d checker's `fwidth` tie bias read undefined values beside a clipped neighbour on GL

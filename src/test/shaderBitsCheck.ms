@@ -375,3 +375,70 @@ test "a bit builtin keeps WGSL's operands and result" {
 	extracted.operands.pop();
 	assert irErrors(short).includes("function 'bitsFs': ExtractBits takes 3 operands, as WGSL's");
 }
+
+export struct IntLanes {
+	@builtin(position) position: Vec4f;
+	word: uint32;
+	amount: uint32;
+	ratio: float32;
+}
+
+export struct IntPlaced {
+	@builtin(position) clip: Vec4f;
+	word: uint32;
+	amount: uint32;
+	ratio: float32;
+}
+
+export function intVs(input: Corner): IntPlaced {
+	return {
+		clip: vec4f(input.position.x, input.position.y, 0.0, 1.0),
+		word: 3,
+		amount: 33,
+		ratio: 3000000000.0,
+	};
+}
+
+export function intFs(input: IntLanes): Vec4f {
+	const shifted = input.word << input.amount;
+	const quotient = input.word / input.amount;
+	const rest = input.word % input.amount;
+	const whole = input.ratio as int32;
+	return vec4f(shifted as float32, quotient as float32, rest as float32, whole as float32);
+}
+
+function intProgram(): ShaderModule {
+	const m = programModule(glslIr(intVs), glslLinkedIr(intFs, intVs), []);
+	if (!m.ok) { return new ShaderModule(); }
+	return m.value;
+}
+
+test "a shift amount is masked to 5 bits in the IR, so every target shifts as WGSL does" {
+	const m = intProgram();
+	assert irErrors(m).length == 0;
+	assert glslLinked(intFs, intVs).includes("word << (amount & 31u)");
+	assert printedFor(m, 1, ShaderTarget.Wgsl, "int").includes("<< (amount & 31u)");
+	assert printedFor(m, 1, ShaderTarget.Glsl430, "int").includes("<< (amount & 31u)");
+	assert printedFor(m, 1, ShaderTarget.Hlsl5, "int").includes("<< (amount & 31u)");
+	assert printedFor(m, 1, ShaderTarget.Msl, "int").includes("<< (in.amount & 31u)");
+}
+
+test "uint32 / and % by a runtime zero print WGSL's result, x / 0u == x and x % 0u == 0u" {
+	const m = intProgram();
+	assert glslLinked(intFs, intVs).includes("word / max(amount, 1u)");
+	assert glslLinked(intFs, intVs).includes("word % max(amount, 1u)");
+	assert printedFor(m, 1, ShaderTarget.Wgsl, "int").includes("/ max(amount, 1u)");
+	assert printedFor(m, 1, ShaderTarget.Hlsl5, "int").includes("% max(amount, 1u)");
+	assert printedFor(m, 1, ShaderTarget.Msl, "int").includes("% max(in.amount, 1u)");
+}
+
+test "float32 as int32 saturates and maps NaN to 0 in the IR on every target" {
+	const m = intProgram();
+	assert glslLinked(intFs, intVs).includes(
+		"int(((ratio == ratio) ? clamp(ratio, -2147483648.0, 2147483520.0) : 0.0))");
+	for (const target of [ShaderTarget.Wgsl, ShaderTarget.Glsl430, ShaderTarget.Hlsl5,
+		ShaderTarget.Msl]) {
+		const text = printedFor(m, 1, target, "int");
+		assert text.includes("ratio == ratio") && text.includes("2147483520");
+	}
+}
