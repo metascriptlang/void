@@ -84,6 +84,7 @@ import "./bloomCheck";
 import "./doorResidentCheck";
 import "./doorComputeCheck";
 import "./doorStencilCheck";
+import "./doorBindCheck";
 import "./gpuTimerRingCheck";
 import "./bloomKernelCheck";
 import "./dirShadowCheck";
