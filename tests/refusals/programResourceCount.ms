@@ -1,6 +1,6 @@
 // expect: 50:15 shaderProgram 'crowded': a shader module has over 16 resources
 import { shaderProgram } from "../../src/shader/program";
-import { Texture2d, Vec2i, Vec4f, binding, builtin, textureLoad } from "../../src/shader/std";
+import { Sampler, Texture2d, Vec2i, Vec4f, binding, builtin, textureLoad, textureSample, vec2f } from "../../src/shader/std";
 struct In {
 	position: Vec4f;
 }
@@ -23,8 +23,8 @@ struct Crowd {
 	@binding(12) t12: Texture2d;
 	@binding(13) t13: Texture2d;
 	@binding(14) t14: Texture2d;
-	@binding(15) t15: Texture2d;
-	@binding(16) t16: Texture2d;
+	@binding(0) s0: Sampler;
+	@binding(1) s1: Sampler;
 }
 function crowdedVs(input: In): Out { return { position: input.position }; }
 function crowdedFs(b: Crowd): Vec4f {
@@ -44,7 +44,7 @@ function crowdedFs(b: Crowd): Vec4f {
 		textureLoad(b.t12, at, 0) +
 		textureLoad(b.t13, at, 0) +
 		textureLoad(b.t14, at, 0) +
-		textureLoad(b.t15, at, 0) +
-		textureLoad(b.t16, at, 0);
+		textureSample(b.t0, b.s0, vec2f(0.5, 0.5)) +
+		textureSample(b.t1, b.s1, vec2f(0.5, 0.5));
 }
 shaderProgram(crowded, crowdedVs, crowdedFs);
