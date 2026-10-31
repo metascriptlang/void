@@ -1368,6 +1368,301 @@ function stmtErrors(c: Checker, s: ShaderStmt, f: ShaderFunction, owner: string)
 	}
 }
 
+export const NON_UNIFORM_FLOW = "non-uniform control flow";
+
+class Frame {
+	nu: string[] = [];
+	flow: string = "";
+}
+
+class Walk {
+	c: Checker = new Checker();
+	index: int32 = -1;
+	entry: string = "";
+	root: boolean = true;
+	loopExit: string = "";
+	fnExit: string = "";
+	result: string = "";
+}
+
+function copyFrame(fr: Frame): Frame {
+	let out = new Frame();
+	out.nu = fr.nu.slice(0);
+	out.flow = fr.flow;
+	return out;
+}
+
+function settled(a: Frame, b: Frame): boolean {
+	for (let i = 0; i < a.nu.length; i++) {
+		if ((a.nu[i] == "") != (b.nu[i] == "")) { return false; }
+	}
+	return (a.flow == "") == (b.flow == "");
+}
+
+function resourceSource(r: ShaderResource): string {
+	if (r.access == Access.Read) { return ""; }
+	return match (r.kind) {
+		ResourceKind.StorageBuffer => "writable storage buffer '" + r.name + "'",
+		ResourceKind.StorageTexture => "writable storage texture '" + r.name + "'",
+		_ => "",
+	};
+}
+
+function builtinWord(b: Builtin): string {
+	return match (b) {
+		Builtin.LocalInvocationId => "localInvocationId",
+		Builtin.LocalInvocationIndex => "localInvocationIndex",
+		Builtin.GlobalInvocationId => "globalInvocationId",
+		_ => { throw new Error("internal: the uniformity of builtin " + b.toString()); },
+	};
+}
+
+function ioSource(io: ShaderIo): string {
+	if (io.builtin == Builtin.WorkgroupId || io.builtin == Builtin.NumWorkgroups) { return ""; }
+	return io.builtin == Builtin.None ? "input '" + io.name + "'" :
+		"builtin " + builtinWord(io.builtin);
+}
+
+function uniformWord(op: Intrinsic): string {
+	return match (op) {
+		Intrinsic.WorkgroupBarrier => "workgroupBarrier",
+		Intrinsic.StorageBarrier => "storageBarrier",
+		Intrinsic.TextureBarrier => "textureBarrier",
+		Intrinsic.WorkgroupUniformLoad => "workgroupUniformLoad",
+		_ => { throw new Error("internal: the uniformity of intrinsic " + op.toString()); },
+	};
+}
+
+function operandsSource(w: Walk, fr: Frame, e: ShaderExpr, from: int32): string {
+	let source = "";
+	for (let i = from; i < e.operands.length; i++) {
+		const s = sourceOf(w, fr, e.operands[i]);
+		if (source == "") { source = s; }
+	}
+	return source;
+}
+
+function checkUniformFlow(w: Walk, fr: Frame, op: Intrinsic): void {
+	if (fr.flow == "") { return; }
+	const via = w.root ? "" : " (called from entry '" + w.entry + "')";
+	noted(w.c.errors, "function '" + w.c.module.functions[w.index].name + "'" + via + ": " +
+		uniformWord(op) + " runs in " + NON_UNIFORM_FLOW + ", " + fr.flow + "; WGSL's " +
+		"uniformity rule needs every invocation of the workgroup to reach it");
+}
+
+function intrinsicSource(w: Walk, fr: Frame, e: ShaderExpr): string {
+	const op = e.intrinsic;
+	if (isComputeOnly(op)) {
+		checkUniformFlow(w, fr, op);
+		return "";
+	}
+	if (op == Intrinsic.ArrayLength) { return ""; }
+	if (op == Intrinsic.TextureDimensions || op == Intrinsic.TextureNumSamples) {
+		return operandsSource(w, fr, e, 1);
+	}
+	const read = operandsSource(w, fr, e, 0);
+	return isAtomic(op) ? "an atomic result" : read;
+}
+
+function callSource(w: Walk, fr: Frame, e: ShaderExpr): string {
+	const callee = w.c.module.functions[e.index];
+	if (e.operands.length != callee.params.length) {
+		throw new Error("internal: a call of function '" + callee.name + "' passes " +
+			String(e.operands.length) + " arguments to " + String(callee.params.length) +
+			" parameters");
+	}
+	const args = e.operands.map((o): string => sourceOf(w, fr, o));
+	return walkFunction(w.c, e.index, w.entry, false, args, fr.flow);
+}
+
+function sourceOf(w: Walk, fr: Frame, e: ShaderExpr): string {
+	const m = w.c.module;
+	const f = m.functions[w.index];
+	if (e.kind == ExprKind.Literal || e.kind == ExprKind.Constant) { return ""; }
+	if (e.kind == ExprKind.Local) { return fr.nu[e.index]; }
+	if (e.kind == ExprKind.Param) { return fr.nu[f.locals.length + e.index]; }
+	if (e.kind == ExprKind.Io) { return ioSource(m.ios[e.index]); }
+	if (e.kind == ExprKind.Resource || e.kind == ExprKind.BlockMember) {
+		return resourceSource(m.resources[e.index]);
+	}
+	if (e.kind == ExprKind.Workgroup) {
+		return "workgroup variable '" + m.workgroups[e.index].name + "'";
+	}
+	if (e.kind == ExprKind.Private) {
+		return "private variable '" + m.privates[e.index].name + "'";
+	}
+	if (e.kind == ExprKind.Call) { return callSource(w, fr, e); }
+	if (e.kind == ExprKind.Intrinsic) { return intrinsicSource(w, fr, e); }
+	const plain = e.kind == ExprKind.Unary || e.kind == ExprKind.Binary ||
+		e.kind == ExprKind.Conditional || e.kind == ExprKind.Construct ||
+		e.kind == ExprKind.Convert || e.kind == ExprKind.Field || e.kind == ExprKind.Swizzle ||
+		e.kind == ExprKind.Index;
+	if (plain) { return operandsSource(w, fr, e, 0); }
+	throw new Error("internal: the uniformity of an expression of kind " + e.kind.toString());
+}
+
+// The non-uniform value among a place's index operands, which choose where a write lands.
+function placeSource(w: Walk, fr: Frame, e: ShaderExpr): string {
+	if (e.kind == ExprKind.Index) {
+		const index = sourceOf(w, fr, e.operands[1]);
+		const base = placeSource(w, fr, e.operands[0]);
+		return index != "" ? index : base;
+	}
+	return e.kind == ExprKind.Field || e.kind == ExprKind.Swizzle ?
+		placeSource(w, fr, e.operands[0]) : "";
+}
+
+function branchFlow(fr: Frame, what: string, test: string): string {
+	return fr.flow != "" || test == "" ? fr.flow : what + " whose condition depends on " + test;
+}
+
+function walkBranches(w: Walk, fr: Frame, flow: string, lists: ShaderStmt[][]): void {
+	const loopBefore = w.loopExit;
+	const fnBefore = w.fnExit;
+	let loopAfter = loopBefore;
+	let fnAfter = fnBefore;
+	let merged = fr.nu.map((): string => "");
+	for (const list of lists) {
+		let branch = copyFrame(fr);
+		branch.flow = flow;
+		w.loopExit = loopBefore;
+		w.fnExit = fnBefore;
+		walkStmts(w, branch, list);
+		for (let i = 0; i < merged.length; i++) {
+			if (merged[i] == "") { merged[i] = branch.nu[i]; }
+		}
+		if (loopAfter == "") { loopAfter = w.loopExit; }
+		if (fnAfter == "") { fnAfter = w.fnExit; }
+	}
+	fr.nu = merged;
+	w.loopExit = loopAfter;
+	w.fnExit = fnAfter;
+}
+
+function walkLoop(w: Walk, fr: Frame, s: ShaderStmt): void {
+	const outer = w.loopExit;
+	w.loopExit = "";
+	let head = copyFrame(fr);
+	let pass = 0;
+	while (true) {
+		if (pass > head.nu.length + 3) {
+			throw new Error("internal: the uniformity walk of a loop in function '" +
+				w.c.module.functions[w.index].name + "' does not settle");
+		}
+		pass += 1;
+		let body = copyFrame(head);
+		body.flow = branchFlow(body, "a loop", sourceOf(w, body, s.expr));
+		walkStmts(w, body, s.body);
+		walkStmts(w, body, s.update);
+		let next = copyFrame(head);
+		for (let i = 0; i < next.nu.length; i++) {
+			if (next.nu[i] == "") { next.nu[i] = body.nu[i]; }
+		}
+		if (next.flow == "") { next.flow = w.loopExit; }
+		const done = settled(head, next);
+		head = next;
+		if (done) { break; }
+	}
+	fr.nu = head.nu;
+	w.loopExit = outer;
+}
+
+function walkAssign(w: Walk, fr: Frame, s: ShaderStmt): void {
+	const value = sourceOf(w, fr, s.expr);
+	const place = placeSource(w, fr, s.target);
+	const root = rootOf(s.target);
+	if (root.kind != ExprKind.Local && root.kind != ExprKind.Param) { return; }
+	const slot = root.kind == ExprKind.Local ? root.index :
+		w.c.module.functions[w.index].locals.length + root.index;
+	let incoming = value != "" ? value : place;
+	if (incoming == "" && fr.flow != "") { incoming = "a write made in " + fr.flow; }
+	const whole = s.target.kind == root.kind && s.assign == AssignOp.Set;
+	if (whole || fr.nu[slot] == "") { fr.nu[slot] = incoming; }
+}
+
+function walkStmt(w: Walk, fr: Frame, s: ShaderStmt): void {
+	if (fr.flow == "") { fr.flow = w.fnExit != "" ? w.fnExit : w.loopExit; }
+	if (s.kind == StmtKind.Block) {
+		walkStmts(w, fr, s.body);
+	} else if (s.kind == StmtKind.Let) {
+		const value = sourceOf(w, fr, s.expr);
+		fr.nu[s.local] = value != "" || fr.flow == "" ? value : "a value set in " + fr.flow;
+	} else if (s.kind == StmtKind.Assign) {
+		walkAssign(w, fr, s);
+	} else if (s.kind == StmtKind.Call) {
+		sourceOf(w, fr, s.expr);
+	} else if (s.kind == StmtKind.If) {
+		const flow = branchFlow(fr, "an if", sourceOf(w, fr, s.expr));
+		walkBranches(w, fr, flow, [s.body, s.otherwise]);
+	} else if (s.kind == StmtKind.FeatureIf) {
+		walkBranches(w, fr, fr.flow, [s.body, s.otherwise]);
+	} else if (s.kind == StmtKind.Switch) {
+		const flow = branchFlow(fr, "a switch", sourceOf(w, fr, s.expr));
+		let lists = s.cases.map((k): ShaderStmt[] => k.body);
+		if (!s.cases.some((k) => k.isDefault)) { lists.push([]); }
+		walkBranches(w, fr, flow, lists);
+	} else if (s.kind == StmtKind.While) {
+		walkLoop(w, fr, s);
+	} else if (s.kind == StmtKind.For) {
+		walkStmts(w, fr, s.init);
+		walkLoop(w, fr, s);
+	} else if (s.kind == StmtKind.Break || s.kind == StmtKind.Continue) {
+		if (fr.flow != "" && w.loopExit == "") {
+			w.loopExit = "an earlier break or continue in " + fr.flow;
+		}
+	} else if (s.kind == StmtKind.Return) {
+		const value = sourceOf(w, fr, s.expr);
+		if (w.result == "") {
+			w.result = value != "" || fr.flow == "" ? value : "a result returned in " + fr.flow;
+		}
+		if (fr.flow != "" && w.fnExit == "") { w.fnExit = "an earlier return in " + fr.flow; }
+	} else if (s.kind == StmtKind.Discard) {
+		if (fr.flow != "" && w.fnExit == "") { w.fnExit = "an earlier discard in " + fr.flow; }
+	} else {
+		throw new Error("internal: the uniformity of a statement of kind " + s.kind.toString());
+	}
+}
+
+function walkStmts(w: Walk, fr: Frame, stmts: ShaderStmt[]): void {
+	for (const s of stmts) { walkStmt(w, fr, s); }
+}
+
+// Walks a function as the WGSL uniformity rule reads it: a barrier or workgroup uniform load
+// needs every invocation of the workgroup to reach it. A flow turns non-uniform under a
+// condition that reads a non-uniform value, and after a break, continue, return or discard made
+// in such a flow. A callee is walked again at each call, with its arguments' uniformity and the
+// caller's flow, and answers the uniformity of its result. A workgroup or private variable
+// reads as non-uniform, a conservative ceiling that workgroupUniformLoad lifts for a workgroup
+// variable. Returns the first non-uniform value the function returns.
+function walkFunction(
+	c: Checker,
+	index: int32,
+	entry: string,
+	root: boolean,
+	args: string[],
+	flow: string,
+): string {
+	const f = c.module.functions[index];
+	let w = new Walk();
+	w.c = c;
+	w.index = index;
+	w.entry = entry;
+	w.root = root;
+	let fr = new Frame();
+	fr.nu = f.locals.map((): string => "").concat(args);
+	fr.flow = flow;
+	walkStmts(w, fr, f.body);
+	return w.result;
+}
+
+function uniformityErrors(c: Checker): void {
+	for (const e of c.module.entries) {
+		if (e.stage != ShaderStage.Compute) { continue; }
+		const f = c.module.functions[e.functionIndex];
+		walkFunction(c, e.functionIndex, e.name, true, f.params.map((): string => ""), "");
+	}
+}
+
 function reaches(callees: int32[][], start: int32, target: int32, seen: int32[]): boolean {
 	if (seen.includes(start)) { return false; }
 	seen.push(start);
@@ -1556,5 +1851,6 @@ export function irErrors(m: ShaderModule): string[] {
 			}
 		}
 	}
+	if (c.errors.length == 0) { uniformityErrors(c); }
 	return c.errors;
 }
