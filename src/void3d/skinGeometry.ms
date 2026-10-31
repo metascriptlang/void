@@ -94,6 +94,7 @@ export function setSourceVertices(
 		return Result.err(SkinGeometryError.Shape);
 	}
 	for (let i = 0; i < vertices.length; i++) { geometry.source.vertices[i] = vertices[i]; }
+	geometry.ready = false;
 	return Result.ok(geometry.source.vertexCount());
 }
 

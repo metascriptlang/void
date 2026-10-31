@@ -45,7 +45,7 @@ import {
 	deformPublished,
 	setSourceVertices,
 } from "./skinGeometry";
-import { syncSkinPose } from "./skinPose";
+import { syncSkinPose, jointsMoved } from "./skinPose";
 import {
 	MorphData, MorphGeometry, MorphGeometryError, bind as bindMorphGeometry, publishMorphGeometry,
 } from "./morphGeometry";
@@ -1594,29 +1594,22 @@ export function syncSceneSkinGeometry(scene: Scene3D): Result<int32, SkinGeometr
 	scene.requireOpen("syncSceneSkinGeometry");
 	if (scene.skinNodes < 0) { return Result.err(SkinGeometryError.Shape); }
 	if (scene.skinNodes == 0) { return Result.ok(0); }
-	for (const instance of scene.meshes) {
-		const geometry = instance.skinGeometry;
-		if (geometry !== null) { geometry.ready = false; }
-	}
+	const _synced: int32 = syncWorld(scene);
 	for (let i = 0; i < scene.meshes.length; i++) {
 		const geometry = scene.meshes[i].skinGeometry;
 		if (geometry === null) { continue; }
 		if (geometry.pose.scene.serial != scene.serial) {
 			return Result.err(SkinGeometryError.Pose);
 		}
-		let seen: boolean = false;
-		for (let previous = 0; previous < i; previous++) {
-			const earlier = scene.meshes[previous].skinGeometry;
-			if (earlier !== null && earlier.pose === geometry.pose) { seen = true; break; }
-		}
-		if (!seen && !geometry.pose.syncSkinPose().ok) {
+		if (geometry.pose.jointsMoved() && !geometry.pose.syncSkinPose().ok) {
 			return Result.err(SkinGeometryError.Pose);
 		}
 	}
 	let deformed: int32 = 0;
 	for (const instance of scene.meshes) {
 		const geometry = instance.skinGeometry;
-		if (geometry === null || geometry.ready) { continue; }
+		if (geometry === null) { continue; }
+		if (geometry.ready && geometry.revision == geometry.pose.revision) { continue; }
 		const _vertices: int32 = try geometry.deformPublished();
 		deformed += 1;
 	}

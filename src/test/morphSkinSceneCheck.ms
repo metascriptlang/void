@@ -153,6 +153,21 @@ test "a skinned morph node poses the morphed vertices and bounds, picks and draw
 	assert moved.ok;
 }
 
+test "a skinned morph weight change alone redeforms the skin although no joint moved" {
+	const f = fixture();
+	defer closeScene(f.scene);
+	const morph = skinMorph([1, 0]);
+	assert place(f, morph).ok;
+	let items: Vec<DrawItem> = [];
+	assert refreshChecked(f.scene, items).ok;
+	assert f.geometry.mesh.bounds.min.y == 10 && f.geometry.pose.revision == 1;
+	assert setMorphWeights(morph, [0, 1]).ok;
+	assert refreshChecked(f.scene, items).ok;
+	assert f.geometry.pose.revision == 1 && f.geometry.spatialReady();
+	assert f.geometry.mesh.bounds.min.x == 12 && f.geometry.mesh.bounds.max.x == 14;
+	assert f.geometry.mesh.bounds.min.y == 0 && f.geometry.mesh.bounds.max.y == 2;
+}
+
 test "a skinned morph node keeps the joint and weight attributes of the mesh untouched" {
 	const f = fixture();
 	defer closeScene(f.scene);

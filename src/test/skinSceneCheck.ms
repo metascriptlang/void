@@ -1,6 +1,6 @@
 import {
 	Scene3D, SceneError, Transform3D, addGroup, addSkinMeshNode, addLodSkinMeshNode, rootId,
-	closeScene, refreshChecked, setLocal, setPickable, remove, setMaterialOf, setForcedLod,
+	closeScene, refreshChecked, syncSceneSkinGeometry, setLocal, setPickable, remove, setMaterialOf, setForcedLod,
 	SceneSyncError,
 } from "../void3d/scene";
 import { MeshLod, MeshLodRanges, pickFor } from "../void3d/meshLod";
@@ -294,4 +294,67 @@ test "retained actors share mesh and material but keep pose bounds and attachmen
 	assert items.length == 1 && items[0].skinGeometry === geometry.value;
 	assert geometry.value.spatialReady() && geometry.value.mesh.bounds.min.x == -10;
 	assert f.scene.context.meshPins[0] == 1 && f.scene.context.materialPins[0] == 1;
+}
+
+function deformedCount(scene: Scene3D): int32 {
+	const synced = syncSceneSkinGeometry(scene);
+	if (!synced.ok) { unreachable; }
+	return synced.value;
+}
+
+test "a steady skin sync deforms nothing and a moved joint deforms only the meshes it poses" {
+	const f = fixture();
+	defer closeScene(f.scene);
+	const bone = addGroup(f.scene, f.scene.rootId(), {
+		...Transform3D.identity(), position: vec3(-10, 0, 0),
+	});
+	const pose = SkinPose.bindPose(f.scene, [0], [bone], [identity()], f.geometry.pose.palettes);
+	assert pose.ok;
+	if (!pose.ok) { return; }
+	const geometry = SkinGeometry.bind(f.geometry.source, f.geometry.influences, pose.value);
+	assert geometry.ok;
+	if (!geometry.ok) { return; }
+	assert addSkinMeshNode(f.scene, f.scene.rootId(), Transform3D.identity(),
+		f.mesh, f.material, f.geometry, 0, null).ok;
+	assert addSkinMeshNode(f.scene, f.scene.rootId(), Transform3D.identity(),
+		f.mesh, f.material, geometry.value, 0, null).ok;
+	let items: Vec<DrawItem> = [];
+	assert refreshChecked(f.scene, items).ok;
+	assert f.geometry.pose.revision == 1 && pose.value.revision == 1;
+	assert deformedCount(f.scene) == 0;
+	assert f.geometry.pose.revision == 1 && pose.value.revision == 1;
+	assert f.geometry.revision == 1 && geometry.value.revision == 1;
+	assert f.geometry.spatialReady() && geometry.value.spatialReady();
+	setLocal(f.scene, f.geometry.pose.joints[0], {
+		...Transform3D.identity(), position: vec3(20, 0, 0),
+	});
+	assert deformedCount(f.scene) == 1;
+	assert f.geometry.pose.revision == 2 && pose.value.revision == 1;
+	assert f.geometry.revision == 2 && geometry.value.revision == 1;
+	assert f.geometry.mesh.bounds.min.x == 20 && geometry.value.mesh.bounds.min.x == -10;
+	assert deformedCount(f.scene) == 0;
+}
+
+test "two meshes sharing one pose deform once per joint move and not for an unrelated node" {
+	const f = fixture();
+	defer closeScene(f.scene);
+	const second = SkinGeometry.bind(f.geometry.source, f.geometry.influences, f.geometry.pose);
+	assert second.ok;
+	if (!second.ok) { return; }
+	assert addSkinMeshNode(f.scene, f.scene.rootId(), Transform3D.identity(),
+		f.mesh, f.material, f.geometry, 0, null).ok;
+	assert addSkinMeshNode(f.scene, f.scene.rootId(), Transform3D.identity(),
+		f.mesh, f.material, second.value, 0, null).ok;
+	const other = addGroup(f.scene, f.scene.rootId(), Transform3D.identity());
+	assert deformedCount(f.scene) == 2;
+	assert f.geometry.pose.revision == 1;
+	assert deformedCount(f.scene) == 0;
+	setLocal(f.scene, other, { ...Transform3D.identity(), position: vec3(5, 0, 0) });
+	assert deformedCount(f.scene) == 0 && f.geometry.pose.revision == 1;
+	setLocal(f.scene, f.geometry.pose.joints[0], {
+		...Transform3D.identity(), position: vec3(20, 0, 0),
+	});
+	assert deformedCount(f.scene) == 2;
+	assert f.geometry.pose.revision == 2;
+	assert f.geometry.revision == 2 && second.value.revision == 2;
 }

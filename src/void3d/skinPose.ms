@@ -70,6 +70,26 @@ export function bind(
 	return Result.ok(pose);
 }
 
+function sameWorld(a: Mat4, b: Mat4): boolean {
+	return a.m11 == b.m11 && a.m12 == b.m12 && a.m13 == b.m13 && a.m14 == b.m14 &&
+		a.m21 == b.m21 && a.m22 == b.m22 && a.m23 == b.m23 && a.m24 == b.m24 &&
+		a.m31 == b.m31 && a.m32 == b.m32 && a.m33 == b.m33 && a.m34 == b.m34 &&
+		a.m41 == b.m41 && a.m42 == b.m42 && a.m43 == b.m43 && a.m44 == b.m44;
+}
+
+// Reads joint worlds as they stand, so the caller runs `syncWorld` first. A dead joint counts as
+// moved so that the sync after it reports the error.
+export function jointsMoved(this pose: SkinPose): boolean {
+	if (!pose.ready || pose.worlds.length != pose.joints.length) { return true; }
+	for (let i = 0; i < pose.joints.length; i++) {
+		if (!isLive(pose.scene, pose.joints[i])) { return true; }
+		if (!sameWorld(pose.scene.nodes[pose.joints[i].index].world, pose.worlds[i])) {
+			return true;
+		}
+	}
+	return false;
+}
+
 export function syncSkinPose(this pose: SkinPose): Result<int32, SkinPoseError> {
 	pose.ready = false;
 	if (pose.revision == (0xffffffffffffffff as uint64)) { return Result.err(SkinPoseError.Shape); }
