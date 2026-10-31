@@ -1984,7 +1984,7 @@ export function drawItemWith(
 	globals: Readonly<Span<UniformBlock>>,
 	scene: SceneTexture,
 ): void {
-	if (context.closed) { stopOnClosedContext("drawItem"); }
+	if (context.closed) { stopOnClosedContext("drawItemWith"); }
 	stageRows(context, 1);
 	writeInstanceRow(context, 0, item.world);
 	drawStaged(context, item, 1, program, state, targets, globals, scene);
@@ -2004,7 +2004,7 @@ export function drawBatchWith(
 	globals: Readonly<Span<UniformBlock>>,
 	scene: SceneTexture,
 ): void {
-	if (context.closed) { stopOnClosedContext("drawItem"); }
+	if (context.closed) { stopOnClosedContext("drawBatchWith"); }
 	const count: int32 = batch.length as int32;
 	if (count == 0) { return; }
 	const first: Readonly<DrawItem> = items[batch[0]];
