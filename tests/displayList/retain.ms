@@ -1329,3 +1329,40 @@ test "a layer slot ends the command before its node on a full, patched and splic
 	assert uiDraws() == 1;
 	frameEnd();
 }
+
+struct Detached {
+	s: Scene2D;
+	head: NodeRef;
+	holder: NodeRef;
+	sub: NodeRef;
+}
+
+function detached(): Detached {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const head = s.label("ab", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 4.0);
+	s.add(head);
+	const holder = s.group();
+	s.add(holder);
+	const sub = s.group().at(4.0, 30.0);
+	sub.addChild(s.rect(20.0, 20.0, rgba(0.0, 1.0, 0.0, 1.0)));
+	sub.addChild(s.rect(8.0, 8.0, rgba(1.0, 0.0, 0.0, 1.0)).at(2.0, 2.0));
+	s.add(sub);
+	frame(s);
+	sub.remove();
+	frame(s);
+	head.setText("abcd");
+	frame(s);
+	return { s: s, head: head, holder: holder, sub: sub };
+}
+
+test "a subtree added back records its rows again, not their range from an older recording" {
+	const d: Detached = detached();
+	d.s.add(d.sub);
+	assert check(d.s, "a subtree added back where it was", "splice");
+}
+
+test "a subtree added back under another parent records its rows again" {
+	const d: Detached = detached();
+	d.holder.addChild(d.sub);
+	assert check(d.s, "a subtree added back under another parent", "splice");
+}

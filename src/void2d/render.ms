@@ -10,6 +10,7 @@ import {
 	DrawContext2D,
 	currentContext,
 	contextSerial,
+	paintStateIn,
 	PaintIndex,
 	PaintState,
 	recordPaint,
@@ -1592,9 +1593,7 @@ export function spliceOrder(this s: Scene2D, old: DrawContext2D, vw: float32, vh
 }
 
 function reusable(s: Scene2D, i: int32, old: DrawContext2D): boolean {
-	if (i >= (old.paintStates.length as int32) || old.paintStates[i] != PaintState.Painted) {
-		return false;
-	}
+	if (paintStateIn(old, i) != PaintState.Painted) { return false; }
 	if (s.queued[i] == s.patchSerial || !s.changed[i].isEmpty()) { return false; }
 	return continuesLike(old, old.paintStarts[i], old.paintEnds[i]);
 }
@@ -1855,9 +1854,7 @@ function joins(s: Scene2D, source: DrawContext2D, q: int32, last: PaintIndex): b
 	if (s.kinds[j] === DrawKind.Mask || lanesFor(s, j) || s.parents[j] == laneParent(s)) {
 		return false;
 	}
-	if (j >= (source.paintStates.length as int32) || source.paintStates[j] != PaintState.Painted) {
-		return false;
-	}
+	if (paintStateIn(source, j) != PaintState.Painted) { return false; }
 	if (s.queued[j] == s.patchSerial || !s.changed[j].isEmpty()) { return false; }
 	const end: PaintIndex = source.paintEnds[j];
 	if (end.commands != last.commands || end.effects != last.effects || end.effect != NO_EFFECT) {
