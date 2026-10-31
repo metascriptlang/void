@@ -33,7 +33,7 @@ test "the packed key is unique over outline, size, variant and kind" {
 			for (let variant = 0; variant < 4; variant++) {
 				for (let outline = 0; outline <= OUTLINE_LANE_MAX; outline = outline + 5) {
 					const packed: uint64 = keyOf(kind, size, variant, outline).packed();
-					assert !seen.get(packed).present;
+					assert !seen.has(packed);
 					seen.set(packed, count);
 					count = count + 1;
 				}
