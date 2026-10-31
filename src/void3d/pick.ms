@@ -6,7 +6,7 @@ import { Vec3, Mat4 } from "../math/math3d";
 import { Bounds3D } from "./bounds";
 import { MeshData, MeshRayHit, Uv } from "./meshData";
 import { rayIntersection, rayIntersectionElements } from "./skinGeometry";
-import { DrawContext } from "./draw";
+import { DrawContext, DrawRange } from "./draw";
 import { Face } from "../gpu/state";
 import { Ray } from "./ray";
 import { DEFAULT_LAYERS, layersTest } from "./layers";
@@ -41,6 +41,8 @@ struct MeshHit {
 	point: Vec3;
 	uv: Uv | null;
 }
+
+const MESH_MISS: MeshRayHit = { distance: -1.0, uv: null };
 
 const MISS: MeshHit = { distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 }, uv: null };
 
@@ -100,7 +102,7 @@ export function pickNearestOn(
 				}
 			} else {
 				hit = context.meshData[instance.mesh.index].meshHit(
-					face, scene.nodes[index].world, ray,
+					face, scene.nodes[index].world, ray, instance.range,
 				);
 			}
 			const nearer: boolean = best.distance < 0.0 || hit.distance < best.distance;
@@ -124,6 +126,12 @@ export function pickNearestOn(
 	return Result.ok(best);
 }
 
+function stopOnRange(range: Readonly<DrawRange>): void {
+	console.log(`void3d: pick of a mesh node whose draw range ${range.base}+${range.count} ` +
+		"does not fit its mesh data");
+	unreachable;
+}
+
 function pickableOwner(this scene: Scene3D, index: int32): int32 {
 	let at: int32 = index;
 	while (at != NO_NODE_3D) {
@@ -137,12 +145,21 @@ function pickableOwner(this scene: Scene3D, index: int32): int32 {
 // inside the bounds still reaches the triangles: getCollider() never yields the
 // OptimizedCollider that rayCastEventTargets would set checkInside on (Scene.hx:331).
 // PENDING3D: pick-origin-inside-bounds
-function meshHit(this data: MeshData, culling: Face, world: Mat4, ray: Ray): MeshHit {
+function meshHit(
+	this data: MeshData, culling: Face, world: Mat4, ray: Ray, range: Readonly<DrawRange> | null,
+): MeshHit {
 	const box: Bounds3D = data.bounds;
 	if (box.isEmpty()) { return MISS; }
 	const local: Ray = ray.transformed(world.inverseAffine());
 	if (box.rayIntersection(local) < 0.0 && !box.contains(local.origin)) { return MISS; }
-	const hit: MeshRayHit = data.rayIntersection(local, seenThrough(culling, world));
+	const face: Face = seenThrough(culling, world);
+	let hit: MeshRayHit = MESH_MISS;
+	if (range === null) {
+		hit = data.rayIntersection(local, face);
+	} else {
+		const ranged = data.rayIntersectionElements(local, face, range.base, range.count);
+		if (ranged.ok) { hit = ranged.value; } else { stopOnRange(range); }
+	}
 	if (hit.distance < 0.0) { return MISS; }
 	const point: Vec3 = local.pointAt(hit.distance) * world;
 	return { distance: (point - ray.origin).length(), point: point, uv: hit.uv };

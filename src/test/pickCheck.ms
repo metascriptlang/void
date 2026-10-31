@@ -21,6 +21,7 @@ import {
 	setLocal,
 	setVisible,
 	setPickable,
+	addLodMeshNode,
 	setLayer,
 	setLayers,
 	NO_NODE_ID,
@@ -39,8 +40,11 @@ import { ALL_LAYERS, layerBit } from "../void3d/layers";
 import { Camera3D, ProjectionKind, CameraView, CameraBasis } from "../void3d/camera";
 import { LowResView, lowResView } from "../void3d/blit";
 import { approx } from "./helpers";
-import { contextOf, writeTables } from "./drawHelpers";
-import { DrawContext, MeshId, MaterialId } from "../void3d/draw";
+import { added, contextOf, writeTables } from "./drawHelpers";
+import {
+	DrawContext, MeshId, MaterialId, GpuMesh, addMaterial,
+} from "../void3d/draw";
+import { MeshLod, MeshLodRanges } from "../void3d/meshLod";
 
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const UNCULLED: int32 = 0;
@@ -805,4 +809,40 @@ test "a pick does not inherit layers: a group's layer neither hides nor shows it
 	writeTables(scene.context, meshes, materials());
 	assert !pickNearest(scene, down(0.0, 0.0)).ok;
 	assert pickNearestOn(scene, down(0.0, 0.0), layerBit(4)).ok;
+}
+
+function flatTriangle(ref data: MeshData, x: float32): void {
+	const up: Vec3 = vec3(0.0, 1.0, 0.0);
+	const a: int32 = try addVertex(data, vec3(x, 0.0, -1.0), up, WHITE) catch 0;
+	const b: int32 = try addVertex(data, vec3(x + 1.0, 0.0, -1.0), up, WHITE) catch 0;
+	const c: int32 = try addVertex(data, vec3(x, 0.0, 1.0), up, WHITE) catch 0;
+	const _t: int32 = try addTriangle(data, a, b, c) catch 0;
+}
+
+test "a LOD node is picked on its own level 0 slot, not on coarser levels or sibling slots" {
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
+	const _mesh: MeshId = added(context, GpuMesh.fullscreen(0, 12));
+	const _material = addMaterial(
+		context, Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque));
+	const scene: Scene3D = Scene3D.create(context);
+	const config = MeshLod.create(2, [0.5], 0.1);
+	const ranges = MeshLodRanges.fromElementRanges(2, 2, 12,
+		[{ base: 0, count: 3 }, { base: 3, count: 3 }, { base: 6, count: 3 },
+			{ base: 9, count: 3 }]);
+	if (!config.ok || !ranges.ok) { unreachable; }
+	const node = addLodMeshNode(scene, scene.rootId(), Transform3D.identity(),
+		context.meshAt(0), context.materialAt(0), config.value, ranges.value, 0);
+	if (!node.ok) { unreachable; }
+	const _picked: NodeId3D = pickable(scene, node.value);
+	let data: MeshData = MeshData.empty();
+	for (let i = 0; i < 4; i++) { flatTriangle(data, (i * 3) as float32 + 0.0); }
+	const meshes: Vec<MeshData> = [data];
+	const own: PickHit = pickOf(scene, meshes, down(0.25, 0.0));
+	assert sameId(own.mesh, node.value) && approx(own.distance, 10.0);
+	const sibling = pickIn(scene, meshes, down(3.25, 0.0));
+	const coarse = pickIn(scene, meshes, down(6.25, 0.0));
+	const coarseSibling = pickIn(scene, meshes, down(9.25, 0.0));
+	assert !sibling.ok && sibling.error == PickError.NothingHit;
+	assert !coarse.ok && coarse.error == PickError.NothingHit;
+	assert !coarseSibling.ok && coarseSibling.error == PickError.NothingHit;
 }
