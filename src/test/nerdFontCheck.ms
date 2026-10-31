@@ -162,3 +162,19 @@ test "a label takes the constraint widths and draws its symbol into them" {
 	assert labelTexts[index].layout.glyphs[0].size != bare;
 	assert approx(right - left, CELL);
 }
+
+test "a label's second line takes the constraint widths from its own bytes" {
+	const index = allocateLabelText();
+	setLabelLines(index, { ...labelLines(index), forceWidth: CELL });
+	const text: string = "ab
+" + ARROW;
+	const widths: uint8[] = [0, 0, 0];
+	for (const w of THREE_BYTES_ONE_CELL) { widths.push(w); }
+	setLabelConstraintWidths(index, widths);
+	shapeLabel(index, text, row());
+	const glyphs = labelTexts[index].layout.glyphs;
+	const symbol: int32 = (glyphs.length as int32) - 1;
+	assert glyphs[symbol].codepoint == 0x2192;
+	const [left, top, right, bottom] = inked(glyphs[symbol]);
+	assert approx(right - left, CELL);
+}
