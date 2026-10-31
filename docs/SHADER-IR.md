@@ -116,8 +116,8 @@ and an app's program is printed by `shaderProgram` while msc compiles it, then c
 driver as any source. The gate's oracle step runs `regen-shaders.sh --check`, which leaves every
 stage of every program in `out/irPrograms/`, then fxc and naga over it: 518 HLSL stages in 26 s
 and 518 WGSL files in 18 s, the regen itself about 4 min (2026-10-24, Windows); a missing tool
-is a named SKIP. GLSL stays a SKIP: naga reads GL GLSL only after a rewrite to Vulkan 450
-(combined samplers split, locations added) that lives outside the repository. On a Mac
+is a named SKIP. glslang (`scripts/validateGlsl.sh`) compiles every GLSL 430 and ES 3.00 stage
+with GL semantics: 1528 stages in 4 s, batched 200 to a process (2026-10-31, Windows). On a Mac
 `scripts/validateMsl.sh` compiles every MSL stage with `xcrun metal -c`, the `_ios` ones against
 the iphoneos SDK, with no options, as `newLibraryWithSource` gets none: 1036 stages in 2.5 min,
 plus the shader checks' `out/mslProbe/` (2026-10-24). Other hosts have no Metal compiler and
