@@ -235,6 +235,56 @@ test "TRS child staging owns samples without Scene writes or legacy fallback cha
 	assert sameLocals(scene, locals, flags);
 }
 
+function stagedFor(
+	pose: GltfPose,
+	targets: Readonly<Span<AnimationRestTarget>>,
+	sourceNode: int32,
+): Transform3D {
+	const staged = pose.stageTrsChild(targets, 2.0);
+	if (!staged.ok) { unreachable; }
+	for (const sample of staged.value.samples) {
+		if (sample.sourceNode == sourceNode) { return sample.value; }
+	}
+	unreachable;
+}
+
+test "TRS child staging follows the target set and rests of every call" {
+	const loaded = importedGroups();
+	const tracks = firstTracks();
+	assert loaded.ok && tracks.ok;
+	if (!loaded.ok || !tracks.ok) { return; }
+	const context = DrawContext.withUniformCapacity(0);
+	defer closeContext(context);
+	const scene = Scene3D.create(context);
+	defer closeScene(scene);
+	const actor = addGltfBoundNodes(scene, scene.rootId(), loaded.value, []);
+	assert actor.ok;
+	if (!actor.ok) { return; }
+	const bound = GltfPose.bind(scene, actor.value.nodes, tracks.value);
+	assert bound.ok;
+	if (!bound.ok) { return; }
+	const targets = capturedTargets(scene, actor.value.nodes);
+	const expectedTranslation = stagedFor(bound.value, targets, 0);
+	const expectedRotation = stagedFor(bound.value, targets, 2);
+	const reversed: Vec<AnimationRestTarget> = [targets[1], targets[0]];
+	assert stagedFor(bound.value, reversed, 0) == expectedTranslation;
+	assert stagedFor(bound.value, reversed, 2) == expectedRotation;
+	assert stagedFor(bound.value, targets, 0) == expectedTranslation;
+	const missing: Vec<AnimationRestTarget> = [targets[0]];
+	const refused = bound.value.stageTrsChild(missing, 2.0);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == GltfPoseError.Target; }
+	assert stagedFor(bound.value, targets, 2) == expectedRotation;
+	let regrown = capturedTargets(scene, actor.value.nodes);
+	regrown[0].rest.scale = { x: 8.0, y: 9.0, z: 10.0 };
+	assert stagedFor(bound.value, regrown, 0).scale == regrown[0].rest.scale;
+	regrown[0].rest.scale.y = NaN as float32;
+	const nonfinite = bound.value.stageTrsChild(regrown, 2.0);
+	assert !nonfinite.ok;
+	if (!nonfinite.ok) { assert nonfinite.error == GltfPoseError.Compose; }
+	assert stagedFor(bound.value, targets, 0) == expectedTranslation;
+}
+
 test "TRS Scene exclusive selects whole source and restores absent captured rest" {
 	const loaded = importedGroups();
 	const tracks = firstTracks();

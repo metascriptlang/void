@@ -4,7 +4,7 @@ export { GltfPoseTrack } from "./gltfCurve";
 import { Scene3D, NodeId3D, Transform3D, isLive, setLocal } from "./scene";
 import {
 	AnimationRestTarget, AnimationChildSample, AnimationCompose, AnimationTrsSample,
-	AnimationComponent, stageSmoothCompose, stageExclusiveCompose,
+	AnimationComponent, stageSmoothCompose, stageExclusiveCompose, checkedTargets, checkedRests,
 } from "./animationCompose";
 
 export enum GltfPoseError {
@@ -18,9 +18,12 @@ export enum GltfPoseError {
 export interface GltfPose {
 	readonly scene: Scene3D;
 	nodes: Vec<NodeId3D>;
-	tracks: Vec<GltfPoseTrack>;
+	readonly tracks: Vec<GltfPoseTrack>;
 	pending: Vec<Transform3D>;
 	touched: Vec<boolean>;
+	trackTarget: Vec<int32>;
+	boundSources: Vec<int32>;
+	seeded: Vec<AnimationTrsSample>;
 }
 
 function duplicatesEarlier(tracks: Readonly<Span<GltfPoseTrack>>, index: int32): boolean {
@@ -59,6 +62,41 @@ function committed(this compose: Readonly<AnimationCompose>, pose: GltfPose): in
 	return compose.targets.length as int32;
 }
 
+function boundTrackTargets(
+	this pose: GltfPose,
+	targets: Readonly<Span<AnimationRestTarget>>,
+): Result<void, GltfPoseError> {
+	if (pose.trackTarget.length == pose.tracks.length &&
+		pose.boundSources.length == targets.length) {
+		let same = true;
+		for (let i = 0; i < targets.length; i++) {
+			if (pose.boundSources[i] != targets[i].sourceNode) { same = false; break; }
+		}
+		if (same) {
+			if (!checkedRests(targets).ok) { return Result.err(GltfPoseError.Compose); }
+			return Result.ok(null);
+		}
+	}
+	pose.trackTarget = [];
+	pose.boundSources = [];
+	if (!checkedTargets(targets).ok) { return Result.err(GltfPoseError.Compose); }
+	let resolved: Vec<int32> = [];
+	for (let i = 0; i < pose.tracks.length; i++) {
+		let found: int32 = -1;
+		for (let target = 0; target < targets.length; target++) {
+			if (targets[target].sourceNode == pose.tracks[i].sourceNode) {
+				found = target as int32;
+				break;
+			}
+		}
+		if (found < 0) { return Result.err(GltfPoseError.Target); }
+		resolved.push(found);
+	}
+	for (let i = 0; i < targets.length; i++) { pose.boundSources.push(targets[i].sourceNode); }
+	pose.trackTarget = resolved;
+	return Result.ok(null);
+}
+
 export function stageTrsChild(
 	this pose: GltfPose,
 	targets: Readonly<Span<AnimationRestTarget>>,
@@ -77,31 +115,30 @@ export function stageTrsChild(
 			return Result.err(GltfPoseError.Target);
 		}
 	}
-	const captured = AnimationCompose.create(targets);
-	if (!captured.ok) { return Result.err(GltfPoseError.Compose); }
-	let resolved: Vec<AnimationTrsSample> = captured.value.output;
+	const bound = pose.boundTrackTargets(targets);
+	if (!bound.ok) { return Result.err(bound.error); }
+	for (let i = 0; i < targets.length; i++) {
+		const seed: AnimationTrsSample = {
+			sourceNode: targets[i].sourceNode,
+			value: targets[i].rest,
+			present: 0 as BitSet<AnimationComponent>,
+		};
+		if (i < pose.seeded.length) { pose.seeded[i] = seed; } else { pose.seeded.push(seed); }
+	}
+	while (pose.seeded.length > targets.length) { pose.seeded.pop(); }
 	for (let i = 0; i < pose.tracks.length; i++) {
-		let targetIndex: int32 = -1;
-		for (let target = 0; target < targets.length; target++) {
-			if (targets[target].sourceNode == pose.tracks[i].sourceNode) {
-				targetIndex = target as int32;
-				break;
-			}
-		}
-		if (targetIndex < 0) { return Result.err(GltfPoseError.Target); }
-		if (duplicatesEarlier(pose.tracks, i as int32)) {
-			return Result.err(GltfPoseError.DuplicateTrack);
-		}
 		const sampled = pose.tracks[i].curve.sample(seconds);
 		if (!sampled.ok) { return Result.err(GltfPoseError.Curve); }
 		const path = pose.tracks[i].curve.path;
-		resolved[targetIndex].value = resolved[targetIndex].value.withSample(path, sampled.value);
-		resolved[targetIndex].present =
-			resolved[targetIndex].present.incl(animatedComponent(path));
+		const index: int32 = pose.trackTarget[i];
+		pose.seeded[index].value = pose.seeded[index].value.withSample(path, sampled.value);
+		pose.seeded[index].present = pose.seeded[index].present.incl(animatedComponent(path));
 	}
 	let child: AnimationChildSample = { seconds: seconds, samples: [] };
-	for (const sample of resolved) {
-		if (sample.present != (0 as BitSet<AnimationComponent>)) { child.samples.push(sample); }
+	for (let i = 0; i < pose.seeded.length; i++) {
+		if (pose.seeded[i].present != (0 as BitSet<AnimationComponent>)) {
+			child.samples.push(pose.seeded[i]);
+		}
 	}
 	return Result.ok(move child);
 }
@@ -171,12 +208,7 @@ export function bind(
 	if (nodes.length > 0x7fffffff || tracks.length > 0x7fffffff) {
 		return Result.err(GltfPoseError.Shape);
 	}
-	let pose: GltfPose = { scene: scene, nodes: [], tracks: [], pending: [], touched: [] };
-	for (const node of nodes) {
-		pose.nodes.push(node);
-		pose.pending.push(Transform3D.identity());
-		pose.touched.push(false);
-	}
+	let owned: Vec<GltfPoseTrack> = [];
 	for (let i = 0; i < tracks.length; i++) {
 		const track = tracks[i];
 		if (track.sourceNode < 0 || track.sourceNode >= nodes.length ||
@@ -186,7 +218,16 @@ export function bind(
 		}
 		const value = track.curve.sample(0.0);
 		if (!value.ok) { return Result.err(GltfPoseError.Curve); }
-		pose.tracks.push({ sourceNode: track.sourceNode, curve: track.curve });
+		owned.push({ sourceNode: track.sourceNode, curve: track.curve });
+	}
+	let pose: GltfPose = {
+		scene: scene, nodes: [], tracks: owned, pending: [], touched: [],
+		trackTarget: [], boundSources: [], seeded: [],
+	};
+	for (const node of nodes) {
+		pose.nodes.push(node);
+		pose.pending.push(Transform3D.identity());
+		pose.touched.push(false);
 	}
 	return Result.ok(pose);
 }
