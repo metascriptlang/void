@@ -366,16 +366,6 @@ export macro shaderBuild(
 	if (!source.ok) { refused(source.error); }
 	const s = source.value;
 	if (s.refusal != "") { refused(s.refusal); }
-	let printedTargets = [target];
-	for (const other of targetArms()) {
-		const noCompute = compute && other.target == ShaderTarget.Glsl300es;
-		if (noCompute || printedTargets.includes(other.target)) { continue; }
-		printedTargets.push(other.target);
-		const elsewhere = programSource(module.value, other.target);
-		if (!elsewhere.ok) { refused("on " + other.language + ": " + elsewhere.error); }
-		const refusal = elsewhere.value.refusal;
-		if (refusal != "") { refused("on " + other.language + ": " + refusal); }
-	}
 	const bindingRefusal = shaderBindingsRefusal(
 		s.reflection.bindings,
 		isComputeSource(s),
