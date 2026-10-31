@@ -15,6 +15,7 @@ import "./glyphPageReleaseCheck";
 import "./glyphPortCheck";
 import "./outlineKeyCheck";
 import "./textLayoutCheck";
+import "./nerdFontCheck";
 import "./labelTextCheck";
 import "./glyphRetryCheck";
 import "./textMetricsCheck";
@@ -277,7 +278,9 @@ when (voidShaper) {
 	import "./shaperBridgeCheck";
 	import "./shapeOracleCheck";
 	import "./shaperPortCheck";
+	import "./kbCmapUnicodeCheck";
 	import "./shapedLayoutCheck";
+	import "./morxShapeCheck";
 }
 when (voidBidi) {
 	import "./bidiTableCheck";

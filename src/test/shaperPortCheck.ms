@@ -79,6 +79,14 @@ test "shaper.ms reproduces the digests recorded from shaper.c over every face th
 		check(count, names[k], try loadFace(names[k]) catch -1);
 	}
 	assert count.bad == 0;
+	let loadablePins: int32 = 0;
+	for (const pin of SHAPER_PORT_PINS) {
+		when (voidCff) {
+			loadablePins++;
+		} else {
+			if (!pin.startsWith("tests/fonts/cffSynthetic.otf#")) { loadablePins++; }
+		}
+	}
 	const colourFaces = colourBuilt() ? (SHAPER_PORT_COLOUR_PINS.length as int32) : 0;
-	assert count.compared == (SHAPER_PORT_PINS.length as int32) + colourFaces;
+	assert count.compared == loadablePins + colourFaces;
 }

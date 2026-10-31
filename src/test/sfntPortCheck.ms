@@ -41,7 +41,7 @@ function flagsOf(id: int32): int32 {
 // port matched the C's 499806152 and 488470174 when run alone, then summary ids became relative
 // to the first one this check reads, so a check that peeked earlier no longer moves the digest.
 const PINNED_BYTES: uint32 = 1535886047;
-const PINNED_FILES: uint32 = 1283504266;
+const PINNED_FILES: uint32 = 3311352593;
 
 const PROBES: int32[] = [
 	0x0, 0x20, 0x41, 0x42, 0x43, 0x61, 0xFF, 0x100, 0x2700, 0x2702, 0x2703, 0x3042, 0xFFFF,

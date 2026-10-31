@@ -151,6 +151,7 @@ export interface LabelText {
 	options: LineOptions;
 	shapingBreaks: Vec<int32>;
 	cellWidths: Vec<uint8>;
+	constraintWidths: Vec<uint8>;
 	selectionStart: int32;
 	selectionLength: int32;
 	selectionColor: Color;
@@ -275,6 +276,7 @@ export function allocateLabelText(): int32 {
 		options: PLAIN_LINES,
 		shapingBreaks: new Array(0),
 		cellWidths: new Array(0),
+		constraintWidths: new Array(0),
 		selectionStart: 0,
 		selectionLength: 0,
 		selectionColor: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
@@ -347,7 +349,7 @@ export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 	}
 	entry.style = style;
 	entry.selectionStale = true;
-	entry.layout = wrapOnGrid(entry.shaped, style, entry.options, entry.cellWidths);
+	entry.layout = wrapOnGrid(entry.shaped, style, entry.options, entry.cellWidths, entry.constraintWidths);
 	entry.decorations = entry.layout.runDecorations(entry.runs, style.size, entry.options.forceWidth);
 }
 
@@ -508,6 +510,12 @@ export function setLabelCellWidths(index: int32, widths: Readonly<Span<uint8>>):
 	let kept: Vec<uint8> = new Array(0);
 	for (const width of widths) { kept.push(width); }
 	labelTexts[index].cellWidths = kept;
+}
+
+export function setLabelConstraintWidths(index: int32, widths: Readonly<Span<uint8>>): void {
+	let kept: Vec<uint8> = new Array(0);
+	for (const width of widths) { kept.push(width); }
+	labelTexts[index].constraintWidths = kept;
 }
 
 export function setLabelDirection(index: int32, direction: TextDirection): void {

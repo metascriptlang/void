@@ -2,7 +2,7 @@
 // the descriptor then carries the blob and no text. A Windows host without fxc keeps the text.
 
 import { byteAt, byteLength } from "std/core/string/bytes";
-import { readFile } from "std/fs";
+import { readFileBytes } from "std/fs";
 import { glslIr, glslLinkedIr } from "../shader/emit";
 import { programModule, programSource } from "../shader/descriptor";
 import { dxbcKey } from "../shader/dxbcCache";
@@ -67,18 +67,18 @@ shaderModule(blob, blobVs, blobFs);
 shaderModule(flat, flatVs, flatFs);
 
 when (windows) {
-	function cachedBlob(profile: string, entry: string, code: string): string {
+	function cachedBlob(profile: string, entry: string, code: string): uint8[] {
 		const name = dxbcKey(profile, entry, code) + ".dxbc";
-		const tracked = readFile("shaders/dxbc/" + name);
+		const tracked = readFileBytes("shaders/dxbc/" + name);
 		if (tracked.ok) { return tracked.value; }
-		const made = readFile("out/shaders/dxbc/" + name);
-		return made.ok ? made.value : "";
+		const made = readFileBytes("out/shaders/dxbc/" + name);
+		return made.ok ? made.value : [];
 	}
 
-	function sameBytes(bytecode: Readonly<Vec<uint8>>, file: string): boolean {
-		if (file.byteLength() == 0 || bytecode.length != file.byteLength()) { return false; }
+	function sameBytes(bytecode: Readonly<Vec<uint8>>, file: uint8[]): boolean {
+		if (file.length == 0 || bytecode.length != file.length) { return false; }
 		for (let i = 0; i < bytecode.length; i++) {
-			if (bytecode[i] as int32 != file.byteAt(i) as int32) { return false; }
+			if (bytecode[i] != file[i]) { return false; }
 		}
 		return true;
 	}

@@ -47,7 +47,7 @@ test "a compute descriptor reflects the storage buffer the kernel binds" {
 	assert countedModule.bindings[0].kind == "storage-buffer";
 	assert countedModule.bindings[0].binding == 0;
 	assert countedModule.bindings[0].bufferType == "storage";
-	assert (countedModule.bindings[1].kind as string) == "";
+	assert countedModule.bindings[1].kind == null;
 }
 
 when (windows) {

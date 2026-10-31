@@ -579,7 +579,7 @@ export function doorLayoutFloats(layout: int32, buffer: int32): int32 {
 	const state = layoutAt(layout).buffers[buffer];
 	let floats = 0;
 	for (const attribute of state.attributes) {
-		if ((attribute.format as string) == "") { continue; }
+		if (attribute.format == null) { continue; }
 		const size = formatFloats(attribute.format);
 		if (size < 0) { return -1; }
 		floats += size;
@@ -717,7 +717,11 @@ function colorTextureFormat(format: PixelFormat): GPUTextureFormat {
 }
 
 function depthTextureFormat(format: PixelFormat): GPUTextureFormat {
-	if (format == PixelFormat.Default) { return device.getCanvasConfiguration().depthFormat; }
+	if (format == PixelFormat.Default) {
+		const depthFormat = device.getCanvasConfiguration().depthFormat;
+		if (depthFormat == null) { stop("the canvas has no depth format"); }
+		return depthFormat;
+	}
 	return textureFormatOf(format);
 }
 
@@ -1979,8 +1983,8 @@ export function doorFormatRenderable(format: int32): boolean {
 	return device.isRenderable(textureFormatOf(pixelFormat));
 }
 
-function pixelFormatOf(format: GPUTextureFormat, role: string): PixelFormat {
-	if ((format as string) == "") { return PixelFormat.None; }
+function pixelFormatOf(format: GPUTextureFormat | null, role: string): PixelFormat {
+	if (format == null) { return PixelFormat.None; }
 	return match (format) {
 		"rgba8unorm" => PixelFormat.Rgba8,
 		"depth32float" => PixelFormat.Depth,

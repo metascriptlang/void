@@ -66,7 +66,7 @@ export struct NativeEnvironment {
 	device: Ptr<void> | null;
 	context: Ptr<void> | null;
 	colorFormat: GPUTextureFormat;
-	depthFormat: GPUTextureFormat;
+	depthFormat: GPUTextureFormat | null;
 	sampleCount: int32;
 }
 export struct NativeSwapchain {

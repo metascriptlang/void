@@ -30,7 +30,7 @@ when (voidProfiler) {
 import { sinf, cosf } from "../math/mat4";
 import { Mat4 } from "../math/math3d";
 import { NO_COLOR_MATRIX } from "./effect";
-import { FlexStyle, YGNode, freeLayoutTree } from "../../../yoga/src/index";
+import { FlexStyle, LayoutMeasure, YGNode, freeLayoutTree } from "../../../yoga/src/index";
 import {
 	BoxStyle,
 	CornerRadii,
@@ -53,6 +53,7 @@ import {
 	labelDirection,
 	setLabelLines,
 	setLabelCellWidths,
+	setLabelConstraintWidths,
 	labelLines,
 	setLabelSelection,
 	setLabelCursor,
@@ -907,6 +908,11 @@ export function layoutSetYg(this n: NodeRef, yg: Ptr<YGNode> | null): void {
 	n.scene.layouts[i] = { ...n.scene.layouts[i], yg: yg };
 }
 
+export function layoutGetMeasure(this n: NodeRef): LayoutMeasure | null {
+	n.liveRow("layoutGetMeasure");
+	return null;
+}
+
 export function layoutSetFrame(
 	this n: NodeRef,
 	x: float32,
@@ -1627,6 +1633,11 @@ export function setShapingBreaks(this n: NodeRef, breaks: Readonly<Span<int32>>)
 
 export function setCellWidths(this n: NodeRef, widths: Readonly<Span<uint8>>): NodeRef {
 	setLabelCellWidths(textChanged(n, "setCellWidths"), widths);
+	return n;
+}
+
+export function setConstraintWidths(this n: NodeRef, widths: Readonly<Span<uint8>>): NodeRef {
+	setLabelConstraintWidths(textChanged(n, "setConstraintWidths"), widths);
 	return n;
 }
 

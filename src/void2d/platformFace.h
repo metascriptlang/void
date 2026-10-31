@@ -18,6 +18,11 @@ void void2dPlatformFaceBox(void *face, int glyph, float sizePx, float shiftX, fl
 int void2dPlatformFaceFill(void *face, int glyph, float sizePx, float shiftX, float skew,
                            float emboldenPx, unsigned char *at, int w, int h, int stride);
 
+#ifdef __APPLE__
+int void2dPlatformShape(void *face, const int *codepoints, int count, int capacity, int *glyphs,
+                        int *advances, int *offsetsX, int *offsetsY, int *indices);
+#endif
+
 #ifdef VOID2D_BROWSER_FACES
 void *void2dPlatformFaceOpenBrowser(const char *style, const char *family);
 int void2dPlatformFaceGlyph(void *face, int codepoint);

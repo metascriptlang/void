@@ -248,7 +248,7 @@ export struct NativeEnvironment {
 	device: Ptr<void> | null;
 	context: Ptr<void> | null;
 	colorFormat: GPUTextureFormat;
-	depthFormat: GPUTextureFormat;
+	depthFormat: GPUTextureFormat | null;
 	sampleCount: int32;
 }
 export struct NativeSwapchain {
@@ -544,7 +544,7 @@ struct ResourceBinding {
 	writable: boolean;
 	nativeSlot: int32;
 	access: int32;
-	storageFormat: GPUTextureFormat;
+	storageFormat: GPUTextureFormat | null;
 }
 
 struct ShaderSlot {
@@ -814,11 +814,11 @@ function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 
 const COMPARE_FUNCTIONS: int32[] = [GL_NEVER, GL_LESS, GL_EQUAL, GL_LEQUAL, GL_GREATER, GL_NOTEQUAL, GL_GEQUAL, GL_ALWAYS];
 
-function compareFunction(compare: string, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "gl"); }
+function compareFunction(compare: string | null, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "gl"); }
 
 function cullFace(cull: string): int32 {
 	return match (cull) {
-		"" | "none" => 0,
+		"none" => 0,
 		"front" => GL_FRONT,
 		"back" => GL_BACK,
 		_ => stopOnMember("primitive.cullMode", cull),
@@ -827,7 +827,7 @@ function cullFace(cull: string): int32 {
 
 function frontFace(face: string): int32 {
 	return match (face) {
-		"" | "ccw" => GL_CCW,
+		"ccw" => GL_CCW,
 		"cw" => GL_CW,
 		_ => stopOnMember("primitive.frontFace", face),
 	};
@@ -838,10 +838,10 @@ const BLEND_FACTORS: int32[] = [
 	GL_DST_ALPHA, GL_ONE_MINUS_DST_ALPHA, GL_SRC_ALPHA_SATURATE, GL_CONSTANT_COLOR, GL_ONE_MINUS_CONSTANT_COLOR,
 ];
 
-function blendFactor(factor: string, member: string): int32 { return blendFactorNative(BLEND_FACTORS, factor, member, "gl"); }
+function blendFactor(factor: string | null, member: string): int32 { return blendFactorNative(BLEND_FACTORS, factor, member, "gl"); }
 
-function destinationFactor(factor: string, member: string): int32 {
-	if (factor == "") { return GL_ZERO; }
+function destinationFactor(factor: string | null, member: string): int32 {
+	if (factor == null) { return GL_ZERO; }
 	return blendFactor(factor, member);
 }
 
@@ -890,7 +890,7 @@ function vertexFormatInfo(format: string): VertexFormatInfo { return vertexForma
 
 const PRIMITIVE_MODES: int32[] = [GL_POINTS, GL_LINES, GL_LINE_STRIP, GL_TRIANGLES, GL_TRIANGLE_STRIP];
 
-function primitiveMode(topology: string): int32 { return topologyNative(PRIMITIVE_MODES, topology, "primitive.topology", "gl"); }
+function primitiveMode(topology: string | null): int32 { return topologyNative(PRIMITIVE_MODES, topology, "primitive.topology", "gl"); }
 
 const STENCIL_OPERATIONS: int32[] = [GL_KEEP, GL_ZERO, GL_REPLACE, GL_INVERT, GL_INCR, GL_DECR, GL_INCR_WRAP, GL_DECR_WRAP];
 
@@ -1317,8 +1317,8 @@ export function createTexture(texture: TextureRecord, descriptor: GPUTextureDesc
 	const info = formatInfo(descriptor.format, "GPUTextureDescriptor.format");
 	const width = texture.width;
 	const height = texture.height;
-	const dimension: string = descriptor.dimension;
-	if (dimension != "" && dimension != "2d" && dimension != "3d") { stopOnMember("GPUTextureDescriptor.dimension", dimension); }
+	const dimension: string | null = descriptor.dimension;
+	if (dimension != null && dimension != "2d" && dimension != "3d") { stopOnMember("GPUTextureDescriptor.dimension", dimension); }
 	const volume = texture.volume;
 	const layers = texture.layers;
 	const mipLevels = texture.mipLevels;
@@ -1563,8 +1563,8 @@ export function createSampler(id: uint32, descriptor: GPUSamplerDescriptor): voi
 	oglSamplerParameteri(native, GL_TEXTURE_WRAP_T, addressMode(descriptor.addressModeV, "GPUSamplerDescriptor.addressModeV"));
 	oglSamplerParameteri(native, GL_TEXTURE_WRAP_R, addressMode(descriptor.addressModeW, "GPUSamplerDescriptor.addressModeW"));
 	setSamplerBorderColor(native);
-	const compare: string = descriptor.compare;
-	if (compare == "") {
+	const compare = descriptor.compare;
+	if (compare == null) {
 		oglSamplerParameteri(native, GL_TEXTURE_COMPARE_MODE, 0);
 	} else {
 		oglSamplerParameteri(native, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
@@ -1606,8 +1606,8 @@ export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescri
 	}
 	let slot: ShaderSlot = {};
 	for (let i = 0; i < descriptor.bindings.length; i++) {
-		const kindName: string = descriptor.bindings[i].kind;
-		if (kindName == "") { continue; }
+		const kindName = descriptor.bindings[i].kind;
+		if (kindName == null) { continue; }
 		const kind = bindingKind(kindName, "gl");
 		const binding = descriptor.bindings[i].binding;
 		const writable = bindingWritable(descriptor.bindings[i]);
@@ -1685,7 +1685,7 @@ export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescri
 }
 
 function bindingWritable(binding: GPUShaderBinding): boolean {
-	const kind: string = binding.kind;
+	const kind = binding.kind;
 	if (kind == "storage-buffer") {
 		const bufferType: string = binding.bufferType;
 		if (bufferType == "storage") { return true; }
@@ -1726,7 +1726,7 @@ function resolveUniforms(ref slot: ShaderSlot, descriptor: GPUShaderModuleDescri
 
 function uniformNameOf(descriptor: GPUShaderModuleDescriptor, binding: int32): string | null {
 	for (let i = 0; i < descriptor.bindings.length; i++) {
-		const kindName: string = descriptor.bindings[i].kind;
+		const kindName = descriptor.bindings[i].kind;
 		if (kindName == "uniform" && descriptor.bindings[i].binding == binding) { return descriptor.bindings[i].nativeName; }
 	}
 	return null;
@@ -1737,7 +1737,7 @@ function resolveTextureUnits(ref slot: ShaderSlot, descriptor: GPUShaderModuleDe
 	let unit = 0;
 	let p = 0;
 	for (let i = 0; i < descriptor.bindings.length; i++) {
-		const kindName: string = descriptor.bindings[i].kind;
+		const kindName = descriptor.bindings[i].kind;
 		if (kindName != "sampler") { continue; }
 		const name = nativeNameOf(descriptor.bindings[i].nativeName, `sampler binding ${descriptor.bindings[i].binding}`);
 		const location = oglUniformLocation(slot.program, name);
@@ -1776,8 +1776,8 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	describePrimitive(descriptor, slot);
 	describeDepthStencil(descriptor, slot);
 	describeBlend(descriptor, slot);
-	slot.cullFace = cullFace(descriptor.primitive.cullMode);
-	slot.frontFace = frontFace(descriptor.primitive.frontFace);
+	slot.cullFace = cullFace(descriptor.primitive.cullMode ?? "none");
+	slot.frontFace = frontFace(descriptor.primitive.frontFace ?? "ccw");
 	slot.sampleCount = descriptor.multisample.count;
 	put(pipelines, id, slot);
 }
@@ -1790,10 +1790,10 @@ function describePrimitive(descriptor: GPURenderPipelineDescriptor, ref slot: Pi
 
 function describeDepthStencil(descriptor: GPURenderPipelineDescriptor, ref slot: PipelineSlot): void {
 	const state = descriptor.depthStencil;
-	const depthFormat: string = state.format;
+	const depthFormat = state.format;
 	slot.depthCompare = GL_ALWAYS;
-	if (depthFormat == "") { return; }
-	const info = formatInfo(state.format, "depthStencil.format");
+	if (depthFormat == null) { return; }
+	const info = formatInfo(depthFormat, "depthStencil.format");
 	if (!info.depth) { stopOnMember("depthStencil.format", depthFormat); }
 	slot.depthWrite = state.depthWriteEnabled;
 	slot.depthCompare = compareFunction(state.depthCompare, "depthStencil.depthCompare");
@@ -1811,15 +1811,15 @@ function describeDepthStencil(descriptor: GPURenderPipelineDescriptor, ref slot:
 
 function describeAttributes(shader: int32, descriptor: GPURenderPipelineDescriptor, ref slot: PipelineSlot): void {
 	for (let b = 0; b < GPU_MAX_VERTEX_BUFFERS; b++) {
-		const stepMode: string = descriptor.vertex.buffers[b].stepMode;
-		if (stepMode != "" && stepMode != "vertex" && stepMode != "instance") {
+		const stepMode: string | null = descriptor.vertex.buffers[b].stepMode;
+		if (stepMode != null && stepMode != "vertex" && stepMode != "instance") {
 			stopOnMember("vertex.buffers stepMode", stepMode);
 		}
 		const divisor = stepMode == "instance" ? 1 : 0;
 		const stride = descriptor.vertex.buffers[b].arrayStride;
 		for (let a = 0; a < GPU_MAX_VERTEX_ATTRIBUTES; a++) {
-			const format: string = descriptor.vertex.buffers[b].attributes[a].format;
-			if (format == "") { continue; }
+			const format = descriptor.vertex.buffers[b].attributes[a].format;
+			if (format == null) { continue; }
 			if (stride <= 0) { stop(`vertex buffer ${b} has attributes and no arrayStride`); }
 			const shaderLocation = descriptor.vertex.buffers[b].attributes[a].shaderLocation;
 			const name = attributeNameOf(shader, shaderLocation);
@@ -1850,9 +1850,9 @@ function describeAttributes(shader: int32, descriptor: GPURenderPipelineDescript
 function describeBlend(descriptor: GPURenderPipelineDescriptor, ref slot: PipelineSlot): void {
 	let first = -1;
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
-		const format: string = descriptor.fragment.targets[i].format;
-		if (format == "") { continue; }
-		const info = formatInfo(descriptor.fragment.targets[i].format, `fragment.targets[${i}].format`);
+		const format = descriptor.fragment.targets[i].format;
+		if (format == null) { continue; }
+		const info = formatInfo(format, `fragment.targets[${i}].format`);
 		const writeMask = descriptor.fragment.targets[i].writeMask;
 		slot.writeMasks[i] = colorWriteBits(writeMask);
 		slot.colorCount = i + 1;
@@ -2137,17 +2137,19 @@ function attachmentMember(index: int32, field: string): string {
 	return index < 0 ? `depthStencilAttachment.${field}` : `colorAttachments[${index}].${field}`;
 }
 
-function isClear(loadOp: string, index: int32, field: string): boolean {
-	const value = match (loadOp) {
+function isClear(loadOp: string | null, index: int32, field: string): boolean {
+	const name = loadOp ?? "";
+	const value = match (name) {
 		"clear" => 1,
 		"load" => 0,
-		_ => stopOnMember(attachmentMember(index, field), loadOp),
+		_ => stopOnMember(attachmentMember(index, field), name),
 	};
 	return value == 1;
 }
 
-@noinline function checkStoreOp(storeOp: string, index: int32, field: string): void {
-	if (storeOp != "store" && storeOp != "discard") { stopOnMember(attachmentMember(index, field), storeOp); }
+@noinline function checkStoreOp(storeOp: string | null, index: int32, field: string): void {
+	const name = storeOp ?? "";
+	if (name != "store" && name != "discard") { stopOnMember(attachmentMember(index, field), name); }
 }
 
 export function endPass(): void {

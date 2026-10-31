@@ -55,7 +55,7 @@ export function registerComputePrograms(
 		}
 		let slots: uint32 = 0;
 		for (const binding of reflected.bindings) {
-			if ((binding.kind as string) == "") { continue; }
+			if (binding.kind == null) { continue; }
 			if (binding.kind != "storage-buffer") {
 				stop(`compute program ${i} binds a ${binding.kind} at ${binding.binding}; ` +
 					"the door carries storage buffers only");

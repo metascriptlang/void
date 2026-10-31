@@ -106,7 +106,7 @@ export struct NativeEnvironment {
 	device: Ptr<void> | null;
 	context: Ptr<void> | null;
 	colorFormat: GPUTextureFormat;
-	depthFormat: GPUTextureFormat;
+	depthFormat: GPUTextureFormat | null;
 	sampleCount: int32;
 }
 export struct NativeSwapchain {
@@ -445,8 +445,8 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 
 export function createTexture(texture: TextureRecord, descriptor: GPUTextureDescriptor): void {
 	const info = formatInfo(descriptor.format, "GPUTextureDescriptor.format");
-	const dimension: string = descriptor.dimension;
-	if (dimension != "" && dimension != "2d" && dimension != "3d") { stopOnMember("GPUTextureDescriptor.dimension", dimension); }
+	const dimension: string | null = descriptor.dimension;
+	if (dimension != null && dimension != "2d" && dimension != "3d") { stopOnMember("GPUTextureDescriptor.dimension", dimension); }
 	const sampleCount = texture.sampleCount;
 	if (sampleCount != 1 && sampleCount != 4) { stopOnMember("GPUTextureDescriptor.sampleCount", `${sampleCount}`); }
 	const usage = texture.usage;
@@ -562,7 +562,9 @@ export function acquireSwapchain(swapchain: NativeSwapchain): void {
 	if (swapchainDepth != 0) {
 		if (isNone(surface.depthTexture) || surface.depthWidth != swapchain.width || surface.depthHeight != swapchain.height) {
 			if (!isNone(surface.depthTexture)) { surface.depthTexture.destroy(); }
-			surface.depthTexture = ensureAttachment(canvas.depthFormat, swapchain.width, swapchain.height, swapchain.sampleCount, "depth target");
+			const depthFormat = canvas.depthFormat;
+			if (depthFormat == null) { stop("the swapchain has a depth texture but the canvas has no depth format"); }
+			surface.depthTexture = ensureAttachment(depthFormat, swapchain.width, swapchain.height, swapchain.sampleCount, "depth target");
 			surface.depthView = surface.depthTexture.createView(jsNew());
 			surface.depthWidth = swapchain.width;
 			surface.depthHeight = swapchain.height;
@@ -587,12 +589,12 @@ const VERTEX_FORMATS: string[] = [
 	"uint32x3", "uint32x4", "sint32", "sint32x2", "sint32x3", "sint32x4",
 ];
 
-function compareFunction(compare: string, member: string): string { return compareNative(COMPARE_FUNCTIONS, compare, member, "js"); }
+function compareFunction(compare: string | null, member: string): string { return compareNative(COMPARE_FUNCTIONS, compare, member, "js"); }
 
-function blendFactor(factor: string, member: string): string { return blendFactorNative(BLEND_FACTORS, factor, member, "js"); }
+function blendFactor(factor: string | null, member: string): string { return blendFactorNative(BLEND_FACTORS, factor, member, "js"); }
 
-function destinationFactor(factor: string, member: string): string {
-	if (factor == "") { return "zero"; }
+function destinationFactor(factor: string | null, member: string): string {
+	if (factor == null) { return "zero"; }
 	return blendFactor(factor, member);
 }
 
@@ -620,7 +622,7 @@ function indexFormat(format: GPUIndexFormat): string {
 
 function cullMode(cull: string): string {
 	return match (cull) {
-		"" | "none" => "none",
+		"none" => "none",
 		"front" | "back" => cull,
 		_ => stopOnMember("primitive.cullMode", cull),
 	};
@@ -628,7 +630,7 @@ function cullMode(cull: string): string {
 
 function frontFace(face: string): string {
 	return match (face) {
-		"" | "ccw" => "ccw",
+		"ccw" => "ccw",
 		"cw" => "cw",
 		_ => stopOnMember("primitive.frontFace", face),
 	};
@@ -636,7 +638,7 @@ function frontFace(face: string): string {
 
 function stepMode(mode: string): string {
 	return match (mode) {
-		"" | "vertex" => "vertex",
+		"vertex" => "vertex",
 		"instance" => "instance",
 		_ => stopOnMember("vertex.buffers stepMode", mode),
 	};
@@ -646,17 +648,19 @@ function attachmentMember(index: int32, field: string): string {
 	return index < 0 ? `depthStencilAttachment.${field}` : `colorAttachments[${index}].${field}`;
 }
 
-function loadOp(op: string, index: int32, field: string): string {
-	return match (op) {
-		"clear" | "load" => op,
-		_ => stopOnMember(attachmentMember(index, field), op),
+function loadOp(op: string | null, index: int32, field: string): string {
+	const value = op ?? "";
+	return match (value) {
+		"clear" | "load" => value,
+		_ => stopOnMember(attachmentMember(index, field), value),
 	};
 }
 
-function storeOp(op: string, index: int32, field: string): string {
-	return match (op) {
-		"store" | "discard" => op,
-		_ => stopOnMember(attachmentMember(index, field), op),
+function storeOp(op: string | null, index: int32, field: string): string {
+	const name = op ?? "";
+	return match (name) {
+		"store" | "discard" => name,
+		_ => stopOnMember(attachmentMember(index, field), name),
 	};
 }
 
@@ -670,8 +674,8 @@ export function createSampler(id: uint32, descriptor: GPUSamplerDescriptor): voi
 	setText(native, "mipmapFilter", filterMode(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter"));
 	setNumber(native, "lodMinClamp", descriptor.lodMinClamp);
 	setNumber(native, "lodMaxClamp", samplerMaxLod(descriptor.lodMaxClamp));
-	const compare: string = descriptor.compare;
-	if (compare != "") { setText(native, "compare", compareFunction(compare, "GPUSamplerDescriptor.compare")); }
+	const compare = descriptor.compare;
+	if (compare != null) { setText(native, "compare", compareFunction(compare, "GPUSamplerDescriptor.compare")); }
 	setNumber(native, "maxAnisotropy", clampedAnisotropy(descriptor.maxAnisotropy));
 	put(samplers, id, { native: device.createSampler(labelled(native, descriptor.label)) });
 }
@@ -706,7 +710,7 @@ function bindingViewDimension(dimension: string): string {
 
 function samplerType(sampler: string): string {
 	return match (sampler) {
-		"" | "filtering" => "filtering",
+		"filtering" => "filtering",
 		"non-filtering" => "non-filtering",
 		_ => stopOnMember("GPUShaderBinding.samplerType", sampler),
 	};
@@ -730,7 +734,7 @@ function bindingType(binding: GPUShaderBinding, kind: BindingKind): string {
 	return match (kind) {
 		BindingKind.Uniform => "uniform",
 		BindingKind.Texture => sampleType(binding.sampleType),
-		BindingKind.Sampler => samplerType(binding.samplerType),
+		BindingKind.Sampler => samplerType(binding.samplerType ?? "filtering"),
 		BindingKind.StorageBuffer => storageBufferType(binding.bufferType),
 		BindingKind.StorageTexture => storageAccess(binding.storageAccess),
 	};
@@ -743,9 +747,9 @@ function storageCapable(format: string): boolean {
 		|| format == "r32float" || format == "rg32float" || format == "rgba32float";
 }
 
-function storageFormatOf(format: GPUTextureFormat, member: string): string {
+function storageFormatOf(format: GPUTextureFormat | null, member: string): string {
+	if (format == null) { stop(`${member} is required for a storage-texture binding`); }
 	const name: string = format;
-	if (name == "") { stop(`${member} is required for a storage-texture binding`); }
 	formatInfo(format, member);
 	if (!storageCapable(name)) { stop(`${member} '${name}' is not a WebGPU storage texture format (bgra8unorm needs the device feature bgra8unorm-storage)`); }
 	return name;
@@ -826,8 +830,8 @@ export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescri
 	};
 	for (let i = 0; i < descriptor.bindings.length; i++) {
 		const source = descriptor.bindings[i];
-		const kindName: string = source.kind;
-		if (kindName == "") { continue; }
+		const kindName = source.kind;
+		if (kindName == null) { continue; }
 		const kind = bindingKind(kindName, "js");
 		const type = bindingType(source, kind);
 		const native: ShaderBinding = {
@@ -892,8 +896,7 @@ function vertexBuffers(descriptor: GPURenderPipelineDescriptor): Js {
 		const layout = descriptor.vertex.buffers[b];
 		let used = layout.arrayStride != 0;
 		for (let a = 0; a < GPU_MAX_VERTEX_ATTRIBUTES; a++) {
-			const format: string = layout.attributes[a].format;
-			if (format != "") { used = true; }
+			if (layout.attributes[a].format != null) { used = true; }
 		}
 		if (used) { count = b + 1; }
 	}
@@ -901,8 +904,8 @@ function vertexBuffers(descriptor: GPURenderPipelineDescriptor): Js {
 		const layout = descriptor.vertex.buffers[b];
 		const attributes = jsList();
 		for (let a = 0; a < GPU_MAX_VERTEX_ATTRIBUTES; a++) {
-			const format: string = layout.attributes[a].format;
-			if (format == "") { continue; }
+			const format = layout.attributes[a].format;
+			if (format == null) { continue; }
 			const attribute = jsNew();
 			setText(attribute, "format", vertexFormatNative(VERTEX_FORMATS, format, "vertex attribute format", "js"));
 			setNumber(attribute, "offset", layout.attributes[a].offset);
@@ -911,7 +914,7 @@ function vertexBuffers(descriptor: GPURenderPipelineDescriptor): Js {
 		}
 		const native = jsNew();
 		setNumber(native, "arrayStride", layout.arrayStride);
-		setText(native, "stepMode", stepMode(layout.stepMode));
+		setText(native, "stepMode", stepMode(layout.stepMode ?? "vertex"));
 		setObject(native, "attributes", attributes);
 		list.push(layout.arrayStride == 0 && attributes.length == 0 ? NONE : native);
 	}
@@ -930,18 +933,17 @@ function colorTargets(descriptor: GPURenderPipelineDescriptor): Js {
 	const list = jsList();
 	let count = 0;
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
-		const format: string = descriptor.fragment.targets[i].format;
-		if (format != "") { count = i + 1; }
+		if (descriptor.fragment.targets[i].format != null) { count = i + 1; }
 	}
 	for (let i = 0; i < count; i++) {
 		const target = descriptor.fragment.targets[i];
-		const format: string = target.format;
-		if (format == "") {
+		const format = target.format;
+		if (format == null) {
 			list.push(NONE);
 			continue;
 		}
 		const member = `fragment.targets[${i}].format`;
-		const info = formatInfo(target.format, member);
+		const info = formatInfo(format, member);
 		if (info.depth) { stopOnMember(member, format); }
 		const float32 = format == "r32float" || format == "rg32float" || format == "rgba32float";
 		if (float32 && target.blendEnabled && !hasFeature("float32-blendable")) {
@@ -973,14 +975,14 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	setObject(native, "vertex", vertex);
 	const primitive = jsNew();
 	setText(primitive, "topology", topologyNative(TOPOLOGIES, descriptor.primitive.topology, "primitive.topology", "js"));
-	const strip: string = descriptor.primitive.stripIndexFormat;
-	if (strip != "") { setText(primitive, "stripIndexFormat", indexFormat(descriptor.primitive.stripIndexFormat)); }
-	setText(primitive, "cullMode", cullMode(descriptor.primitive.cullMode));
-	setText(primitive, "frontFace", frontFace(descriptor.primitive.frontFace));
+	const strip = descriptor.primitive.stripIndexFormat;
+	if (strip != null) { setText(primitive, "stripIndexFormat", indexFormat(strip)); }
+	setText(primitive, "cullMode", cullMode(descriptor.primitive.cullMode ?? "none"));
+	setText(primitive, "frontFace", frontFace(descriptor.primitive.frontFace ?? "ccw"));
 	setObject(native, "primitive", primitive);
-	const depthFormat: string = descriptor.depthStencil.format;
-	if (depthFormat != "") {
-		const info = formatInfo(descriptor.depthStencil.format, "depthStencil.format");
+	const depthFormat = descriptor.depthStencil.format;
+	if (depthFormat != null) {
+		const info = formatInfo(depthFormat, "depthStencil.format");
 		if (!info.depth) { stopOnMember("depthStencil.format", depthFormat); }
 		const ds = descriptor.depthStencil;
 		const depth = jsNew();
@@ -1357,7 +1359,7 @@ export function endComputePass(): void {
 }
 
 export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
-	const kind: string = descriptor.type;
+	const kind: string = descriptor.type ?? "";
 	const native = jsNew();
 	setText(native, "type", kind == "timestamp" ? "timestamp" : "occlusion");
 	setNumber(native, "count", descriptor.count);

@@ -512,8 +512,8 @@ function createImage(
 }
 
 export function createTexture(ref r: VulkanResources, texture: TextureRecord, descriptor: GPUTextureDescriptor): Result<void, ResourceError> {
-	const dimension: string = descriptor.dimension;
-	if (dimension != "" && dimension != "2d" && dimension != "3d") {
+	const dimension: string | null = descriptor.dimension;
+	if (dimension != null && dimension != "2d" && dimension != "3d") {
 		stop(`GPUTextureDescriptor.dimension '${dimension}' is not supported`);
 	}
 	const info = formatInfo(texture.format, r.depthStencil, "GPUTextureDescriptor.format");

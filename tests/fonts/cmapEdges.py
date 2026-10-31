@@ -235,6 +235,8 @@ def formats():
     saveCmap("choiceMsFullThenBmp.ttf", [(3, 10, b), (3, 1, a)])
     saveCmap("choiceMsBmpThenFull.ttf", [(3, 1, a), (3, 10, b)])
     saveCmap("choiceMacThenMsFull.ttf", [(1, 0, b), (3, 10, a)])
+    dingbat = format4([(0x273B, 0x273B, 1 - 0x273B, None), (0xFFFF, 0xFFFF, 1, None)])
+    saveCmap("unicodeThenMacRoman.ttf", [(0, 3, dingbat), (1, 0, format0({0x41: 1}))])
     saveCmap("choiceIgnored.ttf", [(3, 0, a), (3, 2, b), (1, 0, c), (1, 1, c), (1, 10, b)])
 
     base = groups(12, [(0x41, 0x43, 1)])

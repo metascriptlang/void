@@ -3,6 +3,8 @@ import {
 	GPUBindGroupDescriptor,
 	GPUBindGroupEntry,
 	GPUBufferUsage,
+	GPUCanvasConfiguration,
+	GPUDepthStencilState,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPUMapMode,
 	GPUPrimitiveState,
@@ -18,6 +20,9 @@ import {
 	GPUTextureUsage,
 	GPUTextureViewDescriptor,
 	GPUVertexBufferLayout,
+	compareIndex,
+	blendFactorIndex,
+	topologyIndex,
 } from "../webgpu/types";
 import {
 	AttachmentFacts,
@@ -825,9 +830,9 @@ test "an occlusion slot takes an occlusion set, not a timestamp set" {
 }
 
 test "a view takes its texture's dimension unless it names one, and 3d goes with 3d only" {
-	assert resolvedViewDimension("", false, 1) == "2d";
-	assert resolvedViewDimension("", false, 6) == "2d-array";
-	assert resolvedViewDimension("", true, 1) == "3d";
+	assert resolvedViewDimension(null, false, 1) == "2d";
+	assert resolvedViewDimension(null, false, 6) == "2d-array";
+	assert resolvedViewDimension(null, true, 1) == "3d";
 	assert resolvedViewDimension("cube", false, 6) == "cube";
 	assert viewDimensionRefusal("2d", false, 9) == "";
 	assert viewDimensionRefusal("3d", true, 9) == "";
@@ -1033,11 +1038,11 @@ test "a resolve target is a single-sample color attachment of its multisampled v
 
 test "a canvas names a color format and, when it has one, a depth format" {
 	assert canvasRefusal("bgra8unorm", "depth32float", 4) == "";
-	assert canvasRefusal("rgba8unorm", "", 0) == "";
-	assert canvasRefusal("", "", 1) == "NativeEnvironment.colorFormat is required";
-	assert canvasRefusal("depth32float", "", 1) == "NativeEnvironment.colorFormat 'depth32float' is not supported";
+	assert canvasRefusal("rgba8unorm", null, 0) == "";
+	assert canvasRefusal("", null, 1) == "NativeEnvironment.colorFormat is required";
+	assert canvasRefusal("depth32float", null, 1) == "NativeEnvironment.colorFormat 'depth32float' is not supported";
 	assert canvasRefusal("bgra8unorm", "rgba8unorm", 1) == "NativeEnvironment.depthFormat 'rgba8unorm' is not supported";
-	assert canvasRefusal("bgra8unorm", "", -1) == "NativeEnvironment.sampleCount -1 is negative";
+	assert canvasRefusal("bgra8unorm", null, -1) == "NativeEnvironment.sampleCount -1 is negative";
 }
 
 test "an omitted color writeMask writes every channel and an explicit 0 writes none" {
@@ -1070,4 +1075,29 @@ test "an explicit stencil mask of 0 survives, so a pipeline can test the stencil
 	const resolved = resolvedRenderPipeline(descriptor);
 	assert stencilMask(resolved.depthStencil.stencilReadMask) == 0;
 	assert stencil8Mask(resolved.depthStencil.stencilWriteMask) == 0;
+}
+test "a descriptor member an author leaves out is null and reads as the WebGPU default" {
+	const canvas: GPUCanvasConfiguration = { format: "bgra8unorm", sampleCount: 1 };
+	assert canvas.depthFormat == null;
+	const primitive: GPUPrimitiveState = {};
+	assert primitive.topology == null && primitive.stripIndexFormat == null;
+	assert primitive.cullMode == null && primitive.frontFace == null;
+	assert topologyIndex(primitive.topology, "primitive.topology", "dummy") == topologyIndex("triangle-list", "primitive.topology", "dummy");
+	const depth: GPUDepthStencilState = { depthWriteEnabled: false, depthCompare: "always" };
+	assert depth.format == null && depth.stencilFront.compare == null;
+	assert compareIndex(depth.stencilFront.compare, "stencilFront.compare", "dummy") == compareIndex("always", "stencilFront.compare", "dummy");
+	const sampler: GPUSamplerDescriptor = { label: null };
+	assert sampler.compare == null;
+	const layout: GPUVertexBufferLayout = { arrayStride: 8 };
+	assert layout.stepMode == null && layout.attributes[0].format == null;
+	const descriptor: GPURenderPipelineDescriptor = { label: null };
+	assert descriptor.fragment.targets[0].format == null;
+	assert blendFactorIndex(descriptor.fragment.targets[0].blend.color.srcFactor, "srcFactor", "dummy") == blendFactorIndex("one", "srcFactor", "dummy");
+	const pass: GPURenderPassDescriptor = { label: null };
+	assert pass.depthStencilAttachment.stencilLoadOp == null && pass.depthStencilAttachment.stencilStoreOp == null;
+	assert pass.depthStencilAttachment.depthLoadOp == null && pass.depthStencilAttachment.depthStoreOp == null;
+	const view: GPUTextureViewDescriptor = { label: null };
+	assert view.dimension == null && resolvedViewDimension(view.dimension, false, 6) == "2d-array";
+	const queries: GPUQuerySetDescriptor = { label: null, count: 1 };
+	assert queries.type == null;
 }

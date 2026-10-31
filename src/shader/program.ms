@@ -8,7 +8,6 @@ import {
 	define,
 	getType,
 	getTypeImpl,
-	readFile,
 	sameType,
 	stringValue,
 	typeKind,
@@ -25,6 +24,7 @@ import {
 	targetArms,
 	wordsBase64,
 } from "./descriptor";
+import { readFileBytes } from "std/fs";
 import { dxbcStage, findFxc } from "./dxbcCache";
 import { shaderBytecodeFromBase64 } from "./dxbc";
 import { metalFlags, metallibStage } from "./metallibCache";
@@ -323,7 +323,11 @@ export macro shaderBuild(
 	function blobBase64(stage: string, code: string): string {
 		const found = stageBlob(arm.language, stage, code, s.entryPoint, fxc);
 		if (found.error != "") { refused(found.error); }
-		if (found.path != "") { return bytesBase64(readFile(found.path)); }
+		if (found.path != "") {
+			const blob = readFileBytes(found.path);
+			if (!blob.ok) { refused(stage + " bytecode " + found.path + " did not read: " + blob.error.message); }
+			return bytesBase64(blob.value);
+		}
 		if (found.missing == "") { return ""; }
 		const lacking = "no " + found.missing + " on this host";
 		if (define("requireShaderBytecode") != "") {

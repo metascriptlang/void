@@ -1,5 +1,5 @@
 import { env } from "std/process";
-import { readFile } from "std/fs";
+import { readFile, readFileBytes } from "std/fs";
 import { sha256, toHex } from "std/crypto/sha256";
 import { JsonValue, JsonKind } from "std/serialize/json/types";
 import {
@@ -94,8 +94,8 @@ function require(ok: boolean, message: string): void {
 }
 
 function fontDigest(): string {
-	const file = readFile(FONT_PATH);
-	if (file.ok) { return sha256(file.value.asBytes()).toHex(); }
+	const file = readFileBytes(FONT_PATH);
+	if (file.ok) { return sha256(file.value).toHex(); }
 	console.log(`FAIL outline capture oracle: cannot read ${FONT_PATH}`);
 	unreachable;
 }

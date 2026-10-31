@@ -136,3 +136,115 @@ int void2dPlatformFaceFill(void *handle, int glyph, float sizePx, float shiftX, 
 	CGContextRelease(context);
 	return 1;
 }
+
+// Ghostty's coretext.zig:356-512 (b58ef1d67): one CTLine at forced embedding level 0 over the
+// UTF-16 string, each CTRun's glyph, advance, position and string index read back.
+enum { SHAPE_OVERFLOW = -1, SHAPE_SUBSTITUTED = -2, SHAPE_FAILED = -3 };
+
+static int sameFont(CTFontRef a, CTFontRef b) {
+	CFStringRef nameA = CTFontCopyPostScriptName(a);
+	CFStringRef nameB = CTFontCopyPostScriptName(b);
+	int same = nameA && nameB && CFStringCompare(nameA, nameB, 0) == kCFCompareEqualTo;
+	if (nameA) { CFRelease(nameA); }
+	if (nameB) { CFRelease(nameB); }
+	return same;
+}
+
+int void2dPlatformShape(void *handle, const int *codepoints, int count, int capacity, int *glyphs,
+                        int *advances, int *offsetsX, int *offsetsY, int *indices) {
+	PlatformFace *face = (PlatformFace *)handle;
+	UniChar *units = (UniChar *)malloc(sizeof(UniChar) * 2 * (size_t)count);
+	int *source = (int *)malloc(sizeof(int) * 2 * (size_t)count);
+	if (!units || !source) {
+		free(units);
+		free(source);
+		return SHAPE_FAILED;
+	}
+	CFIndex length = 0;
+	for (int i = 0; i < count; i++) {
+		UInt32 cp = (UInt32)codepoints[i];
+		if (cp >= 0x10000) {
+			cp -= 0x10000;
+			units[length] = (UniChar)(0xD800 + (cp >> 10));
+			source[length++] = i;
+			units[length] = (UniChar)(0xDC00 + (cp & 0x3FF));
+			source[length++] = i;
+		} else {
+			units[length] = (UniChar)cp;
+			source[length++] = i;
+		}
+	}
+	int result = SHAPE_FAILED;
+	int level = 0;
+	CFNumberRef embedding = CFNumberCreate(NULL, kCFNumberIntType, &level);
+	CFStringRef string = CFStringCreateWithCharacters(NULL, units, length);
+	const void *attributeKeys[] = { kCTFontAttributeName };
+	const void *attributeValues[] = { face->unit };
+	CFDictionaryRef attributes = CFDictionaryCreate(NULL, attributeKeys, attributeValues, 1,
+		&kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+	const void *optionKeys[] = { kCTTypesetterOptionForcedEmbeddingLevel };
+	const void *optionValues[] = { embedding };
+	CFDictionaryRef options = CFDictionaryCreate(NULL, optionKeys, optionValues, 1,
+		&kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+	CFAttributedStringRef attributed =
+		string && attributes ? CFAttributedStringCreate(NULL, string, attributes) : NULL;
+	CTTypesetterRef typesetter =
+		attributed ? CTTypesetterCreateWithAttributedStringAndOptions(attributed, options) : NULL;
+	CTLineRef line = typesetter ? CTTypesetterCreateLine(typesetter, CFRangeMake(0, 0)) : NULL;
+	if (line) {
+		int total = 0;
+		double pen = 0.0;
+		result = 0;
+		CFArrayRef runs = CTLineGetGlyphRuns(line);
+		for (CFIndex r = 0; result >= 0 && r < CFArrayGetCount(runs); r++) {
+			CTRunRef run = (CTRunRef)CFArrayGetValueAtIndex(runs, r);
+			CFIndex n = CTRunGetGlyphCount(run);
+			CFDictionaryRef used = CTRunGetAttributes(run);
+			CTFontRef usedFont = (CTFontRef)CFDictionaryGetValue(used, kCTFontAttributeName);
+			if (!usedFont || !sameFont(usedFont, face->unit)) {
+				result = SHAPE_SUBSTITUTED;
+				break;
+			}
+			if (total + n > capacity) {
+				result = SHAPE_OVERFLOW;
+				break;
+			}
+			CGGlyph *g = (CGGlyph *)malloc(sizeof(CGGlyph) * (size_t)n);
+			CGSize *a = (CGSize *)malloc(sizeof(CGSize) * (size_t)n);
+			CGPoint *p = (CGPoint *)malloc(sizeof(CGPoint) * (size_t)n);
+			CFIndex *s = (CFIndex *)malloc(sizeof(CFIndex) * (size_t)n);
+			if (g && a && p && s) {
+				CTRunGetGlyphs(run, CFRangeMake(0, 0), g);
+				CTRunGetAdvances(run, CFRangeMake(0, 0), a);
+				CTRunGetPositions(run, CFRangeMake(0, 0), p);
+				CTRunGetStringIndices(run, CFRangeMake(0, 0), s);
+				for (CFIndex k = 0; k < n; k++) {
+					glyphs[total] = (int)g[k];
+					advances[total] = (int)lround(a[k].width);
+					offsetsX[total] = (int)lround(p[k].x - pen);
+					offsetsY[total] = (int)lround(p[k].y);
+					indices[total] = source[s[k]];
+					pen += a[k].width;
+					total++;
+				}
+				result = total;
+			} else {
+				result = SHAPE_FAILED;
+			}
+			free(g);
+			free(a);
+			free(p);
+			free(s);
+		}
+	}
+	if (line) { CFRelease(line); }
+	if (typesetter) { CFRelease(typesetter); }
+	if (attributed) { CFRelease(attributed); }
+	if (options) { CFRelease(options); }
+	if (attributes) { CFRelease(attributes); }
+	if (string) { CFRelease(string); }
+	if (embedding) { CFRelease(embedding); }
+	free(units);
+	free(source);
+	return result;
+}

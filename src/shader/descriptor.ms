@@ -17,7 +17,6 @@ import {
 	sameShaderType,
 	stmtOf,
 } from "./ir";
-import { byteAt, byteLength } from "std/core/string/bytes";
 import { irFromText } from "./irText";
 import { GPUShaderBinding } from "../webgpu/types.ms";
 import { ShaderTarget, bindingSlots } from "./layout";
@@ -317,11 +316,9 @@ export function wordsBase64(words: uint32[]): string {
 	return base64Of(bytes);
 }
 
-// A binary file as std/meta readFile returns it: one char per byte through byteAt, never s[i].
-export function bytesBase64(blob: string): string {
+export function bytesBase64(blob: uint8[]): string {
 	let bytes: int32[] = [];
-	const n = blob.byteLength();
-	for (let i = 0; i < n; i++) { bytes.push(blob.byteAt(i) as int32); }
+	for (const b of blob) { bytes.push(b as int32); }
 	return base64Of(bytes);
 }
 
@@ -417,13 +414,13 @@ function textField(key: string, value: string): BindingField {
 }
 
 export function bindingFields(b: GPUShaderBinding): BindingField[] {
-	const kind: string = b.kind;
+	const kind: string = b.kind ?? "";
 	const sampleType: string = b.sampleType;
-	const samplerType: string = b.samplerType;
+	const samplerType: string | null = b.samplerType;
 	const bufferType: string = b.bufferType;
 	const viewDimension: string = b.viewDimension;
 	const storageAccess: string = b.storageAccess;
-	const storageFormat: string = b.storageFormat;
+	const storageFormat: string | null = b.storageFormat;
 	const name = b.nativeName;
 	let out: BindingField[] = [
 		numberField("group", b.group),
@@ -432,16 +429,20 @@ export function bindingFields(b: GPUShaderBinding): BindingField[] {
 		numberField("visibility", b.visibility),
 		numberField("size", b.size),
 	];
-	if (sampleType != "") { out.push(textField("sampleType", sampleType)); }
-	if (samplerType != "") { out.push(textField("samplerType", samplerType)); }
+	const texture = kind == "texture";
+	const storageTexture = kind == "storage-texture";
+	if (texture && sampleType != "") { out.push(textField("sampleType", sampleType)); }
+	if (samplerType != null) { out.push(textField("samplerType", samplerType)); }
 	out.push(numberField("nativeSlot", b.nativeSlot));
 	if (name !== null) { out.push(textField("nativeName", name)); }
 	out.push(numberField("textureBinding", b.textureBinding));
-	if (bufferType != "") { out.push(textField("bufferType", bufferType)); }
-	if (viewDimension != "") { out.push(textField("viewDimension", viewDimension)); }
+	if (kind == "storage-buffer" && bufferType != "") { out.push(textField("bufferType", bufferType)); }
+	if ((texture || storageTexture) && viewDimension != "" && viewDimension != "2d") {
+		out.push(textField("viewDimension", viewDimension));
+	}
 	if (b.multisampled) { out.push({ key: "multisampled", form: "flag", text: "true", number: 0 }); }
-	if (storageAccess != "") { out.push(textField("storageAccess", storageAccess)); }
-	if (storageFormat != "") { out.push(textField("storageFormat", storageFormat)); }
+	if (storageTexture && storageAccess != "") { out.push(textField("storageAccess", storageAccess)); }
+	if (storageFormat != null) { out.push(textField("storageFormat", storageFormat)); }
 	return out;
 }
 

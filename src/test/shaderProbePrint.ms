@@ -3,7 +3,7 @@
 
 import { Buffer } from "std/core/buffer";
 import { byteAt, byteLength } from "std/core/string/bytes";
-import { mkdir, readFile, writeFile, writeFileBytes } from "std/fs";
+import { mkdir, readFileBytes, writeFile, writeFileBytes } from "std/fs";
 import {
 	programModule,
 	programSource,
@@ -72,10 +72,10 @@ export function fragmentText(module: GPUShaderModuleDescriptor, vs: string, fs: 
 	const source = programSource(m.value, target);
 	if (!source.ok) { return ""; }
 	const s = source.value;
-	const file = readFile(stageBlob(language, "fragment", s.fragmentCode, s.entryPoint, "").path);
-	if (!file.ok || file.value.byteLength() != module.fragmentBytecode.length) { return ""; }
+	const file = readFileBytes(stageBlob(language, "fragment", s.fragmentCode, s.entryPoint, "").path);
+	if (!file.ok || file.value.length != module.fragmentBytecode.length) { return ""; }
 	for (let i = 0; i < module.fragmentBytecode.length; i++) {
-		if (module.fragmentBytecode[i] as int32 != file.value.byteAt(i) as int32) { return ""; }
+		if (module.fragmentBytecode[i] != file.value[i]) { return ""; }
 	}
 	return s.fragmentCode;
 }
