@@ -281,16 +281,14 @@ export function gltfBlockOf(
 	if (program.pbr) {
 		const held = pbrValuesOf(source, program);
 		if (!held.ok) { unreachable; }
-		if (held.ok) {
-			for (let i = PBR_VALUES; i < PBR_MATERIAL_UNIFORM_LENGTH; i++) {
-				values.push(held.value[i]);
-			}
-			const maps = source.pbrMaps;
-			if (program.pbrMaps && maps !== null) {
-				values[PBR_OCCLUSION_STRENGTH] = maps.occlusionStrength;
-			}
-			writeUvTransform(values, PBR_UV_MATRIX, PBR_UV_OFFSET, source.uvTransform);
+		for (let i = PBR_VALUES; i < PBR_MATERIAL_UNIFORM_LENGTH; i++) {
+			values.push(held.value[i]);
 		}
+		const maps = source.pbrMaps;
+		if (program.pbrMaps && maps !== null) {
+			values[PBR_OCCLUSION_STRENGTH] = maps.occlusionStrength;
+		}
+		writeUvTransform(values, PBR_UV_MATRIX, PBR_UV_OFFSET, source.uvTransform);
 	}
 	if (program.uvTransform) {
 		const at: int32 = movingBase(program);
