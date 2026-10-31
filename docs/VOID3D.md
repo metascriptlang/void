@@ -6227,7 +6227,7 @@ What it reads, against what exists here:
 | Normal | the pbr G-buffer normal, world space | the outline MRT's world normal (`n * 0.5 + 0.5`), as SAO reads it |
 | Roughness | the pbr G-buffer's `.y` | not written per pixel; it would be one more MRT channel out of `shader3d.ms` `litFs`, which the shader arc owns |
 | HDR colour | the lit frame | the HDR target |
-| Depth pyramid | R32F, rendered per mip | door views reach one mip; float render targets stop on GLES (`webgpu/gl/backend.ms` refuses them until `EXT_color_buffer_float` is queried), so WebGL2 has no pyramid yet |
+| Depth pyramid | R32F, rendered per mip | the door renders into one mip of a cube target only (`doorMakeCubeAttachmentView`); a 2D target has one mip. Float render targets stop on GLES (`webgpu/gl/backend.ms` refuses them until `EXT_color_buffer_float` is queried) |
 | Blurred colour chain read at a fractional mip | `getLod` with a mip-linear sampler | the sampled-mip path is the held mip decision |
 
 Heaps runs SSR as compute (`setLayout(8, 8, 1)`, two `RWTexture2D` stores). Every invocation
@@ -6237,8 +6237,8 @@ not a different mechanism. Bevy's SSR is no reference for the pass shape: it nee
 rendering and is unsupported on WebGL2 (`bevy_pbr/src/ssr/mod.rs:54,75` at `84e2d2c`).
 
 So SSR is a port, not a G-buffer rewrite like `DecalPBR`, but it waits on three things outside
-this arc's files: the roughness channel (shader arc), float render targets on GLES (gpu-ms), and
-the sampled-mip decision (the person). The CPU math (the cell stepping, the hit test, the
+this arc's files: the roughness channel (shader arc), a mipped 2D target in the door and float
+render targets on GLES (gpu-ms), and the sampled-mip decision (the person). The CPU math (the cell stepping, the hit test, the
 validity terms and the cone mip level) can be ported and pinned first, as SAO's step 1 was.
 
 ### Cascaded sun shadows, as built so far (2026-10-24)
