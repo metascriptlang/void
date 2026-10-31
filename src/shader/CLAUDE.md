@@ -93,8 +93,8 @@ later replaces the hand-written GLSL source of each base.
   refused. Once the unread declarations are dropped, `link` numbers every resource still at
   binding -1 within its group (blocks, views, samplers) at the next binding past the highest one there, in link order, as
   Heaps' `hxsl/Flatten.hx` `packTextures` and `packBuffers` give each var the next position of its
-  kind; a block stays its own block. A group past `slotLimit` (`layout.ms`: 8 blocks, 32 views,
-  12 samplers) is refused, naming the effect and the resource. Then a member name one stage
+  kind; a block stays its own block. A group past `slotLimit` (`layout.ms`: 8 blocks, 15 views,
+  8 samplers, the slots the door builds bind groups for) is refused, naming the effect and the resource. Then a member name one stage
   reads from two blocks is refused unless they sit at one binding (HLSL prefixes each member,
   GLSL 430/ES flattens a block into a vec4 array, WGSL and MSL name it through its block, and
   GLSL 450, whose blocks are global, is printed only for unlinked stages, so a member the stage
