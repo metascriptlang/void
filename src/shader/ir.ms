@@ -1097,22 +1097,6 @@ function isWorkgroupType(t: ShaderType): boolean {
 
 export const WORKGROUP_STORAGE_LIMIT = 16384;
 
-function workgroupAlign(t: ShaderType): int32 {
-	if (t.kind != ShaderTypeKind.Vector) { return 4; }
-	return t.rows > 2 ? 16 : 8;
-}
-
-export function workgroupBytes(t: ShaderType): int32 {
-	if (t.kind == ShaderTypeKind.Array) {
-		const element = t.element[0];
-		const align = workgroupAlign(element);
-		const size = workgroupBytes(element);
-		return (size + align - 1) / align * align * t.length;
-	}
-	if (t.kind == ShaderTypeKind.Vector) { return 4 * t.rows; }
-	return t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Atomic ? 4 : -1;
-}
-
 function holdsAtomic(m: ShaderModule, t: ShaderType): boolean {
 	if (t.kind == ShaderTypeKind.Atomic) { return true; }
 	if (t.kind == ShaderTypeKind.Struct) {

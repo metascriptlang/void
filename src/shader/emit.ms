@@ -22,6 +22,7 @@ import {
 	typeKind,
 } from "std/meta";
 import { hasEffect } from "./irWalk";
+import { workgroupBytes } from "./layout";
 import { readsFrom } from "./specialize";
 import {
 	AtomicExchangeI32,
@@ -143,7 +144,6 @@ import {
 	literal,
 	maskedShiftAmount,
 	saturatingToInt,
-	workgroupBytes,
 	WORKGROUP_STORAGE_LIMIT,
 	matrixType,
 	modfResultType,
@@ -2774,10 +2774,11 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	}
 	if (compute) {
 		const reads = readsFrom(m, stageEntry.functionIndex);
+		if (!reads.ok) { fail(entry, reads.error); }
 		let bytes: int32 = 0;
 		let names: string[] = [];
-		for (const w of reads.ok ? reads.value.workgroups : []) {
-			bytes += workgroupBytes(m.workgroups[w].type);
+		for (const w of reads.value.workgroups) {
+			bytes += workgroupBytes(m, m.workgroups[w].type);
 			names.push(m.workgroups[w].name);
 		}
 		if (bytes > WORKGROUP_STORAGE_LIMIT) {
