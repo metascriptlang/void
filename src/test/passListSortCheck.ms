@@ -1,7 +1,7 @@
 import { translation } from "../math/math3d";
 import { DrawItem, MeshId, MaterialId } from "../void3d/draw";
 import { Material, Phase, ShadowCasting } from "../void3d/material";
-import { TextureId } from "../void3d/texture";
+import { TextureId, isTexture } from "../void3d/texture";
 import { Program, ProgramKey } from "../void3d/gpu3d";
 import { RenderState, Face } from "../gpu/state";
 import { Bounds3D } from "../void3d/bounds";
@@ -293,4 +293,114 @@ test "a layer and order sort keeps item order inside equal keys, over 3000 items
 	let flat: Vec<DrawItem> = [];
 	for (const item of items) { flat.push({ ...item, world: translation(0.0, 0.0, 0.0) }); }
 	assert same(indicesOf(list), insertionOracle(flat, table));
+}
+
+function firstSeen(ref seen: Vec<int32>, value: int32): int32 {
+	for (let i = 0; i < (seen.length as int32); i++) { if (seen[i] == value) { return i; } }
+	seen.push(value);
+	return (seen.length as int32) - 1;
+}
+
+function pipelineOf(table: Vec<Material>, material: int32): int32 {
+	for (let i = 0; i <= material; i++) {
+		if (table[i].program == table[material].program && table[i].pass == table[material].pass) {
+			return i;
+		}
+	}
+	return material;
+}
+
+function textureNumberOf(table: Vec<Material>, material: int32): int32 {
+	return table[material].texture.isTexture() ? table[material].texture.index + 1 : 0;
+}
+
+// The numbering as it was: pipelines and textures by first appearance in this list alone.
+function firstSeenOracle(items: Vec<DrawItem>, table: Vec<Material>): Vec<int32> {
+	let pipelines: Vec<int32> = [];
+	let textures: Vec<int32> = [];
+	let pipelineRank: Vec<int32> = [];
+	let textureRank: Vec<int32> = [];
+	for (const item of items) {
+		pipelineRank.push(firstSeen(pipelines, pipelineOf(table, item.material.index)));
+		textureRank.push(firstSeen(textures, textureNumberOf(table, item.material.index)));
+	}
+	let out: Vec<int32> = [];
+	for (let i = 0; i < (items.length as int32); i++) {
+		let j: int32 = i;
+		while (j > 0) {
+			const a: int32 = out[j - 1];
+			const layerA: int32 = table[items[a].material.index].layer;
+			const layerI: int32 = table[items[i].material.index].layer;
+			const keyA: Vec<int32> = [layerA, items[a].order, pipelineRank[a], textureRank[a],
+				items[a].material.index, items[a].mesh.index];
+			const keyI: Vec<int32> = [layerI, items[i].order, pipelineRank[i], textureRank[i],
+				items[i].material.index, items[i].mesh.index];
+			let after: boolean = false;
+			for (let k = 0; k < 6; k++) {
+				if (keyA[k] != keyI[k]) {
+					after = keyA[k] > keyI[k];
+					break;
+				}
+			}
+			if (!after) { break; }
+			if ((out.length as int32) == j) { out.push(a); } else { out[j] = a; }
+			j = j - 1;
+		}
+		if ((out.length as int32) == j) { out.push(i); } else { out[j] = i; }
+	}
+	return out;
+}
+
+function randomItems(count: int32, seed: int64, materialCount: int32): Vec<DrawItem> {
+	let items: Vec<DrawItem> = [];
+	let state: int64 = seed;
+	for (let i = 0; i < count; i++) {
+		state = (state * 1103515245 + 12345) & 0x7FFFFFFF;
+		items.push({
+			...itemOf(((state >> 8) % materialCount) as int32, ((state >> 16) % 3) as int32, 0.0),
+			mesh: { store: 1, index: ((state >> 20) % 3) as int32, generation: 1 },
+		});
+	}
+	return items;
+}
+
+function sortedAgain(ref list: PassList, items: Vec<DrawItem>): boolean {
+	const table: Vec<Material> = materials();
+	collect(list, items, table);
+	sortByMaterial(list, items, programsOf(table), table);
+	return same(indicesOf(list), firstSeenOracle(items, table));
+}
+
+test "one list sorted over and over numbers each call by that call's first appearances" {
+	let list: PassList = PassList.forPhase(Phase.Opaque);
+	assert sortedAgain(list, randomItems(600, 5, 5));
+	assert sortedAgain(list, [itemOf(4, 0, 0.0), itemOf(3, 0, 0.0), itemOf(2, 0, 0.0),
+		itemOf(1, 0, 0.0), itemOf(0, 0, 0.0)]);
+	assert sortedAgain(list, [itemOf(0, 0, 0.0), itemOf(1, 0, 0.0), itemOf(2, 0, 0.0),
+		itemOf(3, 0, 0.0), itemOf(4, 0, 0.0)]);
+	assert sortedAgain(list, randomItems(40, 6, 5));
+	assert sortedAgain(list, randomItems(1500, 7, 5));
+	assert sortedAgain(list, randomItems(3, 8, 5));
+}
+
+test "a repeated call and a second list keep their own numbering" {
+	let first: PassList = PassList.forPhase(Phase.Opaque);
+	let second: PassList = PassList.forPhase(Phase.Opaque);
+	const one: Vec<DrawItem> = randomItems(200, 11, 5);
+	const two: Vec<DrawItem> = randomItems(200, 12, 5);
+	assert sortedAgain(first, one);
+	assert sortedAgain(second, two);
+	assert sortedAgain(first, one);
+	assert sortedAgain(first, two);
+}
+
+test "the rank epoch wraps without a stale rank surviving" {
+	let list: PassList = PassList.forPhase(Phase.Opaque);
+	assert sortedAgain(list, randomItems(300, 21, 5));
+	list.pipelines.epoch = 2147483646;
+	list.textures.epoch = 2147483646;
+	assert sortedAgain(list, randomItems(300, 22, 5));
+	assert sortedAgain(list, randomItems(300, 23, 5));
+	assert list.pipelines.epoch == 1 && list.textures.epoch == 1;
+	assert sortedAgain(list, randomItems(300, 24, 5));
 }
