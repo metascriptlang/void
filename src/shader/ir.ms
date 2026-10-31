@@ -1303,6 +1303,10 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 			c.errors.push(owner + ": an atomic is read and written only through atomic " +
 				"operations, as WGSL's");
 		}
+		if (o.type.kind == ShaderTypeKind.Void && o.kind != ExprKind.Literal) {
+			c.errors.push(owner +
+				": an operand has type void, and only a call statement has no value");
+		}
 		exprErrors(c, o, f, owner);
 	}
 }
@@ -1315,6 +1319,11 @@ export function rootOf(e: ShaderExpr): ShaderExpr {
 
 function stmtErrors(c: Checker, s: ShaderStmt, f: ShaderFunction, owner: string): void {
 	const loadsBefore = c.uniformLoads;
+	if (s.expr.type.kind == ShaderTypeKind.Void && s.expr.kind != ExprKind.Literal &&
+		s.kind != StmtKind.Call) {
+		c.errors.push(owner + ": a " + s.kind.toString() + " statement holds an expression of " +
+			"type void, and only a call statement has no value");
+	}
 	exprErrors(c, s.expr, f, owner);
 	exprErrors(c, s.target, f, owner);
 	const loads = c.uniformLoads - loadsBefore;

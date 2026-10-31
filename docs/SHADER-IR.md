@@ -86,6 +86,11 @@ program refuses one uniform declared at two bindings.
   `max(divisor, 1u)`, which is WGSL's `x / 0u == x` and `x % 0u == 0u` and evaluates the divisor
   once. The cost is the longer text of each; `x == x` assumes the target's compiler keeps NaN
   compares, which no run has measured.
+- **Every IR type comes from a mapped source type.** `emit.ms` `looseType` maps float32 and
+  float64 to f32 (a float literal and a constant fold of literals are float64 in the checker,
+  and real shaders hold such expressions), and refuses any other type it cannot map, naming its
+  kind; only a void call keeps the void type. `irErrors` refuses an expression of type void
+  anywhere but a call statement, as the backstop.
 - **A discard demotes the invocation to a helper,** WGSL's meaning: it runs on, so a derivative
   its quad takes afterwards stays defined. GLSL, HLSL and SPIR-V end the invocation instead, and
   the void2d checker's `fwidth` tie bias read undefined values beside a clipped neighbour on GL

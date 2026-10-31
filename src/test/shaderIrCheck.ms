@@ -397,3 +397,16 @@ test "a runtime array is a storage buffer's type and nothing else's" {
 		"function 'commandsToImage': a runtime array is read only through its storage buffer";
 	assert irErrors(computeModule()).length == 0;
 }
+
+test "an expression of type void is held by a call statement only" {
+	const none = exprOf(ExprKind.Call, new ShaderType(), 0, []);
+	let m = texturedModule();
+	prepend(m.functions[0], stmtOf(StmtKind.Call, none, []));
+	assert !irErrors(m).some((e) => e.includes("type void"));
+	prepend(m.functions[0], stmtOf(StmtKind.Let, none, []));
+	assert irErrors(m).some((e) => e.includes("a Let statement holds an expression of type void"));
+	m = texturedModule();
+	prepend(m.functions[0], stmtOf(StmtKind.Call,
+		intrinsicOf(Intrinsic.Abs, scalarType(ScalarKind.F32), [none]), []));
+	assert irErrors(m).some((e) => e.includes("an operand has type void"));
+}
