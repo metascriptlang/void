@@ -41,6 +41,9 @@ export const MAX_UNIFORM_SLOTS = 8;
 export const MAX_VIEW_SLOTS = 15;
 export const MAX_SAMPLER_SLOTS = 8;
 const SAMPLER_BINDING_BASE = 32;
+const MAX_UNIFORM_BLOCK_BYTES = 65536;
+const ES_VERTEX_UNIFORM_VECTORS = 256;
+const ES_FRAGMENT_UNIFORM_VECTORS = 224;
 
 function roundUp(n: int32, to: int32): int32 {
 	return (n + to - 1) / to * to;
@@ -144,7 +147,13 @@ export function uniformBlockLayout(m: ShaderModule, resourceIndex: int32):
 				typeName(own) + "; an array member holds F32x4 or mat4x4");
 		}
 	}
-	return Result.ok(structLayoutOf(m, r.type.structIndex, LayoutRule.Std140));
+	const layout = structLayoutOf(m, r.type.structIndex, LayoutRule.Std140);
+	if (layout.size > MAX_UNIFORM_BLOCK_BYTES) {
+		return Result.err(owner + " is " + String(layout.size) + " bytes; a uniform buffer binding " +
+			"holds at most " + String(MAX_UNIFORM_BLOCK_BYTES) + " bytes (WebGPU's default, " +
+			"D3D11's 4096 vec4s)");
+	}
+	return Result.ok(layout);
 }
 
 // Each member of a uniform block as its float offset and float count in the block the printers lay
@@ -301,6 +310,27 @@ function pairSamplerBinding(m: ShaderModule, pair: TexturePair): int32 {
 	return pair.sampler < 0 ? -1 : m.resources[pair.sampler].binding;
 }
 
+function esUniformBudget(m: ShaderModule, used: Used[]): Result<void, string> {
+	for (const stage of [ShaderStage.Vertex, ShaderStage.Fragment]) {
+		let vectors = 0;
+		for (const u of used) {
+			if (u.stage != stage || m.resources[u.resource].kind != ResourceKind.UniformBlock) {
+				continue;
+			}
+			const layout = uniformBlockLayout(m, u.resource);
+			if (!layout.ok) { return Result.err(layout.error); }
+			vectors += layout.value.size / 16;
+		}
+		const vertex = stage == ShaderStage.Vertex;
+		const limit = vertex ? ES_VERTEX_UNIFORM_VECTORS : ES_FRAGMENT_UNIFORM_VECTORS;
+		if (vectors > limit) {
+			return Result.err("the " + (vertex ? "vertex" : "fragment") + " stage reads " + String(vectors) +
+				" uniform vec4s; GLSL ES 3.0 guarantees " + String(limit));
+		}
+	}
+	return Result.ok(null);
+}
+
 export function bindingSlots(m: ShaderModule, entries: int32[], target: ShaderTarget):
 	Result<BindingSlot[], string> {
 	let used: Used[] = [];
@@ -342,6 +372,7 @@ export function bindingSlots(m: ShaderModule, entries: int32[], target: ShaderTa
 			pairs.push({ pair: { texture, sampler: -1 }, stage: entry.stage });
 		}
 	}
+	if (target == ShaderTarget.Glsl300es) { try esUniformBudget(m, used); }
 	used.sort((a, b) => m.resources[a.resource].binding - m.resources[b.resource].binding);
 
 	let slots: BindingSlot[] = [];
