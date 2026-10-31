@@ -6199,6 +6199,48 @@ The port, in steps:
    and the check fails. GL core and WebGL2 run it in the gate (gl-core, web3d) and have not run
    it yet.
 
+### Screen-space reflections: what ports, traced (2026-10-31)
+
+Heaps' SSR (`h3d/shader/pbr/SSR.hx`, added with `h3d/shader/HZB.hx` in Heaps `5004e34e`, a port of
+Godot's) is three shaders the caller runs; the pbr `Renderer` only builds the depth pyramid
+(`Renderer.updateHZB`, `h3d/scene/pbr/Renderer.hx:267-310`) and never dispatches SSR, as it
+never runs SAO. The passes:
+
+1. `HZB`: a depth pyramid. Mip 0 is a copy of the depth; each further mip keeps the max (or min)
+   of the 2x2 texels under it, 3x3 at an odd edge, rendered one mip at a time into an R32F
+   target, ping-ponged through a copy because DX12 there cannot read one mip while writing
+   another.
+2. `SSR`: per pixel, rebuild the view position and the reflected ray from the depth, the normal
+   and the roughness targets, then march the ray through the pyramid (Hi-Z: step to the next cell
+   edge, go one mip down on a hit, one up on a miss, `stepCount` steps), reject a hit behind the
+   surface by `depthTolerance`, and weigh it by the hit normal facing the ray, a distance
+   confidence, a screen-edge margin and a fade on the ray length. It writes the HDR colour at
+   the hit and a mip level from the roughness cone (`roughness >= 0.7` writes nothing).
+3. `SSRFilter` blurs the reflection colour into its mips (a 7x7 Gaussian per mip, weighted by
+   the hit's validity), and `SSRResolve` reads that chain at the pixel's mip level.
+
+What it reads, against what exists here:
+
+| Input | Heaps | Here |
+|---|---|---|
+| Depth | the scene depth | the stored, sampled depth of the decal pass |
+| Normal | the pbr G-buffer normal, world space | the outline MRT's world normal (`n * 0.5 + 0.5`), as SAO reads it |
+| Roughness | the pbr G-buffer's `.y` | not written per pixel; it would be one more MRT channel out of `shader3d.ms` `litFs`, which the shader arc owns |
+| HDR colour | the lit frame | the HDR target |
+| Depth pyramid | R32F, rendered per mip | door views reach one mip; float render targets stop on GLES (`webgpu/gl/backend.ms` refuses them until `EXT_color_buffer_float` is queried), so WebGL2 has no pyramid yet |
+| Blurred colour chain read at a fractional mip | `getLod` with a mip-linear sampler | the sampled-mip path is the held mip decision |
+
+Heaps runs SSR as compute (`setLayout(8, 8, 1)`, two `RWTexture2D` stores). Every invocation
+stores only its own pixel outside the `DEBUG` drawing, so a fragment shader with two outputs
+gives the same result, and runs on WebGL2, which has no compute: a different emitted shape,
+not a different mechanism. Bevy's SSR is no reference for the pass shape: it needs deferred
+rendering and is unsupported on WebGL2 (`bevy_pbr/src/ssr/mod.rs:54,75` at `84e2d2c`).
+
+So SSR is a port, not a G-buffer rewrite like `DecalPBR`, but it waits on three things outside
+this arc's files: the roughness channel (shader arc), float render targets on GLES (gpu-ms), and
+the sampled-mip decision (the person). The CPU math (the cell stepping, the hit test, the
+validity terms and the cone mip level) can be ported and pinned first, as SAO's step 1 was.
+
 ### Cascaded sun shadows, as built so far (2026-10-24)
 
 The sun's single fitted map becomes up to four cascades, each its own orthographic map in one
