@@ -1136,6 +1136,7 @@ class Checker {
 	fragmentOnly: string[][] = [];
 	computeOnly: string[][] = [];
 	uniformLoads: int32 = 0;
+	nonUniformSites: ShaderExpr[] = [];
 }
 
 export function isDerivative(op: Intrinsic): boolean {
@@ -1440,8 +1441,10 @@ function operandsSource(w: Walk, fr: Frame, e: ShaderExpr, from: int32): string 
 	return source;
 }
 
-function checkUniformFlow(w: Walk, fr: Frame, op: Intrinsic): void {
-	if (fr.flow == "") { return; }
+function checkUniformFlow(w: Walk, fr: Frame, site: ShaderExpr): void {
+	if (fr.flow == "" || w.c.nonUniformSites.includes(site)) { return; }
+	w.c.nonUniformSites.push(site);
+	const op = site.intrinsic;
 	const via = w.root ? "" : " (called from entry '" + w.entry + "')";
 	noted(w.c.errors, "function '" + w.c.module.functions[w.index].name + "'" + via + ": " +
 		uniformWord(op) + " runs in non-uniform control flow, " + fr.flow + "; WGSL's " +
@@ -1451,7 +1454,7 @@ function checkUniformFlow(w: Walk, fr: Frame, op: Intrinsic): void {
 function intrinsicSource(w: Walk, fr: Frame, e: ShaderExpr): string {
 	const op = e.intrinsic;
 	if (isComputeOnly(op)) {
-		checkUniformFlow(w, fr, op);
+		checkUniformFlow(w, fr, e);
 		return "";
 	}
 	if (op == Intrinsic.ArrayLength) { return ""; }
