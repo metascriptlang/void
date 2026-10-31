@@ -1725,6 +1725,18 @@ changes described above on today's compiler; the P4 web archive also takes its r
   are pushed off after it, which the author can override. That letter-spacing rule is CSS Text 3's
   and no reference in `docs/` states it (CSS read from memory, not re-read).
 
+  **A face with `morx` and no `GSUB` is shaped by CoreText on macOS and iOS** (`shaper.ms`
+  `morxPlatform`, `platformFaceApple.m` `void2dPlatformShape`; approved 2026-10-31, test
+  `src/test/morxShapeCheck.ms`). Apple Color Emoji keeps its skin-tone and ZWJ sequences in
+  `morx` only, which `kb_text_shape` does not read. The pass is Ghostty's `coretext.zig:356-512`
+  (b58ef1d67): one `CTLine` at forced embedding level 0, each `CTRun`'s glyph, advance, position
+  and string index read back, with the UTF-16 index mapped to the codepoint index, so a ligature
+  comes out as one glyph with `ShapedGlyph.index` of its first member and `fillCluster` leaves the
+  consumed slots `NO_GLYPH`. Every other face keeps kb, as Ghostty's default backend does not
+  (`font/backend.zig:60` shapes every face through CoreText); the person approved only this case.
+  Feature overrides do not reach CoreText, a run CoreText would shape in another font stops by name,
+  and an RTL pass reverses the glyphs of each segment to kb's visual order.
+
   **The slot model survives the shaper; three additions.** `LaidGlyph` stays one slot per
   codepoint, so wrap, hit-testing, selection, `splitAt` and `forceCells` read the slots they read
   before. A pass's glyphs are cut into shaping clusters where every earlier source index is below
