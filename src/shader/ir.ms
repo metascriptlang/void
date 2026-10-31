@@ -1018,13 +1018,19 @@ export function maskedShiftAmount(amount: ShaderExpr): ShaderExpr {
 
 export function saturatingToInt(x: ShaderExpr, to: ScalarKind): ShaderExpr {
 	const signed = to == ScalarKind.I32;
-	const f32 = scalarType(ScalarKind.F32);
-	const bounded = intrinsicOf(Intrinsic.Clamp, f32, [x,
-		literal(f32, signed ? -2147483648.0 : 0.0),
-		literal(f32, signed ? 2147483520.0 : 4294967040.0)]);
-	const finite = binaryOf(BinaryOp.Equal, scalarType(ScalarKind.Bool), x, x);
-	const picked = intrinsicOf(Intrinsic.Select, f32, [literal(f32, 0.0), bounded, finite]);
-	return exprOf(ExprKind.Convert, scalarType(to), -1, [picked]);
+	const f32 = x.type;
+	const vector = f32.kind == ShaderTypeKind.Vector;
+	const splat = (v: float64) => vector ?
+		exprOf(ExprKind.Construct, f32, -1, [literal(scalarType(ScalarKind.F32), v)]) :
+		literal(f32, v);
+	const bounded = intrinsicOf(Intrinsic.Clamp, f32, [x, splat(signed ? -2147483648.0 : 0.0),
+		splat(signed ? 2147483520.0 : 4294967040.0)]);
+	const finite = vector ?
+		intrinsicOf(Intrinsic.Equal, vectorType(ScalarKind.Bool, f32.rows), [x, x]) :
+		binaryOf(BinaryOp.Equal, scalarType(ScalarKind.Bool), x, x);
+	const picked = intrinsicOf(Intrinsic.Select, f32, [splat(0.0), bounded, finite]);
+	return exprOf(ExprKind.Convert, vector ? vectorType(to, f32.rows) : scalarType(to), -1,
+		[picked]);
 }
 
 export function definedUnsignedDivisor(divisor: ShaderExpr): ShaderExpr {
