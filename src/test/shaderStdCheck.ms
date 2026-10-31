@@ -125,7 +125,8 @@ test "glsl spells every std name in its GLSL form" {
 		"    vec3 curved = mix(clamp(light, vec3(0.0), vec3(1.0)), bright, min(lambert, 1.0));\n" +
 		"    vec3 facing = ((p.z > 0.5) ? (light - n) : n);\n" +
 		"    float shade = ((uv.y > 1.0) ? clamp(uv.x, 0.0, 1.0) : 1.0);\n" +
-		"    vec4 texel = texelFetch(shadowMap, ivec2(uv), 0);\n" +
+		"    vec4 texel = texelFetch(shadowMap, ivec2(mix(vec2(0.0), clamp(uv, " +
+			"vec2(-2147483648.0), vec2(2147483520.0)), equal(uv, uv))), 0);\n" +
 		"    fragColor = vec4((((curved * facing) * shade) + (texel.rgb * texel.r)), texel.a);\n" +
 		"    return;\n" +
 		"}\n";
@@ -400,9 +401,14 @@ test "glsl spells the geometric, matrix, derivative and integer vector names in 
 		"    mat3 frame = mat3(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, p.x, p.y, 1.0);\n" +
 		"    vec3 lens = (inverse(frame) * transpose((frame * frame))) * (bounced + facing);\n" +
 		"    vec2 plane = (1.0 - (((turn * turn) * p.xy) / determinant(turn))) + 0.5;\n" +
-		"    uvec3 cell = uvec3(ivec3(p.xyz));\n" +
-		"    ivec2 texel = ((-ivec2(p.zw)) * 2) - ivec2(1, 1);\n" +
-		"    vec4 back = vec4(ivec4(uvec4(ivec4(p)))) + vec4(uvec4(ivec4(p.wzyx)));\n" +
+		"    uvec3 cell = uvec3(ivec3(mix(vec3(0.0), clamp(p.xyz, vec3(-2147483648.0), " +
+			"vec3(2147483520.0)), equal(p.xyz, p.xyz))));\n" +
+		"    ivec2 texel = ((-ivec2(mix(vec2(0.0), clamp(p.zw, vec2(-2147483648.0), " +
+			"vec2(2147483520.0)), equal(p.zw, p.zw)))) * 2) - ivec2(1, 1);\n" +
+		"    vec4 back = vec4(ivec4(uvec4(ivec4(mix(vec4(0.0), clamp(p, " +
+			"vec4(-2147483648.0), vec4(2147483520.0)), equal(p, p)))))) + " +
+			"vec4(uvec4(ivec4(mix(vec4(0.0), clamp(p.wzyx, vec4(-2147483648.0), " +
+			"vec4(2147483520.0)), equal(p.wzyx, p.wzyx)))));\n" +
 		"    vec4 turned = inverse(mat4(p, p.yzwx, p.zwxy, p.wxyz)) * back;\n" +
 		"    vec4 grid = vec4(vec3(cell), vec2(texel).y);\n" +
 		"    fragColor = (vec4((lens * spread), plane.x) + grid) + turned.zyxw;\n" +

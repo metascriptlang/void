@@ -80,7 +80,8 @@ test "an overload pair stays two GLSL overloads, each call on the declaration it
 		"    return at - ONE;\n" +
 		"}\n" +
 		"ivec2 texel(vec2 at) {\n" +
-		"    return ivec2(at);\n" +
+		"    return ivec2(mix(vec2(0.0), clamp(at, vec2(-2147483648.0), " +
+			"vec2(2147483520.0)), equal(at, at)));\n" +
 		"}\n" +
 		"void main() {\n" +
 		"    ivec2 p = texel(texel(gl_FragCoord.xy));\n" +
