@@ -1,10 +1,12 @@
 import { translation } from "../math/math3d";
 import { DrawItem, MeshId, MaterialId } from "../void3d/draw";
-import { Material, Phase } from "../void3d/material";
+import { Material, Phase, ShadowCasting } from "../void3d/material";
 import { TextureId } from "../void3d/texture";
 import { Program, ProgramKey } from "../void3d/gpu3d";
 import { RenderState, Face } from "../gpu/state";
-import { PassList, sortBackToFront, sortByLayer, sortByMaterial } from "../void3d/passList";
+import {
+	PassList, collectCasters, sortBackToFront, sortByLayer, sortByMaterial, sortCasters,
+} from "../void3d/passList";
 import { collect } from "./drawHelpers";
 
 const NONE: TextureId = { store: 0, index: 0, generation: 0 };
@@ -95,6 +97,36 @@ test "an opaque list groups a program, then a texture, the group of the first it
 	];
 	const list: PassList = sorted(items);
 	assert same(indicesOf(list), [0, 3, 5, 2, 6, 1, 4]);
+}
+
+function meshItem(material: int32, mesh: int32): DrawItem {
+	return { ...itemOf(material, 0, 0.0), mesh: { store: 1, index: mesh, generation: 1 } };
+}
+
+test "two meshes collected A, B, A, B come out A, A, B, B" {
+	const items: Vec<DrawItem> = [
+		meshItem(0, 0), meshItem(0, 1), meshItem(0, 0), meshItem(0, 1),
+	];
+	assert same(indicesOf(sorted(items)), [0, 2, 1, 3]);
+}
+
+test "two materials sharing a program and a texture group by material, then mesh" {
+	const items: Vec<DrawItem> = [
+		meshItem(2, 0), meshItem(4, 0), meshItem(2, 1), meshItem(4, 1), meshItem(2, 0),
+	];
+	assert same(indicesOf(sorted(items)), [0, 4, 2, 1, 3]);
+}
+
+test "casters collected A, B, A, B draw A, A, B, B, whatever their layer and order" {
+	const items: Vec<DrawItem> = [
+		meshItem(0, 0), { ...meshItem(0, 1), order: 7 }, meshItem(0, 0), meshItem(0, 1),
+	];
+	let list: PassList = PassList.forPhase(Phase.Opaque);
+	const casting: Vec<Material> = [{ ...materials()[0], castShadows: ShadowCasting.On }];
+	collectCasters(list, items, casting);
+	assert list.count == 4;
+	sortCasters(list, items);
+	assert same(indicesOf(list), [0, 2, 1, 3]);
 }
 
 test "equal keys keep item order" {

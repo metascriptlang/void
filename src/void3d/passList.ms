@@ -3,10 +3,10 @@
 // Heaps links PassObjects into a list that `filter` splits and `sort` reorders in place. Here
 // a list holds indices into the frame's Span<DrawItem>: `collectVisible` keeps the items whose
 // material is in the list's phase, in item order, `sortByMaterial` orders them as SortByMaterial
-// does, by Pass.layer, then the item's render order, then its pipeline and texture, and
-// `sortBackToFront` reorders them the way Renderer.depthSort does for the "alpha" pass. Each
-// sort builds one key pair per item and merge-sorts positions by it, so equal keys keep their
-// order. The storage grows only when the item count does (a structural change), so a frame
+// does, by Pass.layer, then the item's render order, then its pipeline and texture, then its
+// material, mesh and range, and `sortBackToFront` reorders them the way Renderer.depthSort does
+// for the "alpha" pass. Each sort builds its keys per item and merge-sorts positions by them, so
+// equal keys keep their order. The storage grows only when the item count does (a structural change), so a frame
 // allocates nothing.
 
 import { DrawContext, DrawItem, SceneTexture, drawBatchWith, drawItemWith } from "./draw";
@@ -45,6 +45,8 @@ export struct PassList {
 	count: int32;
 	highs: Vec<uint64>;
 	lows: Vec<uint64>;
+	tails: Vec<uint64>;
+	ends: Vec<uint64>;
 	positions: Vec<int32>;
 	spare: Vec<int32>;
 	spareDepths: Vec<float32>;
@@ -59,7 +61,7 @@ function noRanks(): Ranks {
 export function forPhase(this typeof PassList, phase: Phase): PassList {
 	return {
 		phase: phase, indices: [], depths: [], layers: [], orders: [], count: 0,
-		highs: [], lows: [], positions: [], spare: [], spareDepths: [],
+		highs: [], lows: [], tails: [], ends: [], positions: [], spare: [], spareDepths: [],
 		pipelines: noRanks(), textures: noRanks(),
 	};
 }
@@ -71,6 +73,8 @@ function reserve(ref list: PassList, length: int32): void {
 	while ((list.orders.length as int32) < length) { list.orders.push(0); }
 	while ((list.highs.length as int32) < length) { list.highs.push(0); }
 	while ((list.lows.length as int32) < length) { list.lows.push(0); }
+	while ((list.tails.length as int32) < length) { list.tails.push(0); }
+	while ((list.ends.length as int32) < length) { list.ends.push(0); }
 	while ((list.positions.length as int32) < length) { list.positions.push(0); }
 	while ((list.spare.length as int32) < length) { list.spare.push(0); }
 	while ((list.spareDepths.length as int32) < length) { list.spareDepths.push(0.0); }
@@ -109,7 +113,24 @@ function layerOrderKey(layer: int32, order: int32): uint64 {
 
 function before(list: PassList, a: int32, b: int32): boolean {
 	if (list.highs[a] != list.highs[b]) { return list.highs[a] < list.highs[b]; }
-	return list.lows[a] < list.lows[b];
+	if (list.lows[a] != list.lows[b]) { return list.lows[a] < list.lows[b]; }
+	if (list.tails[a] != list.tails[b]) { return list.tails[a] < list.tails[b]; }
+	return list.ends[a] < list.ends[b];
+}
+
+// The last tie-breaks of every sort that groups: the material, then the mesh, then the range, so
+// items drawn with the same batch key sit next to each other for drawPassList's sameBatch.
+function groupKeys(ref list: PassList, at: int32, item: Readonly<DrawItem>): void {
+	list.tails[at] = (((item.material.index as uint32) as uint64) << 32) |
+		((item.mesh.index as uint32) as uint64);
+	const range = item.range;
+	list.ends[at] = range === null ? 0 : (((range.base as uint32) as uint64) << 32) |
+		((range.count as uint32) as uint64);
+}
+
+function noGroupKeys(ref list: PassList, at: int32): void {
+	list.tails[at] = 0;
+	list.ends[at] = 0;
 }
 
 // Reorders the list by (highs, lows), ascending, equal keys in their present order: a bottom-up
@@ -288,6 +309,7 @@ export function sortBackToFront(
 		list.depths[i] = depth;
 		list.highs[i] = layerOrderKey(list.layers[i], list.orders[i]);
 		list.lows[i] = (~(sortKeyOf(depth) as uint64)) & 0xFFFFFFFF;
+		noGroupKeys(list, i);
 	}
 	orderByKeys(list);
 }
@@ -299,14 +321,29 @@ export function sortByLayer(ref list: PassList): void {
 	for (let i = 0; i < list.count; i++) {
 		list.highs[i] = layerOrderKey(list.layers[i], list.orders[i]);
 		list.lows[i] = 0;
+		noGroupKeys(list, i);
+	}
+	orderByKeys(list);
+}
+
+// The shadow casters, grouped by material, mesh and range with nothing else ordering them: depth
+// writes commute, so only the batches matter.
+export function sortCasters(ref list: PassList, items: Readonly<Span<DrawItem>>): void {
+	reserve(list, list.count);
+	for (let i = 0; i < list.count; i++) {
+		list.highs[i] = 0;
+		list.lows[i] = 0;
+		groupKeys(list, i, items[list.indices[i]]);
 	}
 	orderByKeys(list);
 }
 
 // SortByMaterial: lower layers first, then lower render orders (void3d's own key, before any
 // material's), then the items of one pipeline (its program and render state), then those of
-// one texture. Pipelines and textures are numbered by first appearance in the list, as
-// SortByMaterial numbers its shaders and textures, so a group sits where its first item was.
+// one texture, then of one material, one mesh and one range, which SortByMaterial leaves in
+// item order and drawPassList's neighbour batching needs together.
+// Pipelines and textures are numbered by first appearance in the list, as SortByMaterial numbers
+// its shaders and textures, so a group sits where its first item was.
 // `drawn` is indexed like `materials`.
 export function sortByMaterial(
 	ref list: PassList,
@@ -328,6 +365,7 @@ export function sortByMaterial(
 		list.highs[i] = layerOrderKey(list.layers[i], list.orders[i]);
 		list.lows[i] = (((rankOf(list.pipelines, pipeline) as uint32) as uint64) << 32) |
 			((rankOf(list.textures, texture) as uint32) as uint64);
+		groupKeys(list, i, items[index]);
 	}
 	orderByKeys(list);
 }

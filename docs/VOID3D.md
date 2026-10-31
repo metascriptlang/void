@@ -2221,11 +2221,12 @@ every output).
 
 **A sort layer.** `Material.layer` is Heaps' `Pass.layer` (`h3d/mat/Pass.hx:51`), 0 by
 default. Every pass list draws lower layers first: `passList.ms` keeps each collected item's
-layer beside its index (compacted with it by `filterFrustum`), `sortByLayer` orders the opaque
-and additive lists by layer and keeps item order inside a layer (the first key of Heaps'
-`SortByMaterial`, `h3d/pass/SortByMaterial.hx:24`; void3d does not sort by shader or texture),
+layer beside its index (compacted with it by `filterFrustum`), `sortByMaterial` orders the opaque
+list by layer, render order, pipeline, texture, then material, mesh and range, and `sortByLayer`
+orders the additive and decal lists by layer and keeps item order inside a layer (the first key of
+Heaps' `SortByMaterial`, `h3d/pass/SortByMaterial.hx:24`),
 and `sortBackToFront` orders the alpha list by layer, then far to near, as `depthSort` does
-(`h3d/scene/Renderer.hx:114-125`). Both sorts are stable insertion sorts in place; the layer
+(`h3d/scene/Renderer.hx:114-125`). Every sort is a stable merge of positions; the layer
 storage grows only with the item count. A URG-style `render_priority` maps to the layer.
 
 **Alpha's depth write stays Heaps'.** M33 carried the question: Heaps' Alpha writes depth
@@ -6511,7 +6512,11 @@ WebGL2 has none (see the clustered lights above).
   frame that outgrows the buffer moves to one twice as large.
 - `drawPassList` and the shadow caster pass draw neighbours that differ only in their world
   matrices (`sameBatch`: same mesh, material and range, no skin, no instance run) as one
-  instanced draw, in list order, so a blended list keeps its look.
+  instanced draw, in list order, so a blended list keeps its look. Only neighbours batch, so the
+  opaque sort ends its keys with material, mesh and range, and the caster list is sorted by the
+  same three before it draws (Bevy bins opaque and shadow items by mesh,
+  `bevy_core_pipeline/src/core_3d/mod.rs:197-238`, `bevy_pbr/src/render/light.rs:2819-2851`).
+  Blended lists keep their order.
 - An `InstanceRun` binds a `VertexLayout.MeshInstances` stream in place of the staged rows; this
   is the particle mesh path (`PARTICLES-RENDER.md` A.2.1), now on every non-skinned mesh program
   rather than a separate program.

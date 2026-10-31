@@ -66,7 +66,7 @@ import {
 	drawItemWith,
 } from "./draw";
 import { UniformError, ownRange, disownRange } from "./uniformPool";
-import { PassList, collectCasters, filterFrustum } from "./passList";
+import { PassList, collectCasters, filterFrustum, sortCasters } from "./passList";
 import { Bounds3D, addPos, addBounds } from "./bounds";
 import { Frustum3D } from "./frustum";
 import { CameraBasis, CameraView, OrthoBounds } from "./camera";
@@ -702,6 +702,7 @@ function drawLayers(
 		beginPass(NO_COLORS, shadow.depthTarget.asDepth(
 			layer, LoadAction.Clear, FAR_DEPTH, StoreAction.Store,
 		));
+		sortCasters(shadow.casters, items);
 		drawCasters(shadow, items);
 		endPass();
 		drawn = drawn + shadow.casters.count;
