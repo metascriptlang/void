@@ -6,7 +6,11 @@
 // windowed A/B. The meshes are external, so no vertex buffer is made; FLOW_CUBES_COUNT sets the
 // cube count (1.6M, as benchCubes). `flow.refreshMoving` times refresh on frames where ten
 // cubes move; FLOW_CUBES_GROUP=n puts the cubes under groups of n, so the move descends into one
-// group instead of the root's every child.
+// group instead of the root's every child. FLOW_CUBES_SORT=1 adds `flow.sortByMaterial`, the
+// opaque list's sort after collectVisible; FLOW_CUBES_SHADOW=1 makes the cubes cast and adds
+// `flow.shadowLayers`, a four-cascade sun's CPU work per frame (collectCasters, filterFrustum
+// and sortCasters for each layer, as DirShadowMap's drawLayers runs them, with no pass) and,
+// once, `flow.shadowLayer<i> <casters>` for each layer's caster count.
 
 import { env, exit } from "std/process";
 import { Mat4, vec3, identityQuat, quatBetween } from "../../src/math/math3d";
@@ -14,7 +18,7 @@ import { Frustum3D } from "../../src/void3d/frustum";
 import { gfxSetup } from "../../src/host/gpu";
 import { commit } from "../../src/gpu/door";
 import { RenderState } from "../../src/gpu/state";
-import { Material, Phase, UniformBlock, pbrBlock } from "../../src/void3d/material";
+import { Material, Phase, ShadowCasting, UniformBlock, pbrBlock } from "../../src/void3d/material";
 import { PbrResponseError } from "../../src/void3d/pbrResponse";
 import {
 	Program, ProgramKey, MATERIAL_UNIFORM_SLOT, PBR_MATERIAL_UNIFORM_LENGTH,
@@ -29,7 +33,13 @@ import { Camera3D, CameraView, CameraError, ProjectionKind } from "../../src/voi
 import {
 	Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame, setCameraPosition,
 } from "../../src/void3d/renderer";
-import { PassList, collectVisible } from "../../src/void3d/passList";
+import {
+	PassList, collectVisible, collectCasters, filterFrustum, sortCasters, sortByMaterial,
+} from "../../src/void3d/passList";
+import {
+	CascadeConfig, CascadeError, Cascade, cascadeBounds, cascadesOf,
+} from "../../src/void3d/cascades";
+import { lightBasis } from "../../src/void3d/dirShadowMap";
 import {
 	Scene3D, NodeId3D, SceneError, Transform3D, LightInstance, LightKind, LightError,
 	addMeshNode, addLightNode, addGroup, refresh, collectLights, setLocal,
@@ -73,6 +83,7 @@ function whiteMaterial(): MaterialId {
 	if (!writeUniforms(context, reserved.value, values.value).ok) { unreachable; }
 	const made: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.keyed(key, RenderState.defaults(), Phase.Opaque),
+		castShadows: env.get("FLOW_CUBES_SHADOW") == "1" ? ShadowCasting.On : ShadowCasting.Off,
 		uniforms: reserved.value,
 	});
 	if (made.ok) { return made.value; }
@@ -82,6 +93,18 @@ function whiteMaterial(): MaterialId {
 function median(ref samples: Vec<float64>): float64 {
 	samples.sort((a: float64, b: float64): number => a - b);
 	return samples[(samples.length as int32) / 2];
+}
+
+const SUN_EYE = vec3(0.0, 40.0, -40.0);
+
+function benchCamera(): CameraView {
+	const camera: Camera3D = {
+		position: SUN_EYE, yaw: 0.0, pitch: 0.6, nearPlane: 0.1, farPlane: 1000.0,
+		projection: { kind: ProjectionKind.Perspective, fovY: 0.785398 },
+	};
+	const view: Result<CameraView, CameraError> = camera.resolve(1920, 1080);
+	if (view.ok) { return view.value; }
+	unreachable;
 }
 
 function buildScene(count: int32): void {
@@ -111,15 +134,64 @@ function buildScene(count: int32): void {
 		...Transform3D.identity(),
 		rotation: quatBetween(vec3(0.0, 0.0, 1.0), vec3(0.0, -1.0, -1.0).normalized()),
 	}, sun);
-	const eye = vec3(0.0, 40.0, -40.0);
-	const camera: Camera3D = {
-		position: eye, yaw: 0.0, pitch: 0.6, nearPlane: 0.1, farPlane: 1000.0,
-		projection: { kind: ProjectionKind.Perspective, fovY: 0.785398 },
-	};
-	const view: Result<CameraView, CameraError> = camera.resolve(1920, 1080);
-	if (!view.ok) { unreachable; }
-	view.value.writeCameraBlock(cameraValues);
-	setCameraPosition(renderer, eye);
+	benchCamera().writeCameraBlock(cameraValues);
+	setCameraPosition(renderer, SUN_EYE);
+}
+
+function sortFlow(
+	ref opaque: PassList, ref alpha: PassList, ref additive: PassList, ref decal: PassList,
+	ref toneMapped: PassList,
+	frustum: Frustum3D,
+): void {
+	let drawn: Vec<ProgramKey> = [];
+	for (let i = 0; i < (context.materials.length as int32); i++) {
+		drawn.push(ProgramKey.of(Program.Lit).withPbr());
+	}
+	let sorted: Vec<float64> = [];
+	for (let frame = 0; frame <= frames; frame++) {
+		const _culled: int32 = collectVisible(opaque, alpha, additive, decal, toneMapped, items,
+			context.materials, context.meshData, frustum);
+		const t0: float64 = performance.now();
+		sortByMaterial(opaque, items, drawn, context.materials);
+		const t1: float64 = performance.now();
+		if (frame > 0) { sorted.push(t1 - t0); }
+	}
+	console.log(`flow.sortByMaterial ${opaque.count} ${median(sorted)} ms`);
+}
+
+function shadowFlow(): void {
+	const view: CameraView = benchCamera();
+	const toLight = vec3(0.0, 1.0, 1.0).normalized();
+	const basis = lightBasis(toLight);
+	const side: float32 = Math.ceil(Math.sqrt((items.length as int32) as float64)) as float32;
+	let casterNear: float32 = 1.0e30;
+	for (let corner = 0; corner < 4; corner++) {
+		const x: float32 = (corner & 1) == 0 ? -1.0 : side * 2.0;
+		const z: float32 = (corner & 2) == 0 ? -1.0 : side * 2.0;
+		casterNear = Math.min(casterNear, vec3(x, -1.0, z).dot(basis.forward));
+	}
+	const config: CascadeConfig =
+		{ bounds: cascadeBounds(4, 10.0, 150.0), overlap: 0.2, minimumDistance: 0.1 };
+	const made: Result<Vec<Cascade>, CascadeError> =
+		cascadesOf(config, view.inverseViewProj, view.eye, basis, 2048, casterNear);
+	if (!made.ok) { unreachable; }
+	let frusta: Vec<Frustum3D> = [];
+	for (const cascade of made.value) { frusta.push(Frustum3D.fromMatrix(cascade.clipFromWorld)); }
+	let casters: PassList = PassList.forPhase(Phase.Opaque);
+	let layered: Vec<float64> = [];
+	for (let frame = 0; frame <= frames; frame++) {
+		const t0: float64 = performance.now();
+		for (let layer = 0; layer < (frusta.length as int32); layer++) {
+			collectCasters(casters, items, context.materials);
+			const _culled: int32 =
+				filterFrustum(casters, items, context.meshData, frusta[layer]);
+			sortCasters(casters, items);
+			if (frame == 0) { console.log(`flow.shadowLayer${layer} ${casters.count}`); }
+		}
+		const t1: float64 = performance.now();
+		if (frame > 0) { layered.push(t1 - t0); }
+	}
+	console.log(`flow.shadowLayers ${frusta.length} ${median(layered)} ms`);
 }
 
 function cpuFlows(): void {
@@ -169,6 +241,10 @@ function cpuFlows(): void {
 		if (frame > 0) { moved.push(t1 - t0); }
 	}
 	console.log(`flow.refreshMoving ${movers.length} ${median(moved)} ms`);
+	if (env.get("FLOW_CUBES_SORT") == "1") {
+		sortFlow(opaque, alpha, additive, decal, toneMapped, frustum);
+	}
+	if (env.get("FLOW_CUBES_SHADOW") == "1") { shadowFlow(); }
 }
 
 function beginFrameFlow(): void {
