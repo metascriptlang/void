@@ -1,5 +1,6 @@
 import {
 	SkinGeometry, SkinGeometryError, bind, syncGeometry, deformPublished, spatialReady,
+	syncBounds, boundsCurrent, deformIfStale,
 	rayIntersection as intersectSkin,
 } from "../void3d/skinGeometry";
 import { SkinPose, bind as bindPose, syncSkinPose } from "../void3d/skinPose";
@@ -348,4 +349,177 @@ test "97 canonical joints match uncached deformation with reordered overlapping 
 		assert geometry.value.mesh.bounds.min.x == expectedBounds.min.x;
 		assert geometry.value.mesh.bounds.max.y == expectedBounds.max.y;
 	}
+}
+
+function pickDeforms(geometry: SkinGeometry): int32 {
+	const deformed = geometry.deformIfStale();
+	if (!deformed.ok) { unreachable; }
+	return deformed.value;
+}
+
+function boundsHoldDeformed(geometry: SkinGeometry): boolean {
+	const slack: float32 = 0.0001;
+	const stride: int32 = geometry.source.stride();
+	for (let vertex = 0; vertex < geometry.mesh.vertexCount(); vertex++) {
+		const at: int32 = vertex * stride;
+		const x: float32 = geometry.mesh.vertices[at];
+		const y: float32 = geometry.mesh.vertices[at + 1];
+		const z: float32 = geometry.mesh.vertices[at + 2];
+		if (x < geometry.bounds.min.x - slack || x > geometry.bounds.max.x + slack ||
+			y < geometry.bounds.min.y - slack || y > geometry.bounds.max.y + slack ||
+			z < geometry.bounds.min.z - slack || z > geometry.bounds.max.z + slack) {
+			return false;
+		}
+	}
+	return true;
+}
+
+test "joint sphere bounds hold every vertex of a skin posed by translated joints" {
+	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const first = addGroup(scene, scene.rootId(), {
+		...Transform3D.identity(), position: vec3(10, 0, 0),
+	});
+	const second = addGroup(scene, scene.rootId(), {
+		...Transform3D.identity(), position: vec3(20, 5, 0),
+	});
+	const palette = SkinPalette.create([1, 0]);
+	assert palette.ok;
+	if (!palette.ok) { return; }
+	const pose = SkinPose.bindPose(
+		scene, [0, 1], [first, second], [identity(), identity()], [palette.value],
+	);
+	assert pose.ok;
+	if (!pose.ok) { return; }
+	const geometry = SkinGeometry.bind(triangle(), influences(), pose.value);
+	assert geometry.ok;
+	if (!geometry.ok) { return; }
+	assert geometry.value.syncGeometry().ok;
+	assert geometry.value.boundsCurrent() && !geometry.value.bounds.isEmpty();
+	assert boundsHoldDeformed(geometry.value);
+	setLocal(scene, second, { ...Transform3D.identity(), position: vec3(-40, 7, 3) });
+	assert geometry.value.syncGeometry().ok;
+	assert boundsHoldDeformed(geometry.value);
+}
+
+test "joint sphere bounds hold a skin posed by a rotated and scaled two joint chain" {
+	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const root = addGroup(scene, scene.rootId(), {
+		position: vec3(5, 0, 0), rotation: { x: 0, y: 0, z: 0.70710678, w: 0.70710678 },
+		scale: vec3(2, 2, 2),
+	});
+	const child = addGroup(scene, root, {
+		position: vec3(3, 1, 0), rotation: { x: 0.38268343, y: 0, z: 0, w: 0.92387953 },
+		scale: vec3(1, 0.5, 1),
+	});
+	const palette = SkinPalette.create([0, 1]);
+	assert palette.ok;
+	if (!palette.ok) { return; }
+	const pose = SkinPose.bindPose(
+		scene, [0, 1], [root, child], [identity(), identity()], [palette.value],
+	);
+	assert pose.ok;
+	if (!pose.ok) { return; }
+	const geometry = SkinGeometry.bind(triangle(), influences(), pose.value);
+	assert geometry.ok;
+	if (!geometry.ok) { return; }
+	assert geometry.value.syncGeometry().ok;
+	assert boundsHoldDeformed(geometry.value);
+	assert geometry.value.bounds.max.y - geometry.value.bounds.min.y > 1.0;
+}
+
+function squareBar(): MeshData {
+	let mesh = MeshData.empty();
+	for (const point of [vec3(0, 0, 0), vec3(4, 1, 1), vec3(4, 0, 0), vec3(0, 1, 1)]) {
+		const _vertex = addVertex(
+			mesh, point, vec3(0, 0, 1), { red: 1, green: 1, blue: 1, alpha: 1 },
+		);
+	}
+	const _first = addTriangle(mesh, 0, 1, 2);
+	const _second = addTriangle(mesh, 0, 3, 1);
+	return move mesh;
+}
+
+test "joint bounds hold the edges of a square bar turned about its long side" {
+	for (const turn of [0.38268343 as float32, 0.70710678 as float32]) {
+		const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
+		const bar = addGroup(scene, scene.rootId(), {
+			...Transform3D.identity(),
+			rotation: { x: turn, y: 0, z: 0, w: Math.sqrt(1 - turn * turn) as float32 },
+		});
+		const palette = SkinPalette.create([0]);
+		assert palette.ok;
+		if (!palette.ok) { return; }
+		const pose = SkinPose.bindPose(scene, [0], [bar], [identity()], [palette.value]);
+		assert pose.ok;
+		if (!pose.ok) { return; }
+		const whole: SkinInfluences = {
+			joints: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+			weights: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+		};
+		const geometry = SkinGeometry.bind(squareBar(), whole, pose.value);
+		assert geometry.ok;
+		if (!geometry.ok) { return; }
+		assert geometry.value.syncGeometry().ok;
+		assert boundsHoldDeformed(geometry.value);
+	}
+}
+
+test "joint bounds publish without deforming and a pick deforms once per pose" {
+	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const first = addGroup(scene, scene.rootId(), {
+		...Transform3D.identity(), position: vec3(10, 0, 0),
+	});
+	const second = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const palette = SkinPalette.create([1, 0]);
+	assert palette.ok;
+	if (!palette.ok) { return; }
+	const pose = SkinPose.bindPose(
+		scene, [0, 1], [first, second], [identity(), identity()], [palette.value],
+	);
+	assert pose.ok;
+	if (!pose.ok) { return; }
+	const geometry = SkinGeometry.bind(triangle(), influences(), pose.value);
+	assert geometry.ok;
+	if (!geometry.ok) { return; }
+	assert pose.value.syncSkinPose().ok;
+	assert geometry.value.syncBounds().ok;
+	assert geometry.value.boundsCurrent() && !geometry.value.ready;
+	assert geometry.value.revision == 0 && geometry.value.mesh.vertices[0] == 0;
+	const vertices: int32 = geometry.value.source.vertexCount();
+	assert pickDeforms(geometry.value) == vertices && geometry.value.spatialReady();
+	assert boundsHoldDeformed(geometry.value);
+	assert pickDeforms(geometry.value) == 0;
+	setLocal(scene, first, { ...Transform3D.identity(), position: vec3(30, 0, 0) });
+	assert pose.value.syncSkinPose().ok;
+	assert !geometry.value.boundsCurrent() && !geometry.value.spatialReady();
+	assert pickDeforms(geometry.value) == vertices;
+}
+
+test "a joint that weighs no vertex has no sphere and adds nothing to the bounds" {
+	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const used = addGroup(scene, scene.rootId(), {
+		...Transform3D.identity(), position: vec3(10, 0, 0),
+	});
+	const idle = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const palette = SkinPalette.create([0, 1]);
+	assert palette.ok;
+	if (!palette.ok) { return; }
+	const pose = SkinPose.bindPose(
+		scene, [0, 1], [used, idle], [identity(), identity()], [palette.value],
+	);
+	assert pose.ok;
+	if (!pose.ok) { return; }
+	let values = influences();
+	for (let at = 0; at < values.joints.length; at++) { values.joints[at] = 0; }
+	const geometry = SkinGeometry.bind(triangle(), values, pose.value);
+	assert geometry.ok;
+	if (!geometry.ok) { return; }
+	assert geometry.value.jointSpheres[6] >= 0 && geometry.value.jointSpheres[13] == -1;
+	assert geometry.value.syncGeometry().ok;
+	const before: Bounds3D = geometry.value.bounds;
+	setLocal(scene, idle, { ...Transform3D.identity(), position: vec3(900, 900, 900) });
+	assert geometry.value.syncGeometry().ok;
+	assert geometry.value.bounds.min.x == before.min.x;
+	assert geometry.value.bounds.max.y == before.max.y;
+	assert boundsHoldDeformed(geometry.value);
 }

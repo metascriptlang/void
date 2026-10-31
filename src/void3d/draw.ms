@@ -7,7 +7,7 @@
 
 import { Mat4 } from "../math/math3d";
 import { SkinPose } from "./skinPose";
-import { SkinGeometry, spatialReady } from "./skinGeometry";
+import { SkinGeometry, boundsCurrent } from "./skinGeometry";
 import { MeshLodPick } from "./meshLod";
 import { isLive } from "./scene";
 import {
@@ -265,7 +265,7 @@ export function skinPoseOf(this item: Readonly<DrawItem>): Readonly<SkinPose> | 
 
 export function validSkin(this item: Readonly<DrawItem>, program: ProgramKey): boolean {
 	const geometry = item.skinGeometry;
-	if (geometry !== null && (item.skin !== null || !spatialReady(geometry))) { return false; }
+	if (geometry !== null && (item.skin !== null || !geometry.boundsCurrent())) { return false; }
 	const pose = item.skinPoseOf();
 	if (!program.skinned) { return pose === null; }
 	if (pose === null || !pose.ready || item.skinPalette < 0 ||

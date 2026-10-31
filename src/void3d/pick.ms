@@ -5,7 +5,7 @@
 import { Vec3, Mat4 } from "../math/math3d";
 import { Bounds3D } from "./bounds";
 import { MeshData, MeshRayHit, Uv } from "./meshData";
-import { rayIntersection, rayIntersectionElements } from "./skinGeometry";
+import { rayIntersection, rayIntersectionElements, deformIfStale } from "./skinGeometry";
 import { DrawContext, DrawRange } from "./draw";
 import { Face } from "../gpu/state";
 import { Ray } from "./ray";
@@ -88,6 +88,7 @@ export function pickNearestOn(
 			const face: Face = context.materials[instance.material.index].pass.culling;
 			let hit: MeshHit = MISS;
 			if (geometry !== null) {
+				if (!geometry.deformIfStale().ok) { return Result.err(PickError.SkinGeometry); }
 				const range = instance.range;
 				const posed = range === null ? geometry.rayIntersection(ray, face)
 					: geometry.rayIntersectionElements(ray, face, range.base, range.count);

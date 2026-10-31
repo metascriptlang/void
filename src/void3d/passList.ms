@@ -209,7 +209,7 @@ function visibleIn(
 	const geometry = item.skinGeometry;
 	return !item.lodCulled && (geometry === null ?
 		frustum.intersectsBounds(meshes[item.mesh.index].bounds, item.world) :
-		frustum.intersectsBounds(geometry.mesh.bounds, identity()));
+		frustum.intersectsBounds(geometry.bounds, identity()));
 }
 
 export function filterFrustum(
@@ -317,7 +317,7 @@ function depthOf(item: Readonly<DrawItem>, camera: Readonly<Span<float32>>): flo
 	let depth: float32 = item.world.m43;
 	const geometry = item.skinGeometry;
 	if (geometry !== null) {
-		const middle = geometry.mesh.bounds.center();
+		const middle = geometry.bounds.center();
 		x = middle.x; y = middle.y; depth = middle.z;
 	}
 	let z: float32 = x * camera[CLIP_Z_X] + y * camera[CLIP_Z_Y] +

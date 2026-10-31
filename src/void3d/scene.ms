@@ -42,7 +42,8 @@ import {
 import {
 	SkinGeometry,
 	SkinGeometryError,
-	deformPublished,
+	syncBounds,
+	boundsCurrent,
 	setSourceVertices,
 } from "./skinGeometry";
 import { syncSkinPose, jointsMoved } from "./skinPose";
@@ -1629,15 +1630,15 @@ export function syncSceneSkinGeometry(scene: Scene3D): Result<int32, SkinGeometr
 			return Result.err(SkinGeometryError.Pose);
 		}
 	}
-	let deformed: int32 = 0;
+	let published: int32 = 0;
 	for (const instance of scene.meshes) {
 		const geometry = instance.skinGeometry;
 		if (geometry === null) { continue; }
-		if (geometry.ready && geometry.revision == geometry.pose.revision) { continue; }
-		const _vertices: int32 = try geometry.deformPublished();
-		deformed += 1;
+		if (geometry.boundsCurrent()) { continue; }
+		const _joints: int32 = try geometry.syncBounds();
+		published += 1;
 	}
-	return Result.ok(deformed);
+	return Result.ok(published);
 }
 
 // Morph first: a skinned morph node hands its morphed vertices to its skin geometry, which the

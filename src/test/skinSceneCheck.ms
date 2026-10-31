@@ -4,7 +4,9 @@ import {
 	SceneSyncError,
 } from "../void3d/scene";
 import { MeshLod, MeshLodRanges, pickFor } from "../void3d/meshLod";
-import { SkinGeometry, SkinGeometryError, bind, spatialReady } from "../void3d/skinGeometry";
+import {
+	SkinGeometry, SkinGeometryError, bind, spatialReady, deformIfStale, boundsCurrent,
+} from "../void3d/skinGeometry";
 import { SkinPose, bind as bindPose } from "../void3d/skinPose";
 import { SkinPalette, create } from "../void3d/skinPalette";
 import { MeshData, addVertex, addSkinAttributes } from "../void3d/meshData";
@@ -83,6 +85,9 @@ test "retained skin publishes shared pose once and emits independent geometries 
 	assert refreshed.ok;
 	if (refreshed.ok) { assert refreshed.value == 2; }
 	assert f.geometry.pose.revision == 1;
+	assert f.geometry.boundsCurrent() && second.value.boundsCurrent();
+	assert !f.geometry.spatialReady() && !second.value.spatialReady();
+	assert f.geometry.deformIfStale().ok && second.value.deformIfStale().ok;
 	assert f.geometry.spatialReady() && second.value.spatialReady();
 	assert f.geometry.mesh.bounds.min.x == 10 && second.value.mesh.bounds.max.x == 11;
 	for (const item of items) {
@@ -94,6 +99,7 @@ test "retained skin publishes shared pose once and emits independent geometries 
 	});
 	assert refreshChecked(f.scene, items).ok;
 	assert f.geometry.pose.revision == 2;
+	assert f.geometry.deformIfStale().ok && second.value.deformIfStale().ok;
 	assert f.geometry.mesh.bounds.min.x == 20 && second.value.mesh.bounds.max.x == 21;
 }
 
@@ -281,17 +287,20 @@ test "retained actors share mesh and material but keep pose bounds and attachmen
 	if (!second.ok) { return; }
 	let items: Vec<DrawItem> = [];
 	assert refreshChecked(f.scene, items).ok;
+	assert f.geometry.deformIfStale().ok && geometry.value.deformIfStale().ok;
 	assert f.geometry.mesh.bounds.min.x == 10 && geometry.value.mesh.bounds.min.x == -10;
 	assert f.scene.context.meshPins[0] == 2 && f.scene.context.materialPins[0] == 2;
 	setLocal(f.scene, f.geometry.pose.joints[0], {
 		...Transform3D.identity(), position: vec3(20, 0, 0),
 	});
 	assert refreshChecked(f.scene, items).ok;
+	assert f.geometry.deformIfStale().ok;
 	assert f.geometry.mesh.bounds.min.x == 20 && geometry.value.mesh.bounds.min.x == -10;
 	assert remove(f.scene, first.value) == 1;
 	assert remove(f.scene, f.geometry.pose.joints[0]) == 1;
 	assert refreshChecked(f.scene, items).ok;
 	assert items.length == 1 && items[0].skinGeometry === geometry.value;
+	assert geometry.value.deformIfStale().ok;
 	assert geometry.value.spatialReady() && geometry.value.mesh.bounds.min.x == -10;
 	assert f.scene.context.meshPins[0] == 1 && f.scene.context.materialPins[0] == 1;
 }
@@ -323,14 +332,16 @@ test "a steady skin sync deforms nothing and a moved joint deforms only the mesh
 	assert f.geometry.pose.revision == 1 && pose.value.revision == 1;
 	assert deformedCount(f.scene) == 0;
 	assert f.geometry.pose.revision == 1 && pose.value.revision == 1;
-	assert f.geometry.revision == 1 && geometry.value.revision == 1;
-	assert f.geometry.spatialReady() && geometry.value.spatialReady();
+	assert f.geometry.boundsRevision == 1 && geometry.value.boundsRevision == 1;
+	assert f.geometry.boundsCurrent() && geometry.value.boundsCurrent();
+	assert !f.geometry.spatialReady() && !geometry.value.spatialReady();
 	setLocal(f.scene, f.geometry.pose.joints[0], {
 		...Transform3D.identity(), position: vec3(20, 0, 0),
 	});
 	assert deformedCount(f.scene) == 1;
 	assert f.geometry.pose.revision == 2 && pose.value.revision == 1;
-	assert f.geometry.revision == 2 && geometry.value.revision == 1;
+	assert f.geometry.boundsRevision == 2 && geometry.value.boundsRevision == 1;
+	assert f.geometry.deformIfStale().ok && geometry.value.deformIfStale().ok;
 	assert f.geometry.mesh.bounds.min.x == 20 && geometry.value.mesh.bounds.min.x == -10;
 	assert deformedCount(f.scene) == 0;
 }
@@ -356,5 +367,5 @@ test "two meshes sharing one pose deform once per joint move and not for an unre
 	});
 	assert deformedCount(f.scene) == 2;
 	assert f.geometry.pose.revision == 2;
-	assert f.geometry.revision == 2 && second.value.revision == 2;
+	assert f.geometry.boundsRevision == 2 && second.value.boundsRevision == 2;
 }

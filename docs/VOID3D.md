@@ -5696,6 +5696,19 @@ controls each give303PASS/1FAIL. Receipts: `out/tmp/skinning/{geometryUnit.log,g
 geometryIndex.log,controlGeometryRemap.log,controlGeometryModel.log}`. Existing Scene3D picking
 still needs the glTF instance integration; this does not claim a rendered skinned asset.
 
+A frame no longer deforms skinned vertices on the CPU. `syncSceneSkinGeometry` publishes
+`SkinGeometry.bounds` from two spheres per joint, as `h3d/scene/Skin.hx:273-300` does with the
+per-joint offsets `hxd/fmt/hmd/Library.hx:813-889` fits at bind: the spheres sit at the ends of the
+joint's box of weighted vertices along its long axis, each transformed by the joint matrix with
+the radius scaled by the matrix's stretch bound. A joint that weighs no vertex adds nothing.
+Culling, alpha depth and shadow fitting read those bounds; a pick runs `deformIfStale` and tests
+the deformed triangles, so the CPU deform is paid once per pose and only when something picks.
+The radius differs from the reference on purpose: the reference takes half the larger side of
+the box's cross-section and insets the spheres, which leaves the box's edges outside once the
+joint turns about its long axis, so a posed mesh is culled while in view. Ours is half the
+cross-section's diagonal with the spheres on the box faces; `skinGeometryCheck.ms` pins it with
+a square bar turned about its long side.
+
 Tangent split provenance is now available through `meshData.ms` `addTangentsWithSources`,
 reusing the existing MikkTSpace split rather than inferring a source from position/UV. The
 reference requires per-corner results, not averaging through old indices

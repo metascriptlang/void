@@ -3,7 +3,7 @@ import {
 	addMorphMeshNode, addSkinMorphMeshNode, bindSceneMorph, setMorphWeights, rootId, closeScene,
 	refreshChecked, setLocal, setPickable, remove,
 } from "../void3d/scene";
-import { SkinGeometry } from "../void3d/skinGeometry";
+import { SkinGeometry, deformIfStale } from "../void3d/skinGeometry";
 import { SkinPose, bind as bindPose } from "../void3d/skinPose";
 import { SkinPalette, create } from "../void3d/skinPalette";
 import {
@@ -122,6 +122,7 @@ test "a skinned morph node poses the morphed vertices and bounds, picks and draw
 	setPickable(f.scene, node.value, true);
 	let items: Vec<DrawItem> = [];
 	assert refreshChecked(f.scene, items).ok && items.length == 1;
+	assert f.geometry.deformIfStale().ok;
 	assert f.geometry.spatialReady();
 	assert items[0].skinGeometry === f.geometry && items[0].mesh == context.meshAt(0);
 	assert items[0].validSkin(context.materials[0].program);
@@ -147,6 +148,7 @@ test "a skinned morph node poses the morphed vertices and bounds, picks and draw
 		...Transform3D.identity(), position: vec3(20, 0, 0), scale: vec3(2, 2, 2),
 	});
 	assert refreshChecked(f.scene, items).ok;
+	assert f.geometry.deformIfStale().ok;
 	assert f.geometry.mesh.bounds.min.x == 22 && f.geometry.mesh.bounds.max.x == 24;
 	assert f.geometry.mesh.bounds.min.y == 0 && f.geometry.mesh.bounds.max.y == 2;
 	const moved = pickNearest(f.scene, { origin: vec3(22.5, 0.25, 2), direction: vec3(0, 0, -1) });
@@ -160,10 +162,12 @@ test "a skinned morph weight change alone redeforms the skin although no joint m
 	assert place(f, morph).ok;
 	let items: Vec<DrawItem> = [];
 	assert refreshChecked(f.scene, items).ok;
+	assert f.geometry.deformIfStale().ok;
 	assert f.geometry.mesh.bounds.min.y == 10 && f.geometry.pose.revision == 1;
 	assert setMorphWeights(morph, [0, 1]).ok;
 	assert refreshChecked(f.scene, items).ok;
-	assert f.geometry.pose.revision == 1 && f.geometry.spatialReady();
+	assert f.geometry.pose.revision == 1 && !f.geometry.spatialReady();
+	assert f.geometry.deformIfStale().ok && f.geometry.spatialReady();
 	assert f.geometry.mesh.bounds.min.x == 12 && f.geometry.mesh.bounds.max.x == 14;
 	assert f.geometry.mesh.bounds.min.y == 0 && f.geometry.mesh.bounds.max.y == 2;
 }

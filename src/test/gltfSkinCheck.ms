@@ -14,6 +14,7 @@ import {
 	setLocal, setPickable,
 } from "../void3d/scene";
 import { pickNearest } from "../void3d/pick";
+import { deformIfStale } from "../void3d/skinGeometry";
 
 function push32(ref bytes: Vec<uint8>, bits: uint32): void {
 	for (let shift = 0; shift < 32; shift += 8) {
@@ -311,6 +312,7 @@ test "imported skin Scene rolls back missing bindings and keeps independent worl
 			let items: Vec<DrawItem> = [];
 			assert refreshChecked(scene, items).ok && items.length == 2;
 			assert geometryA.pose.revision == 1 && geometryB.pose.revision == 1;
+			assert geometryA.deformIfStale().ok && geometryB.deformIfStale().ok;
 			assert approx(geometryA.mesh.vertices[0], 3.0);
 			assert geometryA.mesh.bounds.max.x < 5.0;
 			const accepted = geometryA.pose.blocks[0][3];
@@ -319,6 +321,7 @@ test "imported skin Scene rolls back missing bindings and keeps independent worl
 			assert refreshChecked(scene, items).ok;
 			assert geometryA.pose.revision == 2;
 			assert geometryB.pose.revision == 1;
+			assert geometryA.deformIfStale().ok && geometryB.deformIfStale().ok;
 			assert approx(geometryA.mesh.vertices[0], 4.0);
 			assert approx(geometryB.mesh.vertices[0], 3.0);
 			assert (geometryA.mesh.wideIndices !== null) == index32;
