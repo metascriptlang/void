@@ -3,6 +3,8 @@ import { BuildConfig } from "std/build";
 const config: BuildConfig = {
 	entry: "./src/examples/main2d.ms",
 	fmt: {
+		printWidth: 100,
+		tabWidth: 4,
 		useTabs: true,
 	},
 	package: {
