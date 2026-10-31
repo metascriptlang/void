@@ -76,10 +76,16 @@ function extentOf(m: ShaderModule, t: ShaderType, rule: LayoutRule): [int32, int
 		ShaderTypeKind.Array => {
 			return [arrayAlign(m, t, rule), arrayStride(m, t, rule) * t.length];
 		},
-		_ => {},
+		ShaderTypeKind.Struct => {
+			const s = structLayoutOf(m, t.structIndex, rule);
+			return [s.align, s.size];
+		},
+		ShaderTypeKind.Void | ShaderTypeKind.RuntimeArray | ShaderTypeKind.Texture |
+			ShaderTypeKind.Sampler | ShaderTypeKind.StorageTexture | ShaderTypeKind.ExchangeResult |
+			ShaderTypeKind.ModfResult | ShaderTypeKind.FrexpResult => {
+			throw new Error("internal: " + t.kind.toString() + " has no host layout");
+		},
 	}
-	const s = structLayoutOf(m, t.structIndex, rule);
-	return [s.align, s.size];
 }
 
 function structLayoutOf(m: ShaderModule, structIndex: int32, rule: LayoutRule): StructLayout {
