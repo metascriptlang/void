@@ -40,6 +40,7 @@ import {
 	texels,
 	uniformGroup,
 	vertexBuffer,
+	drawDirectRows,
 } from "./webgpuFixtures.ms";
 import { glWindowError, glWindowOpen, glWindowReadback } from "./glWindow.h";
 
@@ -50,6 +51,17 @@ import { glWindowError, glWindowOpen, glWindowReadback } from "./glWindow.h";
 const WHITE: uint32 = 0xFFFFFFFF;
 
 const VERTEX_GLSL = "#version 430\nlayout(location = 0) in vec2 position;\nvoid main() { gl_Position = vec4(position, 0.0, 1.0); }\n";
+const COLOURED_VERTEX_GLSL = "#version 430
+layout(location = 0) in vec2 position;
+layout(location = 1) in vec4 colour;
+out vec4 tint;
+void main() { gl_Position = vec4(position, 0.0, 1.0); tint = colour; }
+";
+const COLOURED_FRAGMENT_GLSL = "#version 430
+in vec4 tint;
+layout(location = 0) out vec4 frag_color;
+void main() { frag_color = tint; }
+";
 const FRAGMENT_GLSL = "#version 430\nuniform vec4 params[1];\nlayout(location = 0) out vec4 frag_color;\nvoid main() { frag_color = params[0]; }\n";
 const TEXTURED_VERTEX_GLSL = "#version 430\nlayout(location = 0) in vec2 position;\nout vec2 uv;\nvoid main() { gl_Position = vec4(position, 0.0, 1.0); uv = position * 0.5 + 0.5; }\n";
 const TEXTURED_FRAGMENT_GLSL = "#version 430\nlayout(binding = 0) uniform sampler2D tex_smp;\nin vec2 uv;\nlayout(location = 0) out vec4 frag_color;\nvoid main() { frag_color = texture(tex_smp, uv); }\n";
@@ -86,6 +98,19 @@ function flatShader(device: GPUDevice): GPUShaderModule {
 	};
 	descriptor.bindings[0] = { group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: -1, nativeName: "params", textureBinding: -1 };
 	descriptor.attributes[0] = { location: 0, nativeName: "position", semanticIndex: 0 };
+	return device.createShaderModule(descriptor);
+}
+
+function colouredShader(device: GPUDevice): GPUShaderModule {
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "coloured",
+		vertexCode: COLOURED_VERTEX_GLSL,
+		vertexEntryPoint: "",
+		fragmentCode: COLOURED_FRAGMENT_GLSL,
+		fragmentEntryPoint: "",
+	};
+	descriptor.attributes[0] = { location: 0, nativeName: "position", semanticIndex: 0 };
+	descriptor.attributes[1] = { location: 1, nativeName: "colour", semanticIndex: 1 };
 	return device.createShaderModule(descriptor);
 }
 
@@ -188,6 +213,17 @@ test "a 4x multisampled target resolves into its single-sample resolve target" {
 	const pixels = drawTriangle(device, 4, 0);
 	assert pixel(pixels, 0, 0) == BLUE;
 	assert pixel(pixels, 32, 32) == RED;
+	device.destroy();
+}
+
+test "two direct indexed draws honour firstIndex, baseVertex and firstInstance" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawDirectRows(device, colouredShader(device), target);
+	const pixels = readPixelsBottomUp(target);
+	assert pixel(pixels, 2, 32) == GREEN;
+	assert pixel(pixels, 61, 32) == RED;
+	assert pixel(pixels, 32, 32) == BLUE;
 	device.destroy();
 }
 
