@@ -1458,6 +1458,13 @@ function toJs(this component: GPUBlendComponent, member: string): Js {
 	return native;
 }
 
+function isFloat32Format(format: GPUTextureFormat): boolean {
+	return match (format) {
+		"r32float" | "rg32float" | "rgba32float" => true,
+		_ => false,
+	};
+}
+
 function colorTargets(this descriptor: GPURenderPipelineDescriptor): Js {
 	const list = jsList();
 	let count = 0;
@@ -1478,9 +1485,11 @@ function colorTargets(this descriptor: GPURenderPipelineDescriptor): Js {
 		if (info.depth) {
 			stopOnMember(member, format);
 		}
-		const float32 =
-			format == "r32float" || format == "rg32float" || format == "rgba32float";
-		if (float32 && target.blendEnabled && !hasFeature("float32-blendable")) {
+		if (
+			isFloat32Format(format) &&
+			target.blendEnabled &&
+			!hasFeature("float32-blendable")
+		) {
 			stop(
 				`fragment.targets[${i}] blends a ${format} target, ` +
 					"which needs the device feature float32-blendable",
