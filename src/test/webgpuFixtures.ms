@@ -109,6 +109,15 @@ export function drawMaskedTriangle(device: GPUDevice, module: GPUShaderModule, w
 // Two indirect records in one call: the left triangle in instance 1's colour, then the right one
 // reached only through firstIndex 3 and baseVertex 3, in instance 2's colour.
 export function drawIndirectRows(device: GPUDevice, module: GPUShaderModule, target: GPUTexture): void {
+	drawRows(device, module, target, true);
+}
+
+// The two records of drawIndirectRows as direct draws: the same pixels.
+export function drawDirectRows(device: GPUDevice, module: GPUShaderModule, target: GPUTexture): void {
+	drawRows(device, module, target, false);
+}
+
+function drawRows(device: GPUDevice, module: GPUShaderModule, target: GPUTexture, indirect: boolean): void {
 	let descriptor: GPURenderPipelineDescriptor = { label: "indirect rows" };
 	descriptor.vertex.module = module;
 	descriptor.vertex.buffers[0].arrayStride = 8;
@@ -145,7 +154,12 @@ export function drawIndirectRows(device: GPUDevice, module: GPUShaderModule, tar
 	pass.setVertexBuffer(0, positions, 0);
 	pass.setVertexBuffer(1, colours, 0);
 	pass.setIndexBuffer(indices, "uint16", 0);
-	pass.multiDrawIndexedIndirect(records, 0, 2);
+	if (indirect) {
+		pass.multiDrawIndexedIndirect(records, 0, 2);
+	} else {
+		pass.drawIndexed(draws[0] as int32, draws[1] as int32, draws[2] as int32, draws[3] as int32, draws[4] as int32);
+		pass.drawIndexed(draws[5] as int32, draws[6] as int32, draws[7] as int32, draws[8] as int32, draws[9] as int32);
+	}
 	pass.end();
 	device.queue.submit(encoder.finish());
 }
