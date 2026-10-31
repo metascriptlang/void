@@ -3,6 +3,7 @@
 
 import { mkdir, writeFile } from "std/fs";
 import {
+	Access,
 	Builtin,
 	ExprKind,
 	Intrinsic,
@@ -13,6 +14,7 @@ import {
 	ShaderStage,
 	StmtKind,
 	TextureShape,
+	arrayType,
 	assignOf,
 	exprOf,
 	featureOn,
@@ -31,6 +33,8 @@ import {
 	F32,
 	I32,
 	MAT4,
+	U32,
+	UVEC3,
 	VEC2,
 	VEC3,
 	VEC4,
@@ -49,6 +53,7 @@ import {
 	memberOf,
 	model,
 	resource,
+	resourceOf,
 	shaderFunction,
 	tiny,
 } from "./shaderProbeModules";
@@ -300,8 +305,37 @@ test "what MSL cannot say is refused by name" {
 	packed.resources.push(resource(ResourceKind.UniformBlock, "light", 1, structType(1)));
 	packed.functions[0].body.splice(0, 0, assignOf(ioOf(packed, 0),
 		exprOf(ExprKind.Construct, VEC4, -1, [memberOf(packed, 1, 0), memberOf(packed, 1, 1)])));
-	assert refused(packed) == "printMsl: uniform block 'light': member 'power' sits at byte 12 " +
-		"in the host layout and 16 in MSL";
+	const printed = mslOf(packed, 0, slotsOf(packed, [0]));
+	assert writeProbe("packedBlock", printed);
+	assert printed.includes("struct alignas(16) Light {
+  packed_float3 colour;
+  float power;
+};
+");
+	assert printed.includes("float4(float3(light.colour), light.power)");
+}
+
+test "a storage vec3 followed by a scalar prints packed and a write targets the member itself" {
+	let m = tiny(ShaderStage.Fragment, literal(VEC4, 0.0));
+	m.structs.push(block("Item", [field("ids", UVEC3), field("count", U32)]));
+	let items = resource(ResourceKind.StorageBuffer, "items", 1, arrayType(structType(1), -1));
+	items.access = Access.ReadWrite;
+	m.resources.push(items);
+	const ids = exprOf(ExprKind.Field, UVEC3, 0, [exprOf(ExprKind.Index, structType(1), -1,
+		[resourceOf(m, 1), literal(I32, 0.0)])]);
+	m.functions[0].body.splice(0, 0, assignOf(ids, literal(UVEC3, 1.0)));
+	m.functions[0].body.splice(1, 0, assignOf(ioOf(m, 0), exprOf(ExprKind.Construct, VEC4, -1,
+		[exprOf(ExprKind.Convert, VEC3, -1, [ids]), literal(F32, 1.0)])));
+	const printed = mslOf(m, 0, slotsOf(m, [0]));
+	assert writeProbe("packedStorage", printed);
+	assert printed.includes("struct alignas(16) Item {
+  packed_uint3 ids;
+  uint count;
+};
+");
+	assert printed.includes("  items[0].ids = uint3(1u);
+");
+	assert printed.includes("float3(uint3(items[0].ids))");
 }
 
 test "a feature branch prints only after specialize decides it" {
