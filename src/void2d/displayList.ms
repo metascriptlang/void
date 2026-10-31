@@ -300,6 +300,7 @@ export interface DrawContext2D {
 	paintStarts: Vec<PaintIndex>;
 	paintEnds: Vec<PaintIndex>;
 	paintStates: Vec<PaintState>;
+	paintSerials: Vec<int32>;
 	paintEnd: PaintIndex;
 	painted: boolean;
 	paintedW: float32;
@@ -428,6 +429,7 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		paintStarts: [],
 		paintEnds: [],
 		paintStates: [],
+		paintSerials: [],
 		paintEnd: NO_PAINT,
 		painted: false,
 		paintedW: 0.0,
@@ -629,6 +631,7 @@ function growPaint(row: int32): void {
 		activeContext.paintStarts.push(NO_PAINT);
 		activeContext.paintEnds.push(NO_PAINT);
 		activeContext.paintStates.push(PaintState.Unpainted);
+		activeContext.paintSerials.push(0);
 	}
 }
 
@@ -637,17 +640,23 @@ export function recordPaint(row: int32, start: PaintIndex, end: PaintIndex): voi
 	activeContext.paintStarts[row] = start;
 	activeContext.paintEnds[row] = end;
 	activeContext.paintStates[row] = PaintState.Painted;
+	activeContext.paintSerials[row] = activeContext.resetSerial;
 }
 
 export function markPaintState(row: int32, state: PaintState): void {
 	growPaint(row);
 	activeContext.paintStates[row] = state;
+	activeContext.paintSerials[row] = activeContext.resetSerial;
 }
 
-export function paintStateOf(row: int32): PaintState {
-	if (row >= (activeContext.paintStates.length as int32)) { return PaintState.Unpainted; }
-	return activeContext.paintStates[row];
+export function paintStateIn(l: DrawContext2D, row: int32): PaintState {
+	if (row >= (l.paintStates.length as int32) || l.paintSerials[row] != l.resetSerial) {
+		return PaintState.Unpainted;
+	}
+	return l.paintStates[row];
 }
+
+export function paintStateOf(row: int32): PaintState { return paintStateIn(activeContext, row); }
 
 export function paintStartOf(row: int32): PaintIndex { return activeContext.paintStarts[row]; }
 
