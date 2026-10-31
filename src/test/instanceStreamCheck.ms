@@ -7,14 +7,15 @@
 import { Color, Transform2D, rgba, identity2d } from "../void2d/types";
 import { InstanceMode, uiInstance } from "../void2d/instance";
 import {
-	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0,
-	REC_UI_PARAMS1, REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_COLOR_EXTRA,
+	WORD_UI_AFFINE, WORD_UI_ORIGIN_SIZE, WORD_UI_UV_RADII, WORD_UI_BORDERS, WORD_UI_PARAMS0,
+	WORD_UI_PARAMS1, WORD_UI_COLOR_FILL, WORD_UI_COLOR_BORDER, WORD_UI_COLOR_EXTRA,
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
-	REC_UI_FLOATS, UI_STRIDE, SPRITE_STRIDE,
+	UI_WORDS, UI_STRIDE, SPRITE_STRIDE,
 } from "../void2d/instanceLayout";
 import {
 	resetContext, pushUiInstance, pushGlyphInstance, pushSpriteInstance,
 	uiInstanceCount, spriteInstanceCount, uiInstanceField, spriteInstanceField,
+	uiInstanceWord, uiInstanceChannel,
 	uiModeCount, instanceUploadBytes,
 } from "../void2d/displayList";
 
@@ -43,18 +44,18 @@ test "a recorded UI instance reads back in every lane it was given" {
 	box(InstanceMode.Box, 1.0 as float32,
 		rgba(0.25 as float32, 0.5 as float32, 0.75 as float32, 1.0 as float32));
 	assert uiInstanceCount() == 1;
-	assert uiInstanceField(0, REC_UI_AFFINE) == (1.0 as float32);
-	assert uiInstanceField(0, REC_UI_AFFINE + 3) == (1.0 as float32);
-	assert uiInstanceField(0, REC_UI_ORIGIN_SIZE) == (1.0 as float32);
-	assert uiInstanceField(0, REC_UI_ORIGIN_SIZE + 2) == (30.0 as float32);
-	assert uiInstanceField(0, REC_UI_UV_RADII + 1) == (4.0 as float32);
-	assert uiInstanceField(0, REC_UI_BORDERS + 3) == (1.0 as float32);
-	assert uiInstanceField(0, REC_UI_PARAMS0 + 1) == (7.0 as float32);
-	assert uiInstanceField(0, REC_UI_PARAMS1 + 3) == (13.0 as float32);
-	assert uiInstanceField(0, REC_UI_COLOR_FILL) == (0.25 as float32);
-	assert uiInstanceField(0, REC_UI_COLOR_FILL + 2) == (0.75 as float32);
-	assert uiInstanceField(0, REC_UI_COLOR_BORDER + 3) == (1.0 as float32);
-	assert uiInstanceField(0, REC_UI_COLOR_EXTRA + 3) == (0.0 as float32);
+	assert uiInstanceField(0, WORD_UI_AFFINE) == (1.0 as float32);
+	assert uiInstanceField(0, WORD_UI_AFFINE + 3) == (1.0 as float32);
+	assert uiInstanceField(0, WORD_UI_ORIGIN_SIZE) == (1.0 as float32);
+	assert uiInstanceField(0, WORD_UI_ORIGIN_SIZE + 2) == (30.0 as float32);
+	assert uiInstanceField(0, WORD_UI_UV_RADII + 1) == (4.0 as float32);
+	assert uiInstanceField(0, WORD_UI_BORDERS + 3) == (1.0 as float32);
+	assert uiInstanceField(0, WORD_UI_PARAMS0 + 1) == (7.0 as float32);
+	assert uiInstanceField(0, WORD_UI_PARAMS1 + 3) == (13.0 as float32);
+	assert uiInstanceChannel(0, WORD_UI_COLOR_FILL, 0) == 64;
+	assert uiInstanceChannel(0, WORD_UI_COLOR_FILL, 2) == 191;
+	assert uiInstanceChannel(0, WORD_UI_COLOR_BORDER, 3) == 255;
+	assert uiInstanceChannel(0, WORD_UI_COLOR_EXTRA, 3) == 0;
 }
 
 test "a glyph instance records every lane as the general UI instance would" {
@@ -74,8 +75,8 @@ test "a glyph instance records every lane as the general UI instance would" {
 			mode, flag, image, affine, 9.0, 11.0, 3.0, 4.0, 0.125, 0.25, 0.375, 0.5, fill, 5.0, 7.0,
 		);
 		assert uiInstanceCount() == 2;
-		for (let f: int32 = 0; f < REC_UI_FLOATS; f++) {
-			assert uiInstanceField(1, f) == uiInstanceField(0, f);
+		for (let w: int32 = 0; w < UI_WORDS; w++) {
+			assert uiInstanceWord(1, w) == uiInstanceWord(0, w);
 		}
 	}
 }
@@ -97,10 +98,10 @@ test "instances land at their own index and do not overwrite each other" {
 	box(InstanceMode.Glyph, 200.0 as float32,
 		rgba(0.0 as float32, 1.0 as float32, 0.0 as float32, 1.0 as float32));
 	assert uiInstanceCount() == 2;
-	assert uiInstanceField(0, REC_UI_ORIGIN_SIZE) == (100.0 as float32);
-	assert uiInstanceField(1, REC_UI_ORIGIN_SIZE) == (200.0 as float32);
-	assert uiInstanceField(0, REC_UI_COLOR_FILL) == (1.0 as float32);
-	assert uiInstanceField(1, REC_UI_COLOR_FILL + 1) == (1.0 as float32);
+	assert uiInstanceField(0, WORD_UI_ORIGIN_SIZE) == (100.0 as float32);
+	assert uiInstanceField(1, WORD_UI_ORIGIN_SIZE) == (200.0 as float32);
+	assert uiInstanceChannel(0, WORD_UI_COLOR_FILL, 0) == 255;
+	assert uiInstanceChannel(1, WORD_UI_COLOR_FILL, 1) == 255;
 }
 
 // A2's counter, and A4's negative control for it in one test: the mode count is not a

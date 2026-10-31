@@ -14,10 +14,7 @@ import {
 	UI_COLOR_FILL, UI_COLOR_BORDER, UI_COLOR_EXTRA, UI_STRIDE, UI_ATTRIBUTES,
 	SPRITE_AFFINE, SPRITE_ORIGIN_SIZE, SPRITE_UV, SPRITE_COLOR, SPRITE_STRIDE,
 	SPRITE_ATTRIBUTES,
-	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0,
-	REC_UI_PARAMS1, REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_COLOR_EXTRA,
-	REC_UI_FLOATS, REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV,
-	REC_SPRITE_COLOR, REC_SPRITE_FLOATS,
+	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR, REC_SPRITE_FLOATS,
 	WORD_UI_AFFINE, WORD_UI_ORIGIN_SIZE, WORD_UI_UV_RADII, WORD_UI_BORDERS, WORD_UI_PARAMS0,
 	WORD_UI_PARAMS1, WORD_UI_COLOR_FILL, WORD_UI_COLOR_BORDER, WORD_UI_COLOR_EXTRA, UI_WORDS,
 } from "../void2d/instanceLayout";
@@ -111,29 +108,7 @@ test "the modes are the six the roadmap lists, distinct and dense from zero" {
 
 // ---------------------------------------------------------------------------------------
 // The record stream against the GPU stride. Two layouts, one field order — asserted, because
-// the emitter writes one and sokol reads the other and nothing else connects them.
-
-test "the record layout names the same fields in the same order as the GPU layout" {
-	assert REC_UI_AFFINE * 4 == UI_AFFINE;
-	assert REC_UI_ORIGIN_SIZE * 4 == UI_ORIGIN_SIZE;
-	assert REC_UI_UV_RADII * 4 == UI_UV_RADII;
-	assert REC_UI_BORDERS * 4 == UI_BORDERS;
-	assert REC_UI_PARAMS0 * 4 == UI_PARAMS0;
-	assert REC_UI_PARAMS1 * 4 == UI_PARAMS1;
-}
-
-test "the three colour lanes are where the record and the GPU layout part company" {
-	assert REC_UI_COLOR_FILL * 4 == UI_COLOR_FILL;
-	assert REC_UI_COLOR_BORDER * 4 == UI_COLOR_BORDER + 12;
-	assert REC_UI_COLOR_EXTRA * 4 == UI_COLOR_EXTRA + 24;
-	assert REC_UI_FLOATS * 4 == UI_STRIDE + 36;
-}
-
-test "a recorded UI instance is wider than the bytes it uploads" {
-	assert REC_UI_FLOATS * 4 == 144;
-	assert UI_STRIDE == 108;
-	assert REC_UI_FLOATS * 4 > UI_STRIDE;
-}
+// the emitter writes one and the GPU reads the other and nothing else connects them.
 
 test "every UI word offset is its GPU byte offset over four" {
 	assert WORD_UI_AFFINE * 4 == UI_AFFINE;

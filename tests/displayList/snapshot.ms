@@ -57,12 +57,14 @@ import {
 	commandKindName, breakReasonName, SOURCE_PREMULTIPLIED,
 	Pipeline, BreakReason, CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT,
 	uiInstanceCount, spriteInstanceCount, spriteInstanceField, uiInstanceField, NO_EFFECT,
+	uiInstanceWord, uiInstanceChannel,
 	targetDepth, currentContext, resolveScopes, DrawContext2D,
 } from "../../src/void2d/displayList";
 import {
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
-	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0, REC_UI_PARAMS1,
-	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_COLOR_EXTRA, REC_UI_FLOATS,
+	WORD_UI_AFFINE, WORD_UI_ORIGIN_SIZE, WORD_UI_UV_RADII, WORD_UI_BORDERS, WORD_UI_PARAMS0,
+	WORD_UI_PARAMS1,
+	WORD_UI_COLOR_FILL, WORD_UI_COLOR_BORDER, WORD_UI_COLOR_EXTRA, UI_WORDS,
 } from "../../src/void2d/instanceLayout";
 import { InstanceMode } from "../../src/void2d/instance";
 import {
@@ -109,6 +111,10 @@ when (voidProfiler) {
 }
 
 const SNAPSHOT_DIR: string = "tests/displayList";
+
+function unorm(i: int32, word: int32, channel: int32): float32 {
+	return (uiInstanceChannel(i, word, channel) as float32) / 255.0;
+}
 
 // Fixed precision, because a snapshot that moves when a float prints differently cries wolf.
 function f2(v: float32): string {
@@ -210,61 +216,61 @@ function formatStream(): string {
 	// label and an image differ by one float in one stream, so the float that says which is
 	// the one a snapshot must not leave out.
 	for (let i: int32 = 0; i < uiInstanceCount(); i++) {
-		out = out + `u ${i} mode ${uiInstanceField(i, REC_UI_PARAMS0) as int32}`;
+		out = out + `u ${i} mode ${uiInstanceField(i, WORD_UI_PARAMS0) as int32}`;
 		out = out + ` affine`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_AFFINE))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_AFFINE + 1))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_AFFINE + 2))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_AFFINE + 3))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_AFFINE))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_AFFINE + 1))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_AFFINE + 2))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_AFFINE + 3))}`;
 		out = out + ` at`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE + 1))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_ORIGIN_SIZE))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_ORIGIN_SIZE + 1))}`;
 		out = out + ` size`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE + 2))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE + 3))}`;
-		if (uiInstanceField(i, REC_UI_PARAMS0) as int32 == InstanceMode.Glyph as int32) {
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_ORIGIN_SIZE + 2))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_ORIGIN_SIZE + 3))}`;
+		if (uiInstanceField(i, WORD_UI_PARAMS0) as int32 == InstanceMode.Glyph as int32) {
 			// A glyph's UV is where the atlas happened to pack it, which depends on every
 			// label the process shaped before; its extent in texels is what the display list owns.
 			const page: float32 = GLYPH_PAGE_SIZE as float32;
-			const u0: float32 = uiInstanceField(i, REC_UI_UV_RADII);
-			const v0: float32 = uiInstanceField(i, REC_UI_UV_RADII + 1);
-			const u1: float32 = uiInstanceField(i, REC_UI_UV_RADII + 2);
-			const v1: float32 = uiInstanceField(i, REC_UI_UV_RADII + 3);
+			const u0: float32 = uiInstanceField(i, WORD_UI_UV_RADII);
+			const v0: float32 = uiInstanceField(i, WORD_UI_UV_RADII + 1);
+			const u1: float32 = uiInstanceField(i, WORD_UI_UV_RADII + 2);
+			const v1: float32 = uiInstanceField(i, WORD_UI_UV_RADII + 3);
 			out = out + ` tile ${f2((u1 - u0) * page)} ${f2((v1 - v0) * page)}`;
 		} else {
 			out = out + ` uvr`;
-			out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII))}`;
-			out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII + 1))}`;
-			out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII + 2))}`;
-			out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII + 3))}`;
+			out = out + ` ${f2(uiInstanceField(i, WORD_UI_UV_RADII))}`;
+			out = out + ` ${f2(uiInstanceField(i, WORD_UI_UV_RADII + 1))}`;
+			out = out + ` ${f2(uiInstanceField(i, WORD_UI_UV_RADII + 2))}`;
+			out = out + ` ${f2(uiInstanceField(i, WORD_UI_UV_RADII + 3))}`;
 		}
 		out = out + ` border`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_BORDERS))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_BORDERS + 1))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_BORDERS + 2))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_BORDERS + 3))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_BORDERS))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_BORDERS + 1))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_BORDERS + 2))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_BORDERS + 3))}`;
 		// The two param lanes are where a mode's meaning lives - the shadow's half extents
 		// and blur in one, its offset in the other - and a lane swap here is invisible to
 		// every other field. The offset-lane swap shipped a golden whose shadow hugged the
 		// box un-offset; this line is what makes the next one a snapshot diff.
 		out = out + ` params`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_PARAMS0 + 1))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_PARAMS0 + 2))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_PARAMS0 + 3))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_PARAMS1))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_PARAMS1 + 1))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_PARAMS1 + 2))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_PARAMS1 + 3))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_PARAMS0 + 1))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_PARAMS0 + 2))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_PARAMS0 + 3))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_PARAMS1))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_PARAMS1 + 1))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_PARAMS1 + 2))}`;
+		out = out + ` ${f2(uiInstanceField(i, WORD_UI_PARAMS1 + 3))}`;
 		out = out + ` fill`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL + 1))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL + 2))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL + 3))}`;
+		out = out + ` ${f2(unorm(i, WORD_UI_COLOR_FILL, 0))}`;
+		out = out + ` ${f2(unorm(i, WORD_UI_COLOR_FILL, 1))}`;
+		out = out + ` ${f2(unorm(i, WORD_UI_COLOR_FILL, 2))}`;
+		out = out + ` ${f2(unorm(i, WORD_UI_COLOR_FILL, 3))}`;
 		out = out + ` edge`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_BORDER))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_BORDER + 1))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_BORDER + 2))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_BORDER + 3))}`;
+		out = out + ` ${f2(unorm(i, WORD_UI_COLOR_BORDER, 0))}`;
+		out = out + ` ${f2(unorm(i, WORD_UI_COLOR_BORDER, 1))}`;
+		out = out + ` ${f2(unorm(i, WORD_UI_COLOR_BORDER, 2))}`;
+		out = out + ` ${f2(unorm(i, WORD_UI_COLOR_BORDER, 3))}`;
 		out = out + "\n";
 	}
 	for (let i: int32 = 0; i < spriteInstanceCount(); i++) {
@@ -946,36 +952,36 @@ function boxFillScene(): NodeRef {
 test "T1 a box fill rides the box lanes, and a filled box draws its shadow as its own instance" {
 	record(boxFillScene(), 128.0, 64.0, 1.0);
 	assert uiInstanceCount() == 6;
-	assert uiInstanceField(0, REC_UI_PARAMS0) == 0.0;
-	assert uiInstanceField(0, REC_UI_PARAMS0 + 2) == 1.0;
-	assert uiInstanceField(0, REC_UI_PARAMS0 + 3) == 3.0;
-	assert uiInstanceField(0, REC_UI_PARAMS1) == 90.0;
-	assert approx(uiInstanceField(0, REC_UI_PARAMS1 + 1), 0.1);
-	assert approx(uiInstanceField(0, REC_UI_PARAMS1 + 2), 0.9);
-	assert uiInstanceField(0, REC_UI_COLOR_FILL) == 1.0;
-	assert uiInstanceField(0, REC_UI_COLOR_EXTRA + 2) == 1.0;
+	assert uiInstanceField(0, WORD_UI_PARAMS0) == 0.0;
+	assert uiInstanceField(0, WORD_UI_PARAMS0 + 2) == 1.0;
+	assert uiInstanceField(0, WORD_UI_PARAMS0 + 3) == 3.0;
+	assert uiInstanceField(0, WORD_UI_PARAMS1) == 90.0;
+	assert approx(uiInstanceField(0, WORD_UI_PARAMS1 + 1), 0.1);
+	assert approx(uiInstanceField(0, WORD_UI_PARAMS1 + 2), 0.9);
+	assert uiInstanceChannel(0, WORD_UI_COLOR_FILL, 0) == 255;
+	assert uiInstanceChannel(0, WORD_UI_COLOR_EXTRA, 2) == 255;
 
-	assert uiInstanceField(1, REC_UI_PARAMS0) == 1.0;
-	assert uiInstanceField(1, REC_UI_ORIGIN_SIZE + 2) > 30.0;
-	assert uiInstanceField(1, REC_UI_BORDERS) == 15.0;
-	assert uiInstanceField(1, REC_UI_BORDERS + 1) == 10.0;
-	assert uiInstanceField(1, REC_UI_COLOR_EXTRA + 3) == 0.5;
-	assert uiInstanceField(2, REC_UI_PARAMS0) == 0.0;
-	assert uiInstanceField(2, REC_UI_PARAMS0 + 2) == 2.0;
-	assert uiInstanceField(2, REC_UI_ORIGIN_SIZE) == 60.0;
-	assert uiInstanceField(2, REC_UI_ORIGIN_SIZE + 2) == 30.0;
-	assert uiInstanceField(2, REC_UI_COLOR_FILL + 3) == 1.0;
+	assert uiInstanceField(1, WORD_UI_PARAMS0) == 1.0;
+	assert uiInstanceField(1, WORD_UI_ORIGIN_SIZE + 2) > 30.0;
+	assert uiInstanceField(1, WORD_UI_BORDERS) == 15.0;
+	assert uiInstanceField(1, WORD_UI_BORDERS + 1) == 10.0;
+	assert uiInstanceChannel(1, WORD_UI_COLOR_EXTRA, 3) == 128;
+	assert uiInstanceField(2, WORD_UI_PARAMS0) == 0.0;
+	assert uiInstanceField(2, WORD_UI_PARAMS0 + 2) == 2.0;
+	assert uiInstanceField(2, WORD_UI_ORIGIN_SIZE) == 60.0;
+	assert uiInstanceField(2, WORD_UI_ORIGIN_SIZE + 2) == 30.0;
+	assert uiInstanceChannel(2, WORD_UI_COLOR_FILL, 3) == 255;
 
-	assert uiInstanceField(3, REC_UI_PARAMS0) == 0.0;
-	assert uiInstanceField(3, REC_UI_PARAMS0 + 2) == 3.0;
-	assert uiInstanceField(3, REC_UI_PARAMS1) == 4.0;
-	assert uiInstanceField(3, REC_UI_COLOR_BORDER + 3) == 0.0;
-	assert uiInstanceField(4, REC_UI_PARAMS0) == 1.0;
-	assert uiInstanceField(4, REC_UI_BORDERS + 3) == 1.0;
-	assert uiInstanceField(5, REC_UI_PARAMS0) == 0.0;
-	assert uiInstanceField(5, REC_UI_PARAMS0 + 2) == 0.0;
-	assert uiInstanceField(5, REC_UI_COLOR_FILL + 3) == 0.0;
-	assert uiInstanceField(5, REC_UI_COLOR_BORDER + 3) == 1.0;
+	assert uiInstanceField(3, WORD_UI_PARAMS0) == 0.0;
+	assert uiInstanceField(3, WORD_UI_PARAMS0 + 2) == 3.0;
+	assert uiInstanceField(3, WORD_UI_PARAMS1) == 4.0;
+	assert uiInstanceChannel(3, WORD_UI_COLOR_BORDER, 3) == 0;
+	assert uiInstanceField(4, WORD_UI_PARAMS0) == 1.0;
+	assert uiInstanceField(4, WORD_UI_BORDERS + 3) == 1.0;
+	assert uiInstanceField(5, WORD_UI_PARAMS0) == 0.0;
+	assert uiInstanceField(5, WORD_UI_PARAMS0 + 2) == 0.0;
+	assert uiInstanceChannel(5, WORD_UI_COLOR_FILL, 3) == 0;
+	assert uiInstanceChannel(5, WORD_UI_COLOR_BORDER, 3) == 255;
 }
 
 test "T1 a view painted only by a box fill draws the fill, not its transparent background" {
@@ -987,8 +993,8 @@ test "T1 a view painted only by a box fill draws the fill, not its transparent b
 			GradientSpace.Srgb));
 	record(s.refOf(s.root), 64.0, 32.0, 1.0);
 	assert uiInstanceCount() == 1;
-	assert uiInstanceField(0, REC_UI_COLOR_FILL + 3) == 1.0;
-	assert uiInstanceField(0, REC_UI_COLOR_EXTRA + 3) == 1.0;
+	assert uiInstanceChannel(0, WORD_UI_COLOR_FILL, 3) == 255;
+	assert uiInstanceChannel(0, WORD_UI_COLOR_EXTRA, 3) == 255;
 }
 
 function oneBox(style: BoxStyle): NodeRef {
@@ -1004,15 +1010,15 @@ test "T1 a drop shadow's negative spread stops at the box's smaller half-extent"
 	];
 	record(oneBox(BoxStyle.create(CornerRadii.uniform(2.0), BorderWidths.uniform(0.0), rgba(0.0, 0.0, 0.0, 0.0))
 		.castShadows(shadows)), 128.0, 64.0, 1.0);
-	assert uiInstanceField(0, REC_UI_PARAMS0) == 1.0;
-	assert uiInstanceField(0, REC_UI_PARAMS1 + 2) == -10.0;
+	assert uiInstanceField(0, WORD_UI_PARAMS0) == 1.0;
+	assert uiInstanceField(0, WORD_UI_PARAMS1 + 2) == -10.0;
 }
 
 test "T1 ditheredFill before the fill it dithers still dithers it" {
 	const plain = BoxStyle.create(CornerRadii.uniform(2.0), BorderWidths.uniform(0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	record(oneBox(plain.ditheredFill().linearFill(90.0, rgba(1.0, 0.0, 0.0, 1.0), 0.0,
 		rgba(0.0, 0.0, 1.0, 1.0), 1.0, GradientSpace.Srgb)), 128.0, 64.0, 1.0);
-	assert uiInstanceField(0, REC_UI_PARAMS0 + 3) == 2.0;
+	assert uiInstanceField(0, WORD_UI_PARAMS0 + 3) == 2.0;
 }
 
 test "T1 an inset shadow over a border of no width draws no border instance" {
@@ -1045,21 +1051,21 @@ function shadowListScene(): NodeRef {
 test "T1 a shadow list draws its drops in order, then the box, then its insets, with spread" {
 	record(shadowListScene(), 128.0, 64.0, 1.0);
 	assert uiInstanceCount() == 4;
-	assert uiInstanceField(0, REC_UI_PARAMS0) == 1.0;
-	assert uiInstanceField(0, REC_UI_PARAMS1 + 2) == 1.0;
-	assert uiInstanceField(1, REC_UI_PARAMS0) == 1.0;
-	assert uiInstanceField(1, REC_UI_PARAMS1 + 2) == -2.0;
-	assert uiInstanceField(0, REC_UI_BORDERS) == 20.0;
-	assert uiInstanceField(0, REC_UI_BORDERS + 1) == 12.0;
+	assert uiInstanceField(0, WORD_UI_PARAMS0) == 1.0;
+	assert uiInstanceField(0, WORD_UI_PARAMS1 + 2) == 1.0;
+	assert uiInstanceField(1, WORD_UI_PARAMS0) == 1.0;
+	assert uiInstanceField(1, WORD_UI_PARAMS1 + 2) == -2.0;
+	assert uiInstanceField(0, WORD_UI_BORDERS) == 20.0;
+	assert uiInstanceField(0, WORD_UI_BORDERS + 1) == 12.0;
 	const margin: float32 = 3.0 * 4.0 + 6.0;
-	assert uiInstanceField(0, REC_UI_ORIGIN_SIZE + 3) == 24.0 + 2.0 * margin;
-	assert uiInstanceField(2, REC_UI_PARAMS0) == 0.0;
-	assert uiInstanceField(2, REC_UI_ORIGIN_SIZE + 1) == 20.0;
-	assert uiInstanceField(2, REC_UI_ORIGIN_SIZE + 3) == 24.0;
-	assert uiInstanceField(3, REC_UI_PARAMS0) == 1.0;
-	assert uiInstanceField(3, REC_UI_BORDERS + 3) == 1.0;
-	assert uiInstanceField(3, REC_UI_PARAMS1 + 1) == 1.0;
-	assert uiInstanceField(3, REC_UI_PARAMS1 + 2) == 0.5;
+	assert uiInstanceField(0, WORD_UI_ORIGIN_SIZE + 3) == 24.0 + 2.0 * margin;
+	assert uiInstanceField(2, WORD_UI_PARAMS0) == 0.0;
+	assert uiInstanceField(2, WORD_UI_ORIGIN_SIZE + 1) == 20.0;
+	assert uiInstanceField(2, WORD_UI_ORIGIN_SIZE + 3) == 24.0;
+	assert uiInstanceField(3, WORD_UI_PARAMS0) == 1.0;
+	assert uiInstanceField(3, WORD_UI_BORDERS + 3) == 1.0;
+	assert uiInstanceField(3, WORD_UI_PARAMS1 + 1) == 1.0;
+	assert uiInstanceField(3, WORD_UI_PARAMS1 + 2) == 0.5;
 }
 
 test "T1 snapshot: dashed box style reaches the per-corner and per-side instance lanes" {
@@ -1078,11 +1084,11 @@ test "T1 shadow inflation preserves the snapped visible box" {
 	// A fractional margin must not move the reconstructed fill edge off-grid.
 	const dpi: float32 = 1.25;
 	assert snapshot("boxShadow", record(boxShadowScene(), 128.0, 64.0, dpi));
-	const affineX: float32 = uiInstanceField(0, REC_UI_AFFINE);
-	const originX: float32 = uiInstanceField(0, REC_UI_ORIGIN_SIZE);
-	const quadWidth: float32 = uiInstanceField(0, REC_UI_ORIGIN_SIZE + 2);
-	const offsetX: float32 = uiInstanceField(0, REC_UI_PARAMS1);
-	const sigma: float32 = uiInstanceField(0, REC_UI_PARAMS1 + 2);
+	const affineX: float32 = uiInstanceField(0, WORD_UI_AFFINE);
+	const originX: float32 = uiInstanceField(0, WORD_UI_ORIGIN_SIZE);
+	const quadWidth: float32 = uiInstanceField(0, WORD_UI_ORIGIN_SIZE + 2);
+	const offsetX: float32 = uiInstanceField(0, WORD_UI_PARAMS1);
+	const sigma: float32 = uiInstanceField(0, WORD_UI_PARAMS1 + 2);
 	const margin: float32 = 3.0 * sigma + offsetX;
 	const visibleLeft: float32 = (originX + margin * affineX) * dpi;
 	const visibleRight: float32 = (originX + (quadWidth - margin) * affineX) * dpi;
@@ -1392,9 +1398,9 @@ test "T1 snapshot: image style reaches UV, radii, grayscale, and image mode lane
 test "an image style carries its tile's premultiplied bit into its instance" {
 	record(premultipliedStyleScene(), 96.0, 40.0, 1.0);
 	assert uiInstanceCount() == 2;
-	assert uiInstanceField(0, REC_UI_PARAMS1 + 1) == 0.0;
-	assert uiInstanceField(1, REC_UI_PARAMS1 + 1) == 1.0;
-	assert uiInstanceField(1, REC_UI_PARAMS1) == 1.0;
+	assert uiInstanceField(0, WORD_UI_PARAMS1 + 1) == 0.0;
+	assert uiInstanceField(1, WORD_UI_PARAMS1 + 1) == 1.0;
+	assert uiInstanceField(1, WORD_UI_PARAMS1) == 1.0;
 }
 test "T1 snapshot: retained underline and selection nodes reach their UI modes" {
 	assert snapshot("textPrimitives", record(textPrimitiveScene(), 160.0, 96.0, 1.0));
@@ -1411,11 +1417,11 @@ test "T1 a run's colour multiplies with its label's, as h2d's colour segments do
 	record(s.refOf(s.root), 64.0, 32.0, 1.0);
 	let glyphs: int32 = 0;
 	for (let i: int32 = 0; i < uiInstanceCount(); i++) {
-		if (uiInstanceField(i, REC_UI_COLOR_FILL + 3) <= 0.0) { continue; }
-		assert uiInstanceField(i, REC_UI_COLOR_FILL) == 0.5;
-		assert uiInstanceField(i, REC_UI_COLOR_FILL + 1) == 0.5;
-		assert uiInstanceField(i, REC_UI_COLOR_FILL + 2) == 0.25;
-		assert uiInstanceField(i, REC_UI_COLOR_FILL + 3) == 0.5;
+		if (uiInstanceChannel(i, WORD_UI_COLOR_FILL, 3) <= 0) { continue; }
+		assert uiInstanceChannel(i, WORD_UI_COLOR_FILL, 0) == 128;
+		assert uiInstanceChannel(i, WORD_UI_COLOR_FILL, 1) == 128;
+		assert uiInstanceChannel(i, WORD_UI_COLOR_FILL, 2) == 64;
+		assert uiInstanceChannel(i, WORD_UI_COLOR_FILL, 3) == 128;
 		glyphs = glyphs + 1;
 	}
 	assert glyphs == 2;
@@ -1467,15 +1473,15 @@ test "the growth policy: max(2x, pow2), no shrink, and a drop past the cap" {
 	assert growthTarget(0, cap + 1) == 0;
 }
 
-function recordedInstances(root: NodeRef, w: float32, h: float32): Vec<float32> {
+function recordedInstances(root: NodeRef, w: float32, h: float32): Vec<uint32> {
 	setSceneSmooth(true);
 	begin2d(w, h, 1.0);
 	root.sync(identity2d(), true);
 	root.draw(1.0, w, h);
 	finishRecording();
-	let out: Vec<float32> = new Array(0);
+	let out: Vec<uint32> = new Array(0);
 	for (let i = 0; i < uiInstanceCount(); i++) {
-		for (let f = 0; f < REC_UI_FLOATS; f++) { out.push(uiInstanceField(i, f)); }
+		for (let w = 0; w < UI_WORDS; w++) { out.push(uiInstanceWord(i, w)); }
 	}
 	frameEnd();
 	return out;
@@ -1490,19 +1496,19 @@ test "a caret blink changes no instance but the caret's" {
 	s.tick(0.6);
 	const hidden = recordedInstances(s.refOf(s.root), 160.0, 64.0);
 	assert (shown.length as int32) == (hidden.length as int32);
-	const caretAlpha: int32 = (hidden.length as int32) - REC_UI_FLOATS + REC_UI_COLOR_FILL + 3;
+	const caretFill: int32 = (hidden.length as int32) - UI_WORDS + WORD_UI_COLOR_FILL;
 	let differing: int32 = 0;
 	for (let i = 0; i < (hidden.length as int32); i++) {
-		if (shown[i] != hidden[i] && i != caretAlpha) { differing = differing + 1; }
+		if (shown[i] != hidden[i] && i != caretFill) { differing = differing + 1; }
 	}
-	if (differing > 0) { console.log(`t1: ${differing} instance floats moved on a blink`); }
+	if (differing > 0) { console.log(`t1: ${differing} instance words moved on a blink`); }
 	assert differing == 0;
-	assert shown[caretAlpha] == 1.0;
-	assert hidden[caretAlpha] == 0.0;
+	assert (shown[caretFill] >> 24) == 255;
+	assert (hidden[caretFill] >> 24) == 0;
 	s.tick(0.5);
 	const back = recordedInstances(s.refOf(s.root), 160.0, 64.0);
 	assert (back.length as int32) == (shown.length as int32);
-	assert back[caretAlpha] == 1.0;
+	assert (back[caretFill] >> 24) == 255;
 }
 
 test "a ragged selection is one row quad per line, each carrying its neighbours" {
@@ -1517,17 +1523,17 @@ test "a ragged selection is one row quad per line, each carrying its neighbours"
 	let rows: int32 = 0;
 	let firstRow: int32 = -1;
 	for (let i = 0; i < uiInstanceCount(); i++) {
-		if (uiInstanceField(i, REC_UI_PARAMS0) == (InstanceMode.Selection as int32) as float32) {
+		if (uiInstanceField(i, WORD_UI_PARAMS0) == (InstanceMode.Selection as int32) as float32) {
 			if (firstRow < 0) { firstRow = i; }
 			rows = rows + 1;
 		}
 	}
 	assert rows == 3;
-	assert uiInstanceField(firstRow, REC_UI_PARAMS1 + 1) == 0.0;
-	assert uiInstanceField(firstRow, REC_UI_PARAMS1 + 3) > 0.0;
-	assert uiInstanceField(firstRow + 1, REC_UI_PARAMS1 + 1) > 0.0;
-	assert uiInstanceField(firstRow + 1, REC_UI_PARAMS1 + 3) > 0.0;
-	assert uiInstanceField(firstRow + 2, REC_UI_PARAMS1 + 3) == 0.0;
+	assert uiInstanceField(firstRow, WORD_UI_PARAMS1 + 1) == 0.0;
+	assert uiInstanceField(firstRow, WORD_UI_PARAMS1 + 3) > 0.0;
+	assert uiInstanceField(firstRow + 1, WORD_UI_PARAMS1 + 1) > 0.0;
+	assert uiInstanceField(firstRow + 1, WORD_UI_PARAMS1 + 3) > 0.0;
+	assert uiInstanceField(firstRow + 2, WORD_UI_PARAMS1 + 3) == 0.0;
 	frameEnd();
 }
 
@@ -1539,12 +1545,12 @@ function selectedSpans(root: NodeRef, w: float32, h: float32): Vec<float32> {
 	finishRecording();
 	let spans: Vec<float32> = new Array(0);
 	for (let i = 0; i < uiInstanceCount(); i++) {
-		if (uiInstanceField(i, REC_UI_PARAMS0) != (InstanceMode.Selection as int32) as float32) {
+		if (uiInstanceField(i, WORD_UI_PARAMS0) != (InstanceMode.Selection as int32) as float32) {
 			continue;
 		}
-		const x0: float32 = uiInstanceField(i, REC_UI_ORIGIN_SIZE) +
-			uiInstanceField(i, REC_UI_BORDERS + 3);
-		const x1: float32 = x0 + uiInstanceField(i, REC_UI_BORDERS) * 2.0;
+		const x0: float32 = uiInstanceField(i, WORD_UI_ORIGIN_SIZE) +
+			uiInstanceField(i, WORD_UI_BORDERS + 3);
+		const x1: float32 = x0 + uiInstanceField(i, WORD_UI_BORDERS) * 2.0;
 		spans.push(x0);
 		spans.push(x1);
 	}
@@ -1610,11 +1616,11 @@ test "selected rows meet across line spacing, half of it above each row and half
 	let tops: Vec<float32> = new Array(0);
 	let bottoms: Vec<float32> = new Array(0);
 	for (let i = 0; i < uiInstanceCount(); i++) {
-		if (uiInstanceField(i, REC_UI_PARAMS0) != (InstanceMode.Selection as int32) as float32) {
+		if (uiInstanceField(i, WORD_UI_PARAMS0) != (InstanceMode.Selection as int32) as float32) {
 			continue;
 		}
-		const top: float32 = uiInstanceField(i, REC_UI_ORIGIN_SIZE + 1);
-		const bottom: float32 = top + uiInstanceField(i, REC_UI_ORIGIN_SIZE + 3);
+		const top: float32 = uiInstanceField(i, WORD_UI_ORIGIN_SIZE + 1);
+		const bottom: float32 = top + uiInstanceField(i, WORD_UI_ORIGIN_SIZE + 3);
 		tops.push(top);
 		bottoms.push(bottom);
 	}
@@ -1649,12 +1655,12 @@ test "text query bounds exclude editing gloop while its visible selection still 
 	finishRecording();
 	let selections: int32 = 0;
 	for (let i = 0; i < uiInstanceCount(); i++) {
-		if (uiInstanceField(i, REC_UI_PARAMS0) != (InstanceMode.Selection as int32) as float32) {
+		if (uiInstanceField(i, WORD_UI_PARAMS0) != (InstanceMode.Selection as int32) as float32) {
 			continue;
 		}
 		selections = selections + 1;
-		const x: float32 = uiInstanceField(i, REC_UI_ORIGIN_SIZE);
-		const w: float32 = uiInstanceField(i, REC_UI_ORIGIN_SIZE + 2);
+		const x: float32 = uiInstanceField(i, WORD_UI_ORIGIN_SIZE);
+		const w: float32 = uiInstanceField(i, WORD_UI_ORIGIN_SIZE + 2);
 		assert x < 0.0 && x + w > 0.0;
 	}
 	assert selections == 1;
@@ -1802,15 +1808,15 @@ when (voidProfiler) {
 			out = out + line + "\n";
 		}
 		for (let i: int32 = 0; i < uiInstanceCount(); i++) {
-			out = out + `u ${i} mode ${uiInstanceField(i, REC_UI_PARAMS0) as int32}`;
-			out = out + ` at ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE))}`;
-			out = out + ` ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE + 1))}`;
-			out = out + ` size ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE + 2))}`;
-			out = out + ` ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE + 3))}`;
-			out = out + ` fill ${f2(uiInstanceField(i, REC_UI_COLOR_FILL))}`;
-			out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL + 1))}`;
-			out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL + 2))}`;
-			out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL + 3))}\n`;
+			out = out + `u ${i} mode ${uiInstanceField(i, WORD_UI_PARAMS0) as int32}`;
+			out = out + ` at ${f2(uiInstanceField(i, WORD_UI_ORIGIN_SIZE))}`;
+			out = out + ` ${f2(uiInstanceField(i, WORD_UI_ORIGIN_SIZE + 1))}`;
+			out = out + ` size ${f2(uiInstanceField(i, WORD_UI_ORIGIN_SIZE + 2))}`;
+			out = out + ` ${f2(uiInstanceField(i, WORD_UI_ORIGIN_SIZE + 3))}`;
+			out = out + ` fill ${f2(unorm(i, WORD_UI_COLOR_FILL, 0))}`;
+			out = out + ` ${f2(unorm(i, WORD_UI_COLOR_FILL, 1))}`;
+			out = out + ` ${f2(unorm(i, WORD_UI_COLOR_FILL, 2))}`;
+			out = out + ` ${f2(unorm(i, WORD_UI_COLOR_FILL, 3))}\n`;
 		}
 		frameEnd();
 		return out;

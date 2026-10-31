@@ -62,18 +62,12 @@ const cornerLocation: int32 = 0;
 function msConstants(prefix: string, lanes: Lane[]): string {
 	let out: string = "";
 	let bytes: int32 = 0;
-	let floats: int32 = 0;
 	for (const l of lanes) {
 		out += `export const ${prefix}_${l.constant}: int32 = ${bytes};\n`;
 		bytes += gpuBytes(l.kind);
 	}
 	out += `export const ${prefix}_STRIDE: int32 = ${bytes};\n`;
 	out += `export const ${prefix}_ATTRIBUTES: int32 = ${lanes.length};\n`;
-	for (const l of lanes) {
-		out += `export const REC_${prefix}_${l.constant}: int32 = ${floats};\n`;
-		floats += 4;
-	}
-	out += `export const REC_${prefix}_FLOATS: int32 = ${floats};\n`;
 	out += `export const ${prefix}_FORMATS: GPUVertexFormat[${lanes.length}] = [`;
 	for (const l of lanes) { out += `"${vertexFormat(l.kind)}", `; }
 	out += "];\n";
@@ -84,6 +78,16 @@ function msConstants(prefix: string, lanes: Lane[]): string {
 	for (const l of lanes) { out += `"${l.attribute}", `; }
 	out += "];\n";
 	return out;
+}
+
+function msRecords(prefix: string, lanes: Lane[]): string {
+	let out: string = "";
+	let floats: int32 = 0;
+	for (const l of lanes) {
+		out += `export const REC_${prefix}_${l.constant}: int32 = ${floats};\n`;
+		floats += 4;
+	}
+	return out + `export const REC_${prefix}_FLOATS: int32 = ${floats};\n`;
 }
 
 function msWords(prefix: string, lanes: Lane[]): string {
@@ -119,6 +123,7 @@ ms += `export const INSTANCE_CORNER_LOCATION: int32 = ${cornerLocation};
 ms += msConstants("UI", uiLanes);
 ms += msWords("UI", uiLanes);
 ms += msConstants("SPRITE", spriteLanes);
+ms += msRecords("SPRITE", spriteLanes);
 writeFile(`${dir}/instanceLayout.ms`, ms);
 
 let h: string = "#pragma once\n#include <stddef.h>\n#include <stdint.h>\n\n";
@@ -126,6 +131,5 @@ h += cStruct("void2dUiInstance", uiLanes) + "\n";
 h += cStruct("void2dSpriteInstance", spriteLanes) + "\n";
 h += cOffsets("void2dUiInstance", uiLanes) + "\n";
 h += cOffsets("void2dSpriteInstance", spriteLanes) + "\n";
-h += `#define VOID2D_UI_REC_FLOATS ${recFloats(uiLanes)}\n`;
 h += `#define VOID2D_SPRITE_REC_FLOATS ${recFloats(spriteLanes)}\n`;
 writeFile(`${dir}/instanceLayout.h`, h);

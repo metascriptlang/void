@@ -3,7 +3,7 @@ import { rgba } from "../void2d/types";
 import { paint, isDirty } from "../void2d/scene";
 import { begin2d, frameEnd, finishRecording } from "../void2d/draw";
 import { uiInstanceCount, uiInstanceField } from "../void2d/displayList";
-import { REC_UI_ORIGIN_SIZE } from "../void2d/instanceLayout";
+import { WORD_UI_ORIGIN_SIZE } from "../void2d/instanceLayout";
 import {
 	OverlayMode, FrameProfiler, FrameCounters, frameProfiler, noCounters,
 } from "../void2d/profiler";
@@ -268,9 +268,9 @@ test "recording the overlay puts its panel against the right and top margins in 
 	profilerOverlayRecord(384.0, 280.0, 1.0);
 	finishRecording();
 	assert uiInstanceCount() > 100;
-	const x: float32 = uiInstanceField(0, REC_UI_ORIGIN_SIZE);
-	const y: float32 = uiInstanceField(0, REC_UI_ORIGIN_SIZE + 1);
-	const w: float32 = uiInstanceField(0, REC_UI_ORIGIN_SIZE + 2);
+	const x: float32 = uiInstanceField(0, WORD_UI_ORIGIN_SIZE);
+	const y: float32 = uiInstanceField(0, WORD_UI_ORIGIN_SIZE + 1);
+	const w: float32 = uiInstanceField(0, WORD_UI_ORIGIN_SIZE + 2);
 	assert x + w == (384 - PANEL_MARGIN * 2) as float32;
 	assert y == (PANEL_MARGIN * 2) as float32;
 	frameEnd();
@@ -284,7 +284,7 @@ test "at a fractional DPI every recorded edge is a whole device pixel" {
 	finishRecording();
 	for (let i: int32 = 0; i < uiInstanceCount(); i++) {
 		for (let lane: int32 = 0; lane < 4; lane++) {
-			const device: float32 = uiInstanceField(i, REC_UI_ORIGIN_SIZE + lane) * 1.5;
+			const device: float32 = uiInstanceField(i, WORD_UI_ORIGIN_SIZE + lane) * 1.5;
 			const nearest: float32 = ((device + 0.5) as int32) as float32;
 			assert device - nearest < 0.001 && nearest - device < 0.001;
 		}
@@ -299,7 +299,7 @@ test "a narrower framebuffer than the panel pins the panel to the left edge" {
 	profilerOverlayRecord(20.0, 280.0, 1.0);
 	finishRecording();
 	assert uiInstanceCount() > 100;
-	assert uiInstanceField(0, REC_UI_ORIGIN_SIZE) == 0.0;
+	assert uiInstanceField(0, WORD_UI_ORIGIN_SIZE) == 0.0;
 	frameEnd();
 }
 
