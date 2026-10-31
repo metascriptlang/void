@@ -76,6 +76,7 @@ import "./imageStyleCheck";
 import "./uiPipelineCheck";
 import "./snapCheck";
 import "./rendererCheck";
+import "./rendererAdoptCheck";
 import "./programKeyCheck";
 import "./drawSurfaceCheck";
 import "./bloomCheck";
