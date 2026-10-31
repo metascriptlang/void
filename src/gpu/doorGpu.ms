@@ -354,6 +354,7 @@ export function doorSetup(
 	passViews = [0, 0, 0, 0, 0];
 	current = -1;
 	resetStats();
+	bindStats = { groupsMade: 0 };
 	featureSetup(device);
 	timerBuild(device);
 	if (everSetUp) { generation++; }
@@ -395,6 +396,14 @@ export function doorFrameStat(which: int32): int64 {
 	}
 	return which < DOOR_STAT_PER_FRAME_COUNT ? lastFrameStats[which] : frameStats[which];
 }
+
+export struct DoorBindStats {
+	groupsMade: int64;
+}
+
+let bindStats: DoorBindStats = { groupsMade: 0 };
+
+export function doorBindStats(): DoorBindStats { return bindStats; }
 
 function endFrameStats(): void {
 	lastFrameStats = frameStats;
@@ -1603,6 +1612,7 @@ function resourceGroup(key: BindKey): GPUBindGroup {
 		n++;
 	}
 	const group = device.createBindGroup(descriptor);
+	bindStats.groupsMade++;
 	cacheGroup(key, group);
 	return group;
 }
@@ -1659,6 +1669,7 @@ export function doorStorageGroup(
 		n++;
 	}
 	const group = device.createBindGroup(descriptor);
+	bindStats.groupsMade++;
 	cacheGroup(key, group);
 	return group;
 }
@@ -1708,9 +1719,15 @@ export function doorApplyStorageBindings(
 	}
 	if (sameResources && record.storageMask == 0) { return; }
 	let key: BindKey = { pipeline: record.pipeline.id, storage: record.storageMask };
-	for (let i = 0; i < VIEW_SLOTS; i++) { key.views[i] = bindings[DOOR_BINDING_VIEW + i]; }
+	for (let i = 0; i < VIEW_SLOTS; i++) {
+		if ((record.textureMask & ((1 as uint32) << (i as uint32))) != 0) {
+			key.views[i] = bindings[DOOR_BINDING_VIEW + i];
+		}
+	}
 	for (let i = 0; i < SAMPLER_SLOTS; i++) {
-		key.samplers[i] = bindings[DOOR_BINDING_SAMPLER + i];
+		if ((pipelines[current].samplerMask & ((1 as uint32) << (i as uint32))) != 0) {
+			key.samplers[i] = bindings[DOOR_BINDING_SAMPLER + i];
+		}
 	}
 	for (let i = 0; i < VIEW_SLOTS; i++) {
 		if ((record.storageMask & ((1 as uint32) << (i as uint32))) == 0) { continue; }

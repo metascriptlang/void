@@ -82,6 +82,7 @@ import "./doorResidentCheck";
 import "./doorComputeCheck";
 import "./doorStencilCheck";
 import "./doorStorageCheck";
+import "./doorBindCheck";
 import "./gpuTimerRingCheck";
 import "./bloomKernelCheck";
 import "./dirShadowCheck";
