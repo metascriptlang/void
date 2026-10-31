@@ -33,7 +33,9 @@ export struct AnimationChildSample {
 }
 
 export struct AnimationCompose {
-	targets: Vec<AnimationRestTarget>;
+	readonly targets: Vec<AnimationRestTarget>;
+	readonly targetOf: Map<int32, int32>;
+	claimed: Vec<boolean>;
 	first: Vec<AnimationTrsSample>;
 	second: Vec<AnimationTrsSample>;
 	third: Vec<AnimationTrsSample>;
@@ -84,17 +86,11 @@ function checkedSample(
 	return Result.ok(null);
 }
 
-function checkedTargets(
+export function checkedRests(
 	targets: Readonly<Span<AnimationRestTarget>>,
 ): Result<void, AnimationComposeError> {
-	if (targets.length > 0x7fffffff) { return Result.err(AnimationComposeError.Shape); }
 	for (let i = 0; i < targets.length; i++) {
 		if (targets[i].sourceNode < 0) { return Result.err(AnimationComposeError.Target); }
-		for (let previous = 0; previous < i; previous++) {
-			if (targets[previous].sourceNode == targets[i].sourceNode) {
-				return Result.err(AnimationComposeError.DuplicateTarget);
-			}
-		}
 		const sample: AnimationTrsSample = {
 			sourceNode: targets[i].sourceNode,
 			value: targets[i].rest,
@@ -105,17 +101,39 @@ function checkedTargets(
 	return Result.ok(null);
 }
 
+export function checkedTargets(
+	targets: Readonly<Span<AnimationRestTarget>>,
+): Result<void, AnimationComposeError> {
+	if (targets.length > 0x7fffffff) { return Result.err(AnimationComposeError.Shape); }
+	for (let i = 0; i < targets.length; i++) {
+		if (targets[i].sourceNode < 0) { return Result.err(AnimationComposeError.Target); }
+		for (let previous = 0; previous < i; previous++) {
+			if (targets[previous].sourceNode == targets[i].sourceNode) {
+				return Result.err(AnimationComposeError.DuplicateTarget);
+			}
+		}
+	}
+	return checkedRests(targets);
+}
+
 export function create(
 	this typeof AnimationCompose,
 	targets: Readonly<Span<AnimationRestTarget>>,
 ): Result<AnimationCompose, AnimationComposeError> {
 	const checked = try checkedTargets(targets);
+	let owned: Vec<AnimationRestTarget> = [];
+	let targetOf: Map<int32, int32> = new Map<int32, int32>();
+	for (let i = 0; i < targets.length; i++) {
+		owned.push({ sourceNode: targets[i].sourceNode, rest: targets[i].rest });
+		targetOf.set(targets[i].sourceNode, i as int32);
+	}
 	let compose: AnimationCompose = {
-		targets: [], first: [], second: [], third: [], pending: [], output: [], secondMask: [],
+		targets: owned, targetOf: targetOf, claimed: [],
+		first: [], second: [], third: [], pending: [], output: [], secondMask: [],
 		firstSeconds: 0.0, secondSeconds: 0.0,
 	};
 	for (const target of targets) {
-		compose.targets.push({ sourceNode: target.sourceNode, rest: target.rest });
+		compose.claimed.push(false);
 		const sample: AnimationTrsSample = {
 			sourceNode: target.sourceNode,
 			value: target.rest,
@@ -131,14 +149,9 @@ export function create(
 	return Result.ok(move compose);
 }
 
-function targetIndex(
-	targets: Readonly<Span<AnimationRestTarget>>,
-	sourceNode: int32,
-): int32 {
-	for (let i = 0; i < targets.length; i++) {
-		if (targets[i].sourceNode == sourceNode) { return i as int32; }
-	}
-	return -1;
+function targetIndex(targetOf: Readonly<Map<int32, int32>>, sourceNode: int32): int32 {
+	const hit = targetOf.get(sourceNode);
+	return hit !== null ? hit : -1;
 }
 
 function checkedStorage(
@@ -146,31 +159,38 @@ function checkedStorage(
 ): Result<void, AnimationComposeError> {
 	const length = compose.targets.length;
 	if (compose.first.length != length || compose.second.length != length ||
-		compose.third.length != length ||
+		compose.third.length != length || compose.claimed.length != length ||
 		compose.pending.length != length || compose.output.length != length ||
 		compose.secondMask.length != length) {
 		return Result.err(AnimationComposeError.Shape);
 	}
-	return checkedTargets(compose.targets);
+	if (compose.targetOf.size != length) { return Result.err(AnimationComposeError.Shape); }
+	for (let i = 0; i < length; i++) {
+		const index: int32 = targetIndex(compose.targetOf, compose.targets[i].sourceNode);
+		if (index < 0) { return Result.err(AnimationComposeError.Target); }
+		if (index != i) { return Result.err(AnimationComposeError.DuplicateTarget); }
+	}
+	return checkedRests(compose.targets);
+}
+
+function clearClaims(ref compose: AnimationCompose): void {
+	for (let i = 0; i < compose.claimed.length; i++) { compose.claimed[i] = false; }
 }
 
 function checkedChild(
-	this compose: Readonly<AnimationCompose>,
+	ref compose: AnimationCompose,
 	child: Readonly<AnimationChildSample>,
 ): Result<void, AnimationComposeError> {
 	if (!Number.isFinite(child.seconds)) { return Result.err(AnimationComposeError.NonFinite); }
 	if (child.samples.length > compose.targets.length) {
 		return Result.err(AnimationComposeError.Shape);
 	}
+	clearClaims(compose);
 	for (let i = 0; i < child.samples.length; i++) {
-		if (targetIndex(compose.targets, child.samples[i].sourceNode) < 0) {
-			return Result.err(AnimationComposeError.Target);
-		}
-		for (let previous = 0; previous < i; previous++) {
-			if (child.samples[previous].sourceNode == child.samples[i].sourceNode) {
-				return Result.err(AnimationComposeError.DuplicateTarget);
-			}
-		}
+		const index: int32 = targetIndex(compose.targetOf, child.samples[i].sourceNode);
+		if (index < 0) { return Result.err(AnimationComposeError.Target); }
+		if (compose.claimed[index]) { return Result.err(AnimationComposeError.DuplicateTarget); }
+		compose.claimed[index] = true;
 		const checked = try child.samples[i].checkedSample();
 	}
 	return Result.ok(null);
@@ -178,6 +198,7 @@ function checkedChild(
 
 function resolveChild(
 	targets: Readonly<Span<AnimationRestTarget>>,
+	targetOf: Map<int32, int32>,
 	child: Readonly<AnimationChildSample>,
 	resolved: Span<AnimationTrsSample>,
 ): void {
@@ -189,7 +210,7 @@ function resolveChild(
 		};
 	}
 	for (const sample of child.samples) {
-		const index: int32 = targetIndex(targets, sample.sourceNode);
+		const index: int32 = targetIndex(targetOf, sample.sourceNode);
 		if (sample.present.has(AnimationComponent.Translation)) {
 			resolved[index].value.position = sample.value.position;
 		}
@@ -235,10 +256,10 @@ export function stageSmoothCompose(
 	if (!Number.isFinite(weight)) { return Result.err(AnimationComposeError.NonFinite); }
 	if (weight < 0.0 || weight > 1.0) { return Result.err(AnimationComposeError.Weight); }
 	const storage = try compose.checkedStorage();
-	const firstChecked = try compose.checkedChild(first);
-	const secondChecked = try compose.checkedChild(second);
-	resolveChild(compose.targets, first, compose.first);
-	resolveChild(compose.targets, second, compose.second);
+	const firstChecked = try checkedChild(compose, first);
+	const secondChecked = try checkedChild(compose, second);
+	resolveChild(compose.targets, compose.targetOf, first, compose.first);
+	resolveChild(compose.targets, compose.targetOf, second, compose.second);
 	for (let i = 0; i < compose.targets.length; i++) {
 		const from = compose.first[i];
 		const to = compose.second[i];
@@ -266,26 +287,23 @@ export function stageExclusiveCompose(
 	secondSources: Readonly<Span<int32>>,
 ): Result<void, AnimationComposeError> {
 	const storage = try compose.checkedStorage();
-	const firstChecked = try compose.checkedChild(first);
-	const secondChecked = try compose.checkedChild(second);
+	const firstChecked = try checkedChild(compose, first);
+	const secondChecked = try checkedChild(compose, second);
 	if (secondSources.length > compose.targets.length) {
 		return Result.err(AnimationComposeError.Shape);
 	}
+	clearClaims(compose);
 	for (let i = 0; i < secondSources.length; i++) {
-		if (targetIndex(compose.targets, secondSources[i]) < 0) {
-			return Result.err(AnimationComposeError.Target);
-		}
-		for (let previous = 0; previous < i; previous++) {
-			if (secondSources[previous] == secondSources[i]) {
-				return Result.err(AnimationComposeError.DuplicateTarget);
-			}
-		}
+		const index: int32 = targetIndex(compose.targetOf, secondSources[i]);
+		if (index < 0) { return Result.err(AnimationComposeError.Target); }
+		if (compose.claimed[index]) { return Result.err(AnimationComposeError.DuplicateTarget); }
+		compose.claimed[index] = true;
 	}
-	resolveChild(compose.targets, first, compose.first);
-	resolveChild(compose.targets, second, compose.second);
+	resolveChild(compose.targets, compose.targetOf, first, compose.first);
+	resolveChild(compose.targets, compose.targetOf, second, compose.second);
 	for (let i = 0; i < compose.secondMask.length; i++) { compose.secondMask[i] = false; }
 	for (const source of secondSources) {
-		compose.secondMask[targetIndex(compose.targets, source)] = true;
+		compose.secondMask[targetIndex(compose.targetOf, source)] = true;
 	}
 	for (let i = 0; i < compose.targets.length; i++) {
 		compose.pending[i] = compose.secondMask[i] ? compose.second[i] : compose.first[i];
@@ -350,12 +368,12 @@ export function stageWeightedCompose(
 	}
 	if (Math.abs(total - 1.0) > 0.000001) { return Result.err(AnimationComposeError.Weight); }
 	const storage = try compose.checkedStorage();
-	const firstChecked = try compose.checkedChild(first);
-	const secondChecked = try compose.checkedChild(second);
-	const thirdChecked = try compose.checkedChild(third);
-	resolveChild(compose.targets, first, compose.first);
-	resolveChild(compose.targets, second, compose.second);
-	resolveChild(compose.targets, third, compose.third);
+	const firstChecked = try checkedChild(compose, first);
+	const secondChecked = try checkedChild(compose, second);
+	const thirdChecked = try checkedChild(compose, third);
+	resolveChild(compose.targets, compose.targetOf, first, compose.first);
+	resolveChild(compose.targets, compose.targetOf, second, compose.second);
+	resolveChild(compose.targets, compose.targetOf, third, compose.third);
 	for (let i = 0; i < compose.targets.length; i++) {
 		const a = compose.first[i];
 		const b = compose.second[i];

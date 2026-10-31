@@ -283,6 +283,27 @@ test "animationCompose refuses bad source identities masks presence clocks and s
 	if (!shape.ok) { assert shape.error == AnimationComposeError.Shape; }
 }
 
+test "animationCompose refuses a target table edited after create" {
+	let compose = fixture();
+	const first = firstChild();
+	const second = secondChild();
+	assert stageSmoothCompose(compose, first, second, 0.5).ok;
+	compose.targets[1].sourceNode = 7;
+	const duplicate = stageSmoothCompose(compose, first, second, 0.5);
+	assert !duplicate.ok;
+	if (!duplicate.ok) { assert duplicate.error == AnimationComposeError.DuplicateTarget; }
+	compose.targets[1].sourceNode = 5;
+	const unknown = stageExclusiveCompose(compose, first, second, []);
+	assert !unknown.ok;
+	if (!unknown.ok) { assert unknown.error == AnimationComposeError.Target; }
+	compose.targets[1].sourceNode = 2;
+	assert stageSmoothCompose(compose, first, second, 0.5).ok;
+	compose.targets[0].rest.rotation.w = 2.0;
+	const rotation = stageSmoothCompose(compose, first, second, 0.5);
+	assert !rotation.ok;
+	if (!rotation.ok) { assert rotation.error == AnimationComposeError.InvalidQuaternion; }
+}
+
 test "animationCompose finite convex extremes and absent components do not auto-repair input" {
 	let compose = fixture();
 	let first = firstChild();
