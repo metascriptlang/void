@@ -37,8 +37,18 @@ import { applySynthetic, shapeBox } from "./outline";
 import { asInt32, truncInt } from "../trueType/fontInfo";
 
 when (voidColourEmoji) {
-	import { colourFaceGlyphIndex, colourInfo, colourOpen, colourRegister } from "./colour";
-	import { COLOUR_NONE, COLOUR_NO_MEMORY, COLOUR_OK, colourFaceReason } from "../colourEmoji/colourFace";
+	import {
+		colourFaceGlyphIndex,
+		colourInfo,
+		colourOpen,
+		colourRegister,
+	} from "./colour";
+	import {
+		COLOUR_NONE,
+		COLOUR_NO_MEMORY,
+		COLOUR_OK,
+		colourFaceReason,
+	} from "../colourEmoji/colourFace";
 	import { FACE_BAD_COLOUR, FACE_NO_MEMORY } from "./state";
 }
 
@@ -102,7 +112,9 @@ struct TableSlice {
 
 function findTableSlice(face: GlyphFace, tag: string): TableSlice {
 	when (emcc) {
-		if (face.browser) { return { offset: -1, length: 0 }; }
+		if (face.browser) {
+			return { offset: -1, length: 0 };
+		}
 	}
 	const data = face.info.data;
 	const font: int64 = face.info.fontstart as int64;
@@ -123,11 +135,19 @@ function findTableSlice(face: GlyphFace, tag: string): TableSlice {
 function findGlyph(face: GlyphFace, codepoint: int32): int32 {
 	state.glyphLookups++;
 	when (voidColourEmoji) {
-		if (face.colourOnly) { return colourFaceGlyphIndex(face.colourHandle, face.bytes.data, codepoint); }
+		if (face.colourOnly) {
+			return colourFaceGlyphIndex(
+				face.colourHandle,
+				face.bytes.data,
+				codepoint,
+			);
+		}
 	}
 	when (emcc) {
 		const platform = face.platform;
-		if (face.browser && platform != null) { return browserGlyph(platform, codepoint); }
+		if (face.browser && platform != null) {
+			return browserGlyph(platform, codepoint);
+		}
 	}
 	return findGlyphIndex(face.info, codepoint);
 }
@@ -147,7 +167,11 @@ function faceVMetrics(face: GlyphFace): VMetrics {
 		const platform = face.platform;
 		if (face.browser && platform != null) {
 			const browser = browserVMetrics(platform);
-			return { ascent: browser.ascent, descent: browser.descent, lineGap: browser.lineGap };
+			return {
+				ascent: browser.ascent,
+				descent: browser.descent,
+				lineGap: browser.lineGap,
+			};
 		}
 	}
 	const vertical = getFontVMetrics(face.info);
@@ -161,7 +185,9 @@ function faceVMetrics(face: GlyphFace): VMetrics {
 function advanceUnits(face: GlyphFace, glyph: int32): int32 {
 	when (emcc) {
 		const platform = face.platform;
-		if (face.browser && platform != null) { return browserAdvance(platform, glyph); }
+		if (face.browser && platform != null) {
+			return browserAdvance(platform, glyph);
+		}
 	}
 	return getGlyphHMetrics(face.info, glyph).advance;
 }
@@ -326,7 +352,9 @@ export function void2dGlyphScale(face: int32, sizePx: float32): float32 {
 		return 0.0;
 	}
 	when (emcc) {
-		if (state.faces[face].browser) { return sizePx / BROWSER_UNITS_PER_EM; }
+		if (state.faces[face].browser) {
+			return sizePx / BROWSER_UNITS_PER_EM;
+		}
 	}
 	return scaleForMappingEmToPixels(state.faces[face].info, sizePx);
 }
@@ -409,14 +437,24 @@ export function void2dGlyphFaceLoad(path: string, index: int32): int32 {
 		if (colourStatus == COLOUR_OK) {
 			glyphCount = colourGlyphs;
 			if (!outlines) {
-				found = colourInfo(holder.data, offset, colourHead, colourHhea, colourHmtx);
+				found = colourInfo(
+					holder.data,
+					offset,
+					colourHead,
+					colourHhea,
+					colourHmtx,
+				);
 				colourOnly = true;
 				outlines = true;
 			}
 		} else if (colourStatus != COLOUR_NONE) {
-			console.error(`void2d: ${path}: colour tables refused: ${colourFaceReason()}`);
+			console.error(
+				`void2d: ${path}: colour tables refused: ${colourFaceReason()}`,
+			);
 			if (!outlines) {
-				return colourStatus == COLOUR_NO_MEMORY ? FACE_NO_MEMORY : FACE_BAD_COLOUR;
+				return colourStatus == COLOUR_NO_MEMORY
+					? FACE_NO_MEMORY
+					: FACE_BAD_COLOUR;
 			}
 		}
 	}
@@ -429,7 +467,13 @@ export function void2dGlyphFaceLoad(path: string, index: int32): int32 {
 				glyphCount = table.glyphCount;
 				const name = postScriptName(holder.data, offset);
 				if (name != "") {
-					platform = platformOpen(path, holder.data, name, glyphCount, table.unitsPerEm);
+					platform = platformOpen(
+						path,
+						holder.data,
+						name,
+						glyphCount,
+						table.unitsPerEm,
+					);
 				}
 				if (platform == null) {
 					console.error(
@@ -442,8 +486,12 @@ export function void2dGlyphFaceLoad(path: string, index: int32): int32 {
 	}
 	when (voidCff) {
 	} else {
-		if (!outlines && offset >= 0 && findTable(holder.data, offset, "glyf") == 0 &&
-			findTable(holder.data, offset, "CFF ") != 0) {
+		if (
+			!outlines &&
+			offset >= 0 &&
+			findTable(holder.data, offset, "glyf") == 0 &&
+			findTable(holder.data, offset, "CFF ") != 0
+		) {
 			console.error(
 				`void2d: ${path} has CFF outlines, which need the CFF module (-d:voidCff); the font is refused`,
 			);
@@ -515,15 +563,31 @@ export function void2dGlyphColourOnly(face: int32): int32 {
 
 when (macos || ios || emcc) {
 	export function void2dGlyphFacePlatform(base: int32): int32 {
-		if (!validFace(base)) { return FACE_NO_BASE; }
+		if (!validFace(base)) {
+			return FACE_NO_BASE;
+		}
 		const f = faceAt(base);
-		if (f.sprite || f.colourOnly || f.platform != null || isSynthetic(f)) { return FACE_NO_BASE; }
+		if (f.sprite || f.colourOnly || f.platform != null || isSynthetic(f)) {
+			return FACE_NO_BASE;
+		}
 		const table = platformInfo(f.bytes.data, f.info.fontstart);
-		if (table == null) { return FACE_NOT_A_FONT; }
+		if (table == null) {
+			return FACE_NOT_A_FONT;
+		}
 		const name = postScriptName(f.bytes.data, f.info.fontstart);
-		if (name == "") { return FACE_NOT_A_FONT; }
-		const platform = platformOpen(null, f.bytes.data, name, table.glyphCount, table.unitsPerEm);
-		if (platform == null) { return FACE_NOT_A_FONT; }
+		if (name == "") {
+			return FACE_NOT_A_FONT;
+		}
+		const platform = platformOpen(
+			null,
+			f.bytes.data,
+			name,
+			table.glyphCount,
+			table.unitsPerEm,
+		);
+		if (platform == null) {
+			return FACE_NOT_A_FONT;
+		}
 		const face = copyFace(f);
 		face.info = table.info;
 		face.platform = platform;
@@ -538,7 +602,9 @@ when (emcc) {
 	export function void2dGlyphFaceBrowser(style: string, family: string): int32 {
 		const platform = browserOpen(style, family);
 		if (platform == null) {
-			console.error(`void2d: the browser gives no 2D canvas for ${style} ${family}`);
+			console.error(
+				`void2d: the browser gives no 2D canvas for ${style} ${family}`,
+			);
 			return FACE_NOT_A_FONT;
 		}
 		const holder = new FaceBytes([]);
@@ -563,7 +629,9 @@ export function void2dGlyphIndex(face: int32, codepoint: int32): int32 {
 		return 0;
 	}
 	when (voidSprites) {
-		if (state.faces[face].sprite) { return spriteIndex(codepoint); }
+		if (state.faces[face].sprite) {
+			return spriteIndex(codepoint);
+		}
 	}
 	return findGlyph(state.faces[face], codepoint);
 }
@@ -579,7 +647,9 @@ export function void2dGlyphAdvance(
 	const f = faceAt(face);
 	when (voidSprites) {
 		if (f.sprite) {
-			if (glyph <= 0) { return 0.0; }
+			if (glyph <= 0) {
+				return 0.0;
+			}
 			return spriteAsciiUnits(f) * void2dGlyphScale(face, sizePx);
 		}
 	}
@@ -662,29 +732,48 @@ export function putBox(out: Span<int32>, box: GlyphBox): void {
 
 when (voidSprites) {
 	function spriteAsciiUnits(face: GlyphFace): float32 {
-		if (face.asciiUnits > 0.0) { return face.asciiUnits; }
+		if (face.asciiUnits > 0.0) {
+			return face.asciiUnits;
+		}
 		let widest: int32 = 0;
 		for (let codepoint: int32 = 32; codepoint < 127; codepoint++) {
 			const glyph = findGlyphIndex(face.info, codepoint);
-			if (glyph == 0) { continue; }
+			if (glyph == 0) {
+				continue;
+			}
 			const metrics = getGlyphHMetrics(face.info, glyph);
-			if (metrics.advance > widest) { widest = metrics.advance; }
+			if (metrics.advance > widest) {
+				widest = metrics.advance;
+			}
 		}
 		face.asciiUnits = widest as float32;
 		return face.asciiUnits;
 	}
 
-	function spriteCellCompute(face: int32, sizePx: float32, cell: int32[]): boolean {
+	function spriteCellCompute(
+		face: int32,
+		sizePx: float32,
+		cell: int32[],
+	): boolean {
 		const f = faceAt(face);
 		const scale = void2dGlyphScale(face, sizePx);
 		const vertical = getFontVMetrics(f.info);
-		const faceHeight: float64 = ((vertical.ascent - vertical.descent + vertical.lineGap) as float64) * (scale as float64);
-		const faceWidth: float64 = (spriteAsciiUnits(f) as float64) * (scale as float64);
-		if (!(faceHeight > 0.0) || !(faceWidth > 0.0)) { return false; }
+		const faceHeight: float64 =
+			((vertical.ascent - vertical.descent + vertical.lineGap) as float64) *
+			(scale as float64);
+		const faceWidth: float64 =
+			(spriteAsciiUnits(f) as float64) * (scale as float64);
+		if (!(faceHeight > 0.0) || !(faceWidth > 0.0)) {
+			return false;
+		}
 		const cellHeight: float64 = Math.floor(faceHeight + 0.5);
-		const halfGap: float64 = (vertical.lineGap as float64) * (scale as float64) / 2.0;
-		const faceBaseline: float64 = halfGap + ((-vertical.descent) as float64) * (scale as float64);
-		const cellBaseline: float64 = Math.floor(faceBaseline - (cellHeight - faceHeight) / 2.0 + 0.5);
+		const halfGap: float64 =
+			((vertical.lineGap as float64) * (scale as float64)) / 2.0;
+		const faceBaseline: float64 =
+			halfGap + ((-vertical.descent) as float64) * (scale as float64);
+		const cellBaseline: float64 = Math.floor(
+			faceBaseline - (cellHeight - faceHeight) / 2.0 + 0.5,
+		);
 		let decoration: Vec<float32> = [0.0, 0.0, 0.0, 0.0];
 		void2dGlyphDecoration(face, sizePx, decoration);
 		const thickness: float64 = Math.ceil(decoration[1] as float64);
@@ -692,8 +781,12 @@ when (voidSprites) {
 		cell[1] = truncInt(cellHeight);
 		cell[2] = truncInt(cellHeight) - truncInt(cellBaseline);
 		cell[3] = thickness > 1.0 ? truncInt(thickness) : 1;
-		if (cell[0] < 1) { cell[0] = 1; }
-		if (cell[1] < 1) { cell[1] = 1; }
+		if (cell[0] < 1) {
+			cell[0] = 1;
+		}
+		if (cell[1] < 1) {
+			cell[1] = 1;
+		}
 		return true;
 	}
 
@@ -703,14 +796,20 @@ when (voidSprites) {
 			state.cellFace = face;
 			state.cellSize = sizePx;
 		}
-		for (let k: int32 = 0; k < 4; k++) { cell[k] = state.cellValue[k]; }
+		for (let k: int32 = 0; k < 4; k++) {
+			cell[k] = state.cellValue[k];
+		}
 		return state.cellOk;
 	}
 
 	export function void2dGlyphFaceSprite(base: int32): int32 {
-		if (!validFace(base)) { return FACE_NO_BASE; }
+		if (!validFace(base)) {
+			return FACE_NO_BASE;
+		}
 		const f = faceAt(base);
-		if (f.sprite || f.colourOnly || f.browser) { return FACE_NO_BASE; }
+		if (f.sprite || f.colourOnly || f.browser) {
+			return FACE_NO_BASE;
+		}
 		const sprite = copyFace(f);
 		sprite.emboldenUnits = 0.0;
 		sprite.skew = 0.0;
@@ -726,16 +825,24 @@ when (voidSprites) {
 		return validFace(face) && state.faces[face].sprite ? 1 : 0;
 	}
 
-	export function void2dGlyphSpriteCell(face: int32, sizePx: float32, out: Span<int32>): void {
+	export function void2dGlyphSpriteCell(
+		face: int32,
+		sizePx: float32,
+		out: Span<int32>,
+	): void {
 		needSlots("void2dGlyphSpriteCell", out.length as int64, 4);
 		out[0] = 0;
 		out[1] = 0;
 		out[2] = 0;
 		out[3] = 0;
-		if (void2dGlyphFaceIsSprite(face) == 0 || !(sizePx > 0.0)) { return; }
+		if (void2dGlyphFaceIsSprite(face) == 0 || !(sizePx > 0.0)) {
+			return;
+		}
 		const cell: int32[] = [0, 0, 0, 0];
 		if (spriteCell(face, sizePx, cell)) {
-			for (let k: int32 = 0; k < 4; k++) { out[k] = cell[k]; }
+			for (let k: int32 = 0; k < 4; k++) {
+				out[k] = cell[k];
+			}
 		}
 	}
 
@@ -746,7 +853,11 @@ when (voidSprites) {
 		stride: int32;
 	}
 
-	export function spriteInk(face: int32, glyph: int32, sizePx: float32): SpriteRows | null {
+	export function spriteInk(
+		face: int32,
+		glyph: int32,
+		sizePx: float32,
+	): SpriteRows | null {
 		const cell: int32[] = [0, 0, 0, 0];
 		if (!spriteCell(face, sizePx, cell)) {
 			console.error(
@@ -758,7 +869,7 @@ when (voidSprites) {
 		if (!ink.ok) {
 			console.error(
 				`void2d: sprite glyph ${glyph} at ${fixed(sizePx, 2)} px (cell ${cell[0]}x${cell[1]}, line ${cell[3]}) ` +
-				`is refused with ${ink.error.toString()}, it is not drawn`,
+					`is refused with ${ink.error.toString()}, it is not drawn`,
 			);
 			return null;
 		}
@@ -796,14 +907,26 @@ export function void2dGlyphBox(
 	when (voidSprites) {
 		if (f.sprite) {
 			const ink = spriteInk(face, glyph, sizePx);
-			if (ink != null) { putBox(out, ink.box); }
+			if (ink != null) {
+				putBox(out, ink.box);
+			}
 			return;
 		}
 	}
 	when (macos || ios || emcc) {
 		const platform = f.platform;
 		if (platform != null) {
-			putBox(out, platformBox(platform, glyph, sizePx, shiftX, f.skew, f.emboldenUnits * scale));
+			putBox(
+				out,
+				platformBox(
+					platform,
+					glyph,
+					sizePx,
+					shiftX,
+					f.skew,
+					f.emboldenUnits * scale,
+				),
+			);
 			return;
 		}
 	}

@@ -85,13 +85,19 @@ export function pageKindName(kind: int32): string {
 
 function pageKindBuilt(kind: int32): boolean {
 	when (voidSdfText) {
-		if (kind == PAGE_SDF) { return true; }
+		if (kind == PAGE_SDF) {
+			return true;
+		}
 	}
 	when (voidColourEmoji) {
-		if (kind == PAGE_RGBA) { return true; }
+		if (kind == PAGE_RGBA) {
+			return true;
+		}
 	}
 	when (voidSvg) {
-		if (kind == PAGE_MASK) { return true; }
+		if (kind == PAGE_MASK) {
+			return true;
+		}
 	}
 	return kind == PAGE_COVERAGE;
 }
@@ -247,13 +253,20 @@ export function void2dGlyphRasterize(
 		if (f.sprite) {
 			handled = true;
 			const ink = spriteInk(face, glyph, sizePx);
-			if (ink == null || ink.box.x1 - ink.box.x0 != w || ink.box.y1 - ink.box.y0 != h) {
-				console.error(`void2d: sprite tile ${w}x${h} does not match glyph ${glyph}'s ink box`);
+			if (
+				ink == null ||
+				ink.box.x1 - ink.box.x0 != w ||
+				ink.box.y1 - ink.box.y0 != h
+			) {
+				console.error(
+					`void2d: sprite tile ${w}x${h} does not match glyph ${glyph}'s ink box`,
+				);
 				return COVERAGE_RASTER_BOX_MISMATCH;
 			}
 			for (let row: int32 = 0; row < h; row++) {
 				for (let col: int32 = 0; col < w; col++) {
-					p.texels[at + row * p.size + col] = ink.pixels[ink.origin + row * ink.stride + col];
+					p.texels[at + row * p.size + col] =
+						ink.pixels[ink.origin + row * ink.stride + col];
 				}
 			}
 		}
@@ -262,11 +275,23 @@ export function void2dGlyphRasterize(
 		const platform = f.platform;
 		if (!handled && platform != null) {
 			handled = true;
-			if (!platformFill(
-				platform, glyph, sizePx, shiftX, f.skew, f.emboldenUnits * scale,
-				p.texels[at..p.texels.length], w, h, p.size,
-			)) {
-				console.error(`void2d: platform tile ${w}x${h} does not match glyph ${glyph}'s ink box`);
+			if (
+				!platformFill(
+					platform,
+					glyph,
+					sizePx,
+					shiftX,
+					f.skew,
+					f.emboldenUnits * scale,
+					p.texels[at .. p.texels.length],
+					w,
+					h,
+					p.size,
+				)
+			) {
+				console.error(
+					`void2d: platform tile ${w}x${h} does not match glyph ${glyph}'s ink box`,
+				);
 				return COVERAGE_RASTER_BOX_MISMATCH;
 			}
 		}
@@ -331,13 +356,22 @@ export function void2dGlyphPageTexel(page: int32, x: int32, y: int32): int32 {
 when (voidColourEmoji) {
 	export function rgbaTexelAt(p: GlyphPage, x: int32, y: int32): uint32 {
 		const t: int32 = (y * p.size + x) * 4;
-		return (p.texels[t] as uint32) | ((p.texels[t + 1] as uint32) << 8) |
-			((p.texels[t + 2] as uint32) << 16) | ((p.texels[t + 3] as uint32) << 24);
+		return (
+			(p.texels[t] as uint32) |
+			((p.texels[t + 1] as uint32) << 8) |
+			((p.texels[t + 2] as uint32) << 16) |
+			((p.texels[t + 3] as uint32) << 24)
+		);
 	}
 
 	export function writeRgbaTile(
-		p: GlyphPage, x: int32, y: int32, w: int32, h: int32,
-		texels: Readonly<Span<uint32>>, stride: int32,
+		p: GlyphPage,
+		x: int32,
+		y: int32,
+		w: int32,
+		h: int32,
+		texels: Readonly<Span<uint32>>,
+		stride: int32,
 	): void {
 		for (let row: int32 = 0; row < h; row++) {
 			for (let col: int32 = 0; col < w; col++) {
@@ -352,32 +386,57 @@ when (voidColourEmoji) {
 		markDirtyBox(p, x, y, w, h);
 	}
 
-	export function void2dGlyphPageTexelRgba(page: int32, x: int32, y: int32): uint32 {
-		if (!validPage(page)) { return 0; }
-		const p = state.pages[page];
-		if (p.kind != PAGE_RGBA) {
-			console.error(`void2d: page ${page} is ${pageKindName(p.kind)}, not Rgba`);
+	export function void2dGlyphPageTexelRgba(
+		page: int32,
+		x: int32,
+		y: int32,
+	): uint32 {
+		if (!validPage(page)) {
 			return 0;
 		}
-		if (x < 0 || y < 0 || x >= p.size || y >= p.size) { return 0; }
+		const p = state.pages[page];
+		if (p.kind != PAGE_RGBA) {
+			console.error(
+				`void2d: page ${page} is ${pageKindName(p.kind)}, not Rgba`,
+			);
+			return 0;
+		}
+		if (x < 0 || y < 0 || x >= p.size || y >= p.size) {
+			return 0;
+		}
 		return rgbaTexelAt(p, x, y);
 	}
 
 	export function void2dGlyphPageBlitRgba(
-		page: int32, x: int32, y: int32, w: int32, h: int32,
-		texels: Readonly<Span<uint32>>, stride: int32,
+		page: int32,
+		x: int32,
+		y: int32,
+		w: int32,
+		h: int32,
+		texels: Readonly<Span<uint32>>,
+		stride: int32,
 	): int32 {
-		if (!validPage(page) || w <= 0 || h <= 0 || stride < w ||
-			(texels.length as int64) < ((h - 1) as int64) * (stride as int64) + (w as int64)) {
+		if (
+			!validPage(page) ||
+			w <= 0 ||
+			h <= 0 ||
+			stride < w ||
+			(texels.length as int64) <
+				((h - 1) as int64) * (stride as int64) + (w as int64)
+		) {
 			return BLIT_BAD_HANDLE;
 		}
 		const p = state.pages[page];
 		if (p.kind != PAGE_RGBA) {
-			console.error(`void2d: an Rgba tile was aimed at a ${pageKindName(p.kind)} page`);
+			console.error(
+				`void2d: an Rgba tile was aimed at a ${pageKindName(p.kind)} page`,
+			);
 			return BLIT_WRONG_PAGE_KIND;
 		}
 		if (tileOutside(p, x, y, w, h)) {
-			console.error(`void2d: Rgba tile ${w}x${h} at (${x},${y}) falls outside its ${p.size} page`);
+			console.error(
+				`void2d: Rgba tile ${w}x${h} at (${x},${y}) falls outside its ${p.size} page`,
+			);
 			return BLIT_OUTSIDE_PAGE;
 		}
 		writeRgbaTile(p, x, y, w, h, texels, stride);
@@ -387,20 +446,35 @@ when (voidColourEmoji) {
 
 when (voidSvg) {
 	export function void2dGlyphPageBlitMask(
-		page: int32, x: int32, y: int32, w: int32, h: int32,
-		alpha: Readonly<Span<uint8>>, stride: int32,
+		page: int32,
+		x: int32,
+		y: int32,
+		w: int32,
+		h: int32,
+		alpha: Readonly<Span<uint8>>,
+		stride: int32,
 	): int32 {
-		if (!validPage(page) || w <= 0 || h <= 0 || stride < w ||
-			(alpha.length as int64) < ((h - 1) as int64) * (stride as int64) + (w as int64)) {
+		if (
+			!validPage(page) ||
+			w <= 0 ||
+			h <= 0 ||
+			stride < w ||
+			(alpha.length as int64) <
+				((h - 1) as int64) * (stride as int64) + (w as int64)
+		) {
 			return BLIT_BAD_HANDLE;
 		}
 		const p = state.pages[page];
 		if (p.kind != PAGE_MASK) {
-			console.error(`void2d: a mask tile was aimed at a ${pageKindName(p.kind)} page`);
+			console.error(
+				`void2d: a mask tile was aimed at a ${pageKindName(p.kind)} page`,
+			);
 			return BLIT_WRONG_PAGE_KIND;
 		}
 		if (tileOutside(p, x, y, w, h)) {
-			console.error(`void2d: mask tile ${w}x${h} at (${x},${y}) falls outside its ${p.size} page`);
+			console.error(
+				`void2d: mask tile ${w}x${h} at (${x},${y}) falls outside its ${p.size} page`,
+			);
 			return BLIT_OUTSIDE_PAGE;
 		}
 		for (let row: int32 = 0; row < h; row++) {

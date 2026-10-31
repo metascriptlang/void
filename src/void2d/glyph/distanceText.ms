@@ -128,9 +128,15 @@ when (voidSdfText) {
 		return state.sdfGenerations;
 	}
 
-	export function void2dGlyphSdfBox(face: int32, glyph: int32, out: Span<int32>): void {
+	export function void2dGlyphSdfBox(
+		face: int32,
+		glyph: int32,
+		out: Span<int32>,
+	): void {
 		clear5(out, "void2dGlyphSdfBox");
-		if (!validFace(face)) { return; }
+		if (!validFace(face)) {
+			return;
+		}
 		const f = faceAt(face);
 		if (f.sprite || f.platform != null) {
 			out[4] = 1;
@@ -141,7 +147,10 @@ when (voidSdfText) {
 			if (hasCubic(vertices)) {
 				out[4] = 1;
 			} else {
-				putBox(out, sdfBitmapBox(f, glyph, vertices, void2dGlyphScale(face, SDF_EM)));
+				putBox(
+					out,
+					sdfBitmapBox(f, glyph, vertices, void2dGlyphScale(face, SDF_EM)),
+				);
 			}
 		}
 	}
@@ -156,7 +165,9 @@ when (voidSdfText) {
 		h: int32,
 	): int32 {
 		const tile = tileFault("SDF", face, page, PAGE_SDF, x, y, w, h);
-		if (tile != SDF_OK) { return tile; }
+		if (tile != SDF_OK) {
+			return tile;
+		}
 		const p = state.pages[page];
 		const f = faceAt(face);
 		const vertices = glyphShape(f, glyph);
@@ -165,7 +176,9 @@ when (voidSdfText) {
 			box = sdfBitmapBox(f, glyph, vertices, void2dGlyphScale(face, SDF_EM));
 		}
 		const fit = boxFault("SDF", box, w, h);
-		if (fit != SDF_OK) { return fit; }
+		if (fit != SDF_OK) {
+			return fit;
+		}
 		const at: int32 = y * p.size + x;
 		distanceFill(
 			vertices,
@@ -174,7 +187,7 @@ when (voidSdfText) {
 			box,
 			false,
 			0.0,
-			p.texels[at..p.texels.length],
+			p.texels[at .. p.texels.length],
 			p.size,
 		);
 		state.sdfGenerations++;
@@ -189,8 +202,13 @@ when (voidSdfText) {
 		x: int32,
 		y: int32,
 	): int32 {
-		if (!validFace(face) || !validPage(page) || isSynthetic(state.faces[face]) ||
-			state.faces[face].sprite || state.faces[face].platform != null) {
+		if (
+			!validFace(face) ||
+			!validPage(page) ||
+			isSynthetic(state.faces[face]) ||
+			state.faces[face].sprite ||
+			state.faces[face].platform != null
+		) {
 			return -2;
 		}
 		const p = state.pages[page];
@@ -202,18 +220,26 @@ when (voidSdfText) {
 			SDF_EDGE as uint8,
 			SDF_DIST_SCALE,
 		);
-		if (reference == null) { return -1; }
+		if (reference == null) {
+			return -1;
+		}
 		let differing: int32 = 0;
 		for (let row: int32 = 0; row < reference.height; row++) {
 			for (let col: int32 = 0; col < reference.width; col++) {
 				const at: int32 = (y + row) * p.size + (x + col);
-				if (p.texels[at] != reference.data[row * reference.width + col]) { differing++; }
+				if (p.texels[at] != reference.data[row * reference.width + col]) {
+					differing++;
+				}
 			}
 		}
 		let box: Vec<int32> = [0, 0, 0, 0, 0];
 		void2dGlyphSdfBox(face, glyph, box);
-		if (box[0] != reference.xoff || box[1] != reference.yoff ||
-			box[2] - box[0] != reference.width || box[3] - box[1] != reference.height) {
+		if (
+			box[0] != reference.xoff ||
+			box[1] != reference.yoff ||
+			box[2] - box[0] != reference.width ||
+			box[3] - box[1] != reference.height
+		) {
 			differing = -3;
 		}
 		return differing;
@@ -238,7 +264,9 @@ when (voidTextOutline) {
 		out: Span<int32>,
 	): void {
 		clear5(out, "void2dGlyphOutlineBox");
-		if (!validFace(face)) { return; }
+		if (!validFace(face)) {
+			return;
+		}
 		const f = faceAt(face);
 		if (f.sprite || f.platform != null) {
 			out[4] = 1;
@@ -246,10 +274,13 @@ when (voidTextOutline) {
 		}
 		const vertices = glyphShape(f, glyph);
 		if (vertices.length > 0) {
-			putBox(out, paddedBox(
-				bitmapBox(f, glyph, vertices, void2dGlyphScale(face, sizePx), shiftX),
-				outlinePad(widthPx),
-			));
+			putBox(
+				out,
+				paddedBox(
+					bitmapBox(f, glyph, vertices, void2dGlyphScale(face, sizePx), shiftX),
+					outlinePad(widthPx),
+				),
+			);
 		}
 	}
 
@@ -266,17 +297,24 @@ when (voidTextOutline) {
 		h: int32,
 	): int32 {
 		const tile = tileFault("outline", face, page, PAGE_COVERAGE, x, y, w, h);
-		if (tile != SDF_OK) { return tile; }
+		if (tile != SDF_OK) {
+			return tile;
+		}
 		const p = state.pages[page];
 		const f = faceAt(face);
 		const scale = void2dGlyphScale(face, sizePx);
 		const vertices = glyphShape(f, glyph);
 		let box: GlyphBox = EMPTY_BOX;
 		if (vertices.length > 0) {
-			box = paddedBox(bitmapBox(f, glyph, vertices, scale, shiftX), outlinePad(widthPx));
+			box = paddedBox(
+				bitmapBox(f, glyph, vertices, scale, shiftX),
+				outlinePad(widthPx),
+			);
 		}
 		const fit = boxFault("outline", box, w, h);
-		if (fit != SDF_OK) { return fit; }
+		if (fit != SDF_OK) {
+			return fit;
+		}
 		const at: int32 = y * p.size + x;
 		if (hasCubic(vertices)) {
 			const flat = flattenCubics(vertices, 0.35 / scale);
@@ -287,7 +325,7 @@ when (voidTextOutline) {
 				box,
 				true,
 				widthPx,
-				p.texels[at..p.texels.length],
+				p.texels[at .. p.texels.length],
 				p.size,
 			);
 		} else {
@@ -298,7 +336,7 @@ when (voidTextOutline) {
 				box,
 				true,
 				widthPx,
-				p.texels[at..p.texels.length],
+				p.texels[at .. p.texels.length],
 				p.size,
 			);
 		}
@@ -317,9 +355,16 @@ when (voidSdfText && voidTextOutline) {
 		biasTexels: float32,
 	): GlyphBox {
 		const box = sdfBitmapBox(f, glyph, vertices, scale);
-		if (box.x1 <= box.x0) { return box; }
+		if (box.x1 <= box.x0) {
+			return box;
+		}
 		const extra: int32 = truncInt(Math.ceil(biasTexels as float64)) + 2;
-		return { x0: box.x0 - extra, y0: box.y0 - extra, x1: box.x1 + extra, y1: box.y1 + extra };
+		return {
+			x0: box.x0 - extra,
+			y0: box.y0 - extra,
+			x1: box.x1 + extra,
+			y1: box.y1 + extra,
+		};
 	}
 
 	export function void2dGlyphSdfOutlineBox(
@@ -329,7 +374,9 @@ when (voidSdfText && voidTextOutline) {
 		out: Span<int32>,
 	): void {
 		clear5(out, "void2dGlyphSdfOutlineBox");
-		if (!validFace(face)) { return; }
+		if (!validFace(face)) {
+			return;
+		}
 		const f = faceAt(face);
 		if (f.sprite || f.platform != null) {
 			out[4] = 1;
@@ -342,7 +389,13 @@ when (voidSdfText && voidTextOutline) {
 			} else {
 				putBox(
 					out,
-					sdfOutlineBox(f, glyph, vertices, void2dGlyphScale(face, SDF_EM), biasTexels),
+					sdfOutlineBox(
+						f,
+						glyph,
+						vertices,
+						void2dGlyphScale(face, SDF_EM),
+						biasTexels,
+					),
 				);
 			}
 		}
@@ -359,16 +412,26 @@ when (voidSdfText && voidTextOutline) {
 		h: int32,
 	): int32 {
 		const tile = tileFault("SDF outline", face, page, PAGE_SDF, x, y, w, h);
-		if (tile != SDF_OK) { return tile; }
+		if (tile != SDF_OK) {
+			return tile;
+		}
 		const p = state.pages[page];
 		const f = faceAt(face);
 		const vertices = glyphShape(f, glyph);
 		let box: GlyphBox = EMPTY_BOX;
 		if (vertices.length > 0 && !hasCubic(vertices)) {
-			box = sdfOutlineBox(f, glyph, vertices, void2dGlyphScale(face, SDF_EM), biasTexels);
+			box = sdfOutlineBox(
+				f,
+				glyph,
+				vertices,
+				void2dGlyphScale(face, SDF_EM),
+				biasTexels,
+			);
 		}
 		const fit = boxFault("SDF outline", box, w, h);
-		if (fit != SDF_OK) { return fit; }
+		if (fit != SDF_OK) {
+			return fit;
+		}
 		const at: int32 = y * p.size + x;
 		distanceFill(
 			vertices,
@@ -377,7 +440,7 @@ when (voidSdfText && voidTextOutline) {
 			box,
 			false,
 			biasTexels,
-			p.texels[at..p.texels.length],
+			p.texels[at .. p.texels.length],
 			p.size,
 		);
 		state.outlineGenerations++;
