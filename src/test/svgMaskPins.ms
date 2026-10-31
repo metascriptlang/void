@@ -2,14 +2,16 @@
 // refusal reason, size and the alpha of five raster sizes per document, for the documents with
 // no skew transform. "skew" was recorded from the port: libm tanf and the double tan the port
 // rounds to float32 differ in the last bit, which moves 152 of 15.27M pixels by one or two levels.
+// edges, gen1, gen2, gen5 and skew were re-recorded from the port, which refuses on purpose a CSS
+// comment and geometry past the rasterizer's fixed-point reach at the largest mask (UB in nanosvg).
 export const SVG_PINS: string[] = [
 	"fixtures b9423f7f5568236f",
-	"edges 8c71a5a1d9dd5e30",
+	"edges 5446f9ab66604e3f",
 	"gen0 246ec2ccabef925f",
-	"gen1 26eedfda43790e8f",
-	"gen2 860baf521a7f6c84",
+	"gen1 3cc48edbdf1137fc",
+	"gen2 783061ebc62726c4",
 	"gen3 ca64fcf491432ca9",
 	"gen4 fd66b288210bbda5",
-	"gen5 fb789666a9a14735",
-	"skew 6016fe008dbea7d4",
+	"gen5 f1bc00ada6f08260",
+	"skew 628aa53f8b8557bf",
 ];

@@ -11,6 +11,7 @@ import {
 	svgMaskReleased,
 	svgMaskRasterize,
 } from "../void2d/svgMask";
+import { MAX_MASK_SIDE } from "../void2d/svg/mask";
 
 const HEAD: string = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" `
 	+ `viewBox="0 0 24 24"`;
@@ -309,7 +310,7 @@ test "a paint that names no gradient, or a colour name nanosvg does not know, is
 
 test "a style element keeps simple class selectors and refuses every other selector by text" {
 	const ok = mask(
-		icon("", `<style>.a, .b-1 { fill: #000 } /* note */</style>`
+		icon("", `<style>.a, .b-1 { fill: #000 }</style>`
 			+ `<rect class="a" width="24" height="24"/>`),
 		24,
 	);
@@ -322,6 +323,73 @@ test "a style element keeps simple class selectors and refuses every other selec
 	assert media.what.startsWith("css at-rule @media");
 	const inner = refusalOf(icon("", `<style>.a { filter: blur(2px) }</style>`));
 	assert inner.what == "attribute filter";
+}
+
+test "a style element in a CDATA section is refused, since nanosvg skips it as markup" {
+	const wrapped = refusalOf(icon("", `<style><![CDATA[.a { fill: none }]]></style>`
+		+ `<rect class="a" width="24" height="24"/>`));
+	assert wrapped.error == SvgMaskError.Unsupported && wrapped.what == "css in a CDATA section";
+	const spaced = refusalOf(icon("", `<style>\n  <![CDATA[\n.a{fill:#000}\n.b{stroke:#000}\n]]>\n</style>`));
+	assert spaced.what == "css in a CDATA section";
+}
+
+test "a css comment is refused by its text, since nanosvg reads it as selectors or declarations" {
+	const inRule = refusalOf(icon("", `<style>.a { /* x */ fill: none }</style>`
+		+ `<rect class="a" width="24" height="24"/>`));
+	assert inRule.error == SvgMaskError.Unsupported && inRule.what == "css comment /* x */";
+	const between = refusalOf(icon("", `<style>.a { fill: none; /* y */ stroke: #000 }</style>`));
+	assert between.what == "css comment /* y */";
+	const glued = refusalOf(icon("", `<style>/* c */.a { fill: none }</style>`));
+	assert glued.what == "css comment /* c */";
+	const trailing = refusalOf(icon("", `<style>.a { fill: #000 } /* note */</style>`));
+	assert trailing.what == "css comment /* note */";
+	assert refusalOf(icon("", `<style>/* open .a{fill:red}</style>`)).what
+		== "an unterminated css comment";
+}
+
+test "a '>' inside a quoted attribute value is refused, since nanosvg ends the tag there" {
+	const double = refusalOf(icon("", `<rect title="a>b" fill="none" width="24" height="24"/>`));
+	assert double.error == SvgMaskError.Unsupported;
+	assert double.what == "attribute title value holding '>'";
+	const single = refusalOf(icon("", `<path d='M0 0' style='fill: none; x: a>b'/>`));
+	assert single.what == "attribute style value holding '>'";
+}
+
+test "a class whose rule names itself is refused at load, not thrown" {
+	const self = refusalOf(icon("", `<style>.a{class:a}</style><rect class="a" width="4" height="4"/>`));
+	assert self.error == SvgMaskError.Unsupported;
+	assert self.what == "style rules nest deeper than 64 levels: a class names itself";
+	const pair = refusalOf(icon("", `<style>.a{class:b}.b{class:a}</style>`
+		+ `<rect style="class:a" width="4" height="4"/>`));
+	assert pair.what == "style rules nest deeper than 64 levels: a class names itself";
+}
+
+test "a path arc whose numbers overflow is refused at load, not thrown" {
+	const nan = refusalOf(icon("", `<path d="M2 2 A0e400 5 0 0 1 20 20"/>`));
+	assert nan.error == SvgMaskError.Unsupported && nan.what == "a path arc whose numbers overflow";
+	const huge = refusalOf(icon("", `<path d="M2 2 A1e30 1e30 0 0 1 20 20"/>`));
+	assert huge.what == "a path arc whose numbers overflow";
+}
+
+test "a coordinate or stroke past the rasterizer's fixed point is refused at load, not at draw" {
+	assert (MAX_MASK_SIDE as int32) == MAX_SVG_MASK_SIDE;
+	const far = refusalOf(icon("", `<path d="M0 0 L1e7 10 L0 20z"/>`));
+	assert far.error == SvgMaskError.Unsupported;
+	assert far.what == "a coordinate past the rasterizer's fixed-point reach at the largest mask";
+	const nan = refusalOf(icon("", `<path d="M2 2 L0e400 10 L2 20z"/>`));
+	assert nan.what == "a non-finite coordinate";
+	const wide = refusalOf(icon("", `<path d="M2 2 L20 20" stroke="#000" stroke-width="1e9"/>`));
+	assert wide.what == "a stroke width past the rasterizer's fixed-point reach at the largest mask";
+	const infinite = refusalOf(icon("", `<path d="M2 2 L20 20" stroke="#000" stroke-width="1e40"/>`));
+	assert infinite.what == "a stroke width past the rasterizer's fixed-point reach at the largest mask";
+}
+
+test "an edge far flatter than a sample row draws without overflowing its per-row step" {
+	const rising = mask(icon("", `<path d="M-500 0.09999 L500 0.10001 L500 5 L-500 5z"/>`), 24);
+	const falling = mask(icon("", `<path d="M-500 0.10001 L500 0.09999 L500 5 L-500 5z"/>`), 24);
+	assert (rising[24 * 2] as int32) == 255 && (falling[24 * 2] as int32) == 255;
+	assert (rising[24 * 6] as int32) == 0 && (falling[24 * 6] as int32) == 0;
+	assert (rising[12] as int32) == 204 && (falling[12] as int32) == 255;
 }
 
 test "text that is not an SVG document is unparsable, by what is wrong with it" {

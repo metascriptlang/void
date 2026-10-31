@@ -208,6 +208,7 @@ class Parser {
 	defsFlag: boolean = false;
 	styleFlag: boolean = false;
 	styleDepth: int32 = 0;
+	refusal: string = "";
 	source: uint8[] = [];
 }
 
@@ -1118,9 +1119,10 @@ function parseNameValue(
 
 function parseStyle(p: Parser, str: Str): void {
 	if (p.styleDepth >= MAX_STYLE_DEPTH) {
-		throw new Error(
-			"void2d svg: style rules nest deeper than 64 levels, a class names itself",
-		);
+		p.refusal = "style rules nest deeper than 64 levels: a class names itself";
+	}
+	if (p.refusal != "") {
+		return;
 	}
 	p.styleDepth += 1;
 	let at: int32 = 0;
@@ -1449,6 +1451,12 @@ function pathArcTo(p: Parser, pen: Pen, args: float32[], rel: boolean): void {
 		da = da + 2 * NSVG_PI;
 	}
 
+	if (da != da) {
+		p.refusal = "a path arc whose numbers overflow";
+		pen.cpx = x2;
+		pen.cpy = y2;
+		return;
+	}
 	const t: float32[] = [cosrx, sinrx, -sinrx, cosrx, cx, cy];
 
 	const divs: float32 = absf(da) / (NSVG_PI * 0.5) + 1.0;
@@ -2486,14 +2494,20 @@ function gradientKindOf(p: Parser, id: uint8[]): int32 {
 }
 
 // nsvgParse: the document in `source` (NUL-free bytes) as an image in px at 96 dpi.
-export function nsvgParse(source: uint8[], dpi: float32): SvgImage {
+export function nsvgParse(
+	source: uint8[],
+	dpi: float32,
+): Result<SvgImage, string> {
 	const p = createParser(source, dpi);
 	parseXml(p, source.length as int32);
+	if (p.refusal != "") {
+		return Result.err(p.refusal);
+	}
 	createGradients(p);
 	scaleToViewbox(p);
 	const image = new SvgImage();
 	image.width = p.imageWidth;
 	image.height = p.imageHeight;
 	image.shapes = p.shapes;
-	return image;
+	return Result.ok(image);
 }

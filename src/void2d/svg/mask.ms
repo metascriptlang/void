@@ -12,7 +12,7 @@ import {
 	SvgImage,
 } from "./image";
 import { nsvgParse } from "./parse";
-import { rasterize } from "./rasterize";
+import { fixedPointRefusal, rasterize } from "./rasterize";
 import {
 	SVG_BAD_HANDLE,
 	SVG_NO_MEMORY,
@@ -25,6 +25,7 @@ import { formatG } from "../../math/formatG";
 
 const MAX_SOURCE_BYTES: int32 = 16 * 1024 * 1024;
 const MAX_PARSED_SIDE: float32 = 1000000.0;
+export const MAX_MASK_SIDE: float32 = 8192.0;
 const DOT_POINTS: int32 = 13;
 const TINY_PATH_OF_STROKE: float32 = 0.05;
 const DOT_KAPPA: float32 = 0.5522847498;
@@ -271,8 +272,14 @@ export function maskParse(source: string): int32 {
 		reason = scanned.reason;
 		return scanned.code;
 	}
-	const image = nsvgParse(bytes, DPI);
+	const parsed = nsvgParse(bytes, DPI);
 	parsedCount += 1;
+	if (!parsed.ok) {
+		reason = parsed.error;
+		releasedCount += 1;
+		return SVG_REFUSED;
+	}
+	const image = parsed.value;
 	if (
 		!(
 			image.width > 0.0 &&
@@ -289,6 +296,13 @@ export function maskParse(source: string): int32 {
 	if (code != 0) {
 		releasedCount += 1;
 		return code;
+	}
+	const largest: float32 = MAX_MASK_SIDE / Math.max(image.width, image.height);
+	const overflow = fixedPointRefusal(image, largest, MAX_MASK_SIDE);
+	if (overflow != "") {
+		reason = overflow;
+		releasedCount += 1;
+		return SVG_REFUSED;
 	}
 	const handle = takeSlot(image);
 	if (handle == 0) {
