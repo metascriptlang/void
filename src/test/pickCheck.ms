@@ -822,8 +822,10 @@ function flatTriangle(ref data: MeshData, x: float32): void {
 test "a LOD node is picked on its own level 0 slot, not on coarser levels or sibling slots" {
 	const context: DrawContext = DrawContext.withUniformCapacity(0);
 	const _mesh: MeshId = added(context, GpuMesh.fullscreen(0, 12));
-	const _material = addMaterial(
-		context, Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque));
+	const kinds: Vec<Material> = materials();
+	for (let i = 0; i < (kinds.length as int32); i++) {
+		if (!addMaterial(context, kinds[i]).ok) { unreachable; }
+	}
 	const scene: Scene3D = Scene3D.create(context);
 	const config = MeshLod.create(2, [0.5], 0.1);
 	const ranges = MeshLodRanges.fromElementRanges(2, 2, 12,

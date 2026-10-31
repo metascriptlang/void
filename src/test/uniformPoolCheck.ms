@@ -117,7 +117,9 @@ test "a typed block write advances the write counter like a range write" {
 	const before: int64 = uniformWrites();
 	assert writeBlock(pool, typed.value, { a: 1, b: 2 }).ok;
 	assert uniformWrites() == before + 1;
-	assert writeRange(pool, typed.value.block, [3.0, 4.0]).ok;
+	let floats: Vec<float32> = new Array(typed.value.block.length);
+	floats[0] = 3.0;
+	assert writeRange(pool, typed.value.block, floats).ok;
 	assert uniformWrites() == before + 2;
 	assert pool.values[typed.value.block.offset] == 3;
 }

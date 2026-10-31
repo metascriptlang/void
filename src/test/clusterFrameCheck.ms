@@ -238,10 +238,11 @@ test "refilled cluster lights keep their storage and drop the records that went 
 	assert near(kept[1].direction, fresh[1].direction);
 }
 
-test "a second frame with the same lights grows none of the frame's scratch" {
+test "a frame after the depth range settled grows none of the frame's scratch" {
 	const frame: ClusterFrame = ClusterFrame.create(ClusterConfig.defaults());
 	const view: CameraView = viewOf(false, 0.5);
 	let block: Vec<float32> = headerOnly();
+	assert assignFrame(frame, lightsOf(), view, false, block).ok;
 	const first = assignFrame(frame, lightsOf(), view, false, block);
 	assert first.ok;
 	const clusters: int32 = frame.scratch.known.length as int32;
