@@ -41,6 +41,13 @@ when (voidShaper) {
 	import { KB_LANGUAGE_DONT_KNOW } from "./kb/languages";
 	import { KB_BREAK_FLAG_SCRIPT } from "./kb/shapeTables";
 
+	when (macos || ios) {
+		import { void2dPlatformShape } from "./platformFace.h";
+		import { platformInfo, platformOpen, postScriptName } from "./glyph/platform";
+		import { getFontOffsetForIndex } from "./trueType";
+		import { findTable } from "./trueType/fontInfo";
+	}
+
 	const NO_FACE: int32 = -1;
 	const BAD_FONT: int32 = -2;
 	const ENGINE_ERROR: int32 = -4;
@@ -48,12 +55,16 @@ when (voidShaper) {
 	const ALREADY_OPEN: int32 = -6;
 	const BAD_TAG: int32 = -7;
 	const TOO_MANY_FEATURES: int32 = -8;
+	const CT_OVERFLOW: int32 = -9;
+	const CT_SUBSTITUTED: int32 = -10;
+	const CT_FAILED: int32 = -11;
 	const MAX_FEATURES: int32 = 32;
 
 	class ShapeFont {
 		readonly bytes: FaceBytes;
 		readonly font: KbFont;
 		context: KbShapeContext;
+		platform: Ptr<void> | null = null;
 
 		constructor(bytes: FaceBytes, font: KbFont) {
 			this.bytes = bytes;
@@ -90,10 +101,29 @@ when (voidShaper) {
 			-6 => "a shaping pass is already open",
 			-7 => "a feature tag is four printable ASCII characters",
 			-8 => "more than 32 feature overrides in one pass",
+			-9 => "CoreText returned more glyphs than the run can hold",
+			-10 => "CoreText substituted another font for the face",
+			-11 => "CoreText did not shape the run",
 			_ => "unknown status",
 		};
 		console.log(`void2d shaper: ${what}: ${reason} (${code})`);
 		unreachable;
+	}
+
+	function morxPlatform(bytes: FaceBytes): Ptr<void> | null {
+		when (macos || ios) {
+			const data = bytes.data;
+			const start: int32 = getFontOffsetForIndex(data, 0);
+			if (start < 0 || findTable(data, start, "morx") == 0 || findTable(data, start, "GSUB") != 0) {
+				return null;
+			}
+			const table = platformInfo(data, start);
+			const name: string = postScriptName(data, start);
+			if (table == null || name == "") { return null; }
+			return platformOpen(null, data, name, table.glyphCount, table.unitsPerEm);
+		} else {
+			return null;
+		}
 	}
 
 	function fontFor(bytes: FaceBytes): ShapeFont | null {
@@ -109,6 +139,7 @@ when (voidShaper) {
 			return null;
 		}
 		const entry = new ShapeFont(bytes, font);
+		entry.platform = morxPlatform(bytes);
 		fonts.push(entry);
 		return entry;
 	}
@@ -149,7 +180,9 @@ when (voidShaper) {
 		}
 		if (found == null) { return BAD_FONT; }
 		currentFont = found;
-		kbShapeBegin(found.context, direction, KB_LANGUAGE_DONT_KNOW);
+		if (found.platform == null) {
+			kbShapeBegin(found.context, direction, KB_LANGUAGE_DONT_KNOW);
+		}
 		shaped = [];
 		nextIndex = 0;
 		input = [];
@@ -176,6 +209,7 @@ when (voidShaper) {
 	function featureCode(tag: string, value: int32): int32 {
 		const font = currentFont;
 		if (!passOpen || font == null) { return NOT_OPEN; }
+		if (font.platform != null) { return 0; }
 		if (!featureTagFits(tag)) { return BAD_TAG; }
 		if ((features.length as int32) == MAX_FEATURES) { return TOO_MANY_FEATURES; }
 		let id: uint32 = 0;
@@ -192,7 +226,7 @@ when (voidShaper) {
 	function codepointCode(codepoint: int32): int32 {
 		const font = currentFont;
 		if (!passOpen || font == null) { return NOT_OPEN; }
-		if (forcedDirection != 0) {
+		if (forcedDirection != 0 || font.platform != null) {
 			input.push(codepoint);
 			inputBreak.push(breakNext);
 			breakNext = false;
@@ -210,7 +244,7 @@ when (voidShaper) {
 	function breakCode(): int32 {
 		const font = currentFont;
 		if (!passOpen || font == null) { return NOT_OPEN; }
-		if (forcedDirection != 0) {
+		if (forcedDirection != 0 || font.platform != null) {
 			breakNext = true;
 			return 0;
 		}
@@ -260,9 +294,69 @@ when (voidShaper) {
 		kbShapeEndManualRuns(context);
 	}
 
+	function endCoreText(platform: Ptr<void>): int32 {
+		const count = input.length as int32;
+		const direction: ShapeDirection =
+			forcedDirection == 2 ? ShapeDirection.Rtl : ShapeDirection.Ltr;
+		let from: int32 = 0;
+		let segment: int32 = 0;
+		while (from < count) {
+			let to: int32 = from + 1;
+			while (to < count && !inputBreak[to]) { to++; }
+			const n: int32 = to - from;
+			const capacity: int32 = 2 * n + 8;
+			let cps: int32[] = new Array<int32>(n);
+			for (let k: int32 = 0; k < n; k++) {
+				const value: int32 = input[from + k];
+				cps[k] = value;
+			}
+			let glyphs: int32[] = new Array<int32>(capacity);
+			let advances: int32[] = new Array<int32>(capacity);
+			let offsetsX: int32[] = new Array<int32>(capacity);
+			let offsetsY: int32[] = new Array<int32>(capacity);
+			let indices: int32[] = new Array<int32>(capacity);
+			const total: int32 = void2dPlatformShape(
+				platform, cps[0], n, capacity, (glyphs as Span<int32>) as Ptr<int32>,
+				(advances as Span<int32>) as Ptr<int32>, (offsetsX as Span<int32>) as Ptr<int32>,
+				(offsetsY as Span<int32>) as Ptr<int32>, (indices as Span<int32>) as Ptr<int32>,
+			);
+			if (total < 0) {
+				return total == -1 ? CT_OVERFLOW : total == -2 ? CT_SUBSTITUTED : CT_FAILED;
+			}
+			for (let j: int32 = 0; j < total; j++) {
+				const at: int32 = direction == ShapeDirection.Rtl ? total - 1 - j : j;
+				const origin: int32 = from + indices[at];
+				shaped.push({
+					glyph: glyphs[at],
+					advanceX: advances[at],
+					advanceY: 0,
+					offsetX: offsetsX[at],
+					offsetY: offsetsY[at],
+					index: origin,
+					codepoint: input[origin],
+					direction,
+					run: segment,
+				});
+			}
+			segment++;
+			from = to;
+		}
+		return 0;
+	}
+
 	function endCode(): int32 {
 		const font = currentFont;
 		if (!passOpen || font == null) { return NOT_OPEN; }
+		const platform = font.platform;
+		if (platform != null) {
+			const status: int32 = endCoreText(platform);
+			if (status < 0) {
+				closeShape(font);
+				return status;
+			}
+			closeShape(font);
+			return shaped.length as int32;
+		}
 		try {
 			if (forcedDirection != 0) { feedForced(font.context); }
 			kbShapeEnd(font.context);

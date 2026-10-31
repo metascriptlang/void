@@ -279,6 +279,7 @@ when (voidShaper) {
 	import "./shaperPortCheck";
 	import "./kbCmapUnicodeCheck";
 	import "./shapedLayoutCheck";
+	import "./morxShapeCheck";
 }
 when (voidBidi) {
 	import "./bidiTableCheck";
