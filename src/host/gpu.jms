@@ -27,12 +27,18 @@ when (webgl2) {
 	import { acquireContext } from "../webgpu/gl/glCalls";
 
 	export class GpuSurface {}
-	export function surfaceOpen(selector: string): GpuSurface { return new GpuSurface(); }
+	export function surfaceOpen(selector: string): GpuSurface {
+		return new GpuSurface();
+	}
 	export function surfaceReconfigure(surface: GpuSurface): void {}
 	export function surfaceClose(surface: GpuSurface): void {}
 	export function surfaceBind(surface: GpuSurface): void {}
-	export function doorDrop(): void { doorShutdown(); }
-	export function framesStopWhenLost(): boolean { return false; }
+	export function doorDrop(): void {
+		doorShutdown();
+	}
+	export function framesStopWhenLost(): boolean {
+		return false;
+	}
 } else {
 	import { acquireDevice } from "../webgpu/js/backend";
 	export {
@@ -44,11 +50,15 @@ when (webgl2) {
 	} from "../webgpu/js/backend";
 
 	export function doorDrop(): void {}
-	export function framesStopWhenLost(): boolean { return true; }
+	export function framesStopWhenLost(): boolean {
+		return true;
+	}
 }
 
 when (webgl2) {
-	function canvasColor(): PixelFormat { return PixelFormat.Rgba8; }
+	function canvasColor(): PixelFormat {
+		return PixelFormat.Rgba8;
+	}
 } else {
 	extern function prefersBgra(): boolean
 		from "(navigator.gpu.getPreferredCanvasFormat()=='bgra8unorm')";
@@ -185,7 +195,9 @@ export function doorEnsure(): void {
 	when (webgl2) {
 		doorRestore();
 	} else {
-		if (!gpuState.doorUp || gpuState.doorStale) { doorRestore(); }
+		if (!gpuState.doorUp || gpuState.doorStale) {
+			doorRestore();
+		}
 	}
 }
 
@@ -250,7 +262,9 @@ when (webgl2) {
 			}
 			return;
 		}
-		if (epoch == gpuState.runEpoch) { onRestored(); }
+		if (epoch == gpuState.runEpoch) {
+			onRestored();
+		}
 	}
 }
 
