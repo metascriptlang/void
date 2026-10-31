@@ -242,6 +242,7 @@ import "./shaderStorageWriteCheck";
 import "./shaderArrayLengthCheck";
 import "./shaderWorkgroupLoadCheck";
 import "./shaderTextureBarrierCheck";
+import "./shaderUniformityCheck";
 import "./shaderPrimitiveIndexCheck";
 import "./shaderFragDepthCheck";
 import "./shaderTexelCheck";
