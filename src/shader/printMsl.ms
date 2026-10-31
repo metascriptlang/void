@@ -1022,6 +1022,8 @@ function layoutError(m: ShaderModule, structIndex: int32, layout: StructLayout, 
 		if (f.type.kind == ShaderTypeKind.Struct) {
 			return owner + " nests struct '" + f.name + "'";
 		}
+		// Parked on ~/metascript/.inbox/compiler/2026-10-27-tuple-literal-ternary-arm-destructured-unresolved.md:
+		// destructure the ternary directly once that lands.
 		const extent: [int32, int32] = packed[k] ? [4, 12] : naturalExtent(m, f.type);
 		const [align, size] = extent;
 		const offset = (end + align - 1) / align * align;
