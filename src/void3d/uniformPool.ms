@@ -251,6 +251,7 @@ export function writeBlock<T>(
 ): Result<int32, UniformError> {
 	const _writable = try writable(pool, "writeBlock", handle.block, uniformSize<T>() / 4);
 	writeUniform<T>(pool.values, handle.block.offset, value);
+	writeCount = writeCount + 1;
 	return Result.ok(handle.block.length);
 }
 

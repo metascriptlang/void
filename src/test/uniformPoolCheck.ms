@@ -1,14 +1,22 @@
-import { UniformBlock } from "../void3d/material";
+import { TypedBlock, UniformBlock } from "../void3d/material";
 import { LAST_GENERATION } from "../void3d/slots";
 import {
 	UniformPool,
 	UniformError,
 	reserveRange,
+	reserveBlock,
 	releaseRange,
 	writeRange,
+	writeBlock,
+	uniformWrites,
 	ownRange,
 	disownRange,
 } from "../void3d/uniformPool";
+
+struct Pair {
+	a: float32;
+	b: float32;
+}
 
 const NONE: UniformBlock = { store: 0, slot: 0, offset: -1, length: 0, generation: 0 };
 
@@ -100,4 +108,16 @@ test "an owned range is released only by its owner" {
 	assert !pool.holds(block) && pool.freeRanges() == 1;
 	const reused: UniformBlock = reserved(pool, 4);
 	assert !pool.isOwned(reused);
+}
+
+test "a typed block write advances the write counter like a range write" {
+	const pool: UniformPool = UniformPool.withCapacity(8);
+	const typed: Result<TypedBlock<Pair>, UniformError> = reserveBlock<Pair>(pool, 0);
+	assert typed.ok;
+	const before: int64 = uniformWrites();
+	assert writeBlock(pool, typed.value, { a: 1, b: 2 }).ok;
+	assert uniformWrites() == before + 1;
+	assert writeRange(pool, typed.value.block, [3.0, 4.0]).ok;
+	assert uniformWrites() == before + 2;
+	assert pool.values[typed.value.block.offset] == 3;
 }
