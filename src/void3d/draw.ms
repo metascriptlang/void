@@ -1748,28 +1748,32 @@ struct GlobalApply { block: UniformBlock; stamp: int32; writes: int64; }
 
 let globalApplies: Vec<GlobalApply> = [];
 
-// A global block is applied once for as long as the door keeps the pipeline: while the slot's
-// stamp is the one its apply got, the block is the same range and no pool write came since, it
-// is still bound.
-function applyGlobal(context: DrawContext, block: UniformBlock): void {
+// A block is applied once for as long as the door keeps the pipeline: while the slot's stamp is
+// the one its apply got, the block is the same range and no pool write came since, it is still
+// bound. The material's block takes the same record as the globals, so consecutive draws of one
+// material apply it once.
+function stillBound(block: UniformBlock): boolean {
 	while ((globalApplies.length as int32) < UNIFORM_SLOTS) {
 		globalApplies.push({ block: NO_UNIFORMS, stamp: 0, writes: 0 });
 	}
 	const slot: int32 = block.slot;
-	if (slot < 0 || slot >= UNIFORM_SLOTS) {
-		context.applyBlock(block);
-		return;
-	}
+	if (slot < 0 || slot >= UNIFORM_SLOTS) { return false; }
 	const stamp: int32 = uniformStamp(slot);
 	const last: GlobalApply = globalApplies[slot];
-	if (
-		stamp != 0 && stamp == last.stamp && last.block == block &&
-		last.writes == uniformWrites()
-	) {
-		return;
-	}
-	context.applyBlock(block);
+	return stamp != 0 && stamp == last.stamp && last.block == block &&
+		last.writes == uniformWrites();
+}
+
+function noteApplied(block: UniformBlock): void {
+	const slot: int32 = block.slot;
+	if (slot < 0 || slot >= UNIFORM_SLOTS) { return; }
 	globalApplies[slot] = { block: block, stamp: uniformStamp(slot), writes: uniformWrites() };
+}
+
+function applyGlobal(context: DrawContext, block: UniformBlock): void {
+	if (stillBound(block)) { return; }
+	context.applyBlock(block);
+	noteApplied(block);
 }
 
 // The first `declared` floats of a block: a program that reads less than its material's block
@@ -2182,8 +2186,11 @@ function drawStaged(
 	// A caster that does not cut reads none of its material's block.
 	if (material.uniforms.length > 0 &&
 		context.pipelines.declaresBlock(globalProgram, material.uniforms.slot)) {
-		const declared: int32 = uniformBlockLength(program, material.uniforms.slot);
-		context.applyBlockHead(material.uniforms, program, declared);
+		if (!stillBound(material.uniforms)) {
+			const declared: int32 = uniformBlockLength(program, material.uniforms.slot);
+			context.applyBlockHead(material.uniforms, program, declared);
+			noteApplied(material.uniforms);
+		}
 	}
 	const range = item.range;
 	if (range === null) {
