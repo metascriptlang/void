@@ -340,7 +340,8 @@ test "switchCase" {
 	assert glsl(switchFs) ==
 		"layout(location=0) out vec4 fragColor;\n" +
 		"void main() {\n" +
-		"    int i = ivec2(gl_FragCoord.xy).x;\n" +
+		"    int i = ivec2(mix(vec2(0.0), clamp(gl_FragCoord.xy, vec2(-2147483648.0), " +
+			"vec2(2147483520.0)), equal(gl_FragCoord.xy, gl_FragCoord.xy))).x;\n" +
 		"    switch (i) {\n" +
 		"        case 0: {\n" +
 		"            fragColor = vec4(1.0, 0.0, 0.0, 1.0);\n" +
