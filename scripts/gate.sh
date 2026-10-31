@@ -1036,7 +1036,7 @@ else
 	fail "shader modules: stale or unprintable — see out/gate-shaders.log (sh scripts/regen-shaders.sh)"
 	grep -E '^(stale|dxbc miss)' out/gate-shaders.log | head -4 | sed 's/^/      /'
 fi
-for validator in Hlsl Wgsl Msl; do
+for validator in Hlsl Wgsl Msl Spirv; do
 	status=0
 	sh "scripts/validate$validator.sh" out/irPrograms > "out/gate-validate$validator.log" 2>&1 || status=$?
 	verdict=$(grep "^validate" "out/gate-validate$validator.log" | tail -1)
