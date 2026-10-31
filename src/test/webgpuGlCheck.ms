@@ -40,6 +40,8 @@ import {
 	texels,
 	uniformGroup,
 	vertexBuffer,
+	keptOutsideWrites,
+	partialWritesReadBack,
 } from "./webgpuFixtures.ms";
 import { glWindowError, glWindowOpen, glWindowReadback } from "./glWindow.h";
 
@@ -188,6 +190,13 @@ test "a 4x multisampled target resolves into its single-sample resolve target" {
 	const pixels = drawTriangle(device, 4, 0);
 	assert pixel(pixels, 0, 0) == BLUE;
 	assert pixel(pixels, 32, 32) == RED;
+	device.destroy();
+}
+
+test "a partial writeBuffer keeps the bytes it did not write across frames, vertex and index" {
+	const device = openDevice();
+	assert keptOutsideWrites(partialWritesReadBack(device, GPUBufferUsage.VERTEX as int32));
+	assert keptOutsideWrites(partialWritesReadBack(device, GPUBufferUsage.INDEX as int32));
 	device.destroy();
 }
 

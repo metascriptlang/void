@@ -55,6 +55,8 @@ import {
 	uniformGroup,
 	uniformGroupAt,
 	vertexBuffer,
+	keptOutsideWrites,
+	partialWritesReadBack,
 } from "./webgpuFixtures.ms";
 import { d3dBlobFree, d3dBlobRead, d3dCompile, d3dCompileLog } from "../webgpu/d3d11/d3d11.h";
 import { warpDevice, warpContext, warpReadback, warpReadback3d, warpReadbackSubresource, warpObjectName, warpTarget, warpTargetView } from "./d3d11Warp.h";
@@ -242,6 +244,13 @@ test "a compute module built from precompiled DXBC with empty text doubles a sto
 	device.queue.submit(encoder.finish());
 	const read = readBack(readback);
 	assert read[0] == 2 && read[4] == 4 && read[8] == 6 && read[12] == 8;
+	device.destroy();
+}
+
+test "a partial writeBuffer keeps the bytes it did not write across frames, vertex and index" {
+	const device = openDevice();
+	assert keptOutsideWrites(partialWritesReadBack(device, GPUBufferUsage.VERTEX as int32));
+	assert keptOutsideWrites(partialWritesReadBack(device, GPUBufferUsage.INDEX as int32));
 	device.destroy();
 }
 

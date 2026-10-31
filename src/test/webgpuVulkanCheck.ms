@@ -45,6 +45,8 @@ import {
 	texels,
 	uniformGroup,
 	vertexBuffer,
+	keptOutsideWrites,
+	partialWritesReadBack,
 } from "./webgpuFixtures.ms";
 import { spirvColoured, spirvCompute, spirvFlat, spirvTextured, spirvTint } from "./vulkanSpirv.ms";
 
@@ -179,6 +181,13 @@ function wordAt(bytes: Vec<uint8>, i: int32): uint32 {
 	let value: uint32 = 0;
 	for (let b = 3; b >= 0; b--) { value = (value << 8) | (bytes[i * 4 + b] as uint32); }
 	return value;
+}
+
+test "a partial writeBuffer keeps the bytes it did not write across frames, vertex and index" {
+	const device = openDevice();
+	assert keptOutsideWrites(partialWritesReadBack(device, GPUBufferUsage.VERTEX as int32));
+	assert keptOutsideWrites(partialWritesReadBack(device, GPUBufferUsage.INDEX as int32));
+	device.destroy();
 }
 
 test "a Vulkan triangle takes its colour from the uniform block at the dynamic offset" {
