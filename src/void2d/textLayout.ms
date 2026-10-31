@@ -1874,9 +1874,9 @@ function laidOut(rows: LineWrap, style: TextStyle, primary: int32): TextLayout {
 	alignLines(rows.glyphs, rows.rows, style, rows.width);
 	const metrics = faceMetrics(primary, style.size);
 	return {
-		glyphs: rows.glyphs,
-		bidi: rows.bidi,
-		lines: rows.rows,
+		glyphs: move rows.glyphs,
+		bidi: move rows.bidi,
+		lines: move rows.rows,
 		ascent: metrics.ascent,
 		descent: metrics.descent,
 		lineHeight: metrics.ascent + metrics.descent + metrics.lineGap,
@@ -1936,22 +1936,6 @@ function wrapHolds(
 		sameCells(key.cells, cells) && sameCells(key.constraints, constraints);
 }
 
-function withBidi(shaped: ShapedText, direction: TextDirection): ShapedText {
-	let bidi: BidiRuns = { levels: new Array(0), resets: new Array(0), paragraphs: new Array(0) };
-	resolveText(lineValues(shaped), direction, bidi.levels, bidi.resets, bidi.paragraphs);
-	return {
-		glyphs: shaped.glyphs,
-		values: shaped.values,
-		breaks: new Array(0),
-		ellipsis: new Array(0),
-		units: shaped.units,
-		bytes: shaped.bytes,
-		style: shaped.style,
-		tabStop: shaped.tabStop,
-		bidi: bidi,
-	};
-}
-
 function wrapLine(
 	shaped: ShapedText,
 	style: TextStyle,
@@ -1962,13 +1946,22 @@ function wrapLine(
 	direction: TextDirection,
 	primary: int32,
 ): LineWrap {
-	const source: ShapedText = bidi ? withBidi(shaped, direction) : shaped;
+	let held: BidiRuns = { levels: new Array(0), resets: new Array(0), paragraphs: new Array(0) };
+	if (bidi) {
+		let resolved: BidiRuns = { levels: new Array(0), resets: new Array(0), paragraphs: new Array(0) };
+		resolveText(
+			lineValues(shaped), direction, resolved.levels, resolved.resets, resolved.paragraphs,
+		);
+		held = move shaped.bidi;
+		shaped.bidi = move resolved;
+	}
 	let rows: LineWrap = emptyWrap();
-	const wrapping: boolean = wrapsAt(source, style, options, cells);
+	const wrapping: boolean = wrapsAt(shaped, style, options, cells);
 	wrapParagraph(
-		source, 0, paragraphEndFrom(source, 0), style, options, cells, constraints,
+		shaped, 0, paragraphEndFrom(shaped, 0), style, options, cells, constraints,
 		constraintBox(primary, style, options, constraints), wrapping, primary, rows,
 	);
+	if (bidi) { shaped.bidi = move held; }
 	let kept: Vec<uint8> = new Array(0);
 	for (const c of cells) { kept.push(c); }
 	let keptConstraints: Vec<uint8> = new Array(0);
