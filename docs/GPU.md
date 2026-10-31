@@ -143,6 +143,7 @@ Each row is a WebGPU-shaped call Void uses where `deps/sokol/sokol_gfx.h` refuse
 |---|---|---|---|
 | `queue.writeTexture` with `origin` and a sub-rect `size` | `sg_update_image` takes whole mips: `VALIDATE_IMAGEDATA_DATA_SIZE` `:24035` through `_sg_validate_update_image` `:25492`; the D3D11 path maps and rewrites every mip `:15249` | glyph page dirty rect: `batcher.c` `doorUpdateTextureRect` → `doorGpu.ms` `doorUpdateTextureRect` | D3D11 and GL "a partial writeTexture changes only its sub-rect…"; Metal "writeTexture writes a sub-rectangle in place over a whole write of the same frame…" |
 | `queue.writeBuffer(buffer, offset)` beside other writes in a frame | `sg_update_buffer` writes from 0 once per frame `:25468`, and refuses an append in the same frame `:25487` | `doorGpu.ms` `doorAppendBuffer`, the uniform ring in `doorApplyUniformsOf` | D3D11 and GL "an indexed uint16 quad draws from a vertex buffer written twice in one frame" |
+| `queue.writeBuffer` of a range keeps every byte outside it, across frames | `sg_update_buffer` replaces the whole content, mapping D3D11 buffers with `WRITE_DISCARD` `:25468` | `doorGpu.ms` `doorUpdateBufferOf` (a partial upload) | D3D11, GL, Metal and Vulkan "a partial writeBuffer keeps the bytes it did not write across frames, vertex and index"; a D3D11 uniform buffer still maps with discard |
 | `copyTextureToBuffer` + `mapAsync`/`getMappedRange`: GPU→CPU readback | no readback or copy function; `readback`, `ReadPixels`, `CopyResource`, `CopySubresourceRegion` and `D3D11_MAP_READ` have no match | `doorGpu.ms` `readTexture` behind `doorReadScreen`: `tests/capture/capture.c`, `tests/capture3d/capture3d.c` | D3D11 and GL "a writeTexture sub-rect reads back through copyTextureToBuffer…", "a cleared render target copies to a buffer…"; D3D11 "the door reads a cleared bgra8 target back as RGBA…" |
 | `setBindGroup(group, bindGroup, dynamicOffsets)` on a uniform ring | `sg_apply_uniforms` copies the block into the shader's own constant buffer on every call `:15170` | `doorGpu.ms` `doorApplyUniformsOf` | D3D11 "a WARP triangle takes its colour from the uniform block at the dynamic offset", "a bind group entry offset selects the second uniform block"; GL "a GL triangle takes its colour from the uniform block at the dynamic offset" |
 | uniform blocks uploaded only when their bytes changed (D3D11 without D3D11.1) | every applied block is uploaded `:15170` | same | none: no test names the fallback path |
@@ -188,7 +189,8 @@ backend module. Metal follows it with a `.m`.
 - **Two copies of a writable resource, until a GPU copy writes it.** A buffer created with
   `COPY_DST` or a single-subresource texture moves to its other copy at its first CPU write of a
   frame, so the frame in flight keeps reading the old one (sokol's `num_slots`,
-  `_sg_mtl_update_buffer`). A resource that a GPU copy has written, a mappable buffer, and an
+  `_sg_mtl_update_buffer`). When that write does not cover the whole buffer, the range the last
+  written frame changed is copied over first, because the other copy lacks only that range. A resource that a GPU copy has written, a mappable buffer, and an
   attachment texture keep one live copy: a CPU write to them is a staging buffer and a blit in the
   frame's command buffer, ordered behind the frame's earlier reads. Inside a pass no blit can be
   encoded, so there a texture no GPU work has used yet is written by the CPU and any other stops.
