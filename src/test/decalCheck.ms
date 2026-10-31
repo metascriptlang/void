@@ -154,3 +154,35 @@ test "a decal material draws in its pass's phase with no depth and its back face
 	assert after.program.program == Program.Decal && after.phase == Phase.DecalAfterToneMap;
 	assert after.pass.blendSource == before.pass.blendSource && after.pass.culling == Face.Front;
 }
+
+test "a decal refuses a fade power that is 0 or below and a colour or fade that is not finite" {
+	const overlay: DecalOverlay = DecalOverlay.defaults();
+	const nan: float32 = Number.NaN as float32;
+	const inf: float32 = Number.POSITIVE_INFINITY as float32;
+	const refused: DecalOverlay[] = [
+		{ ...overlay, fadePower: 0.0 },
+		{ ...overlay, fadePower: -1.0 },
+		{ ...overlay, fadePower: nan },
+	];
+	for (let i = 0; i < refused.length; i++) {
+		const block: Result<Vec<float32>, DecalError> =
+			decalBlock(refused[i], DecalPass.BeforeToneMap);
+		assert !block.ok;
+		const expected: DecalError = i < 2 ? DecalError.FadePower : DecalError.NonFinite;
+		if (!block.ok) { assert block.error == expected; }
+	}
+	assert decalBlock({ ...overlay, fadePower: 0.001 }, DecalPass.AfterToneMap).ok;
+	const bad: DecalOverlay[] = [
+		{ ...overlay, color: { red: nan, green: 1.0, blue: 1.0, alpha: 1.0 } },
+		{ ...overlay, emissive: inf },
+		{ ...overlay, fadeEnd: inf },
+		{ ...overlay, fadePower: inf },
+		{ ...overlay, normalFade: true, normalFadeEnd: inf },
+	];
+	for (let i = 0; i < bad.length; i++) {
+		const block: Result<Vec<float32>, DecalError> = decalBlock(bad[i], DecalPass.BeforeToneMap);
+		assert !block.ok;
+		if (!block.ok) { assert block.error == DecalError.NonFinite; }
+	}
+	assert decalBlock({ ...overlay, normalFadeEnd: inf }, DecalPass.BeforeToneMap).ok;
+}

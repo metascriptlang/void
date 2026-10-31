@@ -37,6 +37,11 @@ export enum DecalError {
 	FadeRange,
 	// The normal fade divides by normalFadeEnd - normalFadeStart.
 	NormalFadeRange,
+	// The fade raises a weight that is 0 at the box's centre plane, which pow leaves undefined
+	// at a power of 0 or below.
+	FadePower,
+	// A colour, emissive or fade number that is NaN or infinite.
+	NonFinite,
 }
 
 export function defaults(this typeof DecalOverlay): DecalOverlay {
@@ -52,10 +57,22 @@ function flag(on: boolean): float32 {
 	return on ? 1.0 : 0.0;
 }
 
+function finiteOverlay(overlay: DecalOverlay): boolean {
+	const color: Rgba = overlay.color;
+	const normalFade: boolean = !overlay.normalFade ||
+		(Number.isFinite(overlay.normalFadeStart) && Number.isFinite(overlay.normalFadeEnd));
+	return Number.isFinite(color.red) && Number.isFinite(color.green) &&
+		Number.isFinite(color.blue) && Number.isFinite(color.alpha) &&
+		Number.isFinite(overlay.emissive) && Number.isFinite(overlay.fadeStart) &&
+		Number.isFinite(overlay.fadeEnd) && Number.isFinite(overlay.fadePower) && normalFade;
+}
+
 export function decalBlock(
 	overlay: DecalOverlay,
 	pass: DecalPass,
 ): Result<Vec<float32>, DecalError> {
+	if (!finiteOverlay(overlay)) { return Result.err(DecalError.NonFinite); }
+	if (!(overlay.fadePower > 0.0)) { return Result.err(DecalError.FadePower); }
 	if (!(overlay.fadeEnd > overlay.fadeStart)) { return Result.err(DecalError.FadeRange); }
 	if (overlay.normalFade && !(overlay.normalFadeEnd > overlay.normalFadeStart)) {
 		return Result.err(DecalError.NormalFadeRange);
