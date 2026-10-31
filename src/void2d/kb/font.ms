@@ -231,7 +231,10 @@ function tagToTableId(tag: int64): int32 {
 }
 
 function isUnicodeSubtable(platformId: int32, encodingId: int32): boolean {
-	return platformId == 0 || (platformId == 3 && (encodingId == 1 || encodingId == 10));
+	return (
+		platformId == 0 ||
+		(platformId == 3 && (encodingId == 1 || encodingId == 10))
+	);
 }
 
 function selectCmapSubtable(
@@ -258,11 +261,16 @@ function selectCmapSubtable(
 				if (subtable.at + KB_SIZE_CMAP_14 * 2 <= tableEnd) {
 					font.cmap14 = subtable.at;
 				}
-			} else if (format < 14 && isUnicodeSubtable(subtable.platformId, subtable.encodingId)) {
+			} else if (
+				format < 14 &&
+				isUnicodeSubtable(subtable.platformId, subtable.encodingId)
+			) {
 				result = subtable;
 			} else if (result.at == 0) {
 				result = subtable;
-			} else if (format < 14 && !isUnicodeSubtable(result.platformId, result.encodingId)) {
+			} else if (
+				format < 14 && !isUnicodeSubtable(result.platformId, result.encodingId)
+			) {
 				const precedence = KB_CMAP_FORMAT_PRECEDENCE[format];
 				const preferredPrecedence = KB_CMAP_FORMAT_PRECEDENCE[preferredFormat];
 
