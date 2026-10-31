@@ -1144,7 +1144,7 @@ MEASURE_PATH="render:textWidth render:textHeight render:shapedPayload node:label
 	node:requireKind"
 # A struct that holds no Vec copies only its references. The compiler copies these around a
 # call that may run Texture.realloc, a closure that could write the borrowed source.
-VEC_FREE_COPIES="types:TextureSource types:Tile node:Content2D"
+VEC_FREE_COPIES="types:TextureSource types:Tile node:Content2D labelText:PlacedLine"
 copied=""
 followed=0
 allocated=""
