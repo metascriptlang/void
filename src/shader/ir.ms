@@ -1368,8 +1368,6 @@ function stmtErrors(c: Checker, s: ShaderStmt, f: ShaderFunction, owner: string)
 	}
 }
 
-export const NON_UNIFORM_FLOW = "non-uniform control flow";
-
 class Frame {
 	nu: string[] = [];
 	flow: string = "";
@@ -1446,7 +1444,7 @@ function checkUniformFlow(w: Walk, fr: Frame, op: Intrinsic): void {
 	if (fr.flow == "") { return; }
 	const via = w.root ? "" : " (called from entry '" + w.entry + "')";
 	noted(w.c.errors, "function '" + w.c.module.functions[w.index].name + "'" + via + ": " +
-		uniformWord(op) + " runs in " + NON_UNIFORM_FLOW + ", " + fr.flow + "; WGSL's " +
+		uniformWord(op) + " runs in non-uniform control flow, " + fr.flow + "; WGSL's " +
 		"uniformity rule needs every invocation of the workgroup to reach it");
 }
 
@@ -1655,12 +1653,15 @@ function walkFunction(
 	return w.result;
 }
 
-function uniformityErrors(c: Checker): void {
+export function uniformityErrors(m: ShaderModule): string[] {
+	let c = new Checker();
+	c.module = m;
 	for (const e of c.module.entries) {
 		if (e.stage != ShaderStage.Compute) { continue; }
 		const f = c.module.functions[e.functionIndex];
 		walkFunction(c, e.functionIndex, e.name, true, f.params.map((): string => ""), "");
 	}
+	return c.errors;
 }
 
 function reaches(callees: int32[][], start: int32, target: int32, seen: int32[]): boolean {
@@ -1678,6 +1679,11 @@ function varyings(m: ShaderModule, stage: ShaderStage, direction: IoDirection): 
 }
 
 export function irErrors(m: ShaderModule): string[] {
+	const shape = shapeErrors(m);
+	return shape.length > 0 ? shape : uniformityErrors(m);
+}
+
+export function shapeErrors(m: ShaderModule): string[] {
 	let c = new Checker();
 	c.module = m;
 	for (let i = 0; i < m.resources.length; i++) {
@@ -1851,6 +1857,5 @@ export function irErrors(m: ShaderModule): string[] {
 			}
 		}
 	}
-	if (c.errors.length == 0) { uniformityErrors(c); }
 	return c.errors;
 }
