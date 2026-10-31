@@ -179,19 +179,20 @@ function clearClaims(ref compose: AnimationCompose): void {
 
 function checkedChild(
 	ref compose: AnimationCompose,
-	child: Readonly<AnimationChildSample>,
+	seconds: float64,
+	samples: Readonly<Span<AnimationTrsSample>>,
 ): Result<void, AnimationComposeError> {
-	if (!Number.isFinite(child.seconds)) { return Result.err(AnimationComposeError.NonFinite); }
-	if (child.samples.length > compose.targets.length) {
+	if (!Number.isFinite(seconds)) { return Result.err(AnimationComposeError.NonFinite); }
+	if (samples.length > compose.targets.length) {
 		return Result.err(AnimationComposeError.Shape);
 	}
 	clearClaims(compose);
-	for (let i = 0; i < child.samples.length; i++) {
-		const index: int32 = targetIndex(compose.targetOf, child.samples[i].sourceNode);
+	for (let i = 0; i < samples.length; i++) {
+		const index: int32 = targetIndex(compose.targetOf, samples[i].sourceNode);
 		if (index < 0) { return Result.err(AnimationComposeError.Target); }
 		if (compose.claimed[index]) { return Result.err(AnimationComposeError.DuplicateTarget); }
 		compose.claimed[index] = true;
-		const checked = try child.samples[i].checkedSample();
+		const checked = try samples[i].checkedSample();
 	}
 	return Result.ok(null);
 }
@@ -199,7 +200,7 @@ function checkedChild(
 function resolveChild(
 	targets: Readonly<Span<AnimationRestTarget>>,
 	targetOf: Map<int32, int32>,
-	child: Readonly<AnimationChildSample>,
+	samples: Readonly<Span<AnimationTrsSample>>,
 	resolved: Span<AnimationTrsSample>,
 ): void {
 	for (let i = 0; i < targets.length; i++) {
@@ -209,7 +210,7 @@ function resolveChild(
 			present: 0 as BitSet<AnimationComponent>,
 		};
 	}
-	for (const sample of child.samples) {
+	for (const sample of samples) {
 		const index: int32 = targetIndex(targetOf, sample.sourceNode);
 		if (sample.present.has(AnimationComponent.Translation)) {
 			resolved[index].value.position = sample.value.position;
@@ -253,11 +254,24 @@ export function stageSmoothCompose(
 	second: Readonly<AnimationChildSample>,
 	weight: float32,
 ): Result<void, AnimationComposeError> {
+	return stageSmoothSamples(
+		compose, first.seconds, first.samples, second.seconds, second.samples, weight,
+	);
+}
+
+export function stageSmoothSamples(
+	ref compose: AnimationCompose,
+	firstSeconds: float64,
+	first: Readonly<Span<AnimationTrsSample>>,
+	secondSeconds: float64,
+	second: Readonly<Span<AnimationTrsSample>>,
+	weight: float32,
+): Result<void, AnimationComposeError> {
 	if (!Number.isFinite(weight)) { return Result.err(AnimationComposeError.NonFinite); }
 	if (weight < 0.0 || weight > 1.0) { return Result.err(AnimationComposeError.Weight); }
 	const storage = try compose.checkedStorage();
-	const firstChecked = try checkedChild(compose, first);
-	const secondChecked = try checkedChild(compose, second);
+	const firstChecked = try checkedChild(compose, firstSeconds, first);
+	const secondChecked = try checkedChild(compose, secondSeconds, second);
 	resolveChild(compose.targets, compose.targetOf, first, compose.first);
 	resolveChild(compose.targets, compose.targetOf, second, compose.second);
 	for (let i = 0; i < compose.targets.length; i++) {
@@ -276,7 +290,7 @@ export function stageSmoothCompose(
 		const checked = try sample.checkedSample();
 		compose.pending[i] = { ...sample, present: from.present | to.present };
 	}
-	publishCompose(compose, first.seconds, second.seconds);
+	publishCompose(compose, firstSeconds, secondSeconds);
 	return Result.ok(null);
 }
 
@@ -286,9 +300,22 @@ export function stageExclusiveCompose(
 	second: Readonly<AnimationChildSample>,
 	secondSources: Readonly<Span<int32>>,
 ): Result<void, AnimationComposeError> {
+	return stageExclusiveSamples(
+		compose, first.seconds, first.samples, second.seconds, second.samples, secondSources,
+	);
+}
+
+export function stageExclusiveSamples(
+	ref compose: AnimationCompose,
+	firstSeconds: float64,
+	first: Readonly<Span<AnimationTrsSample>>,
+	secondSeconds: float64,
+	second: Readonly<Span<AnimationTrsSample>>,
+	secondSources: Readonly<Span<int32>>,
+): Result<void, AnimationComposeError> {
 	const storage = try compose.checkedStorage();
-	const firstChecked = try checkedChild(compose, first);
-	const secondChecked = try checkedChild(compose, second);
+	const firstChecked = try checkedChild(compose, firstSeconds, first);
+	const secondChecked = try checkedChild(compose, secondSeconds, second);
 	if (secondSources.length > compose.targets.length) {
 		return Result.err(AnimationComposeError.Shape);
 	}
@@ -308,7 +335,7 @@ export function stageExclusiveCompose(
 	for (let i = 0; i < compose.targets.length; i++) {
 		compose.pending[i] = compose.secondMask[i] ? compose.second[i] : compose.first[i];
 	}
-	publishCompose(compose, first.seconds, second.seconds);
+	publishCompose(compose, firstSeconds, secondSeconds);
 	return Result.ok(null);
 }
 
@@ -359,6 +386,25 @@ export function stageWeightedCompose(
 	third: Readonly<AnimationChildSample>,
 	weights: Readonly<Span<float64>>,
 ): Result<void, AnimationComposeError> {
+	return stageWeightedSamples(
+		compose,
+		first.seconds, first.samples,
+		second.seconds, second.samples,
+		third.seconds, third.samples,
+		weights,
+	);
+}
+
+export function stageWeightedSamples(
+	ref compose: AnimationCompose,
+	firstSeconds: float64,
+	first: Readonly<Span<AnimationTrsSample>>,
+	secondSeconds: float64,
+	second: Readonly<Span<AnimationTrsSample>>,
+	thirdSeconds: float64,
+	third: Readonly<Span<AnimationTrsSample>>,
+	weights: Readonly<Span<float64>>,
+): Result<void, AnimationComposeError> {
 	if (weights.length != 3) { return Result.err(AnimationComposeError.Shape); }
 	let total: float64 = 0.0;
 	for (const weight of weights) {
@@ -368,9 +414,9 @@ export function stageWeightedCompose(
 	}
 	if (Math.abs(total - 1.0) > 0.000001) { return Result.err(AnimationComposeError.Weight); }
 	const storage = try compose.checkedStorage();
-	const firstChecked = try checkedChild(compose, first);
-	const secondChecked = try checkedChild(compose, second);
-	const thirdChecked = try checkedChild(compose, third);
+	const firstChecked = try checkedChild(compose, firstSeconds, first);
+	const secondChecked = try checkedChild(compose, secondSeconds, second);
+	const thirdChecked = try checkedChild(compose, thirdSeconds, third);
 	resolveChild(compose.targets, compose.targetOf, first, compose.first);
 	resolveChild(compose.targets, compose.targetOf, second, compose.second);
 	resolveChild(compose.targets, compose.targetOf, third, compose.third);
@@ -409,6 +455,6 @@ export function stageWeightedCompose(
 		if (weights[2] != 0.0) { present |= c.present; }
 		compose.pending[i] = { ...sample, present: present };
 	}
-	publishCompose(compose, first.seconds, second.seconds);
+	publishCompose(compose, firstSeconds, secondSeconds);
 	return Result.ok(null);
 }

@@ -1,4 +1,4 @@
-import { AnimationCompose, AnimationRestTarget, stageWeightedCompose } from "./animationCompose";
+import { AnimationCompose, AnimationRestTarget, stageWeightedSamples } from "./animationCompose";
 import {
 	AnimationTransitionClip,
 	AnimationTransitionError,
@@ -411,11 +411,11 @@ export function evaluateBlendSpace(
 			return Result.err(AnimationBlendSpaceError.Curve);
 		}
 	}
-	const staged = stageWeightedCompose(
+	const staged = stageWeightedSamples(
 		space.compose,
-		space.sides[triangle.a].child,
-		space.sides[triangle.b].child,
-		space.sides[triangle.c].child,
+		space.sides[triangle.a].child.seconds, space.sides[triangle.a].child.samples,
+		space.sides[triangle.b].child.seconds, space.sides[triangle.b].child.samples,
+		space.sides[triangle.c].child.seconds, space.sides[triangle.c].child.samples,
 		space.weights,
 	);
 	if (!staged.ok) { return Result.err(AnimationBlendSpaceError.Compose); }

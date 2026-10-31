@@ -1,7 +1,7 @@
 import { Scene3D, NodeId3D } from "./scene";
 import {
 	AnimationCompose, AnimationRestTarget, AnimationChildSample,
-	AnimationComponent, blendedScalar, stageSmoothCompose,
+	AnimationComponent, blendedScalar, stageSmoothSamples,
 } from "./animationCompose";
 import {
 	AnimationTransitionClip, AnimationTransitionError, AnimationWeightRest, TransitionSide,
@@ -168,7 +168,12 @@ export function evaluateSmoothTarget(
 		}
 	}
 	const eased: float32 = easeFactor(smooth.blend, smooth.easing) as float32;
-	if (!stageSmoothCompose(smooth.compose, smooth.frozen, smooth.target.child, eased).ok) {
+	if (!stageSmoothSamples(
+		smooth.compose,
+		smooth.frozen.seconds, smooth.frozen.samples,
+		smooth.target.child.seconds, smooth.target.child.samples,
+		eased,
+	).ok) {
 		return Result.err(AnimationSmoothTargetError.Compose);
 	}
 	for (let i = 0; i < smooth.weights.length; i++) {

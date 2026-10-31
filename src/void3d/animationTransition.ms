@@ -13,8 +13,8 @@ import {
 	AnimationChildSample,
 	AnimationComponent,
 	blendedScalar,
-	stageSmoothCompose,
-	stageExclusiveCompose,
+	stageSmoothSamples,
+	stageExclusiveSamples,
 } from "./animationCompose";
 
 export enum AnimationTransitionError {
@@ -328,10 +328,10 @@ export function evaluate(
 ): Result<void, AnimationTransitionError> {
 	const sampled = try sampleBoth(transition);
 	const toward: float32 = transition.blend as float32;
-	const staged = stageSmoothCompose(
+	const staged = stageSmoothSamples(
 		transition.compose,
-		transition.first.child,
-		transition.second.child,
+		transition.first.child.seconds, transition.first.child.samples,
+		transition.second.child.seconds, transition.second.child.samples,
 		toward,
 	);
 	if (!staged.ok) { return Result.err(AnimationTransitionError.Compose); }
@@ -352,10 +352,10 @@ export function evaluateMasked(
 	secondSources: Readonly<Span<int32>>,
 ): Result<void, AnimationTransitionError> {
 	const sampled = try sampleBoth(transition);
-	const staged = stageExclusiveCompose(
+	const staged = stageExclusiveSamples(
 		transition.compose,
-		transition.first.child,
-		transition.second.child,
+		transition.first.child.seconds, transition.first.child.samples,
+		transition.second.child.seconds, transition.second.child.samples,
 		secondSources,
 	);
 	if (!staged.ok) { return Result.err(AnimationTransitionError.Compose); }
