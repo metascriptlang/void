@@ -975,30 +975,15 @@ export function drawPhase(
 	if ((targets.color0 == PixelFormat.Rgba16f) != renderer.linearOutput) {
 		stopOnColourSpace(renderer, targets);
 	}
-	const context: DrawContext = renderer.context;
-	const scene: SceneTexture = sceneTextureOf(renderer);
-	match (phase) {
-		Phase.Opaque => {
-			drawPassList(
-				context, renderer.opaque.indices[0..renderer.opaque.count], items, renderer.drawn,
-				targets, renderer.sceneGlobals, scene,
-			);
-		},
-		Phase.Alpha => {
-			drawPassList(
-				context, renderer.alpha.indices[0..renderer.alpha.count], items, renderer.drawn,
-				targets, renderer.sceneGlobals, scene,
-			);
-		},
-		Phase.Additive => {
-			drawPassList(
-				context, renderer.additive.indices[0..renderer.additive.count], items,
-				renderer.drawn, targets, renderer.sceneGlobals, scene,
-			);
-		},
-		Phase.Decal => stopOnDecalPhase(phase),
-		Phase.DecalAfterToneMap => stopOnDecalPhase(phase),
-	};
+	if (isDecalPhase(phase)) { stopOnDecalPhase(phase); }
+	const list: Readonly<Span<int32>> = phase == Phase.Opaque ?
+		renderer.opaque.indices[0..renderer.opaque.count] : phase == Phase.Alpha ?
+		renderer.alpha.indices[0..renderer.alpha.count] :
+		renderer.additive.indices[0..renderer.additive.count];
+	drawPassList(
+		renderer.context, list, items, renderer.drawn, targets, renderer.sceneGlobals,
+		sceneTextureOf(renderer),
+	);
 }
 
 function stopOnDecalPhase(phase: Phase): void {
