@@ -92,6 +92,7 @@ import {
 	checkedBeginPass,
 	checkedBindGroupEntry,
 	checkedBindGroupIndex,
+	bindGroupRedundant,
 	checkedBindGroupSet,
 	checkedBuffer,
 	checkedBufferToBuffer,
@@ -377,7 +378,6 @@ export function createView(this self: GPUTexture, descriptor: GPUTextureViewDesc
 @inline export function getBindGroupLayout(this self: GPUComputePipeline, index: int32): GPUBindGroupLayout { return layoutOf(self.id, index); }
 
 function checkedBoundGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	checkedBindGroupIndex(index);
 	if (bindGroup.id == 0) { return; }
 	const record = bindGroupRecords.record(bindGroup.id);
 	checkedBindGroupSet(index, record, dynamicOffsets, cachedLimits().minUniformBufferOffsetAlignment as uint32);
@@ -509,6 +509,8 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 
 @inline export function setBindGroup(this self: GPUComputePassEncoder, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	checkedInPass(PASS_COMPUTE, "setBindGroup");
+	checkedBindGroupIndex(index);
+	if (bindGroupRedundant(index, bindGroup.id, dynamicOffsets)) { return; }
 	checkedBoundGroup(index, bindGroup, dynamicOffsets);
 	markBindGroupSet(index, bindGroup.id, dynamicOffsets);
 	backend.setComputeBindGroup(index, bindGroup, dynamicOffsets);
@@ -709,6 +711,8 @@ function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offse
 
 @inline export function setBindGroup(this self: GPURenderPassEncoder, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	checkedInPass(PASS_RENDER, "setBindGroup");
+	checkedBindGroupIndex(index);
+	if (bindGroupRedundant(index, bindGroup.id, dynamicOffsets)) { return; }
 	checkedBoundGroup(index, bindGroup, dynamicOffsets);
 	markBindGroupSet(index, bindGroup.id, dynamicOffsets);
 	backend.setBindGroup(index, bindGroup, dynamicOffsets);
