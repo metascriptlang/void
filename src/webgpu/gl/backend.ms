@@ -636,6 +636,8 @@ struct BoundState {
 	indexType: int32;
 	indexSize: int32;
 	stencilReference: int32;
+	baseVertex: int32;
+	firstInstance: int32;
 	vertexDirty: boolean;
 	indexDirty: boolean;
 	resourcesDirty: boolean;
@@ -2228,6 +2230,7 @@ export function setStencilReference(reference: uint32): void {
 
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	if (instanceCount == 0) { return; }
+	shiftVertexFetch(0, firstInstance);
 	flush(false);
 	const mode = pipelines[slotOf(boundFacts.pipeline)].primitive;
 	if (instanceCount > 1 || bound.instanced) {
@@ -2249,6 +2252,7 @@ export function drawIndexed(
 	firstInstance: int32,
 ): void {
 	if (instanceCount == 0) { return; }
+	shiftVertexFetch(baseVertex, firstInstance);
 	flush(true);
 	const mode = pipelines[slotOf(boundFacts.pipeline)].primitive;
 	const offset = (firstIndex as int64) * (bound.indexSize as int64) + boundFacts.indexOffset;
@@ -2451,8 +2455,17 @@ when (webgl2 || android || (linux && voidGles3)) {
 		if (info.depth) { stop("copyTextureToBuffer of a depth GPUTexture: GLES has no glReadPixels of GL_DEPTH_COMPONENT"); }
 	}
 
+	// GLES3 has no base vertex or base instance draw, so the attribute pointers start that many
+	// elements in instead (Dawn CommandBufferGL.cpp VertexStateBufferBindingTracker::Apply).
+	function shiftVertexFetch(baseVertex: int32, firstInstance: int32): void {
+		if (baseVertex == bound.baseVertex && firstInstance == bound.firstInstance) { return; }
+		bound.baseVertex = baseVertex;
+		bound.firstInstance = firstInstance;
+		bound.vertexDirty = true;
+	}
+
 	function drawArraysBaseInstance(mode: int32, firstVertex: int32, vertexCount: int32, instanceCount: int32, firstInstance: int32): void {
-		stop(`draw with firstInstance ${firstInstance}: GLES3 has no base instance`);
+		oglDrawArraysInstanced(mode, firstVertex, vertexCount, instanceCount);
 	}
 
 	function drawElementsBaseVertex(
@@ -2464,7 +2477,11 @@ when (webgl2 || android || (linux && voidGles3)) {
 		baseVertex: int32,
 		firstInstance: int32,
 	): void {
-		stop(`drawIndexed with baseVertex ${baseVertex} and firstInstance ${firstInstance}: GLES3 has neither`);
+		if (instanceCount > 1 || bound.instanced) {
+			oglDrawElementsInstanced(mode, indexCount, indexType, offset, instanceCount);
+		} else {
+			oglDrawElements(mode, indexCount, indexType, offset);
+		}
 	}
 
 	function indirectFeatureBits(): uint32 { return 0; }
@@ -2532,6 +2549,8 @@ when (webgl2 || android || (linux && voidGles3)) {
 
 	@inline function checkDepthReadback(info: FormatInfo): void {}
 
+	@inline function shiftVertexFetch(baseVertex: int32, firstInstance: int32): void {}
+
 	function drawArraysBaseInstance(mode: int32, firstVertex: int32, vertexCount: int32, instanceCount: int32, firstInstance: int32): void {
 		oglDrawArraysInstancedBaseInstance(mode, firstVertex, vertexCount, instanceCount, firstInstance);
 	}
@@ -2596,7 +2615,9 @@ function applyVertexBuffers(): void {
 		}
 		const b = bufferRecords.slotIndex(boundFacts.vertexBuffers[attribute.bufferSlot]);
 		const name = buffers[b].names[buffers[b].activeSlot];
-		const offset = boundFacts.vertexOffsets[attribute.bufferSlot] + (attribute.offset as int64);
+		const shift = attribute.divisor != 0 ? bound.firstInstance : bound.baseVertex;
+		const offset = boundFacts.vertexOffsets[attribute.bufferSlot] + (attribute.offset as int64) + (shift as int64) * (attribute.stride as int64);
+		if (offset < 0) { stop(`baseVertex ${bound.baseVertex} moves vertex attribute ${i} before the start of its buffer`); }
 		if (
 			name != cached.buffer ||
 			attribute.size != cached.size ||
