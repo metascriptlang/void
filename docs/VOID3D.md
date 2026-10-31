@@ -7031,8 +7031,10 @@ walked the items once per phase (`collect`, then `filterFrustum`).
   visits every visible node each frame; the skip is Bevy's (`84e2d2c`
   `bevy_transform/src/systems.rs:111-150` `mark_dirty_trees` marks the ancestors of a changed
   node up to the first one already marked, `:520-524` `propagate_parent_transforms` returns from
-  an unmarked subtree): `markTreeChanged` sets `NodeFlag.TreeChanged` the same way. A parent's
-  child list is still scanned, so a flat scene with every node under the root gains nothing.
+  an unmarked subtree). `markMoved` lists the moved row in `Scene3D.moved`, and `syncWorld`
+  descends only from a listed row whose ancestors did not move too (one that did is reached
+  from them), skipping a row removed or detached since; so no child list is scanned, and a
+  flat scene with every node under the root pays for its moved nodes only.
 
 Release `tests/bench/flowCubes.ms`, 1.6M cubes, before the one walk: `refresh` 33.8 ms,
 `collect` 12.1 ms per phase. Tree `999491b3` (one walk, before the steady-frame skip),
@@ -7043,6 +7045,10 @@ flat under the root 12.4 ms (8.7 ms one tree earlier, before the skip), almost a
 `FLOW_CUBES_GROUP=1000` 0.0031 ms. The full rewrite before the dirty slots: 38.9 ms.
 Tree `3f128f59` (with the skip), a gate running beside it: a steady frame's `refresh` 0.0017 ms
 (38.9 ms on the same box before the skip), `collectVisible` 11.6 ms.
+Tree `a8abc2aa` (from the moved rows) against `bff1d6a4`, `--danger`, A B A B, box at 46-50%
+CPU: ten moved cubes flat under the root, 1.6M cubes, 7.8 and 11.7 ms before, 0.0003 ms after;
+10k cubes, 0.0067 and 0.0099 ms before, 0.0003 and 0.0004 ms after. Unchanged phases varied by
+about 30% between pairs.
 
 ### Trail: CPU history and ribbon checkpoint
 
