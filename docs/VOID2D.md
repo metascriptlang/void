@@ -170,8 +170,8 @@ Today a quad is 6 vertices × 8 floats = **192 B**, re-transformed on the CPU ev
 **Measured 2026-09-21, not estimated.** Both numbers come from `sizeof` on the structs the
 vertex layout is built from, and `src/test/instanceLayoutCheck.ms` holds them to the offsets with
 no GPU. Since P5 one lane table, `scripts/instanceLayout.ms`, generates both sides:
-`src/void2d/instanceLayout.h` (the C structs, the vertex attributes, the UI pack) and
-`src/void2d/instanceLayout.ms` (the byte and record offsets). The gate regenerates them and fails
+`src/void2d/instanceLayout.h` (the C structs and the vertex attributes) and
+`src/void2d/instanceLayout.ms` (the byte, word and record offsets). The gate regenerates them and fails
 on any difference, so a field cannot be added to one side alone; the setup-time check that
 compared two hand-written copies is gone with the second copy (REVIEWS.md "Audit before P4" #23).
 Call sites build a `UiInstance` record (`instance.ms`) with named lanes in place of

@@ -18,7 +18,10 @@ import {
 	REC_UI_PARAMS1, REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_COLOR_EXTRA,
 	REC_UI_FLOATS, REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV,
 	REC_SPRITE_COLOR, REC_SPRITE_FLOATS,
+	WORD_UI_AFFINE, WORD_UI_ORIGIN_SIZE, WORD_UI_UV_RADII, WORD_UI_BORDERS, WORD_UI_PARAMS0,
+	WORD_UI_PARAMS1, WORD_UI_COLOR_FILL, WORD_UI_COLOR_BORDER, WORD_UI_COLOR_EXTRA, UI_WORDS,
 } from "../void2d/instanceLayout";
+import { floatBits, floatOfBits } from "../void2d/floatBits";
 
 const FLOAT4: int32 = 16;
 const UBYTE4N: int32 = 4;
@@ -130,6 +133,30 @@ test "a recorded UI instance is wider than the bytes it uploads" {
 	assert REC_UI_FLOATS * 4 == 144;
 	assert UI_STRIDE == 108;
 	assert REC_UI_FLOATS * 4 > UI_STRIDE;
+}
+
+test "every UI word offset is its GPU byte offset over four" {
+	assert WORD_UI_AFFINE * 4 == UI_AFFINE;
+	assert WORD_UI_ORIGIN_SIZE * 4 == UI_ORIGIN_SIZE;
+	assert WORD_UI_UV_RADII * 4 == UI_UV_RADII;
+	assert WORD_UI_BORDERS * 4 == UI_BORDERS;
+	assert WORD_UI_PARAMS0 * 4 == UI_PARAMS0;
+	assert WORD_UI_PARAMS1 * 4 == UI_PARAMS1;
+	assert WORD_UI_COLOR_FILL * 4 == UI_COLOR_FILL;
+	assert WORD_UI_COLOR_BORDER * 4 == UI_COLOR_BORDER;
+	assert WORD_UI_COLOR_EXTRA * 4 == UI_COLOR_EXTRA;
+	assert UI_WORDS * 4 == UI_STRIDE;
+	assert UI_WORDS == 27;
+}
+
+test "floatOfBits undoes floatBits on every float lane value" {
+	const values: float32[] = [0.0, -0.0, 1.0, -1.5, 0.1, 3.4e38, 1.0e-45, 255.0];
+	for (const v of values) {
+		assert floatOfBits(floatBits(v)) == v;
+		assert floatBits(floatOfBits(floatBits(v))) == floatBits(v);
+	}
+	assert floatOfBits(0x3F800000) == 1.0;
+	assert floatBits(floatOfBits(0x80000000)) == 0x80000000;
 }
 
 test "the sprite record and its GPU stride are the same bytes, since nothing is packed" {
