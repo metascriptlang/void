@@ -343,10 +343,10 @@ export function keyDown(code: int32): boolean {
 
 export function makeImage(
 	rgba: Readonly<Span<uint32>>,
-	w: int32,
-	h: int32,
+	width: int32,
+	height: int32,
 ): uint32 {
-	return doorMakeImage(rgba, w, h);
+	return doorMakeImage(rgba, width, height);
 }
 export function makeView(image: uint32): uint32 {
 	return doorMakeTextureView(image);

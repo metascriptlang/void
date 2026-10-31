@@ -159,8 +159,8 @@ class BrowserWindow extends AppWindowPlatform {
 		}
 	}
 
-	setImeRect(x: int32, y: int32, w: int32, h: int32): void {
-		this.ime.setRect(x, y, w, h);
+	setImeRect(x: int32, y: int32, width: int32, height: int32): void {
+		this.ime.setRect(x, y, width, height);
 		const live = this.live;
 		if (live !== null) {
 			live.ime.applyRect();
