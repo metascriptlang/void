@@ -28,13 +28,10 @@ const CLIP_Z_Y: int32 = 6;
 const CLIP_Z_Z: int32 = 10;
 const CLIP_Z_W: int32 = 14;
 
-// First-seen numbers for 64-bit keys: an open-addressing table whose slots hold a number only
-// while their stamp is the current epoch, so a sort starts a new numbering without clearing.
+// First-seen numbers for 64-bit keys: an open-addressing table, cleared for each sort.
 struct Ranks {
 	keys: Vec<uint64>;
 	numbers: Vec<int32>;
-	stamps: Vec<int32>;
-	epoch: int32;
 	mask: int32;
 	count: int32;
 }
@@ -58,7 +55,7 @@ export struct PassList {
 }
 
 function noRanks(): Ranks {
-	return { keys: [], numbers: [], stamps: [], epoch: 0, mask: 0, count: 0 };
+	return { keys: [], numbers: [], mask: 0, count: 0 };
 }
 
 export function forPhase(this typeof PassList, phase: Phase): PassList {
@@ -83,32 +80,26 @@ function reserve(ref list: PassList, length: int32): void {
 	while ((list.spareDepths.length as int32) < length) { list.spareDepths.push(0.0); }
 }
 
-function beginRanks(ref table: Ranks, items: int32): void {
+function clearRanks(ref table: Ranks, items: int32): void {
 	let size: int32 = 16;
 	while (size < 2 * items) { size = size * 2; }
 	while ((table.keys.length as int32) < size) {
 		table.keys.push(0);
-		table.numbers.push(0);
-		table.stamps.push(0);
+		table.numbers.push(-1);
 	}
-	if (table.epoch == 2147483647) {
-		for (let i = 0; i < (table.stamps.length as int32); i++) { table.stamps[i] = 0; }
-		table.epoch = 0;
-	}
-	table.epoch = table.epoch + 1;
 	table.mask = size - 1;
 	table.count = 0;
+	for (let i = 0; i < size; i++) { table.numbers[i] = -1; }
 }
 
 function rankOf(ref table: Ranks, key: uint64): int32 {
 	let at: int32 = (((((key >> 32) ^ key) * 2654435761) >> 16) & (table.mask as uint64)) as int32;
-	while (table.stamps[at] == table.epoch) {
+	while (table.numbers[at] >= 0) {
 		if (table.keys[at] == key) { return table.numbers[at]; }
 		at = (at + 1) & table.mask;
 	}
 	table.keys[at] = key;
 	table.numbers[at] = table.count;
-	table.stamps[at] = table.epoch;
 	table.count = table.count + 1;
 	return table.numbers[at];
 }
@@ -383,8 +374,8 @@ export function sortByMaterial(
 	materials: Readonly<Span<Material>>,
 ): void {
 	reserve(list, list.count);
-	beginRanks(list.pipelines, list.count);
-	beginRanks(list.textures, list.count);
+	clearRanks(list.pipelines, list.count);
+	clearRanks(list.textures, list.count);
 	for (let i = 0; i < list.count; i++) {
 		const index: int32 = list.indices[i];
 		const state: RenderState = { ...materials[items[index].material.index].pass };
