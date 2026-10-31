@@ -68,6 +68,16 @@ export struct Shapes {
 	slim: Mat4x2f;
 }
 
+export struct BeforeVec2 {
+	a: float32;
+	b: Vec2f;
+}
+
+export struct BeforeVec4 {
+	a: float32;
+	b: Vec4f;
+}
+
 export struct Lights {
 	items: Vec4f[4];
 	count: float32;
@@ -165,6 +175,16 @@ test "a matrix's columns sit on sixteen, a two-row matrix's on eight" {
 	assert uniformLayoutText<Matrices>() ==
 		"three:mat3x3@0; lead:f32@48; four:mat4x4@64; two:mat2x2@128; tail:f32@144; size 160";
 	assert mismatch(m, uniformLayoutText<Matrices>()) == "";
+}
+
+test "a float is followed by a vec2 on eight and by a vec4 on sixteen" {
+	assert uniformLayoutText<BeforeVec2>() == "a:f32@0; b:f32x2@8; size 16";
+	assert uniformLayoutText<BeforeVec4>() == "a:f32@0; b:f32x4@16; size 32";
+}
+
+test "every non-square shape sits at its hand-computed offset" {
+	assert uniformLayoutText<Shapes>() == "wide:mat2x3@0; tall:mat4x3@32; basis:mat3x4@96; " +
+		"extra:mat2x4@144; narrow:mat3x2@176; slim:mat4x2@200; size 240";
 }
 
 test "every non-square shape agrees with the shader's block" {
