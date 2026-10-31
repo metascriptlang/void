@@ -20,6 +20,7 @@ import {
 	setAntialias,
 } from "../void2d/graphics";
 import { Vec2, vec2, rgba, tile, sub } from "../void2d/types";
+import { FillRule, FillTessellation, tessellateFill } from "../void2d/fillTessellator";
 import { EDGE_FLOATS, EDGE_LIMIT_BEFORE, EDGE_LIMIT_AFTER } from "../void2d/draw";
 import { approx, approxRel, meshTriArea, meshHasVert, meshHasVertUV, fakeTexture } from "./helpers";
 
@@ -73,6 +74,148 @@ test "fillPolygon concave arrow ear-clips without overlap" {
 	const g = body().fillPolygon(pts, rgba(1.0, 1.0, 1.0, 1.0));
 	assert (geometry(g).mesh.length as int32) === 120;
 	assert approxRel(meshTriArea(geometry(g).mesh), 4082.0, 0.5);
+}
+
+test "fillPolygon closed outline repeating its first point fills the whole square" {
+	const pts: Vec2[] =
+		[vec2(0.0, 0.0), vec2(10.0, 0.0), vec2(10.0, 10.0), vec2(0.0, 10.0), vec2(0.0, 0.0)];
+	const g = body().fillPolygon(pts, rgba(1.0, 1.0, 1.0, 1.0));
+	assert (geometry(g).mesh.length as int32) === 48;
+	assert approxRel(meshTriArea(geometry(g).mesh), 100.0, 0.1);
+}
+
+test "fillPolygon concave arrow with a repeated joint and a collinear point fills it whole" {
+	const pts: Vec2[] =
+		[vec2(0.0, 32.0), vec2(24.0, 32.0), vec2(48.0, 32.0), vec2(48.0, 6.0), vec2(48.0, 6.0),
+			vec2(95.0, 52.0), vec2(48.0, 98.0), vec2(48.0, 72.0), vec2(0.0, 72.0)];
+	const g = body().fillPolygon(pts, rgba(1.0, 1.0, 1.0, 1.0));
+	assert (geometry(g).mesh.length as int32) === 144;
+	assert approxRel(meshTriArea(geometry(g).mesh), 4082.0, 0.5);
+}
+
+test "fillPolygon outline crossing itself next to a vertex fills its odd-winding region" {
+	const pts: Vec2[] =
+		[vec2(20.0, 30.0), vec2(60.0, 10.0), vec2(20.0, 0.0), vec2(20.0, 50.0), vec2(40.0, 10.0),
+			vec2(40.0, 30.0)];
+	const g = body().fillPolygon(pts, rgba(1.0, 1.0, 1.0, 1.0));
+	assert (geometry(g).mesh.length as int32) === 168;
+	assert approxRel(meshTriArea(geometry(g).mesh), 733.33, 0.1);
+}
+
+test "fillPolygon outline crossing itself across the shape fills both loops" {
+	const pts: Vec2[] =
+		[vec2(60.0, 0.0), vec2(50.0, 10.0), vec2(60.0, 40.0), vec2(20.0, 30.0), vec2(10.0, 60.0),
+			vec2(0.0, 40.0), vec2(20.0, 30.0)];
+	const g = body().fillPolygon(pts, rgba(1.0, 1.0, 1.0, 1.0));
+	assert (geometry(g).mesh.length as int32) === 72;
+	assert approxRel(meshTriArea(geometry(g).mesh), 850.0, 0.1);
+}
+
+function triangleCount(g: NodeRef): int32 { return (geometry(g).mesh.length as int32) / 24; }
+
+function scaled(xy: float32[], k: float32): Vec2[] {
+	const out: Vec2[] = [];
+	for (let i: int32 = 0; i + 1 < (xy.length as int32); i = i + 2) {
+		out.push(vec2(xy[i] * k, xy[i + 1] * k));
+	}
+	return out;
+}
+
+function fillArea(fill: FillTessellation): float32 {
+	let total: float32 = 0.0;
+	for (let i: int32 = 0; i + 2 < (fill.triangles.length as int32); i = i + 3) {
+		const a: Vec2 = fill.positions[fill.triangles[i]];
+		const b: Vec2 = fill.positions[fill.triangles[i + 1]];
+		const c: Vec2 = fill.positions[fill.triangles[i + 2]];
+		const cr: float32 = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+		total = total + (cr < 0.0 ? -cr : cr) * 0.5;
+	}
+	return total;
+}
+
+const PENTAGRAM: float32[] = [
+	50.0, 0.0, 79.3893, 90.4508, 2.4472, 34.5492, 97.5528, 34.5492, 20.6107, 90.4508,
+];
+
+test "fillPolygon pentagram leaves its centre empty under the default even-odd rule" {
+	const g = body().fillPolygon(scaled(PENTAGRAM, 1.0), rgba(1.0, 1.0, 1.0, 1.0));
+	assert approxRel(meshTriArea(geometry(g).mesh), 1939.18, 0.1);
+}
+
+test "fillPolygon pentagram fills its centre under the non-zero rule" {
+	const g = body().fillPolygon(scaled(PENTAGRAM, 1.0), rgba(1.0, 1.0, 1.0, 1.0),
+		FillRule.NonZero);
+	assert approxRel(meshTriArea(geometry(g).mesh), 2806.42, 0.1);
+}
+
+test "fillPolygon bowtie fills both lobes under either rule" {
+	const bowtie: float32[] = [0.0, 0.0, 2.0, 2.0, 2.0, 0.0, 0.0, 2.0];
+	const evenOdd = body().fillPolygon(scaled(bowtie, 10.0), rgba(1.0, 1.0, 1.0, 1.0));
+	assert approxRel(meshTriArea(geometry(evenOdd).mesh), 200.0, 0.1);
+	const nonZero = body().fillPolygon(scaled(bowtie, 10.0), rgba(1.0, 1.0, 1.0, 1.0),
+		FillRule.NonZero);
+	assert approxRel(meshTriArea(geometry(nonZero).mesh), 200.0, 0.1);
+}
+
+test "fillPolygon antialiased pentagram fringes and fills without aborting" {
+	const g = s.graphics().fillPolygon(scaled(PENTAGRAM, 1.0), rgba(1.0, 1.0, 1.0, 1.0));
+	assert geometry(g).fringed;
+	assert approxRel(meshTriArea(geometry(g).mesh), 1939.18, 0.1);
+}
+
+test "lyon test_auto_intersection_type1 and type2 cut two triangles at the crossing" {
+	const type1: float32[] = [0.0, 0.0, 2.0, 1.0, 0.0, 2.0, 2.0, 3.0];
+	const a = body().fillPolygon(scaled(type1, 10.0), rgba(1.0, 1.0, 1.0, 1.0));
+	assert triangleCount(a) === 2;
+	assert approxRel(meshTriArea(geometry(a).mesh), 200.0, 0.1);
+	const type2: float32[] = [0.0, 0.0, 2.0, 3.0, 2.0, 1.0, 0.0, 2.0];
+	const b = body().fillPolygon(scaled(type2, 10.0), rgba(1.0, 1.0, 1.0, 1.0));
+	assert triangleCount(b) === 2;
+	assert approxRel(meshTriArea(geometry(b).mesh), 200.0, 0.1);
+}
+
+test "lyon test_auto_intersection_multi fills the symmetric difference or the union" {
+	const pts: Vec2[] = scaled([
+		20.0, 20.0, 60.0, 20.0, 60.0, 60.0, 20.0, 60.0,
+		40.0, 10.0, 70.0, 40.0, 40.0, 70.0, 10.0, 40.0,
+	], 1.0);
+	const evenOdd = tessellateFill(pts, [4, 8], FillRule.EvenOdd);
+	assert (evenOdd.triangles.length as int32) === 8 * 3;
+	assert approxRel(fillArea(evenOdd), 600.0, 0.1);
+	assert approxRel(fillArea(tessellateFill(pts, [4, 8], FillRule.NonZero)), 2000.0, 0.1);
+}
+
+test "lyon test_overlapping_with_intersection cancels the edge drawn back over itself" {
+	const pts: float32[] = [2.0, -1.0, 2.0, -3.0, 3.0, -2.0, 1.0, -2.0, 2.0, -3.0];
+	const g = body().fillPolygon(scaled(pts, 10.0), rgba(1.0, 1.0, 1.0, 1.0));
+	assert approxRel(meshTriArea(geometry(g).mesh), 100.0, 0.1);
+}
+
+test "lyon test_coincident_simple_1 fills two triangles meeting at a repeated point" {
+	const pts: float32[] = [0.0, 0.0, 1.0, 1.0, 0.0, 2.0, 2.0, 2.0, 1.0, 1.0, 2.0, 0.0];
+	const g = body().fillPolygon(scaled(pts, 10.0), rgba(1.0, 1.0, 1.0, 1.0));
+	assert approxRel(meshTriArea(geometry(g).mesh), 200.0, 0.1);
+}
+
+test "lyon test_point_on_edge_right splits the edge a vertex lies on" {
+	const pts: float32[] = [0.0, 0.0, 0.0, 100.0, 50.0, 100.0, 0.0, 50.0, -50.0, 100.0];
+	const g = body().fillPolygon(scaled(pts, 1.0), rgba(1.0, 1.0, 1.0, 1.0));
+	assert approxRel(meshTriArea(geometry(g).mesh), 2500.0, 0.1);
+}
+
+test "lyon test_identical_squares is empty under even-odd and one square under non-zero" {
+	const square: float32[] = [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
+	const pts: Vec2[] = scaled([...square, ...square], 10.0);
+	assert fillArea(tessellateFill(pts, [4, 8], FillRule.EvenOdd)) < 0.001;
+	assert approxRel(fillArea(tessellateFill(pts, [4, 8], FillRule.NonZero)), 100.0, 0.1);
+}
+
+test "lyon test_degenerate_same_position and back_along_previous_edge cover nothing" {
+	const same: Vec2[] = scaled([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 1.0);
+	assert (tessellateFill(same, [5], FillRule.EvenOdd).triangles.length as int32) === 0;
+	const back: Vec2[] = scaled([0.0, 0.0, 1.0, 1.0, 0.8, 0.8, 1.5, 1.5], 10.0);
+	assert fillArea(tessellateFill(back, [4], FillRule.EvenOdd)) < 0.001;
+	assert fillArea(tessellateFill(back, [4], FillRule.NonZero)) < 0.001;
 }
 
 test "fillPolygon degenerate input emits nothing" {

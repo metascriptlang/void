@@ -1,7 +1,7 @@
 // Void 2D Graphics — h2d.Graphics-style vector drawing as a retained local-space mesh.
 // Each vertex is x/y, u/v and rgba; an operation list preserves fill order while selecting
 // texture, gradient or pattern state for contiguous vertex ranges.
-// fillPolygon handles concave shapes (ear-clip); strokePoly uses miter joins with a
+// fillPolygon fills any outline under a fill rule (lyon sweep); strokePoly uses miter joins with a
 // bevel-style clamp at sharp angles (correct for any alpha — no overlapping geometry).
 
 import { NodeRef, GraphicsMesh, DrawKind, Changed } from "./node";
@@ -9,6 +9,12 @@ import { Vec2, Color, Tile, vec2, rgba } from "./types";
 import { GradientSpace } from "./gradient";
 import { EDGE_FLOATS, FRINGE_HALF_WIDTH } from "./draw";
 import { sinf, cosf, sqrtf } from "../math/mat4";
+import {
+	FillRule,
+	FillTessellation,
+	DEFAULT_FILL_RULE,
+	tessellateFill,
+} from "./fillTessellator";
 
 const TAU: float32 = 6.2831853;
 const CIRCLE_MAX_SEG: int32 = 64;
@@ -187,8 +193,9 @@ function contourFill(
 	color: Color,
 	rule: EdgeLimit,
 ): void {
-	const total: int32 = pts.length as int32;
-	if (total < 3 || (loopEnds.length as int32) == 0) { return; }
+	if ((loopEnds.length as int32) == 0) { return; }
+	const total: int32 = loopEnds[(loopEnds.length as int32) - 1];
+	if (total < 3) { return; }
 	if (!n.antialias) {
 		for (const k of tris) { plainVtx(n, counted, pts[k], map, color); }
 		return;
@@ -245,6 +252,11 @@ function contourFill(
 			});
 		}
 	}
+	for (let i: int32 = total; i < (pts.length as int32); i++) {
+		corners.push({
+			p: pts[i], before: NO_NORMAL, after: NO_NORMAL, limitBefore: 0.0, limitAfter: 0.0,
+		});
+	}
 	for (const k of tris) {
 		edgeVtx(n, counted, corners[k], map, color, -FRINGE_HALF_WIDTH);
 	}
@@ -288,7 +300,7 @@ function edgeHalfWidths(
 	rule: EdgeLimit,
 ): float32[] {
 	const out: float32[] = [];
-	const total: int32 = pts.length as int32;
+	const total: int32 = loopEnds[(loopEnds.length as int32) - 1];
 	const uniform: float32 = areaOverPerimeter(pts, loopEnds);
 	const exact: boolean = rule != EdgeLimit.Ring && (loopEnds.length as int32) == 1
 		&& total <= EXACT_EDGE_WIDTHS_UP_TO;
@@ -459,110 +471,42 @@ function appendOp(
 	n.records[base + GFX_OP_PARAMS + 3] = p3;
 }
 
-function polyArea2(pts: Readonly<Span<Vec2>>): float32 {
-	const m: int32 = pts.length as int32;
-	let a: float32 = 0.0;
-	for (let i: int32 = 0; i < m; i++) {
-		const j: int32 = (i + 1) % m;
-		a = a + pts[i].x * pts[j].y - pts[j].x * pts[i].y;
-	}
-	return a;
-}
-
-function cross3(
-	ax: float32,
-	ay: float32,
-	bx: float32,
-	by: float32,
-	cx: float32,
-	cy: float32,
-): float32 {
-	return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
-}
-
-function pointInTri(
-	px: float32,
-	py: float32,
-	ax: float32,
-	ay: float32,
-	bx: float32,
-	by: float32,
-	cx: float32,
-	cy: float32,
-): boolean {
-	const d1: float32 = cross3(ax, ay, bx, by, px, py);
-	const d2: float32 = cross3(bx, by, cx, cy, px, py);
-	const d3: float32 = cross3(cx, cy, ax, ay, px, py);
-	const hasNeg: boolean = d1 < 0.0 || d2 < 0.0 || d3 < 0.0;
-	const hasPos: boolean = d1 > 0.0 || d2 > 0.0 || d3 > 0.0;
-	return !(hasNeg && hasPos);
-}
-
-function isEar(
+function outlineFill(
+	n: GraphicsMesh,
+	counted: boolean,
 	pts: Readonly<Span<Vec2>>,
-	next: Readonly<Span<int32>>,
-	u: int32,
-	v: int32,
-	w: int32,
-	ccw: boolean,
-): boolean {
-	const cr: float32 = cross3(pts[u].x, pts[u].y, pts[v].x, pts[v].y, pts[w].x, pts[w].y);
-	if (ccw) { if (cr <= 0.0) { return false; } } else { if (cr >= 0.0) { return false; } }
-	let p: int32 = next[w];
-	while (p != u) {
-		if (pointInTri(pts[p].x, pts[p].y, pts[u].x, pts[u].y, pts[v].x, pts[v].y, pts[w].x, pts[w].y)) {
-			return false;
-		}
-		p = next[p];
-	}
-	return true;
-}
-
-// ear-clipping triangulation → flat index triples (handles CONCAVE simple polygons;
-// self-intersecting outlines are undefined).
-function triangulate(pts: Readonly<Span<Vec2>>): int32[] {
-	const out: int32[] = [];
-	const n: int32 = pts.length as int32;
-	if (n < 3) { return out; }
-	const prev: int32[] = [];
-	const next: int32[] = [];
-	for (let i: int32 = 0; i < n; i++) {
-		prev.push((i - 1 + n) % n);
-		next.push((i + 1) % n);
-	}
-	const ccw: boolean = polyArea2(pts) > 0.0;
-	let remaining: int32 = n;
-	let v: int32 = 0;
-	let guard: int32 = 0;
-	while (remaining > 3) {
-		const u: int32 = prev[v];
-		const w: int32 = next[v];
-		if (isEar(pts, next, u, v, w, ccw)) {
-			out.push(u);
-			out.push(v);
-			out.push(w);
-			next[u] = w;
-			prev[w] = u;
-			remaining = remaining - 1;
-			guard = 0;
-			v = u;
+	rule: FillRule,
+	map: UvMap,
+	color: Color,
+): void {
+	const m: int32 = pts.length as int32;
+	if (m < 3) { return; }
+	const fill: FillTessellation = tessellateFill(pts, [m], rule);
+	const points: Vec2[] = [];
+	for (const p of pts) { points.push(p); }
+	const at: int32[] = [];
+	for (let v: int32 = 0; v < (fill.positions.length as int32); v++) {
+		if (fill.endpoints[v] >= 0) {
+			at.push(fill.endpoints[v]);
 		} else {
-			v = next[v];
-			guard = guard + 1;
-			if (guard > remaining) { return out; }
+			at.push(points.length as int32);
+			points.push(fill.positions[v]);
 		}
 	}
-	out.push(prev[v]);
-	out.push(v);
-	out.push(next[v]);
-	return out;
+	const tris: int32[] = [];
+	for (const v of fill.triangles) { tris.push(at[v]); }
+	contourFill(n, counted, points, [m], tris, map, color, EdgeLimit.Convex);
 }
 
 // h2d.Graphics arbitrary solid fill (convex shapes can use the cheaper fillConvex fan).
-export function fillPolygon(this g: NodeRef, pts: Vec2[], color: Color): NodeRef {
+export function fillPolygon(
+	this g: NodeRef,
+	pts: Vec2[],
+	color: Color,
+	rule: FillRule = DEFAULT_FILL_RULE,
+): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillPolygon");
-	contourFill(target, true, pts, [pts.length as int32], triangulate(pts), NO_UV, color,
-		EdgeLimit.Convex);
+	outlineFill(target, true, pts, rule, NO_UV, color);
 	return g;
 }
 
@@ -575,6 +519,7 @@ export function fillGradientPolygonStops(
 	middle: float32,
 	angle: float32,
 	space: GradientSpace,
+	rule: FillRule = DEFAULT_FILL_RULE,
 ): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillGradientPolygonStops");
 	const m: int32 = pts.length as int32;
@@ -594,7 +539,7 @@ export function fillGradientPolygonStops(
 		map = { ux: ax / span, uy: ay / span, uc: -minP / span, vx: 0.0, vy: 0.0, vc: 0.0 };
 	}
 	const start: int32 = (target.mesh.length as int32) / 8;
-	contourFill(target, false, pts, [m], triangulate(pts), map, white, EdgeLimit.Convex);
+	outlineFill(target, false, pts, rule, map, white);
 	const count: int32 = (target.mesh.length as int32) / 8 - start;
 	if (count > 0) {
 		appendOp(target, GraphicsOpKind.LinearGradient, start, count, space, true, middle,
@@ -609,8 +554,9 @@ export function fillGradientPolygon(
 	c0: Color,
 	c1: Color,
 	angle: float32,
+	rule: FillRule = DEFAULT_FILL_RULE,
 ): NodeRef {
-	return g.fillGradientPolygonStops(pts, c0, c1, c1, -1.0, angle, GradientSpace.Srgb);
+	return g.fillGradientPolygonStops(pts, c0, c1, c1, -1.0, angle, GradientSpace.Srgb, rule);
 }
 export function fillGradientPolygonOklab(
 	this g: NodeRef,
@@ -618,8 +564,9 @@ export function fillGradientPolygonOklab(
 	c0: Color,
 	c1: Color,
 	angle: float32,
+	rule: FillRule = DEFAULT_FILL_RULE,
 ): NodeRef {
-	return g.fillGradientPolygonStops(pts, c0, c1, c1, -1.0, angle, GradientSpace.Oklab);
+	return g.fillGradientPolygonStops(pts, c0, c1, c1, -1.0, angle, GradientSpace.Oklab, rule);
 }
 
 export function fillGradientRect(
@@ -799,6 +746,7 @@ export function fillTexPolygon(
 	tileW: float32,
 	tileH: float32,
 	color: Color,
+	rule: FillRule = DEFAULT_FILL_RULE,
 ): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillTexPolygon");
 	target.source = t.source;
@@ -809,8 +757,7 @@ export function fillTexPolygon(
 		ux: du, uy: 0.0, uc: t.u0 - originX * du,
 		vx: 0.0, vy: dv, vc: t.v0 - originY * dv,
 	};
-	contourFill(target, true, pts, [pts.length as int32], triangulate(pts), map, color,
-		EdgeLimit.Convex);
+	outlineFill(target, true, pts, rule, map, color);
 	return g;
 }
 
