@@ -17,7 +17,6 @@ import {
 	sameShaderType,
 	stmtOf,
 } from "./ir";
-import { byteAt, byteLength } from "std/core/string/bytes";
 import { irFromText } from "./irText";
 import { GPUShaderBinding } from "../webgpu/types.ms";
 import { ShaderTarget, bindingSlots } from "./layout";
@@ -317,11 +316,9 @@ export function wordsBase64(words: uint32[]): string {
 	return base64Of(bytes);
 }
 
-// A binary file as std/meta readFile returns it: one char per byte through byteAt, never s[i].
-export function bytesBase64(blob: string): string {
+export function bytesBase64(blob: uint8[]): string {
 	let bytes: int32[] = [];
-	const n = blob.byteLength();
-	for (let i = 0; i < n; i++) { bytes.push(blob.byteAt(i) as int32); }
+	for (const b of blob) { bytes.push(b as int32); }
 	return base64Of(bytes);
 }
 
