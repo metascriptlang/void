@@ -276,6 +276,7 @@ when (voidShaper) {
 	import "./shaperBridgeCheck";
 	import "./shapeOracleCheck";
 	import "./shaperPortCheck";
+	import "./kbCmapUnicodeCheck";
 	import "./shapedLayoutCheck";
 }
 when (voidBidi) {
