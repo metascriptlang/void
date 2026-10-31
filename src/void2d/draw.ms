@@ -923,6 +923,10 @@ export function pushRoundedClip(
 				if (uMax < next.uMax) { next.uMax = uMax; }
 				if (vMin > next.vMin) { next.vMin = vMin; }
 				if (vMax < next.vMax) { next.vMax = vMax; }
+				if (next.uMax <= next.uMin || next.vMax <= next.vMin) {
+					x1 = x0;
+					y1 = y0;
+				}
 			}
 		} else {
 			const u0: float32 = tl.x * ux + tl.y * uy;
