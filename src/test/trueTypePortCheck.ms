@@ -14,6 +14,8 @@ function pinnedBytes(): uint32 {
 	}
 }
 
+// Except tests/fonts/cmap/unicodeThenMacRoman.ttf: its part of these digests is the port's own
+// output, recorded with no stb_truetype run, until a dump from the C reference replaces it.
 function pinnedFiles(): uint32 {
 	when (voidCff) {
 		return 78011311;
