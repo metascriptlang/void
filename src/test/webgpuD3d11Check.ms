@@ -57,6 +57,7 @@ import {
 	vertexBuffer,
 	keptOutsideWrites,
 	partialWritesReadBack,
+	drawDirectRows,
 } from "./webgpuFixtures.ms";
 import { d3dBlobFree, d3dBlobRead, d3dCompile, d3dCompileLog } from "../webgpu/d3d11/d3d11.h";
 import { warpDevice, warpContext, warpReadback, warpReadback3d, warpReadbackSubresource, warpObjectName, warpTarget, warpTargetView } from "./d3d11Warp.h";
@@ -558,6 +559,17 @@ test "two indexed indirect records in one call honour firstIndex, baseVertex and
 	const device = openDevice();
 	const target = colourTarget(device, 1);
 	drawIndirectRows(device, colouredShader(device), target);
+	const pixels = readPixels(target);
+	assert pixel(pixels, 2, 32) == GREEN;
+	assert pixel(pixels, 61, 32) == RED;
+	assert pixel(pixels, 32, 32) == BLUE;
+	device.destroy();
+}
+
+test "two direct indexed draws honour firstIndex, baseVertex and firstInstance" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawDirectRows(device, colouredShader(device), target);
 	const pixels = readPixels(target);
 	assert pixel(pixels, 2, 32) == GREEN;
 	assert pixel(pixels, 61, 32) == RED;
