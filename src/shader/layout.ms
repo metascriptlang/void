@@ -91,6 +91,10 @@ function extentOf(m: ShaderModule, t: ShaderType, rule: LayoutRule): [int32, int
 	}
 }
 
+export function workgroupBytes(m: ShaderModule, t: ShaderType): int32 {
+	return extentOf(m, t, LayoutRule.Std430)[1];
+}
+
 function structLayoutOf(m: ShaderModule, structIndex: int32, rule: LayoutRule): StructLayout {
 	const s = m.structs[structIndex];
 	let offsets: int32[] = [];
