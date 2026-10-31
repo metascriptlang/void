@@ -556,7 +556,7 @@ function discoveredFace(font: FontId, codepoint: int32, want: Presentation): int
 	const key: uint64 = ((weight as uint64) << 32) | (((style as int32) as uint64) << 28) |
 		(((want as int32) as uint64) << 24) | (codepoint as uint64);
 	const hit = discovered.get(key);
-	if (hit.present) { return hit.value; }
+	if (hit !== null) { return hit; }
 	discoveryAsks = discoveryAsks + 1;
 	const answers = resolver({ codepoint: codepoint, presentation: want, weight: weight, style: style });
 	let chosen: int32 = NO_DISCOVERY;
@@ -786,7 +786,7 @@ export function faceSlotFor(font: FontId, codepoint: int32, mode: Presentation):
 	const key: uint64 = (((font as int32) as uint64) << FONT_SHIFT) |
 		(((mode as int32) as uint64) << MODE_SHIFT) | (codepoint as uint64);
 	const hit = resolved.get(key);
-	if (hit.present) { return hit.value; }
+	if (hit !== null) { return hit; }
 	coverageProbes = coverageProbes + 1;
 	const want: Presentation = wantedPresentation(mode, codepoint);
 	let slot: int32 = PRIMARY_SLOT;
