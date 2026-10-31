@@ -5635,7 +5635,8 @@ This does not claim a rendered asset or bind the actual exported node hierarchy 
 
 `addGltfBoundNodes` retains source-index→generation-checked scene-node ids; legacy
 `addGltfNodes` still returns its count. Unselected nodes remain NO_NODE_ID. `gltfPose.ms`
-copies the clip's curves into each bound pose (Heaps shares them, `LinearAnimation.hx:37-48`; open),
+shares the clip's curve arrays across bound poses (`float32[]`, so binding copies the track,
+not the keyframes, as Heaps shares `frames` in `LinearAnimation.hx:37-48`),
 samples them in place, owns each instance's target map/scratch and validates every target
 and sample before committing TRS. Six pins pass DRC/ORC304: duplicate names, clone independence,
 independent channels, combined TRS, recycled-node refusal and atomic late-quaternion failure.

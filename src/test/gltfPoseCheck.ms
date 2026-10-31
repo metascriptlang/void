@@ -86,6 +86,27 @@ test "two instances share clip values, not target ids, pose scratch or sample ti
 	assert approx(scene.nodes[second.index].local.position.x, 6.0);
 }
 
+test "poses bound from one clip alias its curve storage and sample the same values" {
+	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const first = group(scene, scene.rootId());
+	const second = group(scene, scene.rootId());
+	const curve = GltfCurve.forValues(
+		GltfCurvePath.Translation, GltfCurveMode.Linear, [0.0, 4.0],
+		[0.0, 0.0, 0.0, 8.0, 0.0, 0.0],
+	);
+	assert curve.ok;
+	if (!curve.ok) { return; }
+	const a = GltfPose.bind(scene, [first], [{ sourceNode: 0, curve: curve.value }]);
+	const b = GltfPose.bind(scene, [second], [{ sourceNode: 0, curve: curve.value }]);
+	assert a.ok && b.ok;
+	if (!a.ok || !b.ok) { return; }
+	assert a.value.tracks[0].curve.times === b.value.tracks[0].curve.times;
+	assert a.value.tracks[0].curve.values === b.value.tracks[0].curve.values;
+	assert a.value.tracks[0].curve.times === curve.value.times;
+	assert a.value.samplePose(1.0).ok;
+	assert approx(scene.nodes[first.index].local.position.x, 2.0);
+}
+
 test "stale recycled joint ids reject atomically rather than animating replacement nodes" {
 	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const first = group(scene, scene.rootId());

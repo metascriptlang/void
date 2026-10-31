@@ -29,8 +29,8 @@ export enum GltfCurveError {
 export struct GltfCurve {
 	path: GltfCurvePath;
 	mode: GltfCurveMode;
-	times: Vec<float32>;
-	values: Vec<float32>;
+	times: float32[];
+	values: float32[];
 }
 
 function width(this path: GltfCurvePath): int32 {
@@ -54,9 +54,9 @@ function keyStride(this curve: Readonly<GltfCurve>): int32 {
 	return curve.path.width() * curve.mode.copiesPerKey();
 }
 
-function checkedTimes(times: Readonly<Span<float32>>): Result<Vec<float32>, GltfCurveError> {
+function checkedTimes(times: Readonly<Span<float32>>): Result<float32[], GltfCurveError> {
 	let previous: float32 = -1.0;
-	let checked: Vec<float32> = [];
+	let checked: float32[] = [];
 	for (const time of times) {
 		if (!Number.isFinite(time)) { return Result.err(GltfCurveError.NonFinite); }
 		if (time < 0.0 || time <= previous) { return Result.err(GltfCurveError.TimeOrder); }
@@ -66,8 +66,8 @@ function checkedTimes(times: Readonly<Span<float32>>): Result<Vec<float32>, Gltf
 	return Result.ok(move checked);
 }
 
-function checkedValues(values: Readonly<Span<float32>>): Result<Vec<float32>, GltfCurveError> {
-	let checked: Vec<float32> = [];
+function checkedValues(values: Readonly<Span<float32>>): Result<float32[], GltfCurveError> {
+	let checked: float32[] = [];
 	for (const value of values) {
 		if (!Number.isFinite(value)) { return Result.err(GltfCurveError.NonFinite); }
 		checked.push(value);
@@ -232,8 +232,8 @@ export struct GltfWeightTrack {
 export struct GltfWeightCurve {
 	mode: GltfCurveMode;
 	targetCount: int32;
-	times: Vec<float32>;
-	values: Vec<float32>;
+	times: float32[];
+	values: float32[];
 }
 
 export function forWeightValues(

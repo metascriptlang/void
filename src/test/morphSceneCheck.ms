@@ -166,6 +166,24 @@ test "a weights track publishes its node once and every primitive follows" {
 	if (!duplicate.ok) { assert duplicate.error == GltfMorphPoseError.DuplicateTrack; }
 }
 
+test "morph poses bound from one clip alias its weight curve storage" {
+	const scene = fixture(1);
+	defer closeScene(scene);
+	const morph = sceneMorph(morphData(1), [0, 0]);
+	const curve = GltfWeightCurve.forWeightValues(GltfCurveMode.Linear, 2, [0, 1], [0, 0, 1, 0.5]);
+	assert curve.ok;
+	if (!curve.ok) { return; }
+	const tracks: Vec<GltfWeightTrack> = [{ sourceNode: 0, curve: curve.value }];
+	const a = GltfMorphPose.bindMorphPose(owners(morph), tracks);
+	const b = GltfMorphPose.bindMorphPose(owners(morph), tracks);
+	assert a.ok && b.ok;
+	if (!a.ok || !b.ok) { return; }
+	assert a.value.tracks[0].curve.times === b.value.tracks[0].curve.times;
+	assert a.value.tracks[0].curve.values === curve.value.values;
+	assert a.value.sampleMorphPose(0.5).ok;
+	assert morph.geometry.weights[0] == 0.5 && morph.geometry.weights[1] == 0.25;
+}
+
 test "a failed publish is a named error and the scene never draws the previous shape as current" {
 	const scene = fixture(1);
 	defer closeScene(scene);
