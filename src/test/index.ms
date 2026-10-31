@@ -15,6 +15,7 @@ import "./glyphPageReleaseCheck";
 import "./glyphPortCheck";
 import "./outlineKeyCheck";
 import "./textLayoutCheck";
+import "./nerdFontCheck";
 import "./labelTextCheck";
 import "./glyphRetryCheck";
 import "./textMetricsCheck";

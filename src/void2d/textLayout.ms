@@ -8,6 +8,7 @@ import {
 	DecorationMetrics,
 	isSpriteFace,
 	glyphInkBox,
+	faceHeights,
 	hasColourTables,
 	colourTileBox,
 	ColourTileBox,
@@ -24,6 +25,7 @@ import {
 	isFontFace,
 } from "./font";
 import { Color } from "./types";
+import { CellMetrics, InkBox, cellConstraint, constrainInk, uniformEquivalent } from "./nerdFont";
 import { GraphemeCursor, startGraphemes, breaksBefore } from "./grapheme";
 import { lineBreaks } from "./lineBreak";
 import {
@@ -1198,6 +1200,7 @@ function lineWidthOf(glyphs: Readonly<Span<LaidGlyph>>, first: int32): float32 {
 // a later cell. A base is a grapheme's first glyph, a combining mark keeps its offset from it.
 function forceCells(
 	glyphs: Span<LaidGlyph>, first: int32, cell: float32, cellWidths: Readonly<Span<uint8>>,
+	constraintWidths: Readonly<Span<uint8>>, box: CellMetrics,
 ): float32 {
 	let cells: int32 = 0;
 	let head: int32 = first;
@@ -1221,7 +1224,7 @@ function forceCells(
 	if (head < (glyphs.length as int32)) {
 		glyphs[head].advance = ((cells - headCells) as float32) * cell;
 	}
-	fitClusters(glyphs, first, cell, cellWidths);
+	fitClusters(glyphs, first, cell, cellWidths, constraintWidths, box);
 	return (cells as float32) * cell;
 }
 
@@ -1273,18 +1276,72 @@ function fitCluster(glyphs: Span<LaidGlyph>, head: int32, end: int32, cells: int
 
 function fitClusters(
 	glyphs: Span<LaidGlyph>, first: int32, cell: float32, cellWidths: Readonly<Span<uint8>>,
+	constraintWidths: Readonly<Span<uint8>>, box: CellMetrics,
 ): void {
 	let head: int32 = first;
 	let cells: int32 = 0;
-	for (let k = first; k < (glyphs.length as int32); k++) {
+	const total: int32 = glyphs.length as int32;
+	for (let k = first; k < total; k++) {
 		if (k > first && glyphs[k].boundary()) {
-			fitCluster(glyphs, head, k, cells, cell);
+			fitOrConstrain(glyphs, head, k, cells, cell, constraintWidths, box);
 			head = k;
 			cells = 0;
 		}
 		cells = cells + cellsOf(glyphs, k, first, cellWidths);
 	}
-	if (head < (glyphs.length as int32)) { fitCluster(glyphs, head, glyphs.length as int32, cells, cell); }
+	if (head < total) { fitOrConstrain(glyphs, head, total, cells, cell, constraintWidths, box); }
+}
+
+function fitOrConstrain(
+	glyphs: Span<LaidGlyph>, head: int32, end: int32, cells: int32, cell: float32,
+	constraintWidths: Readonly<Span<uint8>>, box: CellMetrics,
+): void {
+	if ((constraintWidths.length as int32) != 0 && constrainCluster(glyphs, head, end, constraintWidths, box)) {
+		return;
+	}
+	fitCluster(glyphs, head, end, cells, cell);
+}
+
+const INK_PROBE_SIZE: float32 = 1024.0;
+
+function preciseInk(g: LaidGlyph): [float32, float32, float32, float32] {
+	if (hasColourTables(g.face)) {
+		const colour: ColourTileBox = colourTileBox(g.face, g.glyph, g.size);
+		if (colour.glyph == ColourGlyph.Present) {
+			return [colour.left as float32, colour.top as float32, colour.right as float32, colour.bottom as float32];
+		}
+	}
+	const box = glyphInkBox(g.face, g.glyph, INK_PROBE_SIZE);
+	const k: float32 = g.size / INK_PROBE_SIZE;
+	return [box[0] * k, box[1] * k, box[2] * k, box[3] * k];
+}
+
+// Ghostty's generic.zig:3488-3500 and coretext.zig:340-390 (b58ef1d67): the glyph's ink box is
+// resized and aligned into its constraint's cells, then the shaper's own offset is added on top.
+function constrainCluster(
+	glyphs: Span<LaidGlyph>, head: int32, end: int32,
+	constraintWidths: Readonly<Span<uint8>>, box: CellMetrics,
+): boolean {
+	const g: LaidGlyph = glyphs[head];
+	if (g.glyph == NO_GLYPH || g.byteEnd <= g.byteStart || g.size <= 0.0 || isSpriteFace(g.face)) {
+		return false;
+	}
+	const cells: int32 = constraintWidths[g.byteStart] as int32;
+	if (cells == 0) { return false; }
+	const constraint = cellConstraint(g.codepoint);
+	if (constraint == null) { return false; }
+	for (let k = head + 1; k < end; k++) {
+		if (glyphs[k].glyph != NO_GLYPH) { return false; }
+	}
+	const [left, top, right, bottom] = preciseInk(g);
+	if (!(right > left && bottom > top)) { return false; }
+	const ink: InkBox = { x: left, y: box.baseline - bottom, width: right - left, height: bottom - top };
+	const placed: InkBox = constrainInk(uniformEquivalent(constraint), ink, box, cells);
+	const k: float32 = placed.width / ink.width;
+	glyphs[head].size = g.size * k;
+	glyphs[head].offsetX = g.offsetX + placed.x - left * k;
+	glyphs[head].offsetY = g.offsetY + (box.baseline - placed.y - placed.height) - top * k;
+	return true;
 }
 
 // Ghostty shapes with each codepoint's grid column as its cluster (font/shape.zig Cell.x) and
@@ -1431,11 +1488,27 @@ function pushTruncated(
 
 export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOptions): TextLayout {
 	const noCells: Vec<uint8> = new Array(0);
-	return wrapOnGrid(shaped, style, options, noCells);
+	return wrapOnGrid(shaped, style, options, noCells, noCells);
+}
+
+const NO_CELL_BOX: CellMetrics = { cell: 0.0, height: 0.0, baseline: 0.0, iconHeight: 0.0, iconHeightSingle: 0.0 };
+
+function cellBoxOf(face: int32, size: float32, metrics: FaceMetrics, cell: float32): CellMetrics {
+	const height: float32 = metrics.ascent + metrics.descent + metrics.lineGap;
+	const heights = faceHeights(face);
+	const cap: float32 = (heights.capHeight > 0.0 ? heights.capHeight : heights.capHeightEstimate) * size;
+	return {
+		cell: cell,
+		height: height,
+		baseline: metrics.descent + metrics.lineGap,
+		iconHeight: height,
+		iconHeightSingle: (2.0 * cap + height) / 3.0,
+	};
 }
 
 export function wrapOnGrid(
 	shaped: ShapedText, style: TextStyle, options: LineOptions, cellWidths: Readonly<Span<uint8>>,
+	constraintWidths: Readonly<Span<uint8>>,
 ): TextLayout {
 	const widths: int32 = cellWidths.length as int32;
 	if (widths != 0 && widths != shaped.bytes) {
@@ -1445,9 +1518,21 @@ export function wrapOnGrid(
 		);
 		return wrapText(shaped, style, options);
 	}
+	const constrained: int32 = constraintWidths.length as int32;
+	if (constrained != 0 && constrained != shaped.bytes) {
+		console.log(
+			`void2d: constraint widths cover ${constrained} bytes, the text has ${shaped.bytes}; ` +
+			`drawn with no constraints`,
+		);
+		const noConstraints: Vec<uint8> = new Array(0);
+		return wrapOnGrid(shaped, style, options, cellWidths, noConstraints);
+	}
 	const primary: int32 = fontFace(style.font);
 	const metrics = faceMetrics(primary, style.size);
 	const lineHeight: float32 = metrics.ascent + metrics.descent + metrics.lineGap;
+	const cellBox: CellMetrics = constrained == 0
+		? NO_CELL_BOX
+		: cellBoxOf(primary, style.size, metrics, options.forceWidth);
 	const truncating: boolean = style.maxWidth > 0.0 && options.truncate != Truncate.None;
 	const wrapping: boolean = style.maxWidth > 0.0 && !truncating &&
 		!fitsUnbroken(shaped, style.maxWidth, options.forceWidth, cellWidths);
@@ -1493,7 +1578,7 @@ export function wrapOnGrid(
 				pushLine(shaped, lineStart, end, lineIndex, glyphs);
 			}
 			let lineWidth: float32 = options.forceWidth > 0.0
-				? forceCells(glyphs, firstGlyph, options.forceWidth, cellWidths)
+				? forceCells(glyphs, firstGlyph, options.forceWidth, cellWidths, constraintWidths, cellBox)
 				: lineWidthOf(glyphs, firstGlyph);
 			reorderRow(shaped, lineStart, glyphs, firstGlyph, lineWidth, layoutBidi);
 			for (let k = firstGlyph; k < (glyphs.length as int32); k++) {

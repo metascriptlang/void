@@ -53,6 +53,7 @@ import {
 	labelDirection,
 	setLabelLines,
 	setLabelCellWidths,
+	setLabelConstraintWidths,
 	labelLines,
 	setLabelSelection,
 	setLabelCursor,
@@ -1627,6 +1628,11 @@ export function setShapingBreaks(this n: NodeRef, breaks: Readonly<Span<int32>>)
 
 export function setCellWidths(this n: NodeRef, widths: Readonly<Span<uint8>>): NodeRef {
 	setLabelCellWidths(textChanged(n, "setCellWidths"), widths);
+	return n;
+}
+
+export function setConstraintWidths(this n: NodeRef, widths: Readonly<Span<uint8>>): NodeRef {
+	setLabelConstraintWidths(textChanged(n, "setConstraintWidths"), widths);
 	return n;
 }
 
