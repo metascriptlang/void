@@ -30,7 +30,6 @@ import {
 	isAtomic,
 	hasOffset,
 	sampleBase,
-	isShift,
 	isUniformLoad,
 	sameShaderType,
 	texelScalar,
@@ -303,9 +302,7 @@ function value(p: Glsl, e: ShaderExpr): string {
 			return leftText + " - " + rightText + " * trunc(" + leftText + " / " + rightText +
 				")";
 		}
-		const amount = isShift(e.binary) && right.kind != ExprKind.Literal ?
-			"(" + expr(p, right) + " & 31u)" : expr(p, right);
-		return expr(p, left) + " " + binaryOperator(e.binary) + " " + amount;
+		return expr(p, left) + " " + binaryOperator(e.binary) + " " + expr(p, right);
 	}
 	if (e.kind == ExprKind.Unary) {
 		const operand = e.operands[0];

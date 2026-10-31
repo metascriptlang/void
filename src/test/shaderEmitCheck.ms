@@ -103,7 +103,7 @@ test "conversions, the conditional and an index into a local array" {
 	assert glsl(convertFs) == "layout(location=0) out float fragColor;\n" +
 		"void main() {\n" +
 		"    float[3] weights = float[3](0.25, 0.5, 1.0);\n" +
-		"    int column = int(gl_FragCoord.x);\n" +
+		"    int column = int(((gl_FragCoord.x == gl_FragCoord.x) ? clamp(gl_FragCoord.x, -2147483648.0, 2147483520.0) : 0.0));\n" +
 		"    int nearest = (column > 2) ? 2 : column;\n" +
 		"    float lower = (gl_FragCoord.y > 1.0) ? 1.0 : 0.0;\n" +
 		"    fragColor = (weights[nearest] * float(nearest)) + lower;\n" +
