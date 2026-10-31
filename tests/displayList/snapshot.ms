@@ -883,6 +883,42 @@ test "T1 a draw under nested rounded Masks that cross at a corner replays no pix
 	}
 }
 
+function pushDiagonalStrip(cx: float32, cy: float32, length: float32, width: float32): void {
+	const half: float32 = 0.70710678;
+	const ex: float32 = half * length;
+	const fx: float32 = half * width;
+	const tl: Vec2 = vec2(cx - 0.5 * ex + 0.5 * fx, cy - 0.5 * ex - 0.5 * fx);
+	const tr: Vec2 = vec2(tl.x + ex, tl.y + ex);
+	const bl: Vec2 = vec2(tl.x - fx, tl.y + fx);
+	pushClip(tl, tr, vec2(tr.x - fx, tr.y + fx), bl);
+}
+
+function parallelStripsArea(scoped: boolean, apart: float32): int32 {
+	begin2d(64.0, 64.0, 1.0);
+	if (scoped) {
+		enterScope(0, vec2(0.0, 0.0), vec2(64.0, 0.0), vec2(64.0, 64.0), vec2(0.0, 64.0), 0.0, 0.0);
+	}
+	pushDiagonalStrip(32.0, 32.0, 60.0, 4.0);
+	pushDiagonalStrip(32.0 - apart * 0.70710678, 32.0 + apart * 0.70710678, 60.0, 4.0);
+	drawRect(vec2(0.0, 0.0), vec2(64.0, 64.0), rgba(1.0, 1.0, 1.0, 1.0), BlendMode.Alpha);
+	popClip();
+	popClip();
+	if (scoped) { leaveScope(); }
+	finishRecording();
+	const area: int32 = scissoredDrawArea(64.0, 64.0);
+	frameEnd();
+	return area;
+}
+
+test "T1 a draw under nested rotated Masks on one axis that do not meet replays no pixel" {
+	for (const scoped of [false, true]) {
+		assert parallelStripsArea(scoped, 2.0) > 0;
+		const area: int32 = parallelStripsArea(scoped, 20.0);
+		console.log(`parallel rotated Masks 20 apart, scoped ${scoped}: ${area} px scissored`);
+		assert area == 0;
+	}
+}
+
 test "T1 a Mask left of the viewport keeps its clip, so what it reaches on screen is cut" {
 	record(leftMaskScene(), 256.0, 150.0, 1.0);
 	assert uiInstanceCount() == 1;
