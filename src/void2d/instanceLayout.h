@@ -40,5 +40,4 @@ static const size_t void2dSpriteInstanceOffsets[4] = {
 	offsetof(void2dSpriteInstance, color),
 };
 
-#define VOID2D_UI_REC_FLOATS 36
 #define VOID2D_SPRITE_REC_FLOATS 16

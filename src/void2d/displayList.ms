@@ -13,7 +13,7 @@
 //   - `uiInstances` and `spriteInstances`, P2's two instance streams, in LOCAL space with the
 //     affine carried per instance — which is what lets the SDF be re-derived in local space
 //     and survive rotation. Separate rather than one wide record, because guardrail 8 says a
-//     sprite must not pay for the UI pipeline, and 36 floats to record 16 is paying.
+//     sprite must not pay for the UI pipeline, and 27 words to record 16 is paying.
 //   - `commands`, COMMAND_FLOATS floats per command, fixed width. A fixed width costs a few
 //     zero fields on a scissor and buys an index that is arithmetic rather than a scan —
 //     and a snapshot whose lines are all the same shape.
@@ -73,12 +73,12 @@ import {
 	NO_SCOPE,
 } from "./commandFields";
 export * from "./commandFields";
-import { InstanceMode, UI_PARAM_MODE, UiInstance } from "./instance";
+import { InstanceMode, UI_PARAM_MODE, UiInstance, packChannel } from "./instance";
+import { floatBits, floatOfBits } from "./floatBits";
 import {
 	UI_STRIDE, SPRITE_STRIDE,
-	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0,
-	REC_UI_PARAMS1, REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_COLOR_EXTRA,
-	REC_UI_FLOATS,
+	WORD_UI_AFFINE, WORD_UI_ORIGIN_SIZE, WORD_UI_UV_RADII, WORD_UI_BORDERS, WORD_UI_PARAMS0,
+	WORD_UI_PARAMS1, WORD_UI_COLOR_FILL, WORD_UI_COLOR_BORDER, WORD_UI_COLOR_EXTRA, UI_WORDS,
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
 	REC_SPRITE_FLOATS,
 } from "./instanceLayout";
@@ -278,7 +278,7 @@ export interface DrawContext2D {
 	commands: Vec<float32>;
 	effects: Vec<float32>;
 	vertices: Vec<float32>;
-	uiInstances: Vec<float32>;
+	uiInstances: Vec<uint32>;
 	spriteInstances: Vec<float32>;
 	targetCommands: Vec<float32>;
 	commandTotal: int32;
@@ -366,6 +366,7 @@ export interface DrawContext2D {
 	laneRunWasOpen: boolean;
 	scopeDepths: Vec<int32>;
 	saved: Vec<float32>;
+	savedUi: Vec<uint32>;
 	effectBase: int32;
 	laneOrder: Vec<int32>;
 	laneSourceOffsets: Vec<int32>;
@@ -374,6 +375,7 @@ export interface DrawContext2D {
 	laneOffsets: Vec<int32>;
 	laneOut: Vec<float32>;
 	laneScratch: Vec<float32>;
+	laneScratchUi: Vec<uint32>;
 	laneBySprite: Vec<int32>;
 	laneByUi: Vec<int32>;
 	laneByVertex: Vec<int32>;
@@ -409,7 +411,7 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		commands: new Array(COMMAND_FLOATS),
 		effects: new Array(EFFECT_FLOATS),
 		vertices: new Array(VERTEX_FLOATS),
-		uiInstances: new Array(REC_UI_FLOATS),
+		uiInstances: new Array(UI_WORDS),
 		spriteInstances: new Array(REC_SPRITE_FLOATS),
 		targetCommands: new Array(COMMAND_FLOATS),
 		commandTotal: 0,
@@ -495,6 +497,7 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		laneRunWasOpen: false,
 		scopeDepths: [],
 		saved: [],
+		savedUi: [],
 		effectBase: 0,
 		laneOrder: [],
 		laneSourceOffsets: [],
@@ -503,6 +506,7 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		laneOffsets: [],
 		laneOut: [],
 		laneScratch: [],
+		laneScratchUi: [],
 		laneBySprite: [],
 		laneByUi: [],
 		laneByVertex: [],
@@ -678,25 +682,27 @@ export function nextStageTag(): int32 {
 
 
 export function saveRange(a: PaintIndex, b: PaintIndex): void {
-	const ui: int32 = (b.uiInstances - a.uiInstances) * REC_UI_FLOATS;
+	const ui: int32 = (b.uiInstances - a.uiInstances) * UI_WORDS;
 	const sprites: int32 = (b.spriteInstances - a.spriteInstances) * REC_SPRITE_FLOATS;
 	const vertices: int32 = (b.vertices - a.vertices) * VERTEX_FLOATS;
-	growTo(activeContext.saved, ui + sprites + vertices);
+	growWords(activeContext.savedUi, ui);
+	growTo(activeContext.saved, sprites + vertices);
 	if (ui > 0) {
-		copyFloats(activeContext.saved, 0, activeContext.uiInstances, a.uiInstances * REC_UI_FLOATS, ui);
+		copyWords(activeContext.savedUi, 0, activeContext.uiInstances, a.uiInstances * UI_WORDS,
+			ui);
 	}
 	if (sprites > 0) {
-		copyFloats(activeContext.saved, ui, activeContext.spriteInstances,
+		copyFloats(activeContext.saved, 0, activeContext.spriteInstances,
 			a.spriteInstances * REC_SPRITE_FLOATS, sprites);
 	}
 	if (vertices > 0) {
-		copyFloats(activeContext.saved, ui + sprites, activeContext.vertices, a.vertices * VERTEX_FLOATS,
+		copyFloats(activeContext.saved, sprites, activeContext.vertices, a.vertices * VERTEX_FLOATS,
 			vertices);
 	}
 }
 
-function recordDiffers(
-	a: Readonly<Span<float32>>, aAt: int32, b: Readonly<Span<float32>>, bAt: int32, stride: int32,
+function recordDiffers<T>(
+	a: Readonly<Span<T>>, aAt: int32, b: Readonly<Span<T>>, bAt: int32, stride: int32,
 ): boolean {
 	for (let f: int32 = 0; f < stride; f++) {
 		if (a[aAt + f] != b[bAt + f]) { return true; }
@@ -704,8 +710,8 @@ function recordDiffers(
 	return false;
 }
 
-function firstDiff(
-	a: Readonly<Span<float32>>, aAt: int32, b: Readonly<Span<float32>>, bAt: int32, records: int32,
+function firstDiff<T>(
+	a: Readonly<Span<T>>, aAt: int32, b: Readonly<Span<T>>, bAt: int32, records: int32,
 	stride: int32,
 ): int32 | null {
 	for (let r: int32 = 0; r < records; r++) {
@@ -714,8 +720,8 @@ function firstDiff(
 	return null;
 }
 
-function lastDiff(
-	a: Readonly<Span<float32>>, aAt: int32, b: Readonly<Span<float32>>, bAt: int32, records: int32,
+function lastDiff<T>(
+	a: Readonly<Span<T>>, aAt: int32, b: Readonly<Span<T>>, bAt: int32, records: int32,
 	stride: int32,
 ): int32 {
 	for (let r: int32 = records - 1; r >= 0; r--) {
@@ -739,7 +745,7 @@ function addDirtyUi(from: int32, to: int32): void {
 	activeContext.dirtyUiTotal = pairs + 1;
 }
 
-const NOTE_FLOAT_INDEX_MAX: int64 = 2147483647;
+const NOTE_WORD_INDEX_MAX: int64 = 2147483647;
 
 export function beginSegments(a: PaintIndex): void {
 	activeContext.segmented = true;
@@ -758,35 +764,34 @@ export function endSegments(a: PaintIndex, b: PaintIndex): void {
 
 export function noteRange(a: PaintIndex, b: PaintIndex): void {
 	if (b.uiInstances > a.uiInstances) {
-		const uiEnd: int64 = (b.uiInstances as int64) * REC_UI_FLOATS;
+		const uiEnd: int64 = (b.uiInstances as int64) * UI_WORDS;
 		const savedUiEnd: int64 =
-			((b.uiInstances as int64) - (a.uiInstances as int64)) * REC_UI_FLOATS;
-		if (a.uiInstances < 0 || uiEnd > NOTE_FLOAT_INDEX_MAX ||
-			savedUiEnd > NOTE_FLOAT_INDEX_MAX || uiEnd > activeContext.uiInstances.length ||
-			savedUiEnd > activeContext.saved.length) {
+			((b.uiInstances as int64) - (a.uiInstances as int64)) * UI_WORDS;
+		if (a.uiInstances < 0 || uiEnd > NOTE_WORD_INDEX_MAX ||
+			savedUiEnd > NOTE_WORD_INDEX_MAX || uiEnd > activeContext.uiInstances.length ||
+			savedUiEnd > activeContext.savedUi.length) {
 			console.log("void2d: incomplete or unaddressable UI span in noteRange");
 			unreachable;
 		}
 	}
 	const ui: int32 = b.uiInstances - a.uiInstances;
 	if (ui > 0) {
-		const live: int32 = a.uiInstances * REC_UI_FLOATS;
-		const first: int32 | null = firstDiff(activeContext.saved, 0, activeContext.uiInstances, live, ui,
-			REC_UI_FLOATS);
+		const live: int32 = a.uiInstances * UI_WORDS;
+		const first: int32 | null =
+			firstDiff(activeContext.savedUi, 0, activeContext.uiInstances, live, ui, UI_WORDS);
 		if (first !== null) {
-			const last: int32 = lastDiff(activeContext.saved, 0, activeContext.uiInstances, live, ui,
-				REC_UI_FLOATS);
+			const last: int32 =
+				lastDiff(activeContext.savedUi, 0, activeContext.uiInstances, live, ui, UI_WORDS);
 			addDirtyUi(a.uiInstances + first, a.uiInstances + last + 1);
 		}
 	}
-	const k: int32 = ui * REC_UI_FLOATS;
 	const sprites: int32 = (b.spriteInstances - a.spriteInstances) * REC_SPRITE_FLOATS;
-	if (sprites > 0 && firstDiff(activeContext.saved, k, activeContext.spriteInstances,
+	if (sprites > 0 && firstDiff(activeContext.saved, 0, activeContext.spriteInstances,
 		a.spriteInstances * REC_SPRITE_FLOATS, sprites, 1) !== null) {
 		activeContext.dirtySprites = true;
 	}
 	const vertices: int32 = (b.vertices - a.vertices) * VERTEX_FLOATS;
-	if (vertices > 0 && firstDiff(activeContext.saved, k + sprites, activeContext.vertices,
+	if (vertices > 0 && firstDiff(activeContext.saved, sprites, activeContext.vertices,
 		a.vertices * VERTEX_FLOATS, vertices, 1) !== null) {
 		activeContext.dirtyVertices = true;
 	}
@@ -852,10 +857,9 @@ export function currentSpliceSource(): DrawContext2D | null { return spliceSourc
 
 export function copyUiInstances(old: DrawContext2D, first: int32, count: int32): void {
 	if (count <= 0) { return; }
-	const to: int32 = activeContext.uiInstanceTotal * REC_UI_FLOATS;
-	growTo(activeContext.uiInstances, to + count * REC_UI_FLOATS);
-	copyFloats(activeContext.uiInstances, to, old.uiInstances, first * REC_UI_FLOATS,
-		count * REC_UI_FLOATS);
+	const to: int32 = activeContext.uiInstanceTotal * UI_WORDS;
+	growWords(activeContext.uiInstances, to + count * UI_WORDS);
+	copyWords(activeContext.uiInstances, to, old.uiInstances, first * UI_WORDS, count * UI_WORDS);
 	if (activeContext.uploadAll) { noteUiCopy(old, first, count, activeContext.uiInstanceTotal); }
 	activeContext.uiInstanceTotal = activeContext.uiInstanceTotal + count;
 	activeContext.uiCopied = activeContext.uiCopied + count;
@@ -1028,6 +1032,32 @@ function growTo(ref stream: Vec<float32>, length: int32): void {
 	while ((stream.length as int32) < length) { stream.push(0.0 as float32); }
 }
 
+function copyWords(
+	ref to: Vec<uint32>, at: int32, from: Readonly<Span<uint32>>, start: int32, count: int32,
+): void {
+	for (let i: int32 = 0; i < count; i++) { to[at + i] = from[start + i]; }
+}
+
+function growWords(ref stream: Vec<uint32>, length: int32): void {
+	while ((stream.length as int32) < length) { stream.push(0); }
+}
+
+function putLane(
+	ref words: Vec<uint32>, at: int32, x: float32, y: float32, z: float32, w: float32,
+): void {
+	words[at] = floatBits(x);
+	words[at + 1] = floatBits(y);
+	words[at + 2] = floatBits(z);
+	words[at + 3] = floatBits(w);
+}
+
+function packColor(c: Color): uint32 {
+	return (packChannel(c.r) as uint32) |
+		((packChannel(c.g) as uint32) << 8) |
+		((packChannel(c.b) as uint32) << 16) |
+		((packChannel(c.a) as uint32) << 24);
+}
+
 // Append one vertex to the frame's stream and answer nothing — the caller already knows
 // where it landed, because it asked for the offset before it started.
 export function pushVertex(
@@ -1053,52 +1083,27 @@ export function pushVertex(
 	activeContext.vertexTotal = activeContext.vertexTotal + 1;
 }
 
-// Append one UI instance. The caller passes the six float4 lanes and three colours; the
-// packing to UBYTE4N happens in `batcher.c` on the way to the GPU (instance.ms, "the RECORD
-// layout").
+// Append one UI instance as the words the GPU reads: float lanes by their bits and colours
+// packed to UBYTE4N here, once, instead of on every upload.
 export function pushUiInstance(inst: UiInstance, originX: float32, originY: float32): void {
-	const base: int32 = uiSlot() * REC_UI_FLOATS;
-	growTo(activeContext.uiInstances, base + REC_UI_FLOATS);
+	const base: int32 = uiSlot() * UI_WORDS;
+	growWords(activeContext.uiInstances, base + UI_WORDS);
 	const [u0, u1, u2, u3] = inst.uvRadii;
 	const [bl, bt, br, bb] = inst.borders;
 	const [p1, p2, p3] = inst.params;
 	const [q0, q1, q2, q3] = inst.params1;
-	activeContext.uiInstances[base + REC_UI_AFFINE] = inst.affine.a;
-	activeContext.uiInstances[base + REC_UI_AFFINE + 1] = inst.affine.b;
-	activeContext.uiInstances[base + REC_UI_AFFINE + 2] = inst.affine.c;
-	activeContext.uiInstances[base + REC_UI_AFFINE + 3] = inst.affine.d;
-	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE] = inst.x - originX;
-	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE + 1] = inst.y - originY;
-	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE + 2] = inst.w;
-	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE + 3] = inst.h;
-	activeContext.uiInstances[base + REC_UI_UV_RADII] = u0;
-	activeContext.uiInstances[base + REC_UI_UV_RADII + 1] = u1;
-	activeContext.uiInstances[base + REC_UI_UV_RADII + 2] = u2;
-	activeContext.uiInstances[base + REC_UI_UV_RADII + 3] = u3;
-	activeContext.uiInstances[base + REC_UI_BORDERS] = bl;
-	activeContext.uiInstances[base + REC_UI_BORDERS + 1] = bt;
-	activeContext.uiInstances[base + REC_UI_BORDERS + 2] = br;
-	activeContext.uiInstances[base + REC_UI_BORDERS + 3] = bb;
-	activeContext.uiInstances[base + REC_UI_PARAMS0] = (inst.mode as int32) as float32;
-	activeContext.uiInstances[base + REC_UI_PARAMS0 + 1] = p1;
-	activeContext.uiInstances[base + REC_UI_PARAMS0 + 2] = p2;
-	activeContext.uiInstances[base + REC_UI_PARAMS0 + 3] = p3;
-	activeContext.uiInstances[base + REC_UI_PARAMS1] = q0;
-	activeContext.uiInstances[base + REC_UI_PARAMS1 + 1] = q1;
-	activeContext.uiInstances[base + REC_UI_PARAMS1 + 2] = q2;
-	activeContext.uiInstances[base + REC_UI_PARAMS1 + 3] = q3;
-	activeContext.uiInstances[base + REC_UI_COLOR_FILL] = inst.fill.r;
-	activeContext.uiInstances[base + REC_UI_COLOR_FILL + 1] = inst.fill.g;
-	activeContext.uiInstances[base + REC_UI_COLOR_FILL + 2] = inst.fill.b;
-	activeContext.uiInstances[base + REC_UI_COLOR_FILL + 3] = inst.fill.a;
-	activeContext.uiInstances[base + REC_UI_COLOR_BORDER] = inst.border.r;
-	activeContext.uiInstances[base + REC_UI_COLOR_BORDER + 1] = inst.border.g;
-	activeContext.uiInstances[base + REC_UI_COLOR_BORDER + 2] = inst.border.b;
-	activeContext.uiInstances[base + REC_UI_COLOR_BORDER + 3] = inst.border.a;
-	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA] = inst.extra.r;
-	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA + 1] = inst.extra.g;
-	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA + 2] = inst.extra.b;
-	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA + 3] = inst.extra.a;
+	const a: Transform2D = inst.affine;
+	putLane(activeContext.uiInstances, base + WORD_UI_AFFINE, a.a, a.b, a.c, a.d);
+	putLane(activeContext.uiInstances, base + WORD_UI_ORIGIN_SIZE, inst.x - originX,
+		inst.y - originY, inst.w, inst.h);
+	putLane(activeContext.uiInstances, base + WORD_UI_UV_RADII, u0, u1, u2, u3);
+	putLane(activeContext.uiInstances, base + WORD_UI_BORDERS, bl, bt, br, bb);
+	putLane(activeContext.uiInstances, base + WORD_UI_PARAMS0, (inst.mode as int32) as float32,
+		p1, p2, p3);
+	putLane(activeContext.uiInstances, base + WORD_UI_PARAMS1, q0, q1, q2, q3);
+	activeContext.uiInstances[base + WORD_UI_COLOR_FILL] = packColor(inst.fill);
+	activeContext.uiInstances[base + WORD_UI_COLOR_BORDER] = packColor(inst.border);
+	activeContext.uiInstances[base + WORD_UI_COLOR_EXTRA] = packColor(inst.extra);
 	activeContext.uiInstanceTotal = activeContext.uiInstanceTotal + 1;
 }
 
@@ -1119,49 +1124,24 @@ export function pushGlyphInstance(
 	originX: float32,
 	originY: float32,
 ): void {
-	const base: int32 = uiSlot() * REC_UI_FLOATS;
-	growTo(activeContext.uiInstances, base + REC_UI_FLOATS);
-	activeContext.uiInstances[base + REC_UI_AFFINE] = affine.a;
-	activeContext.uiInstances[base + REC_UI_AFFINE + 1] = affine.b;
-	activeContext.uiInstances[base + REC_UI_AFFINE + 2] = affine.c;
-	activeContext.uiInstances[base + REC_UI_AFFINE + 3] = affine.d;
-	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE] = x - originX;
-	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE + 1] = y - originY;
-	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE + 2] = w;
-	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE + 3] = h;
-	activeContext.uiInstances[base + REC_UI_UV_RADII] = u0;
-	activeContext.uiInstances[base + REC_UI_UV_RADII + 1] = v0;
-	activeContext.uiInstances[base + REC_UI_UV_RADII + 2] = u1;
-	activeContext.uiInstances[base + REC_UI_UV_RADII + 3] = v1;
-	activeContext.uiInstances[base + REC_UI_BORDERS] = 0.0;
-	activeContext.uiInstances[base + REC_UI_BORDERS + 1] = 0.0;
-	activeContext.uiInstances[base + REC_UI_BORDERS + 2] = 0.0;
-	activeContext.uiInstances[base + REC_UI_BORDERS + 3] = 0.0;
-	activeContext.uiInstances[base + REC_UI_PARAMS0] = (mode as int32) as float32;
-	activeContext.uiInstances[base + REC_UI_PARAMS0 + 1] = flag;
-	activeContext.uiInstances[base + REC_UI_PARAMS0 + 2] = 0.0;
-	activeContext.uiInstances[base + REC_UI_PARAMS0 + 3] = 0.0;
-	activeContext.uiInstances[base + REC_UI_PARAMS1] = 0.0;
-	activeContext.uiInstances[base + REC_UI_PARAMS1 + 1] = image;
-	activeContext.uiInstances[base + REC_UI_PARAMS1 + 2] = 0.0;
-	activeContext.uiInstances[base + REC_UI_PARAMS1 + 3] = 0.0;
-	activeContext.uiInstances[base + REC_UI_COLOR_FILL] = fill.r;
-	activeContext.uiInstances[base + REC_UI_COLOR_FILL + 1] = fill.g;
-	activeContext.uiInstances[base + REC_UI_COLOR_FILL + 2] = fill.b;
-	activeContext.uiInstances[base + REC_UI_COLOR_FILL + 3] = fill.a;
-	activeContext.uiInstances[base + REC_UI_COLOR_BORDER] = 0.0;
-	activeContext.uiInstances[base + REC_UI_COLOR_BORDER + 1] = 0.0;
-	activeContext.uiInstances[base + REC_UI_COLOR_BORDER + 2] = 0.0;
-	activeContext.uiInstances[base + REC_UI_COLOR_BORDER + 3] = 0.0;
-	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA] = 0.0;
-	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA + 1] = 0.0;
-	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA + 2] = 0.0;
-	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA + 3] = 0.0;
+	const base: int32 = uiSlot() * UI_WORDS;
+	growWords(activeContext.uiInstances, base + UI_WORDS);
+	putLane(activeContext.uiInstances, base + WORD_UI_AFFINE, affine.a, affine.b, affine.c,
+		affine.d);
+	putLane(activeContext.uiInstances, base + WORD_UI_ORIGIN_SIZE, x - originX, y - originY, w, h);
+	putLane(activeContext.uiInstances, base + WORD_UI_UV_RADII, u0, v0, u1, v1);
+	putLane(activeContext.uiInstances, base + WORD_UI_BORDERS, 0.0, 0.0, 0.0, 0.0);
+	putLane(activeContext.uiInstances, base + WORD_UI_PARAMS0, (mode as int32) as float32, flag,
+		0.0, 0.0);
+	putLane(activeContext.uiInstances, base + WORD_UI_PARAMS1, 0.0, image, 0.0, 0.0);
+	activeContext.uiInstances[base + WORD_UI_COLOR_FILL] = packColor(fill);
+	activeContext.uiInstances[base + WORD_UI_COLOR_BORDER] = 0;
+	activeContext.uiInstances[base + WORD_UI_COLOR_EXTRA] = 0;
 	activeContext.uiInstanceTotal = activeContext.uiInstanceTotal + 1;
 }
 
 // The sprite stream is separate rather than a wide record with unused lanes: guardrail 8
-// says a sprite-only scene must not pay for the UI pipeline, and paying 36 floats to record
+// says a sprite-only scene must not pay for the UI pipeline, and paying 27 words to record
 // 16 is exactly that. It is also what makes B5 assertable - a sprite-only frame has
 // uiInstanceCount() == 0, which no mode count could prove.
 export function pushSpriteInstance(
@@ -1205,15 +1185,27 @@ export function putSpriteInstance(
 export function uiInstanceCount(): int32 { return activeContext.uiInstanceTotal; }
 export function spriteInstanceCount(): int32 { return activeContext.spriteInstanceTotal; }
 
-export function uiInstanceField(index: int32, field: int32): float32 {
-	return activeContext.uiInstances[index * REC_UI_FLOATS + field];
+export function uiInstanceWord(index: int32, word: int32): uint32 {
+	return activeContext.uiInstances[index * UI_WORDS + word];
+}
+
+export function uiInstanceField(index: int32, word: int32): float32 {
+	if (word >= WORD_UI_COLOR_FILL) {
+		console.log(`void2d: UI word ${word} is a packed colour, not a float lane`);
+		unreachable;
+	}
+	return floatOfBits(uiInstanceWord(index, word));
+}
+
+export function uiInstanceChannel(index: int32, word: int32, channel: int32): int32 {
+	return ((uiInstanceWord(index, word) >> ((channel * 8) as uint32)) & 0xFF) as int32;
 }
 
 export function spriteInstanceField(index: int32, field: int32): float32 {
 	return activeContext.spriteInstances[index * REC_SPRITE_FLOATS + field];
 }
 
-// What the frame will upload for its instances, in GPU bytes rather than record floats.
+// What the frame will upload for its instances, in GPU bytes.
 export function instanceUploadBytes(): int32 {
 	return activeContext.uiInstanceTotal * UI_STRIDE +
 		activeContext.spriteInstanceTotal * SPRITE_STRIDE;
@@ -1224,8 +1216,7 @@ export function instanceUploadBytes(): int32 {
 export function uiModeCount(mode: int32): int32 {
 	let n: int32 = 0;
 	for (let i: int32 = 0; i < activeContext.uiInstanceTotal; i++) {
-		const m: float32 = activeContext.uiInstances[i * REC_UI_FLOATS + REC_UI_PARAMS0 + UI_PARAM_MODE];
-		if ((m as int32) == mode) { n = n + 1; }
+		if ((uiInstanceField(i, WORD_UI_PARAMS0 + UI_PARAM_MODE) as int32) == mode) { n = n + 1; }
 	}
 	return n;
 }
@@ -1558,10 +1549,10 @@ function breakBetween(
 	return next[nb + CMD_BREAK];
 }
 
-function floatsOf(pipeline: Pipeline): int32 {
+function recordWidth(pipeline: Pipeline): int32 {
 	return match (pipeline) {
 		Pipeline.Sprite => REC_SPRITE_FLOATS,
-		Pipeline.Ui => REC_UI_FLOATS,
+		Pipeline.Ui => UI_WORDS,
 		Pipeline.Vertex => VERTEX_FLOATS,
 	};
 }
@@ -1616,12 +1607,14 @@ function orderLanes(c0: int32, c1: int32, marks: Readonly<Span<int32>>, reorder:
 }
 
 function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
-	const width: int32 = floatsOf(pipeline);
+	const width: int32 = recordWidth(pipeline);
 	const total: int32 = streamTotal(pipeline);
 	if (total <= lo) { return; }
 	const span: int32 = (total - lo) * width;
-	while ((activeContext.laneScratch.length as int32) < span) {
-		activeContext.laneScratch.push(0.0 as float32);
+	if (pipeline == Pipeline.Ui) {
+		growWords(activeContext.laneScratchUi, span);
+	} else {
+		growTo(activeContext.laneScratch, span);
 	}
 	let covered: int32 = 0;
 	for (const src of activeContext.laneOrder) {
@@ -1642,7 +1635,7 @@ function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
 		},
 		Pipeline.Ui => {
 			dropUiCopiesFrom(lo);
-			copyFloats(activeContext.laneScratch, 0, activeContext.uiInstances, lo * width, span);
+			copyWords(activeContext.laneScratchUi, 0, activeContext.uiInstances, lo * width, span);
 		},
 		Pipeline.Vertex => {
 			copyFloats(activeContext.laneScratch, 0, activeContext.vertices, lo * width, span);
@@ -1659,7 +1652,7 @@ function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
 				copyFloats(activeContext.spriteInstances, to, activeContext.laneScratch, from, n);
 			},
 			Pipeline.Ui => {
-				copyFloats(activeContext.uiInstances, to, activeContext.laneScratch, from, n);
+				copyWords(activeContext.uiInstances, to, activeContext.laneScratchUi, from, n);
 			},
 			Pipeline.Vertex => {
 				copyFloats(activeContext.vertices, to, activeContext.laneScratch, from, n);

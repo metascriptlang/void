@@ -6,7 +6,7 @@ import {
 	commandCount, commandField, uiInstanceCount, uiInstanceField, vertexCount,
 	CMD_PIPELINE, CMD_SAMPLER, Pipeline,
 } from "../void2d/displayList";
-import { REC_UI_AFFINE, REC_UI_PARAMS0 } from "../void2d/instanceLayout";
+import { WORD_UI_AFFINE, WORD_UI_PARAMS0 } from "../void2d/instanceLayout";
 import { InstanceMode, SDF_GLYPH_FLAG } from "../void2d/instance";
 import { setSdfRegime } from "../void2d/labelText";
 import { identity2d, rgba } from "../void2d/types";
@@ -52,7 +52,7 @@ function tinted(s: Scene2D): NodeRef {
 function glyphInstances(): int32 {
 	let count: int32 = 0;
 	for (let i: int32 = 0; i < uiInstanceCount(); i++) {
-		if (uiInstanceField(i, REC_UI_PARAMS0) == GLYPH_MODE) { count = count + 1; }
+		if (uiInstanceField(i, WORD_UI_PARAMS0) == GLYPH_MODE) { count = count + 1; }
 	}
 	return count;
 }
@@ -60,8 +60,8 @@ function glyphInstances(): int32 {
 function flaggedGlyphs(): int32 {
 	let count: int32 = 0;
 	for (let i: int32 = 0; i < uiInstanceCount(); i++) {
-		if (uiInstanceField(i, REC_UI_PARAMS0) != GLYPH_MODE) { continue; }
-		if (uiInstanceField(i, REC_UI_PARAMS0 + 1) == SDF_GLYPH_FLAG) { count = count + 1; }
+		if (uiInstanceField(i, WORD_UI_PARAMS0) != GLYPH_MODE) { continue; }
+		if (uiInstanceField(i, WORD_UI_PARAMS0 + 1) == SDF_GLYPH_FLAG) { count = count + 1; }
 	}
 	return count;
 }
@@ -74,7 +74,7 @@ test "every glyph of a rotated label carries the SDF flag and the world affine" 
 	assert glyphs == 6;
 	assert flaggedGlyphs() == glyphs;
 	for (let i: int32 = 0; i < uiInstanceCount(); i++) {
-		assert uiInstanceField(i, REC_UI_AFFINE + 1) != 0.0;
+		assert uiInstanceField(i, WORD_UI_AFFINE + 1) != 0.0;
 	}
 	frameEnd();
 }
@@ -86,7 +86,7 @@ test "every glyph of a zoomed label carries the SDF flag and the zoom in its aff
 	const glyphs = glyphInstances();
 	assert glyphs == 6;
 	assert flaggedGlyphs() == glyphs;
-	assert uiInstanceField(0, REC_UI_AFFINE) == 3.0;
+	assert uiInstanceField(0, WORD_UI_AFFINE) == 3.0;
 	frameEnd();
 }
 
@@ -133,7 +133,7 @@ test "a rotated label at DPI 2 is flagged and places by the world affine alone" 
 	recordAt(turned, true, 2.0);
 	assert glyphInstances() == 6;
 	assert flaggedGlyphs() == 6;
-	assert uiInstanceField(0, REC_UI_AFFINE + 1) != 0.0;
+	assert uiInstanceField(0, WORD_UI_AFFINE + 1) != 0.0;
 	frameEnd();
 }
 

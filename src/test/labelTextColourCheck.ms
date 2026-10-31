@@ -24,10 +24,10 @@ import { sync, draw } from "../void2d/render";
 import { begin2d, finishRecording, frameEnd, setSceneSmooth } from "../void2d/draw";
 import {
 	commandCount, commandField, uiInstanceCount, uiInstanceField, vertexCount,
-	CMD_SAMPLER, CMD_PIPELINE, Pipeline, SOURCE_PREMULTIPLIED,
+	uiInstanceChannel, CMD_SAMPLER, CMD_PIPELINE, Pipeline, SOURCE_PREMULTIPLIED,
 } from "../void2d/displayList";
 import {
-	REC_UI_AFFINE, REC_UI_PARAMS0, REC_UI_PARAMS1, REC_UI_COLOR_FILL,
+	WORD_UI_AFFINE, WORD_UI_PARAMS0, WORD_UI_PARAMS1, WORD_UI_COLOR_FILL,
 } from "../void2d/instanceLayout";
 import { InstanceMode } from "../void2d/instance";
 import { void2dGlyphPageBlitRgba, void2dGlyphPageTexelRgba } from "../void2d/glyph";
@@ -146,7 +146,7 @@ function recordLabel(text: string, alpha: float32): void {
 function instancesOfMode(mode: float32): int32 {
 	let count: int32 = 0;
 	for (let i: int32 = 0; i < uiInstanceCount(); i++) {
-		if (uiInstanceField(i, REC_UI_PARAMS0) == mode) { count = count + 1; }
+		if (uiInstanceField(i, WORD_UI_PARAMS0) == mode) { count = count + 1; }
 	}
 	return count;
 }
@@ -156,25 +156,28 @@ test "an emoji records as an Image-mode instance marked premultiplied, text as G
 	assert instancesOfMode(GLYPH_MODE) == 2;
 	assert instancesOfMode(IMAGE_MODE) == 1;
 	for (let i: int32 = 0; i < uiInstanceCount(); i++) {
-		if (uiInstanceField(i, REC_UI_PARAMS0) != IMAGE_MODE) { continue; }
-		assert uiInstanceField(i, REC_UI_PARAMS1) == 0.0;
-		assert uiInstanceField(i, REC_UI_PARAMS1 + 1) == 1.0;
-		assert uiInstanceField(i, REC_UI_AFFINE) == 1.0;
-		assert uiInstanceField(i, REC_UI_AFFINE + 3) == 1.0;
+		if (uiInstanceField(i, WORD_UI_PARAMS0) != IMAGE_MODE) { continue; }
+		assert uiInstanceField(i, WORD_UI_PARAMS1) == 0.0;
+		assert uiInstanceField(i, WORD_UI_PARAMS1 + 1) == 1.0;
+		assert uiInstanceField(i, WORD_UI_AFFINE) == 1.0;
+		assert uiInstanceField(i, WORD_UI_AFFINE + 3) == 1.0;
 	}
 	frameEnd();
 }
 
+function fillAt(i: int32, channel: int32): int32 {
+	return uiInstanceChannel(i, WORD_UI_COLOR_FILL, channel);
+}
+
 test "an emoji ignores the text colour and takes only its alpha" {
 	recordLabel(`a${GRIN}`, 0.5);
-	const fill: int32 = REC_UI_COLOR_FILL;
 	assert instancesOfMode(IMAGE_MODE) == 1;
 	for (let i: int32 = 0; i < uiInstanceCount(); i++) {
-		if (uiInstanceField(i, REC_UI_PARAMS0) == IMAGE_MODE) {
-			assert uiInstanceField(i, fill) == 1.0 && uiInstanceField(i, fill + 1) == 1.0;
-			assert uiInstanceField(i, fill + 2) == 1.0 && uiInstanceField(i, fill + 3) == 0.5;
+		if (uiInstanceField(i, WORD_UI_PARAMS0) == IMAGE_MODE) {
+			assert fillAt(i, 0) == 255 && fillAt(i, 1) == 255;
+			assert fillAt(i, 2) == 255 && fillAt(i, 3) == 128;
 		} else {
-			assert uiInstanceField(i, fill + 1) < 1.0;
+			assert fillAt(i, 1) < 255;
 		}
 	}
 	frameEnd();
@@ -184,18 +187,18 @@ test "text and emoji alternating in one label record as one text block then one 
 	recordLabel(`a${GRIN}b${GRIN}c`, 1.0);
 	assert uiInstanceCount() == 5;
 	for (let i: int32 = 0; i < 3; i++) {
-		assert uiInstanceField(i, REC_UI_PARAMS0) == GLYPH_MODE;
+		assert uiInstanceField(i, WORD_UI_PARAMS0) == GLYPH_MODE;
 	}
-	assert uiInstanceField(3, REC_UI_PARAMS0) == IMAGE_MODE;
-	assert uiInstanceField(4, REC_UI_PARAMS0) == IMAGE_MODE;
+	assert uiInstanceField(3, WORD_UI_PARAMS0) == IMAGE_MODE;
+	assert uiInstanceField(4, WORD_UI_PARAMS0) == IMAGE_MODE;
 	frameEnd();
 }
 
 test "the emoji run is recorded after the text run, whatever the order in the text" {
 	recordLabel(`${GRIN}a${GRIN}`, 1.0);
-	assert uiInstanceField(0, REC_UI_PARAMS0) == GLYPH_MODE;
-	assert uiInstanceField(1, REC_UI_PARAMS0) == IMAGE_MODE;
-	assert uiInstanceField(2, REC_UI_PARAMS0) == IMAGE_MODE;
+	assert uiInstanceField(0, WORD_UI_PARAMS0) == GLYPH_MODE;
+	assert uiInstanceField(1, WORD_UI_PARAMS0) == IMAGE_MODE;
+	assert uiInstanceField(2, WORD_UI_PARAMS0) == IMAGE_MODE;
 	frameEnd();
 }
 

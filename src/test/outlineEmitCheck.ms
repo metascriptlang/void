@@ -4,9 +4,10 @@ import { sync, draw, getBounds } from "../void2d/render";
 import { begin2d, finishRecording, frameEnd } from "../void2d/draw";
 import {
 	commandCount, commandField, uiInstanceCount, uiInstanceField, vertexCount, CMD_PIPELINE,
+	uiInstanceWord, uiInstanceChannel,
 	Pipeline,
 } from "../void2d/displayList";
-import { REC_UI_COLOR_FILL, REC_UI_FLOATS, REC_UI_PARAMS0 } from "../void2d/instanceLayout";
+import { WORD_UI_COLOR_FILL, UI_WORDS, WORD_UI_PARAMS0 } from "../void2d/instanceLayout";
 import { SDF_GLYPH_FLAG } from "../void2d/instance";
 when (voidSdfText) {
 	import { setSdfRegime } from "../void2d/labelText";
@@ -37,20 +38,19 @@ function record(root: NodeRef): void {
 function streamHash(): uint64 {
 	let hash: uint64 = 1469598103934665603;
 	for (let i: int32 = 0; i < uiInstanceCount(); i++) {
-		for (let f: int32 = 0; f < REC_UI_FLOATS; f++) {
-			const bits: uint64 = (uiInstanceField(i, f) * 4096.0) as int64 as uint64;
-			hash = (hash ^ bits) * 1099511628211;
+		for (let w: int32 = 0; w < UI_WORDS; w++) {
+			hash = (hash ^ (uiInstanceWord(i, w) as uint64)) * 1099511628211;
 		}
 	}
 	return hash;
 }
 
-function greenAt(i: int32): float32 {
-	return uiInstanceField(i, REC_UI_COLOR_FILL + 1);
+function greenAt(i: int32): int32 {
+	return uiInstanceChannel(i, WORD_UI_COLOR_FILL, 1);
 }
 
-function alphaAt(i: int32): float32 {
-	return uiInstanceField(i, REC_UI_COLOR_FILL + 3);
+function alphaAt(i: int32): int32 {
+	return uiInstanceChannel(i, WORD_UI_COLOR_FILL, 3);
 }
 
 test "an outlined label records its glyphs twice, every outline before every fill" {
@@ -58,8 +58,8 @@ test "an outlined label records its glyphs twice, every outline before every fil
 	record(label(s, "Flat", 2.0, RED));
 	assert uiInstanceCount() == 8;
 	for (let i: int32 = 0; i < 4; i++) {
-		assert greenAt(i) == 0.0;
-		assert greenAt(i + 4) == 1.0;
+		assert greenAt(i) == 0;
+		assert greenAt(i + 4) == 255;
 	}
 	assert commandCount() == 1;
 	frameEnd();
@@ -72,7 +72,7 @@ test "tight letter spacing still puts every outline under every fill" {
 	assert uiInstanceCount() == 14;
 	let seenFill: boolean = false;
 	for (let i: int32 = 0; i < uiInstanceCount(); i++) {
-		const outline: boolean = greenAt(i) == 0.0;
+		const outline: boolean = greenAt(i) == 0;
 		if (!outline) { seenFill = true; }
 		assert !(seenFill && outline);
 	}
@@ -108,11 +108,11 @@ test "a zero width and a clear colour record exactly the stream of a label with 
 test "the outline colour and the node alpha multiply, and the fill keeps its own" {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	record(label(s, "Flat", 2.0, rgba(1.0, 0.0, 0.0, 0.5)));
-	const full: float32 = alphaAt(0);
+	const full: int32 = alphaAt(0);
 	frameEnd();
 	recordAt(label(s, "Flat", 2.0, rgba(1.0, 0.0, 0.0, 0.5)), 0.5, 1.0);
-	assert alphaAt(0) == full * 0.5;
-	assert alphaAt(4) == 0.5;
+	assert alphaAt(0) == (full + 1) / 2;
+	assert alphaAt(4) == 128;
 	frameEnd();
 }
 
@@ -161,12 +161,12 @@ test "a later frame follows a change of width and colour on the same label" {
 	const n = label(s, "Flat", 2.0, RED);
 	record(n);
 	assert uiInstanceCount() == 8;
-	assert greenAt(0) == 0.0;
+	assert greenAt(0) == 0;
 	frameEnd();
 	n.setOutline(2.0, rgba(0.0, 1.0, 0.0, 1.0));
 	record(n);
 	assert uiInstanceCount() == 8;
-	assert greenAt(0) == 1.0 && uiInstanceField(0, REC_UI_COLOR_FILL) == 0.0;
+	assert greenAt(0) == 255 && uiInstanceChannel(0, WORD_UI_COLOR_FILL, 0) == 0;
 	frameEnd();
 	n.setOutline(0.0, RED);
 	record(n);
@@ -198,7 +198,7 @@ test "an outline reaching into the viewport keeps a label whose body is left of 
 
 when (voidSdfText) {
 	function flagged(i: int32): boolean {
-		return uiInstanceField(i, REC_UI_PARAMS0 + 1) == SDF_GLYPH_FLAG;
+		return uiInstanceField(i, WORD_UI_PARAMS0 + 1) == SDF_GLYPH_FLAG;
 	}
 
 	test "a turned outlined label records its outlines and fills as SDF glyphs, outlines first" {
@@ -210,7 +210,7 @@ when (voidSdfText) {
 		assert uiInstanceCount() == 12;
 		for (let i: int32 = 0; i < 12; i++) {
 			assert flagged(i);
-			assert (greenAt(i) == 0.0) == (i < 6);
+			assert (greenAt(i) == 0) == (i < 6);
 		}
 		assert commandCount() == 1;
 		frameEnd();

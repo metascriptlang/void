@@ -24,12 +24,9 @@ import {
 	scopeAt, scissorRectOf, growthTarget,
 } from "./coverage";
 import {
-	UI_STRIDE, SPRITE_STRIDE, REC_UI_FLOATS, REC_SPRITE_FLOATS, REC_UI_COLOR_FILL,
-	REC_UI_COLOR_BORDER, REC_UI_COLOR_EXTRA,
+	UI_STRIDE, SPRITE_STRIDE, REC_SPRITE_FLOATS, UI_WORDS,
 } from "./instanceLayout";
-import { packChannel } from "./instance";
 import { floatBits } from "./floatBits";
-import { copyFloatWords } from "./floatWords";
 import { zeroFloats, zeroWords } from "./zeros";
 import { Mat4x4f, Vec4f, mat4x4f, vec4f } from "../shader/std";
 import { uniformSize, writeUniform } from "../shader/uniform";
@@ -46,6 +43,10 @@ import {
 } from "./glyph";
 when (voidProfiler) {
 	import { scissorMax, clippedArea, quadClippedArea } from "./coverage";
+	import { floatOfBits } from "./floatBits";
+	import {
+		WORD_UI_AFFINE, WORD_UI_ORIGIN_SIZE, WORD_UI_PARAMS0, WORD_UI_COLOR_FILL,
+	} from "./instanceLayout";
 	import { clockNow } from "../platform/clockNow";
 	import {
 		DOOR_STAT_DRAWS, DOOR_STAT_PIPELINES, DOOR_STAT_PASSES, DOOR_STAT_BUFFER_BYTES,
@@ -80,8 +81,6 @@ const SAMPLER_REPEAT: int32 = 1;
 const BRACKETS_BEFORE_COMPLAINT: int32 = 16;
 const MAX_RETIRED_BUFFERS: int32 = 8;
 const MAX_TARGET_DEPTH: int32 = 8;
-const UI_WORDS: int32 = UI_STRIDE / 4;
-const UI_FLOAT_WORDS: int32 = 24;
 const ONE_BITS: uint32 = 0x3F800000;
 const BLEND_NONE: int32 = 0;
 const BLEND_ALPHA: int32 = 1;
@@ -258,22 +257,11 @@ function growWords(words: uint32[], count: int32): void {
 	if ((words.length as int32) < count) { words.setLength(count as number); }
 }
 
-function packColor(records: Readonly<Span<float32>>, at: int32): uint32 {
-	return (packChannel(records[at]) as uint32) |
-		((packChannel(records[at + 1]) as uint32) << 8) |
-		((packChannel(records[at + 2]) as uint32) << 16) |
-		((packChannel(records[at + 3]) as uint32) << 24);
-}
-
 export function packUiInstance(
-	stage: uint32[], instance: int32, records: Readonly<Span<float32>>,
+	stage: uint32[], instance: int32, records: Readonly<Span<uint32>>,
 ): void {
-	const to: int32 = instance * UI_WORDS;
-	const from: int32 = instance * REC_UI_FLOATS;
-	copyFloatWords(stage, to, records, from, UI_FLOAT_WORDS);
-	stage[to + UI_FLOAT_WORDS] = packColor(records, from + REC_UI_COLOR_FILL);
-	stage[to + UI_FLOAT_WORDS + 1] = packColor(records, from + REC_UI_COLOR_BORDER);
-	stage[to + UI_FLOAT_WORDS + 2] = packColor(records, from + REC_UI_COLOR_EXTRA);
+	const at: int32 = instance * UI_WORDS;
+	for (let w: int32 = at; w < at + UI_WORDS; w++) { stage[w] = records[w]; }
 }
 
 function releaseRetiredBuffers(): void {
@@ -469,9 +457,13 @@ when (voidProfiler) {
 		addCoverage(area, opaque && opaqueBlend(blend));
 	}
 
+	function uiLane(words: Readonly<Span<uint32>>, at: int32): float64 {
+		return floatOfBits(words[at]) as float64;
+	}
+
 	function coverUiRun(
 		cmd: Readonly<Span<float32>>, count: int32, blend: int32, fbW: float32, fbH: float32,
-		scopes: Readonly<Span<float32>>, scopeCount: int32, cpuUi: Readonly<Span<float32>>,
+		scopes: Readonly<Span<float32>>, scopeCount: int32, cpuUi: Readonly<Span<uint32>>,
 	): void {
 		if (cpuUi.length == 0) { return; }
 		const scope: int32 = scopeAt(cmd, scopeCount, scopes.length > 0);
@@ -479,18 +471,25 @@ when (voidProfiler) {
 		const scale: float64 = deviceScaleOf(cmd, dpiScale) as float64;
 		const effected: boolean = field(cmd, CMD_EFFECT) >= 0;
 		for (let i: int32 = 0; i < count; i++) {
-			const at: int32 = (field(cmd, CMD_INSTANCE_OFFSET) + i) * REC_UI_FLOATS;
-			const mode: int32 = truncated(cpuUi[at + 16] as float64);
-			const sx: float64 = Math.hypot(cpuUi[at] as float64, cpuUi[at + 1] as float64) * scale;
-			const sy: float64 = Math.hypot(cpuUi[at + 2] as float64, cpuUi[at + 3] as float64) * scale;
+			const at: int32 = (field(cmd, CMD_INSTANCE_OFFSET) + i) * UI_WORDS;
+			const a: int32 = at + WORD_UI_AFFINE;
+			const affine: float32[4] = [
+				floatOfBits(cpuUi[a]), floatOfBits(cpuUi[a + 1]),
+				floatOfBits(cpuUi[a + 2]), floatOfBits(cpuUi[a + 3]),
+			];
+			const mode: int32 = truncated(uiLane(cpuUi, at + WORD_UI_PARAMS0));
+			const sx: float64 = Math.hypot(affine[0] as float64, affine[1] as float64) * scale;
+			const sy: float64 = Math.hypot(affine[2] as float64, affine[3] as float64) * scale;
 			const s: float64 = Math.sqrt(sx * sy);
 			const aa: float64 = (mode == 2 || s <= 0.0) ? 0.0 : 1.0 / s;
 			const ix: float64 = aa;
 			const iy: float64 = mode == 5 ? 0.0 : aa;
+			const opaqueFill: boolean = (cpuUi[at + WORD_UI_COLOR_FILL] >> 24) == 0xFF;
+			const origin: int32 = at + WORD_UI_ORIGIN_SIZE;
 			coverAffineQuad(
-				cpuUi, at, cpuUi[at + 4] as float64, cpuUi[at + 5] as float64, -ix, -iy,
-				(cpuUi[at + 6] as float64) + ix, (cpuUi[at + 7] as float64) + iy, cmd, scopes, scope,
-				rect, mode == 0 && cpuUi[at + 27] >= 1.0 && !effected, blend,
+				affine, 0, uiLane(cpuUi, origin), uiLane(cpuUi, origin + 1), -ix, -iy,
+				uiLane(cpuUi, origin + 2) + ix, uiLane(cpuUi, origin + 3) + iy, cmd, scopes, scope,
+				rect, mode == 0 && opaqueFill && !effected, blend,
 			);
 		}
 	}
@@ -722,7 +721,7 @@ export function void2dReplayTargets(
 	scopes: Readonly<Span<float32>>, scopeCount: int32,
 	vertices: Readonly<Span<float32>>, vertexCount: int32,
 	spriteInstances: Readonly<Span<float32>>, spriteCount: int32,
-	uiInstances: Readonly<Span<float32>>, uiCount: int32,
+	uiInstances: Readonly<Span<uint32>>, uiCount: int32,
 ): boolean {
 	frameUploaded = false;
 	frameBaseOffset = 0;
@@ -917,7 +916,7 @@ function uiCopiesFit(
 }
 
 function stageUiCopies(
-	out: uint32[], prev: Readonly<Span<uint32>>, records: Readonly<Span<float32>>, count: int32,
+	out: uint32[], prev: Readonly<Span<uint32>>, records: Readonly<Span<uint32>>, count: int32,
 	copies: Readonly<Span<int32>>, copyCount: int32,
 ): void {
 	let at: int32 = 0;
@@ -939,7 +938,7 @@ function stageUiCopies(
 // 1 when staging `records` from the packed `prevRecords` through `copies` (from, at, count
 // triples) gives the words a full pack gives; 0 when the copies do not fit; -1 when they differ.
 export function void2dStageUiCheck(
-	prevRecords: Readonly<Span<float32>>, prevCount: int32, records: Readonly<Span<float32>>,
+	prevRecords: Readonly<Span<uint32>>, prevCount: int32, records: Readonly<Span<uint32>>,
 	count: int32, copies: Readonly<Span<int32>>, copyCount: int32,
 ): int32 {
 	if (!uiCopiesFit(copies, copyCount, prevCount, count)) { return 0; }
@@ -965,7 +964,7 @@ export function void2dReplayList(
 	scopes: Readonly<Span<float32>>, scopeCount: int32,
 	vertices: Readonly<Span<float32>>, vertexCount: int32, vertexDirtyNow: boolean,
 	spriteInstances: Readonly<Span<float32>>, spriteCount: int32, spriteDirtyNow: boolean,
-	uiInstances: Readonly<Span<float32>>, uiCount: int32,
+	uiInstances: Readonly<Span<uint32>>, uiCount: int32,
 	uiRanges: Readonly<Span<int32>>, uiRangeCountNow: int32,
 	uiCopies: Readonly<Span<int32>>, uiCopyCount: int32, uiCopySource: int32, stageTag: int32,
 ): boolean {
@@ -1059,7 +1058,7 @@ export function void2dReplay(
 	scopes: Readonly<Span<float32>>, scopeCount: int32,
 	vertices: Readonly<Span<float32>>,
 	spriteInstances: Readonly<Span<float32>>,
-	uiInstances: Readonly<Span<float32>>,
+	uiInstances: Readonly<Span<uint32>>,
 	fbW: float32, fbH: float32,
 ): void {
 	if (commandCount <= 0 || !frameUploaded) { return; }
@@ -1149,7 +1148,7 @@ function drawSpriteRun(
 function drawUiRun(
 	cmd: Readonly<Span<float32>>, blend: int32, rt: boolean, view: uint32, fbW: float32,
 	fbH: float32, scopes: Readonly<Span<float32>>, scopeCount: int32,
-	effects: Readonly<Span<float32>>, effectCount: int32, cpuUi: Readonly<Span<float32>>,
+	effects: Readonly<Span<float32>>, effectCount: int32, cpuUi: Readonly<Span<uint32>>,
 ): void {
 	const count: int32 = field(cmd, CMD_INSTANCE_COUNT);
 	if (count <= 0) { return; }
@@ -1321,7 +1320,7 @@ function runCommands(
 	scopes: Readonly<Span<float32>>, scopeCount: int32,
 	cpuVertices: Readonly<Span<float32>>,
 	cpuSprites: Readonly<Span<float32>>,
-	cpuUi: Readonly<Span<float32>>,
+	cpuUi: Readonly<Span<uint32>>,
 	startW: float32, startH: float32,
 ): void {
 	let fbW: float32 = startW;

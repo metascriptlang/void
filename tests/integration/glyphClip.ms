@@ -6,7 +6,7 @@ import {
 	drawUiInstance, pushClip, popClip, droppedFrames, setSampler,
 } from "../../src/void2d/draw";
 import { currentContext, uiInstanceCount, uiInstanceField } from "../../src/void2d/displayList";
-import { REC_UI_PARAMS0, REC_UI_UV_RADII } from "../../src/void2d/instanceLayout";
+import { WORD_UI_PARAMS0, WORD_UI_UV_RADII } from "../../src/void2d/instanceLayout";
 import { InstanceMode, UiInstance, uiInstance } from "../../src/void2d/instance";
 import { identity2d, rgba, vec2, Smooth } from "../../src/void2d/types";
 import { BlendMode } from "../../src/gpu/state";
@@ -132,12 +132,12 @@ function recordFixture(): void {
 	finishRecording();
 	if (uiInstanceCount() != 12) { fail("instance count differs from fixture"); }
 	for (let i: int32 = 0; i < 4; i++) {
-		if (uiInstanceField(i, REC_UI_PARAMS0) != InstanceMode.Glyph as float32 ||
-			uiInstanceField(i, REC_UI_PARAMS0 + 1) != (i < 2 ? 0.0 : 1.0)) {
+		if (uiInstanceField(i, WORD_UI_PARAMS0) != InstanceMode.Glyph as float32 ||
+			uiInstanceField(i, WORD_UI_PARAMS0 + 1) != (i < 2 ? 0.0 : 1.0)) {
 			fail("glyph mode/SDF flag differs from fixture");
 		}
 		const start: float32 = i % 2 == 0 ? 0.03125 : 0.875;
-		if (uiInstanceField(i, REC_UI_UV_RADII) != start) {
+		if (uiInstanceField(i, WORD_UI_UV_RADII) != start) {
 			fail("glyph UV differs from fixture");
 		}
 	}

@@ -16,6 +16,7 @@ import {
 	effectField,
 	vertexField,
 	uiInstanceField,
+	uiInstanceWord,
 	spriteInstanceField,
 	COMMAND_FLOATS,
 	CMD_KIND,
@@ -42,7 +43,7 @@ import {
 } from "../../src/void2d/displayList";
 import { void2dStageUiCheck } from "../../src/void2d/batcher";
 import {
-	REC_UI_FLOATS, REC_SPRITE_FLOATS, REC_UI_ORIGIN_SIZE, REC_SPRITE_ORIGIN_SIZE,
+	UI_WORDS, REC_SPRITE_FLOATS, WORD_UI_ORIGIN_SIZE, REC_SPRITE_ORIGIN_SIZE, WORD_UI_COLOR_FILL,
 } from "../../src/void2d/instanceLayout";
 import { Color, rgba, tile, identity2d, vec2, Tile, whiteTile } from "../../src/void2d/types";
 import { TextRun, UnderlineStyle } from "../../src/void2d/textLayout";
@@ -53,7 +54,7 @@ const H: float32 = 120.0;
 
 struct Recording {
 	counts: Vec<int32>;
-	floats: Vec<float32>;
+	floats: Vec<float64>;
 }
 
 function capture(): Recording {
@@ -61,7 +62,7 @@ function capture(): Recording {
 		commandCount(), effectCount(), vertexCount(), uiInstanceCount(), spriteInstanceCount(),
 		targetCommandCount(),
 	];
-	let floats: Vec<float32> = [];
+	let floats: Vec<float64> = [];
 	for (let i: int32 = 0; i < commandCount(); i++) {
 		for (let f: int32 = 0; f < COMMAND_FLOATS; f++) { floats.push(commandField(i, f)); }
 	}
@@ -72,7 +73,10 @@ function capture(): Recording {
 		for (let f: int32 = 0; f < VERTEX_FLOATS; f++) { floats.push(vertexField(i, f)); }
 	}
 	for (let i: int32 = 0; i < uiInstanceCount(); i++) {
-		for (let f: int32 = 0; f < REC_UI_FLOATS; f++) { floats.push(uiInstanceField(i, f)); }
+		for (let w: int32 = 0; w < WORD_UI_COLOR_FILL; w++) { floats.push(uiInstanceField(i, w)); }
+		for (let w: int32 = WORD_UI_COLOR_FILL; w < UI_WORDS; w++) {
+			floats.push(uiInstanceWord(i, w) as float64);
+		}
 	}
 	for (let i: int32 = 0; i < spriteInstanceCount(); i++) {
 		for (let f: int32 = 0; f < REC_SPRITE_FLOATS; f++) {
@@ -361,8 +365,8 @@ test "a card's colour rewrites its one UI record and nothing else" {
 	assert end.commands == start.commands;
 	const uiBase: int32 = before.counts[0] * COMMAND_FLOATS + before.counts[1] * EFFECT_FLOATS +
 		before.counts[2] * VERTEX_FLOATS;
-	const from: int32 = uiBase + start.uiInstances * REC_UI_FLOATS;
-	const to: int32 = from + REC_UI_FLOATS;
+	const from: int32 = uiBase + start.uiInstances * UI_WORDS;
+	const to: int32 = from + UI_WORDS;
 	let changed: int32 = 0;
 	for (let k: int32 = 0; k < (before.floats.length as int32); k++) {
 		if (before.floats[k] != after.floats[k]) {
@@ -663,7 +667,7 @@ function stagedRecords(s: Scene2D): int32 {
 	return records;
 }
 
-function stagesLikeAFullPack(s: Scene2D, packed: Vec<float32>, packedCount: int32): boolean {
+function stagesLikeAFullPack(s: Scene2D, packed: Vec<uint32>, packedCount: int32): boolean {
 	const copies: int32 = s.context.uiCopySource > 0 ? s.context.uiCopyTotal : 0;
 	return copies > 0 && void2dStageUiCheck(packed, packedCount, s.context.uiInstances,
 		s.context.uiInstanceTotal, s.context.uiCopies, copies) == 1;
@@ -676,7 +680,7 @@ test "a splice stages the lines it copied from the records the previous upload p
 	frame(s);
 	frame(s);
 	staged(s);
-	const packed: Vec<float32> = s.context.uiInstances;
+	const packed: Vec<uint32> = s.context.uiInstances;
 	const packedCount: int32 = s.context.uiInstanceTotal;
 	const splices: int32 = s.splices;
 	const copied: int32 = s.context.uiCopied + s.spareContext.uiCopied;
@@ -696,7 +700,7 @@ test "a splice leaves a range written in place since the last upload to be packe
 	frame(s);
 	frame(s);
 	staged(s);
-	const packed: Vec<float32> = s.context.uiInstances;
+	const packed: Vec<uint32> = s.context.uiInstances;
 	const packedCount: int32 = s.context.uiInstanceTotal;
 	c.card.setColor(rgba(0.9, 0.1, 0.1, 1.0));
 	frame(s);
@@ -910,7 +914,7 @@ test "a tile's colour rewrites its one sprite record and nothing else" {
 	assert s.retiled == 1 && s.repainted == 0;
 	const start: PaintIndex = paintStartOf(t.map.id.index);
 	const spriteBase: int32 = before.counts[0] * COMMAND_FLOATS + before.counts[1] * EFFECT_FLOATS +
-		before.counts[2] * VERTEX_FLOATS + before.counts[3] * REC_UI_FLOATS;
+		before.counts[2] * VERTEX_FLOATS + before.counts[3] * UI_WORDS;
 	const from: int32 = spriteBase + (start.spriteInstances + 1) * REC_SPRITE_FLOATS;
 	const to: int32 = from + REC_SPRITE_FLOATS;
 	let changed: int32 = 0;
@@ -1133,7 +1137,7 @@ function drawnInstances(r: Recording): Map<string, int32> {
 	const out = new Map<string, int32>();
 	const vertexBase: int32 = r.counts[0] * COMMAND_FLOATS + r.counts[1] * EFFECT_FLOATS;
 	const uiBase: int32 = vertexBase + r.counts[2] * VERTEX_FLOATS;
-	const spriteBase: int32 = uiBase + r.counts[3] * REC_UI_FLOATS;
+	const spriteBase: int32 = uiBase + r.counts[3] * UI_WORDS;
 	for (let c: int32 = 0; c < r.counts[0]; c++) {
 		const base: int32 = c * COMMAND_FLOATS;
 		if (r.floats[base] != 0.0) { continue; }
@@ -1143,7 +1147,7 @@ function drawnInstances(r: Recording): Map<string, int32> {
 			` ${r.floats[base + CMD_BLEND]} ${r.floats[base + CMD_SAMPLER]}`;
 		let first: int32 = r.floats[base + CMD_INSTANCE_OFFSET] as int32;
 		let count: int32 = r.floats[base + CMD_INSTANCE_COUNT] as int32;
-		let width: int32 = pipeline == 1 ? REC_SPRITE_FLOATS : REC_UI_FLOATS;
+		let width: int32 = pipeline == 1 ? REC_SPRITE_FLOATS : UI_WORDS;
 		let at: int32 = pipeline == 1 ? spriteBase : uiBase;
 		if (pipeline == 0) {
 			first = r.floats[base + CMD_VERTEX_OFFSET] as int32;
@@ -1175,20 +1179,20 @@ test "lanes draw every instance of painter's order under the same draw state, on
 function rowSequence(r: Recording, row: int32): string {
 	const vertexBase: int32 = r.counts[0] * COMMAND_FLOATS + r.counts[1] * EFFECT_FLOATS;
 	const uiBase: int32 = vertexBase + r.counts[2] * VERTEX_FLOATS;
-	const spriteBase: int32 = uiBase + r.counts[3] * REC_UI_FLOATS;
+	const spriteBase: int32 = uiBase + r.counts[3] * UI_WORDS;
 	let out: string = "";
 	for (let c: int32 = 0; c < r.counts[0]; c++) {
 		const base: int32 = c * COMMAND_FLOATS;
 		if (r.floats[base] != 0.0) { continue; }
 		const sprite: boolean = (r.floats[base + CMD_PIPELINE] as int32) == 1;
-		const width: int32 = sprite ? REC_SPRITE_FLOATS : REC_UI_FLOATS;
+		const width: int32 = sprite ? REC_SPRITE_FLOATS : UI_WORDS;
 		const at: int32 = sprite ? spriteBase : uiBase;
-		const origin: int32 = sprite ? REC_SPRITE_ORIGIN_SIZE : REC_UI_ORIGIN_SIZE;
+		const origin: int32 = sprite ? REC_SPRITE_ORIGIN_SIZE : WORD_UI_ORIGIN_SIZE;
 		const first: int32 = r.floats[base + CMD_INSTANCE_OFFSET] as int32;
 		const count: int32 = r.floats[base + CMD_INSTANCE_COUNT] as int32;
 		for (let k: int32 = first; k < first + count; k++) {
-			const x: float32 = r.floats[at + k * width + origin];
-			const y: float32 = r.floats[at + k * width + origin + 1];
+			const x: float32 = r.floats[at + k * width + origin] as float32;
+			const y: float32 = r.floats[at + k * width + origin + 1] as float32;
 			if (x > 150.0 || ((y - 4.0) / 18.0) as int32 != row) { continue; }
 			out = out + `${sprite ? "s" : "u"}(${x},${y}) `;
 		}
@@ -1230,7 +1234,7 @@ test "an Anim that changes frame rewrites one sprite record and a paused one rec
 	assert s.repainted == 1;
 	assert before.counts[4] == 1 && after.counts[4] == 1;
 	const base: int32 = before.counts[0] * COMMAND_FLOATS + before.counts[1] * EFFECT_FLOATS +
-		before.counts[2] * VERTEX_FLOATS + before.counts[3] * REC_UI_FLOATS;
+		before.counts[2] * VERTEX_FLOATS + before.counts[3] * UI_WORDS;
 	let changed: int32 = 0;
 	for (let k: int32 = 0; k < (before.floats.length as int32); k++) {
 		if (before.floats[k] != after.floats[k]) {
