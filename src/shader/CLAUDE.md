@@ -265,6 +265,14 @@ later replaces the hand-written GLSL source of each base.
   `src/test/shaderComputeProgramCheck.ms` reads the descriptor
   through `shaderBuild`'s `shaderComputeModule` product, since a registered program cannot be
   read back.
+- **A barrier is reached by every invocation of the workgroup**, as WGSL's uniformity analysis
+  needs (`irErrors`, `ir.ms` `uniformityErrors`): a `workgroupBarrier`, `storageBarrier`,
+  `textureBarrier` or `workgroupUniformLoad` under a condition that reads a per-invocation id,
+  `read_write` storage, workgroup or private memory, an atomic result, or a value derived from them
+  through locals, parameters and calls, or after a break, continue or return made in such a flow,
+  is refused at the entry for every target (`tests/refusals/barrierNonUniform.ms`). Pinned in
+  `src/test/shaderUniformityCheck.ms`. A workgroup variable is non-uniform unless read through
+  `workgroupUniformLoad`, which is a conservative ceiling for the spec's finer rules.
 - **A helper call costs a copy of each argument.** glslang passes every argument through a
   variable, and SPIRV-Cross prints it at each call (`highp vec4 param_1 = ui_params[1];`), where
   a GLSL builtin or code at the call site costs none. Neither shady nor TypeGPU inlines, so the
