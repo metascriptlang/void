@@ -326,3 +326,42 @@ test "GLSL ES refuses the blocks a stage reads past its uniform vector budget" {
 		"the vertex stage reads 307 uniform vec4s; GLSL ES 3.0 guarantees 256";
 	assert !slots(m, ShaderTarget.Wgsl).includes("uniform vec4s");
 }
+
+function storageText(structs: ShaderStruct[]): string {
+	let m = new ShaderModule();
+	m.structs = structs;
+	m.resources = [
+		resource(ResourceKind.StorageBuffer, "items", 0,
+			arrayType(structType(structs.length - 1), -1)),
+	];
+	const r = storageElementLayout(m, 0);
+	if (!r.ok) { throw new Error(r.error); }
+	return r.value.offsets.map((n) => String(n)).join(",") + " size " + String(r.value.size);
+}
+
+test "a storage struct puts a two-row matrix on eight and a three-row one on sixteen" {
+	const f32 = scalarType(ScalarKind.F32);
+	assert storageText([block("Mats", [
+		field("lead", f32),
+		field("two", matrixType(2, 2)),
+		field("three", matrixType(3, 3)),
+		field("tail", f32),
+	])]) == "0,8,32,80 size 96";
+}
+
+test "a storage array of vec3 steps sixteen bytes" {
+	const f32 = scalarType(ScalarKind.F32);
+	assert storageText([block("Points", [
+		field("lead", f32),
+		field("points", arrayType(vectorType(ScalarKind.F32, 3), 2)),
+		field("tail", f32),
+	])]) == "0,16,48 size 64";
+}
+
+test "a nested storage struct rounds its size up to its alignment" {
+	const f32 = scalarType(ScalarKind.F32);
+	assert storageText([
+		block("Inner", [field("v", vectorType(ScalarKind.F32, 4)), field("s", f32)]),
+		block("Outer", [field("lead", f32), field("inner", structType(0)), field("tail", f32)]),
+	]) == "0,16,48 size 64";
+}
