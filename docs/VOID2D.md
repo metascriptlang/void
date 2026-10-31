@@ -1682,6 +1682,16 @@ changes described above on today's compiler; the P4 web archive also takes its r
   for host-supplied fonts, the trust stb_truetype already gets, and a build that loads
   user-uploaded fonts is the case to watch.
 
+  **Diverges from upstream v2.28e: the cmap pick.** `selectCmapSubtable` in `src/void2d/kb/font.ms`
+  takes the last Unicode-platform or Microsoft (3,1)/(3,10) subtable of format below 14, the pick
+  of `trueType.ms` `findGlyphIndex`'s reader, and only a font with none keeps upstream's rule.
+  Upstream (`kb_text_shape.h:27552`, `27584-27597`) compares each subtable against a constant
+  `PreferredFormat = 1` it never updates, so a later Mac Roman (1,0) table replaces the Unicode
+  one: ZapfDingbats and Menlo (`(0,3)` then `(1,0)`) shaped U+273B to glyph 0 while stb drew it.
+  The recorded digests of `tests/fonts/cmap/format6.ttf`, `format4NoTerminal.ttf` and the mutated
+  inputs of `kbFontPins.ms` moved with it; `unicodeThenMacRoman.ttf` pins the case
+  (`src/test/kbCmapUnicodeCheck.ms`).
+
   **The full oracle, 2026-10-07** (`tests/oracle/shape.rows`, 75 rows, `docs/TESTING.md` "T3"):
   against HarfBuzz 14.5.0 the bridge agrees on every field in 55 rows and on glyph count, ids,
   advances, offsets and run direction in 72. The one real difference is `o` U+0302 U+0323 in
