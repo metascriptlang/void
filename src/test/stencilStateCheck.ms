@@ -28,6 +28,8 @@ test "a state without a stencil keys as the key built before stencil existed" {
 		targets: SWAPCHAIN_LAYOUT.formatBits(),
 		stencilOps: 0,
 		stencilMasks: 0,
+		depthBias: 0,
+		depthSlope: 0.0,
 	};
 	assert keyFor(state) == expected;
 	assert keyFor(state.withStencil(null)) == expected;
