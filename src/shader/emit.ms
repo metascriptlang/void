@@ -2013,6 +2013,11 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		if (name != "" && made >= 0) {
 			const madeType = vectorAt(typeNodes, made);
 			if (madeType.scalar == ScalarKind.I32 || madeType.scalar == ScalarKind.U32) {
+				const whole = args.length == 1 && args[0].type.scalar == ScalarKind.F32 &&
+					args[0].type.kind == madeType.kind && args[0].type.rows == madeType.rows;
+				if (whole && args[0].kind != ExprKind.Literal) {
+					return saturated(args[0], madeType.scalar, n.arguments[0]);
+				}
 				args = args.map((a, i) => a.type.scalar == ScalarKind.F32 && a.kind != ExprKind.Literal ?
 					saturated(a, madeType.scalar, n.arguments[i]) : a);
 			}
