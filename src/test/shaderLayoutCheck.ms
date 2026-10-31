@@ -41,11 +41,15 @@ import {
 import {
 	BindingSlot,
 	DUMMY_SAMPLER,
+	MAX_UNIFORM_SLOTS,
+	MAX_VIEW_SLOTS,
 	ShaderTarget,
 	bindingSlots,
+	slotLimit,
 	storageElementLayout,
 	uniformBlockLayout,
 } from "../shader/layout";
+import { DOOR_UNIFORM_SLOTS, DOOR_VIEW_SLOTS } from "../gpu/doorGpu.ms";
 import { depthModule } from "./shaderProbeModules";
 
 function field(name: string, type: ShaderType): ShaderField {
@@ -305,6 +309,12 @@ test "two read views at one slot are refused by name" {
 	m.resources[4].binding = 1;
 	assert slots(m, ShaderTarget.Wgsl) ==
 		"resource 'detail': @binding(1) is also 'albedo', and this program reads both";
-	m.resources[4].binding = 32;
-	assert slots(m, ShaderTarget.Wgsl) == "resource 'detail': @binding(32) is outside 0..31";
+	m.resources[4].binding = 15;
+	assert slots(m, ShaderTarget.Wgsl) == "resource 'detail': @binding(15) is outside 0..14";
+}
+
+test "the binding limits equal the slots the door builds bind groups for" {
+	assert MAX_VIEW_SLOTS == DOOR_VIEW_SLOTS;
+	assert MAX_UNIFORM_SLOTS == DOOR_UNIFORM_SLOTS;
+	assert slotLimit(ResourceKind.Sampler) == 8;
 }

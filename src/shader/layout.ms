@@ -37,9 +37,10 @@ export struct StructLayout {
 	align: int32;
 }
 
-const MAX_UNIFORM_SLOTS = 8;
-const MAX_VIEW_SLOTS = 32;
-const MAX_SAMPLER_SLOTS = 12;
+export const MAX_UNIFORM_SLOTS = 8;
+export const MAX_VIEW_SLOTS = 15;
+export const MAX_SAMPLER_SLOTS = 8;
+const SAMPLER_BINDING_BASE = 32;
 
 function roundUp(n: int32, to: int32): int32 {
 	return (n + to - 1) / to * to;
@@ -255,7 +256,7 @@ function slotOf(m: ShaderModule, u: Used, target: ShaderTarget): BindingSlot {
 		texture: -1,
 		stage: u.stage,
 		group: uniform ? 0 : 1,
-		binding: r.kind == ResourceKind.Sampler ? MAX_VIEW_SLOTS + r.binding : r.binding,
+		binding: r.kind == ResourceKind.Sampler ? SAMPLER_BINDING_BASE + r.binding : r.binding,
 		nativeSlot: native && (uniform || r.kind == ResourceKind.Sampler) ? r.binding : -1,
 		nativeName: gl && uniform ? r.name : "",
 		textureBinding: -1,
