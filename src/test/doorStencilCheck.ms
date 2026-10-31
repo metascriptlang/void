@@ -213,6 +213,18 @@ when (voidDummy || (windows && !voidVulkan)) {
 		assert livePipelines() == before + 3;
 		closeScene(scene);
 	}
+
+	test "a depth bias makes its own pipeline and the same bias reuses it" {
+		const scene: Scene = openScene();
+		const before: int32 = livePipelines();
+		const flat: uint32 = pipelineOf(scene, red, plain());
+		const biased: uint32 = pipelineOf(scene, red, plain().withDepthBias(2, 1.5));
+		assert biased != flat;
+		assert pipelineOf(scene, red, plain().withDepthBias(2, 1.5)) == biased;
+		assert pipelineOf(scene, red, plain().withDepthBias(2, 2.0)) != biased;
+		assert livePipelines() == before + 3;
+		closeScene(scene);
+	}
 }
 
 when (windows && !voidDummy && !voidVulkan) {
