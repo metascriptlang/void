@@ -891,6 +891,32 @@ export function vertexOffsetRefusal(call: string, pipeline: string, member: stri
 	return bytesPerRow;
 }
 
+export function bufferCopyRefusal(
+	sourceId: uint32,
+	sourceSize: int64,
+	sourceOffset: int64,
+	destinationId: uint32,
+	destinationSize: int64,
+	destinationOffset: int64,
+	size: int64,
+): string {
+	if (size < 0 || size % 4 != 0) { return `copyBufferToBuffer size ${size} is not a non-negative multiple of 4`; }
+	if (sourceOffset < 0 || sourceOffset % 4 != 0) { return `copyBufferToBuffer sourceOffset ${sourceOffset} is not a non-negative multiple of 4`; }
+	if (destinationOffset < 0 || destinationOffset % 4 != 0) {
+		return `copyBufferToBuffer destinationOffset ${destinationOffset} is not a non-negative multiple of 4`;
+	}
+	if (sourceOffset + size > sourceSize) {
+		return `copyBufferToBuffer of ${size} bytes at sourceOffset ${sourceOffset} overruns GPUBuffer ${sourceId} of ${sourceSize}`;
+	}
+	if (destinationOffset + size > destinationSize) {
+		return `copyBufferToBuffer of ${size} bytes at destinationOffset ${destinationOffset} overruns GPUBuffer ${destinationId} of ${destinationSize}`;
+	}
+	if (sourceId == destinationId && sourceOffset < destinationOffset + size && destinationOffset < sourceOffset + size) {
+		return `copyBufferToBuffer ranges overlap inside GPUBuffer ${sourceId}`;
+	}
+	return "";
+}
+
 @noinline export function checkedBufferCopy(
 	sourceId: uint32,
 	sourceSize: int64,
@@ -900,20 +926,7 @@ export function vertexOffsetRefusal(call: string, pipeline: string, member: stri
 	destinationOffset: int64,
 	size: int64,
 ): void {
-	if (size < 0 || size % 4 != 0) { stop(`copyBufferToBuffer size ${size} is not a non-negative multiple of 4`); }
-	if (sourceOffset < 0 || sourceOffset % 4 != 0) { stop(`copyBufferToBuffer sourceOffset ${sourceOffset} is not a non-negative multiple of 4`); }
-	if (destinationOffset < 0 || destinationOffset % 4 != 0) {
-		stop(`copyBufferToBuffer destinationOffset ${destinationOffset} is not a non-negative multiple of 4`);
-	}
-	if (sourceOffset + size > sourceSize) {
-		stop(`copyBufferToBuffer of ${size} bytes at sourceOffset ${sourceOffset} overruns GPUBuffer ${sourceId} of ${sourceSize}`);
-	}
-	if (destinationOffset + size > destinationSize) {
-		stop(`copyBufferToBuffer of ${size} bytes at destinationOffset ${destinationOffset} overruns GPUBuffer ${destinationId} of ${destinationSize}`);
-	}
-	if (sourceId == destinationId && sourceOffset < destinationOffset + size && destinationOffset < sourceOffset + size) {
-		stop(`copyBufferToBuffer ranges overlap inside GPUBuffer ${sourceId}`);
-	}
+	refuse(bufferCopyRefusal(sourceId, sourceSize, sourceOffset, destinationId, destinationSize, destinationOffset, size));
 }
 
 // A size of 0 means the rest of the buffer, as WebGPU's omitted size does.
@@ -1176,11 +1189,16 @@ export function samplerMaxLod(lodMaxClamp: float32): float32 { return lodMaxClam
 
 export const GPU_DRAW_INDEXED_INDIRECT_STRIDE = 20;
 
-@noinline export function checkedDispatchIndirect(id: uint32, usage: int32, bufferSize: int64, offset: int64): void {
-	if ((usage & (GPUBufferUsage.INDIRECT as int32)) == 0) { stop(`dispatchWorkgroupsIndirect: GPUBuffer ${id} was created without INDIRECT`); }
+export function dispatchIndirectRefusal(id: uint32, usage: int32, bufferSize: int64, offset: int64): string {
+	if ((usage & (GPUBufferUsage.INDIRECT as int32)) == 0) { return `dispatchWorkgroupsIndirect: GPUBuffer ${id} was created without INDIRECT`; }
 	if (offset < 0 || offset % 4 != 0 || offset + 12 > bufferSize) {
-		stop(`dispatchWorkgroupsIndirect offset ${offset} is not a multiple of 4 with 12 bytes inside GPUBuffer ${id} of ${bufferSize}`);
+		return `dispatchWorkgroupsIndirect offset ${offset} is not a multiple of 4 with 12 bytes inside GPUBuffer ${id} of ${bufferSize}`;
 	}
+	return "";
+}
+
+@noinline export function checkedDispatchIndirect(id: uint32, usage: int32, bufferSize: int64, offset: int64): void {
+	refuse(dispatchIndirectRefusal(id, usage, bufferSize, offset));
 }
 
 // `count` is the query set's size; an occlusion set cannot take timestamp writes.
