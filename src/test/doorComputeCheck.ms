@@ -6,23 +6,34 @@ import { computeModule, programSource } from "../shader/descriptor";
 import { glslComputeIr } from "../shader/emit";
 import { ShaderTarget } from "../shader/layout";
 import { AtomicI32, Vec3u, access, atomicStore, binding, builtin } from "../shader/std";
-import { GPUShaderModuleDescriptor } from "../webgpu/types.ms";
+import { GPUComputePipeline, GPUShaderModuleDescriptor } from "../webgpu/types.ms";
 import { PassState, computeCallRefusal, openPassRefusal, renderCallRefusal } from "../gpu/doorGpu.ms";
 
 when (voidDummy || (windows && !voidVulkan)) {
 	import {
+		DOOR_BUFFER_INDIRECT,
+		DOOR_BUFFER_STORAGE,
+		doorCopyBuffer,
+		doorMakeBuffer,
+		doorMakeBufferOf,
 		doorPassState,
 		doorReadBuffer,
 		doorSetup,
 		doorShutdown,
+		doorStorageGroup,
+		doorUpdateBufferAtOf,
 	} from "../gpu/doorGpu.ms";
 	import {
 		applyComputeBindings,
 		applyComputePipeline,
+		applyComputeResources,
+		applyComputeUniformsOf,
 		beginComputePass,
 		computeDispatch,
+		computeDispatchIndirect,
 		computePipelineFor,
 		computeSlotMask,
+		computeUniformMask,
 		endComputePass,
 		makeStorageBuffer,
 		registerComputePrograms,
@@ -59,14 +70,39 @@ export function doubleKernel(input: DoubleInput, b: DoubleBindings): void {
 	atomicStore(b.result[i].value, b.source[i].value * 2);
 }
 
+export struct Scale {
+	factor: float32;
+	bias: float32;
+}
+
+export struct ScaledBindings {
+	@binding(0) scale: Scale;
+	@binding(0) @access(read) source: Cell[];
+	@binding(1) @access(read_write) result: Slot[];
+}
+
+export function scaledKernel(input: DoubleInput, b: ScaledBindings): void {
+	const i = input.id.x;
+	const value = (b.source[i].value as float32) * b.scale.factor + b.scale.bias;
+	atomicStore(b.result[i].value, value as int32);
+}
+
 function doubleDescriptor(index: int32): GPUShaderModuleDescriptor {
-	const module = computeModule(glslComputeIr(doubleKernel, [8, 1, 1]), []);
-	if (!module.ok) { console.log(`doubleKernel: ${module.error}`); unreachable; }
+	return kernelDescriptor("doubleKernel", glslComputeIr(doubleKernel, [8, 1, 1]));
+}
+
+function scaledDescriptor(index: int32): GPUShaderModuleDescriptor {
+	return kernelDescriptor("scaledKernel", glslComputeIr(scaledKernel, [8, 1, 1]));
+}
+
+function kernelDescriptor(label: string, text: string): GPUShaderModuleDescriptor {
+	const module = computeModule(text, []);
+	if (!module.ok) { console.log(`${label}: ${module.error}`); unreachable; }
 	const source = programSource(module.value, ShaderTarget.Hlsl5);
-	if (!source.ok) { console.log(`doubleKernel: ${source.error}`); unreachable; }
-	if (source.value.refusal != "") { console.log(`doubleKernel: ${source.value.refusal}`); unreachable; }
+	if (!source.ok) { console.log(`${label}: ${source.error}`); unreachable; }
+	if (source.value.refusal != "") { console.log(`${label}: ${source.value.refusal}`); unreachable; }
 	let descriptor: GPUShaderModuleDescriptor = {
-		label: "doubleKernel",
+		label,
 		computeCode: source.value.computeCode,
 		computeEntryPoint: source.value.entryPoint,
 	};
@@ -172,6 +208,141 @@ when (voidDummy || (windows && !voidVulkan)) {
 		const base = registerComputePrograms(doubleDescriptor, 1);
 		assert computePipelineFor(base) == computePipelineFor(base);
 		assert computePipelineFor(base) != 0;
+		doorShutdown();
+	}
+
+	function readWords(buffer: uint32, count: int32): Vec<uint8> {
+		let out: Vec<uint8> = new Array(count * 4);
+		if (doorReadBuffer(buffer, out) != 1) { console.log(`readBuffer of ${buffer} failed`); unreachable; }
+		return out;
+	}
+
+	test "a compute program reads a uniform block applied from the frame's uniform ring" {
+		openDoor();
+		const base = registerComputePrograms(scaledDescriptor, 1);
+		assert computeUniformMask(base) == 1;
+		assert computeSlotMask(base) == 3;
+		const values: Vec<int32> = [1, 2, 3, 4, 5, 6, 7, 40000];
+		const zeros: Vec<int32> = [0, 0, 0, 0, 0, 0, 0, 0];
+		const source = makeStorageBuffer(values);
+		const result = makeStorageBuffer(zeros);
+		const block: Vec<float32> = [3.0, 1.0, 0.0, 0.0];
+		beginComputePass();
+		applyComputePipeline(computePipelineFor(base));
+		applyComputeBindings([source, result]);
+		applyComputeUniformsOf(0, block);
+		computeDispatch(1, 1, 1);
+		endComputePass();
+		const out = readWords(result, WORKGROUP);
+		when (windows && !voidDummy) {
+			for (let i = 0; i < WORKGROUP; i++) { assert wordAt(out, i) == values[i] * 3 + 1; }
+		}
+		doorShutdown();
+	}
+
+	test "an indirect dispatch reads its workgroup counts at an offset of an indirect buffer" {
+		openDoor();
+		const base = registerComputePrograms(doubleDescriptor, 1);
+		const values: Vec<int32> = [1, 2, 3, 4, 5, 6, 7, 8];
+		const zeros: Vec<int32> = [0, 0, 0, 0, 0, 0, 0, 0];
+		const counts: Vec<uint32> = [0, 0, 0, 1, 1, 1];
+		const source = makeStorageBuffer(values);
+		const result = makeStorageBuffer(zeros);
+		const args = doorMakeBufferOf(DOOR_BUFFER_INDIRECT, counts);
+		beginComputePass();
+		applyComputePipeline(computePipelineFor(base));
+		applyComputeBindings([source, result]);
+		computeDispatchIndirect(args, 12);
+		endComputePass();
+		const out = readWords(result, WORKGROUP);
+		when (windows && !voidDummy) {
+			for (let i = 0; i < WORKGROUP; i++) { assert wordAt(out, i) == values[i] * 2; }
+		}
+		doorShutdown();
+	}
+
+	test "a buffer copy moves a range between storage buffers at their offsets" {
+		openDoor();
+		const values: Vec<int32> = [1, 2, 3, 4, 5, 6, 7, 8];
+		const zeros: Vec<int32> = [0, 0, 0, 0, 0, 0, 0, 0];
+		const source = makeStorageBuffer(values);
+		const destination = makeStorageBuffer(zeros);
+		doorCopyBuffer(source, 8, destination, 16, 8);
+		const out = readWords(destination, WORKGROUP);
+		when (windows && !voidDummy) {
+			assert wordAt(out, 3) == 0;
+			assert wordAt(out, 4) == 3;
+			assert wordAt(out, 5) == 4;
+			assert wordAt(out, 6) == 0;
+		}
+		doorShutdown();
+	}
+
+	test "a buffer update writes at its byte offset and is refused past the buffer's end" {
+		openDoor();
+		const none: Vec<uint8> = [];
+		const buffer = doorMakeBuffer(DOOR_BUFFER_STORAGE, none, 32);
+		const pair: Vec<int32> = [7, 9];
+		const one: Vec<int32> = [11];
+		assert doorUpdateBufferAtOf(buffer, 8, pair) == 1;
+		assert doorUpdateBufferAtOf(buffer, 16, one) == 1;
+		assert doorUpdateBufferAtOf(buffer, 28, pair) == 0;
+		assert doorUpdateBufferAtOf(buffer, -4, one) == 0;
+		const out = readWords(buffer, WORKGROUP);
+		when (windows && !voidDummy) {
+			assert wordAt(out, 2) == 7;
+			assert wordAt(out, 3) == 9;
+			assert wordAt(out, 4) == 11;
+		}
+		doorShutdown();
+	}
+
+	test "storage groups of one buffer at different offsets or sizes are different groups" {
+		openDoor();
+		const base = registerComputePrograms(doubleDescriptor, 1);
+		const pipeline: GPUComputePipeline = { id: computePipelineFor(base) };
+		const none: Vec<uint8> = [];
+		const cells = doorMakeBuffer(DOOR_BUFFER_STORAGE, none, 1024);
+		const result = doorMakeBuffer(DOOR_BUFFER_STORAGE, none, 256);
+		const noSamplers: Vec<uint32> = [];
+		const resources: Vec<uint32> = [cells, result];
+		const atStart: Vec<int64> = [0, 0];
+		const atNext: Vec<int64> = [256, 0];
+		const quarter: Vec<int64> = [256, 0];
+		const half: Vec<int64> = [512, 0];
+		const first = doorStorageGroup(pipeline, 3, 0, 0, resources, atStart, quarter, noSamplers);
+		const second = doorStorageGroup(pipeline, 3, 0, 0, resources, atNext, quarter, noSamplers);
+		const wider = doorStorageGroup(pipeline, 3, 0, 0, resources, atStart, half, noSamplers);
+		assert first.id != 0;
+		assert first.id != second.id;
+		assert first.id != wider.id;
+		assert second.id != wider.id;
+		assert doorStorageGroup(pipeline, 3, 0, 0, resources, atStart, quarter, noSamplers).id == first.id;
+		doorShutdown();
+	}
+
+	test "a dispatch writes a storage buffer bound at an offset and leaves the bytes before it" {
+		openDoor();
+		const base = registerComputePrograms(doubleDescriptor, 1);
+		const values: Vec<int32> = [1, 2, 3, 4, 5, 6, 7, 8];
+		const source = makeStorageBuffer(values);
+		const none: Vec<uint8> = [];
+		const result = doorMakeBuffer(DOOR_BUFFER_STORAGE, none, 512);
+		const resources: Vec<uint32> = [source, result];
+		const offsets: Vec<int64> = [0, 256];
+		const sizes: Vec<int64> = [0, 32];
+		const noSamplers: Vec<uint32> = [];
+		beginComputePass();
+		applyComputePipeline(computePipelineFor(base));
+		applyComputeResources(resources, offsets, sizes, noSamplers);
+		computeDispatch(1, 1, 1);
+		endComputePass();
+		const out = readWords(result, 128);
+		when (windows && !voidDummy) {
+			assert wordAt(out, 0) == 0;
+			assert wordAt(out, 63) == 0;
+			for (let i = 0; i < WORKGROUP; i++) { assert wordAt(out, 64 + i) == values[i] * 2; }
+		}
 		doorShutdown();
 	}
 }
