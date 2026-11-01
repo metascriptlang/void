@@ -42,6 +42,7 @@ import {
 } from "../../src/void2d/displayList";
 import {
 	UI_WORDS, REC_SPRITE_FLOATS, WORD_UI_ORIGIN_SIZE, REC_SPRITE_ORIGIN_SIZE, WORD_UI_COLOR_FILL,
+	WORD_UI_CLIP_RECT,
 } from "../../src/void2d/instanceLayout";
 import { Color, rgba, tile, identity2d, vec2, Tile, whiteTile } from "../../src/void2d/types";
 import { TextRun, UnderlineStyle } from "../../src/void2d/textLayout";
@@ -617,6 +618,30 @@ test "an edit inside one line of a label writes that line and skips the lines it
 	assert s.context.dirtyUi[2] == start + 14 && s.context.dirtyUi[3] == start + 15;
 	assert !s.context.dirtySprites && !s.context.dirtyVertices;
 	assert same(edited, fullFrame(s));
+}
+
+test "a Mask resize writes its label's kept lines again under the new clip" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const m = s.mask(100.0, 40.0).at(10.0, 10.0);
+	const editor = s.label("alpha\nbeta\ngamma", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 4.0);
+	editor.setCursorIndex(2, rgba(1.0, 0.8, 0.3, 1.0));
+	editor.setCursorBlinkTime(0.0);
+	m.addChild(editor);
+	s.add(m);
+	frame(s);
+	frame(s);
+	m.setSize(60.0, 40.0);
+	editor.setText("alpha\nbexa\ngamma");
+	s.paint(W, H, 1.0);
+	const start: int32 = paintStartOf(editor.id.index).uiInstances;
+	const right: float32 = uiInstanceField(start, WORD_UI_CLIP_RECT + 2);
+	frameEnd();
+	s.clearChanges();
+	s.retryRefused();
+	assert right == 70.0;
+	m.setSize(50.0, 40.0);
+	editor.setText("alpha\nbexy\ngamma");
+	assert check(s, "a Mask resize with one line edited", "splice");
 }
 
 test "a label carried into the spare context by a splice writes its lines again" {
