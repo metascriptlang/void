@@ -527,7 +527,8 @@ export struct UiVertexBindings {
 
 // Per instance: iAffine a,b,c,d; iOriginSize tx,ty,w,h; iUvRadii an image's u0,v0,u1,v1 or a box's
 // four corner radii TL TR BR BL; iBorders the side widths L T R B; iParams0.x the mode, then
-// per-mode parameters; iParams1 gradient stops or a shadow's offset and spread.
+// per-mode parameters; iParams1 gradient stops or a shadow's offset and spread; iClipRect the
+// scissor's x0,y0,x1,y1, read when the draw's clipU is off.
 export struct UiAttributes {
 	corner: Vec2f;
 	iAffine: Vec4f;
@@ -536,6 +537,7 @@ export struct UiAttributes {
 	iBorders: Vec4f;
 	iParams0: Vec4f;
 	iParams1: Vec4f;
+	iClipRect: Vec4f;
 	iColorFill: Vec4f;
 	iColorBorder: Vec4f;
 	iColorExtra: Vec4f;
@@ -598,7 +600,7 @@ function dilateStroke(width: float32, pixelsPerLocal: float32): float32 {
 	return max(width, 1.0 / pixelsPerLocal);
 }
 
-// The unified UI pipeline (VOID2D.md "P2"): one program, one 108-byte stride and a per-instance
+// The unified UI pipeline (VOID2D.md "P2"): one program, one 124-byte stride and a per-instance
 // mode, so a card, its label and its image batch together. The SDF is evaluated in local space
 // (GPUI.md:35-39), and the quad is inflated by one device pixel on every side before the affine,
 // or the coverage ramp would be clipped by the geometry it softens. One device pixel across an
@@ -619,7 +621,10 @@ export function uiVs(input: UiAttributes, b: UiVertexBindings): UiVaryings {
 		input.iAffine.y * local.x + input.iAffine.w * local.y + input.iOriginSize.y,
 	);
 	const moved = world + b.ui_params.shift.xy;
-	const clipDistance = clipEdgeDistance(world, b.ui_params.clipU, b.ui_params.clipV);
+	const box = input.iClipRect;
+	const clipDistance = b.ui_params.clipU.w > b.ui_params.clipU.z
+		? clipEdgeDistance(world, b.ui_params.clipU, b.ui_params.clipV)
+		: vec4f(world.x - box.x, box.z - world.x, world.y - box.y, box.w - world.y);
 	const clipRadii = b.ui_params.clipRadii;
 	const clipRound = roundClipPoint(
 		world, b.ui_params.clipRoundU, b.ui_params.clipRoundV, clipRadii);

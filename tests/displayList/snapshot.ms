@@ -57,13 +57,13 @@ import {
 	commandKindName, breakReasonName, SOURCE_PREMULTIPLIED,
 	Pipeline, BreakReason, CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT,
 	uiInstanceCount, spriteInstanceCount, spriteInstanceField, uiInstanceField, NO_EFFECT,
-	uiInstanceWord, uiInstanceChannel,
+	uiInstanceWord, uiInstanceChannel, NO_INSTANCE_CLIP,
 	targetDepth, currentContext, resolveScopes, DrawContext2D,
 } from "../../src/void2d/displayList";
 import {
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
 	WORD_UI_AFFINE, WORD_UI_ORIGIN_SIZE, WORD_UI_UV_RADII, WORD_UI_BORDERS, WORD_UI_PARAMS0,
-	WORD_UI_PARAMS1,
+	WORD_UI_PARAMS1, WORD_UI_CLIP_RECT,
 	WORD_UI_COLOR_FILL, WORD_UI_COLOR_BORDER, WORD_UI_COLOR_EXTRA, UI_WORDS,
 } from "../../src/void2d/instanceLayout";
 import { InstanceMode } from "../../src/void2d/instance";
@@ -261,6 +261,14 @@ function formatStream(): string {
 		out = out + ` ${f2(uiInstanceField(i, WORD_UI_PARAMS1 + 1))}`;
 		out = out + ` ${f2(uiInstanceField(i, WORD_UI_PARAMS1 + 2))}`;
 		out = out + ` ${f2(uiInstanceField(i, WORD_UI_PARAMS1 + 3))}`;
+		out = out + ` clip`;
+		if (uiInstanceField(i, WORD_UI_CLIP_RECT + 2) == NO_INSTANCE_CLIP) {
+			out = out + ` -`;
+		} else {
+			for (let k: int32 = 0; k < 4; k++) {
+				out = out + ` ${f2(uiInstanceField(i, WORD_UI_CLIP_RECT + k))}`;
+			}
+		}
 		out = out + ` fill`;
 		out = out + ` ${f2(unorm(i, WORD_UI_COLOR_FILL, 0))}`;
 		out = out + ` ${f2(unorm(i, WORD_UI_COLOR_FILL, 1))}`;

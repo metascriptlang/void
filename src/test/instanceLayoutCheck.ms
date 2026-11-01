@@ -11,12 +11,13 @@ import {
 } from "../void2d/instance";
 import {
 	UI_AFFINE, UI_ORIGIN_SIZE, UI_UV_RADII, UI_BORDERS, UI_PARAMS0, UI_PARAMS1,
-	UI_COLOR_FILL, UI_COLOR_BORDER, UI_COLOR_EXTRA, UI_STRIDE, UI_ATTRIBUTES,
+	UI_CLIP_RECT, UI_COLOR_FILL, UI_COLOR_BORDER, UI_COLOR_EXTRA, UI_STRIDE, UI_ATTRIBUTES,
 	SPRITE_AFFINE, SPRITE_ORIGIN_SIZE, SPRITE_UV, SPRITE_COLOR, SPRITE_STRIDE,
 	SPRITE_ATTRIBUTES,
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR, REC_SPRITE_FLOATS,
 	WORD_UI_AFFINE, WORD_UI_ORIGIN_SIZE, WORD_UI_UV_RADII, WORD_UI_BORDERS, WORD_UI_PARAMS0,
-	WORD_UI_PARAMS1, WORD_UI_COLOR_FILL, WORD_UI_COLOR_BORDER, WORD_UI_COLOR_EXTRA, UI_WORDS,
+	WORD_UI_PARAMS1, WORD_UI_CLIP_RECT, WORD_UI_COLOR_FILL, WORD_UI_COLOR_BORDER,
+	WORD_UI_COLOR_EXTRA, UI_WORDS,
 } from "../void2d/instanceLayout";
 import { floatBits, floatOfBits } from "../void2d/floatBits";
 
@@ -30,7 +31,8 @@ test "UI fields are laid out end to end with no gap and no overlap" {
 	assert UI_BORDERS == UI_UV_RADII + FLOAT4;
 	assert UI_PARAMS0 == UI_BORDERS + FLOAT4;
 	assert UI_PARAMS1 == UI_PARAMS0 + FLOAT4;
-	assert UI_COLOR_FILL == UI_PARAMS1 + FLOAT4;
+	assert UI_CLIP_RECT == UI_PARAMS1 + FLOAT4;
+	assert UI_COLOR_FILL == UI_CLIP_RECT + FLOAT4;
 	assert UI_COLOR_BORDER == UI_COLOR_FILL + UBYTE4N;
 	assert UI_COLOR_EXTRA == UI_COLOR_BORDER + UBYTE4N;
 	assert UI_STRIDE == UI_COLOR_EXTRA + UBYTE4N;
@@ -51,6 +53,7 @@ test "every UI field starts on a four-byte boundary" {
 	assert UI_BORDERS % 4 == 0;
 	assert UI_PARAMS0 % 4 == 0;
 	assert UI_PARAMS1 % 4 == 0;
+	assert UI_CLIP_RECT % 4 == 0;
 	assert UI_COLOR_FILL % 4 == 0;
 	assert UI_COLOR_BORDER % 4 == 0;
 	assert UI_COLOR_EXTRA % 4 == 0;
@@ -63,11 +66,11 @@ test "every UI field starts on a four-byte boundary" {
 test "one stride serves every UI mode inside WebGL2's ceiling" {
 	assert oneStrideFitsWeb();
 	assert UI_STRIDE <= MAX_WEB_STRIDE;
-	assert UI_STRIDE == 108;
+	assert UI_STRIDE == 124;
 }
 
 test "both pipelines stay inside the sixteen vertex attributes the web intersection gives" {
-	assert UI_ATTRIBUTES == 9;
+	assert UI_ATTRIBUTES == 10;
 	assert SPRITE_ATTRIBUTES == 4;
 	assert UI_ATTRIBUTES + 1 <= 16;
 	assert SPRITE_ATTRIBUTES + 1 <= 16;
@@ -91,7 +94,7 @@ test "one instance replaces six vertices, so bytes per quad fall either way" {
 test "instance bytes are linear in the instance count" {
 	assert uiInstanceBytes(0) == 0;
 	assert uiInstanceBytes(1) == UI_STRIDE;
-	assert uiInstanceBytes(20000) == 2160000;
+	assert uiInstanceBytes(20000) == 2480000;
 	assert spriteInstanceBytes(10000) == 640000;
 }
 
@@ -117,11 +120,12 @@ test "every UI word offset is its GPU byte offset over four" {
 	assert WORD_UI_BORDERS * 4 == UI_BORDERS;
 	assert WORD_UI_PARAMS0 * 4 == UI_PARAMS0;
 	assert WORD_UI_PARAMS1 * 4 == UI_PARAMS1;
+	assert WORD_UI_CLIP_RECT * 4 == UI_CLIP_RECT;
 	assert WORD_UI_COLOR_FILL * 4 == UI_COLOR_FILL;
 	assert WORD_UI_COLOR_BORDER * 4 == UI_COLOR_BORDER;
 	assert WORD_UI_COLOR_EXTRA * 4 == UI_COLOR_EXTRA;
 	assert UI_WORDS * 4 == UI_STRIDE;
-	assert UI_WORDS == 27;
+	assert UI_WORDS == 31;
 }
 
 test "floatOfBits undoes floatBits on every float lane value" {
