@@ -46,6 +46,7 @@ import {
 import { Color, rgba, tile, identity2d, vec2, Tile, whiteTile } from "../../src/void2d/types";
 import { TextRun, UnderlineStyle } from "../../src/void2d/textLayout";
 import { DEFAULT_FONT } from "../../src/void2d/font";
+import { CornerRadii } from "../../src/void2d/boxStyle";
 
 const W: float32 = 200.0;
 const H: float32 = 120.0;
@@ -1019,16 +1020,26 @@ test "a promise with nothing to gain records what no promise records, byte for b
 	assert same(without, promised);
 }
 
-test "a region holding a clip keeps painter's order, byte for byte" {
-	const plain = iconList(false, true);
-	const promised = iconList(true, true);
-	for (const s of [plain, promised]) {
-		const list = s.refOf(s.children[s.root][1]);
-		const clip = s.mask(40.0, 10.0).at(60.0, 2.0);
-		clip.addChild(s.rect(80.0, 20.0, rgba(0.0, 1.0, 0.0, 1.0)));
-		list.getChildAt(2).addChild(clip);
-	}
-	assert same(frame(plain), frame(promised));
+function clippedIconList(promise: boolean, radius: float32): Scene2D {
+	const s = iconList(promise, true);
+	const list = s.refOf(s.children[s.root][1]);
+	const clip = s.mask(40.0, 10.0).at(60.0, 2.0);
+	if (radius > 0.0) { clip.setMaskRadii(CornerRadii.uniform(radius)); }
+	clip.addChild(s.rect(80.0, 20.0, rgba(0.0, 1.0, 0.0, 1.0)));
+	list.getChildAt(2).addChild(clip);
+	return s;
+}
+
+test "a region holding a rounded clip keeps painter's order, byte for byte" {
+	assert same(frame(clippedIconList(false, 3.0)), frame(clippedIconList(true, 3.0)));
+}
+
+test "a region holding a rect clip still draws its lanes, since each instance clips itself" {
+	const painter: Recording = frame(clippedIconList(false, 0.0));
+	const lanes: Recording = frame(clippedIconList(true, 0.0));
+	assert draws(painter) == 13;
+	assert draws(lanes) == 3;
+	assert lanes.counts[3] == painter.counts[3] && lanes.counts[4] == painter.counts[4];
 }
 
 test "writes inside a list that promises no overlap record what a full frame records" {

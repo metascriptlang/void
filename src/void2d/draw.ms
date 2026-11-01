@@ -45,7 +45,7 @@ import {
 	targetDepth, renderTargetScaleNow, beginTargetList, endTargetList,
 	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
 	Pipeline, NO_CLIP, Clip, MaskClip, NO_MASK_CLIP, NO_MASK, PaintIndex, pushMaskClip, maskClipAt,
-	RoundClip, NO_ROUND_CLIP, EMPTY_CLIP,
+	RoundClip, NO_ROUND_CLIP, EMPTY_CLIP, instanceClipped, restateClip, scissorFormsDiffer,
 	ScopeRecord, NO_SCOPE, pushScope, scopeRow, resolveScopes,
 	pushSpriteInstance, putSpriteInstance, recordSpriteDraw, pipelineAt, runOffset, commandView,
 	Program2D, PROGRAMS_2D, BLEND_MODES, PIPELINE_SLOTS, pipelineWanted,
@@ -460,11 +460,18 @@ function useRun(pipeline: Pipeline, view: uint32, premultiplied: boolean, blend:
 		: (ctx.curPipeline != pipeline ? BreakReason.Pipeline
 		: (view != ctx.curView ? BreakReason.View
 		: (blend != ctx.curBlend ? BreakReason.Blend : BreakReason.Sampler)));
+	const before: int32 = commandCount();
+	const from: Pipeline = ctx.curPipeline;
 	closeRun();
 	ctx.curView = view;
 	ctx.curSampler = sampler;
 	ctx.curBlend = blend;
 	ctx.curPipeline = pipeline;
+	// With no draw recorded for the run just closed, the replay keeps the scissor that run's
+	// pipeline wanted, and a draw of the same pipeline id as the last one does not re-apply.
+	if (from != pipeline && commandCount() == before && scissorFormsDiffer(from, pipeline)) {
+		restateClip();
+	}
 	openRun(reason);
 }
 
@@ -739,9 +746,19 @@ function clipOf(c: MaskClip): Clip {
 }
 
 function applyClip(d: int32): void {
+	moveClip(clipOf(currentContext().clipStack[d]));
+}
+
+// A UI run's instances carry their own rect clip, so a move between two such clips keeps the
+// run and its open scissor; any other move closes the run under a new scissor.
+function moveClip(next: Clip): void {
 	const ctx: DrawContext2D = currentContext();
+	if (ctx.curPipeline == Pipeline.Ui && instanceClipped(ctx.clip) && instanceClipped(next)) {
+		ctx.clip = next;
+		return;
+	}
 	closeRun();
-	recordClip(clipOf(ctx.clipStack[d]));
+	recordClip(next);
 	openRun(BreakReason.Clip);
 }
 
@@ -1027,9 +1044,7 @@ export function popClip(): void {
 	if (ctx.clipDepth > 0) {
 		applyClip(ctx.clipDepth - 1);
 	} else {
-		closeRun();
-		recordClip(NO_CLIP);
-		openRun(BreakReason.Clip);
+		moveClip(NO_CLIP);
 	}
 }
 
