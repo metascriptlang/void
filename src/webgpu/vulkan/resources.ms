@@ -248,7 +248,7 @@ function alignUp(value: uint64, alignment: uint64): uint64 {
 }
 
 @noinline export function stopOnVulkan(): never {
-	stop(`vulkan: ${vulkanError()}`);
+	stop(`vulkan: ${vulkanError() as string}`);
 }
 
 export function failure(code: int32): ResourceError {

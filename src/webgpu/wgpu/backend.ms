@@ -946,7 +946,7 @@ function checkMirroredConstants(): void {
 		GPU_MAX_VERTEX_ATTRIBUTES,
 		GPU_MAX_COLOR_ATTACHMENTS,
 	];
-	const disagreement: string = wgConstantsDisagreement(values[0], values.length as int32);
+	const disagreement: string = wgConstantsDisagreement(values[0], values.length as int32) as string;
 	if (disagreement != "") { stop(`a constant of backend.ms disagrees with webgpu.h or wgpu.c, ${disagreement}`); }
 }
 

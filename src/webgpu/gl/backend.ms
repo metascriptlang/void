@@ -1137,13 +1137,13 @@ function checkMirroredConstants(): void {
 		GL_DEPTH_ATTACHMENT,
 		GL_FRAMEBUFFER_COMPLETE,
 	];
-	const disagreement: string = oglConstantsDisagreement(values[0], values.length as int32);
+	const disagreement: string = oglConstantsDisagreement(values[0], values.length as int32) as string;
 	if (disagreement != "") { stop(`a constant of backend.ms disagrees with gl.c, ${disagreement}`); }
 }
 
 export function setup(environment: NativeEnvironment): GPUDevice {
 	if (oglLoad() == 0) {
-		const missing: string = oglLoadMissing();
+		const missing: string = oglLoadMissing() as string;
 		stop(`requestDevice needs a current GL context; ${missing} did not load`);
 	}
 	checkMirroredConstants();
@@ -1591,7 +1591,7 @@ function compileStage(stage: int32, code: string, entryPoint: string, label: str
 	}
 	const shader = oglCompileShader(stage, code);
 	if (shader == 0) {
-		const log: string = oglLog();
+		const log: string = oglLog() as string;
 		const stageName = stage == GL_VERTEX_SHADER ? "vertex" : (stage == GL_COMPUTE_SHADER ? "compute" : "fragment");
 		stop(`compiling the ${stageName} shader of ${labelOf(label)} failed:\n${log}`);
 	}
@@ -1675,7 +1675,7 @@ export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescri
 		slot.program = oglLinkProgram(vertex, fragment);
 	}
 	if (slot.program == 0) {
-		const log: string = oglLog();
+		const log: string = oglLog() as string;
 		stop(`linking the program of ${labelOf(descriptor.label)} failed:\n${log}`);
 	}
 	resolveUniforms(slot, descriptor);

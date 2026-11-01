@@ -850,7 +850,7 @@ function checkDriverConstants(): void {
 		stencilOperation("increment-wrap", "x"),
 		stencilOperation("decrement-wrap", "x"),
 	];
-	const disagreement: string = d3dConstantsDisagreement(values[0], values.length as int32);
+	const disagreement: string = d3dConstantsDisagreement(values[0], values.length as int32) as string;
 	if (disagreement != "") { stop(`a constant of backend.ms disagrees with d3d11.c or the driver, ${disagreement}`); }
 }
 
@@ -1572,7 +1572,7 @@ function compileStage(code: string, entryPoint: string, target: string, label: s
 	const entry = entryPoint == "" ? "main" : entryPoint;
 	const blob = d3dCompile(code, entry, target);
 	if (blob == null) {
-		const log: string = d3dCompileLog();
+		const log: string = d3dCompileLog() as string;
 		stop(`D3DCompile ${target} failed for ${labelOf(label)}:\n${log}`);
 	}
 	return blob;
