@@ -23,6 +23,10 @@ ROWS=$(mktemp)
 trap 'rm -f "$ROWS"' EXIT
 
 load() {
+	if [ "$(uname -s)" = Darwin ]; then
+		top -l 2 -n 0 -s 1 | awk '/CPU usage/ { idle = $7 } END { sub(/%/, "", idle); printf "%.1f\n", 100 - idle }'
+		return
+	fi
 	powershell.exe -NoProfile -Command \
 		"(1..3 | ForEach-Object { (Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 1 -MaxSamples 1).CounterSamples[0].CookedValue } | Measure-Object -Average).Average.ToString('F1')" \
 		| tr -d '\r'
@@ -97,7 +101,9 @@ awk -v limit="$LIMIT" -v minClean="$MIN_CLEAN" '
 		}
 	}' "$ROWS"
 
-[ -z "${AB_RAW:-}" ] || awk -F'	' -v limit="$LIMIT" -v minClean="$MIN_CLEAN" -v tol="${AB_TOL:-3}" -f "$(dirname "$0")/benchFlow.awk" -e '
+[ -z "${AB_RAW:-}" ] || {
+	raw_program=$(mktemp)
+	cat > "$raw_program" <<'AWK'
 	function median(key,   n, i, j, x, v) {
 		n = cnt[key]
 		for (i = 1; i <= n; i++) v[i] = val[key, i]
@@ -141,4 +147,8 @@ awk -v limit="$LIMIT" -v minClean="$MIN_CLEAN" '
 			printf "%-6s %-8s %-34s %14.4g %14.4g %+8.1f%%  %s\n", q[1], flow(m), m, a, b, d, verdict
 		}
 		printf "(%d counter rows identical on both sides, not listed; tolerance %s %% on .ms rows)\nRED rows: %d\n", same, tol, red
-	}' "$AB_RAW"
+	}
+AWK
+	awk -F'	' -v limit="$LIMIT" -v minClean="$MIN_CLEAN" -v tol="${AB_TOL:-3}" -f "$(dirname "$0")/benchFlow.awk" -f "$raw_program" "$AB_RAW"
+	rm -f "$raw_program"
+}

@@ -1,4 +1,5 @@
 import {
+	BindGroupRecord,
 	TextureRecord,
 	ViewRecord,
 	bindGroupRecords,
@@ -92,6 +93,7 @@ import {
 import {
 	cachedCanvas,
 	currentFrame,
+	replacesWrittenBytes,
 	entryOf,
 	clampedAnisotropy,
 	checkedComputeModule,
@@ -118,6 +120,7 @@ import {
 	MtlSamplerImpl,
 	MtlTextureImpl,
 	mtlBeginCommandBuffer,
+	mtlBeginUploadCommandBuffer,
 	mtlBlitBufferToBuffer,
 	mtlBlitBufferToTexture,
 	mtlBlitTextureToBuffer,
@@ -343,6 +346,7 @@ struct BufferSlot {
 	active: int32;
 	inPlace: boolean;
 	gpuUseFrame: int64;
+	cpuWriteFrame: int64;
 }
 
 struct TextureSlot {
@@ -408,10 +412,24 @@ struct PipelineSlot {
 	strides: int32[2];
 }
 
+struct ResolvedBinding {
+	binding: int32;
+	kind: BindingKind;
+	vertexStage: boolean;
+	fragmentStage: boolean;
+	nativeSlot: int32;
+	entry: int32;
+	dynamicIndex: int32;
+	offset: int64;
+	id: uint32;
+}
+
 struct BindGroupSlot {
 	group: int32;
 	entries: GPUBindGroupEntry[8];
 	entryCount: int32;
+	resolved: ResolvedBinding[8];
+	resolvedCount: int32;
 }
 
 struct PassState {
@@ -443,12 +461,17 @@ struct BoundState {
 	vertexDirty: boolean;
 	resourcesDirty: boolean;
 	uniformsDirty: boolean;
+	vertexIds: uint32[GPU_MAX_VERTEX_BUFFERS];
+	vertexOffsets: int64[GPU_MAX_VERTEX_BUFFERS];
+	groupIds: uint32[2];
+	dynamicOffsets: uint32[GPU_MAX_BIND_GROUP_ENTRIES];
 }
 
 let device: Ptr<MtlDeviceImpl> = null as unknown as Ptr<MtlDeviceImpl>;
 let queue: Ptr<MtlQueueImpl> = null as unknown as Ptr<MtlQueueImpl>;
 let sharedStorage = true;
 let commandBuffer: Ptr<MtlCommandBufferImpl> = NO_COMMAND_BUFFER;
+let uploads: Ptr<MtlCommandBufferImpl> = NO_COMMAND_BUFFER;
 let encoder: Ptr<MtlEncoderImpl> = NO_ENCODER;
 let pass: PassState = { width: 0 };
 let computeBound: ComputeState = { dirty: false };
@@ -723,7 +746,7 @@ function checkMirroredConstants(): void {
 		STORE_RESOLVE,
 		STORE_STORE_AND_RESOLVE,
 	];
-	const disagreement: string = mtlConstantsDisagreement(values[0], values.length as int32);
+	const disagreement: string = mtlConstantsDisagreement(values[0], values.length as int32) as string;
 	if (disagreement != "") { stop(`a constant of backend.ms disagrees with metal.m, ${disagreement}`); }
 }
 
@@ -737,6 +760,7 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	sharedStorage = mtlUsesSharedStorage(device) == 1;
 	mtlFrameSemaphoreCreate(FRAMES_IN_FLIGHT);
 	commandBuffer = NO_COMMAND_BUFFER;
+	uploads = NO_COMMAND_BUFFER;
 	encoder = NO_ENCODER;
 	pass = { width: 0 };
 	computeBound = { dirty: false };
@@ -768,10 +792,7 @@ export function formatRenderable(format: GPUTextureFormat): boolean {
 }
 
 export function shutdown(): void {
-	if (commandBuffer != null) {
-		mtlCommit(commandBuffer);
-		commandBuffer = NO_COMMAND_BUFFER;
-	}
+	commitFrame();
 	mtlFrameSemaphoreWaitAll();
 	mtlForgetCommitted();
 	mtlReleaseQueue(queue);
@@ -809,6 +830,7 @@ export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void 
 		active: 0,
 		inPlace: mapped || has(usage, GPUBufferUsage.STORAGE as int32) || has(usage, GPUBufferUsage.QUERY_RESOLVE as int32),
 		gpuUseFrame: -1,
+		cpuWriteFrame: -1,
 	};
 	put(buffers, id, slot);
 }
@@ -828,11 +850,26 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 		writeBufferInPlace(index, offset, data, bytes);
 		return;
 	}
+	const record = bufferRecords.slots[index];
+	if (!record.transient && buffers[index].cpuWriteFrame != currentFrame() && !replacesWrittenBytes(index, offset, bytes)) {
+		uploadBuffer(index, offset, data, bytes);
+		return;
+	}
 	beginFrame();
-	const written = bufferRecords.slots[index].writtenFrame;
-	if (written >= 0 && written != currentFrame()) { nextBufferCopy(index); }
+	if (record.writtenFrame >= 0 && record.writtenFrame != currentFrame()) { nextBufferCopy(index); }
+	buffers[index].cpuWriteFrame = currentFrame();
 	const native = buffers[index].natives[buffers[index].active];
 	mtlWriteBuffer(native, offset, data[0], bytes, sharedStorage ? 0 : 1);
+}
+
+// Committed ahead of the frame's command buffer, so the write lands before every command of the
+// frame, as WebGPU orders queue.writeBuffer before the submit that follows it.
+function uploadBuffer<T>(index: int32, offset: int64, data: Readonly<Span<T>>, bytes: int64): void {
+	if (uploads == null) { uploads = mtlBeginUploadCommandBuffer(queue); }
+	const staging = mtlNewStagingBuffer(device, data[0], 0, bytes);
+	if (staging == null) { stop(`newBufferWithBytes failed for the write to GPUBuffer ${bufferRecords.slots[index].id}`); }
+	mtlBlitBufferToBuffer(uploads, staging, 0, buffers[index].natives[buffers[index].active], offset, bytes);
+	mtlReleaseBuffer(staging);
 }
 
 // A buffer a GPU copy writes, or a mappable one, keeps one live copy, so a CPU write joins the
@@ -855,6 +892,7 @@ function nextBufferCopy(index: int32): void {
 	}
 	buffers[index].active = next;
 	bound.vertexDirty = true;
+	bound.resourcesDirty = true;
 	bound.uniformsDirty = true;
 }
 
@@ -1138,7 +1176,7 @@ function compileLibrary(code: string, bytecode: Readonly<Vec<uint8>>, stage: str
 	if (bytecode.length > 0 && mtlTakesBytecode() != 0) {
 		const loaded = mtlNewLibraryFromBytes(device, bytecode[0], bytecode.length as int64);
 		if (loaded == null) {
-			const log: string = mtlErrorLog();
+			const log: string = mtlErrorLog() as string;
 			stop(`the device rejected GPUShaderModuleDescriptor.${stage}Bytecode of ${labelOf(label)}:\n${log}`);
 		}
 		return loaded;
@@ -1148,7 +1186,7 @@ function compileLibrary(code: string, bytecode: Readonly<Vec<uint8>>, stage: str
 	}
 	const library = mtlNewLibrary(device, code);
 	if (library == null) {
-		const log: string = mtlErrorLog();
+		const log: string = mtlErrorLog() as string;
 		stop(`the ${stage} MSL of ${labelOf(label)} does not compile:\n${log}`);
 	}
 	return library;
@@ -1284,7 +1322,7 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	const sampleCount = descriptor.multisample.count;
 	slot.state = mtlNewPipeline(device, shaders[s].vertex, shaders[s].fragment, depthPixel, stencilPixel, sampleCount);
 	if (slot.state == null) {
-		const log: string = mtlErrorLog();
+		const log: string = mtlErrorLog() as string;
 		stop(`newRenderPipelineStateWithDescriptor failed for ${labelOf(descriptor.label)}:\n${log}`);
 	}
 	const stencil = stencilPixel != PIXEL_INVALID;
@@ -1385,7 +1423,43 @@ export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor):
 		slot.entries[slot.entryCount] = entry;
 		slot.entryCount += 1;
 	}
+	const record = bindGroupRecords.slots[slotOf(id)];
+	const s = shaderRecords.slotIndex(pipelines[slotOf(record.pipeline)].shader);
+	if (group == GPU_UNIFORM_GROUP) {
+		for (let u = 0; u < shaders[s].uniformCount; u++) { resolveBinding(slot, record, shaders[s].uniforms[u]); }
+	} else {
+		for (let r = 0; r < shaders[s].resourceCount; r++) { resolveBinding(slot, record, shaders[s].resources[r]); }
+	}
 	put(bindGroups, id, slot);
+}
+
+function resolveBinding(ref slot: BindGroupSlot, record: BindGroupRecord, binding: NativeBinding): void {
+	let e = -1;
+	for (let i = 0; i < slot.entryCount; i++) {
+		if (slot.entries[i].binding == binding.binding) { e = i; break; }
+	}
+	let resolved: ResolvedBinding = {
+		binding: binding.binding,
+		kind: binding.kind,
+		vertexStage: binding.vertexStage,
+		fragmentStage: binding.fragmentStage,
+		nativeSlot: binding.nativeSlot,
+		entry: e,
+		dynamicIndex: -1,
+	};
+	if (e >= 0) {
+		resolved.offset = slot.entries[e].offset;
+		resolved.dynamicIndex = record.dynamicIndex[e];
+		if (binding.kind == BindingKind.Texture) {
+			resolved.id = slot.entries[e].textureView.id;
+		} else if (binding.kind == BindingKind.Sampler) {
+			resolved.id = slot.entries[e].sampler.id;
+		} else {
+			resolved.id = slot.entries[e].buffer.id;
+		}
+	}
+	slot.resolved[slot.resolvedCount] = resolved;
+	slot.resolvedCount += 1;
 }
 
 export function destroyBindGroup(bindGroup: GPUBindGroup): void {
@@ -1400,27 +1474,39 @@ export function finish(encoder: GPUCommandEncoder): GPUCommandBuffer {
 }
 
 export function submit(submitted: GPUCommandBuffer): void {
+	commitFrame();
+}
+
+function commitFrame(): void {
+	if (uploads != null) {
+		mtlCommit(uploads);
+		uploads = NO_COMMAND_BUFFER;
+	}
 	if (commandBuffer != null) {
 		mtlCommit(commandBuffer);
 		commandBuffer = NO_COMMAND_BUFFER;
 	}
 }
 
-function loadAction(loadOp: string | null, member: string): int32 {
+function attachmentMember(slot: int32, member: string): string {
+	return slot < 0 ? member : `colorAttachments[${slot}].${member}`;
+}
+
+function loadAction(loadOp: string | null, slot: int32, member: string): int32 {
 	const name = loadOp ?? "";
 	return match (name) {
 		"clear" => LOAD_CLEAR,
 		"load" => LOAD_LOAD,
-		_ => stopOnMember(member, name),
+		_ => stopOnMember(attachmentMember(slot, member), name),
 	};
 }
 
-function storeAction(storeOp: string | null, resolve: boolean, member: string): int32 {
+function storeAction(storeOp: string | null, resolve: boolean, slot: int32, member: string): int32 {
 	const name = storeOp ?? "";
 	return match (name) {
 		"store" => resolve ? STORE_STORE_AND_RESOLVE : STORE_STORE,
 		"discard" => resolve ? STORE_RESOLVE : STORE_DONT_CARE,
-		_ => stopOnMember(member, name),
+		_ => stopOnMember(attachmentMember(slot, member), name),
 	};
 }
 
@@ -1448,8 +1534,8 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 			resolve,
 			viewRecords.slots[r].baseMip,
 			viewRecords.slots[r].baseLayer,
-			loadAction(descriptor.colorAttachments[i].loadOp, `colorAttachments[${i}].loadOp`),
-			storeAction(descriptor.colorAttachments[i].storeOp, resolve != null, `colorAttachments[${i}].storeOp`),
+			loadAction(descriptor.colorAttachments[i].loadOp, i, "loadOp"),
+			storeAction(descriptor.colorAttachments[i].storeOp, resolve != null, i, "storeOp"),
 			color.r,
 			color.g,
 			color.b,
@@ -1465,12 +1551,12 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 			attachmentNative(v),
 			viewRecords.slots[v].baseMip,
 			viewRecords.slots[v].baseLayer,
-			loadAction(attachment.depthLoadOp, "depthStencilAttachment.depthLoadOp"),
-			storeAction(attachment.depthStoreOp, false, "depthStencilAttachment.depthStoreOp"),
+			loadAction(attachment.depthLoadOp, -1, "depthStencilAttachment.depthLoadOp"),
+			storeAction(attachment.depthStoreOp, false, -1, "depthStencilAttachment.depthStoreOp"),
 			attachment.depthClearValue,
 			info.stencil ? 1 : 0,
-			info.stencil ? loadAction(attachment.stencilLoadOp, "depthStencilAttachment.stencilLoadOp") : 0,
-			info.stencil ? storeAction(attachment.stencilStoreOp, false, "depthStencilAttachment.stencilStoreOp") : 0,
+			info.stencil ? loadAction(attachment.stencilLoadOp, -1, "depthStencilAttachment.stencilLoadOp") : 0,
+			info.stencil ? storeAction(attachment.stencilStoreOp, false, -1, "depthStencilAttachment.stencilStoreOp") : 0,
 			attachment.stencilClearValue & 0xFF,
 		);
 	}
@@ -1505,6 +1591,9 @@ export function endPass(): void {
 export function setPipeline(pipeline: GPURenderPipeline): void {}
 
 export function setVertexBuffer(slot: int32, buffer: GPUBuffer, offset: int64): void {
+	if (bound.vertexIds[slot] == buffer.id && bound.vertexOffsets[slot] == offset) { return; }
+	bound.vertexIds[slot] = buffer.id;
+	bound.vertexOffsets[slot] = offset;
 	bound.vertexDirty = true;
 }
 
@@ -1515,9 +1604,16 @@ export function setIndexBuffer(buffer: GPUBuffer, format: GPUIndexFormat, offset
 
 export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	if (bindGroup.id == 0) { return; }
+	let changed = bound.groupIds[index] != bindGroup.id;
+	bound.groupIds[index] = bindGroup.id;
 	if (index == GPU_UNIFORM_GROUP) {
-		bound.uniformsDirty = true;
-	} else {
+		const count = bindGroupRecords.slots[slotOf(bindGroup.id)].dynamicCount;
+		for (let i = 0; i < count; i++) {
+			if (bound.dynamicOffsets[i] != dynamicOffsets[i]) { changed = true; }
+			bound.dynamicOffsets[i] = dynamicOffsets[i];
+		}
+		if (changed) { bound.uniformsDirty = true; }
+	} else if (changed) {
 		bound.resourcesDirty = true;
 	}
 }
@@ -1605,16 +1701,14 @@ function applyPipeline(): void {
 }
 
 function clearBinds(): void {
-	boundBuffers = [];
-	boundOffsets = [];
-	boundTextures = [];
-	boundSamplers = [];
-	for (let i = 0; i < STAGE_COUNT * MAX_STAGE_BUFFERS; i++) {
-		boundBuffers.push(NO_BUFFER);
-		boundOffsets.push(0);
-	}
-	for (let i = 0; i < STAGE_COUNT * MAX_STAGE_TEXTURES; i++) { boundTextures.push(NO_TEXTURE); }
-	for (let i = 0; i < STAGE_COUNT * MAX_STAGE_SAMPLERS; i++) { boundSamplers.push(NO_SAMPLER); }
+	boundBuffers.setLength(STAGE_COUNT * MAX_STAGE_BUFFERS);
+	boundOffsets.setLength(STAGE_COUNT * MAX_STAGE_BUFFERS);
+	boundTextures.setLength(STAGE_COUNT * MAX_STAGE_TEXTURES);
+	boundSamplers.setLength(STAGE_COUNT * MAX_STAGE_SAMPLERS);
+	boundBuffers.fill(NO_BUFFER);
+	boundOffsets.fill(0);
+	boundTextures.fill(NO_TEXTURE);
+	boundSamplers.fill(NO_SAMPLER);
 }
 
 function bindBuffer(stage: int32, native: Ptr<MtlBufferImpl>, offset: int64, slot: int32): void {
@@ -1689,20 +1783,19 @@ function applyResources(): void {
 	bound.resourcesDirty = false;
 	if (shaders[s].resourceCount == 0) { return; }
 	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]);
-	for (let r = 0; r < shaders[s].resourceCount; r++) {
-		const binding: NativeBinding = shaders[s].resources[r];
-		const e = entryOf(bindGroups[g], binding.binding);
+	for (let r = 0; r < bindGroups[g].resolvedCount; r++) {
+		const binding = bindGroups[g].resolved[r];
+		if (binding.entry < 0) { entryOf(bindGroups[g], binding.binding); }
 		if (binding.kind == BindingKind.Texture) {
-			const texture = viewNative(viewRecords.slotIndex(bindGroups[g].entries[e].textureView.id));
+			const texture = viewNative(viewRecords.slotIndex(binding.id));
 			if (binding.vertexStage) { bindTexture(STAGE_VERTEX, texture, binding.nativeSlot); }
 			if (binding.fragmentStage) { bindTexture(STAGE_FRAGMENT, texture, binding.nativeSlot); }
 		} else if (binding.kind == BindingKind.StorageBuffer) {
-			const native = liveBuffer(bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id));
-			const offset = bindGroups[g].entries[e].offset;
-			if (binding.vertexStage) { bindBuffer(STAGE_VERTEX, native, offset, binding.nativeSlot); }
-			if (binding.fragmentStage) { bindBuffer(STAGE_FRAGMENT, native, offset, binding.nativeSlot); }
+			const native = liveBuffer(bufferRecords.slotIndex(binding.id));
+			if (binding.vertexStage) { bindBuffer(STAGE_VERTEX, native, binding.offset, binding.nativeSlot); }
+			if (binding.fragmentStage) { bindBuffer(STAGE_FRAGMENT, native, binding.offset, binding.nativeSlot); }
 		} else {
-			const sampler = samplers[samplerRecords.slotIndex(bindGroups[g].entries[e].sampler.id)].native;
+			const sampler = samplers[samplerRecords.slotIndex(binding.id)].native;
 			if (binding.vertexStage) { bindSampler(STAGE_VERTEX, sampler, binding.nativeSlot); }
 			if (binding.fragmentStage) { bindSampler(STAGE_FRAGMENT, sampler, binding.nativeSlot); }
 		}
@@ -1714,14 +1807,13 @@ function applyUniforms(): void {
 	bound.uniformsDirty = false;
 	if (shaders[s].uniformCount == 0) { return; }
 	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_UNIFORM_GROUP]);
-	for (let u = 0; u < shaders[s].uniformCount; u++) {
-		const e = entryOf(bindGroups[g], shaders[s].uniforms[u].binding);
-		const offset = (boundFacts.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
-		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
-		const native = buffers[b].natives[buffers[b].active];
-		const slot = shaders[s].uniforms[u].nativeSlot;
-		if (shaders[s].uniforms[u].vertexStage) { bindBuffer(STAGE_VERTEX, native, offset, slot); }
-		if (shaders[s].uniforms[u].fragmentStage) { bindBuffer(STAGE_FRAGMENT, native, offset, slot); }
+	for (let u = 0; u < bindGroups[g].resolvedCount; u++) {
+		const binding = bindGroups[g].resolved[u];
+		if (binding.entry < 0) { entryOf(bindGroups[g], binding.binding); }
+		const offset = (boundFacts.dynamicOffsets[binding.dynamicIndex] as int64) + binding.offset;
+		const native = liveBuffer(bufferRecords.slotIndex(binding.id));
+		if (binding.vertexStage) { bindBuffer(STAGE_VERTEX, native, offset, binding.nativeSlot); }
+		if (binding.fragmentStage) { bindBuffer(STAGE_FRAGMENT, native, offset, binding.nativeSlot); }
 	}
 }
 
@@ -1846,7 +1938,7 @@ export function createComputePipeline(id: uint32, descriptor: GPUComputePipeline
 	checkedComputeModule(shaders[s].compute != null, entry, shaders[s].computeEntry);
 	const state = mtlNewComputePipeline(device, shaders[s].compute, labelText(descriptor.label));
 	if (state == null) {
-		const log: string = mtlErrorLog();
+		const log: string = mtlErrorLog() as string;
 		stop(`newComputePipelineStateWithDescriptor failed for ${labelOf(descriptor.label)}:\n${log}`);
 	}
 	const size: int32[3] = shaders[s].workgroup;
@@ -2021,7 +2113,7 @@ export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): v
 	if (timestamp) {
 		slot.samples = mtlNewSampleBuffer(device, descriptor.count, labelText(descriptor.label));
 		if (slot.samples == null) {
-			const log: string = mtlErrorLog();
+			const log: string = mtlErrorLog() as string;
 			stop(`newCounterSampleBufferWithDescriptor failed for ${labelOf(descriptor.label)}:\n${log}`);
 		}
 	} else {

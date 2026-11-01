@@ -67,7 +67,7 @@ shaderModule(blob, blobVs, blobFs);
 shaderModule(flat, flatVs, flatFs);
 
 when (windows) {
-	function cachedBlob(profile: string, entry: string, code: string): uint8[] {
+	function cachedBlob(profile: string, entry: string, code: string): Buffer {
 		const name = dxbcKey(profile, entry, code) + ".dxbc";
 		const tracked = readFileBytes("shaders/dxbc/" + name);
 		if (tracked.ok) { return tracked.value; }
@@ -75,10 +75,10 @@ when (windows) {
 		return made.ok ? made.value : [];
 	}
 
-	function sameBytes(bytecode: Readonly<Vec<uint8>>, file: uint8[]): boolean {
+	function sameBytes(bytecode: Readonly<Vec<uint8>>, file: Buffer): boolean {
 		if (file.length == 0 || bytecode.length != file.length) { return false; }
 		for (let i = 0; i < bytecode.length; i++) {
-			if (bytecode[i] != file[i]) { return false; }
+			if (bytecode[i] as int32 != file[i] as int32) { return false; }
 		}
 		return true;
 	}

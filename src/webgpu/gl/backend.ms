@@ -75,6 +75,7 @@ import {
 } from "../types.ms";
 import {
 	currentFrame,
+	replacesWrittenBytes,
 	entryOf,
 	clampedAnisotropy,
 	cachedCanvas,
@@ -1285,7 +1286,7 @@ export function destroyBuffer(buffer: GPUBuffer): void {
 export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
 	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = bufferRecords.slotIndex(buffer.id);
-	rotateOnFirstWrite(index);
+	if (bufferRecords.slots[index].transient || replacesWrittenBytes(index, offset, bytes)) { rotateOnFirstWrite(index); }
 	if (buffers[index].uniform) {
 		oglCopyBytes(buffers[index].shadow[0], offset, data[0], bytes);
 		bound.uniformsDirty = true;
@@ -1308,7 +1309,7 @@ function rotateOnFirstWrite(index: int32): void {
 function claimBufferCopy(index: int32, offset: int64, bytes: int64, member: string): void {
 	if (buffers[index].mapRead) { return; }
 	checkedBufferRewrite(index, member, offset);
-	rotateOnFirstWrite(index);
+	if (bufferRecords.slots[index].transient || replacesWrittenBytes(index, offset, bytes)) { rotateOnFirstWrite(index); }
 	markBufferWritten(index, offset, bytes);
 }
 

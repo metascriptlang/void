@@ -1,0 +1,7 @@
+import { floatBits } from "./floatBits";
+
+export function copyFloatWords(
+	to: uint32[], at: int32, from: Readonly<Span<float32>>, fromAt: int32, count: int32,
+): void {
+	for (let i: int32 = 0; i < count; i++) { to[at + i] = floatBits(from[fromAt + i]); }
+}

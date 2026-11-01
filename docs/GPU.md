@@ -58,11 +58,19 @@ uses each; a call with no caller is listed there too and is a backend-coverage i
   profile ever shows it.
 - **Native backends run pass commands immediately, as sokol does.** WebGPU records commands
   and runs them at `submit`, and orders `queue.writeBuffer` before the commands it submits.
-  Void's frame never depends on the difference because it keeps sokol's rule (inventory J):
-  each buffer region is written once per frame, appends go to fresh 4-byte-aligned offsets, a
-  texture is written once per frame. Under that rule immediate execution and recorded
-  execution draw the same frame, so D3D11, GL and Metal execute each call as it comes, and only
-  the WebGPU backends record.
+  Two rules keep the two orders drawing the same frame, so D3D11, GL and Metal execute each call
+  as it comes and only the WebGPU backends record: each buffer region is written once per frame,
+  in rising offsets, and a `writeBuffer` after a command of the frame read the buffer stops,
+  unless the buffer is transient (`validate.ms` `markBufferRead`).
+- **Two kinds of buffer.** A buffer keeps every byte no write replaced, as WebGPU says, on every
+  backend. `GPUBufferDescriptor.transient` is sokol's `usage.write_transient`
+  (`sokol_gfx.h:310-330`): its bytes last one frame, so the frame's first write moves it to a
+  fresh copy and nothing is kept; each write of the frame goes to a fresh range, also after a
+  draw read an earlier one, and a draw that reads one before the frame wrote it stops. The door's
+  uniform ring, its append buffers (`makeTransientBuffer`) and void2d's frame vertex buffer are
+  transient. Before 2026-10-30 every `COPY_DST` buffer behaved as transient on Metal, GL and
+  D3D11, so a partial write lost the bytes around it there and kept them on Vulkan and WebGPU
+  (`webgpuMetalCheck` "a later frame's first writeBuffer of a range keeps the bytes around it").
 
 ## Uniforms and bind groups
 
@@ -185,10 +193,14 @@ backend module. Metal follows it with a `.m`.
 
 `src/webgpu/metal/` ports `_sg_mtl_*`. Where it differs from sokol, the reason is Void's:
 
-- **Two copies of a writable resource, until a GPU copy writes it.** A buffer created with
-  `COPY_DST` or a single-subresource texture moves to its other copy at its first CPU write of a
-  frame, so the frame in flight keeps reading the old one (sokol's `num_slots`,
-  `_sg_mtl_update_buffer`). A resource that a GPU copy has written, a mappable buffer, and an
+- **Two copies of a writable resource, until a GPU copy writes it.** A transient buffer, a
+  `writeBuffer` from offset 0 over every byte the buffer ever held, and a whole single-subresource
+  texture write move to the other copy at the frame's first CPU write, so the frame in flight
+  keeps reading the old one (sokol's `num_slots`, `_sg_mtl_update_buffer`). Any other first
+  `writeBuffer` of a frame keeps the bytes around it: a staging buffer and a blit on an upload
+  command buffer that commits ahead of the frame's own, as Dawn (`Buffer.cpp:1192`, commit
+  `465f8e5`) and wgpu's `PendingWrites` (`wgpu-core/src/device/queue.rs:482`, `4fb3cca`) order
+  queue writes. A resource that a GPU copy has written, a mappable buffer, and an
   attachment texture keep one live copy: a CPU write to them is a staging buffer and a blit in the
   frame's command buffer, ordered behind the frame's earlier reads. Inside a pass no blit can be
   encoded, so there a texture no GPU work has used yet is written by the CPU and any other stops.

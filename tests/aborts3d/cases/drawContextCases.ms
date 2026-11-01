@@ -51,6 +51,7 @@
 // expect drawItem.foreignBlock: void3d: drawItem with a block at slot 0 its context does not hold
 // expect drawItem.otherLiveBlock: void3d: drawItem with a material whose block is not the one it was added with
 // expect drawItem.releasedBlock: void3d: drawItem with a material whose block is not the one it was added with
+// expect drawItem.listMismatch: void3d: draw 0 of a staged list takes 1 rows and the list staged another number
 // expect blockHead.colour: so a block of 8 is not its own; only a shadow caster takes a head
 // expect blockHead.short: reads 28 floats of slot 3 and its material's block holds 4
 // expect key.emissiveUnlit: void3d: Core UnlitTextured has no emissive variant
@@ -391,6 +392,9 @@ function drawItemBlockCase(name: string): boolean {
 		globals = [block.value];
 	} else if (name == "drawItem.otherLiveBlock") {
 		drawing.materials[material.value.index].uniforms = blockOf(drawing);
+	} else if (name == "drawItem.listMismatch") {
+		drawing.listActive = true;
+		drawing.listCounts = [2];
 	} else if (name == "drawItem.releasedBlock") {
 		const gone: UniformBlock = blockOf(drawing);
 		if (!releaseUniforms(drawing, gone).ok) { unreachable; }

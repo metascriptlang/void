@@ -753,6 +753,7 @@ export {
 	makeIndexBuffer,
 	makeIndexBuffer32,
 	makeStreamBuffer,
+	makeTransientBuffer,
 	updateBuffer,
 	appendBuffer,
 	destroyBuffer,

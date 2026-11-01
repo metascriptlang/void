@@ -61,6 +61,7 @@ export class GlyphFace {
 	bytes: FaceBytes;
 	info: FontInfo;
 	kernLookups: int32[] = [];
+	kernUnits: Map<uint64, int32> = new Map<uint64, int32>();
 	emboldenUnits: float32 = 0.0;
 	skew: float32 = 0.0;
 	measured: boolean = false;

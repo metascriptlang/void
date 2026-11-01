@@ -1269,3 +1269,56 @@ present 0.12-0.16 ms on the 2D scenes, 0.44 ms on Campfire; first paint 50 ms on
 Next, after the land: rerun the A/B in a quiet window for a verdict, then split `submit` per flow
 (the door's per-draw path, the uniform ring, the 2D batch upload) to find where the 0.01-0.04 ms
 per frame goes, before any fix.
+
+### 2026-10-29, Mac: the shared per-draw path trimmed on wt/gpu-perf, and what is left for gl and d3d11
+
+Branch `wt/gpu-perf` (off `wt/gpu-ms`, lands after it) trims the code every backend runs per draw
+and per pass:
+
+- `src/webgpu/` reads pool records in place, so no `PipelineRecord` or `BindGroupRecord` copy per draw.
+- Draw readiness is kept until a set call changes it, as Dawn's `ValidateOperation` does. Every
+  refusal still fires; the pins are in `tests/aborts/cases/webgpuDummyCases.ms`.
+- The pass facts reuse one scratch.
+- `src/gpu/` skips bindings that did not change since the pipeline was applied, allocates no arrays
+  per apply, caches a view's colour-attachment class, and reuses the screen pass descriptor.
+
+gl and d3d11 get the shared part without an edit. These are for the Windows side to judge. Each
+was read in code by a Mac research lane and was neither measured nor rechecked by the Mac:
+
+- d3d11: with `offsetUniforms` on, each uniform apply maps the 4 MiB dynamic ring, and each draw
+  calls `VSSetConstantBuffers1` and `PSSetConstantBuffers1` (`d3d11/backend.ms` ~1126-1136,
+  ~2238-2253). sokol does one `UpdateSubresource` per block and binds the constant buffers in
+  `apply_pipeline` (`sokol_gfx.h` 15170-15181, 14997-15003). This was the strongest d3d11 candidate.
+- d3d11: `nativeBinds = { indexFormat: 0 }` builds a struct with arrays on each pass (~1936).
+- gl: `applyStencilState` (~2257-2275) issues `glStencilOpSeparate` and `glStencilFuncSeparate`
+  on every pipeline apply. sokol compares against its cache first (12361-12407).
+- gl: per bound unit, `cacheClearUnits` also unbinds the multisample target (~1033-1047).
+- gl: attribute and blend state copy a struct per slot (~2583-2610, ~2300-2310).
+
+The Mac A/B against sokol has no verdict yet: the shared Mac's load moved the same scene's B/A
+from 1.02 to 1.22 between runs. A quiet-window rerun is next.
+
+### 2026-10-30, Mac: writeBuffer keeps the bytes it does not write, on every backend
+
+`wt/gpu-perf` gives buffers WebGPU's meaning: a `writeBuffer` changes only its own range. A buffer
+created with `transient: true` keeps the old behaviour, sokol's `write_transient`, where bytes last
+one frame (`docs/GPU.md` "Two kinds of buffer"). The door's uniform ring, its append buffers and
+void2d's frame vertex buffer are transient. Two new refusals are shared by every backend and pinned
+in `tests/aborts/cases/webgpuDummyCases.ms` (`writeAfterRead`, `transientUnwritten`).
+
+The Mac verified Metal: `webgpuMetalCheck` passes, and every bench scene runs without a refusal.
+The gl and d3d11 edits are only type-checked on the Mac. Please run them on Windows:
+
+- gl (`gl/backend.ms` `writeBuffer`, `claimBufferCopy`): only a transient buffer, or a write from 0
+  over every byte ever written (`replacesWrittenBytes`), rotates the slot. Any other write is
+  `glBufferSubData` in place, as Dawn's `QueueGL.cpp:99` writes it.
+- d3d11 (`createBuffer`, `writeBuffer`): a `COPY_DST` buffer that is not transient is now
+  `USAGE_DEFAULT`, written by `UpdateSubresource`, as Dawn's `BufferD3D11.cpp:1548-1600` writes a
+  partial range. A transient buffer stays `USAGE_DYNAMIC` with discard or no-overwrite. A partial
+  first write of the frame to a constant buffer that is not transient (the `offsetUniforms` path)
+  stops by name, because D3D11.0 cannot update part of a constant buffer.
+- New tests: `webgpuGlCheck` and `webgpuD3d11Check` "a later frame's first writeBuffer of a range
+  keeps the bytes around it". They are red on the old code by construction, because the old first
+  write moved to a fresh copy.
+- Also on Windows: the d3d11 and gl goldens, and the 2D bench frame time, to judge
+  `UpdateSubresource` against the old map-discard on a vertex buffer void2d rewrites.

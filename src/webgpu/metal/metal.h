@@ -28,6 +28,7 @@ void *mtlQueueNative(MtlQueue queue);
 void mtlFrameSemaphoreCreate(int32_t framesInFlight);
 void mtlFrameSemaphoreWaitAll(void);
 MtlCommandBuffer mtlBeginCommandBuffer(MtlQueue queue);
+MtlCommandBuffer mtlBeginUploadCommandBuffer(MtlQueue queue);
 void mtlCommit(MtlCommandBuffer commandBuffer);
 int32_t mtlWaitCommitted(void);
 void mtlForgetCommitted(void);

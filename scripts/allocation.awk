@@ -55,7 +55,8 @@ FNR == 1 {
 current == "" && $0 ~ defRe {
 	if (match($0, /[A-Za-z_][A-Za-z0-9_]*__M?[A-Za-z0-9_]*\(/)) {
 		head = substr($0, RSTART, RLENGTH)
-		current = module ":" substr(head, 1, index(head, "__") - 1)
+		# An @inline body is printed in every caller's file, under its own module's name.
+		current = head ~ /srcZvoid2dZ[A-Za-z0-9]+Oms_u[0-9]+\($/ ? keyOf(head) : module ":" substr(head, 1, index(head, "__") - 1)
 		defined[current] = 1
 	}
 	next

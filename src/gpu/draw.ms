@@ -2,6 +2,7 @@ import "./door";
 import { stop } from "./stop";
 import {
 	DOOR_BUFFER_INDEX,
+	DOOR_BUFFER_TRANSIENT,
 	DOOR_BUFFER_VERTEX,
 	doorApplyBindings,
 	doorApplyPipeline,
@@ -46,6 +47,11 @@ export function makeIndexBuffer32(data: Readonly<Span<uint32>>): uint32 {
 
 export function makeStreamBuffer(floats: int32): uint32 {
 	return doorMakeBuffer(DOOR_BUFFER_VERTEX, [], (floats as int64) * 4);
+}
+
+// Its bytes last one frame: each frame appends to it from its start before drawing from it.
+export function makeTransientBuffer(floats: int32): uint32 {
+	return doorMakeBuffer(DOOR_BUFFER_VERTEX | DOOR_BUFFER_TRANSIENT, [], (floats as int64) * 4);
 }
 
 // One update per buffer per frame, from its start, as sokol's sg_update_buffer allows.

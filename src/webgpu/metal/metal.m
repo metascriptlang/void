@@ -60,13 +60,18 @@ MtlCommandBuffer mtlBeginCommandBuffer(MtlQueue queue) {
 	dispatch_semaphore_wait(s_frames, DISPATCH_TIME_FOREVER);
 	@autoreleasepool {
 		id<MTLCommandBuffer> commandBuffer = [[(id<MTLCommandQueue>)queue commandBuffer] retain];
-		[commandBuffer enqueue];
 		dispatch_semaphore_t frames = s_frames;
 		[commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
 			(void)done;
 			dispatch_semaphore_signal(frames);
 		}];
 		return (MtlCommandBuffer)commandBuffer;
+	}
+}
+
+MtlCommandBuffer mtlBeginUploadCommandBuffer(MtlQueue queue) {
+	@autoreleasepool {
+		return (MtlCommandBuffer)[[(id<MTLCommandQueue>)queue commandBuffer] retain];
 	}
 }
 

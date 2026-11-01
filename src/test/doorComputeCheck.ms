@@ -11,10 +11,13 @@ import { PassState, computeCallRefusal, openPassRefusal, renderCallRefusal } fro
 
 when (voidDummy || (windows && !voidVulkan)) {
 	import {
+		DOOR_BUFFER_STORAGE,
+		doorMakeBuffer,
 		doorPassState,
 		doorReadBuffer,
 		doorSetup,
 		doorShutdown,
+		doorUpdateBufferRangeOf,
 	} from "../gpu/doorGpu.ms";
 	import {
 		applyComputeBindings,
@@ -164,6 +167,23 @@ when (voidDummy || (windows && !voidVulkan)) {
 		}
 		let wrong: Vec<uint8> = new Array(WORKGROUP * 4 - 1);
 		assert doorReadBuffer(result, wrong) == 0;
+		doorShutdown();
+	}
+
+	test "a ranged buffer update writes only its bytes and refuses a range outside the buffer" {
+		openDoor();
+		const buffer = doorMakeBuffer(DOOR_BUFFER_STORAGE, [], 32);
+		const two: Vec<int32> = [20, 30];
+		const one: Vec<int32> = [70];
+		assert doorUpdateBufferRangeOf(buffer, 4, two) == 1;
+		assert doorUpdateBufferRangeOf(buffer, 24, one) == 1;
+		assert doorUpdateBufferRangeOf(buffer, 28, two) == 0;
+		assert doorUpdateBufferRangeOf(buffer, 2, one) == 0;
+		assert doorUpdateBufferRangeOf(buffer, -4, one) == 0;
+		let out: Vec<uint8> = new Array(32);
+		assert doorReadBuffer(buffer, out) == 1;
+		const expected: Vec<int32> = [0, 20, 30, 0, 0, 0, 70, 0];
+		for (let i = 0; i < 8; i++) { assert wordAt(out, i) == expected[i]; }
 		doorShutdown();
 	}
 

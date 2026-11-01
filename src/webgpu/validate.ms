@@ -241,8 +241,20 @@ export struct BoundFacts {
 	dynamicOffsets: uint32[GPU_MAX_BIND_GROUP_ENTRIES];
 	vertexSet: int32;
 	groupSet: int32;
-	ownersDirty: boolean;
+	stale: int32;
+	vertexLimit: int64;
+	instanceLimit: int64;
+	indexLimit: int64;
+	vertexUsed: int32;
+	instanceUsed: int32;
 }
+
+const UNBOUNDED_RANGE: int64 = 1 << 40;
+
+export const ASPECT_GROUPS = 1;
+export const ASPECT_VERTEX = 2;
+export const ASPECT_INDEX = 4;
+export const ASPECT_ALL = 7;
 
 export let boundFacts: BoundFacts = { pipeline: 0 };
 
@@ -278,8 +290,9 @@ export function cacheCanvas(colorFormat: GPUTextureFormat, depthFormat: GPUTextu
 export function attachOcclusionSet(set: uint32): void { encoder.attachOcclusion(set); }
 export function markPipelineSet(pipeline: uint32): void {
 	encoder.markPipeline();
+	if (boundFacts.pipeline == pipeline) { return; }
 	boundFacts.pipeline = pipeline;
-	boundFacts.ownersDirty = true;
+	boundFacts.stale = ASPECT_ALL;
 }
 
 export function vertexSlotRefusal(slot: int32): string {
@@ -291,6 +304,7 @@ export function markVertexSet(slot: int32, buffer: uint32, offset: int64): void 
 	boundFacts.vertexBuffers[slot] = buffer;
 	boundFacts.vertexSet = buffer == 0 ? boundFacts.vertexSet & ~(1 << slot) : boundFacts.vertexSet | (1 << slot);
 	boundFacts.vertexOffsets[slot] = offset;
+	boundFacts.stale |= ASPECT_VERTEX;
 }
 
 export function markIndexSet(buffer: uint32, format: GPUIndexFormat, offset: int64): void {
@@ -298,32 +312,48 @@ export function markIndexSet(buffer: uint32, format: GPUIndexFormat, offset: int
 	boundFacts.indexFormat = format;
 	boundFacts.indexBuffer = buffer;
 	boundFacts.indexOffset = offset;
+	boundFacts.stale |= ASPECT_INDEX;
 }
 
 export function markBindGroupSet(index: int32, bindGroup: uint32, dynamicOffsets: Readonly<Span<uint32>>): void {
-	boundFacts.bindGroups[index] = bindGroup;
-	boundFacts.ownersDirty = true;
-	boundFacts.groupSet = bindGroup == 0 ? boundFacts.groupSet & ~(1 << index) : boundFacts.groupSet | (1 << index);
+	if (boundFacts.bindGroups[index] != bindGroup) {
+		boundFacts.bindGroups[index] = bindGroup;
+		boundFacts.stale |= ASPECT_GROUPS;
+		boundFacts.groupSet = bindGroup == 0 ? boundFacts.groupSet & ~(1 << index) : boundFacts.groupSet | (1 << index);
+	}
 	if (bindGroup == 0 || index != GPU_UNIFORM_GROUP) { return; }
-	const count = bindGroupRecords.record(bindGroup).dynamicCount;
+	const count = bindGroupRecords.slots[bindGroupRecords.slotIndex(bindGroup)].dynamicCount;
 	for (let i = 0; i < count; i++) { boundFacts.dynamicOffsets[i] = dynamicOffsets[i]; }
 }
 export function checkedPipelineSet(call: string): void { refuse(encoder.pipelineSetRefusal(call)); }
+// Dawn ValidateOperation (CommandBufferStateTracker.cpp:513-530) and its lazy aspects (:339, :791-854):
+// each aspect a draw needs (bind groups, vertex buffers, index buffer) is judged once and stays
+// out of `stale` until a set call touches that aspect; the shader module and the pipeline are
+// live handles that can die between draws, so they are read on every draw.
 export function checkedDrawState(call: string, indexed: boolean): void {
-	refuse(encoder.drawRefusal(call, indexed));
+	const stale = boundFacts.stale & (indexed ? ASPECT_ALL : ASPECT_GROUPS | ASPECT_VERTEX);
+	if (stale != 0) { refuse(encoder.drawRefusal(call, indexed)); }
 	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
 	if (!shaderRecords.alive(pipelineRecords.slots[p].shader)) {
 		stop(`the shader module of GPURenderPipeline ${boundFacts.pipeline} was destroyed`);
 	}
-	refuse(boundRefusal(pipelineRecords.slots[p].vertexSlots, pipelineRecords.slots[p].groups, false));
-	checkGroupOwners(pipelineRecords.slots[p].groups, false);
-	if (indexed) { refuse(stripDrawRefusal(pipelineRecords.slots[p].strip, pipelineRecords.slots[p].stripIndexFormat == boundFacts.indexFormat)); }
+	if (stale == 0) { return; }
+	const groups = (stale & ASPECT_GROUPS) != 0 ? pipelineRecords.slots[p].groups : 0;
+	refuse(boundRefusal((stale & ASPECT_VERTEX) != 0 ? pipelineRecords.slots[p].vertexSlots : 0, groups, false));
+	if (groups != 0) { checkGroupOwners(groups, false); markGroupsRead(groups); }
+	if ((stale & ASPECT_VERTEX) != 0) { markVertexRead(pipelineRecords.slots[p].vertexSlots); }
+	if ((stale & ASPECT_INDEX) != 0) { markBufferRead(boundFacts.indexBuffer); }
+	if ((stale & ASPECT_INDEX) != 0) { refuse(stripDrawRefusal(pipelineRecords.slots[p].strip, pipelineRecords.slots[p].stripIndexFormat == boundFacts.indexFormat)); }
+	if ((stale & ASPECT_VERTEX) != 0) { limitVertexRanges(p); }
+	if ((stale & ASPECT_INDEX) != 0) { limitIndexRange(); }
+	boundFacts.stale &= ~stale;
 }
 
 // WebGPU draw and drawIndexed: every vertex and index a draw fetches lies inside the range bound
 // to its slot (Dawn CommandBufferStateTracker.cpp:405-510, RenderEncoderBase.cpp:136-190). An
 // indexed draw checks only its instance-step slots, since its indices pick the vertices.
 export function drawSignRefusal(call: string, indexed: boolean, count: int32, instanceCount: int32, first: int32, firstInstance: int32): string {
+	if (count >= 0 && instanceCount >= 0 && first >= 0 && firstInstance >= 0) { return ""; }
 	const unsigned = indexed ? ["indexCount", "instanceCount", "firstIndex", "firstInstance"] : ["vertexCount", "instanceCount", "firstVertex", "firstInstance"];
 	const values = [count, instanceCount, first, firstInstance];
 	for (let i = 0; i < 4; i++) {
@@ -349,7 +379,57 @@ export function indexRangeRefusal(call: string, format: GPUIndexFormat, boundSiz
 
 function boundSize(buffer: uint32, offset: int64): int64 { return bufferRecords.slots[bufferRecords.slotIndex(buffer)].size - offset; }
 
+// The strides a bound range holds, judged when its aspect was (wgpu render.rs:583-590 update_limits and
+// :507, :525 validate_*_limit; Dawn CommandBufferStateTracker.cpp:405-510): a draw then compares
+// first + count with a limit. A destroyed buffer gets the limit that no non-empty draw passes, so
+// the slow path below names it as it always did.
+function strideLimit(layout: VertexBufferRecord, bound: int64): int64 {
+	if (bound < (layout.lastStride as int64)) { return 0; }
+	if (layout.stride == 0) { return UNBOUNDED_RANGE; }
+	return (bound - (layout.lastStride as int64)) / (layout.stride as int64) + 1;
+}
+
+function limitVertexRanges(p: int32): void {
+	let vertex = UNBOUNDED_RANGE;
+	let instance = UNBOUNDED_RANGE;
+	let instanceUsed = 0;
+	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
+		if ((pipelineRecords.slots[p].vertexSlots & (1 << slot)) == 0) { continue; }
+		const id = boundFacts.vertexBuffers[slot];
+		const layout = pipelineRecords.slots[p].vertexBuffers[slot];
+		const limit = bufferRecords.alive(id) ? strideLimit(layout, boundSize(id, boundFacts.vertexOffsets[slot])) : 0;
+		if (layout.instance) {
+			instanceUsed |= 1 << slot;
+			if (limit < instance) { instance = limit; }
+		} else if (limit < vertex) {
+			vertex = limit;
+		}
+	}
+	boundFacts.vertexLimit = vertex;
+	boundFacts.instanceLimit = instance;
+	boundFacts.vertexUsed = pipelineRecords.slots[p].vertexSlots;
+	boundFacts.instanceUsed = instanceUsed;
+}
+
+function limitIndexRange(): void {
+	const id = boundFacts.indexBuffer;
+	if (!bufferRecords.alive(id)) { boundFacts.indexLimit = -1; return; }
+	boundFacts.indexLimit = boundSize(id, boundFacts.indexOffset) / (boundFacts.indexFormat == "uint32" ? 4 : 2);
+}
+
+function boundBuffersAlive(slots: int32): boolean {
+	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
+		if ((slots & (1 << slot)) != 0 && !bufferRecords.alive(boundFacts.vertexBuffers[slot])) { return false; }
+	}
+	return true;
+}
+
 export function checkedDrawRange(call: string, indexed: boolean, count: int32, instanceCount: int32, first: int32, firstInstance: int32): void {
+	const instances = (firstInstance as int64) + (instanceCount as int64);
+	const fits = (first as int64) + (count as int64) <= (indexed ? boundFacts.indexLimit : boundFacts.vertexLimit);
+	if (fits && count >= 0 && instanceCount >= 0 && first >= 0 && firstInstance >= 0 && instances <= boundFacts.instanceLimit
+		&& boundBuffersAlive(indexed ? boundFacts.instanceUsed : boundFacts.vertexUsed)
+		&& (!indexed || bufferRecords.alive(boundFacts.indexBuffer))) { return; }
 	refuse(drawSignRefusal(call, indexed, count, instanceCount, first, firstInstance));
 	if (indexed) {
 		refuse(indexRangeRefusal(call, boundFacts.indexFormat, boundSize(boundFacts.indexBuffer, boundFacts.indexOffset), first, count));
@@ -368,7 +448,10 @@ export function checkedDrawRange(call: string, indexed: boolean, count: int32, i
 export function checkedDispatchBound(): void {
 	const groups = pipelineRecords.slots[pipelineRecords.slotIndex(boundFacts.pipeline)].groups;
 	refuse(boundRefusal(0, groups, true));
+	if ((boundFacts.stale & ASPECT_GROUPS) == 0) { return; }
 	checkGroupOwners(groups, true);
+	markGroupsRead(groups);
+	boundFacts.stale &= ~ASPECT_GROUPS;
 }
 
 // WebGPU (Validate encoder bind groups): a bind group is group-equivalent with the pipeline's layout
@@ -380,12 +463,10 @@ export function groupOwnerRefusal(bindGroup: uint32, index: int32, owner: uint32
 }
 
 function checkGroupOwners(groups: int32, compute: boolean): void {
-	if (!boundFacts.ownersDirty) { return; }
-	boundFacts.ownersDirty = false;
 	for (let index = 0; index <= GPU_RESOURCE_GROUP; index++) {
 		if ((groups & (1 << index)) == 0) { continue; }
 		const id = boundFacts.bindGroups[index];
-		refuse(groupOwnerRefusal(id, index, bindGroupRecords.record(id).pipeline, boundFacts.pipeline, compute));
+		refuse(groupOwnerRefusal(id, index, bindGroupRecords.slots[bindGroupRecords.slotIndex(id)].pipeline, boundFacts.pipeline, compute));
 	}
 }
 
@@ -436,7 +517,18 @@ export function checkedCreateEncoder(): void { refuse(encoder.createRefusal()); 
 export function checkedFinish(): void { refuse(encoder.finishRefusal()); }
 export function checkedBeginPass(kind: int32): void {
 	refuse(encoder.beginPassRefusal(kind));
-	boundFacts = { pipeline: 0 };
+	resetBoundFacts();
+}
+
+function resetBoundFacts(): void {
+	boundFacts.pipeline = 0;
+	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) { boundFacts.vertexBuffers[slot] = 0; }
+	boundFacts.indexBuffer = 0;
+	boundFacts.bindGroups[GPU_UNIFORM_GROUP] = 0;
+	boundFacts.bindGroups[GPU_RESOURCE_GROUP] = 0;
+	boundFacts.vertexSet = 0;
+	boundFacts.groupSet = 0;
+	boundFacts.stale = ASPECT_ALL;
 }
 export function checkedEndPass(kind: int32): void { refuse(encoder.endPassRefusal(kind)); }
 export function checkedOutsidePass(call: string): void { refuse(encoder.outsidePassRefusal(call)); }
@@ -575,6 +667,9 @@ export function writeBufferRefusal(buffer: BufferRecord, offset: int64, bytes: i
 	if ((buffer.usage & (GPUBufferUsage.COPY_DST as int32)) == 0) { return `GPUBuffer ${buffer.id} was created without COPY_DST`; }
 	if (offset < 0 || offset + bytes > buffer.size) { return `writeBuffer of ${bytes} bytes at ${offset} overruns GPUBuffer ${buffer.id} of ${buffer.size}`; }
 	if ((offset & 3) != 0) { return `writeBuffer offset ${offset} is not a multiple of 4`; }
+	if (!buffer.transient && buffer.usedFrame == frame) {
+		return `writeBuffer on GPUBuffer ${buffer.id} after a command this frame read it: write it before its first use in the frame, or create it transient`;
+	}
 	return bufferRewriteRefusal(buffer, "writeBuffer", offset, frame);
 }
 
@@ -586,6 +681,40 @@ export function checkedBufferRewrite(index: int32, member: string, offset: int64
 export function markBufferWritten(index: int32, offset: int64, bytes: int64): void {
 	bufferRecords.slots[index].writtenFrame = frame;
 	bufferRecords.slots[index].writtenEnd = offset + bytes;
+	bufferRecords.slots[index].writtenExtent = Math.max(bufferRecords.slots[index].writtenExtent, offset + bytes);
+}
+
+export function replacesWrittenBytes(index: int32, offset: int64, bytes: int64): boolean {
+	return offset == 0 && bytes >= bufferRecords.slots[index].writtenExtent;
+}
+
+// After a command of the frame uses a buffer, a writeBuffer to it is refused unless it is transient,
+// so an immediate backend and a recording one draw the same frame.
+export function markBufferUsed(id: uint32): void {
+	if (id != 0) { bufferRecords.slots[bufferRecords.slotIndex(id)].usedFrame = frame; }
+}
+
+export function markBufferRead(id: uint32): void {
+	if (id == 0) { return; }
+	const index = bufferRecords.slotIndex(id);
+	if (bufferRecords.slots[index].transient && bufferRecords.slots[index].writtenFrame != frame) {
+		stop(`transient GPUBuffer ${id} is read in a frame that has not written it`);
+	}
+	bufferRecords.slots[index].usedFrame = frame;
+}
+
+function markGroupsRead(groups: int32): void {
+	for (let index = 0; index <= GPU_RESOURCE_GROUP; index++) {
+		if ((groups & (1 << index)) == 0) { continue; }
+		const group = bindGroupRecords.slotIndex(boundFacts.bindGroups[index]);
+		for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) { markBufferRead(bindGroupRecords.slots[group].buffers[i]); }
+	}
+}
+
+function markVertexRead(slots: int32): void {
+	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
+		if ((slots & (1 << slot)) != 0) { markBufferRead(boundFacts.vertexBuffers[slot]); }
+	}
 }
 export function checkedTexture(descriptor: GPUTextureDescriptor, limits: GPUSupportedLimits): void { refuse(textureRefusal(descriptor, limits)); }
 
@@ -668,7 +797,7 @@ export function drawOffsetRefusal(pipeline: PipelineRecord, call: string, vertex
 }
 
 export function checkedDrawOffsets(call: string, vertexMember: string, vertexOffset: int32, firstInstance: int32): void {
-	refuse(drawOffsetRefusal(pipelineRecords.record(boundFacts.pipeline), call, vertexMember, vertexOffset, firstInstance));
+	refuse(drawOffsetRefusal(pipelineRecords.slots[pipelineRecords.slotIndex(boundFacts.pipeline)], call, vertexMember, vertexOffset, firstInstance));
 }
 
 export function drawIndirectRefusal(call: string, buffer: uint32, usage: int32, bufferSize: int64, offset: int64, drawCount: int32): string {
@@ -697,9 +826,9 @@ export function indirectFeatureRefusal(call: string, firstInstance: boolean): st
 
 export function checkedDrawIndirect(call: string, buffer: uint32, offset: int64, drawCount: int32): void {
 	checkedDrawState(call, true);
-	const record = bufferRecords.record(buffer);
-	refuse(drawIndirectRefusal(call, buffer, record.usage, record.size, offset, drawCount));
-	refuse(indirectPipelineRefusal(pipelineRecords.record(boundFacts.pipeline), call));
+	const b = bufferRecords.slotIndex(buffer);
+	refuse(drawIndirectRefusal(call, buffer, bufferRecords.slots[b].usage, bufferRecords.slots[b].size, offset, drawCount));
+	refuse(indirectPipelineRefusal(pipelineRecords.slots[pipelineRecords.slotIndex(boundFacts.pipeline)], call));
 	refuse(indirectFeatureRefusal(call, (deviceFeatures.bits & featureBit("indirect-first-instance")) != 0));
 }
 
@@ -920,6 +1049,12 @@ export function uniformEntryCount(descriptor: GPUBindGroupDescriptor): int32 {
 
 // The place of each buffer entry among the group's dynamic offsets: its rank by binding among the
 // buffer entries, in the order the entries are stored.
+export function entryBuffersOf(descriptor: GPUBindGroupDescriptor): uint32[GPU_MAX_BIND_GROUP_ENTRIES] {
+	let buffers: uint32[GPU_MAX_BIND_GROUP_ENTRIES] = [0];
+	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) { buffers[i] = descriptor.entries[i].buffer.id; }
+	return buffers;
+}
+
 export function dynamicIndexOf(descriptor: GPUBindGroupDescriptor): int32[GPU_MAX_BIND_GROUP_ENTRIES] {
 	let ranks: int32[GPU_MAX_BIND_GROUP_ENTRIES] = [0];
 	let stored = 0;
@@ -950,7 +1085,7 @@ export function dynamicRoomOf(descriptor: GPUBindGroupDescriptor, shader: Shader
 		const binding = descriptor.entries[i].binding;
 		const u = shaderBindingAt(shader, GPU_UNIFORM_GROUP, binding, BindingKind.Uniform);
 		if (u < 0) { continue; }
-		room[dynamicRankOf(descriptor, binding)] = bufferRecords.record(buffer).size - descriptor.entries[i].offset - (shader.bindings[u].size as int64);
+		room[dynamicRankOf(descriptor, binding)] = bufferRecords.slots[bufferRecords.slotIndex(buffer)].size - descriptor.entries[i].offset - (shader.bindings[u].size as int64);
 	}
 	return room;
 }
@@ -1031,25 +1166,24 @@ export function shaderBindingAt(shader: ShaderRecord, group: int32, binding: int
 export function checkedBindGroupEntry(entry: GPUBindGroupEntry, group: int32, shader: ShaderRecord): int32 {
 	const limits = cachedLimits();
 	if (entry.buffer.id != 0) {
-		const buffer = bufferRecords.record(entry.buffer.id);
+		const b = bufferRecords.slotIndex(entry.buffer.id);
 		const u = shaderBindingAt(shader, group, entry.binding, BindingKind.Uniform);
 		if (u >= 0) {
-			const usage = (buffer.usage & (GPUBufferUsage.UNIFORM as int32)) != 0;
-			checkedUniformEntry(entry, usage, buffer.size, shader.bindings[u].size, limits.minUniformBufferOffsetAlignment as int64);
+			const usage = (bufferRecords.slots[b].usage & (GPUBufferUsage.UNIFORM as int32)) != 0;
+			checkedUniformEntry(entry, usage, bufferRecords.slots[b].size, shader.bindings[u].size, limits.minUniformBufferOffsetAlignment as int64);
 			return u;
 		}
 		const s = shaderBindingAt(shader, group, entry.binding, BindingKind.StorageBuffer);
 		if (s < 0) { notABinding(group, entry, "buffer"); }
-		const usage = (buffer.usage & (GPUBufferUsage.STORAGE as int32)) != 0;
-		checkedStorageEntry(entry, usage, buffer.size, limits.minStorageBufferOffsetAlignment as int64, limits.maxStorageBufferBindingSize);
+		const usage = (bufferRecords.slots[b].usage & (GPUBufferUsage.STORAGE as int32)) != 0;
+		checkedStorageEntry(entry, usage, bufferRecords.slots[b].size, limits.minStorageBufferOffsetAlignment as int64, limits.maxStorageBufferBindingSize);
 		return s;
 	}
 	if (entry.textureView.id != 0) {
 		const v = viewRecords.slotIndex(entry.textureView.id);
 		const t = shaderBindingAt(shader, group, entry.binding, BindingKind.Texture);
 		if (t >= 0) {
-			const texture = textureRecords.record(viewRecords.slots[v].texture);
-			checkedSampledView(entry.binding, (texture.usage & (GPUTextureUsage.TEXTURE_BINDING as int32)) != 0);
+			checkedSampledView(entry.binding, (textureRecords.slots[textureRecords.slotIndex(viewRecords.slots[v].texture)].usage & (GPUTextureUsage.TEXTURE_BINDING as int32)) != 0);
 			return t;
 		}
 		const s = shaderBindingAt(shader, group, entry.binding, BindingKind.StorageTexture);
@@ -1090,26 +1224,26 @@ export function copyTextureRefusal(call: string, texture: TextureRecord, source:
 	return "";
 }
 
-export function checkedCopyBuffer(call: string, buffer: GPUBuffer, source: boolean): void { refuse(copyBufferRefusal(call, bufferRecords.record(buffer.id), source)); }
+export function checkedCopyBuffer(call: string, buffer: GPUBuffer, source: boolean): void { refuse(copyBufferRefusal(call, bufferRecords.slots[bufferRecords.slotIndex(buffer.id)], source)); }
 
 export function checkedCopyTexture(call: string, info: GPUTexelCopyTextureInfo, source: boolean, size: GPUExtent3D): void {
-	const texture = textureRecords.record(info.texture.id);
-	refuse(copyTextureRefusal(call, texture, source));
-	checkedCopyRegion(`${call} ${source ? "source" : "destination"}`, texture, info, size);
+	const t = textureRecords.slotIndex(info.texture.id);
+	refuse(copyTextureRefusal(call, textureRecords.slots[t], source));
+	checkedCopyRegion(`${call} ${source ? "source" : "destination"}`, textureRecords.slots[t], info, size);
 }
 
 export function checkedBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
 	checkedCopyBuffer("copyBufferToBuffer", source, true);
 	checkedCopyBuffer("copyBufferToBuffer", destination, false);
-	checkedBufferCopy(source.id, bufferRecords.record(source.id).size, sourceOffset, destination.id, bufferRecords.record(destination.id).size, destinationOffset, size);
+	checkedBufferCopy(source.id, bufferRecords.slots[bufferRecords.slotIndex(source.id)].size, sourceOffset, destination.id, bufferRecords.slots[bufferRecords.slotIndex(destination.id)].size, destinationOffset, size);
 }
 
 export function checkedTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	checkedCopyTexture("copyTextureToTexture", source, true, size);
 	checkedCopyTexture("copyTextureToTexture", destination, false, size);
-	const from = textureRecords.record(source.texture.id);
-	const to = textureRecords.record(destination.texture.id);
-	checkedTextureToTextureCopy(source, destination, size, from.format, to.format, from.volume, to.volume, isDepthFormat(from.format), from.width, from.height);
+	const from = textureRecords.slotIndex(source.texture.id);
+	const to = textureRecords.slotIndex(destination.texture.id);
+	checkedTextureToTextureCopy(source, destination, size, textureRecords.slots[from].format, textureRecords.slots[to].format, textureRecords.slots[from].volume, textureRecords.slots[to].volume, isDepthFormat(textureRecords.slots[from].format), textureRecords.slots[from].width, textureRecords.slots[from].height);
 }
 
 export function entryOf<T>(group: T, binding: int32): int32 {

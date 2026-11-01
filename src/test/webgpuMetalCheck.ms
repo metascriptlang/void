@@ -214,6 +214,36 @@ test "a Metal triangle takes its colour from the uniform block at the dynamic of
 	device.destroy();
 }
 
+test "a draw sees a dynamic offset or a vertex offset changed alone, on the same group and buffer" {
+	const device = openDevice();
+	const pipeline = flatPipeline(device, flatShader(device), 1);
+	const group = uniformGroupAt(device, pipeline, colourUniforms(device), 0);
+	const vertices = vertexBuffer(device, 48);
+	const triangles: Vec<float32> = [-0.9, -0.5, -0.5, 0.5, -0.1, -0.5, 0.1, -0.5, 0.5, 0.5, 0.9, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangles);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	const red: Vec<uint32> = [0];
+	const green: Vec<uint32> = [256];
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setBindGroup(0, group, red);
+	pass.draw(3, 1, 0, 0);
+	pass.setBindGroup(0, group, green);
+	pass.draw(3, 1, 0, 0);
+	pass.setVertexBuffer(0, vertices, 24);
+	pass.draw(3, 1, 0, 0);
+	pass.setBindGroup(0, group, red);
+	pass.draw(3, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const pixels = readPixels(target);
+	assert pixel(pixels, 16, 32) == GREEN;
+	assert pixel(pixels, 48, 32) == RED;
+	device.destroy();
+}
+
 const SHIFTED_VERTEX_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct Params { float4 color; };\nstruct In { float2 position [[attribute(0)]]; };\nstruct Out { float4 position [[position]]; };\nvertex Out vshift(In in [[stage_in]], constant Params& params [[buffer(0)]]) { Out out; out.position = float4(in.position + float2(params.color.g * 0.5, 0.0), 0.0, 1.0); return out; }\n";
 
 test "a uniform block both stages read reaches the vertex and the fragment stage" {
@@ -1376,6 +1406,31 @@ test "copyBufferToBuffer moves a range into a MAP_READ buffer at an offset, and 
 	const patched = mappedRead(read, 0, 8);
 	assert patched[3] == 3 && patched[4] == 200 && patched[7] == 200;
 	device.destroy();
+}
+
+test "a later frame's first writeBuffer of a range keeps the bytes around it" {
+	const device = openDevice();
+	const vertices = device.createBuffer({ label: "vertices", size: 64, usage: COPY_BUFFER_USAGE });
+	const read = device.createBuffer({ label: "read", size: 64, usage: MAP_READ_USAGE });
+	let expected = ramp(64, 0);
+	device.queue.writeBuffer(vertices, 0, expected);
+	device.queue.submit(device.createCommandEncoder().finish());
+	device.queue.writeBuffer(vertices, 8, fill(4, 200));
+	for (let i = 8; i < 12; i++) { expected[i] = 200; }
+	assert same(readBack(device, vertices, read), expected);
+	device.queue.writeBuffer(vertices, 0, ramp(32, 100));
+	device.queue.writeBuffer(vertices, 40, fill(4, 7));
+	for (let i = 0; i < 32; i++) { expected[i] = (100 + i) as uint8; }
+	for (let i = 40; i < 44; i++) { expected[i] = 7; }
+	assert same(readBack(device, vertices, read), expected);
+	device.destroy();
+}
+
+function readBack(device: GPUDevice, buffer: GPUBuffer, read: GPUBuffer): Vec<uint8> {
+	const encoder = device.createCommandEncoder();
+	encoder.copyBufferToBuffer(buffer, 0, read, 0, 64);
+	device.queue.submit(encoder.finish());
+	return mappedRead(read, 0, 64);
 }
 
 test "a MAP_WRITE buffer takes mapped bytes and a MAP_READ buffer gives a mapped sub-range back" {

@@ -1,0 +1,7 @@
+// The bits of `f`, flipped so that unsigned order is float order: negatives reversed under
+// the positives. -0 sorts just below +0.
+@inline export function sortKeyOf(f: float32): uint32 {
+	let cell: float32[1] = [f];
+	const u = (((cell as Span<float32>) as Ptr<float32>) as Ptr<uint32>)[0];
+	return (u & 0x80000000) != 0 ? ~u : (u | 0x80000000);
+}

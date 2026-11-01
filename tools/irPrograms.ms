@@ -314,6 +314,11 @@ function keep(path: string, text: string): void {
 	if (!writeFile(path, text).ok) { fail("cannot write " + path); }
 }
 
+function keepStage(path: string, language: string, words: uint32[], code: string): void {
+	if (language != "spirv") { keep(path, code); return; }
+	if (!writeFileBytes(path, spirvFile(words)).ok) { fail("cannot write " + path); }
+}
+
 class Agreement {
 	layoutSlots: Map<string, string> = new Map();
 	layoutOwner: Map<string, string> = new Map();
@@ -471,9 +476,8 @@ function blobPrefix(language: string): string {
 	fail("no blob prefix for " + language);
 }
 
-function keepSpirv(path: string, words: uint32[]): void {
-	const bytes = Buffer.fromString(wordsBase64(words), "base64");
-	if (!writeFileBytes(path, bytes).ok) { fail("cannot write " + path); }
+function spirvFile(words: uint32[]): Buffer {
+	return Buffer.fromString(wordsBase64(words), "base64");
 }
 
 function textShared(texts: Map<string, string>, code: string, bytecode: string,
@@ -514,15 +518,8 @@ function moduleText(
 				fail(program.name + " " + language + ": " + printed.refusal);
 			}
 			const files = stageFiles(language);
-			const vertexPath = "out/irPrograms/" + program.name + files[0];
-			const fragmentPath = "out/irPrograms/" + program.name + files[1];
-			if (language == "spirv") {
-				keepSpirv(vertexPath, printed.vertexWords);
-				keepSpirv(fragmentPath, printed.fragmentWords);
-			} else {
-				keep(vertexPath, printed.vertexCode);
-				keep(fragmentPath, printed.fragmentCode);
-			}
+			keepStage("out/irPrograms/" + program.name + files[0], language, printed.vertexWords, printed.vertexCode);
+			keepStage("out/irPrograms/" + program.name + files[1], language, printed.fragmentWords, printed.fragmentCode);
 			counts.printed += 2;
 			row.push(printed);
 		}
