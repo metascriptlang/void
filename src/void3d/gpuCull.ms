@@ -1,10 +1,11 @@
 // One view's cull on the GPU. A work item names a mesh input and the batch it draws in; an item
 // whose bounds meet the view's planes takes the next slot of its batch's run, so the runs hold
-// only what the view sees, packed batch by batch.
+// only what the view sees, packed batch by batch. A second pass writes one indexed indirect record
+// per batch, drawing its run with the index range the batch's mesh carries.
 
 import { Mat4 } from "../math/math3d";
 import {
-	AtomicU32, Vec3u, Vec4f, abs, access, atomicAdd, binding, builtin, dot, vec4f,
+	AtomicU32, Vec3u, Vec4f, abs, access, atomicAdd, atomicLoad, binding, builtin, dot, vec4f,
 } from "../shader/std";
 import { Bounds3D } from "./bounds";
 import { Frustum3D } from "./frustum";
@@ -12,8 +13,8 @@ import { Frustum3D } from "./frustum";
 export const CULL_WORKGROUP: int32 = 64;
 export const CULL_PLANES: int32 = 6;
 
-// The world matrix as three rows of the 3x4 affine, the translation in w, with the local bounds.
-// A mesh with no bounds keeps noCull at 1 and is never culled.
+// The world matrix as three rows of the 3x4 affine, the translation in w, with the local bounds
+// and the mesh's index range. A mesh with no bounds keeps noCull at 1 and is never culled.
 export struct MeshInput {
 	axisX: Vec4f;
 	axisY: Vec4f;
@@ -21,6 +22,15 @@ export struct MeshInput {
 	boundsCenter: Vec4f;
 	boundsHalf: Vec4f;
 	noCull: uint32;
+	firstIndex: uint32;
+	indexCount: uint32;
+	baseVertex: int32;
+}
+
+export struct MeshRange {
+	firstIndex: uint32;
+	indexCount: uint32;
+	baseVertex: int32;
 }
 
 export struct CullWork {
@@ -28,8 +38,11 @@ export struct CullWork {
 	batch: uint32;
 }
 
+// A batch's slots in the visible list start at first; mesh is any input of the batch, read for
+// the index range every instance of the batch shares.
 export struct CullRun {
 	first: uint32;
+	mesh: uint32;
 	count: AtomicU32;
 }
 
@@ -91,7 +104,38 @@ export function cullKernel(input: CullInput, b: CullBindings): void {
 	b.visible[b.runs[work.batch].first + slot].input = work.input;
 }
 
-export function meshInputOf(world: Mat4, bounds: Bounds3D): MeshInput {
+export struct DrawIndexedIndirect {
+	indexCount: uint32;
+	instanceCount: uint32;
+	firstIndex: uint32;
+	baseVertex: int32;
+	firstInstance: uint32;
+}
+
+export struct IndirectView {
+	runCount: uint32;
+}
+
+export struct IndirectBindings {
+	@binding(0) @access(read) inputs: MeshInput[];
+	@binding(1) @access(read) view: IndirectView[];
+	@binding(2) @access(read_write) runs: CullRun[];
+	@binding(3) @access(read_write) draws: DrawIndexedIndirect[];
+}
+
+export function indirectKernel(input: CullInput, b: IndirectBindings): void {
+	const r = input.id.x;
+	if (r >= b.view[0].runCount) { return; }
+	const mesh = b.inputs[b.runs[r].mesh];
+	const visible = atomicLoad(b.runs[r].count);
+	b.draws[r].indexCount = mesh.indexCount;
+	b.draws[r].instanceCount = visible;
+	b.draws[r].firstIndex = mesh.firstIndex;
+	b.draws[r].baseVertex = mesh.baseVertex;
+	b.draws[r].firstInstance = b.runs[r].first;
+}
+
+export function meshInputOf(world: Mat4, bounds: Bounds3D, range: MeshRange): MeshInput {
 	const empty = bounds.isEmpty();
 	const center = empty ? bounds.min : bounds.center();
 	const half = empty ? bounds.min.scaled(0.0) : (bounds.max - bounds.min).scaled(0.5);
@@ -102,6 +146,9 @@ export function meshInputOf(world: Mat4, bounds: Bounds3D): MeshInput {
 		boundsCenter: vec4f(center.x, center.y, center.z, 1.0),
 		boundsHalf: vec4f(half.x, half.y, half.z, 0.0),
 		noCull: empty ? 1 : 0,
+		firstIndex: range.firstIndex,
+		indexCount: range.indexCount,
+		baseVertex: range.baseVertex,
 	};
 }
 

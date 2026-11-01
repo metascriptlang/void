@@ -5,8 +5,8 @@ import { ShaderTarget } from "../shader/layout";
 import { Bounds3D } from "../void3d/bounds";
 import { Frustum3D } from "../void3d/frustum";
 import {
-	CULL_WORKGROUP, CullBindings, CullRun, CullSlot, CullWork, MeshInput, cullKernel, cullPlanesOf,
-	meshInputOf,
+	CULL_WORKGROUP, CullBindings, CullRun, CullSlot, CullWork, DrawIndexedIndirect,
+	IndirectBindings, MeshInput, MeshRange, cullKernel, cullPlanesOf, indirectKernel, meshInputOf,
 } from "../void3d/gpuCull";
 
 function perspective(): Mat4 {
@@ -28,6 +28,14 @@ function sheared(): Mat4 {
 	return m;
 }
 
+function rangeOf(batch: int32): MeshRange {
+	return {
+		firstIndex: (batch * 100) as uint32,
+		indexCount: (36 + batch * 6) as uint32,
+		baseVertex: (batch * 24) as int32,
+	};
+}
+
 function worlds(): Vec<Mat4> {
 	let out: Vec<Mat4> = [];
 	for (let i = 0; i < 40; i++) {
@@ -43,6 +51,14 @@ function worlds(): Vec<Mat4> {
 	return out;
 }
 
+function inputsOf(list: Vec<Mat4>): Vec<MeshInput> {
+	let inputs: Vec<MeshInput> = [];
+	for (let i = 0; i < list.length; i++) {
+		inputs.push(meshInputOf(list[i], cube(), rangeOf(i % 3)));
+	}
+	return inputs;
+}
+
 function runKernel(inputs: Vec<MeshInput>, frustum: Frustum3D, batches: int32): CullBindings {
 	let work: CullWork[] = [];
 	let sizes: Vec<int32> = [];
@@ -54,7 +70,7 @@ function runKernel(inputs: Vec<MeshInput>, frustum: Frustum3D, batches: int32): 
 	let runs: CullRun[] = [];
 	let first = 0;
 	for (const size of sizes) {
-		runs.push({ first: first as uint32, count: { value: 0 } });
+		runs.push({ first: first as uint32, mesh: (runs.length) as uint32, count: { value: 0 } });
 		first += size;
 	}
 	let visible: CullSlot[] = [];
@@ -77,8 +93,7 @@ function runKernel(inputs: Vec<MeshInput>, frustum: Frustum3D, batches: int32): 
 test "the cull kernel keeps exactly the meshes the CPU frustum test keeps, batch by batch" {
 	const frustum = Frustum3D.fromMatrix(perspective());
 	const list = worlds();
-	let inputs: Vec<MeshInput> = [];
-	for (const world of list) { inputs.push(meshInputOf(world, cube())); }
+	const inputs = inputsOf(list);
 	const b = runKernel(inputs, frustum, 3);
 	let kept = 0;
 	for (let batch = 0; batch < 3; batch++) {
@@ -100,17 +115,57 @@ test "a mesh with empty bounds is never culled" {
 	const frustum = Frustum3D.fromMatrix(perspective());
 	const far = translation(0.0, 0.0, 400.0);
 	const empty = Bounds3D.empty();
-	const b = runKernel([meshInputOf(far, empty), meshInputOf(far, cube())], frustum, 1);
+	const b = runKernel(
+		[meshInputOf(far, empty, rangeOf(0)), meshInputOf(far, cube(), rangeOf(0))], frustum, 1);
 	assert b.runs[0].count.value == 1;
 	assert b.visible[0].input == 0;
 }
 
-test "the cull kernel prints as a compute program for every compute target" {
-	const module = computeModule(glslComputeIr(cullKernel, [64, 1, 1]), []);
-	if (!module.ok) { console.log(module.error); assert false; return; }
-	for (const target of [ShaderTarget.Hlsl5, ShaderTarget.Glsl430, ShaderTarget.Msl, ShaderTarget.Wgsl]) {
-		const source = programSource(module.value, target);
-		assert source.ok;
-		if (source.ok) { assert source.value.refusal == ""; }
+test "each batch's indirect record draws its visible run with the batch's index range" {
+	const frustum = Frustum3D.fromMatrix(perspective());
+	const list = worlds();
+	const inputs = inputsOf(list);
+	const culled = runKernel(inputs, frustum, 3);
+	let draws: DrawIndexedIndirect[] = [];
+	for (let r = 0; r < 4; r++) {
+		draws.push({
+			indexCount: 0, instanceCount: 0, firstIndex: 0, baseVertex: 0, firstInstance: 0,
+		});
+	}
+	let b: IndirectBindings = {
+		inputs: culled.inputs,
+		view: [{ runCount: 3 }],
+		runs: culled.runs,
+		draws,
+	};
+	for (let i = 0; i < CULL_WORKGROUP; i++) {
+		indirectKernel({ id: { x: i as uint32, y: 0, z: 0 } }, b);
+	}
+	for (let r = 0; r < 3; r++) {
+		const draw = b.draws[r];
+		const range = rangeOf(r);
+		assert draw.instanceCount == b.runs[r].count.value;
+		assert draw.firstInstance == b.runs[r].first;
+		assert draw.indexCount == range.indexCount;
+		assert draw.firstIndex == range.firstIndex;
+		assert draw.baseVertex == range.baseVertex;
+	}
+	assert b.draws[3].indexCount == 0;
+}
+
+test "the cull and indirect kernels print as compute programs for every compute target" {
+	const kernels = [
+		glslComputeIr(cullKernel, [64, 1, 1]),
+		glslComputeIr(indirectKernel, [64, 1, 1]),
+	];
+	const targets = [ShaderTarget.Hlsl5, ShaderTarget.Glsl430, ShaderTarget.Msl, ShaderTarget.Wgsl];
+	for (const ir of kernels) {
+		const module = computeModule(ir, []);
+		if (!module.ok) { console.log(module.error); assert false; return; }
+		for (const target of targets) {
+			const source = programSource(module.value, target);
+			assert source.ok;
+			if (source.ok) { assert source.value.refusal == ""; }
+		}
 	}
 }
