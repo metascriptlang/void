@@ -747,7 +747,7 @@ function checkMirroredConstants(): void {
 		STORE_RESOLVE,
 		STORE_STORE_AND_RESOLVE,
 	];
-	const disagreement: string = mtlConstantsDisagreement(values[0], values.length as int32);
+	const disagreement: string = mtlConstantsDisagreement(values[0], values.length as int32) as string;
 	if (disagreement != "") { stop(`a constant of backend.ms disagrees with metal.m, ${disagreement}`); }
 }
 
@@ -1177,7 +1177,7 @@ function compileLibrary(code: string, bytecode: Readonly<Vec<uint8>>, stage: str
 	if (bytecode.length > 0 && mtlTakesBytecode() != 0) {
 		const loaded = mtlNewLibraryFromBytes(device, bytecode[0], bytecode.length as int64);
 		if (loaded == null) {
-			const log: string = mtlErrorLog();
+			const log: string = mtlErrorLog() as string;
 			stop(`the device rejected GPUShaderModuleDescriptor.${stage}Bytecode of ${labelOf(label)}:\n${log}`);
 		}
 		return loaded;
@@ -1187,7 +1187,7 @@ function compileLibrary(code: string, bytecode: Readonly<Vec<uint8>>, stage: str
 	}
 	const library = mtlNewLibrary(device, code);
 	if (library == null) {
-		const log: string = mtlErrorLog();
+		const log: string = mtlErrorLog() as string;
 		stop(`the ${stage} MSL of ${labelOf(label)} does not compile:\n${log}`);
 	}
 	return library;
@@ -1323,7 +1323,7 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	const sampleCount = descriptor.multisample.count;
 	slot.state = mtlNewPipeline(device, shaders[s].vertex, shaders[s].fragment, depthPixel, stencilPixel, sampleCount);
 	if (slot.state == null) {
-		const log: string = mtlErrorLog();
+		const log: string = mtlErrorLog() as string;
 		stop(`newRenderPipelineStateWithDescriptor failed for ${labelOf(descriptor.label)}:\n${log}`);
 	}
 	const stencil = stencilPixel != PIXEL_INVALID;
@@ -1937,7 +1937,7 @@ export function createComputePipeline(id: uint32, descriptor: GPUComputePipeline
 	checkedComputeModule(shaders[s].compute != null, entry, shaders[s].computeEntry);
 	const state = mtlNewComputePipeline(device, shaders[s].compute, labelText(descriptor.label));
 	if (state == null) {
-		const log: string = mtlErrorLog();
+		const log: string = mtlErrorLog() as string;
 		stop(`newComputePipelineStateWithDescriptor failed for ${labelOf(descriptor.label)}:\n${log}`);
 	}
 	const size: int32[3] = shaders[s].workgroup;
@@ -2112,7 +2112,7 @@ export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): v
 	if (timestamp) {
 		slot.samples = mtlNewSampleBuffer(device, descriptor.count, labelText(descriptor.label));
 		if (slot.samples == null) {
-			const log: string = mtlErrorLog();
+			const log: string = mtlErrorLog() as string;
 			stop(`newCounterSampleBufferWithDescriptor failed for ${labelOf(descriptor.label)}:\n${log}`);
 		}
 	} else {
