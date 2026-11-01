@@ -1735,6 +1735,7 @@ export function doorDraw(base: int32, count: int32, instances: int32): void {
 // Heaps' drawInstanced with a command buffer: `drawCount` records of five uint32 (index count,
 // instance count, first index, base vertex, first instance) from byte `offset` of `buffer`.
 export function doorDrawIndirect(buffer: uint32, offset: int64, drawCount: int32): void {
+	stopInComputePass("drawIndirect");
 	frameStats[DOOR_STAT_DRAWS]++;
 	if (current < 0 || !pipelines[current].indexed) {
 		stop("doorDrawIndirect needs an applied pipeline with an index buffer");

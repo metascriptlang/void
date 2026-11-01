@@ -13,6 +13,7 @@ import {
 	doorBufferAlive,
 	doorDestroyBuffer,
 	doorDraw,
+	doorDrawIndirect,
 	doorMakeBuffer,
 	doorMakeBufferOf,
 	doorUpdateBufferOf,
@@ -98,4 +99,8 @@ export function uniformStamp(slot: int32): int32 { return doorUniformStamp(slot)
 
 export function draw(base: int32, count: int32, instances: int32): void {
 	doorDraw(base, count, instances);
+}
+
+export function drawIndirect(buffer: uint32, offset: int64, drawCount: int32): void {
+	doorDrawIndirect(buffer, offset, drawCount);
 }
