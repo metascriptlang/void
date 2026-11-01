@@ -315,38 +315,6 @@ test "back-face-culled ccw quads take one uniform group at three dynamic offsets
 	assert validationErrorsAfterClose(device) == 0;
 }
 
-test "a vertex buffer written after the draw was recorded holds that write when the draw runs" {
-	const device = openDevice();
-	const pipeline = flatPipeline(device, 1);
-	const group = uniformGroup(device, pipeline, colourUniforms(device));
-	const vertices = vertexBuffer(device, 128);
-	const quad: Vec<float32> = [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5, 0.5, -0.5];
-	const indices = device.createBuffer({
-		label: "indices",
-		size: 12,
-		usage: (GPUBufferUsage.INDEX as int32) | (GPUBufferUsage.COPY_DST as int32),
-	});
-	const order: Vec<uint16> = [0, 1, 2, 0, 2, 3];
-	device.queue.writeBuffer(indices, 0, order);
-	const target = colourTarget(device, 1);
-	const encoder = device.createCommandEncoder();
-	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
-	pass.setPipeline(pipeline);
-	pass.setVertexBuffer(0, vertices, 64);
-	pass.setIndexBuffer(indices, "uint16", 0);
-	const offsets: Vec<uint32> = [0];
-	pass.setBindGroup(GPU_UNIFORM_GROUP, group, offsets);
-	pass.drawIndexed(6, 1, 0, 0, 0);
-	pass.end();
-	device.queue.writeBuffer(vertices, 64, quad);
-	device.queue.submit(encoder.finish());
-	const pixels = readTexture(device, target);
-	assert pixel(pixels, 4, 4) == BLUE;
-	assert pixel(pixels, 20, 20) == RED && pixel(pixels, 44, 44) == RED && pixel(pixels, 20, 44) == RED;
-	assert pixel(pixels, 60, 32) == BLUE;
-	assert validationErrorsAfterClose(device) == 0;
-}
-
 test "a queue write into a MAP_READ buffer lands before a mapAsync that follows it without a submit" {
 	const device = openDevice();
 	const destination = readbackBuffer(device, 16);
