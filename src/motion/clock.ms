@@ -7,8 +7,8 @@ export class VoidClock {
 		return this.manual.clock;
 	}
 
-	tick(dt: float32): void {
-		this.manual.advance((dt as float64) * 1000);
+	tick(dt: float64): void {
+		this.manual.advance(dt * 1000);
 	}
 
 	pending(): int32 {

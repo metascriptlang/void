@@ -26,7 +26,7 @@ import { VoidBindings } from "../motion/bindings";
 import { VoidClock } from "../motion/clock";
 
 // Each conformance property is the x of its own void2d node, so every write and read crosses
-// Void's bindings and every frame is a VoidClock tick in float32 seconds, as Void's loop drives it.
+// Void's bindings and every frame is a VoidClock tick in seconds, as Void's loop drives it.
 class Stage {
 	scene: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	clock: VoidClock = new VoidClock();
@@ -115,7 +115,7 @@ class Stage {
 	advanceTo(time: float64): void {
 		while (this.clock.clock.now() < time) {
 			const ms = Math.max(Math.min(CONFORMANCE_FRAME_MS, time - this.clock.clock.now()), 0.001);
-			this.clock.tick((ms / 1000) as float32);
+			this.clock.tick(ms / 1000);
 		}
 	}
 }
