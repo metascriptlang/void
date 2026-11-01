@@ -902,7 +902,8 @@ function applyUniforms(ref d: Descriptors, ref r: Resources, ref ring: FrameRing
 	const compute = layout.shader.compute ? 1 : 0;
 	for (let u: int32 = 0; u < d.groups[g].uniforms.length; u++) {
 		const uniform = d.groups[g].uniforms[u];
-		const address = uniform.address + (d.bound.offsets[uniform.dynamicIndex] as uint64);
+		const base = r.buffers[bufferRecords.slotIndex(uniform.buffer)].frameBase(ring);
+		const address = uniform.address + base + (d.bound.offsets[uniform.dynamicIndex] as uint64);
 		try checked(dx12SetRootConstantBufferView(ring.list, compute, u as uint32, address));
 	}
 	useGroup(d, r, ring, d.groups[g].uses);

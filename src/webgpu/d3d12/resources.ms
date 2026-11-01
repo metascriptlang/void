@@ -67,6 +67,8 @@ export struct BufferNative {
 	heap: int32;
 	tracked: int32;
 	lastUse: uint64;
+	slice: uint64;
+	pointer: uint64;
 }
 
 export struct TextureNative {
@@ -118,7 +120,7 @@ export struct Resources {
 	uploads: Vec<UploadPages>;
 }
 
-const NO_BUFFER: BufferNative = { native: 0, address: 0, heap: 0, tracked: NO_TRACKING, lastUse: 0 };
+const NO_BUFFER: BufferNative = { native: 0, address: 0, heap: 0, tracked: NO_TRACKING, lastUse: 0, slice: 0, pointer: 0 };
 const NO_FORMAT: FormatInfo = {
 	texture: 0,
 	shaderResource: 0,
@@ -157,11 +159,34 @@ function fixedState(heap: int32): uint32 {
 	return heap == HEAP_READBACK ? STATE_COPY_DEST : STATE_GENERIC_READ;
 }
 
-export function createBuffer(ref r: Resources, id: uint32, descriptor: GPUBufferDescriptor): Result<void, NativeError> {
-	const heap = heapOf(descriptor.usage);
+// A transient buffer read in place by draws gets one upload-heap copy per frame slot, so writeBuffer is a
+// memcpy with no copy and no barrier inside the pass (Heaps DX12Driver BufferAllocator).
+function rotates(descriptor: GPUBufferDescriptor): boolean {
+	const usage = descriptor.usage;
+	return descriptor.transient && heapOf(usage) == HEAP_DEFAULT && has(usage, GPUBufferUsage.COPY_DST as int32)
+		&& !has(usage, GPUBufferUsage.STORAGE as int32) && !has(usage, GPUBufferUsage.QUERY_RESOLVE as int32);
+}
+
+export function createBuffer(ref r: Resources, id: uint32, descriptor: GPUBufferDescriptor, frames: int32): Result<void, NativeError> {
 	const size = has(descriptor.usage, GPUBufferUsage.UNIFORM as int32)
 		? alignUp(descriptor.size as uint64, CONSTANT_BUFFER_ALIGNMENT)
 		: descriptor.size as uint64;
+	if (rotates(descriptor)) {
+		const slice = alignUp(size, CONSTANT_BUFFER_ALIGNMENT);
+		let ringed: uint64 = 0;
+		try checked(dx12BufferCreate(r.device, slice * (frames as uint64), HEAP_UPLOAD, STATE_GENERIC_READ, 0, ringed));
+		let base: uint64 = 0;
+		let pointer: uint64 = 0;
+		const mapped = checked(dx12ResourceMap(ringed, 0, 0, pointer));
+		if (!mapped.ok) {
+			dx12Release(ringed);
+			return mapped;
+		}
+		try checked(dx12ResourceAddress(ringed, base));
+		put(r.buffers, id, { native: ringed, address: base, heap: HEAP_UPLOAD, tracked: NO_TRACKING, lastUse: 0, slice: slice, pointer: pointer });
+		return Result.ok(null);
+	}
+	const heap = heapOf(descriptor.usage);
 	const unordered = heap == HEAP_DEFAULT && has(descriptor.usage, GPUBufferUsage.STORAGE as int32);
 	const state = heap == HEAP_DEFAULT ? STATE_COMMON : fixedState(heap);
 	let native: uint64 = 0;
@@ -169,7 +194,7 @@ export function createBuffer(ref r: Resources, id: uint32, descriptor: GPUBuffer
 	let address: uint64 = 0;
 	try checked(dx12ResourceAddress(native, address));
 	const tracked = heap == HEAP_DEFAULT ? track(r.tracker, native, state, Tracking.Buffer) : NO_TRACKING;
-	put(r.buffers, id, { native: native, address: address, heap: heap, tracked: tracked, lastUse: 0 });
+	put(r.buffers, id, { native: native, address: address, heap: heap, tracked: tracked, lastUse: 0, slice: 0, pointer: 0 });
 	return Result.ok(null);
 }
 
@@ -179,6 +204,11 @@ export function destroyBuffer(ref r: Resources, ref ring: FrameRing, id: uint32)
 	if (r.buffers[index].tracked != NO_TRACKING) { untrack(r.tracker, r.buffers[index].tracked); }
 	vacate(r.buffers, id);
 }
+
+// The byte offset of this frame's copy of a buffer; 0 unless the buffer rotates per frame slot.
+export function frameBase(this buffer: BufferNative, ring: FrameRing): uint64 { return buffer.slice * (ring.frameSlot() as uint64); }
+
+export function rotating(this r: Resources, buffer: GPUBuffer): boolean { return r.buffers[bufferRecords.slotIndex(buffer.id)].slice != 0; }
 
 export function useBuffer(ref r: Resources, id: uint32, index: int32, state: uint32): void {
 	const buffer = r.buffers[index];
@@ -257,6 +287,8 @@ export function resetUploads(ref r: Resources, frame: int32): void {
 export function writeBuffer<T>(ref r: Resources, ref ring: FrameRing, buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): Result<void, NativeError> {
 	const target = bufferRecords.slotIndex(buffer.id);
 	const bytes = (data.length as uint64) * (sizeof T as uint64);
+	const native = r.buffers[target];
+	if (native.slice != 0) { return checked(dx12MemoryWrite(native.pointer + native.frameBase(ring) + (offset as uint64), data[0], bytes)); }
 	const staged = try upload(r, ring.slot(), bytes, UPLOAD_ALIGNMENT);
 	try checked(dx12MemoryWrite(staged.pointer, data[0], bytes));
 	useBuffer(r, buffer.id, target, STATE_COPY_DEST);
@@ -276,7 +308,7 @@ export function copyBufferToBuffer(
 	const target = bufferRecords.slotIndex(destination.id);
 	useBuffer(r, source.id, from, STATE_COPY_SOURCE);
 	useBuffer(r, destination.id, target, STATE_COPY_DEST);
-	try copyRegion(r, ring, target, destinationOffset as uint64, r.buffers[from].native, sourceOffset as uint64, size as uint64);
+	try copyRegion(r, ring, target, destinationOffset as uint64, r.buffers[from].native, r.buffers[from].frameBase(ring) + (sourceOffset as uint64), size as uint64);
 	r.buffers[from].lastUse = ring.recording();
 	return Result.ok(null);
 }
@@ -588,7 +620,7 @@ export function copyBufferToTexture(
 	useBuffer(r, source.buffer.id, from, STATE_COPY_SOURCE);
 	useSubresources(r, texture, rangeOf(texture, destination.mipLevel, destination.origin.z, size.depthOrArrayLayers), STATE_COPY_DEST);
 	const native = r.buffers[from].native;
-	try copyBufferTexture(r, ring, true, native, source.offset, bytesPerRow, rowsPerImage, texture, info, destination, size);
+	try copyBufferTexture(r, ring, true, native, (r.buffers[from].frameBase(ring) as int64) + source.offset, bytesPerRow, rowsPerImage, texture, info, destination, size);
 	r.buffers[from].lastUse = ring.recording();
 	return Result.ok(null);
 }
