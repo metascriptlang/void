@@ -201,7 +201,12 @@ export struct DoorProgram {
 	uniformBytes: int32[DOOR_UNIFORM_SLOTS];
 	textureMask: uint32;
 	samplerMask: uint32;
+	storageMask: uint32;
 }
+
+// A storage buffer bound to a render program's slot, as WebGPU's GPUBufferBinding: `size` 0 is the
+// rest of the buffer past `offset`.
+export struct DoorStorageBinding { buffer: uint32; offset: int64; size: int64; }
 
 struct PipelineRecord {
 	pipeline: GPURenderPipeline;
@@ -210,6 +215,7 @@ struct PipelineRecord {
 	uniformMask: uint32;
 	textureMask: uint32;
 	samplerMask: uint32;
+	storageMask: uint32;
 	uniformGroup: GPUBindGroup;
 	stenciled: boolean;
 }
@@ -220,6 +226,9 @@ struct BindKey {
 	pipeline: uint32;
 	views: uint32[VIEW_SLOTS];
 	samplers: uint32[SAMPLER_SLOTS];
+	storage: uint32;
+	offsets: int64[VIEW_SLOTS];
+	sizes: int64[VIEW_SLOTS];
 }
 
 struct BindEntry { key: BindKey; group: GPUBindGroup; }
@@ -546,6 +555,7 @@ export function doorRegisterPrograms(
 		let uniformMask: uint32 = 0;
 		let textureMask: uint32 = 0;
 		let samplerMask: uint32 = 0;
+		let storageMask: uint32 = 0;
 		let bytes: int32[DOOR_UNIFORM_SLOTS] = [0, 0, 0, 0, 0, 0, 0, 0];
 		for (const binding of reflected.bindings) {
 			if (binding.kind == "uniform") {
@@ -556,6 +566,12 @@ export function doorRegisterPrograms(
 			} else if (binding.kind == "sampler" && binding.binding != DUMMY_SAMPLER_BINDING) {
 				const slot = binding.binding - SAMPLER_BINDING_BASE;
 				samplerMask |= (1 as uint32) << (slot as uint32);
+			} else if (binding.kind == "storage-buffer") {
+				if (binding.binding < 0 || binding.binding >= VIEW_SLOTS) {
+					stop(`program ${i} reads a storage buffer at binding ${binding.binding}; ` +
+						`the door takes slots 0..${VIEW_SLOTS - 1}`);
+				}
+				storageMask |= (1 as uint32) << (binding.binding as uint32);
 			}
 		}
 		programs.push({
@@ -566,6 +582,7 @@ export function doorRegisterPrograms(
 			uniformBytes: bytes,
 			textureMask,
 			samplerMask,
+			storageMask,
 		});
 	}
 	return base;
@@ -596,6 +613,9 @@ export function doorTextureSlotMask(program: int32): uint32 {
 }
 export function doorSamplerSlotMask(program: int32): uint32 {
 	return programAt(program).samplerMask;
+}
+export function doorStorageSlotMask(program: int32): uint32 {
+	return programAt(program).storageMask;
 }
 
 export function doorUniformBlockBytes(program: int32, slot: int32): int32 {
@@ -860,6 +880,7 @@ function colorFormatAt(targets: TargetLayout, index: int32): PixelFormat {
 		uniformMask: reflected.uniformMask,
 		textureMask: reflected.textureMask,
 		samplerMask: reflected.samplerMask,
+		storageMask: reflected.storageMask,
 		uniformGroup,
 		stenciled: stencil != null,
 	});
@@ -1499,6 +1520,11 @@ function sameKey(a: BindKey, b: BindKey): boolean {
 	for (let i = 0; i < SAMPLER_SLOTS; i++) {
 		if (a.samplers[i] != b.samplers[i]) { return false; }
 	}
+	if (a.storage != b.storage) { return false; }
+	if (a.storage == 0) { return true; }
+	for (let i = 0; i < VIEW_SLOTS; i++) {
+		if (a.offsets[i] != b.offsets[i] || a.sizes[i] != b.sizes[i]) { return false; }
+	}
 	return true;
 }
 
@@ -1506,6 +1532,9 @@ function keyHash(key: BindKey): int32 {
 	let h: uint32 = key.pipeline * 2654435761;
 	for (let i = 0; i < VIEW_SLOTS; i++) { h = (h ^ key.views[i]) * 16777619; }
 	for (let i = 0; i < SAMPLER_SLOTS; i++) { h = (h ^ key.samplers[i]) * 16777619; }
+	for (let i = 0; i < VIEW_SLOTS && key.storage != 0; i++) {
+		h = (h ^ (key.offsets[i] as uint32)) * 16777619;
+	}
 	return (h & ((BIND_GROUP_CACHE - 1) as uint32)) as int32;
 }
 
@@ -1554,6 +1583,16 @@ function resourceGroup(key: BindKey): GPUBindGroup {
 		};
 		n++;
 	}
+	for (let i = 0; i < VIEW_SLOTS; i++) {
+		if ((key.storage & ((1 as uint32) << (i as uint32))) == 0) { continue; }
+		descriptor.entries[n] = {
+			binding: i,
+			buffer: { id: key.views[i] },
+			offset: key.offsets[i],
+			size: key.sizes[i],
+		};
+		n++;
+	}
 	const group = device.createBindGroup(descriptor);
 	cacheGroup(key, group);
 	return group;
@@ -1590,6 +1629,15 @@ export function doorApplyBindings(
 	bindings: Readonly<Span<uint32>>,
 	vertexOffsets: Readonly<Span<int32>>,
 ): void {
+	doorApplyStorageBindings(bindings, vertexOffsets, []);
+}
+
+// `storage[slot]` fills each storage slot the applied program reads; a storage slot takes no view.
+export function doorApplyStorageBindings(
+	bindings: Readonly<Span<uint32>>,
+	vertexOffsets: Readonly<Span<int32>>,
+	storage: Readonly<Span<DoorStorageBinding>>,
+): void {
 	stopInComputePass("applyBindings");
 	if (bindings.length < DOOR_BINDING_LENGTH) {
 		stop("applyBindings descriptor holds " + String(bindings.length) + " of " +
@@ -1610,19 +1658,30 @@ export function doorApplyBindings(
 		pass.setIndexBuffer({ id: indexBuffer }, pipelines[current].indexFormat, 0);
 	}
 	applied.words[DOOR_BINDING_INDEX_BUFFER] = indexBuffer;
+	const record = pipelines[current];
 	let sameResources = applied.valid;
 	for (let i = DOOR_BINDING_VIEW; sameResources && i < DOOR_BINDING_LENGTH; i++) {
 		if (bindings[i] != applied.words[i]) { sameResources = false; }
 	}
-	if (pipelines[current].textureMask == 0 && pipelines[current].samplerMask == 0) {
+	if (record.textureMask == 0 && record.samplerMask == 0 && record.storageMask == 0) {
 		applied.valid = true;
 		return;
 	}
-	if (sameResources) { return; }
-	let key: BindKey = { pipeline: pipelines[current].pipeline.id };
+	if (sameResources && record.storageMask == 0) { return; }
+	let key: BindKey = { pipeline: record.pipeline.id, storage: record.storageMask };
 	for (let i = 0; i < VIEW_SLOTS; i++) { key.views[i] = bindings[DOOR_BINDING_VIEW + i]; }
 	for (let i = 0; i < SAMPLER_SLOTS; i++) {
 		key.samplers[i] = bindings[DOOR_BINDING_SAMPLER + i];
+	}
+	for (let i = 0; i < VIEW_SLOTS; i++) {
+		if ((record.storageMask & ((1 as uint32) << (i as uint32))) == 0) { continue; }
+		if (i >= (storage.length as int32) || storage[i].buffer == 0) {
+			stop(`applyBindings holds no buffer for the storage slot ${i} pipeline ` +
+				`${record.pipeline.id} reads`);
+		}
+		key.views[i] = storage[i].buffer;
+		key.offsets[i] = storage[i].offset;
+		key.sizes[i] = storage[i].size;
 	}
 	pass.setBindGroup(GPU_RESOURCE_GROUP, resourceGroup(key), []);
 	for (let i = DOOR_BINDING_VIEW; i < DOOR_BINDING_LENGTH; i++) { applied.words[i] = bindings[i]; }
