@@ -45,8 +45,9 @@ when (voidProfiler) {
 	import { scissorMax, clippedArea, quadClippedArea } from "./coverage";
 	import { floatOfBits } from "./floatBits";
 	import {
-		WORD_UI_AFFINE, WORD_UI_ORIGIN_SIZE, WORD_UI_PARAMS0, WORD_UI_COLOR_FILL,
+		WORD_UI_AFFINE, WORD_UI_ORIGIN_SIZE, WORD_UI_PARAMS0, WORD_UI_COLOR_FILL, WORD_UI_CLIP_RECT,
 	} from "./instanceLayout";
+	import { NO_INSTANCE_CLIP } from "./displayList";
 	import { clockNow } from "../platform/clockNow";
 	import {
 		DOOR_STAT_DRAWS, DOOR_STAT_PIPELINES, DOOR_STAT_PASSES, DOOR_STAT_BUFFER_BYTES,
@@ -445,6 +446,28 @@ when (voidProfiler) {
 		return floatOfBits(words[at]) as float64;
 	}
 
+	function deviceEdge(edge: float64, shift: float64, scale: float64): int32 {
+		return Math.round((edge + shift) * scale) as int32;
+	}
+
+	// The run's scissor narrowed by the instance's own clip lane, which is snapped to device
+	// pixels before the scope's whole-pixel shift.
+	function instanceRect(
+		rect: ScissorRect, cpuUi: Readonly<Span<uint32>>, at: int32, scale: float64,
+		shiftX: float64, shiftY: float64,
+	): ScissorRect {
+		const c: int32 = at + WORD_UI_CLIP_RECT;
+		if (floatOfBits(cpuUi[c + 2]) >= NO_INSTANCE_CLIP) { return rect; }
+		const x0: int32 = deviceEdge(uiLane(cpuUi, c), shiftX, scale);
+		const y0: int32 = deviceEdge(uiLane(cpuUi, c + 1), shiftY, scale);
+		const x1: int32 = deviceEdge(uiLane(cpuUi, c + 2), shiftX, scale);
+		const y1: int32 = deviceEdge(uiLane(cpuUi, c + 3), shiftY, scale);
+		return {
+			x0: x0 > rect.x0 ? x0 : rect.x0, y0: y0 > rect.y0 ? y0 : rect.y0,
+			x1: x1 < rect.x1 ? x1 : rect.x1, y1: y1 < rect.y1 ? y1 : rect.y1,
+		};
+	}
+
 	function coverUiRun(
 		cmd: Readonly<Span<float32>>, count: int32, blend: int32, fbW: float32, fbH: float32,
 		scopes: Readonly<Span<float32>>, scopeCount: int32, cpuUi: Readonly<Span<uint32>>,
@@ -453,6 +476,8 @@ when (voidProfiler) {
 		const scope: int32 = scopeAt(cmd, scopeCount, scopes.length > 0);
 		const rect: ScissorRect = scissorRectOf(cmd, scopes, scope, dpiScale, fbW, fbH);
 		const scale: float64 = deviceScaleOf(cmd, dpiScale) as float64;
+		const shiftX: float64 = scope >= 0 ? scopes[scope] as float64 : 0.0;
+		const shiftY: float64 = scope >= 0 ? scopes[scope + 1] as float64 : 0.0;
 		const effected: boolean = field(cmd, CMD_EFFECT) >= 0;
 		for (let i: int32 = 0; i < count; i++) {
 			const at: int32 = (field(cmd, CMD_INSTANCE_OFFSET) + i) * UI_WORDS;
@@ -473,7 +498,8 @@ when (voidProfiler) {
 			coverAffineQuad(
 				affine, 0, uiLane(cpuUi, origin), uiLane(cpuUi, origin + 1), -ix, -iy,
 				uiLane(cpuUi, origin + 2) + ix, uiLane(cpuUi, origin + 3) + iy, cmd, scopes, scope,
-				rect, mode == 0 && opaqueFill && !effected, blend,
+				instanceRect(rect, cpuUi, at, scale, shiftX, shiftY),
+				mode == 0 && opaqueFill && !effected, blend,
 			);
 		}
 	}
