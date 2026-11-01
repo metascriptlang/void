@@ -1,5 +1,6 @@
-// What the door issues per draw: a bind group is made for the slots the program reads, and a draw
-// whose bindings match the last ones issues no binding call again.
+// What the door issues per draw: a bind group is made for the slots the program reads, a draw
+// whose bindings match the last ones issues no binding call again, and the uniform blocks applied
+// before a draw reach the device in one write.
 
 import { shaderProgram } from "../shader/program";
 import { Sampler, Texture2d, Vec2f, Vec4f, binding, builtin, textureSample, vec2f, vec4f } from "../shader/std";
@@ -32,13 +33,34 @@ function pictureFs(b: PictureBindings): Vec4f {
 
 shaderProgram(picture, quadVs, pictureFs);
 
+struct ColorBlock {
+	color: Vec4f;
+}
+
+struct GainBlock {
+	gain: Vec4f;
+}
+
+struct TintBindings {
+	@binding(0) colorBlock: ColorBlock;
+	@binding(1) gainBlock: GainBlock;
+}
+
+function tintFs(b: TintBindings): Vec4f {
+	return b.colorBlock.color * b.gainBlock.gain;
+}
+
+shaderProgram(tinted, quadVs, tintFs);
+
 when (voidDummy || (windows && !voidVulkan)) {
 	import { Vec4 } from "../math/math3d";
 	import {
 		DOOR_BUFFER_VERTEX,
 		doorApplyBindings,
 		doorApplyPipeline,
+		doorApplyUniformsOf,
 		doorDraw,
+		doorReadTexture,
 		doorBindStats,
 		doorMakeBufferOf,
 		doorMakeImage,
@@ -68,6 +90,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 		view: uint32;
 		sampler: uint32;
 		pipeline: uint32;
+		tintPipeline: uint32;
 		cache: PipelineCache;
 	}
 
@@ -86,7 +109,11 @@ when (voidDummy || (windows && !voidVulkan)) {
 		const state: RenderState = RenderState.defaults().withCulling(Face.None)
 			.withDepth(false, Compare.Always);
 		const white: Vec<uint32> = [0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF];
-		const quad: Vec<float32> = [-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1];
+		const quad: Vec<float32> = [
+			-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1,
+			-1, -1, 0, -1, 0, 1, -1, -1, 0, 1, -1, 1,
+			0, -1, 1, -1, 1, 1, 0, -1, 1, 1, 0, 1,
+		];
 		return {
 			color,
 			layout,
@@ -94,6 +121,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 			view: doorMakeTextureView(doorMakeImage(white, 2, 2)),
 			sampler: doorMakeSampler(0, 0),
 			pipeline: pipelineFor(cache, picture, programLayout(picture), false, state, layout),
+			tintPipeline: pipelineFor(cache, tinted, programLayout(tinted), false, state, layout),
 			cache,
 		};
 	}
@@ -150,5 +178,47 @@ when (voidDummy || (windows && !voidVulkan)) {
 		assert doorBindStats().bindCalls == vertexAndGroup * 2;
 		endPass();
 		closeScene(scene);
+	}
+
+	const LEFT = 6;
+	const RIGHT = 12;
+
+	function tintDraw(scene: Scene, color: Vec<float32>, first: int32): void {
+		doorApplyUniformsOf(0, color);
+		doorApplyUniformsOf(1, [1, 1, 1, 1]);
+		let words: Vec<uint32> = [];
+		for (let i = 0; i < DOOR_BINDING_LENGTH; i++) { words.push(0); }
+		words[0] = scene.vertices;
+		doorApplyBindings(words, [0]);
+		doorDraw(first, 6, 1);
+	}
+
+	test "the uniform blocks applied before a draw reach the device in one write and one group bind" {
+		const scene: Scene = openScene();
+		const black: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+		beginPass([scene.color.asColor(LoadAction.Clear, black)], NO_DEPTH_ATTACHMENT);
+		doorApplyPipeline(scene.tintPipeline);
+		const before: int64 = doorBindStats().bindCalls;
+		tintDraw(scene, [1, 0, 0, 1], LEFT);
+		tintDraw(scene, [0, 1, 0, 1], RIGHT);
+		endPass();
+		assert doorBindStats().uniformWrites == 2;
+		assert doorBindStats().bindCalls == before + 3;
+		when (windows && !voidDummy) {
+			assert pixelAt(scene, 1, 4) == 0xFF0000FF && pixelAt(scene, 6, 4) == 0xFF00FF00;
+		}
+		closeScene(scene);
+	}
+
+	// The pixel of column `x` and row `y` as 0xAABBGGRR.
+	function pixelAt(scene: Scene, x: int32, y: int32): uint32 {
+		let out: Vec<uint8> = new Array(SIZE * SIZE * 4);
+		if (doorReadTexture(scene.color.image, 0, 0, SIZE, SIZE, out) != 1) {
+			console.log("doorBindCheck: readTexture refused the target");
+			unreachable;
+		}
+		const at: int32 = (y * SIZE + x) * 4;
+		return (out[at] as uint32) | ((out[at + 1] as uint32) << 8) |
+			((out[at + 2] as uint32) << 16) | ((out[at + 3] as uint32) << 24);
 	}
 }

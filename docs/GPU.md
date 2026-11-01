@@ -124,9 +124,13 @@ pass descriptors, a flat bindings descriptor, `uint32` ids, programs and layouts
 contract onto the WebGPU-shaped API, adding the two things WebGPU leaves to its caller and
 sokol's WebGPU backend does for it:
 
-- **Uniforms** go to one 4 MiB uniform buffer at 256-aligned offsets, rewound at commit, and
-  reach the shader through the pipeline's group 0 with one dynamic offset per block (sokol's
-  uniform system, `_sg_wgpu_uniform_system_*`, `sokol_gfx.h:18387`).
+- **Uniforms** are copied into a CPU staging copy of one 4 MiB uniform buffer at 256-aligned
+  offsets, rewound at commit, and reach the shader through the pipeline's group 0 with one dynamic
+  offset per block, set once at the next draw (sokol's uniform system, `sokol_gfx.h:18418-18459`,
+  `:19882-19897`). The bytes staged since the last write go to the buffer in one `writeBuffer` at
+  the draw that first needs them, on every backend: sokol's WebGPU backend writes once at commit,
+  but the ring is a transient buffer, and `validate.ms` `markBufferRead` stops a draw that reads
+  one before the frame wrote it, so immediate and recording backends draw the same frame.
 - **Textures and samplers** of a draw become a group 1 bind group looked up in a cache keyed
   by the pipeline and the bound ids; a collision replaces the entry, as sokol's
   `_sg_wgpu_bindgroups_cache` does (`:18462-18763`).
@@ -150,9 +154,9 @@ Each row is a WebGPU-shaped call Void uses where `deps/sokol/sokol_gfx.h` refuse
 | call | sokol | caller | pin |
 |---|---|---|---|
 | `queue.writeTexture` with `origin` and a sub-rect `size` | `sg_update_image` takes whole mips: `VALIDATE_IMAGEDATA_DATA_SIZE` `:24035` through `_sg_validate_update_image` `:25492`; the D3D11 path maps and rewrites every mip `:15249` | glyph page dirty rect: `batcher.c` `doorUpdateTextureRect` → `doorGpu.ms` `doorUpdateTextureRect` | D3D11 and GL "a partial writeTexture changes only its sub-rect…"; Metal "writeTexture writes a sub-rectangle in place over a whole write of the same frame…" |
-| `queue.writeBuffer(buffer, offset)` beside other writes in a frame | `sg_update_buffer` writes from 0 once per frame `:25468`, and refuses an append in the same frame `:25487` | `doorGpu.ms` `doorAppendBuffer`, the uniform ring in `doorApplyUniformsOf` | D3D11 and GL "an indexed uint16 quad draws from a vertex buffer written twice in one frame" |
+| `queue.writeBuffer(buffer, offset)` beside other writes in a frame | `sg_update_buffer` writes from 0 once per frame `:25468`, and refuses an append in the same frame `:25487` | `doorGpu.ms` `doorAppendBuffer`, the uniform ring in `writeStagedUniforms` | D3D11 and GL "an indexed uint16 quad draws from a vertex buffer written twice in one frame" |
 | `copyTextureToBuffer` + `mapAsync`/`getMappedRange`: GPU→CPU readback | no readback or copy function; `readback`, `ReadPixels`, `CopyResource`, `CopySubresourceRegion` and `D3D11_MAP_READ` have no match | `doorGpu.ms` `readTexture` behind `doorReadScreen`: `tests/capture/capture.c`, `tests/capture3d/capture3d.c` | D3D11 and GL "a writeTexture sub-rect reads back through copyTextureToBuffer…", "a cleared render target copies to a buffer…"; D3D11 "the door reads a cleared bgra8 target back as RGBA…" |
-| `setBindGroup(group, bindGroup, dynamicOffsets)` on a uniform ring | `sg_apply_uniforms` copies the block into the shader's own constant buffer on every call `:15170` | `doorGpu.ms` `doorApplyUniformsOf` | D3D11 "a WARP triangle takes its colour from the uniform block at the dynamic offset", "a bind group entry offset selects the second uniform block"; GL "a GL triangle takes its colour from the uniform block at the dynamic offset" |
+| `setBindGroup(group, bindGroup, dynamicOffsets)` on a uniform ring | `sg_apply_uniforms` copies the block into the shader's own constant buffer on every call `:15170` | `doorGpu.ms` `bindAppliedUniforms` | D3D11 "a WARP triangle takes its colour from the uniform block at the dynamic offset", "a bind group entry offset selects the second uniform block"; GL "a GL triangle takes its colour from the uniform block at the dynamic offset" |
 | uniform blocks uploaded only when their bytes changed (D3D11 without D3D11.1) | every applied block is uploaded `:15170` | same | none: no test names the fallback path |
 | a bind the context already holds is not issued again (D3D11); `bindStats()` counts native binds | `_sg_d3d11_apply_bindings` clears its bind cache and re-issues all `:15035-15053` | `doorGpu.ms` `doorApplyBindings`, every draw | D3D11 "a bind that did not change issues no native call…"; GL same count pinned (GL already caches as sokol does) |
 
