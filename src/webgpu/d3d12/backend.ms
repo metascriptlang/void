@@ -242,6 +242,7 @@ struct PassState {
 struct BufferUse {
 	native: uint64;
 	address: uint64;
+	base: uint64;
 	size: int64;
 }
 
@@ -521,7 +522,7 @@ function submitted(call: string): void {
 }
 
 export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void {
-	ran("createBuffer", resources.createBuffer(r, id, descriptor));
+	ran("createBuffer", resources.createBuffer(r, id, descriptor, ring.allocators.length as int32));
 	setLabel(r.buffers[slotOf(id)].native, descriptor.label);
 }
 
@@ -536,7 +537,7 @@ export function destroyBuffer(buffer: GPUBuffer): void {
 
 export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
 	ran("writeBuffer", resources.writeBuffer(r, ring, buffer, offset, data));
-	if (renderPassOpen()) { invalidateBindings(); }
+	if (renderPassOpen() && !r.rotating(buffer)) { invalidateBindings(); }
 }
 
 export function createTexture(texture: TextureRecord, descriptor: GPUTextureDescriptor): void {
@@ -669,6 +670,7 @@ export function finish(encoder: GPUCommandEncoder): GPUCommandBuffer {
 
 export function submit(commandBuffer: GPUCommandBuffer): void {
 	submitted("submit");
+	ring.frames += 1;
 }
 
 export function beginRenderPass(encoder: GPUCommandEncoder, passDescriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {
@@ -880,7 +882,8 @@ function usedBuffer(id: uint32, state: uint32): BufferUse {
 	const b = bufferRecords.slotIndex(id);
 	resources.useBuffer(r, id, b, state);
 	r.buffers[b].lastUse = ring.recording();
-	return { native: r.buffers[b].native, address: r.buffers[b].address, size: bufferRecords.slots[b].size };
+	const base = r.buffers[b].frameBase(ring);
+	return { native: r.buffers[b].native, address: r.buffers[b].address + base, base: base, size: bufferRecords.slots[b].size };
 }
 
 function prepareDraw(indexed: boolean): void {
@@ -928,7 +931,7 @@ export function multiDrawIndexedIndirect(buffer: GPUBuffer, offset: int64, drawC
 	if (drawCount == 0) { return; }
 	const used = usedBuffer(buffer.id, STATE_INDIRECT_ARGUMENT);
 	prepareDraw(true);
-	commanded(dx12ExecuteIndirect(ring.list, drawIndexedSignature, drawCount as uint32, used.native, offset as uint64));
+	commanded(dx12ExecuteIndirect(ring.list, drawIndexedSignature, drawCount as uint32, used.native, used.base + (offset as uint64)));
 }
 
 export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
@@ -1010,7 +1013,7 @@ export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
 export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void {
 	const used = usedBuffer(buffer.id, STATE_INDIRECT_ARGUMENT);
 	prepareDispatch();
-	commanded(dx12ExecuteIndirect(ring.list, dispatchSignature, 1, used.native, offset as uint64));
+	commanded(dx12ExecuteIndirect(ring.list, dispatchSignature, 1, used.native, used.base + (offset as uint64)));
 	queueUavBarrier(r.tracker);
 }
 

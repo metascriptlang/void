@@ -46,6 +46,7 @@ export struct FrameRing {
 	executed: uint64;
 	completed: uint64;
 	retired: Vec<Retired>;
+	frames: uint64;
 }
 
 @noinline export function stop(message: string): never {
@@ -69,11 +70,17 @@ export function checked(code: int32): Result<void, NativeError> {
 }
 
 export function closedFrames(): FrameRing {
-	return { queue: 0, fence: 0, event: 0, list: 0, allocators: [], serials: [], next: 0, submitted: 0, executed: 0, completed: 0, retired: [] };
+	return { queue: 0, fence: 0, event: 0, list: 0, allocators: [], serials: [], next: 0, submitted: 0, executed: 0, completed: 0, retired: [], frames: 0 };
 }
 
 export function slot(this ring: FrameRing): int32 {
 	return (ring.next % (ring.allocators.length as uint64)) as int32;
+}
+
+// Counts the caller's submits only, not the extra ones mapAsync and resolveQuerySet make mid-frame, so a
+// frame keeps one slot; once the frame `count` later reuses it, the ring has waited for that frame's work.
+export function frameSlot(this ring: FrameRing): int32 {
+	return (ring.frames % (ring.allocators.length as uint64)) as int32;
 }
 
 export function openFrames(device: uint64, queue: uint64, count: int32): Result<FrameRing, NativeError> {
