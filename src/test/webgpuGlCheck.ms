@@ -943,6 +943,61 @@ test "a fragment shader reads a read-only storage buffer" {
 	device.destroy();
 }
 
+const STORAGE_VERTEX_GLSL = "#version 430\nlayout(location = 0) in vec2 position;\nlayout(std430, binding = 0) readonly buffer Tints { vec4 tints[]; };\nout vec4 tint;\nvoid main() { gl_Position = vec4(position, 0.0, 1.0); tint = tints[0]; }\n";
+
+test "a vertex shader reads a read-only storage buffer through a binding at an offset" {
+	const device = openDevice();
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "storage vertex",
+		vertexCode: STORAGE_VERTEX_GLSL,
+		vertexEntryPoint: "",
+		fragmentCode: COLOURED_FRAGMENT_GLSL,
+		fragmentEntryPoint: "",
+	};
+	descriptor.bindings[0] = {
+		group: 1,
+		binding: 0,
+		kind: "storage-buffer",
+		visibility: GPUShaderStage.VERTEX as int32,
+		bufferType: "read-only-storage",
+		nativeSlot: 0,
+	};
+	descriptor.attributes[0] = { location: 0, nativeName: "position", semanticIndex: 0 };
+	const module = device.createShaderModule(descriptor);
+	const pipeline = flatPipeline(device, module, 1);
+	const tints = device.createBuffer({
+		label: "tints",
+		size: 512,
+		usage: (GPUBufferUsage.STORAGE as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	let words: Vec<float32> = new Array(128);
+	for (let i = 0; i < 128; i++) { words[i] = 0.0; }
+	words[1] = 1.0;
+	words[3] = 1.0;
+	words[64] = 1.0;
+	words[67] = 1.0;
+	device.queue.writeBuffer(tints, 0, words);
+	let group: GPUBindGroupDescriptor = { label: "tints", layout: pipeline.getBindGroupLayout(1) };
+	group.entries[0] = { binding: 0, buffer: tints, offset: 256, size: 16 };
+	const vertices = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const target = colourTarget(device, 1);
+	const noOffsets: Vec<uint32> = [];
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setBindGroup(1, device.createBindGroup(group), noOffsets);
+	pass.draw(3, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const pixels = readPixelsBottomUp(target);
+	assert pixel(pixels, 0, 0) == BLUE;
+	assert pixel(pixels, 32, 32) == RED;
+	device.destroy();
+}
+
 test "the limits are the context's own and the features say what the context can do" {
 	const device = openDevice();
 	const limits = device.limits();
