@@ -149,6 +149,8 @@ import {
 	d3dCreateComputeShader,
 	d3dCreateTextureUav,
 	d3dCsClearViews,
+	d3dCsSetConstantBuffer,
+	d3dCsSetConstantBufferRange,
 	d3dCsSetSampler,
 	d3dCsSetShader,
 	d3dCsSetShaderResource,
@@ -1665,9 +1667,6 @@ function bindingWritable(binding: GPUShaderBinding): boolean {
 	if (native.writable && !native.computeStage) {
 		stop(`shader binding ${native.binding} is writable storage in a render stage, which D3D11 binds only through OMSetRenderTargetsAndUnorderedAccessViews: not ported`);
 	}
-	if (native.kind == BindingKind.Uniform && native.computeStage) {
-		stop(`uniform binding ${native.binding} in a compute stage is not ported to d3d11 yet`);
-	}
 	if (native.nativeSlot < 0 || native.nativeSlot >= limit) {
 		stop(`shader binding ${native.binding} has HLSL register ${native.nativeSlot}, outside 0..${limit - 1}`);
 	}
@@ -2002,8 +2001,32 @@ export function setComputePipeline(pipeline: GPUComputePipeline): void {
 }
 
 export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	if (index != GPU_RESOURCE_GROUP) { return; }
 	computeBound.dirty = true;
+}
+
+function applyComputeUniforms(s: int32): void {
+	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_UNIFORM_GROUP]);
+	for (let u = 0; u < shaders[s].uniformCount; u++) {
+		const e = entryOf(bindGroups[g], shaders[s].uniforms[u].binding);
+		const offset = (boundFacts.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
+		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
+		const block = shaders[s].uniforms[u];
+		if (offsetUniforms) {
+			const constants = roundUp256(block.size as int64) / 16;
+			if (constants > MAX_BLOCK_CONSTANTS || offset + constants * 16 > roundUp256(bufferRecords.slots[b].size)) {
+				stop(`uniform binding ${block.binding} of ${block.size} bytes at ${offset} does not fit one constant buffer view`);
+			}
+			d3dCsSetConstantBufferRange(context1, block.nativeSlot, buffers[b].native, offset / 16, constants);
+		} else {
+			const bytes = roundUp16(block.size as int64);
+			if (offset + bytes > (buffers[b].shadow.length as int64)) {
+				stop(`uniform binding ${block.binding} of ${bytes} bytes at ${offset} overruns the shadow copy of its buffer`);
+			}
+			d3dUpdateIfChanged(context, shaders[s].constantBuffers[u], shaders[s].blockCache[0], shaders[s].cacheOffset[u] as int64, buffers[b].shadow[0], offset, bytes, shaders[s].cacheFresh[u]);
+			shaders[s].cacheFresh[u] = 0;
+			d3dCsSetConstantBuffer(context, block.nativeSlot, shaders[s].constantBuffers[u]);
+		}
+	}
 }
 
 function applyCompute(): void {
@@ -2012,6 +2035,7 @@ function applyCompute(): void {
 	d3dCsClearViews(context);
 	d3dCsSetShader(context, shaders[s].compute);
 	computeBound.dirty = false;
+	if (shaders[s].uniformCount > 0) { applyComputeUniforms(s); }
 	if (shaders[s].resourceCount == 0) { return; }
 	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]);
 	for (let r = 0; r < shaders[s].resourceCount; r++) {
