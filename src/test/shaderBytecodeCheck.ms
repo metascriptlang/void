@@ -72,7 +72,7 @@ when (windows) {
 		const tracked = readFileBytes("shaders/dxbc/" + name);
 		if (tracked.ok) { return tracked.value; }
 		const made = readFileBytes("out/shaders/dxbc/" + name);
-		return made.ok ? made.value : [];
+		return made.ok ? made.value : Buffer.alloc(0);
 	}
 
 	function sameBytes(bytecode: Readonly<Vec<uint8>>, file: Buffer): boolean {
