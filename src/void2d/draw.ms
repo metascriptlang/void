@@ -38,7 +38,6 @@ import {
 	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
 	SAMPLER_COUNT, SOURCE_PREMULTIPLIED, samplerIndex,
 	DrawContext2D, currentContext, useContext, useDefaultContext, isDefaultContext, uploaded,
-	nextStageTag, stagedUiCopies,
 	spriteInstanceCount,
 	effectField, effectMatrix,
 	uiInstanceCount, pushUiInstance, recordUiDraw,
@@ -552,7 +551,6 @@ export function flushTargets(): void {
 			l.uiInstances, uiInstanceCount(),
 		);
 	} else {
-		const tag: int32 = nextStageTag();
 		ctx.frameLive = void2dReplayList(
 			l.id, l.targetCommands, targets,
 			l.effects, effectCount(),
@@ -561,9 +559,7 @@ export function flushTargets(): void {
 			l.spriteInstances, spriteInstanceCount(), l.uploadAll || l.dirtySprites,
 			l.uiInstances, uiInstanceCount(),
 			l.dirtyUi, l.uploadAll ? -1 : l.dirtyUiTotal,
-			l.uiCopies, stagedUiCopies(), l.uiCopySource, tag,
 		);
-		l.stagedTag = tag;
 	}
 	void2dRememberContext(l.id, l.frameLive);
 	uploaded();

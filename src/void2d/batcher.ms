@@ -119,10 +119,6 @@ class DisplayList {
 	cap: int32[] = [0, 0, 0];
 	updatedFrame: int32 = -1;
 	stale: boolean = false;
-	stage: uint32[] = [];
-	stageCount: int32 = 0;
-	stageTag: int32 = 0;
-	spare: uint32[] = [];
 }
 
 function fail(message: string): never {
@@ -179,7 +175,6 @@ let droppedFrames: int32 = 0;
 let generation: int32 = 0;
 const contexts: PreparedContext[] = [];
 const lists: DisplayList[] = [];
-const uiStage: uint32[] = [];
 
 let frameUiInstances: int32 = 0;
 let frameSpriteInstances: int32 = 0;
@@ -252,17 +247,6 @@ export function void2dSetDpiScale(scale: float32): void {
 
 function field(cmd: Readonly<Span<float32>>, index: int32): int32 {
 	return truncated(cmd[index] as float64);
-}
-
-function growWords(words: uint32[], count: int32): void {
-	if ((words.length as int32) < count) { words.setLength(count as number); }
-}
-
-export function packUiInstance(
-	stage: uint32[], instance: int32, records: Readonly<Span<uint32>>,
-): void {
-	const at: int32 = instance * UI_WORDS;
-	for (let w: int32 = at; w < at + UI_WORDS; w++) { stage[w] = records[w]; }
 }
 
 function releaseRetiredBuffers(): void {
@@ -764,9 +748,7 @@ export function void2dReplayTargets(
 		uploadBytes += spriteBytes as int32;
 	}
 	if (uiBytes > 0) {
-		growWords(uiStage, uiCount * UI_WORDS);
-		for (let i: int32 = 0; i < uiCount; i++) { packUiInstance(uiStage, i, uiInstances); }
-		const at: int64 = appendFrame(uiStage[0..uiCount * UI_WORDS]);
+		const at: int64 = appendFrame(uiInstances[0..uiCount * UI_WORDS]);
 		if (at < 0) { return false; }
 		uiInstanceBase = at as int32;
 		uploadCount++;
@@ -872,7 +854,10 @@ function writeListBuffer<T>(l: DisplayList, which: int32, data: Readonly<Span<T>
 
 let uiRangeOrder: Vec<int32> = [];
 
-function writeUiRanges(l: DisplayList, ranges: Readonly<Span<int32>>, count: int32, uiCount: int32): boolean {
+function writeUiRanges(
+	l: DisplayList, uiInstances: Readonly<Span<uint32>>, ranges: Readonly<Span<int32>>, count: int32,
+	uiCount: int32,
+): boolean {
 	uiRangeOrder.length = 0;
 	for (let r: int32 = 0; r < count; r++) {
 		let at: int32 = uiRangeOrder.length as int32;
@@ -894,68 +879,12 @@ function writeUiRanges(l: DisplayList, ranges: Readonly<Span<int32>>, count: int
 		}
 		to = Math.min(to, uiCount);
 		if (from >= to) { continue; }
-		const words = l.stage[from * UI_WORDS..to * UI_WORDS];
+		const words = uiInstances[from * UI_WORDS..to * UI_WORDS];
 		if (doorUpdateBufferRangeOf(l.buf[LIST_UI], (from * UI_STRIDE) as int64, words) == 0) { return false; }
 		uploadCount++;
 		uploadBytes += (to - from) * UI_STRIDE;
 	}
 	return true;
-}
-
-function uiCopiesFit(
-	copies: Readonly<Span<int32>>, copyCount: int32, prevCount: int32, count: int32,
-): boolean {
-	let end: int32 = 0;
-	for (let c: int32 = 0; c < copyCount; c++) {
-		const from: int32 = copies[c * 3];
-		const at: int32 = copies[c * 3 + 1];
-		const n: int32 = copies[c * 3 + 2];
-		if (n <= 0 || from < 0 || at < end || from > prevCount - n || at > count - n) { return false; }
-		end = at + n;
-	}
-	return true;
-}
-
-function stageUiCopies(
-	out: uint32[], prev: Readonly<Span<uint32>>, records: Readonly<Span<uint32>>, count: int32,
-	copies: Readonly<Span<int32>>, copyCount: int32,
-): void {
-	let at: int32 = 0;
-	for (let c: int32 = 0; c <= copyCount; c++) {
-		const next: int32 = c < copyCount ? copies[c * 3 + 1] : count;
-		while (at < next) {
-			packUiInstance(out, at, records);
-			at++;
-		}
-		if (c == copyCount) { break; }
-		const words: int32 = copies[c * 3 + 2] * UI_WORDS;
-		const from: int32 = copies[c * 3] * UI_WORDS;
-		const to: int32 = at * UI_WORDS;
-		for (let w: int32 = 0; w < words; w++) { out[to + w] = prev[from + w]; }
-		at += copies[c * 3 + 2];
-	}
-}
-
-// 1 when staging `records` from the packed `prevRecords` through `copies` (from, at, count
-// triples) gives the words a full pack gives; 0 when the copies do not fit; -1 when they differ.
-export function void2dStageUiCheck(
-	prevRecords: Readonly<Span<uint32>>, prevCount: int32, records: Readonly<Span<uint32>>,
-	count: int32, copies: Readonly<Span<int32>>, copyCount: int32,
-): int32 {
-	if (!uiCopiesFit(copies, copyCount, prevCount, count)) { return 0; }
-	const prev: uint32[] = [];
-	growWords(prev, prevCount * UI_WORDS);
-	for (let i: int32 = 0; i < prevCount; i++) { packUiInstance(prev, i, prevRecords); }
-	const packed: uint32[] = [];
-	growWords(packed, count * UI_WORDS);
-	for (let i: int32 = 0; i < count; i++) { packUiInstance(packed, i, records); }
-	const staged: uint32[] = [];
-	growWords(staged, count * UI_WORDS);
-	stageUiCopies(staged, prev, records, count, copies, copyCount);
-	for (let w: int32 = 0; w < count * UI_WORDS; w++) {
-		if (staged[w] != packed[w]) { return -1; }
-	}
-	return 1;
 }
 
 export function void2dReplayList(
@@ -967,12 +896,8 @@ export function void2dReplayList(
 	spriteInstances: Readonly<Span<float32>>, spriteCount: int32, spriteDirtyNow: boolean,
 	uiInstances: Readonly<Span<uint32>>, uiCount: int32,
 	uiRanges: Readonly<Span<int32>>, uiRangeCountNow: int32,
-	uiCopies: Readonly<Span<int32>>, uiCopyCount: int32, uiCopySource: int32, stageTag: int32,
 ): boolean {
 	const l: DisplayList = listAt(list);
-	const copies: boolean = !l.stale && uiRangeCountNow < 0 && uiCopyCount > 0 &&
-		l.stageTag == uiCopySource && uiCopiesFit(uiCopies, uiCopyCount, l.stageCount, uiCount);
-	l.stageTag = 0;
 	let vertexDirty: boolean = vertexDirtyNow;
 	let spriteDirty: boolean = spriteDirtyNow;
 	let uiRangeCount: int32 = uiRangeCountNow;
@@ -1005,36 +930,17 @@ export function void2dReplayList(
 		return false;
 	}
 	if (uiRangeCount != 0 && uiCount > 0) {
-		if (copies) {
-			growWords(l.spare, uiCount * UI_WORDS);
-			stageUiCopies(l.spare, l.stage, uiInstances, uiCount, uiCopies, uiCopyCount);
-			const packed: uint32[] = l.spare;
-			l.spare = l.stage;
-			l.stage = packed;
-		} else {
-			growWords(l.stage, uiCount * UI_WORDS);
-			const ranges: int32 = uiRangeCount < 0 ? 1 : uiRangeCount;
-			for (let r: int32 = 0; r < ranges; r++) {
-				const from: int32 = uiRangeCount < 0 ? 0 : uiRanges[r * 2];
-				const to: int32 = uiRangeCount < 0 ? uiCount : uiRanges[r * 2 + 1];
-				for (let i: int32 = from; i < to && i < uiCount; i++) {
-					packUiInstance(l.stage, i, uiInstances);
-				}
-			}
-		}
 		const before: uint32 = l.buf[LIST_UI];
 		const fits: boolean = ensureListBuffer(l, LIST_UI, uiCount * UI_STRIDE);
 		const whole: boolean = uiRangeCount < 0 || l.buf[LIST_UI] != before;
 		if (!fits || !(whole
-			? writeListBuffer(l, LIST_UI, l.stage[0..uiCount * UI_WORDS])
-			: writeUiRanges(l, uiRanges, uiRangeCount, uiCount))) {
+			? writeListBuffer(l, LIST_UI, uiInstances[0..uiCount * UI_WORDS])
+			: writeUiRanges(l, uiInstances, uiRanges, uiRangeCount, uiCount))) {
 			l.stale = true;
 			droppedFrames++;
 			return false;
 		}
 	}
-	if (uiRangeCount != 0) { l.stageCount = uiCount; }
-	l.stageTag = stageTag;
 	if (dirty) { l.updatedFrame = frameSerial; }
 	l.stale = false;
 	srcVertex = l.buf[LIST_VERTEX];
