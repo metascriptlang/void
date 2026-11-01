@@ -185,7 +185,7 @@ export function destroyShaderModule(ref shaders: Vec<ShaderNative>, id: uint32):
 
 function cullMode(cull: string): int32 {
 	return match (cull) {
-		"" | "none" => CULL_NONE,
+		"none" => CULL_NONE,
 		"front" => CULL_FRONT,
 		"back" => CULL_BACK,
 		_ => stopOnMember("primitive.cullMode", cull),
@@ -194,28 +194,27 @@ function cullMode(cull: string): int32 {
 
 function frontCounterClockwise(face: string): int32 {
 	return match (face) {
-		"" | "ccw" => 1,
+		"ccw" => 1,
 		"cw" => 0,
 		_ => stopOnMember("primitive.frontFace", face),
 	};
 }
 
-function stripCut(topology: int32, format: string): int32 {
-	if (topology != 2 && topology != 4) { return STRIP_CUT_DISABLED; }
+function stripCut(topology: int32, format: string | null): int32 {
+	if (topology != 2 && topology != 4 || format == null) { return STRIP_CUT_DISABLED; }
 	return match (format) {
-		"" => STRIP_CUT_DISABLED,
 		"uint16" => STRIP_CUT_16,
 		"uint32" => STRIP_CUT_32,
 		_ => stopOnMember("primitive.stripIndexFormat", format),
 	};
 }
 
-function blendFactor(factor: string, alpha: boolean, member: string): int32 {
+function blendFactor(factor: string | null, alpha: boolean, member: string): int32 {
 	return blendFactorNative(alpha ? ALPHA_BLEND_FACTORS : BLEND_FACTORS, factor, member, "d3d12");
 }
 
-function destinationFactor(factor: string, alpha: boolean, member: string): int32 {
-	if (factor == "") { return BLEND_ZERO; }
+function destinationFactor(factor: string | null, alpha: boolean, member: string): int32 {
+	if (factor == null) { return BLEND_ZERO; }
 	return blendFactor(factor, alpha, member);
 }
 
@@ -237,8 +236,8 @@ function pipelineWords(descriptor: GPURenderPipelineDescriptor, topology: int32)
 	let words: int32[PIPELINE_WORDS] = [0];
 	words[PIPELINE_TOPOLOGY_TYPE] = TOPOLOGY_TYPES[topology];
 	words[PIPELINE_SAMPLE_COUNT] = descriptor.multisample.count;
-	words[PIPELINE_CULL] = cullMode(descriptor.primitive.cullMode);
-	words[PIPELINE_FRONT_CCW] = frontCounterClockwise(descriptor.primitive.frontFace);
+	words[PIPELINE_CULL] = cullMode(descriptor.primitive.cullMode ?? "none");
+	words[PIPELINE_FRONT_CCW] = frontCounterClockwise(descriptor.primitive.frontFace ?? "ccw");
 	words[PIPELINE_DEPTH_BIAS] = descriptor.depthStencil.depthBias;
 	words[PIPELINE_STRIP_CUT] = stripCut(topology, descriptor.primitive.stripIndexFormat);
 	words[PIPELINE_STENCIL_READ_MASK] = stencil8Mask(descriptor.depthStencil.stencilReadMask);
@@ -247,9 +246,9 @@ function pipelineWords(descriptor: GPURenderPipelineDescriptor, topology: int32)
 	stencilFace(words, PIPELINE_BACK_FACE, descriptor.depthStencil.stencilBack, "stencilBack");
 	words[PIPELINE_DSV_FORMAT] = DXGI_UNKNOWN;
 	words[PIPELINE_DEPTH_FUNC] = COMPARE_ALWAYS;
-	const depthFormat: string = descriptor.depthStencil.format;
-	if (depthFormat == "") { return words; }
-	const info = formatInfo(descriptor.depthStencil.format, "depthStencil.format");
+	const depthFormat = descriptor.depthStencil.format;
+	if (depthFormat == null) { return words; }
+	const info = formatInfo(depthFormat, "depthStencil.format");
 	words[PIPELINE_DSV_FORMAT] = info.depthStencil;
 	words[PIPELINE_DEPTH_ENABLE] = 1;
 	words[PIPELINE_DEPTH_WRITE] = descriptor.depthStencil.depthWriteEnabled ? 1 : 0;
@@ -273,12 +272,12 @@ export function createRenderPipeline(
 	let count: int32 = 0;
 	for (let b: int32 = 0; b < GPU_MAX_VERTEX_BUFFERS; b++) {
 		const buffer = descriptor.vertex.buffers[b];
-		const stepMode: string = buffer.stepMode;
-		if (stepMode != "" && stepMode != "vertex" && stepMode != "instance") { stopOnMember("vertex.buffers stepMode", stepMode); }
+		const stepMode: string | null = buffer.stepMode;
+		if (stepMode != null && stepMode != "vertex" && stepMode != "instance") { stopOnMember("vertex.buffers stepMode", stepMode); }
 		native.strides[b] = buffer.arrayStride;
 		for (const attribute of buffer.attributes) {
-			const format: string = attribute.format;
-			if (format == "") { continue; }
+			const format = attribute.format;
+			if (format == null) { continue; }
 			if (count == GPU_MAX_VERTEX_ATTRIBUTES) { stop(`pipeline ${labelOf(descriptor.label)} has over ${GPU_MAX_VERTEX_ATTRIBUTES} vertex attributes`); }
 			const e = count * INPUT_ELEMENT_WORDS;
 			elements[e] = semanticIndexOf(shader, attribute.shaderLocation);
@@ -293,8 +292,8 @@ export function createRenderPipeline(
 	let targetCount: int32 = 0;
 	for (let i: int32 = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		const target = descriptor.fragment.targets[i];
-		const format: string = target.format;
-		if (format == "") { continue; }
+		const format = target.format;
+		if (format == null) { continue; }
 		const color: GPUBlendComponent = target.blend.color;
 		const alpha: GPUBlendComponent = target.blend.alpha;
 		const t = targetCount * TARGET_WORDS;
@@ -307,7 +306,7 @@ export function createRenderPipeline(
 		targets[t + 6] = destinationFactor(alpha.dstFactor, true, "blend.alpha.dstFactor");
 		targets[t + 7] = blendOperationNative(BLEND_OPERATIONS, alpha.operation, "blend.alpha.operation", "d3d12");
 		targets[t + 8] = colorWriteBits(target.writeMask);
-		targets[t + 9] = formatInfo(target.format, `fragment.targets[${i}].format`).renderTarget;
+		targets[t + 9] = formatInfo(format, `fragment.targets[${i}].format`).renderTarget;
 		targetCount += 1;
 	}
 	const words = pipelineWords(descriptor, topology);

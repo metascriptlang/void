@@ -468,7 +468,7 @@ export function samplerKeyOf(descriptor: GPUSamplerDescriptor): SamplerKey {
 	const magLinear = linearFilter(descriptor.magFilter, "GPUSamplerDescriptor.magFilter", "d3d12");
 	const minLinear = linearFilter(descriptor.minFilter, "GPUSamplerDescriptor.minFilter", "d3d12");
 	const mipLinear = linearFilter(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter", "d3d12");
-	const compare: string = descriptor.compare;
+	const compare = descriptor.compare;
 	const maxAnisotropy = clampedAnisotropy(descriptor.maxAnisotropy);
 	let filter: int32 = 0;
 	if (maxAnisotropy > 1) {
@@ -478,14 +478,14 @@ export function samplerKeyOf(descriptor: GPUSamplerDescriptor): SamplerKey {
 		if (magLinear) { filter |= FILTER_MAG_LINEAR; }
 		if (minLinear) { filter |= FILTER_MIN_LINEAR; }
 	}
-	if (compare != "") { filter |= FILTER_COMPARISON; }
+	if (compare != null) { filter |= FILTER_COMPARISON; }
 	return {
 		filter: filter,
 		addressU: addressModeNative(ADDRESS_MODES, descriptor.addressModeU, "GPUSamplerDescriptor.addressModeU", "d3d12"),
 		addressV: addressModeNative(ADDRESS_MODES, descriptor.addressModeV, "GPUSamplerDescriptor.addressModeV", "d3d12"),
 		addressW: addressModeNative(ADDRESS_MODES, descriptor.addressModeW, "GPUSamplerDescriptor.addressModeW", "d3d12"),
 		maxAnisotropy: maxAnisotropy,
-		compare: compare == "" ? COMPARISON_NEVER : compareNative(COMPARE_FUNCTIONS, compare, "GPUSamplerDescriptor.compare", "d3d12"),
+		compare: compare == null ? COMPARISON_NEVER : compareNative(COMPARE_FUNCTIONS, compare, "GPUSamplerDescriptor.compare", "d3d12"),
 		minLod: descriptor.lodMinClamp,
 		maxLod: samplerMaxLod(descriptor.lodMaxClamp),
 	};
@@ -571,8 +571,8 @@ function registerLimit(kind: BindingKind, isWritable: boolean): int32 {
 function stageTable(bindings: Readonly<Span<GPUShaderBinding>>, compute: boolean, stage: int32, samplers: boolean): RootTable {
 	let slots: Vec<TableSlot> = [];
 	for (const binding of bindings) {
-		const kindName: string = binding.kind;
-		if (kindName == "" || (binding.visibility & stage) == 0) { continue; }
+		const kindName = binding.kind;
+		if (kindName == null || (binding.visibility & stage) == 0) { continue; }
 		const kind = bindingKind(kindName, "d3d12");
 		if (kind == BindingKind.Uniform || (kind == BindingKind.Sampler) != samplers) { continue; }
 		slots.push({ binding: binding.binding, kind: kind, writable: writable(binding, kind), register: binding.nativeSlot });
@@ -584,8 +584,8 @@ function stageTable(bindings: Readonly<Span<GPUShaderBinding>>, compute: boolean
 export function shaderLayout(bindings: Readonly<Span<GPUShaderBinding>>, compute: boolean): ShaderLayout {
 	let layout: ShaderLayout = { compute: compute, uniforms: [], tables: [] };
 	for (const binding of bindings) {
-		const kindName: string = binding.kind;
-		if (kindName == "") { continue; }
+		const kindName = binding.kind;
+		if (kindName == null) { continue; }
 		const kind = bindingKind(kindName, "d3d12");
 		checkedBinding(binding, kind, writable(binding, kind), compute);
 		if (kind == BindingKind.Uniform) { layout.uniforms.push({ binding: binding.binding, register: binding.nativeSlot }); }
