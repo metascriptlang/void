@@ -191,6 +191,8 @@ import "./sceneMeshesCheck";
 import "./sceneMaterialsCheck";
 import "./sceneContainsCheck";
 import "./animationCheck";
+import "./motionCheck";
+import "./motionConformanceCheck";
 import "./animationComposeCheck";
 import "./animationTransitionCheck";
 import "./animationSmoothTargetCheck";
