@@ -151,6 +151,21 @@ test "writeBuffer copied into a MAP_READ buffer maps back the same bytes" {
 	device.destroy();
 }
 
+test "a later frame's first writeBuffer of a range keeps the bytes around it" {
+	const device = openDevice();
+	const source = copyBuffer(device, 16);
+	const destination = readbackBuffer(device, 16);
+	const bytes: Vec<uint8> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+	device.queue.writeBuffer(source, 0, bytes);
+	device.queue.submit(device.createCommandEncoder().finish());
+	device.queue.writeBuffer(source, 4, [200, 200, 200, 200] as Vec<uint8>);
+	copyAndSubmit(device, source, 0, destination, 0, 16);
+	const read = readBack(destination);
+	for (let i = 0; i < 16; i++) { assert read[i] == (i >= 4 && i < 8 ? 200 : i + 1) as uint8; }
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
 test "one buffer written, copied and read back over two submits leaves the debug layer silent" {
 	const device = openDevice();
 	const source = copyBuffer(device, 16);
