@@ -7,6 +7,7 @@ import { Frustum3D } from "../void3d/frustum";
 import {
 	CULL_WORKGROUP, CullBindings, CullRun, CullSlot, CullWork, DrawIndexedIndirect,
 	IndirectBindings, MeshInput, MeshRange, cullKernel, cullPlanesOf, indirectKernel, meshInputOf,
+	scatterKernel,
 } from "../void3d/gpuCull";
 
 function perspective(): Mat4 {
@@ -157,6 +158,7 @@ test "the cull and indirect kernels print as compute programs for every compute 
 	const kernels = [
 		glslComputeIr(cullKernel, [64, 1, 1]),
 		glslComputeIr(indirectKernel, [64, 1, 1]),
+		glslComputeIr(scatterKernel, [64, 1, 1]),
 	];
 	const targets = [ShaderTarget.Hlsl5, ShaderTarget.Glsl430, ShaderTarget.Msl, ShaderTarget.Wgsl];
 	for (const ir of kernels) {

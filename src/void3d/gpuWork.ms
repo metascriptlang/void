@@ -6,7 +6,57 @@
 import { identity } from "../math/math3d";
 import { DrawItem } from "./draw";
 import { MeshData } from "./meshData";
-import { CullRun, CullWork, MeshInput, meshInputOf } from "./gpuCull";
+import { CullRun, CullWork, InputSlot, MeshInput, meshInputOf } from "./gpuCull";
+
+// Past this share of changed slots a frame uploads the whole table instead of scattering.
+export const SPARSE_UPLOAD_SHARE: float64 = 0.15;
+
+// The CPU copy of the resident input table: one input per kept item slot, and the slots set
+// since the last upload.
+export struct MeshInputTable {
+	inputs: Vec<MeshInput>;
+	changed: Vec<int32>;
+	marked: Vec<boolean>;
+}
+
+export function empty(this typeof MeshInputTable): MeshInputTable {
+	return { inputs: [], changed: [], marked: [] };
+}
+
+export function setInput(this ref table: MeshInputTable, slot: int32, input: MeshInput): void {
+	while ((table.inputs.length as int32) <= slot) {
+		table.inputs.push(input);
+		table.marked.push(false);
+	}
+	table.inputs[slot] = input;
+	if (!table.marked[slot]) {
+		table.marked[slot] = true;
+		table.changed.push(slot);
+	}
+}
+
+// The upload this frame needs: false when every changed input is in `updates`, its slot at the
+// same position of `slots`, for the scatter; true when the whole table goes up instead. Either
+// way the changed set starts empty again.
+export function takeUpload(
+	this ref table: MeshInputTable,
+	ref updates: Vec<MeshInput>,
+	ref slots: Vec<InputSlot>,
+): boolean {
+	while ((updates.length as int32) > 0) { updates.pop(); }
+	while ((slots.length as int32) > 0) { slots.pop(); }
+	const whole: boolean = (table.changed.length as float64) >
+		(table.inputs.length as float64) * SPARSE_UPLOAD_SHARE;
+	for (const slot of table.changed) {
+		table.marked[slot] = false;
+		if (!whole) {
+			updates.push(table.inputs[slot]);
+			slots.push({ slot: slot as uint32 });
+		}
+	}
+	while ((table.changed.length as int32) > 0) { table.changed.pop(); }
+	return whole;
+}
 
 export function meshInputOfItem(
 	item: Readonly<DrawItem>,

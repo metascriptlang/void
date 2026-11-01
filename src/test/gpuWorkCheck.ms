@@ -7,9 +7,11 @@ import { Bounds3D } from "../void3d/bounds";
 import { Frustum3D } from "../void3d/frustum";
 import { MeshData } from "../void3d/meshData";
 import { PassList, filterFrustum, sortByMaterial } from "../void3d/passList";
-import { CULL_WORKGROUP, CullBindings, CullRun, CullSlot, CullWork, MeshInput, cullKernel,
-	cullPlanesOf } from "../void3d/gpuCull";
-import { meshInputOfItem, viewWorkOf } from "../void3d/gpuWork";
+import {
+	CULL_WORKGROUP, CullBindings, CullRun, CullSlot, CullWork, InputScatterBindings, InputSlot,
+	MeshInput, cullKernel, cullPlanesOf, scatterKernel,
+} from "../void3d/gpuCull";
+import { MeshInputTable, meshInputOfItem, viewWorkOf } from "../void3d/gpuWork";
 import { collect } from "./drawHelpers";
 
 function perspective(): Mat4 {
@@ -147,4 +149,48 @@ test "an item's input carries its mesh's index range, or its own range" {
 	assert whole.firstIndex == 0 && whole.indexCount == 42;
 	const ranged = meshInputOfItem(items[7], data);
 	assert ranged.firstIndex == 6 && ranged.indexCount == 12;
+}
+
+function scatter(
+	resident: MeshInput[], updates: Vec<MeshInput>, slots: Vec<InputSlot>,
+): MeshInput[] {
+	let b: InputScatterBindings = {
+		inputs: resident, updates: [...updates], slots: [...slots],
+		view: [{ updateCount: updates.length as uint32, inputCount: resident.length as uint32 }],
+	};
+	for (let i = 0; i < CULL_WORKGROUP; i++) {
+		scatterKernel({ id: { x: i as uint32, y: 0, z: 0 } }, b);
+	}
+	return b.inputs;
+}
+
+test "the resident table scatters a few changed inputs and re-uploads past the share" {
+	const items = scene();
+	const data = meshes();
+	let table = MeshInputTable.empty();
+	for (let i = 0; i < items.length; i++) { table.setInput(i, meshInputOfItem(items[i], data)); }
+	let updates: Vec<MeshInput> = [];
+	let slots: Vec<InputSlot> = [];
+	assert table.takeUpload(updates, slots);
+	assert updates.length == 0 && slots.length == 0;
+	let resident: MeshInput[] = [...table.inputs];
+
+	for (const slot of [4, 17, 4]) {
+		let moved = items[slot];
+		moved.world = translation(0.5, 0.25, -3.0);
+		table.setInput(slot, meshInputOfItem(moved, data));
+	}
+	assert !table.takeUpload(updates, slots);
+	assert slots.length == 2 && slots[0].slot == 4 && slots[1].slot == 17;
+	resident = scatter(resident, updates, slots);
+	for (let i = 0; i < items.length; i++) {
+		assert resident[i].axisX.w == table.inputs[i].axisX.w;
+		assert resident[i].axisZ.w == table.inputs[i].axisZ.w;
+	}
+	assert resident[17].axisX.w == 0.5;
+
+	for (let i = 0; i < 5; i++) { table.setInput(i, meshInputOfItem(items[i], data)); }
+	assert table.takeUpload(updates, slots);
+	assert updates.length == 0;
+	assert !table.takeUpload(updates, slots);
 }

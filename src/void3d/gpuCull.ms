@@ -135,6 +135,40 @@ export function indirectKernel(input: CullInput, b: IndirectBindings): void {
 	b.draws[r].firstInstance = b.runs[r].first;
 }
 
+export struct InputSlot {
+	slot: uint32;
+}
+
+export struct InputUpdateView {
+	updateCount: uint32;
+	inputCount: uint32;
+}
+
+export struct InputScatterBindings {
+	@binding(0) @access(read_write) inputs: MeshInput[];
+	@binding(1) @access(read) updates: MeshInput[];
+	@binding(2) @access(read) slots: InputSlot[];
+	@binding(3) @access(read) view: InputUpdateView[];
+}
+
+// Each changed input lands in its slot of the resident table, so a frame uploads only what moved.
+export function scatterKernel(input: CullInput, b: InputScatterBindings): void {
+	const i = input.id.x;
+	if (i >= b.view[0].updateCount) { return; }
+	const slot = b.slots[i].slot;
+	if (slot >= b.view[0].inputCount) { return; }
+	// Field by field: inbox void/2026-11-01-shader-ir-struct-literal-store-crashes.md.
+	b.inputs[slot].axisX = b.updates[i].axisX;
+	b.inputs[slot].axisY = b.updates[i].axisY;
+	b.inputs[slot].axisZ = b.updates[i].axisZ;
+	b.inputs[slot].boundsCenter = b.updates[i].boundsCenter;
+	b.inputs[slot].boundsHalf = b.updates[i].boundsHalf;
+	b.inputs[slot].noCull = b.updates[i].noCull;
+	b.inputs[slot].firstIndex = b.updates[i].firstIndex;
+	b.inputs[slot].indexCount = b.updates[i].indexCount;
+	b.inputs[slot].baseVertex = b.updates[i].baseVertex;
+}
+
 export function meshInputOf(world: Mat4, bounds: Bounds3D, range: MeshRange): MeshInput {
 	const empty = bounds.isEmpty();
 	const center = empty ? bounds.min : bounds.center();
