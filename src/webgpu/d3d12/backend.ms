@@ -765,16 +765,18 @@ function attachmentMember(index: int32, field: string): string {
 	stop(`GPURenderPassDescriptor ${attachmentMember(index, field)} '${value}' is not supported`);
 }
 
-function isClear(loadOp: string, index: int32, field: string): boolean {
-	return match (loadOp) {
+function isClear(loadOp: string | null, index: int32, field: string): boolean {
+	const name = loadOp ?? "";
+	return match (name) {
 		"clear" => true,
 		"load" => false,
-		_ => stopOnAttachment(index, field, loadOp),
+		_ => stopOnAttachment(index, field, name),
 	};
 }
 
-function checkStoreOp(storeOp: string, index: int32, field: string): void {
-	if (storeOp != "store" && storeOp != "discard") { stopOnAttachment(index, field, storeOp); }
+function checkStoreOp(storeOp: string | null, index: int32, field: string): void {
+	const name = storeOp ?? "";
+	if (name != "store" && name != "discard") { stopOnAttachment(index, field, name); }
 }
 
 function subresourceOf(view: ViewRecord, texture: TextureRecord): uint32 {
@@ -1072,7 +1074,7 @@ export function insertDebugMarker(label: string): void {
 }
 
 export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
-	const kind: string = descriptor.type;
+	const kind: string = descriptor.type ?? "";
 	const made = makeQuerySet(kind == "timestamp", descriptor.count);
 	if (!made.ok) { stopOnFrame("createQuerySet", made.error); }
 	put(querySets, id, made.value);
