@@ -3,14 +3,16 @@ import { stop } from "./stop";
 import {
 	DOOR_BUFFER_INDEX,
 	DOOR_BUFFER_VERTEX,
-	doorApplyBindings,
+	DoorStorageBinding,
 	doorApplyPipeline,
+	doorApplyStorageBindings,
 	doorApplyUniformsOf,
 	doorAppendBufferOf,
 	doorUniformStamp,
 	doorBufferAlive,
 	doorDestroyBuffer,
 	doorDraw,
+	doorDrawIndirect,
 	doorMakeBuffer,
 	doorMakeBufferOf,
 	doorUpdateBufferOf,
@@ -22,6 +24,8 @@ import {
 	DOOR_BINDING_VERTEX_BUFFER,
 	DOOR_BINDING_VIEW,
 } from "./doorWords.ms";
+
+export { DoorStorageBinding } from "./doorGpu.ms";
 
 export const BINDING_VERTEX_BUFFER: int32 = DOOR_BINDING_VERTEX_BUFFER;
 export const BINDING_INDEX_BUFFER: int32 = DOOR_BINDING_INDEX_BUFFER;
@@ -65,12 +69,20 @@ export function destroyBuffer(buffer: uint32): void { doorDestroyBuffer(buffer);
 export function applyPipeline(pipeline: uint32): void { doorApplyPipeline(pipeline); }
 
 export function applyBindings(bindings: Readonly<Span<uint32>>): void {
+	applyStorageBindings(bindings, []);
+}
+
+// `storage[slot]` fills each storage slot the applied program reads (doorStorageSlotMask).
+export function applyStorageBindings(
+	bindings: Readonly<Span<uint32>>,
+	storage: Readonly<Span<DoorStorageBinding>>,
+): void {
 	if (bindings.length < BINDING_LENGTH) {
 		stop("applyBindings descriptor holds " + String(bindings.length) +
 			" of " + String(BINDING_LENGTH) + " words");
 	}
 	const offsets: int32[2] = [0, bindings[BINDING_VERTEX_OFFSET] as int32];
-	doorApplyBindings(bindings[0..DOOR_BINDING_LENGTH], offsets);
+	doorApplyStorageBindings(bindings[0..DOOR_BINDING_LENGTH], offsets, storage);
 }
 
 export function applyUniforms(slot: int32, data: Readonly<Span<float32>>): void {
@@ -81,4 +93,8 @@ export function uniformStamp(slot: int32): int32 { return doorUniformStamp(slot)
 
 export function draw(base: int32, count: int32, instances: int32): void {
 	doorDraw(base, count, instances);
+}
+
+export function drawIndirect(buffer: uint32, offset: int64, drawCount: int32): void {
+	doorDrawIndirect(buffer, offset, drawCount);
 }

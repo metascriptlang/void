@@ -24,6 +24,7 @@ import {
 	blendFactorIndex,
 	bufferCopyRefusal,
 	dispatchIndirectRefusal,
+	stageStorageRefusal,
 	topologyIndex,
 } from "../webgpu/types";
 import {
@@ -658,6 +659,32 @@ test "an integer texture pairs only with a non-filtering sampler" {
 	assert shaderModuleRefusal(module, limits) == "sampler binding 1 is 'filtering' but pairs with the uint texture binding 0; an integer texture needs a non-filtering sampler";
 	module.bindings[0].sampleType = "float";
 	assert shaderModuleRefusal(module, limits) == "";
+}
+
+test "the vertex stage reads storage and never writes it, and the fragment stage may write it" {
+	const limits = computeLimits();
+	let module: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };
+	module.bindings[0] = { binding: 3, kind: "storage-buffer", bufferType: "read-only-storage", group: 1, visibility: GPUShaderStage.VERTEX as int32 };
+	assert shaderModuleRefusal(module, limits) == "";
+	module.bindings[0].visibility = RENDER_STAGES;
+	assert shaderModuleRefusal(module, limits) == "";
+	module.bindings[0].bufferType = "storage";
+	assert shaderModuleRefusal(module, limits) == "shader binding 3 is writable storage in the vertex stage, which WebGPU does not allow";
+	module.bindings[0].visibility = GPUShaderStage.FRAGMENT as int32;
+	assert shaderModuleRefusal(module, limits) == "";
+	let image: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };
+	image.bindings[0] = { binding: 1, kind: "storage-texture", storageAccess: "write-only", group: 1, visibility: GPUShaderStage.VERTEX as int32 };
+	assert shaderModuleRefusal(image, limits) == "shader binding 1 is writable storage in the vertex stage, which WebGPU does not allow";
+	image.bindings[0].storageAccess = "read-only";
+	assert shaderModuleRefusal(image, limits) == "";
+}
+
+test "a render-stage storage buffer on a GL context with no storage blocks in that stage is refused naming the stage and the context" {
+	assert stageStorageRefusal(0, "vertex", 16, "GL context version 460") == "";
+	assert stageStorageRefusal(0, "vertex", 0, "WebGL2") ==
+		"shader binding 0 is a storage buffer read in the vertex stage, and WebGL2 has no shader storage blocks there";
+	assert stageStorageRefusal(2, "fragment", 0, "GLES context version 300") ==
+		"shader binding 2 is a storage buffer read in the fragment stage, and GLES context version 300 has no shader storage blocks there";
 }
 
 test "a module with two faults is refused for its bindings' own rules first, then its sampler pairs, then its workgroup" {

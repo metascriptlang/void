@@ -14,6 +14,7 @@ import {
 	doorUniformBlockBytes,
 	doorTextureSlotMask,
 	doorSamplerSlotMask,
+	doorStorageSlotMask,
 	doorLayoutFloats,
 	doorLayoutPerInstance,
 	doorProgramLayout,
@@ -97,6 +98,11 @@ export function textureSlotMask(program: int32): uint32 {
 
 export function samplerSlotMask(program: int32): uint32 {
 	return doorSamplerSlotMask(program);
+}
+
+// Bit n set when `program` reads a storage buffer at view slot n.
+export function storageSlotMask(program: int32): uint32 {
+	return doorStorageSlotMask(program);
 }
 
 // The layout a registered program reads; the registration's own answer.
