@@ -387,6 +387,7 @@ export function doorFrameStat(which: int32): int64 {
 
 export struct DoorBindStats {
 	groupsMade: int64;
+	bindCalls: int64;
 }
 
 let bindStats: DoorBindStats = { groupsMade: 0 };
@@ -1610,6 +1611,7 @@ export function doorApplyBindings(
 		const offset = i < vertexOffsets.length ? vertexOffsets[i] : 0;
 		if (buffer != 0 && (!applied.valid || buffer != applied.words[i] || offset != applied.offsets[i])) {
 			pass.setVertexBuffer(i as int32, { id: buffer }, offset as int64);
+			bindStats.bindCalls++;
 		}
 		applied.words[i] = buffer;
 		applied.offsets[i] = offset;
@@ -1617,11 +1619,19 @@ export function doorApplyBindings(
 	const indexBuffer = bindings[DOOR_BINDING_INDEX_BUFFER];
 	if (pipelines[current].indexed && (!applied.valid || indexBuffer != applied.words[DOOR_BINDING_INDEX_BUFFER])) {
 		pass.setIndexBuffer({ id: indexBuffer }, pipelines[current].indexFormat, 0);
+		bindStats.bindCalls++;
 	}
 	applied.words[DOOR_BINDING_INDEX_BUFFER] = indexBuffer;
 	let sameResources = applied.valid;
-	for (let i = DOOR_BINDING_VIEW; sameResources && i < DOOR_BINDING_LENGTH; i++) {
-		if (bindings[i] != applied.words[i]) { sameResources = false; }
+	for (let i = 0; sameResources && i < VIEW_SLOTS; i++) {
+		const at = DOOR_BINDING_VIEW + i;
+		const read = (pipelines[current].textureMask & ((1 as uint32) << (i as uint32))) != 0;
+		if (read && bindings[at] != applied.words[at]) { sameResources = false; }
+	}
+	for (let i = 0; sameResources && i < SAMPLER_SLOTS; i++) {
+		const at = DOOR_BINDING_SAMPLER + i;
+		const read = (pipelines[current].samplerMask & ((1 as uint32) << (i as uint32))) != 0;
+		if (read && bindings[at] != applied.words[at]) { sameResources = false; }
 	}
 	if (pipelines[current].textureMask == 0 && pipelines[current].samplerMask == 0) {
 		applied.valid = true;
@@ -1640,6 +1650,7 @@ export function doorApplyBindings(
 		}
 	}
 	pass.setBindGroup(GPU_RESOURCE_GROUP, resourceGroup(key), []);
+	bindStats.bindCalls++;
 	for (let i = DOOR_BINDING_VIEW; i < DOOR_BINDING_LENGTH; i++) { applied.words[i] = bindings[i]; }
 	applied.valid = true;
 }
