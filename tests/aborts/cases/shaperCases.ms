@@ -3,6 +3,7 @@
 // expect shaperGlyphOutside: void2d shaper: glyph 7 is outside the 1 of the last pass
 // expect shaperRtl: void2d: right-to-left text at UTF-16 index 0 needs -d:voidBidi
 // expect shaperTagNonAscii: a feature tag is four printable ASCII characters
+import "../../../src/host/gpu";
 import { argv } from "std/process";
 import { loadFace } from "../../../src/void2d/face";
 import { ShapeDirection, shaperBegin, shaperCodepoint, shaperEnd, shaperFeature, shaperGlyph } from "../../../src/void2d/shaper";
