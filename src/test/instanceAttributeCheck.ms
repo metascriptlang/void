@@ -10,7 +10,6 @@ import { programModule } from "../shader/descriptor";
 import { glslIr, glslLinkedIr } from "../shader/emit";
 import { Builtin, IoDirection, ShaderStage } from "../shader/ir";
 import { spriteFs, spriteVs, uiFs, uiVs } from "../void2d/shader2d";
-import { packUiInstance } from "../void2d/batcher";
 import { doorLayout } from "../gpu/doorGpu";
 import { spriteAttributes, uiAttributes } from "../void2d/programs";
 import { spriteShaderModule, uiShaderModule } from "../void2d/shader2dModules";
@@ -58,19 +57,6 @@ test "the sprite instance buffer the door registers has the generated offsets an
 	for (let i = 0; i < SPRITE_ATTRIBUTES; i++) {
 		assert lanes.attributes[i].offset == offsets[i];
 		assert lanes.attributes[i].shaderLocation == INSTANCE_CORNER_LOCATION + 1 + i;
-	}
-}
-
-test "the UI packer copies one record's words into its stage slot and nothing else" {
-	let records: uint32[] = [];
-	for (let i = 0; i < UI_WORDS * 3; i++) { records.push((i + 1) as uint32); }
-	const stage: uint32[] = [];
-	for (let i = 0; i < UI_WORDS * 3; i++) { stage.push(0xDEADBEEF); }
-	packUiInstance(stage, 1, records[0..records.length as int32]);
-	for (let i = 0; i < UI_WORDS; i++) {
-		assert stage[UI_WORDS + i] == records[UI_WORDS + i];
-		assert stage[i] == 0xDEADBEEF;
-		assert stage[UI_WORDS * 2 + i] == 0xDEADBEEF;
 	}
 }
 

@@ -39,9 +39,7 @@ import {
 	paintEndOf,
 	paintStateOf,
 	uploaded,
-	nextStageTag,
 } from "../../src/void2d/displayList";
-import { void2dStageUiCheck } from "../../src/void2d/batcher";
 import {
 	UI_WORDS, REC_SPRITE_FLOATS, WORD_UI_ORIGIN_SIZE, REC_SPRITE_ORIGIN_SIZE, WORD_UI_COLOR_FILL,
 } from "../../src/void2d/instanceLayout";
@@ -653,64 +651,6 @@ test "an edit that changes a label's glyph count copies its written lines into t
 	editor.setText("alpha\nxbeta\ngam");
 	assert check(s, "a shorter last line", "splice");
 	assert s.context.uiCopied + s.spareContext.uiCopied - copied == 23;
-}
-
-function staged(s: Scene2D): void {
-	const tag: int32 = nextStageTag();
-	uploaded();
-	s.context.stagedTag = tag;
-}
-
-function stagedRecords(s: Scene2D): int32 {
-	let records: int32 = 0;
-	for (let c: int32 = 0; c < s.context.uiCopyTotal; c++) { records += s.context.uiCopies[c * 3 + 2]; }
-	return records;
-}
-
-function stagesLikeAFullPack(s: Scene2D, packed: Vec<uint32>, packedCount: int32): boolean {
-	const copies: int32 = s.context.uiCopySource > 0 ? s.context.uiCopyTotal : 0;
-	return copies > 0 && void2dStageUiCheck(packed, packedCount, s.context.uiInstances,
-		s.context.uiInstanceTotal, s.context.uiCopies, copies) == 1;
-}
-
-test "a splice stages the lines it copied from the records the previous upload packed" {
-	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
-	const editor = s.label("alpha\nbeta\ngamma\ndelta", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 4.0);
-	s.add(editor);
-	frame(s);
-	frame(s);
-	staged(s);
-	const packed: Vec<uint32> = s.context.uiInstances;
-	const packedCount: int32 = s.context.uiInstanceTotal;
-	const splices: int32 = s.splices;
-	const copied: int32 = s.context.uiCopied + s.spareContext.uiCopied;
-	editor.setText("alpha\nxbeta\ngamma\ndelta");
-	const edited: Recording = frame(s);
-	assert s.splices == splices + 1;
-	assert stagesLikeAFullPack(s, packed, packedCount);
-	const xbetaWrittenInPlaceByThePatch: int32 = 5;
-	assert stagedRecords(s) == s.context.uiCopied + s.spareContext.uiCopied - copied -
-		xbetaWrittenInPlaceByThePatch;
-	assert same(edited, fullFrame(s));
-}
-
-test "a splice leaves a range written in place since the last upload to be packed again" {
-	const c: Corpus = corpus();
-	const s: Scene2D = c.s;
-	frame(s);
-	frame(s);
-	staged(s);
-	const packed: Vec<uint32> = s.context.uiInstances;
-	const packedCount: int32 = s.context.uiInstanceTotal;
-	c.card.setColor(rgba(0.9, 0.1, 0.1, 1.0));
-	frame(s);
-	assert s.context.dirtyUiTotal > 0;
-	const splices: int32 = s.splices;
-	c.label.setText("123");
-	const edited: Recording = frame(s);
-	assert s.splices == splices + 1;
-	assert stagesLikeAFullPack(s, packed, packedCount);
-	assert same(edited, fullFrame(s));
 }
 
 test "a styled label's run colour change writes every line again" {

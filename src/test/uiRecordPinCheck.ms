@@ -4,7 +4,6 @@ import { UI_WORDS } from "../void2d/instanceLayout";
 import {
 	resetContext, currentContext, pushUiInstance, pushGlyphInstance, uiInstanceCount,
 } from "../void2d/displayList";
-import { packUiInstance } from "../void2d/batcher";
 import { Scene2D } from "../void2d/node";
 import { paint } from "../void2d/scene";
 import { frameEnd } from "../void2d/draw";
@@ -12,11 +11,8 @@ import { frameEnd } from "../void2d/draw";
 function recordedWords(): uint32[] {
 	const count: int32 = uiInstanceCount();
 	const out: uint32[] = [];
-	for (let w: int32 = 0; w < count * UI_WORDS; w++) { out.push(0); }
 	const records: Readonly<Span<uint32>> = currentContext().uiInstances;
-	for (let i: int32 = 0; i < count; i++) {
-		packUiInstance(out, i, records[0..count * UI_WORDS]);
-	}
+	for (let w: int32 = 0; w < count * UI_WORDS; w++) { out.push(records[w]); }
 	return out;
 }
 
