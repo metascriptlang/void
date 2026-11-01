@@ -22,6 +22,8 @@ import {
 	GPUVertexBufferLayout,
 	compareIndex,
 	blendFactorIndex,
+	bufferCopyRefusal,
+	dispatchIndirectRefusal,
 	topologyIndex,
 } from "../webgpu/types";
 import {
@@ -362,6 +364,29 @@ test "a copy reads a COPY_SRC buffer and writes a COPY_DST one, neither of them 
 	assert copyBufferRefusal("copyTextureToBuffer", written(VERTEX, -1, 0), true) == "copyTextureToBuffer source: GPUBuffer 7 was created without COPY_SRC";
 	buffer.mapMode = GPUMapMode.WRITE as int32;
 	assert copyBufferRefusal("copyBufferToBuffer", buffer, true) == "copyBufferToBuffer source: GPUBuffer 7 is mapped";
+}
+
+test "a buffer copy takes a 4-byte-aligned size and offsets inside both buffers and never overlaps itself" {
+	assert bufferCopyRefusal(1, 64, 8, 2, 64, 16, 8) == "";
+	assert bufferCopyRefusal(1, 64, 8, 2, 64, 16, 0) == "";
+	assert bufferCopyRefusal(1, 64, 2, 2, 64, 16, 8) == "copyBufferToBuffer sourceOffset 2 is not a non-negative multiple of 4";
+	assert bufferCopyRefusal(1, 64, 8, 2, 64, 6, 8) == "copyBufferToBuffer destinationOffset 6 is not a non-negative multiple of 4";
+	assert bufferCopyRefusal(1, 64, -4, 2, 64, 16, 8) == "copyBufferToBuffer sourceOffset -4 is not a non-negative multiple of 4";
+	assert bufferCopyRefusal(1, 64, 8, 2, 64, 16, 6) == "copyBufferToBuffer size 6 is not a non-negative multiple of 4";
+	assert bufferCopyRefusal(1, 64, 60, 2, 64, 0, 8) == "copyBufferToBuffer of 8 bytes at sourceOffset 60 overruns GPUBuffer 1 of 64";
+	assert bufferCopyRefusal(1, 64, 0, 2, 32, 28, 8) == "copyBufferToBuffer of 8 bytes at destinationOffset 28 overruns GPUBuffer 2 of 32";
+	assert bufferCopyRefusal(1, 64, 0, 1, 64, 4, 8) == "copyBufferToBuffer ranges overlap inside GPUBuffer 1";
+	assert bufferCopyRefusal(1, 64, 0, 1, 64, 8, 8) == "";
+}
+
+test "an indirect dispatch reads three counts of an INDIRECT buffer at a 4-byte offset" {
+	const indirect = GPUBufferUsage.INDIRECT as int32;
+	assert dispatchIndirectRefusal(5, indirect, 24, 0) == "";
+	assert dispatchIndirectRefusal(5, indirect, 24, 12) == "";
+	assert dispatchIndirectRefusal(5, STORAGE, 24, 0) == "dispatchWorkgroupsIndirect: GPUBuffer 5 was created without INDIRECT";
+	assert dispatchIndirectRefusal(5, indirect, 24, 2) == "dispatchWorkgroupsIndirect offset 2 is not a multiple of 4 with 12 bytes inside GPUBuffer 5 of 24";
+	assert dispatchIndirectRefusal(5, indirect, 24, 16) == "dispatchWorkgroupsIndirect offset 16 is not a multiple of 4 with 12 bytes inside GPUBuffer 5 of 24";
+	assert dispatchIndirectRefusal(5, indirect, 24, -4) == "dispatchWorkgroupsIndirect offset -4 is not a multiple of 4 with 12 bytes inside GPUBuffer 5 of 24";
 }
 
 test "a copy reads a COPY_SRC texture and writes a COPY_DST one, single-sampled unless it is the swapchain's" {
