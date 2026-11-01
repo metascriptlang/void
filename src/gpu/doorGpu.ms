@@ -1314,6 +1314,19 @@ export function doorUpdateBufferRangeOf<T>(id: uint32, byteOffset: int64, data: 
 	return 1;
 }
 
+export function doorCopyBuffer(
+	source: uint32,
+	sourceOffset: int64,
+	destination: uint32,
+	destinationOffset: int64,
+	size: int64,
+): void {
+	stopOnOpenPass("copyBuffer");
+	frameEncoder().copyBufferToBuffer(
+		{ id: source }, sourceOffset, { id: destination }, destinationOffset, size,
+	);
+}
+
 function appendCursorOf(id: uint32, frame: uint32): int32 {
 	const slot = slotOf(id);
 	while (appendCursors.length <= slot) {
