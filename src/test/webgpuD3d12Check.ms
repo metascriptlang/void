@@ -151,6 +151,26 @@ test "writeBuffer copied into a MAP_READ buffer maps back the same bytes" {
 	device.destroy();
 }
 
+test "a transient vertex buffer written each frame copies out that frame's bytes as its per-frame copies wrap" {
+	const device = openDevice();
+	const vertices = device.createBuffer({
+		label: "transient vertices",
+		size: 16,
+		usage: (GPUBufferUsage.VERTEX as int32) | (GPUBufferUsage.COPY_SRC as int32) | (GPUBufferUsage.COPY_DST as int32),
+		transient: true,
+	});
+	const destination = readbackBuffer(device, 16);
+	for (let frame: int32 = 0; frame < 5; frame++) {
+		const bytes = counting(16, frame + 3);
+		device.queue.writeBuffer(vertices, 0, bytes);
+		copyAndSubmit(device, vertices, 0, destination, 0, 16);
+		const read = readBack(destination);
+		for (let i = 0; i < 16; i++) { assert read[i] == bytes[i]; }
+	}
+	assert drainDebugMessages() == 0;
+	device.destroy();
+}
+
 test "a later frame's first writeBuffer of a range keeps the bytes around it" {
 	const device = openDevice();
 	const source = copyBuffer(device, 16);
