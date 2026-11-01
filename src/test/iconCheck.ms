@@ -20,6 +20,7 @@ import {
 } from "../void2d/icon";
 import { SvgMaskError } from "../void2d/svgMask";
 import { void2dGlyphPageTexel } from "../void2d/glyph";
+import { loadFace, glyphIndex } from "../void2d/face";
 
 const SQUARE: string = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" ` +
 	`viewBox="0 0 24 24"><rect x="0" y="0" width="24" height="24" fill="#000"/></svg>`;
@@ -109,6 +110,23 @@ test "two sizes of one icon and two icons at one size are separate tiles" {
 	assert atlas.rasterizations == 3;
 }
 
+// A label glyph and an icon on one page bind one view, so they share a draw.
+test "an icon's mask lands on the coverage page its label's glyphs use" {
+	const face: int32 = try loadFace("assets/font.ttf") catch -1;
+	assert face >= 0;
+	const atlas = GlyphAtlas.create(256, 4);
+	defer atlas.dispose();
+	const glyph = atlas.acquire({
+		kind: PageKind.Coverage, face: face, glyph: glyphIndex(face, "g".code), sizePx: 13.0,
+		variant: 0, outline: 0,
+	});
+	const icon = acquireIconMask(atlas, registered(DOT), 32, 32);
+	assert glyph.ok && icon.ok;
+	if (!glyph.ok || !icon.ok) { return; }
+	assert atlas.tile(icon.value).page == atlas.tile(glyph.value).page;
+	assert atlas.pageCount() == 1;
+}
+
 test "a mask tile holds the rasterized alpha and its gutter stays zero" {
 	const atlas = GlyphAtlas.create(128, 4);
 	defer atlas.dispose();
@@ -118,7 +136,7 @@ test "a mask tile holds the rasterized alpha and its gutter stays zero" {
 	if (!r.ok) { return; }
 	const t = atlas.tile(r.value);
 	assert t.width == 40 && t.height == 40 && t.left == 0 && t.top == 0;
-	assert atlas.pageKind(t.page) == PageKind.Mask;
+	assert atlas.pageKind(t.page) == PageKind.Coverage;
 	assert texelAt(atlas, t, 0, 0) == 255;
 	assert texelAt(atlas, t, 39, 39) == 255;
 	assert texelAt(atlas, t, 20, 20) == 255;
@@ -127,7 +145,7 @@ test "a mask tile holds the rasterized alpha and its gutter stays zero" {
 	assert texelAt(atlas, t, 40, 40) == 0;
 }
 
-test "a mask page is R8 and never shares a page with coverage" {
+test "a mask tile sits on an R8 coverage page that text then reuses" {
 	const atlas = GlyphAtlas.create(64, 4);
 	defer atlas.dispose();
 	const id: IconId = registered(SQUARE);
@@ -135,8 +153,8 @@ test "a mask page is R8 and never shares a page with coverage" {
 	assert atlas.pageCount() == 1;
 	assert atlas.residentBytes() == 64 * 64;
 	assert atlas.ensurePage() != NO_GLYPH_PAGE_HANDLE;
-	assert atlas.pageCount() == 2;
-	assert atlas.residentBytes() == 64 * 64 * 2;
+	assert atlas.pageCount() == 1;
+	assert atlas.residentBytes() == 64 * 64;
 }
 
 test "released masks are reclaimed whole when the page is full and nothing holds them" {
