@@ -5,6 +5,9 @@ const config: BuildConfig = {
 	fmt: {
 		useTabs: true,
 	},
+	deps: {
+		"pulse": "file:../pulse",
+	},
 	package: {
 		name: "@metascript/void",
 		version: "0.0.4",
