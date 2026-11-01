@@ -555,7 +555,7 @@ test "the kern feature set to 0 turns pair kerning off" {
 	assert layoutWith(kerned, "AV").glyphs[1].x < aWidth - 0.5;
 }
 
-test "a feature the shaper owns, or a family nobody registered, refuses the font" {
+test "a feature the shaper owns, or a stack where no family loads, refuses the font" {
 	const ligatures = font("Test Sans", 400, FontStyle.Normal);
 	ligatures.features.push({ tag: "liga", value: 1 });
 	const shaped = resolveFont(ligatures);
@@ -573,14 +573,31 @@ test "a feature the shaper owns, or a family nobody registered, refuses the font
 	const unknown = resolveFont(font("No Such Family", 400, FontStyle.Normal));
 	assert !unknown.ok;
 	if (!unknown.ok) { assert unknown.error == FontError.NoFamily; }
-	const badFallback = font("Test Sans", 400, FontStyle.Normal);
-	badFallback.fallbacks.push("No Such Family");
-	const fallbackRefused = resolveFont(badFallback);
-	assert !fallbackRefused.ok;
-	if (!fallbackRefused.ok) { assert fallbackRefused.error == FontError.NoFallbackFamily; }
+	const noneRegistered = font("No Such Family", 400, FontStyle.Normal);
+	noneRegistered.fallbacks.push("Also Missing");
+	const emptyStack = resolveFont(noneRegistered);
+	assert !emptyStack.ok;
+	if (!emptyStack.ok) { assert emptyStack.error == FontError.NoFamily; }
+	registerFace("tests/fonts/noSuchFont.ttf", "Broken", 400, FontStyle.Normal);
+	const brokenOnly = resolveFont(font("Broken", 400, FontStyle.Normal));
+	assert !brokenOnly.ok;
+	if (!brokenOnly.ok) { assert brokenOnly.error == FontError.NotLoaded; }
 	const missing = addFont("tests/fonts/noSuchFont.ttf");
 	assert !missing.ok;
 	if (!missing.ok) { assert missing.error == FontError.NotLoaded; }
+}
+
+test "a family that is not registered or does not load is skipped, and the first that loads is primary" {
+	registerFace("tests/fonts/noSuchFont.ttf", "Broken", 400, FontStyle.Normal);
+	const stack = font("Broken", 400, FontStyle.Normal);
+	stack.fallbacks.push("No Such Family");
+	stack.fallbacks.push("Test Sans");
+	stack.fallbacks.push("Also Missing");
+	stack.fallbacks.push("Test Hanzi");
+	const id = resolved(stack);
+	assert fontFace(id) == faceOfPath(LATIN);
+	assert faceForCodepoint(id, 0x4F60) == faceOfPath(CJK);
+	assert resolved(stack) == id;
 }
 
 test "fallback families resolve in the font's weight, synthesized when they lack it" {
