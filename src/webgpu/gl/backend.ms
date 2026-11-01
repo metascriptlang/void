@@ -53,6 +53,7 @@ import {
 	GPUShaderBinding,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
+	GPUShaderStage,
 	GPUStencilFaceState,
 	GPUTexelCopyBufferInfo,
 	GPUTexelCopyBufferLayout,
@@ -71,6 +72,7 @@ import {
 	featureBit,
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
+	stageStorageRefusal,
 	labelOf,
 } from "../types.ms";
 import {
@@ -441,6 +443,8 @@ const GL_MAX_FRAGMENT_UNIFORM_COMPONENTS = 0x8B49;
 const GL_MAX_COLOR_ATTACHMENTS = 0x8CDF;
 const GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS = 0x90DD;
 const GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS = 0x90DB;
+const GL_MAX_VERTEX_SHADER_STORAGE_BLOCKS = 0x90D6;
+const GL_MAX_FRAGMENT_SHADER_STORAGE_BLOCKS = 0x90DA;
 const GL_MAX_SHADER_STORAGE_BLOCK_SIZE = 0x90DE;
 const GL_MAX_IMAGE_UNITS = 0x8F38;
 const GL_MAX_COMPUTE_IMAGE_UNIFORMS = 0x91BD;
@@ -698,6 +702,8 @@ let debugSupported = false;
 let timerSupported = false;
 let exactSamples = false;
 let maxStorageBindings: int32 = 0;
+let vertexStorageBlocks: int32 = 0;
+let fragmentStorageBlocks: int32 = 0;
 let maxImageUnits: int32 = 0;
 let deviceFeatures: GPUSupportedFeatures = { bits: 0 };
 export struct BindStats {
@@ -1164,6 +1170,8 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 		maxStorageBindings = oglGetInteger(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS);
 		maxImageUnits = oglGetInteger(GL_MAX_IMAGE_UNITS);
 	}
+	vertexStorageBlocks = computeSupported ? oglGetInteger(GL_MAX_VERTEX_SHADER_STORAGE_BLOCKS) : 0;
+	fragmentStorageBlocks = computeSupported ? oglGetInteger(GL_MAX_FRAGMENT_SHADER_STORAGE_BLOCKS) : 0;
 	deviceFeatures = queryFeatures();
 	vertexArray = oglCreateVertexArray();
 	oglBindVertexArray(vertexArray);
@@ -1617,6 +1625,7 @@ export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescri
 		if (writable && !compute) {
 			stop(`shader binding ${binding} is writable storage in a render stage, which gl does not port: bind it read-only or write it from a compute pass`);
 		}
+		if (kind == BindingKind.StorageBuffer && !compute) { stopOnRenderStorage(descriptor.bindings[i]); }
 		if (kind == BindingKind.Uniform) {
 			if (compute) { stop(`uniform binding ${binding} in a compute stage is not ported to gl yet`); }
 			const size = descriptor.bindings[i].size;
@@ -3017,6 +3026,28 @@ export function endComputePass(): void {
 	}
 	if (computeBound.labeled) { endLabel(); }
 	computeBound = { dirty: false };
+}
+
+function contextName(): string {
+	when (webgl2) {
+		return "WebGL2";
+	} else when (android || (linux && voidGles3)) {
+		return `GLES context version ${contextVersion}`;
+	} else {
+		return `GL context version ${contextVersion}`;
+	}
+}
+
+@noinline function stopOnRenderStorage(binding: GPUShaderBinding): void {
+	const reads = binding.visibility;
+	let refusal = "";
+	if ((reads & (GPUShaderStage.VERTEX as int32)) != 0) {
+		refusal = stageStorageRefusal(binding.binding, "vertex", vertexStorageBlocks, contextName());
+	}
+	if (refusal == "" && (reads & (GPUShaderStage.FRAGMENT as int32)) != 0) {
+		refusal = stageStorageRefusal(binding.binding, "fragment", fragmentStorageBlocks, contextName());
+	}
+	if (refusal != "") { stop(refusal); }
 }
 
 @noinline function stopOnNoCompute(what: string): void {
