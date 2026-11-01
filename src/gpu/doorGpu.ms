@@ -6,6 +6,7 @@ import {
 	GPUBindGroup,
 	GPUAddressMode,
 	GPUBindGroupDescriptor,
+	GPUBindGroupLayout,
 	GPUBlendFactor,
 	GPUCanvasConfiguration,
 	GPUBlendOperation,
@@ -106,7 +107,9 @@ const VIEW_SLOTS: int32 = 15;
 export const DOOR_VIEW_SLOTS: int32 = VIEW_SLOTS;
 const PASS_VIEW_SLOTS: int32 = 5;
 const SAMPLER_SLOTS: int32 = 8;
+export const DOOR_SAMPLER_SLOTS: int32 = SAMPLER_SLOTS;
 const SAMPLER_BINDING_BASE: int32 = 32;
+export const DOOR_SAMPLER_BINDING_BASE: int32 = SAMPLER_BINDING_BASE;
 const UNIFORM_RING_BYTES: int64 = 4 * 1024 * 1024;
 const UNIFORM_ALIGNMENT: int64 = 256;
 const BIND_GROUP_CACHE: int32 = 1024;
@@ -218,6 +221,8 @@ struct ShaderRecord { module: GPUShaderModule; program: int32; }
 struct BindKey {
 	pipeline: uint32;
 	views: uint32[VIEW_SLOTS];
+	offsets: int64[VIEW_SLOTS];
+	sizes: int64[VIEW_SLOTS];
 	samplers: uint32[SAMPLER_SLOTS];
 }
 
@@ -800,21 +805,11 @@ function colorFormatAt(targets: TargetLayout, index: int32): PixelFormat {
 	if (pipeline.id == 0) { return 0; }
 	let uniformGroup: GPUBindGroup = { id: 0 };
 	if (reflected.uniformMask != 0) {
-		let entries = {
-			label: "makePipeline uniforms",
-			layout: pipeline.getBindGroupLayout(GPU_UNIFORM_GROUP),
-		} as GPUBindGroupDescriptor;
-		let n = 0;
-		for (let slot = 0; slot < DOOR_UNIFORM_SLOTS; slot++) {
-			if ((reflected.uniformMask & ((1 as uint32) << (slot as uint32))) == 0) { continue; }
-			entries.entries[n] = {
-				binding: slot,
-				buffer: uniformRing,
-				size: reflected.uniformBytes[slot] as int64,
-			};
-			n++;
-		}
-		uniformGroup = device.createBindGroup(entries);
+		uniformGroup = doorUniformGroup(
+			pipeline.getBindGroupLayout(GPU_UNIFORM_GROUP),
+			reflected.uniformMask,
+			reflected.uniformBytes,
+		);
 	}
 	pipelines.push({
 		pipeline,
@@ -1433,7 +1428,11 @@ export function doorUniformStamp(slot: int32): int32 {
 
 function sameKey(a: BindKey, b: BindKey): boolean {
 	if (a.pipeline != b.pipeline) { return false; }
-	for (let i = 0; i < VIEW_SLOTS; i++) { if (a.views[i] != b.views[i]) { return false; } }
+	for (let i = 0; i < VIEW_SLOTS; i++) {
+		if (a.views[i] != b.views[i] || a.offsets[i] != b.offsets[i] || a.sizes[i] != b.sizes[i]) {
+			return false;
+		}
+	}
 	for (let i = 0; i < SAMPLER_SLOTS; i++) {
 		if (a.samplers[i] != b.samplers[i]) { return false; }
 	}
@@ -1442,7 +1441,11 @@ function sameKey(a: BindKey, b: BindKey): boolean {
 
 function keyHash(key: BindKey): int32 {
 	let h: uint32 = key.pipeline * 2654435761;
-	for (let i = 0; i < VIEW_SLOTS; i++) { h = (h ^ key.views[i]) * 16777619; }
+	for (let i = 0; i < VIEW_SLOTS; i++) {
+		h = (h ^ key.views[i]) * 16777619;
+		h = (h ^ (key.offsets[i] as uint32)) * 16777619;
+		h = (h ^ (key.sizes[i] as uint32)) * 16777619;
+	}
 	for (let i = 0; i < SAMPLER_SLOTS; i++) { h = (h ^ key.samplers[i]) * 16777619; }
 	return (h & ((BIND_GROUP_CACHE - 1) as uint32)) as int32;
 }
@@ -1494,14 +1497,26 @@ function resourceGroup(key: BindKey): GPUBindGroup {
 	return group;
 }
 
-// The group-1 bind group of a compute pipeline whose storage slots are the bits of `slots`:
-// `buffers[slot]` fills slot `slot`, the same cache and key as a render pipeline's views.
 export function doorStorageGroup(
-	pipeline: GPUComputePipeline, slots: uint32, buffers: Readonly<Span<uint32>>,
+	pipeline: GPUComputePipeline,
+	buffers: uint32,
+	views: uint32,
+	samplerSlots: uint32,
+	resources: Readonly<Span<uint32>>,
+	offsets: Readonly<Span<int64>>,
+	sizes: Readonly<Span<int64>>,
+	samplers: Readonly<Span<uint32>>,
 ): GPUBindGroup {
 	let key: BindKey = { pipeline: pipeline.id };
 	for (let i = 0; i < VIEW_SLOTS; i++) {
-		if ((slots & ((1 as uint32) << (i as uint32))) != 0) { key.views[i] = buffers[i]; }
+		const bit = (1 as uint32) << (i as uint32);
+		if (((buffers | views) & bit) != 0) { key.views[i] = resources[i]; }
+		if ((buffers & bit) == 0) { continue; }
+		if (i < offsets.length) { key.offsets[i] = offsets[i]; }
+		if (i < sizes.length) { key.sizes[i] = sizes[i]; }
+	}
+	for (let i = 0; i < SAMPLER_SLOTS; i++) {
+		if ((samplerSlots & ((1 as uint32) << (i as uint32))) != 0) { key.samplers[i] = samplers[i]; }
 	}
 	const held = cachedGroup(key);
 	if (held.id != 0) { return held; }
@@ -1511,8 +1526,26 @@ export function doorStorageGroup(
 	} as GPUBindGroupDescriptor;
 	let n = 0;
 	for (let i = 0; i < VIEW_SLOTS; i++) {
-		if ((slots & ((1 as uint32) << (i as uint32))) == 0) { continue; }
-		descriptor.entries[n] = { binding: i, buffer: { id: key.views[i] } };
+		const bit = (1 as uint32) << (i as uint32);
+		if ((buffers & bit) != 0) {
+			descriptor.entries[n] = {
+				binding: i,
+				buffer: { id: key.views[i] },
+				offset: key.offsets[i],
+				size: key.sizes[i],
+			};
+			n++;
+		} else if ((views & bit) != 0) {
+			descriptor.entries[n] = { binding: i, textureView: { id: key.views[i] } };
+			n++;
+		}
+	}
+	for (let i = 0; i < SAMPLER_SLOTS; i++) {
+		if ((samplerSlots & ((1 as uint32) << (i as uint32))) == 0) { continue; }
+		descriptor.entries[n] = {
+			binding: SAMPLER_BINDING_BASE + i,
+			sampler: { id: key.samplers[i] },
+		};
 		n++;
 	}
 	const group = device.createBindGroup(descriptor);
@@ -1554,21 +1587,39 @@ export function doorApplyBindings(
 	pass.setBindGroup(GPU_RESOURCE_GROUP, resourceGroup(key), []);
 }
 
-export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): void {
-	stopInComputePass("applyUniforms");
-	if (current < 0) { stop("applyUniforms before applyPipeline"); }
-	if (slot < 0 || slot >= DOOR_UNIFORM_SLOTS) { stop("applyUniforms to slot " + String(slot)); }
-	const record = pipelines[current];
+export function doorStageUniformsOf<T>(data: Readonly<Span<T>>): uint32 {
 	const bytes = (data.length as int64) * (sizeof(T) as int64);
 	if (uniformCursor + bytes > UNIFORM_RING_BYTES) {
 		stop("uniform ring of 4 MiB is full this frame");
 	}
 	device.queue.writeBuffer(uniformRing, uniformCursor, data);
 	frameStats[DOOR_STAT_UNIFORM_APPLIES]++;
+	const offset = uniformCursor as uint32;
+	uniformCursor = (uniformCursor + bytes + (UNIFORM_ALIGNMENT - 1)) & ~(UNIFORM_ALIGNMENT - 1);
+	return offset;
+}
+
+export function doorUniformGroup(
+	layout: GPUBindGroupLayout, mask: uint32, blockBytes: Readonly<Span<int32>>,
+): GPUBindGroup {
+	let entries = { label: "uniforms", layout } as GPUBindGroupDescriptor;
+	let n = 0;
+	for (let slot = 0; slot < DOOR_UNIFORM_SLOTS; slot++) {
+		if ((mask & ((1 as uint32) << (slot as uint32))) == 0) { continue; }
+		entries.entries[n] = { binding: slot, buffer: uniformRing, size: blockBytes[slot] as int64 };
+		n++;
+	}
+	return device.createBindGroup(entries);
+}
+
+export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): void {
+	stopInComputePass("applyUniforms");
+	if (current < 0) { stop("applyUniforms before applyPipeline"); }
+	if (slot < 0 || slot >= DOOR_UNIFORM_SLOTS) { stop("applyUniforms to slot " + String(slot)); }
+	const record = pipelines[current];
+	uniformOffsets[slot] = doorStageUniformsOf(data);
 	uniformStampCounter++;
 	uniformStamps[slot] = uniformStampCounter;
-	uniformOffsets[slot] = uniformCursor as uint32;
-	uniformCursor = (uniformCursor + bytes + (UNIFORM_ALIGNMENT - 1)) & ~(UNIFORM_ALIGNMENT - 1);
 	let offsets: uint32[DOOR_UNIFORM_SLOTS] = [0, 0, 0, 0, 0, 0, 0, 0];
 	let n = 0;
 	for (let s = 0; s < DOOR_UNIFORM_SLOTS; s++) {
