@@ -1612,7 +1612,10 @@ export function uvDistanceFade(
 ): LitFaded {
 	const eye = b.frameParams.cameraPosition.xyz;
 	const fade = distanceFade(length(faded.worldPosition - eye), uvDistanceFadeOf(b, key));
-	return { color: vec4f(faded.color.rgb, faded.color.a * fade), worldPosition: faded.worldPosition };
+	return {
+		color: vec4f(faded.color.rgb, faded.color.a * fade),
+		worldPosition: faded.worldPosition,
+	};
 }
 
 export function pbrOf(b: LitBindings, key: LitKey): Vec4f {
