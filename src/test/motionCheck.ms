@@ -1,4 +1,4 @@
-import { NodeRef, Scene2D, group, local, paint, setScaleX } from "../void2d/node";
+import { NodeRef, Scene2D, group, local, paint, remove, setScaleX } from "../void2d/node";
 import { close, create } from "../void2d/scene";
 import { rgba } from "../void2d/types";
 import { DrawContext, withUniformCapacity } from "../void3d/draw";
@@ -9,6 +9,7 @@ import {
 	addGroup,
 	create as createScene3D,
 	identity,
+	remove as removeObject,
 	rootId,
 	setLocal,
 } from "../void3d/scene";
@@ -252,4 +253,47 @@ test "a rotation set outside the bindings is read back before the next axis writ
 	const want = eulerQuat(0.0, 0.75, 1.0);
 	const q = scene.nodes[id.index].local.rotation;
 	assert near(q.x, want.x) && near(q.y, want.y) && near(q.z, want.z) && near(q.w, want.w);
+}
+
+test "a node or object removed while its player runs is skipped, and the player still finishes" {
+	const scene = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const node = box(scene);
+	const kept = box(scene);
+	const world = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const id = objectAt(world);
+	const clock = new VoidClock();
+	const bindings = new VoidBindings();
+	bindings.node("box", node, ["x"]);
+	bindings.node("kept", kept, ["x"]);
+	bindings.object("cube", world, id, ["x", "rotationY"]);
+	const player = new MotionPlayer(
+		documentOf([ramp("box", "x", 0, 100), ramp("kept", "x", 0, 100), ramp("cube", "x", 0, 4), ramp("cube", "rotationY", 0, 1)]),
+		bindings.bindings,
+		motionOptions(clock.clock),
+	);
+	clock.tick(0.125);
+	node.remove();
+	removeObject(world, id);
+	clock.tick(0.125);
+	assert near(kept.local().x, 100) && player.progress === 1 && clock.pending() === 0;
+	player.dispose();
+	scene.close();
+}
+
+test "revert of a rotation writes back the exact quaternion the object held" {
+	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const start: Transform3D = { ...Transform3D.identity(), rotation: eulerQuat(0.3, 2.0, -0.7) };
+	const id = addGroup(scene, scene.rootId(), start);
+	const clock = new VoidClock();
+	const bindings = new VoidBindings();
+	bindings.object("cube", scene, id, ["rotationX", "rotationZ"]);
+	const player = new MotionPlayer(
+		documentOf([ramp("cube", "rotationX", 0, 1), ramp("cube", "rotationZ", 0, 1)]),
+		bindings.bindings,
+		motionOptions(clock.clock),
+	);
+	clock.tick(0.125);
+	player.revert();
+	const q = scene.nodes[id.index].local.rotation;
+	assert q.x === start.rotation.x && q.y === start.rotation.y && q.z === start.rotation.z && q.w === start.rotation.w;
 }
