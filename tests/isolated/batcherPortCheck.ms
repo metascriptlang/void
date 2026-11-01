@@ -15,10 +15,12 @@ import { runPin, PinRun } from "./batcherPortScript";
 // drew into the large target and was not read. The stats of frames 0-5, 18 and 19 were recorded again
 // after sprite and UI runs began to skip a params block equal to the bound one: each of those
 // frames makes two uniform applies (512 ring bytes) fewer than batcher.c did, and draws the same pixels.
+// They were re-recorded again when the UI stride grew from 108 to 124 bytes; only upload and buffer
+// bytes moved, 16 per UI instance.
 const STATS_PINS: uint32[] = [
-	3708416059, 1134072702, 3254103638, 811191696, 735628205, 4149706689, 3196029135,
-	3196029135, 73455003, 2218285850, 4141310964, 708066378, 1263971339, 708066378,
-	1350250673, 3961606470, 603858565, 3604346767, 622906644, 2574877897, 3196029135,
+	2879984779, 1134072702, 508430390, 373187124, 2032707949, 3877287625, 3196029135,
+	3196029135, 166738155, 2218285850, 4014481472, 708066378, 230865875, 708066378,
+	4079223261, 2590490994, 431512101, 3604346767, 1659175716, 2574877897, 3196029135,
 ];
 const PIXEL_PINS: uint32[] = [
 	914777899, 914777899, 798363115, 1578569633, 1963176038, 798363115, 1077462645, 414271032,
