@@ -260,6 +260,9 @@ let generation: int32 = 1;
 let everSetUp = false;
 let uniformRing: GPUBuffer = { id: 0 };
 let uniformCursor: int64 = 0;
+let uniformStaging: Vec<float32> = [];
+let uniformWritten: int64 = 0;
+let uniformsDirty = false;
 let uniformOffsets: uint32[DOOR_UNIFORM_SLOTS] = [0, 0, 0, 0, 0, 0, 0, 0];
 // Per slot, which apply last wrote it (counted from 1) and 0 when none has since the pipeline last
 // changed: a block applied once stays bound for every draw of that pipeline.
@@ -272,6 +275,7 @@ function clearUniformSlots(): void {
 		uniformOffsets[s] = 0;
 		uniformStamps[s] = 0;
 	}
+	uniformsDirty = false;
 }
 let encoder: GPUCommandEncoder = { id: 0 };
 let pass: GPURenderPassEncoder = { id: 0 };
@@ -335,6 +339,9 @@ export function doorSetup(
 		transient: true,
 	});
 	uniformCursor = 0;
+	uniformWritten = 0;
+	uniformsDirty = false;
+	uniformStaging = new Array((UNIFORM_RING_BYTES / 4) as int32);
 	uniformStamps = [0, 0, 0, 0, 0, 0, 0, 0];
 	encoder = { id: 0 };
 	pass = { id: 0 };
@@ -388,6 +395,7 @@ export function doorFrameStat(which: int32): int64 {
 export struct DoorBindStats {
 	groupsMade: int64;
 	bindCalls: int64;
+	uniformWrites: int64;
 }
 
 let bindStats: DoorBindStats = { groupsMade: 0 };
@@ -1655,20 +1663,37 @@ export function doorApplyBindings(
 	applied.valid = true;
 }
 
-export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): void {
+export function doorApplyUniformsOf(slot: int32, data: Readonly<Span<float32>>): void {
 	stopInComputePass("applyUniforms");
 	if (current < 0) { stop("applyUniforms before applyPipeline"); }
 	if (slot < 0 || slot >= DOOR_UNIFORM_SLOTS) { stop("applyUniforms to slot " + String(slot)); }
-	const bytes = (data.length as int64) * (sizeof(T) as int64);
+	const bytes = (data.length as int64) * 4;
 	if (uniformCursor + bytes > UNIFORM_RING_BYTES) {
 		stop("uniform ring of 4 MiB is full this frame");
 	}
-	device.queue.writeBuffer(uniformRing, uniformCursor, data);
+	const at = (uniformCursor / 4) as int32;
+	for (let i = 0; i < data.length; i++) { uniformStaging[at + i] = data[i]; }
 	frameStats[DOOR_STAT_UNIFORM_APPLIES]++;
 	uniformStampCounter++;
 	uniformStamps[slot] = uniformStampCounter;
 	uniformOffsets[slot] = uniformCursor as uint32;
 	uniformCursor = (uniformCursor + bytes + (UNIFORM_ALIGNMENT - 1)) & ~(UNIFORM_ALIGNMENT - 1);
+	uniformsDirty = true;
+}
+
+function writeStagedUniforms(): void {
+	if (uniformWritten == uniformCursor) { return; }
+	const from = (uniformWritten / 4) as int32;
+	const to = (uniformCursor / 4) as int32;
+	device.queue.writeBuffer(uniformRing, uniformWritten, uniformStaging[from..to]);
+	bindStats.uniformWrites++;
+	uniformWritten = uniformCursor;
+}
+
+function bindAppliedUniforms(): void {
+	if (!uniformsDirty) { return; }
+	uniformsDirty = false;
+	writeStagedUniforms();
 	let n = 0;
 	for (let s = 0; s < DOOR_UNIFORM_SLOTS; s++) {
 		if ((pipelines[current].uniformMask & ((1 as uint32) << (s as uint32))) == 0) { continue; }
@@ -1676,6 +1701,7 @@ export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): vo
 		n++;
 	}
 	pass.setBindGroup(GPU_UNIFORM_GROUP, pipelines[current].uniformGroup, dynamicOffsets[0..n]);
+	bindStats.bindCalls++;
 }
 
 function requireAppliedBlocks(): void {
@@ -1691,7 +1717,10 @@ function requireAppliedBlocks(): void {
 export function doorDraw(base: int32, count: int32, instances: int32): void {
 	stopInComputePass("draw");
 	frameStats[DOOR_STAT_DRAWS]++;
-	if (current >= 0) { requireAppliedBlocks(); }
+	if (current >= 0) {
+		requireAppliedBlocks();
+		bindAppliedUniforms();
+	}
 	if (current >= 0 && pipelines[current].indexed) {
 		pass.drawIndexed(count, instances, base, 0, 0);
 	} else {
@@ -1707,6 +1736,7 @@ export function doorDrawIndirect(buffer: uint32, offset: int64, drawCount: int32
 		stop("doorDrawIndirect needs an applied pipeline with an index buffer");
 	}
 	requireAppliedBlocks();
+	bindAppliedUniforms();
 	pass.multiDrawIndexedIndirect({ id: buffer }, offset, drawCount);
 }
 
@@ -2095,6 +2125,7 @@ export function doorSubmitFrame(): void {
 	encoder = { id: 0 };
 	frameStats[DOOR_STAT_UNIFORM_RING_BYTES] = uniformCursor;
 	uniformCursor = 0;
+	uniformWritten = 0;
 	endFrameStats();
 }
 
