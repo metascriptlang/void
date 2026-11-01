@@ -465,7 +465,7 @@ when (voidSvg) {
 			return BLIT_BAD_HANDLE;
 		}
 		const p = state.pages[page];
-		if (p.kind != PAGE_MASK) {
+		if (p.kind != PAGE_MASK && p.kind != PAGE_COVERAGE) {
 			console.error(
 				`void2d: a mask tile was aimed at a ${pageKindName(p.kind)} page`,
 			);

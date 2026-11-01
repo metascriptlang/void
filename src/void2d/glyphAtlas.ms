@@ -608,7 +608,7 @@ export function reserveMask(
 	if (key.variant != 0) { return Result.err(AtlasError.VariantOutOfRange); }
 	if (width < 1 || height < 1) { return Result.err(AtlasError.MaskBadShape); }
 	if (!key.fitsKey()) { return Result.err(AtlasError.TooLarge); }
-	const placed = try allocate(atlas, PageKind.Mask, width, height);
+	const placed = try allocate(atlas, PageKind.Coverage, width, height);
 	atlas.rasterizations = atlas.rasterizations + 1;
 	const packedKey: uint64 = key.packed();
 	return Result.ok(atlas.record(packedKey, {

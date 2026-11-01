@@ -940,7 +940,7 @@ function emitIcon(s: Scene2D, i: int32, world: Transform2D, col: Color): void {
 	markGlyphPageDrawn(placed.glyph.page);
 	const view: uint32 = glyphPageView(glyphPageHandle(placed.glyph.page));
 	if (space.instanced) { useGlyphRun(view, s.paints[i].blend); }
-	emitGlyph(space, s.paints[i].blend, view, placed.glyph, PageKind.Mask, col);
+	emitGlyph(space, s.paints[i].blend, view, placed.glyph, PageKind.Coverage, col);
 	setSampler(Smooth.Inherit, false);
 }
 
