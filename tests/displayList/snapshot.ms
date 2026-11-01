@@ -1713,6 +1713,20 @@ when (voidSvg) {
 		assert snapshot("icon", record(iconScene(iconSheet()), 128.0, 64.0, 1.0));
 	}
 
+	function maskRunsScene(id: IconId): NodeRef {
+		const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+		for (let row: int32 = 0; row < 4; row++) {
+			const m = s.add(s.mask(120.0, 20.0).at(4.0, 4.0 + (row as float32) * 22.0));
+			m.addChild(s.icon(id, 16.0, 16.0, rgba(0.62, 0.70, 0.82, 1.0)).at(2.0, 2.0));
+			m.addChild(s.label(`row${row}.ms`, 13.0, rgba(0.86, 0.90, 0.98, 1.0)).at(22.0, 2.0));
+		}
+		return s.refOf(s.root);
+	}
+
+	test "T1 snapshot: rows of a rect Mask around an icon and a label" {
+		assert snapshot("maskRuns", record(maskRunsScene(iconSheet()), 128.0, 96.0, 1.0));
+	}
+
 	test "icons of one id at one raster size hold one tile, a turned one at its mean scale too" {
 		const root = iconScene(iconSheet());
 		record(root, 128.0, 64.0, 1.0);
