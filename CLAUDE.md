@@ -25,6 +25,7 @@ src/
 ├── shader/   shader IR and its printers (WGSL, GLSL, HLSL, MSL, SPIR-V)
 ├── void2d/   2D batcher + Node2D tree      void3d/  3D scene layer      particles/
 ├── assets/   math/                          ← helpers
+├── motion/   bindings.ms, clock.ms              ← the Pulse adapter (../pulse, build.ms deps): node and object properties as data
 └── examples/ main2d, mainCampfire, ...     ← thin entries
 ```
 
