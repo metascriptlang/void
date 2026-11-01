@@ -461,38 +461,45 @@ export function resolveFont(font: Font): Result<FontId, FontError> {
 			return Result.err(FontError.NeedsShaper);
 		}
 	}
-	const best = bestFace(font.family, font.weight, font.style);
-	if (!best.ok) {
-		console.log(
-			`void2d: no face is registered for family "${font.family}"; the font is refused`,
-		);
-		return Result.err(best.error);
-	}
-	const primary: int32 = best.value;
+	const families: string[] = [font.family];
+	for (const family of font.fallbacks) { families.push(family); }
+	let primary: int32 = -1;
+	let primaryFace: int32 = NOT_LOADED;
+	let refusal: FontError = FontError.NoFamily;
 	let fallbackMatches: Vec<int32> = new Array(0);
-	for (const family of font.fallbacks) {
+	for (const family of families) {
 		const matched = bestFace(family, font.weight, font.style);
 		if (!matched.ok) {
 			console.log(
-				`void2d: no face is registered for fallback family "${family}"; ` +
-				`font "${font.family}" is refused`,
+				`void2d: no face is registered for family "${family}" of font "${font.family}"; ` +
+				`it is skipped`,
 			);
-			return Result.err(FontError.NoFallbackFamily);
+			continue;
 		}
-		fallbackMatches.push(matched.value);
-	}
-	const face = styledAt(
-		registered[primary].path,
-		0,
-		font.needsBold(primary),
-		font.needsItalic(primary),
-	);
-	if (!face.ok) {
-		console.log(
-			`void2d: ${registered[primary].path} did not load (${face.error.toString()}); ` +
-			`font "${font.family}" is refused`,
+		if (primary >= 0) {
+			fallbackMatches.push(matched.value);
+			continue;
+		}
+		const face = styledAt(
+			registered[matched.value].path,
+			0,
+			font.needsBold(matched.value),
+			font.needsItalic(matched.value),
 		);
-		return Result.err(FontError.NotLoaded);
+		if (!face.ok) {
+			console.log(
+				`void2d: ${registered[matched.value].path} did not load ` +
+				`(${face.error.toString()}); family "${family}" of font "${font.family}" is skipped`,
+			);
+			refusal = FontError.NotLoaded;
+			continue;
+		}
+		primary = matched.value;
+		primaryFace = face.value;
+	}
+	if (primary < 0) {
+		console.log(`void2d: no family of font "${font.family}" loaded; the font is refused`);
+		return Result.err(refusal);
 	}
 	const id: FontId = (fonts.length as int32) as FontId;
 	const features: FontFeature[] = [];
@@ -500,7 +507,7 @@ export function resolveFont(font: Font): Result<FontId, FontError> {
 	const fallbackFamilies: string[] = [];
 	for (const family of font.fallbacks) { fallbackFamilies.push(family); }
 	fonts.push({
-		face: face.value,
+		face: primaryFace,
 		path: registered[primary].path,
 		kern: kern,
 		sizeAdjust: font.sizeAdjust,
