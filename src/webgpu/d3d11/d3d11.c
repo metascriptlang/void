@@ -766,6 +766,17 @@ void d3dCsSetShader(D3dContext context, D3dComputeShader shader) {
 	ID3D11DeviceContext_CSSetShader(CONTEXT(context), (ID3D11ComputeShader *)shader, NULL, 0);
 }
 
+void d3dCsSetConstantBuffer(D3dContext context, int32_t slot, D3dBuffer buffer) {
+	ID3D11Buffer *buffers[1] = { (ID3D11Buffer *)buffer };
+	ID3D11DeviceContext_CSSetConstantBuffers(CONTEXT(context), (UINT)slot, 1, buffers);
+}
+
+void d3dCsSetConstantBufferRange(D3dContext1 context1, int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants) {
+	ID3D11Buffer *buffers[1] = { (ID3D11Buffer *)buffer };
+	UINT first = (UINT)firstConstant, count = (UINT)numConstants;
+	ID3D11DeviceContext1_CSSetConstantBuffers1((ID3D11DeviceContext1 *)context1, (UINT)slot, 1, buffers, &first, &count);
+}
+
 void d3dCsSetShaderResource(D3dContext context, int32_t slot, D3dSrv view) {
 	ID3D11ShaderResourceView *views[1] = { (ID3D11ShaderResourceView *)view };
 	ID3D11DeviceContext_CSSetShaderResources(CONTEXT(context), (UINT)slot, 1, views);

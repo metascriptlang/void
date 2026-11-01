@@ -210,6 +210,8 @@ void d3dDrawIndexedInstanced(
 	int32_t firstInstance);
 
 void d3dCsSetShader(D3dContext context, D3dComputeShader shader);
+void d3dCsSetConstantBuffer(D3dContext context, int32_t slot, D3dBuffer buffer);
+void d3dCsSetConstantBufferRange(D3dContext1 context1, int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants);
 void d3dCsSetShaderResource(D3dContext context, int32_t slot, D3dSrv view);
 void d3dCsSetUnorderedAccessView(D3dContext context, int32_t slot, D3dUav view);
 void d3dCsSetSampler(D3dContext context, int32_t slot, D3dSampler sampler);
