@@ -1,6 +1,7 @@
 import { Color } from "../void2d/types";
 import {
 	NodeRef,
+	Scene2D,
 	local,
 	paint,
 	setAlpha,
@@ -113,6 +114,7 @@ export struct NodeBinding {
 
 export function writeNode(b: NodeBinding, value: MotionValue): void {
 	const node = b.node;
+	if (!node.isLive()) { return; }
 	if (b.property === NodeProperty.Color) {
 		if (value.kind !== ValueKind.Color) { fail(b.slot + "." + b.name + " is bound as a colour"); }
 		const c = value.color;
@@ -182,6 +184,8 @@ export class ObjectRotation {
 	id: NodeId3D;
 	angles: Euler = { x: 0.0, y: 0.0, z: 0.0 };
 	written: Quat = { x: 0.0, y: 0.0, z: 0.0, w: 0.0 };
+	source: Quat = { x: 0.0, y: 0.0, z: 0.0, w: 0.0 };
+	sourceAngles: Euler = { x: 0.0, y: 0.0, z: 0.0 };
 
 	constructor(scene: Scene3D, id: NodeId3D) {
 		this.scene = scene;
@@ -192,6 +196,8 @@ export class ObjectRotation {
 		if (!sameQuat(rotation, this.written)) {
 			this.angles = eulerOf(rotation);
 			this.written = rotation;
+			this.source = rotation;
+			this.sourceAngles = this.angles;
 		}
 		return this.angles;
 	}
@@ -207,17 +213,21 @@ export struct ObjectBinding {
 }
 
 function current(b: ObjectBinding): Transform3D {
+	if (b.scene.isLive(b.id)) { return b.scene.nodes[b.id.index].local; }
 	return b.scene.nodes[b.scene.liveRow(b.id, "motion " + b.slot + "." + b.name)].local;
 }
 
 function rotate(b: ObjectBinding, t: Transform3D, angles: Euler): void {
-	b.rotation.angles = angles;
-	b.rotation.written = eulerQuat(angles.x, angles.y, angles.z);
+	const r = b.rotation;
+	const back = angles.x === r.sourceAngles.x && angles.y === r.sourceAngles.y && angles.z === r.sourceAngles.z;
+	r.angles = angles;
+	r.written = back ? r.source : eulerQuat(angles.x, angles.y, angles.z);
 	setLocal(b.scene, b.id, { ...t, rotation: b.rotation.written });
 }
 
 export function writeObject(b: ObjectBinding, value: MotionValue): void {
 	const v = numberOf(b.slot, b.name, value);
+	if (!b.scene.isLive(b.id)) { return; }
 	const t = current(b);
 	switch (b.property) {
 		case ObjectProperty.X: setLocal(b.scene, b.id, { ...t, position: { ...t.position, x: v } }); break;
@@ -251,56 +261,118 @@ export function readObject(b: ObjectBinding): MotionValue {
 
 struct NodeTarget {
 	node: NodeRef;
-	property: NodeProperty;
 	target: MotionTarget;
 }
 
 struct ObjectTarget {
-	scene: Scene3D;
 	id: NodeId3D;
-	property: ObjectProperty;
 	target: MotionTarget;
 }
 
-let nodeTargets: NodeTarget[] = [];
-let objectTargets: ObjectTarget[] = [];
-let rotations: ObjectRotation[] = [];
+const FIRST_PRUNE: int32 = 64;
 
-function sameNode(a: NodeRef, b: NodeRef): boolean {
-	return a.scene === b.scene && a.id.index === b.id.index && a.id.generation === b.id.generation;
+class NodeRegistry {
+	scene: Scene2D;
+	targets: Map<string, NodeTarget> = new Map<string, NodeTarget>();
+	pruneAt: int32 = FIRST_PRUNE;
+
+	constructor(scene: Scene2D) {
+		this.scene = scene;
+	}
 }
 
-function sameObject(scene: Scene3D, id: NodeId3D, otherScene: Scene3D, other: NodeId3D): boolean {
-	return scene === otherScene && id.index === other.index && id.generation === other.generation;
+class ObjectRegistry {
+	scene: Scene3D;
+	targets: Map<string, ObjectTarget> = new Map<string, ObjectTarget>();
+	rotations: Map<string, ObjectRotation> = new Map<string, ObjectRotation>();
+	pruneAt: int32 = FIRST_PRUNE;
+
+	constructor(scene: Scene3D) {
+		this.scene = scene;
+	}
+}
+
+let nodeRegistries: NodeRegistry[] = [];
+let objectRegistries: ObjectRegistry[] = [];
+
+function slotKey(index: int32, generation: int32): string {
+	return index.toString() + ":" + generation.toString();
+}
+
+function nodeRegistry(scene: Scene2D): NodeRegistry {
+	nodeRegistries = nodeRegistries.filter((r: NodeRegistry): boolean => !r.scene.closed);
+	for (const r of nodeRegistries) {
+		if (r.scene === scene) { return r; }
+	}
+	const r = new NodeRegistry(scene);
+	nodeRegistries.push(r);
+	return r;
+}
+
+function objectRegistry(scene: Scene3D): ObjectRegistry {
+	objectRegistries = objectRegistries.filter((r: ObjectRegistry): boolean => !r.scene.closed);
+	for (const r of objectRegistries) {
+		if (r.scene === scene) { return r; }
+	}
+	const r = new ObjectRegistry(scene);
+	objectRegistries.push(r);
+	return r;
+}
+
+function pruneNodes(r: NodeRegistry): void {
+	if (r.targets.size < r.pruneAt) { return; }
+	const live = new Map<string, NodeTarget>();
+	for (const [key, entry] of r.targets) {
+		if (entry.node.isLive()) { live.set(key, entry); }
+	}
+	r.targets = live;
+	r.pruneAt = Math.max(FIRST_PRUNE, 2 * live.size) as int32;
+}
+
+function pruneObjects(r: ObjectRegistry): void {
+	if (r.targets.size + r.rotations.size < r.pruneAt) { return; }
+	const live = new Map<string, ObjectTarget>();
+	for (const [key, entry] of r.targets) {
+		if (r.scene.isLive(entry.id)) { live.set(key, entry); }
+	}
+	const turning = new Map<string, ObjectRotation>();
+	for (const [key, rotation] of r.rotations) {
+		if (r.scene.isLive(rotation.id)) { turning.set(key, rotation); }
+	}
+	r.targets = live;
+	r.rotations = turning;
+	r.pruneAt = Math.max(FIRST_PRUNE, 2 * (live.size + turning.size)) as int32;
 }
 
 function nodeTarget(b: NodeBinding): MotionTarget {
-	nodeTargets = nodeTargets.filter((entry: NodeTarget): boolean => entry.node.isLive());
-	for (const entry of nodeTargets) {
-		if (entry.property === b.property && sameNode(entry.node, b.node)) { return entry.target; }
-	}
+	const r = nodeRegistry(b.node.scene);
+	pruneNodes(r);
+	const key = slotKey(b.node.id.index, b.node.id.generation) + ":" + (b.property as int32).toString();
+	const found = r.targets.get(key);
+	if (found !== null) { return found.target; }
 	const target = new MotionTarget((): MotionValue => readNode(b), (value: MotionValue): void => { writeNode(b, value); });
-	nodeTargets.push({ node: b.node, property: b.property, target });
+	r.targets.set(key, { node: b.node, target });
 	return target;
 }
 
 function objectTarget(b: ObjectBinding): MotionTarget {
-	objectTargets = objectTargets.filter((entry: ObjectTarget): boolean => entry.scene.isLive(entry.id));
-	for (const entry of objectTargets) {
-		if (entry.property === b.property && sameObject(entry.scene, entry.id, b.scene, b.id)) { return entry.target; }
-	}
+	const r = objectRegistry(b.scene);
+	pruneObjects(r);
+	const key = slotKey(b.id.index, b.id.generation) + ":" + (b.property as int32).toString();
+	const found = r.targets.get(key);
+	if (found !== null) { return found.target; }
 	const target = new MotionTarget((): MotionValue => readObject(b), (value: MotionValue): void => { writeObject(b, value); });
-	objectTargets.push({ scene: b.scene, id: b.id, property: b.property, target });
+	r.targets.set(key, { id: b.id, target });
 	return target;
 }
 
 function objectRotation(scene: Scene3D, id: NodeId3D): ObjectRotation {
-	rotations = rotations.filter((entry: ObjectRotation): boolean => entry.scene.isLive(entry.id));
-	for (const entry of rotations) {
-		if (sameObject(entry.scene, entry.id, scene, id)) { return entry; }
-	}
+	const r = objectRegistry(scene);
+	const key = slotKey(id.index, id.generation);
+	const found = r.rotations.get(key);
+	if (found !== null) { return found; }
 	const rotation = new ObjectRotation(scene, id);
-	rotations.push(rotation);
+	r.rotations.set(key, rotation);
 	return rotation;
 }
 
