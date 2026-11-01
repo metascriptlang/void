@@ -600,7 +600,7 @@ test "T1 production emitters reach every batch-break reason" {
 	assert breaks.indexOf("break:sampler") >= 0;
 	assert breaks.indexOf("break:pipeline") >= 0;
 	assert record(gradientScene(), 128.0, 64.0, 1.0).indexOf("break:effect") >= 0;
-	assert record(clipScene(), 128.0, 64.0, 1.0).indexOf("break:clip") >= 0;
+	assert record(rotatedClipScene(), 128.0, 64.0, 1.0).indexOf("break:clip") >= 0;
 
 	setSceneSmooth(true);
 	begin2d(16.0, 16.0, 1.5);
@@ -820,12 +820,8 @@ function leftMaskScene(): NodeRef {
 	return s.refOf(s.root);
 }
 
-function clipWidthOfDraws(): float32 {
-	let width: float32 = -1.0;
-	for (let i: int32 = 0; i < commandCount(); i++) {
-		if (commandField(i, CMD_INSTANCE_COUNT) > 0.0) { width = commandField(i, CMD_CLIP_W); }
-	}
-	return width;
+function clipWidthOfInstance(i: int32): float32 {
+	return uiInstanceField(i, WORD_UI_CLIP_RECT + 2) - uiInstanceField(i, WORD_UI_CLIP_RECT);
 }
 
 test "T1 a Mask nested outside its parent's clip draws none of its children" {
@@ -936,8 +932,8 @@ test "T1 a draw under nested rotated Masks on one axis that do not meet replays 
 test "T1 a Mask left of the viewport keeps its clip, so what it reaches on screen is cut" {
 	record(leftMaskScene(), 256.0, 150.0, 1.0);
 	assert uiInstanceCount() == 1;
-	const width: float32 = clipWidthOfDraws();
-	console.log(`the left Mask's draw carries a clip ${width} wide`);
+	const width: float32 = clipWidthOfInstance(0);
+	console.log(`the left Mask's instance carries a clip ${width} wide`);
 	assert width == 100.0;
 }
 

@@ -1231,25 +1231,44 @@ export function pushGradientEffect(
 }
 
 function startCommand(kind: CommandKind, reason: BreakReason): int32 {
+	return startCommandUnder(kind, reason, activeContext.clip);
+}
+
+// A rect clip with no rotated edges and no rounded corners, which each UI instance's clip
+// lane carries whole.
+export function instanceClipped(c: Clip): boolean {
+	const r: RoundClip = c.round;
+	return c.uMax <= c.uMin
+		&& r.topLeft <= 0.0 && r.topRight <= 0.0 && r.bottomRight <= 0.0 && r.bottomLeft <= 0.0;
+}
+
+// A UI run's instances cut themselves to an instance-clipped rect, so its scissor stays open
+// and rect Masks inside one run share a command.
+function scissorClipFor(pipeline: Pipeline): Clip {
+	const c: Clip = activeContext.clip;
+	return pipeline == Pipeline.Ui && instanceClipped(c) ? NO_CLIP : c;
+}
+
+function startCommandUnder(kind: CommandKind, reason: BreakReason, clip: Clip): int32 {
 	const base: int32 = commandSlot() * COMMAND_FLOATS;
 	growTo(activeContext.commands, base + COMMAND_FLOATS);
 	for (let i: int32 = 0; i < COMMAND_FLOATS; i++) { activeContext.commands[base + i] = 0.0; }
 	activeContext.commands[base + CMD_KIND] = (kind as int32) as float32;
 	activeContext.commands[base + CMD_EFFECT] = NO_EFFECT as float32;
 	activeContext.commands[base + CMD_BREAK] = (reason as int32) as float32;
-	activeContext.commands[base + CMD_CLIP_X] = activeContext.clip.x;
-	activeContext.commands[base + CMD_CLIP_Y] = activeContext.clip.y;
-	activeContext.commands[base + CMD_CLIP_W] = activeContext.clip.w;
-	activeContext.commands[base + CMD_CLIP_H] = activeContext.clip.h;
-	activeContext.commands[base + CMD_CLIP_U_X] = activeContext.clip.ux;
-	activeContext.commands[base + CMD_CLIP_U_Y] = activeContext.clip.uy;
-	activeContext.commands[base + CMD_CLIP_U_MIN] = activeContext.clip.uMin;
-	activeContext.commands[base + CMD_CLIP_U_MAX] = activeContext.clip.uMax;
-	activeContext.commands[base + CMD_CLIP_V_X] = activeContext.clip.vx;
-	activeContext.commands[base + CMD_CLIP_V_Y] = activeContext.clip.vy;
-	activeContext.commands[base + CMD_CLIP_V_MIN] = activeContext.clip.vMin;
-	activeContext.commands[base + CMD_CLIP_V_MAX] = activeContext.clip.vMax;
-	const round: RoundClip = activeContext.clip.round;
+	activeContext.commands[base + CMD_CLIP_X] = clip.x;
+	activeContext.commands[base + CMD_CLIP_Y] = clip.y;
+	activeContext.commands[base + CMD_CLIP_W] = clip.w;
+	activeContext.commands[base + CMD_CLIP_H] = clip.h;
+	activeContext.commands[base + CMD_CLIP_U_X] = clip.ux;
+	activeContext.commands[base + CMD_CLIP_U_Y] = clip.uy;
+	activeContext.commands[base + CMD_CLIP_U_MIN] = clip.uMin;
+	activeContext.commands[base + CMD_CLIP_U_MAX] = clip.uMax;
+	activeContext.commands[base + CMD_CLIP_V_X] = clip.vx;
+	activeContext.commands[base + CMD_CLIP_V_Y] = clip.vy;
+	activeContext.commands[base + CMD_CLIP_V_MIN] = clip.vMin;
+	activeContext.commands[base + CMD_CLIP_V_MAX] = clip.vMax;
+	const round: RoundClip = clip.round;
 	activeContext.commands[base + CMD_CLIP_ROUND_U] = round.ux;
 	activeContext.commands[base + CMD_CLIP_ROUND_U + 1] = round.uy;
 	activeContext.commands[base + CMD_CLIP_ROUND_U + 2] = round.uOffset;
@@ -1306,7 +1325,7 @@ export function recordUiDraw(
 	sampler: int32,
 	effect: int32,
 ): void {
-	const base: int32 = startCommand(CommandKind.Draw, reason);
+	const base: int32 = startCommandUnder(CommandKind.Draw, reason, scissorClipFor(Pipeline.Ui));
 	activeContext.commands[base + CMD_PIPELINE] = (Pipeline.Ui as int32) as float32;
 	wantPipeline(Program2D.Ui, blend);
 	activeContext.commands[base + CMD_INSTANCE_OFFSET] = instanceOffset as float32;
@@ -1413,8 +1432,20 @@ export function endTargetList(): boolean {
 export function recordClip(next: Clip): void {
 	if (activeContext.clipRecorded && next == activeContext.clip) { return; }
 	activeContext.clip = next;
+	restateClip();
+}
+
+// The scissor command for the run about to open, in the form that run's own draw will carry.
+export function restateClip(): void {
 	activeContext.clipRecorded = true;
-	startCommand(CommandKind.Scissor, BreakReason.Clip);
+	startCommandUnder(
+		CommandKind.Scissor, BreakReason.Clip, scissorClipFor(activeContext.curPipeline),
+	);
+}
+
+// Whether a pipeline change moves the scissor a recorded draw would leave behind.
+export function scissorFormsDiffer(from: Pipeline, to: Pipeline): boolean {
+	return scissorClipFor(from) != scissorClipFor(to);
 }
 
 export function recordBlur(view: uint32, dirX: float32, dirY: float32): void {
