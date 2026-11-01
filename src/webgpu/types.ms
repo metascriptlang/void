@@ -313,6 +313,21 @@ function visibilityRefusal(binding: GPUShaderBinding, compute: boolean): string 
 	return "";
 }
 
+function vertexWriteRefusal(binding: GPUShaderBinding): string {
+	if ((binding.visibility & (GPUShaderStage.VERTEX as int32)) == 0) { return ""; }
+	const kind = binding.kind;
+	const bufferType: string = binding.bufferType;
+	const access: string = binding.storageAccess;
+	const writes = kind == "storage-buffer" && bufferType == "storage" ||
+		kind == "storage-texture" && (access == "write-only" || access == "read-write");
+	return writes ? `shader binding ${binding.binding} is writable storage in the vertex stage, which WebGPU does not allow` : "";
+}
+
+export function stageStorageRefusal(binding: int32, stage: string, blocks: int32, context: string): string {
+	if (blocks > 0) { return ""; }
+	return `shader binding ${binding} is a storage buffer read in the ${stage} stage, and ${context} has no shader storage blocks there`;
+}
+
 // A uint or sint texture cannot be filtered (WebGPU's bind group layout rule, sokol's
 // VALIDATE_SHADERDESC_NONFILTERING_SAMPLER_REQUIRED), so a sampler paired with one must be non-filtering.
 function integerTexturePairRefusal(bindings: Readonly<Span<GPUShaderBinding>>): string {
@@ -346,6 +361,8 @@ export function shaderBindingsRefusal(bindings: Readonly<Span<GPUShaderBinding>>
 		if (kind == null) { continue; }
 		const visibility = visibilityRefusal(bindings[i], compute);
 		if (visibility != "") { return visibility; }
+		const vertexWrite = vertexWriteRefusal(bindings[i]);
+		if (vertexWrite != "") { return vertexWrite; }
 		const binding = bindings[i].binding;
 		const group = bindings[i].group;
 		const expected = kind == "uniform" ? GPU_UNIFORM_GROUP : GPU_RESOURCE_GROUP;
