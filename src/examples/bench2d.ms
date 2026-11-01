@@ -54,6 +54,7 @@ export enum BenchKind {
 	EditorTyping,
 	EditorBlink,
 	EditorChrome,
+	MaskRows,
 }
 
 const COLUMNS: int32 = 100;
@@ -208,6 +209,18 @@ function editorChromeLabels(s: Scene2D): int32 {
 	return CHROME_FILES + CHROME_TABS + 5;
 }
 
+const MASK_ROWS: int32 = 30;
+
+function maskRows(s: Scene2D): int32 {
+	const file: IconId = chromeIcon(TRIANGLE_ICON);
+	s.add(s.rect(1280.0, 720.0, rgba(0.10, 0.11, 0.13, 1.0)));
+	for (let k: int32 = 0; k < MASK_ROWS; k++) {
+		const row = s.add(s.mask(240.0, 22.0).at(0.0, (k as float32) * 24.0));
+		row.addChild(chromeEntry(s, file, `module${k}.ms`).at(12.0, 3.0));
+	}
+	return MASK_ROWS;
+}
+
 let benchScene: Scene2D | null = null;
 let benchName: string = "ui";
 let nodeCount: int32 = 0;
@@ -278,6 +291,9 @@ export function benchInit(kind: BenchKind): void {
 	} else if (kind === BenchKind.EditorChrome) {
 		benchName = "editorChrome";
 		retainedNodeCount = editorChromeLabels(s);
+	} else if (kind === BenchKind.MaskRows) {
+		benchName = "maskRows";
+		retainedNodeCount = maskRows(s);
 	} else if (kind === BenchKind.Text) {
 		benchName = "text";
 		const block = s.group();
@@ -345,7 +361,7 @@ export function benchInit(kind: BenchKind): void {
 		kind === BenchKind.EditorBlink) {
 		nodeCount = 1;
 		retainedNodeCount = 1;
-	} else if (kind === BenchKind.EditorChrome) {
+	} else if (kind === BenchKind.EditorChrome || kind === BenchKind.MaskRows) {
 		nodeCount = s.nodeCount() - 1;
 	} else if (kind === BenchKind.Scroll) {
 		nodeCount = 2;
