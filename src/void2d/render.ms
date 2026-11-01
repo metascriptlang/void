@@ -827,6 +827,7 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 		world: world, col: col, scale: scale, shiftX: space.shiftX, shiftY: space.shiftY,
 		context: currentContext().id,
 		serial: currentContext().resetSerial,
+		clip: currentContext().clip,
 	};
 	const skips: boolean = lineEmits && writesLimited() && text.emitKey == key &&
 		sameRunColours(text);
@@ -834,6 +835,7 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 	const sourceKey: LineEmitKey = {
 		world: world, col: col, scale: scale, shiftX: space.shiftX, shiftY: space.shiftY,
 		context: key.context, serial: source !== null ? (source as DrawContext2D).resetSerial : -1,
+		clip: key.clip,
 	};
 	const copies: boolean = lineEmits && source !== null && text.emitKey == sourceKey &&
 		sameRunColours(text);

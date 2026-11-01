@@ -52,6 +52,7 @@ import {
 import { TextDirection } from "./textDirection";
 import { DEFAULT_FONT, fontFace } from "./font";
 import { Transform2D, Color } from "./types";
+import { Clip, NO_CLIP } from "./displayList";
 
 when (voidSdfText) {
 	import { acquireSdf } from "./glyphAtlas";
@@ -116,6 +117,7 @@ export struct LineEmitKey {
 	shiftY: float32;
 	context: int32;
 	serial: int32;
+	clip: Clip;
 }
 
 export const NO_LINE_EMIT_KEY: LineEmitKey = {
@@ -126,6 +128,7 @@ export const NO_LINE_EMIT_KEY: LineEmitKey = {
 	shiftY: 0.0,
 	context: -1,
 	serial: -1,
+	clip: NO_CLIP,
 };
 
 struct PlacementKey {
