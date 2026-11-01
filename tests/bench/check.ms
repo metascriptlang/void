@@ -201,6 +201,7 @@ function runCheck(): int32 {
 	failed = failed + checkScene("EditorTyping", "editorTyping", metrics, counters, milliseconds);
 	failed = failed + checkScene("EditorBlink", "editorBlink", metrics, counters, milliseconds);
 	failed = failed + checkScene("EditorChrome", "editorChrome", metrics, counters, milliseconds);
+	failed = failed + checkScene("MaskRows", "maskRows", metrics, counters, milliseconds);
 	const emojiRows = runBench(binary("TextEmoji"));
 	if ((emojiRows.length as int32) == 0) {
 		failed = failed + 1;

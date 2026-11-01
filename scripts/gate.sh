@@ -1075,6 +1075,9 @@ done
 bench_build out/gate-bench.log out/benchEditorChrome.exe -d:voidSvg tests/bench/benchEditorChrome.ms
 bench_build out/gate-bench-profiler.log out/benchEditorChromeProfiler.exe -d:voidProfiler -d:voidSvg \
 	tests/bench/benchEditorChrome.ms
+bench_build out/gate-bench.log out/benchMaskRows.exe -d:voidSvg tests/bench/benchMaskRows.ms
+bench_build out/gate-bench-profiler.log out/benchMaskRowsProfiler.exe -d:voidProfiler -d:voidSvg \
+	tests/bench/benchMaskRows.ms
 for module in ColourEmoji:Emoji TextOutline:Outline SdfText:Sdf; do
 	bench_build out/gate-bench.log "out/benchText${module#*:}.exe" "-d:void${module%%:*}" "tests/bench/benchText${module#*:}.ms"
 	bench_build out/gate-bench-profiler.log "out/benchText${module#*:}Profiler.exe" -d:voidProfiler \
