@@ -1226,6 +1226,30 @@ export function doorUpdateBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int3
 	return 1;
 }
 
+export function doorUpdateBufferAtOf<T>(id: uint32, offset: int64, data: Readonly<Span<T>>): int32 {
+	const buffer: GPUBuffer = { id };
+	const bytes = (data.length as int64) * (sizeof(T) as int64);
+	if (bytes <= 0 || offset < 0 || !buffer.isAlive() || offset + bytes > buffer.size()) {
+		return 0;
+	}
+	device.queue.writeBuffer(buffer, offset, data);
+	frameStats[DOOR_STAT_BUFFER_BYTES] += bytes;
+	return 1;
+}
+
+export function doorCopyBuffer(
+	source: uint32,
+	sourceOffset: int64,
+	destination: uint32,
+	destinationOffset: int64,
+	size: int64,
+): void {
+	stopOnOpenPass("copyBuffer");
+	frameEncoder().copyBufferToBuffer(
+		{ id: source }, sourceOffset, { id: destination }, destinationOffset, size,
+	);
+}
+
 function appendCursorOf(buffer: uint32): int32 {
 	for (let i = 0; i < appendCursors.length; i++) {
 		if (appendCursors[i].buffer == buffer) { return i as int32; }
