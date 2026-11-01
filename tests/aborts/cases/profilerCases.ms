@@ -1,5 +1,6 @@
 // flags: -d:voidProfiler
 // expect overlayNoGlyph: void2d profiler overlay: the 5x7 font has no glyph for 'c'
+import "../../../src/host/gpu";
 import { argv } from "std/process";
 import { OverlayMode } from "../../../src/void2d/profiler";
 import { layoutOverlay } from "../../../src/void2d/profilerOverlay";

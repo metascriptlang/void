@@ -1,3 +1,4 @@
+import "../../src/host/gpu";
 import { env } from "std/process";
 import {
 	SdfLabelCase, sdfLabelCases, SDF_ROTATED_SCENE, SDF_ZOOM_SCENE, SDF_SCALE_DOWN_SCENE,

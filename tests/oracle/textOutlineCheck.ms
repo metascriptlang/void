@@ -1,3 +1,4 @@
+import "../../src/host/gpu";
 import { env } from "std/process";
 import { readFile, readFileBytes } from "std/fs";
 import { sha256, toHex } from "std/crypto/sha256";

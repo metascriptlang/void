@@ -16,6 +16,7 @@
 // the blend factors and the clear value into a test that is about coverage, and a failure
 // would then name the wrong thing.
 
+import "../../src/host/gpu";
 import { env } from "std/process";
 import {
 	AA_BOX_W, AA_BOX_H, AA_BOX_X, AA_BOX_Y, AA_BOX_PIVOT_X, AA_BOX_PIVOT_Y,
