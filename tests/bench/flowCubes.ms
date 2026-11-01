@@ -76,7 +76,8 @@ function whiteMaterial(): MaterialId {
 }
 
 function median(ref samples: Vec<float64>): float64 {
-	samples.sort((a: float64, b: float64): number => a - b);
+	// Parked at ~/metascript/.inbox/compiler/2026-10-31-vec-sort-increfs-a-stack-address-on-return.md.
+	samples.sortBy((a: float64, b: float64): number => a - b);
 	return samples[(samples.length as int32) / 2];
 }
 

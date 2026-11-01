@@ -1872,7 +1872,9 @@ export function patchOrder(this s: Scene2D, vw: float32, vh: float32): boolean {
 			const slot: int32 = s.slots[s.dirty[k]];
 			if (slot != NO_SLOT) { s.dirtySlots.push(slot as float64); }
 		}
-		s.dirtySlots.sort();
+		// Parked at ~/metascript/.inbox/compiler/2026-10-31-vec-sort-increfs-a-stack-address-on-return.md:
+		// sort on a Vec field returns it with an incref that lands on the field before it.
+		s.dirtySlots.sortBy((a: float64, b: float64): number => a - b);
 		for (let k: int32 = 0; k < (s.dirtySlots.length as int32); k++) {
 			descend(s, s.order[s.dirtySlots[k] as int32], true);
 		}
