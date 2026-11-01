@@ -2279,7 +2279,10 @@ changes described above on today's compiler; the P4 web archive also takes its r
     applies text's (`gpui_wgpu/src/shaders.wgsl:1247-1258`). A mask tile's key is the icon id in
     the face field, the mask height in the glyph field and the width in the size field, so two
     sizes are two tiles (`maskKey`); the kind lane keeps a mask and a glyph with the same
-    numbers apart. `GlyphAtlas.reserveMask(key, w, h)` takes the tile before anything is drawn,
+    numbers apart. Since arc void2d-gpui (2026-11) a mask tile is placed on a coverage page, as
+    GPUI keeps `AtlasKey::Svg` under its monochrome kind (`platform.rs:1711-1722`): an icon and
+    a label's glyphs then bind one view and share a draw. The key still says `Mask`, and the
+    mask blit accepts a coverage page. `GlyphAtlas.reserveMask(key, w, h)` takes the tile before anything is drawn,
     `fillMask(tile, alpha)` blits it and `discard` gives it back when the raster fails, so an
     atlas with no room costs no rasterization (`iconRasterizations()` counts them);
     `acquireMask(key, w, h, alpha)` is the three in one; `retainMask(key)` is the hit path.
