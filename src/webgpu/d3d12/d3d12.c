@@ -482,6 +482,17 @@ int32_t dx12DescriptorsCopy(uint64_t device, uint32_t count, uint64_t target, ui
 	return DX12_OK;
 }
 
+#define DX12_MAX_GATHERED 64
+
+int32_t dx12DescriptorsGather(uint64_t device, uint32_t count, uint64_t target, uint64_t sourceStart, uint32_t increment, const int32_t *indices, int32_t type) {
+	if (count > DX12_MAX_GATHERED) { return DX12_ERROR_CALL; }
+	D3D12_CPU_DESCRIPTOR_HANDLE sources[DX12_MAX_GATHERED];
+	for (uint32_t i = 0; i < count; i++) { sources[i] = cpuHandle(sourceStart + (uint64_t)indices[i] * increment); }
+	D3D12_CPU_DESCRIPTOR_HANDLE destination = cpuHandle(target);
+	ID3D12Device_CopyDescriptors(DEVICE(device), 1, &destination, &count, count, sources, NULL, (D3D12_DESCRIPTOR_HEAP_TYPE)type);
+	return DX12_OK;
+}
+
 #define DX12_VIEW_2D 0
 #define DX12_VIEW_2D_ARRAY 1
 #define DX12_VIEW_CUBE 2
