@@ -267,10 +267,13 @@ What it takes from Heaps:
   a dispatch queues a UAV barrier the same way (`:3693-3701`).
 - **Descriptors.** Persistent views and samplers live in CPU heaps (a block free list, samplers
   deduplicated, `:531-571`, `:2909-2921`). Each frame has scratch shader-visible heaps, and a
-  bind group's descriptors are copied into them only when the group changes (`:147-180`,
+  bind group's descriptors are copied into them once per frame that uses the group (`:147-180`,
   `:3592-3637`, `:2770-2773`).
 - **Uploads and readback.** Upload pages are 256-aligned and reset after the frame's fence
-  (`:182-304`). Textures are written through `GetCopyableFootprints` (`:2685-2707`). Readback
+  (`:182-304`). A transient buffer that no shader writes and no copy targets lives in an
+  upload heap with one copy per frame slot, so `writeBuffer` is a memcpy and a draw reads it in
+  place, with no copy or barrier inside the pass (`:235-304`, `:2963-2976`); a copy into it stops,
+  as on D3D11. Textures are written through `GetCopyableFootprints` (`:2685-2707`). Readback
   uses a READBACK resource and a wait (`:1693-1742`).
 - **Swapchain.** `CreateSwapChainForHwnd` on the direct queue, FLIP_DISCARD with tearing
   allowed (`dx12.cpp:518-539`). Resize waits for the GPU, releases the back buffers and calls
