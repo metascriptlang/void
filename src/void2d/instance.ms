@@ -25,7 +25,7 @@ export const UI_MODE_COUNT: int32 = 6;
 
 // WebGL2's per-buffer stride ceiling (MAKEPAD.md:23). Past it, P2's stated fallback is two
 // strides — a narrow box/glyph one and a wide one for gradients and shadows. `UI_STRIDE`
-// is 108, so the fallback is NOT taken; the test pins that as arithmetic rather than
+// is 124, so the fallback is NOT taken; the test pins that as arithmetic rather than
 // leaving it as a thing someone remembers.
 export const MAX_WEB_STRIDE: int32 = 255;
 

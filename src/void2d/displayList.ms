@@ -13,7 +13,7 @@
 //   - `uiInstances` and `spriteInstances`, P2's two instance streams, in LOCAL space with the
 //     affine carried per instance — which is what lets the SDF be re-derived in local space
 //     and survive rotation. Separate rather than one wide record, because guardrail 8 says a
-//     sprite must not pay for the UI pipeline, and 27 words to record 16 is paying.
+//     sprite must not pay for the UI pipeline, and 31 words to record 16 is paying.
 //   - `commands`, COMMAND_FLOATS floats per command, fixed width. A fixed width costs a few
 //     zero fields on a scissor and buys an index that is arithmetic rather than a scan —
 //     and a snapshot whose lines are all the same shape.
@@ -75,11 +75,13 @@ import {
 export * from "./commandFields";
 import { InstanceMode, UI_PARAM_MODE, UiInstance, packChannel } from "./instance";
 import { floatBits, floatOfBits } from "./floatBits";
+import { scissorMin, scissorMax } from "./coverage";
 import {
 	UI_STRIDE, SPRITE_STRIDE,
 	WORD_UI_AFFINE, WORD_UI_ORIGIN_SIZE, WORD_UI_UV_RADII, WORD_UI_BORDERS, WORD_UI_PARAMS0,
-	WORD_UI_PARAMS1, WORD_UI_COLOR_FILL, WORD_UI_COLOR_BORDER, WORD_UI_COLOR_EXTRA, UI_WORDS,
-	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
+	WORD_UI_PARAMS1, WORD_UI_CLIP_RECT, WORD_UI_COLOR_FILL, WORD_UI_COLOR_BORDER,
+	WORD_UI_COLOR_EXTRA, UI_WORDS, REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV,
+	REC_SPRITE_COLOR,
 	REC_SPRITE_FLOATS,
 } from "./instanceLayout";
 
@@ -972,6 +974,29 @@ function putLane(
 	words[at + 3] = floatBits(w);
 }
 
+export const NO_INSTANCE_CLIP: float32 = 1.0e9;
+
+// The scissor's rect as x0 y0 x1 y1, snapped outward to device pixels as scissorRectOf snaps it;
+// a scope's shift is whole device pixels, so snapping before it lands on the same edges.
+function putClipLane(ref words: Vec<uint32>, at: int32): void {
+	const c: Clip = activeContext.clip;
+	if (c.w < 0.0 || c.h < 0.0) {
+		putLane(words, at, 0.0, 0.0, 0.0, 0.0);
+		return;
+	}
+	if (c.w <= 0.0 || c.h <= 0.0) {
+		const far: float32 = NO_INSTANCE_CLIP;
+		putLane(words, at, -far, -far, far, far);
+		return;
+	}
+	const s: float32 = activeContext.renderTargetScale != 0.0
+		? activeContext.renderTargetScale
+		: activeContext.frameDpi;
+	putLane(words, at,
+		(scissorMin(c.x, s) as float32) / s, (scissorMin(c.y, s) as float32) / s,
+		(scissorMax(c.x + c.w, s) as float32) / s, (scissorMax(c.y + c.h, s) as float32) / s);
+}
+
 function packColor(c: Color): uint32 {
 	return (packChannel(c.r) as uint32) |
 		((packChannel(c.g) as uint32) << 8) |
@@ -1022,6 +1047,7 @@ export function pushUiInstance(inst: UiInstance, originX: float32, originY: floa
 	putLane(activeContext.uiInstances, base + WORD_UI_PARAMS0, (inst.mode as int32) as float32,
 		p1, p2, p3);
 	putLane(activeContext.uiInstances, base + WORD_UI_PARAMS1, q0, q1, q2, q3);
+	putClipLane(activeContext.uiInstances, base + WORD_UI_CLIP_RECT);
 	activeContext.uiInstances[base + WORD_UI_COLOR_FILL] = packColor(inst.fill);
 	activeContext.uiInstances[base + WORD_UI_COLOR_BORDER] = packColor(inst.border);
 	activeContext.uiInstances[base + WORD_UI_COLOR_EXTRA] = packColor(inst.extra);
@@ -1055,6 +1081,7 @@ export function pushGlyphInstance(
 	putLane(activeContext.uiInstances, base + WORD_UI_PARAMS0, (mode as int32) as float32, flag,
 		0.0, 0.0);
 	putLane(activeContext.uiInstances, base + WORD_UI_PARAMS1, 0.0, image, 0.0, 0.0);
+	putClipLane(activeContext.uiInstances, base + WORD_UI_CLIP_RECT);
 	activeContext.uiInstances[base + WORD_UI_COLOR_FILL] = packColor(fill);
 	activeContext.uiInstances[base + WORD_UI_COLOR_BORDER] = 0;
 	activeContext.uiInstances[base + WORD_UI_COLOR_EXTRA] = 0;
@@ -1062,7 +1089,7 @@ export function pushGlyphInstance(
 }
 
 // The sprite stream is separate rather than a wide record with unused lanes: guardrail 8
-// says a sprite-only scene must not pay for the UI pipeline, and paying 27 words to record
+// says a sprite-only scene must not pay for the UI pipeline, and paying 31 words to record
 // 16 is exactly that. It is also what makes B5 assertable - a sprite-only frame has
 // uiInstanceCount() == 0, which no mode count could prove.
 export function pushSpriteInstance(

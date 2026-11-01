@@ -1,19 +1,36 @@
 import { Color, Transform2D, rgba, identity2d } from "../void2d/types";
 import { InstanceMode, uiInstance } from "../void2d/instance";
-import { UI_WORDS } from "../void2d/instanceLayout";
+import { UI_WORDS, WORD_UI_CLIP_RECT, WORD_UI_COLOR_FILL } from "../void2d/instanceLayout";
+import { floatBits } from "../void2d/floatBits";
 import {
-	resetContext, currentContext, pushUiInstance, pushGlyphInstance, uiInstanceCount,
+	resetContext, pushUiInstance, pushGlyphInstance, uiInstanceCount,
+	uiInstanceWord, NO_INSTANCE_CLIP,
 } from "../void2d/displayList";
 import { Scene2D } from "../void2d/node";
 import { paint } from "../void2d/scene";
 import { frameEnd } from "../void2d/draw";
 
+const PINNED_WORDS: int32 = 27;
+
+// The words of the 27-word layout the digests were recorded from: every lane but the clip rect.
 function recordedWords(): uint32[] {
-	const count: int32 = uiInstanceCount();
 	const out: uint32[] = [];
-	const records: Readonly<Span<uint32>> = currentContext().uiInstances;
-	for (let w: int32 = 0; w < count * UI_WORDS; w++) { out.push(records[w]); }
+	for (let i: int32 = 0; i < uiInstanceCount(); i++) {
+		for (let w: int32 = 0; w < UI_WORDS; w++) {
+			const pinned: boolean = w < WORD_UI_CLIP_RECT || w >= WORD_UI_COLOR_FILL;
+			if (pinned) { out.push(uiInstanceWord(i, w)); }
+		}
+	}
 	return out;
+}
+
+function unclipped(i: int32): boolean {
+	const far: uint32 = floatBits(NO_INSTANCE_CLIP);
+	const near: uint32 = floatBits(-NO_INSTANCE_CLIP);
+	return uiInstanceWord(i, WORD_UI_CLIP_RECT) == near &&
+		uiInstanceWord(i, WORD_UI_CLIP_RECT + 1) == near &&
+		uiInstanceWord(i, WORD_UI_CLIP_RECT + 2) == far &&
+		uiInstanceWord(i, WORD_UI_CLIP_RECT + 3) == far;
 }
 
 function digest(words: Readonly<Span<uint32>>): uint32 {
@@ -72,8 +89,9 @@ test "UI records of every mode and edge value keep their uploaded words" {
 	assert uiInstanceCount() == 32;
 	const words: uint32[] = recordedWords();
 	assert words[24] == 0x80004000;
-	assert words[UI_WORDS + 24] == 0x7F01BFFF;
+	assert words[PINNED_WORDS + 24] == 0x7F01BFFF;
 	assert digest(words) == 1537905605;
+	for (let i: int32 = 0; i < 32; i++) { assert unclipped(i); }
 }
 
 test "a scene's UI records keep their uploaded words" {
@@ -87,6 +105,6 @@ test "a scene's UI records keep their uploaded words" {
 	s.paint(200.0, 120.0, 1.25);
 	const words: uint32[] = recordedWords();
 	frameEnd();
-	assert words.length as int32 == 10 * UI_WORDS;
+	assert words.length as int32 == 10 * PINNED_WORDS;
 	assert digest(words) == 1289668759;
 }

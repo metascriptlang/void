@@ -21,6 +21,7 @@ const uiLanes: Lane[] = [
 	lane("borders", "iBorders", LaneKind.Float4, "BORDERS"),
 	lane("params0", "iParams0", LaneKind.Float4, "PARAMS0"),
 	lane("params1", "iParams1", LaneKind.Float4, "PARAMS1"),
+	lane("clipRect", "iClipRect", LaneKind.Float4, "CLIP_RECT"),
 	lane("colorFill", "iColorFill", LaneKind.Color, "COLOR_FILL"),
 	lane("colorBorder", "iColorBorder", LaneKind.Color, "COLOR_BORDER"),
 	lane("colorExtra", "iColorExtra", LaneKind.Color, "COLOR_EXTRA"),
