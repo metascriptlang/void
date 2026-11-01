@@ -3,6 +3,7 @@ import {
 	dx12BufferUav,
 	dx12DescriptorHeapCreate,
 	dx12DescriptorsCopy,
+	dx12DescriptorsGather,
 	dx12Release,
 	dx12RootSignatureCreate,
 	dx12RootSignatureSerialize,
@@ -866,8 +867,8 @@ function copyTable(ref d: Descriptors, pair: VisiblePair, ref native: GroupNativ
 	const target = samplers ? pair.samplers : pair.views;
 	const first = samplers ? d.cursor.samplers : d.cursor.views;
 	const count = native.tables[t].descriptors.length as int32;
-	for (let i: int32 = 0; i < count; i++) {
-		try checked(dx12DescriptorsCopy(d.device, 1, handleAt(target, first + i), handleAt(source, native.tables[t].descriptors[i]), kind));
+	if (count > 0) {
+		try checked(dx12DescriptorsGather(d.device, count as uint32, handleAt(target, first), source.start, source.increment as uint32, native.tables[t].descriptors[0], kind));
 	}
 	native.tables[t].gpu = target.gpu + (first as uint64) * (target.increment as uint64);
 	native.tables[t].generation = d.generation;
