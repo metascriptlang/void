@@ -134,4 +134,21 @@ when (voidDummy || (windows && !voidVulkan)) {
 		assert doorBindStats().groupsMade == 1;
 		closeScene(scene);
 	}
+
+	test "a draw that changes only slots its program does not read issues no binding call, and a new pass binds again" {
+		const scene: Scene = openScene();
+		beginScene(scene);
+		drawWith(scene, 0);
+		const vertexAndGroup: int64 = doorBindStats().bindCalls;
+		assert vertexAndGroup == 2;
+		drawWith(scene, 0);
+		drawWith(scene, 777);
+		assert doorBindStats().bindCalls == vertexAndGroup;
+		endPass();
+		beginScene(scene);
+		drawWith(scene, 0);
+		assert doorBindStats().bindCalls == vertexAndGroup * 2;
+		endPass();
+		closeScene(scene);
+	}
 }
