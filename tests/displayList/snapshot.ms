@@ -841,7 +841,7 @@ function boxAt(x0: float32, y0: float32, x1: float32, y1: float32, rounding: flo
 	const tr: Vec2 = vec2(x1, y0);
 	const bl: Vec2 = vec2(x0, y1);
 	return pushRoundedClip(tl, tr, vec2(x1, y1), bl,
-		roundClipOf(tl, tr, bl, x1 - x0, y1 - y0, uniformRadii(rounding)));
+		roundClipOf(tl, tr, bl, x1 - x0, y1 - y0, CornerRadii.uniform(rounding)));
 }
 
 function nestedClipArea(scoped: boolean, outer: float32[4], inner: float32[4], rounding: float32): int32 {
