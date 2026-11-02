@@ -37,7 +37,7 @@ const GREEN_BGRA: uint32 = 0x00FF00FF;
 
 function step(name: string, code: int32): boolean {
 	if (code == VULKAN_OK) { return true; }
-	console.log(`FAIL vulkan swapchain: ${name} returned ${code}: ${vulkanError()}`);
+	console.log(`FAIL vulkan swapchain: ${name} returned ${code}: ${vulkanError() as string}`);
 	vulkanShutdown();
 	vulkanHostWindowClose();
 	return false;
@@ -156,7 +156,7 @@ function main(): int32 {
 	if (!step("vulkanHostWindowOpen", vulkanHostWindowOpen(0, WIDTH, HEIGHT, primary))) { return 1; }
 	if (!step("vulkanAdapterSelect", vulkanAdapterSelect(VULKAN_POWER_HIGH, primary))) { return 1; }
 	if (!step("vulkanDeviceCreate", vulkanDeviceCreate())) { return 1; }
-	console.log(`adapter ${vulkanAdapterName()}`);
+	console.log(`adapter ${vulkanAdapterName() as string}`);
 	let side: uint64 = 0;
 	if (!step("vulkanHostWindowOpen", vulkanHostWindowOpen(1, SIDE_WIDTH, SIDE_HEIGHT, side))) { return 1; }
 	openSurface(primary);

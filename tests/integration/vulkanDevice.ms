@@ -24,7 +24,7 @@ const VULKAN_POWER_HIGH: int32 = 2;
 
 function step(name: string, code: int32): boolean {
 	if (code == VULKAN_OK) { return true; }
-	console.log(`FAIL vulkan device: ${name} returned ${code}: ${vulkanError()}`);
+	console.log(`FAIL vulkan device: ${name} returned ${code}: ${vulkanError() as string}`);
 	vulkanShutdown();
 	return false;
 }
@@ -35,7 +35,7 @@ function main(): int32 {
 	if (!step("vulkanAdapterSelect", vulkanAdapterSelect(VULKAN_POWER_HIGH, 0))) { return 1; }
 	if (!step("vulkanDeviceCreate", vulkanDeviceCreate())) { return 1; }
 	const api: uint32 = vulkanAdapterApiVersion();
-	console.log(`adapter ${vulkanAdapterName()}, Vulkan ${api >> 22}.${(api >> 12) & 1023}.` +
+	console.log(`adapter ${vulkanAdapterName() as string}, Vulkan ${api >> 22}.${(api >> 12) & 1023}.` +
 		`${api & 4095}, queue family ${vulkanAdapterQueueFamily()}`);
 	const validated: boolean = vulkanValidationEnabled() != 0;
 	vulkanShutdown();
