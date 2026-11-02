@@ -171,7 +171,7 @@ const GREEN_HLSL = "float4 main() : SV_Target0 { return float4(0.0, 1.0, 0.0, 1.
 
 function dxbc(code: string, target: string): Vec<uint8> {
 	const blob = d3dCompile(code, "main", target);
-	if (blob == null) { stopOnWarp(`D3DCompile ${target} failed: ${d3dCompileLog()}`); }
+	if (blob == null) { stopOnWarp(`D3DCompile ${target} failed: ${(d3dCompileLog() as string)}`); }
 	let bytes: Vec<uint8> = new Array(65536);
 	const size = d3dBlobRead(blob, bytes[0], 65536);
 	d3dBlobFree(blob);

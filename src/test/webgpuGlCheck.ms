@@ -76,7 +76,7 @@ function stopOnGl(message: string): void {
 
 function openDevice(): GPUDevice {
 	if (glWindowOpen() != 1) {
-		const error: string = glWindowError();
+		const error: string = glWindowError() as string;
 		stopOnGl(error);
 	}
 	return requestDevice({
