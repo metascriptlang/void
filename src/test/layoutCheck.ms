@@ -204,3 +204,21 @@ test "a disposed laid-out child leaves its siblings laid out" {
 	assert approx(b.content().h, 60.0);
 	freeLayout(root);
 }
+
+test "17.5 pt rows round to the pixel grid of the point scale, and a later pass re-rounds at another scale" {
+	const root = s.group();
+	root.setLayoutStyle({ flexDirection: "column" });
+	const rows: NodeRef[] = [];
+	for (let k: int32 = 0; k < 4; k++) {
+		const row = white();
+		row.setLayoutStyle({ height: 17.5 });
+		root.addChild(row);
+		rows.push(row);
+	}
+	layoutPass(root, 100.0, 200.0, 2.0);
+	assert approx(rows[0].local().y, 0.0) && approx(rows[1].local().y, 17.5);
+	assert approx(rows[2].local().y, 35.0) && approx(rows[3].local().y, 52.5);
+	layoutPass(root, 100.0, 200.0);
+	assert approx(rows[1].local().y, 18.0) && approx(rows[3].local().y, 53.0);
+	freeLayout(root);
+}
