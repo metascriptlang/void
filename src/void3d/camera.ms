@@ -206,6 +206,25 @@ export function rotationOfBasis(basis: CameraBasis): Quat {
 	});
 }
 
+// h3d.Camera.makeCameraMatrix's axes, right-handed: back points from the target to the eye and
+// right is up x back. When up is parallel to back, Heaps' fallback (back.y, back.z, back.x) is the
+// right axis, made perpendicular to back so the basis stays orthonormal for any up.
+export function lookAtBasis(eye: Vec3, target: Vec3, up: Vec3): CameraBasis {
+	const back: Vec3 = (eye - target).normalized();
+	let right: Vec3 = up.cross(back).normalized();
+	if (right.lengthSquared() == 0.0) {
+		const fallback: Vec3 = vec3(back.y, back.z, back.x);
+		right = (fallback - back.scaled(fallback.dot(back))).normalized();
+	}
+	return { right: right, up: back.cross(right), forward: back.scaled(-1.0) };
+}
+
+// The rotation that turns a node's +Z toward the target: a light's front (scene.ms) and any node,
+// as three.js Object3D.lookAt aims a non-camera object. A camera takes lookAtBasis instead.
+export function lookAtRotation(position: Vec3, target: Vec3, up: Vec3): Quat {
+	return rotationOfBasis(lookAtBasis(target, position, up));
+}
+
 // h3d.Camera.makeCameraMatrix: the transpose of a lookAt, so that `p * m` reads `p - eye` in the
 // camera's own axes.
 export function makeCameraMatrix(this basis: CameraBasis, eye: Vec3): Mat4 {
