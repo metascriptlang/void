@@ -83,7 +83,7 @@ function editorRun(len: int32, color: Color): TextRun {
 	const clear: Color = rgba(0.0, 0.0, 0.0, 0.0);
 	return {
 		len: len, font: DEFAULT_FONT, color: color, background: clear, underline: clear,
-		wavy: false, strikethrough: clear,
+		strikethrough: clear,
 	};
 }
 

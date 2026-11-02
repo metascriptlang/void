@@ -177,7 +177,7 @@ const CLEAR = rgba(0.0, 0.0, 0.0, 0.0);
 function plainRun(len: int32): TextRun {
 	return {
 		len: len, font: DEFAULT_FONT, color: rgba(1.0, 1.0, 1.0, 1.0), background: CLEAR,
-		underline: CLEAR, wavy: false, strikethrough: CLEAR,
+		underline: CLEAR, strikethrough: CLEAR,
 	};
 }
 
@@ -242,7 +242,7 @@ test "run decorations: a background fills the line box, lines sit on the face's 
 	const index = allocateLabelText();
 	const runs: TextRun[] = [
 		{ ...plainRun(3), background: rgba(0.0, 0.0, 1.0, 1.0) },
-		{ ...plainRun(3), underline: rgba(0.0, 1.0, 0.0, 1.0), wavy: true },
+		{ ...plainRun(3), underline: rgba(0.0, 1.0, 0.0, 1.0), underlineStyle: UnderlineStyle.Wavy },
 		{ ...plainRun(2), strikethrough: rgba(1.0, 0.0, 0.0, 1.0) },
 	];
 	setLabelRuns(index, runs);
@@ -277,8 +277,8 @@ test "a decoration runs on across the runs that share it, as GPUI's does" {
 	const index = allocateLabelText();
 	const squiggle = rgba(1.0, 0.2, 0.2, 1.0);
 	const runs: TextRun[] = [
-		{ ...plainRun(2), color: rgba(0.8, 0.5, 1.0, 1.0), underline: squiggle, wavy: true },
-		{ ...plainRun(3), underline: squiggle, wavy: true },
+		{ ...plainRun(2), color: rgba(0.8, 0.5, 1.0, 1.0), underline: squiggle, underlineStyle: UnderlineStyle.Wavy },
+		{ ...plainRun(3), underline: squiggle, underlineStyle: UnderlineStyle.Wavy },
 		{ ...plainRun(2), underline: squiggle },
 		plainRun(1),
 	];
@@ -306,7 +306,7 @@ test "a styled underline keeps its kind and pattern cell, an overline sits on th
 	const runs: TextRun[] = [
 		{ ...plainRun(2), underline: ink, underlineStyle: UnderlineStyle.Double },
 		{ ...plainRun(2), underline: ink, underlineStyle: UnderlineStyle.Dotted },
-		{ ...plainRun(2), underline: ink, underlineStyle: UnderlineStyle.Dashed, wavy: true },
+		{ ...plainRun(2), underline: ink, underlineStyle: UnderlineStyle.Wavy },
 		{ ...plainRun(2), overline: ink },
 	];
 	setLabelRuns(index, runs);
