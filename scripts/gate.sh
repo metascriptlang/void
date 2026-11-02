@@ -46,6 +46,12 @@ fail() { echo "FAIL  $1"; fails=$((fails + 1)); }
 skip() { echo "SKIP  $1"; skips=$((skips + 1)); }
 gate_start=$(date +%s)
 section() { echo "=== $1 === at $(( $(date +%s) - gate_start )) s"; }
+# A Mac with only the command line tools has no coreutils timeout; expiry exits 124 as timeout does.
+command -v timeout > /dev/null || timeout() {
+	perl -e 'my $s = shift; my $p = fork; defined $p or exit 125; if (!$p) { exec @ARGV; exit 127 }
+		$SIG{ALRM} = sub { kill "TERM", $p; waitpid $p, 0; exit 124 }; alarm $s; waitpid $p, 0;
+		exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$@"
+}
 
 section "0. the compiler under test"
 mscPath="$(command -v "$MSC" || true)"
