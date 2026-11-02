@@ -9,10 +9,13 @@ import {
 	CameraError,
 	CameraBasis,
 	OrthoBounds,
+	lookAtBasis,
+	lookAtRotation,
+	makeCameraMatrix,
 } from "../void3d/camera";
 import { LowResView, lowResView } from "../void3d/blit";
 import { Ray } from "../void3d/ray";
-import { Vec3, Mat4, vec3, identity, rotationZ, scaling, translation } from "../math/math3d";
+import { Vec3, Mat4, vec3, identity, rotationZ, scaling, toMatrix, transformDirection, translation } from "../math/math3d";
 import { approx } from "./helpers";
 
 // The campfire's camera, and its rule for the texel size: 20 world units across the low-res
@@ -668,4 +671,31 @@ test "a generic === in another module compares projections by the declared ==" {
 	assert !differentValue<CameraProjection>(lens, sameLens);
 	assert differentValue<CameraProjection>(lens, wider);
 	assert differentValue<CameraProjection>(grid, lens);
+}
+
+test "lookAt aims a camera and a node's +Z at a target in front, behind, above and to the side" {
+	const eye: Vec3 = vec3(1.0, 2.0, 3.0);
+	const up: Vec3 = vec3(0.0, 1.0, 0.0);
+	const offsets: Vec3[] = [
+		vec3(0.0, 0.0, -5.0), vec3(0.0, 0.0, 5.0), vec3(0.0, 5.0, 0.0), vec3(0.0, -5.0, 0.0), vec3(5.0, 0.0, 0.0),
+	];
+	for (const d of offsets) {
+		const target: Vec3 = eye + d;
+		const toward: Vec3 = d.normalized();
+		const basis: CameraBasis = lookAtBasis(eye, target, up);
+		assert nearVec(basis.forward, toward);
+		assert approx(basis.right.dot(basis.up), 0.0) && approx(basis.right.dot(basis.forward), 0.0);
+		assert approx(basis.up.dot(basis.forward), 0.0) && approx(basis.right.lengthSquared(), 1.0);
+		assert approx(basis.right.cross(basis.up).dot(basis.forward), -1.0);
+		assert nearVec(target * basis.makeCameraMatrix(eye), vec3(0.0, 0.0, 5.0));
+		const turned: Mat4 = lookAtRotation(eye, target, up).toMatrix();
+		assert nearVec(vec3(0.0, 0.0, 1.0).transformDirection(turned), toward);
+	}
+}
+
+test "lookAt keeps a level target level, and a target straight above takes Heaps' fallback right axis" {
+	const basis: CameraBasis = lookAtBasis(vec3(0.0, 0.0, 0.0), vec3(3.0, 0.0, -4.0), vec3(0.0, 1.0, 0.0));
+	assert approx(basis.right.y, 0.0) && basis.up.y > 0.99;
+	const above: CameraBasis = lookAtBasis(vec3(0.0, 0.0, 0.0), vec3(0.0, 5.0, 0.0), vec3(0.0, 1.0, 0.0));
+	assert nearVec(above.right, vec3(-1.0, 0.0, 0.0)) && nearVec(above.up, vec3(0.0, 0.0, -1.0));
 }
