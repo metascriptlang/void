@@ -1,4 +1,5 @@
 import { FontInfo, newBuf } from "../trueType";
+import { FontLayout, fontOver, layoutOf } from "../trueType/fontInfo";
 
 export const FACE_UNREADABLE: int32 = -1;
 export const FACE_NOT_A_FONT: int32 = -2;
@@ -58,7 +59,7 @@ export struct FaceHeights {
 
 export class GlyphFace {
 	bytes: FaceBytes;
-	info: FontInfo;
+	layout: FontLayout;
 	kernLookups: int32[] = [];
 	kernUnits: Map<uint64, int32> = new Map<uint64, int32>();
 	emboldenUnits: float32 = 0.0;
@@ -87,7 +88,11 @@ export class GlyphFace {
 
 	constructor(bytes: FaceBytes, info: FontInfo) {
 		this.bytes = bytes;
-		this.info = info;
+		this.layout = layoutOf(info);
+	}
+
+	get info(): FontInfo {
+		return fontOver(this.bytes.data, this.layout);
 	}
 }
 

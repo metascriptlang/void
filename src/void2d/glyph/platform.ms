@@ -6,9 +6,11 @@ import {
 } from "../platformFace.h";
 import {
 	FontInfo,
+	FontLayout,
 	GlyphBox,
 	asInt32,
 	findTable,
+	layoutOf,
 	newBuf,
 	u16At,
 	u32At,
@@ -37,12 +39,12 @@ const MS_EID_UNICODE_FULL: int32 = 10;
 const NAME_CAPACITY: int32 = 128;
 
 export class PlatformTable {
-	info: FontInfo;
+	layout: FontLayout;
 	glyphCount: int32;
 	unitsPerEm: int32;
 
 	constructor(info: FontInfo, glyphCount: int32, unitsPerEm: int32) {
-		this.info = info;
+		this.layout = layoutOf(info);
 		this.glyphCount = glyphCount;
 		this.unitsPerEm = unitsPerEm;
 	}

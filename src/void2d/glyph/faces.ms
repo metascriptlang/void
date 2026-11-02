@@ -16,7 +16,7 @@ import {
 	u16At,
 	u32At,
 } from "../trueType";
-import { hasTag } from "../trueType/fontInfo";
+import { fontOver, hasTag, layoutOf } from "../trueType/fontInfo";
 import { getGlyphBitmapBoxSubpixel } from "../trueType/rasterize";
 import { sfntSourceRead, sfntSourceSize } from "../sfntSource";
 import {
@@ -463,7 +463,7 @@ export function void2dGlyphFaceLoad(path: string, index: int32): int32 {
 		if (!outlines && offset >= 0) {
 			const table = platformInfo(holder.data, offset);
 			if (table != null) {
-				found = table.info;
+				found = fontOver(holder.data, table.layout);
 				glyphCount = table.glyphCount;
 				const name = postScriptName(holder.data, offset);
 				if (name != "") {
@@ -502,7 +502,7 @@ export function void2dGlyphFaceLoad(path: string, index: int32): int32 {
 		console.error(`void2d: ${path} is not a font stb_truetype can read`);
 		return FACE_NOT_A_FONT;
 	}
-	face.info = found;
+	face.layout = layoutOf(found);
 	face.colourOnly = colourOnly;
 	face.platform = platform;
 	face.glyphCount = glyphCount;
@@ -589,7 +589,7 @@ when (macos || ios || emcc) {
 			return FACE_NOT_A_FONT;
 		}
 		const face = copyFace(f);
-		face.info = table.info;
+		face.layout = table.layout;
 		face.platform = platform;
 		face.glyphCount = table.glyphCount;
 		face.measured = false;
