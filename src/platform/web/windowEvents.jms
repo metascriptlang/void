@@ -255,7 +255,9 @@ export class WindowEvents {
 			DOM_DELTA_PIXEL => -0.01,
 			DOM_DELTA_LINE => -1.33,
 			DOM_DELTA_PAGE => -10.0,
-			_ => this.window.platform.fail(`wheel event with delta mode ${mode}`),
+			_ => {
+				this.window.platform.fail(`wheel event with delta mode ${mode}`);
+			},
 		};
 		e.scrollX = scale * (numberField(event, "deltaX") as float32);
 		e.scrollY = scale * (numberField(event, "deltaY") as float32);
