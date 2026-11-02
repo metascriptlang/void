@@ -24,6 +24,7 @@ import {
 	addPlane,
 	addSphere,
 	addTorus,
+	addCylinderTorso,
 	addCylinderSides,
 	addDisc,
 	addCapsuleY,
@@ -1210,4 +1211,44 @@ test "a torus refuses bad sizes, too few segments and more vertices than a mesh 
 	let lit = MeshData.withUvs();
 	assert addTorus(lit, 3.0, 1.0, WHITE, 6, 12).ok;
 	assert addTangents(lit).ok;
+}
+
+test "a cylinder torso follows three.js: a cone drops its apex triangles, normals tilt by the slope" {
+	for (const textured of [false, true]) {
+		let cone = textured ? MeshData.withUvs() : MeshData.empty();
+		const added = addCylinderTorso(cone, 0.0, 1.0, 2.0, WHITE, 8, 3);
+		assert added.ok;
+		if (!added.ok) { continue; }
+		assert cone.vertexCount() == 9 * 4;
+		assert cone.triangleCount() == 8 * 3 * 2 - 8 && cone.validIndices();
+		const w = cone.stride();
+		const lean: float32 = (0.5 / Math.sqrt(1.25)) as float32;
+		for (let i = 0; i < cone.vertexCount(); i++) {
+			const normal = vec3(cone.vertices[i * w + 3], cone.vertices[i * w + 4], cone.vertices[i * w + 5]);
+			assert approx(normal.length(), 1.0) && approx(normal.y, lean);
+			const row = (i / 9) as int32;
+			assert approx(cone.vertices[i * w + 1], 1.0 - (row as float32) * 2.0 / 3.0);
+		}
+		for (let row = 0; row <= 3; row++) {
+			for (let k = 0; k < 3; k++) {
+				assert cone.vertices[(row * 9) * w + k] == cone.vertices[(row * 9 + 8) * w + k];
+			}
+		}
+		for (let t = 0; t < cone.triangleCount(); t++) { assert windingSign(cone, t) > 0.0; }
+	}
+	let frustum = MeshData.empty();
+	assert addCylinderTorso(frustum, 1.0, 2.0, 1.0, WHITE, 6, 1).ok;
+	assert frustum.triangleCount() == 12;
+	for (let t = 0; t < frustum.triangleCount(); t++) { assert windingSign(frustum, t) > 0.0; }
+}
+
+test "a cylinder torso refuses two zero radii, a bad height, too few segments and an oversize mesh" {
+	let data = MeshData.empty();
+	for (const bad of [addCylinderTorso(data, 0.0, 0.0, 1.0, WHITE, 8, 1),
+		addCylinderTorso(data, -1.0, 1.0, 1.0, WHITE, 8, 1), addCylinderTorso(data, 1.0, 1.0, 0.0, WHITE, 8, 1),
+		addCylinderTorso(data, 1.0, 1.0, 1.0, WHITE, 2, 1), addCylinderTorso(data, 1.0, 1.0, 1.0, WHITE, 8, 0)]) {
+		assert !bad.ok && bad.error == MeshError.CylinderParameters;
+	}
+	const huge = addCylinderTorso(data, 1.0, 1.0, 1.0, WHITE, 70000, 70000);
+	assert !huge.ok && huge.error == MeshError.TooManyVertices && data.vertexCount() == 0;
 }
