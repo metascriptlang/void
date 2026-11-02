@@ -1,0 +1,17 @@
+// The 2D batcher demo on the browser's JS target, the twin of main2d.ms: the page fetches the
+// files main2d reads from disk and hands them over as voidAssets before this bundle runs.
+
+import { init2d, frame2d } from "./renderer2d";
+import { fontBytesAdd } from "../void2d/fontBytes";
+import "../host/gpuWindow";
+
+extern function voidRun(width: int32, height: int32, init: () => void, frame: () => void): void;
+extern function pageAssetPaths(): string[] from "Object.keys(globalThis.voidAssets??{})";
+extern function pageAsset(path: string): uint8[] from "Array.from(globalThis.voidAssets[#])";
+
+for (const path of pageAssetPaths()) {
+	if (!fontBytesAdd(path, pageAsset(path))) {
+		throw new Error(`main2dWeb: ${path} is held with other bytes`);
+	}
+}
+voidRun(800, 600, init2d, frame2d);
