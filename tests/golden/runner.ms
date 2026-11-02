@@ -153,7 +153,7 @@ function finish(): void {
 		console.log(`FAIL ${row.name} could not write ${path}`);
 		voidCaptureExit(EXIT_FAILED);
 	}
-	const renderer: string = voidCaptureRenderer();
+	const renderer: string = voidCaptureRenderer() as string;
 	if (renderer.length > 0) { console.log(`RENDERER ${renderer}`); }
 	console.log(
 		`CAPTURED ${row.name} ${width}x${height} dpi ${row.dpi} draws ${draws}`

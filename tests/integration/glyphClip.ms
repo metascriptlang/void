@@ -151,7 +151,7 @@ function init(): void {
 	maskView = glyphPageView(maskPage as GlyphPageHandle);
 	rgbaView = glyphPageView(rgbaPage as GlyphPageHandle);
 	if (maskView == 0 || rgbaView == 0) { fail("page views refused"); }
-	console.log(`BACKEND ${voidCaptureBackend()} renderer ${voidCaptureRenderer()}`);
+	console.log(`BACKEND ${voidCaptureBackend()} renderer ${voidCaptureRenderer() as string}`);
 }
 
 function checkPixel(x: int32, y: int32, rgb: int32): void {

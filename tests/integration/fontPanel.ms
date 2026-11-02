@@ -282,7 +282,7 @@ function frame(): void {
 		const backend: int32 = voidCaptureBackend();
 		const path: string = `out/fontPanel-${backend}-${PIXEL_WIDTH}.png`;
 		require(voidCaptureWritePng(1, path) != 0, "PNG write failed");
-		console.log(`RENDERER ${voidCaptureRenderer()}`);
+		console.log(`RENDERER ${voidCaptureRenderer() as string}`);
 		console.log(`PASS fontPanel ${backend} ${PIXEL_WIDTH}x${PIXEL_HEIGHT} dpi ${DPI}`);
 		panel.scene.close();
 		voidCaptureExit(0);

@@ -203,7 +203,7 @@ function init(): void {
 	gfxSetup();
 	setup2d();
 	live = buildPanel();
-	console.log(`BACKEND ${actual} renderer ${voidCaptureRenderer()}`);
+	console.log(`BACKEND ${actual} renderer ${voidCaptureRenderer() as string}`);
 }
 
 function frame(): void {
