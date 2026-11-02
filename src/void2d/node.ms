@@ -30,7 +30,7 @@ when (voidProfiler) {
 import { sinf, cosf } from "../math/mat4";
 import { Mat4 } from "../math/math3d";
 import { NO_COLOR_MATRIX } from "./effect";
-import { FlexStyle, LayoutMeasure, YGNode, freeLayoutTree } from "../../../yoga/src/index";
+import { FlexStyle, LayoutMeasure, YGNode, freeLayoutTreeAt } from "../../../yoga/src/index";
 import {
 	BoxStyle,
 	CornerRadii,
@@ -877,13 +877,12 @@ export function setLayoutStyle(this n: NodeRef, style: FlexStyle | null): NodeRe
 	return n;
 }
 
-export function layoutGetChildren(this n: NodeRef): NodeRef[] {
-	const i: int32 = n.liveRow("layoutGetChildren");
-	const out: NodeRef[] = [];
-	for (let k: int32 = 0; k < (n.scene.children[i].length as int32); k++) {
-		out.push(n.scene.refOf(n.scene.children[i][k]));
-	}
-	return out;
+export function layoutChildCount(this n: NodeRef): int32 {
+	return n.scene.children[n.liveRow("layoutChildCount")].length as int32;
+}
+
+export function layoutChildAt(this n: NodeRef, k: int32): NodeRef {
+	return n.scene.refOf(n.scene.children[n.liveRow("layoutChildAt")][k]);
 }
 
 export function layoutGetStyle(this n: NodeRef): FlexStyle | null {
@@ -1814,7 +1813,7 @@ export function addChildAt(this n: NodeRef, c: NodeRef, index: int32): NodeRef {
 
 function releaseLayout(this s: Scene2D, top: int32): void {
 	if (s.layouts[top].yg === null) { return; }
-	freeLayoutTree(s.refOf(top));
+	freeLayoutTreeAt(s.refOf(top));
 }
 
 export function removeChild(this n: NodeRef, c: NodeRef): void {
