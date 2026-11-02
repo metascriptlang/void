@@ -23,6 +23,7 @@ import {
 	addBox,
 	addPlane,
 	addSphere,
+	addTorus,
 	addCylinderSides,
 	addDisc,
 	addCapsuleY,
@@ -1154,3 +1155,59 @@ test "tangent seam splits promote at 65535 and preserve source remaps" {
 	}
 }
 
+
+function windingSign(data: MeshData, triangle: int32): float32 {
+	const a = data.indexAt(triangle * 3) as int32;
+	const b = data.indexAt(triangle * 3 + 1) as int32;
+	const c = data.indexAt(triangle * 3 + 2) as int32;
+	const w = data.stride();
+	const at = (i: int32, k: int32): Vec3 =>
+		vec3(data.vertices[i * w + k], data.vertices[i * w + k + 1], data.vertices[i * w + k + 2]);
+	const face = (at(b, 0) - at(a, 0)).cross(at(c, 0) - at(a, 0));
+	return face.dot(at(a, 3) + at(b, 3) + at(c, 3)) > 0.0 ? 1.0 : -1.0;
+}
+
+test "a torus follows three.js TorusGeometry: counts, tube normals, closed seams and outward CCW faces" {
+	for (const textured of [false, true]) {
+		let data = textured ? MeshData.withUvs() : MeshData.empty();
+		const added = addTorus(data, 3.0, 1.0, WHITE, 6, 12);
+		assert added.ok;
+		if (!added.ok) { continue; }
+		assert data.vertexCount() == 7 * 13;
+		assert data.triangleCount() == 6 * 12 * 2 && data.validIndices();
+		const width = data.stride();
+		for (let i = 0; i < data.vertexCount(); i++) {
+			const at = i * width;
+			const point = vec3(data.vertices[at], data.vertices[at + 1], data.vertices[at + 2]);
+			const normal = vec3(data.vertices[at + 3], data.vertices[at + 4], data.vertices[at + 5]);
+			const ring = Math.sqrt(point.x * point.x + point.y * point.y) as float32;
+			const centre = vec3(point.x * 3.0 / ring, point.y * 3.0 / ring, 0.0);
+			assert approx((point - centre).length(), 1.0) && approx(normal.length(), 1.0);
+			assert near(normal, point.x - centre.x, point.y - centre.y, point.z - centre.z);
+			if (textured) {
+				assert approx(data.vertices[at + 6], ((i % 13) as float32) / 12.0);
+				assert approx(data.vertices[at + 7], ((i / 13) as float32) / 6.0);
+			}
+		}
+		for (let j = 0; j <= 6; j++) {
+			const first = data.stride() * j * 13;
+			const last = first + data.stride() * 12;
+			for (let k = 0; k < 3; k++) { assert approx(data.vertices[first + k], data.vertices[last + k]); }
+		}
+		for (let t = 0; t < data.triangleCount(); t++) { assert windingSign(data, t) > 0.0; }
+	}
+}
+
+test "a torus refuses bad sizes, too few segments and more vertices than a mesh holds" {
+	let data = MeshData.empty();
+	for (const bad of [addTorus(data, 0.0, 1.0, WHITE, 6, 12), addTorus(data, 3.0, -1.0, WHITE, 6, 12),
+		addTorus(data, 3.0, 1.0, WHITE, 2, 12), addTorus(data, 3.0, 1.0, WHITE, 6, 2)]) {
+		assert !bad.ok && bad.error == MeshError.TorusParameters;
+	}
+	const huge = addTorus(data, 3.0, 1.0, WHITE, 70000, 70000);
+	assert !huge.ok && huge.error == MeshError.TooManyVertices;
+	assert data.vertexCount() == 0;
+	let lit = MeshData.withUvs();
+	assert addTorus(lit, 3.0, 1.0, WHITE, 6, 12).ok;
+	assert addTangents(lit).ok;
+}
