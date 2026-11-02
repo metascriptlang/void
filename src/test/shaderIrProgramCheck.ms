@@ -10,7 +10,7 @@ import { irErrors } from "../shader/ir";
 import { irFromText, irText } from "../shader/irText";
 import { ShaderTarget } from "../shader/layout";
 import { Reflection } from "../shader/reflect";
-import { GPUShaderModuleDescriptor } from "../webgpu/types.ms";
+import { GPU_MAX_SHADER_BINDINGS, GPUShaderModuleDescriptor } from "../webgpu/types.ms";
 import {
 	billboardFs,
 	billboardVs,
@@ -57,7 +57,7 @@ const FULLSCREEN_VS = glslIr(fullscreenVs);
 function mismatches(reflected: Reflection, committed: GPUShaderModuleDescriptor): string[] {
 	let out: string[] = [];
 	let committedCount = 0;
-	for (let i = 0; i < 24; i++) {
+	for (let i = 0; i < GPU_MAX_SHADER_BINDINGS; i++) {
 		if (committed.bindings[i].kind != null) { committedCount++; }
 	}
 	if (committedCount != reflected.bindings.length) {
@@ -68,7 +68,8 @@ function mismatches(reflected: Reflection, committed: GPUShaderModuleDescriptor)
 		let found = -1;
 		for (let i = 0; i < committedCount; i++) {
 			const b = committed.bindings[i];
-			if (b.group == r.group && b.binding == r.binding) { found = i; }
+			if (b.group != r.group || b.binding != r.binding) { continue; }
+			if (found < 0 || (b.nativeName ?? "") == (r.nativeName ?? "")) { found = i; }
 		}
 		if (found < 0) {
 			out.push(at + "is not in the committed descriptor");
@@ -187,7 +188,7 @@ test "descriptorSource prints a binding's keys in the descriptor's order" {
 	const m = linkedProgram(LIT_TEXTURED_VS, LIT_TEXTURED_FS, features,
 		programEffects("CORE", "litTexturedFs", features));
 	assert m.ok;
-	const s = programSource(m.value, builtTarget());
+	const s = programSource(m.value, ShaderTarget.Msl);
 	assert s.ok;
 	const text = descriptorSource("lit", s.value, ["c", "c"], ["[]", "[]"]);
 	assert text.includes("{ group: 1, binding: 4, kind: \"texture\", visibility: 2, size: 0, " +
