@@ -375,7 +375,6 @@ function runDecorations(
 }
 
 function underlineKind(run: TextRun): DecorationKind {
-	if (run.wavy) { return DecorationKind.WavyUnderline; }
 	return match (run.underlineStyle) {
 		UnderlineStyle.Solid => DecorationKind.Underline,
 		UnderlineStyle.Double => DecorationKind.DoubleUnderline,

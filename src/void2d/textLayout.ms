@@ -216,7 +216,6 @@ export struct TextRun {
 	color: Color;
 	background: Color;
 	underline: Color;
-	wavy: boolean;
 	underlineStyle: UnderlineStyle;
 	strikethrough: Color;
 	overline: Color;
