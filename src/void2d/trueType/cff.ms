@@ -1,5 +1,6 @@
 import {
 	Buf,
+	BufRange,
 	FontInfo,
 	GlyphBox,
 	Vertex,
@@ -7,7 +8,9 @@ import {
 	VERTEX_LINE,
 	VERTEX_MOVE,
 	asInt32,
+	bufOver,
 	newBuf,
+	rangeOf,
 	truncInt,
 	u8At,
 	wrapInt16,
@@ -387,7 +390,7 @@ function runCharstring(
 	let sp: int32 = 0;
 	let hasSubrs = false;
 	const s: float32[] = new Array<float32>(MAX_STACK);
-	const subrStack: Buf[] = new Array<Buf>(MAX_SUBR_DEPTH);
+	const subrStack: BufRange[] = new Array<BufRange>(MAX_SUBR_DEPTH);
 	let subrs = info.subrs;
 	let b = indexGet(info.charstrings, glyphIndex);
 	while (b.cursor < b.size) {
@@ -560,7 +563,7 @@ function runCharstring(
 				if (subrStackHeight >= MAX_SUBR_DEPTH) {
 					return false;
 				}
-				subrStack[subrStackHeight] = b;
+				subrStack[subrStackHeight] = rangeOf(b);
 				subrStackHeight += 1;
 				b = getSubr(b0 == 0x0A ? subrs : info.gsubrs, v);
 				if (b.size == 0) {
@@ -574,7 +577,7 @@ function runCharstring(
 					return false;
 				}
 				subrStackHeight -= 1;
-				b = subrStack[subrStackHeight];
+				b = bufOver(info.data, subrStack[subrStackHeight]);
 				clearStack = false;
 			},
 			0x0E => {
