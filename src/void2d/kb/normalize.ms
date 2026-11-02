@@ -203,6 +203,7 @@ function recompose(s: KbScratch, config: KbShapeConfig): void {
 
 	let lastBase: int32 = NO_GLYPH;
 	let lastBaseParents: KbParent[] = [];
+	let parentsPending = false;
 	let preSlashDecimalDigitCount: int64 = 0;
 	let preSlashGlyph: int32 = NO_GLYPH;
 	let digitGlyph: int32 = NO_GLYPH;
@@ -244,26 +245,27 @@ function recompose(s: KbScratch, config: KbShapeConfig): void {
 			}
 		}
 
+		if (storage.glyphs[glyph].combiningClass != 0 && parentsPending) {
+			lastBaseParents = kbLoadParents(storage.glyphs[lastBase]);
+			parentsPending = false;
+			if (
+				(lastBaseParents.length as uint32) > KB_MAXIMUM_RECOMPOSITION_PARENTS
+			) {
+				throw kbBoundsFail(
+					"more recomposition parents than the C buffer holds",
+					lastBaseParents.length as int64,
+				);
+			}
+		}
+
 		let doubleRecompositionCount = lastBaseParents.length as int64;
 
 		if (storage.glyphs[glyph].combiningClass == 0) {
 			lastBase = glyph;
-			if (
+			lastBaseParents = [];
+			parentsPending =
 				config.shaper != KB_SHAPER_USE ||
-				storage.glyphs[glyph].syllabicClass != KB_INDIC_SYLLABIC_CLASS_MATRA
-			) {
-				lastBaseParents = kbLoadParents(storage.glyphs[glyph]);
-				if (
-					(lastBaseParents.length as uint32) > KB_MAXIMUM_RECOMPOSITION_PARENTS
-				) {
-					throw kbBoundsFail(
-						"more recomposition parents than the C buffer holds",
-						lastBaseParents.length as int64,
-					);
-				}
-			} else {
-				lastBaseParents = [];
-			}
+				storage.glyphs[glyph].syllabicClass != KB_INDIC_SYLLABIC_CLASS_MATRA;
 
 			doubleRecompositionCount = 0;
 		}
