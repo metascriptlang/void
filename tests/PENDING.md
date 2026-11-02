@@ -244,4 +244,3 @@ Measured 2026-10-03 on macOS with `bash scripts/gate.sh --quick`, branch `wt/voi
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| compiler:literal-beside-float32 | T0 | `src/void2d/sdf.ms:176` (`-3.0 * …`) and `src/void2d/render.ms:1604` (`(c ? 1.0 : x) * y`): a negated literal and a ternary arm stay float64 beside a float32. Card `~/metascript/.inbox/compiler/2026-10-03-literal-beside-float32-negated-or-in-a-ternary.md` | compiler fix | 2026-10-03 |
