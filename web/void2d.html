@@ -17,20 +17,37 @@
   // build in its own dir (the .js hardcodes its .wasm/.data names).
   const status = document.getElementById('status');
   // ?gl / ?wgpu force a backend; otherwise WebGPU-first with WebGL2 fallback. ?entry=<name> loads
-  // another entry built beside this page (default main2d).
+  // another entry built beside this page (default main2d). ?js loads the --target=js build of the
+  // same demo (js-wgpu/, js-gl/) instead of the wasm one: the page fetches the files the demo reads
+  // from disk into window.voidAssets first, because a browser has no files.
   const p = new URLSearchParams(location.search);
   const force = p.has('gl') ? 'gl' : p.has('wgpu') ? 'wgpu' : null;
   const useWgpu = force ? force === 'wgpu' : !!navigator.gpu;
-  const dir = useWgpu ? 'wgpu' : 'gl';
-  status.textContent = 'void2d — ' + (useWgpu ? 'WebGPU' : 'WebGL2') + (force ? ' (forced)' : (navigator.gpu ? '' : ' — no WebGPU'));
+  const js = p.has('js');
+  const dir = (js ? 'js-' : '') + (useWgpu ? 'wgpu' : 'gl');
+  status.textContent = 'void2d — ' + (useWgpu ? 'WebGPU' : 'WebGL2') + (js ? ', JS' : '') + (force ? ' (forced)' : (navigator.gpu ? '' : ' — no WebGPU'));
   window.Module = {
     canvas: document.getElementById('canvas'),
     locateFile: (path) => dir + '/' + path,
   };
-  const s = document.createElement('script');
-  s.src = dir + '/' + (p.get('entry') || 'main2d') + '.js';
-  s.onerror = () => { status.textContent = 'failed to load ' + s.src; };
-  document.body.appendChild(s);
+  const load = () => {
+    const s = document.createElement('script');
+    s.src = dir + '/' + (p.get('entry') || (js ? 'main2dWeb' : 'main2d')) + '.js';
+    s.onerror = () => { status.textContent = 'failed to load ' + s.src; };
+    document.body.appendChild(s);
+  };
+  if (js) {
+    const assets = ['assets/test.png', 'assets/font.ttf'];
+    Promise.all(assets.map((a) => fetch(dir + '/' + a).then((r) => {
+      if (!r.ok) throw new Error(a + ': ' + r.status);
+      return r.arrayBuffer();
+    }))).then((buffers) => {
+      window.voidAssets = Object.fromEntries(assets.map((a, i) => [a, new Uint8Array(buffers[i])]));
+      load();
+    }, (e) => { status.textContent = 'failed to fetch ' + e.message; });
+  } else {
+    load();
+  }
 </script>
 </body>
 </html>

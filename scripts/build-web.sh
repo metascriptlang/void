@@ -1,5 +1,6 @@
 #!/bin/sh
-# Build both web targets (WebGPU + WebGL2) and deploy to web/{wgpu,gl}.
+# Build both web targets (WebGPU + WebGL2) and deploy to web/{wgpu,gl}; the --target=js build of the
+# same demo goes to web/{js-wgpu,js-gl} (web/void2d.html ?js).
 # Pins emscripten to EMSCRIPTEN_VERSION so a stray `emsdk activate` can't
 # silently downgrade the emdawnwebgpu port below what vendored sokol needs.
 set -e
@@ -58,12 +59,35 @@ build() {
 	echo "$target FAILED after retries — see $LOG_DIR/void_web_$target.log"; return 1
 }
 
+# The JS build needs no emscripten: msc emits the bundle, scripts/jsMinify.sh ships it, and the files
+# the demo reads go beside it for the page to fetch (a browser has no files).
+JS_ENTRY="${VOID_WEB_JS_ENTRY:-src/examples/main2dWeb.jms}"
+JS_ASSETS="${VOID_WEB_JS_ASSETS:-assets/test.png assets/font.ttf}"
+buildJs() {
+	target="$1"; api="$2"; dest="$3"
+	jsName="$(basename "$JS_ENTRY" .jms)"
+	"$MSC" build $MSC_FLAGS "$JS_ENTRY" --target=js "-d:$api" --output="out/release/$jsName-$target.js" \
+		>"$LOG_DIR/void_web_$target.log" 2>&1 \
+		|| { echo "$target FAILED — see $LOG_DIR/void_web_$target.log"; return 1; }
+	mkdir -p "$dest/assets"
+	sh scripts/jsMinify.sh "out/release/$jsName-$target.js" "$dest/$jsName.js" >>"$LOG_DIR/void_web_$target.log" 2>&1 \
+		|| { echo "$target minify FAILED — see $LOG_DIR/void_web_$target.log"; return 1; }
+	for asset in $JS_ASSETS; do cp "$asset" "$dest/assets/"; done
+	echo "$target → $dest"
+}
+
 PRELOAD="${VOID_WEB_PRELOAD:---preload-file assets/test.png --preload-file assets/font.ttf}"
-BACKENDS="${VOID_WEB_BACKENDS:-wgpu gl}"
+BACKENDS="${VOID_WEB_BACKENDS:-wgpu gl js-wgpu js-gl}"
 case " $BACKENDS " in *" wgpu "*)
 	build wgpu webgpu "$DEST/wgpu" ;;
 esac
 case " $BACKENDS " in *" gl "*)
 	build gl webgl2 "$DEST/gl" ;;
+esac
+case " $BACKENDS " in *" js-wgpu "*)
+	buildJs js-wgpu webgpu "$DEST/js-wgpu" ;;
+esac
+case " $BACKENDS " in *" js-gl "*)
+	buildJs js-gl webgl2 "$DEST/js-gl" ;;
 esac
 echo "done — serve web/ and open void2d.html"
