@@ -23,6 +23,7 @@ import {
 	setActiveCamera,
 	cameraOf,
 	attach,
+	detach,
 	insertBefore,
 	setLocal,
 	setLightPower,
@@ -1028,4 +1029,28 @@ test "a detached camera refuses and its live mount survives moving between paren
 	assert firstView.value.eye == vec3(1.0, 0.0, 5.0);
 	assert secondView.value.eye == vec3(-1.0, 1.0, 5.0);
 	assert scene.activeCamera == camera;
+}
+
+test "detach takes a subtree out of the drawn tree without freeing it, and attach brings it back" {
+	const context: DrawContext = contextOf(1, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const group: NodeId3D = addGroup(
+		scene, scene.rootId(), Transform3D.fromTranslation(vec3(10.0, 0.0, 0.0)),
+	);
+	const mesh: NodeId3D = oneMesh(scene, context, vec3(2.0, 0.0, 0.0), 0);
+	attach(scene, group, mesh);
+	let items: Vec<DrawItem> = [];
+	assert refresh(scene, items) == 1;
+	detach(scene, group);
+	assert scene.nodes[group.index].parent == NO_NODE_3D;
+	assert scene.isLive(group) && scene.isLive(mesh);
+	assert refresh(scene, items) == 0;
+	const gone: Result<Mat4, SceneError> = scene.worldOf(mesh);
+	assert !gone.ok;
+	if (!gone.ok) { assert gone.error == SceneError.DetachedNode; }
+	assert context.meshPinned(context.meshAt(0)) == 1;
+	detach(scene, group);
+	attach(scene, scene.rootId(), group);
+	assert refresh(scene, items) == 1;
+	assert near(translationOf(items[0].world), 12.0, 0.0, 0.0);
 }
