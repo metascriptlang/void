@@ -52,6 +52,63 @@ export struct FontInfo {
 	fdselect: Buf;
 }
 
+// A Buf without its bytes, kept where a view cannot be: a class field or an array element.
+export struct BufRange {
+	base: int64;
+	size: int32;
+	cursor: int32;
+}
+
+// FontInfo without its bytes; fontOver rebuilds the FontInfo over the bytes it was read from.
+export struct FontLayout {
+	fontstart: int32;
+	numGlyphs: int32;
+	loca: int32;
+	head: int32;
+	glyf: int32;
+	hhea: int32;
+	hmtx: int32;
+	kern: int32;
+	gpos: int32;
+	svg: int32;
+	indexMap: int32;
+	indexToLocFormat: int32;
+	cff: BufRange;
+	charstrings: BufRange;
+	gsubrs: BufRange;
+	subrs: BufRange;
+	fontdicts: BufRange;
+	fdselect: BufRange;
+}
+
+export function rangeOf(b: Buf): BufRange {
+	return { base: b.base, size: b.size, cursor: b.cursor };
+}
+
+export function bufOver(data: Readonly<Span<uint8>>, r: BufRange): Buf {
+	return { data: data, base: r.base, size: r.size, cursor: r.cursor };
+}
+
+export function layoutOf(info: FontInfo): FontLayout {
+	return {
+		fontstart: info.fontstart, numGlyphs: info.numGlyphs, loca: info.loca, head: info.head,
+		glyf: info.glyf, hhea: info.hhea, hmtx: info.hmtx, kern: info.kern, gpos: info.gpos, svg: info.svg,
+		indexMap: info.indexMap, indexToLocFormat: info.indexToLocFormat,
+		cff: rangeOf(info.cff), charstrings: rangeOf(info.charstrings), gsubrs: rangeOf(info.gsubrs),
+		subrs: rangeOf(info.subrs), fontdicts: rangeOf(info.fontdicts), fdselect: rangeOf(info.fdselect),
+	};
+}
+
+export function fontOver(data: Readonly<Span<uint8>>, l: FontLayout): FontInfo {
+	return {
+		data: data, fontstart: l.fontstart, numGlyphs: l.numGlyphs, loca: l.loca, head: l.head,
+		glyf: l.glyf, hhea: l.hhea, hmtx: l.hmtx, kern: l.kern, gpos: l.gpos, svg: l.svg,
+		indexMap: l.indexMap, indexToLocFormat: l.indexToLocFormat,
+		cff: bufOver(data, l.cff), charstrings: bufOver(data, l.charstrings), gsubrs: bufOver(data, l.gsubrs),
+		subrs: bufOver(data, l.subrs), fontdicts: bufOver(data, l.fontdicts), fdselect: bufOver(data, l.fdselect),
+	};
+}
+
 @inline export function asInt32(value: int64): int32 {
 	return (((value & LOW_32) ^ SIGN_32) - SIGN_32) as int32;
 }
