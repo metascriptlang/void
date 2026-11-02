@@ -1,4 +1,3 @@
-import { exit } from "std/process";
 import {
 	DOOR_BUFFER_TRANSIENT, DOOR_BUFFER_VERTEX, PixelFormat, PassState, doorValid, doorOriginTopLeft,
 	doorContextGeneration, doorMakeBuffer, doorMakeBufferOf, doorDestroyBuffer, doorAppendBufferOf,
@@ -139,7 +138,7 @@ class DisplayList {
 
 function fail(message: string): never {
 	console.error(message);
-	exit(1);
+	unreachable;
 }
 
 function clearWords(values: uint32[]): void {

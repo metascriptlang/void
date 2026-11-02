@@ -2,7 +2,6 @@
 // step of FrameClock takes the time it happens at; the functions after it read the platform
 // clock. The C targets reach them through frameClockExports.cms and frameClock.h.
 
-import { exit } from "std/process";
 import { clockNow } from "../platform/clockNow";
 
 export const MARK_BEGIN: int32 = 0;
@@ -56,7 +55,7 @@ function lowWord(value: int64): int32 {
 
 function noSuch(what: string, which: int32): never {
 	console.error(`void2d profiler: no ${what} number ${which}`);
-	exit(1);
+	unreachable;
 }
 
 export class FrameClock {
