@@ -1297,7 +1297,7 @@ test "T1 a run's colour multiplies with its label's, as h2d's colour segments do
 	const clear = rgba(0.0, 0.0, 0.0, 0.0);
 	const runs: TextRun[] = [{
 		len: 2, font: DEFAULT_FONT, color: rgba(1.0, 0.5, 0.25, 1.0), background: clear,
-		underline: clear, wavy: false, strikethrough: clear,
+		underline: clear, strikethrough: clear,
 	}];
 	s.add(s.label("Hi", 12.0, rgba(0.5, 1.0, 1.0, 0.5)).setTextRuns(runs).at(4.0, 4.0));
 	record(s.refOf(s.root), 64.0, 32.0, 1.0);
