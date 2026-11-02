@@ -107,6 +107,43 @@ test "every target spells the storage write" {
 	assert printedSpirv(m, 0, "particleStep") == "";
 }
 
+export struct Pair {
+	a: uint32;
+	b: uint32;
+}
+
+export struct Pairs {
+	@binding(0) @access(read_write) out: Pair[];
+	@binding(1) counts: Pair[];
+}
+
+export function pairCs(input: Ids, b: Pairs): void {
+	const r = input.id.x;
+	if (r >= 2) { return; }
+	b.out[r] = { a: b.counts[r].b, b: r };
+	b.out[r + 2] = b.counts[r];
+}
+
+test "a struct literal or element stored whole into a storage element runs and prints" {
+	const b: Pairs = {
+		out: [{ a: 0, b: 0 }, { a: 0, b: 0 }, { a: 0, b: 0 }, { a: 0, b: 0 }],
+		counts: [{ a: 3, b: 4 }, { a: 5, b: 6 }],
+	};
+	pairCs({ id: { x: 1, y: 0, z: 0 } }, b);
+	assert b.out[1].a == 6 && b.out[1].b == 1;
+	assert b.out[3].a == 5 && b.out[3].b == 6;
+	const m = computeModule(glslComputeIr(pairCs, [64, 1, 1]), []);
+	assert m.ok;
+	if (m.ok) {
+		assert irErrors(m.value).length == 0;
+		for (const t of [ShaderTarget.Wgsl, ShaderTarget.Hlsl5, ShaderTarget.Glsl430,
+			ShaderTarget.Msl]) {
+			const text = printedProbe(m.value, 0, t, "pairStore", "comp");
+			assert text.length > 0 && !text.startsWith("print");
+		}
+	}
+}
+
 test "a write to a read-only storage buffer is an error of the module" {
 	let m = computeOf();
 	m.resources[0].access = Access.Read;
