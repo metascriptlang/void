@@ -1407,7 +1407,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		if (sameType(t, samplerNode) || sameType(t, comparisonNode)) { return samplerType(); }
 		const predeclared = predeclaredType(t);
 		if (predeclared != null) { return predeclared; }
-		if (isAuthorStruct(t)) { return structType(knownStruct(t)); }
+		if (isAuthorStruct(t)) {
+			return structType(isInterface(t) ? knownStruct(t) : structIndex(t, t));
+		}
 		if (typeKind(t) != TypeKind.Void) {
 			fail(t, "a shader has no type for a " + typeKind(t).toString());
 		}
