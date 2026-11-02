@@ -86,6 +86,7 @@ export enum MeshError {
 	ScaleParameters,
 	UvBAdded,
 	UvBCount,
+	TorusParameters,
 }
 
 export function empty(this typeof MeshData): MeshData {
@@ -954,6 +955,64 @@ export function addSphere(
 			const v4: int32 = v3 + 1;
 			if (y != 0) { const _top = try addTriangle(data, v1, v4, v2); }
 			if (y != stacks - 1) { const _bottom = try addTriangle(data, v2, v4, v3); }
+		}
+	}
+	return Result.ok(first);
+}
+
+// three.js TorusGeometry (r186 9b4a2ac): a ring in the XY plane around +Z, `radius` from the centre
+// to the tube's centre and `tube` the tube's radius, with its vertex order, normals, UVs and faces.
+export function addTorus(
+	ref data: MeshData,
+	radius: float32,
+	tube: float32,
+	color: Rgba,
+	radialSegments: int32,
+	tubularSegments: int32,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.vertexCount() > 0 && !data.isIndexed()) {
+		return Result.err(MeshError.UnindexedAppend);
+	}
+	if (radius <= 0.0 || radius - radius != 0.0 || tube <= 0.0 || tube - tube != 0.0
+		|| radialSegments < 3 || tubularSegments < 3) {
+		return Result.err(MeshError.TorusParameters);
+	}
+	const vertices: int64 = ((radialSegments as int64) + 1) * ((tubularSegments as int64) + 1);
+	if (vertices > (MAX_MESH_VERTICES as int64) || !data.hasRoomFor(vertices as int32)) {
+		return Result.err(MeshError.TooManyVertices);
+	}
+	const corners: int64 = (radialSegments as int64) * (tubularSegments as int64) * 6;
+	if (corners > (0x7fffffff as int64) - (data.indexCount() as int64)) {
+		return Result.err(MeshError.DrawRange);
+	}
+	const first: int32 = data.vertexCount();
+	const turn: float32 = 6.283185307179586;
+	for (let j = 0; j <= radialSegments; j++) {
+		const v: float32 = turn * (j as float32) / (radialSegments as float32);
+		for (let i = 0; i <= tubularSegments; i++) {
+			const u: float32 = turn * (i as float32) / (tubularSegments as float32);
+			const ring: float32 = radius + tube * cosf(v);
+			const point: Vec3 = vec3(ring * cosf(u), ring * sinf(u), tube * sinf(v));
+			const centre: Vec3 = vec3(radius * cosf(u), radius * sinf(u), 0.0);
+			const normal: Vec3 = (point - centre).normalized();
+			const added = data.hasUvs ? addTexturedVertex(data, point, normal,
+				{ u: (i as float32) / (tubularSegments as float32),
+					v: (j as float32) / (radialSegments as float32) }, color)
+				: addVertex(data, point, normal, color);
+			if (!added.ok) { return Result.err(added.error); }
+		}
+	}
+	for (let j = 1; j <= radialSegments; j++) {
+		for (let i = 1; i <= tubularSegments; i++) {
+			const a: int32 = first + (tubularSegments + 1) * j + i - 1;
+			const b: int32 = first + (tubularSegments + 1) * (j - 1) + i - 1;
+			const c: int32 = first + (tubularSegments + 1) * (j - 1) + i;
+			const d: int32 = first + (tubularSegments + 1) * j + i;
+			const _near = try addTriangle(data, a, b, d);
+			const _far = try addTriangle(data, b, c, d);
 		}
 	}
 	return Result.ok(first);
