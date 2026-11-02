@@ -51,17 +51,8 @@ import { glWindowError, glWindowOpen, glWindowReadback } from "./glWindow.h";
 const WHITE: uint32 = 0xFFFFFFFF;
 
 const VERTEX_GLSL = "#version 430\nlayout(location = 0) in vec2 position;\nvoid main() { gl_Position = vec4(position, 0.0, 1.0); }\n";
-const COLOURED_VERTEX_GLSL = "#version 430
-layout(location = 0) in vec2 position;
-layout(location = 1) in vec4 colour;
-out vec4 tint;
-void main() { gl_Position = vec4(position, 0.0, 1.0); tint = colour; }
-";
-const COLOURED_FRAGMENT_GLSL = "#version 430
-in vec4 tint;
-layout(location = 0) out vec4 frag_color;
-void main() { frag_color = tint; }
-";
+const COLOURED_VERTEX_GLSL = "#version 430\nlayout(location = 0) in vec2 position;\nlayout(location = 1) in vec4 colour;\nout vec4 tint;\nvoid main() { gl_Position = vec4(position, 0.0, 1.0); tint = colour; }\n";
+const COLOURED_FRAGMENT_GLSL = "#version 430\nin vec4 tint;\nlayout(location = 0) out vec4 frag_color;\nvoid main() { frag_color = tint; }\n";
 const FRAGMENT_GLSL = "#version 430\nuniform vec4 params[1];\nlayout(location = 0) out vec4 frag_color;\nvoid main() { frag_color = params[0]; }\n";
 const TEXTURED_VERTEX_GLSL = "#version 430\nlayout(location = 0) in vec2 position;\nout vec2 uv;\nvoid main() { gl_Position = vec4(position, 0.0, 1.0); uv = position * 0.5 + 0.5; }\n";
 const TEXTURED_FRAGMENT_GLSL = "#version 430\nlayout(binding = 0) uniform sampler2D tex_smp;\nin vec2 uv;\nlayout(location = 0) out vec4 frag_color;\nvoid main() { frag_color = texture(tex_smp, uv); }\n";
