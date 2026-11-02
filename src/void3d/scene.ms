@@ -970,7 +970,7 @@ function forgetCamera(scene: Scene3D, index: int32): void {
 	}
 }
 
-function detach(scene: Scene3D, index: int32): void {
+function unlink(scene: Scene3D, index: int32): void {
 	const parent: int32 = scene.nodes[index].parent;
 	if (parent == NO_NODE_3D) { return; }
 	const count: int32 = scene.nodes[parent].children.length as int32;
@@ -1010,7 +1010,7 @@ function placeNode(
 		}
 		if (target == row) { return; }
 	}
-	detach(scene, row);
+	unlink(scene, row);
 	let position: int32 = scene.nodes[under].children.length as int32;
 	if (before !== null) {
 		for (let i = 0; i < position; i++) {
@@ -1039,6 +1039,24 @@ function placeNode(
 
 export function attach(scene: Scene3D, parent: NodeId3D, node: NodeId3D): void {
 	placeNode(scene, parent, node, null, "attach");
+}
+
+// The node and its subtree leave the drawn tree without being freed, as a node addGroup made with no parent.
+export function detach(scene: Scene3D, id: NodeId3D): void {
+	scene.requireOpen("detach");
+	scene.requireOwn(id, "detach");
+	const row: int32 = scene.liveRow(id, "detach");
+	if (row == scene.root) { stopOnMove("detach", "asked to detach the scene root"); }
+	if (scene.nodes[row].parent == NO_NODE_3D) { return; }
+	unlink(scene, row);
+	const count: int32 = collectSubtree(scene, row);
+	for (let i = 0; i < count; i++) {
+		const child: int32 = scene.stack[i];
+		scene.nodes[child].world = identity();
+		scene.nodes[child].flags = scene.nodes[child].flags.incl(NodeFlag.PosChanged);
+	}
+	scene.posChanged = true;
+	scene.structureChanged = true;
 }
 
 export function insertBefore(
@@ -1148,7 +1166,7 @@ function removeNode(scene: Scene3D, id: NodeId3D, call: string): int32 {
 	}
 	const count: int32 = collectSubtree(scene, row);
 	checkPins(scene, count, call);
-	detach(scene, id.index);
+	unlink(scene, id.index);
 	for (let k = 0; k < count; k++) {
 		const index: int32 = scene.stack[k];
 		scene.nodes[index].children = [];
