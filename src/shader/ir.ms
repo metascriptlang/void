@@ -1499,7 +1499,8 @@ function sourceOf(w: Walk, fr: Frame, e: ShaderExpr): string {
 		e.kind == ExprKind.Convert || e.kind == ExprKind.Field || e.kind == ExprKind.Swizzle ||
 		e.kind == ExprKind.Index;
 	if (plain) { return operandsSource(w, fr, e, 0); }
-	throw new Error("internal: the uniformity of an expression of kind " + e.kind.toString());
+	const unhandled: never = e.kind;
+	throw new Error("internal: the uniformity of an unhandled expression kind");
 }
 
 // The non-uniform value among a place's index operands, which choose where a write lands.
@@ -1620,7 +1621,8 @@ function walkStmt(w: Walk, fr: Frame, s: ShaderStmt): void {
 	} else if (s.kind == StmtKind.Discard) {
 		if (fr.flow != "" && w.fnExit == "") { w.fnExit = "an earlier discard in " + fr.flow; }
 	} else {
-		throw new Error("internal: the uniformity of a statement of kind " + s.kind.toString());
+		const unhandled: never = s.kind;
+		throw new Error("internal: the uniformity of an unhandled statement kind");
 	}
 }
 
