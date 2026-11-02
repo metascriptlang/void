@@ -108,12 +108,8 @@ export function gifScan(bytes: Readonly<Span<uint8>>): Result<GifScan, GifScanEr
 	return Result.err(GifScanError.Undecodable);
 }
 
-struct GifInput {
-	bytes: Readonly<Span<uint8>>;
-}
-
 class GifDecoder {
-	input: GifInput;
+	bytes: uint8[];
 	pos: int64 = 0;
 	maxSide: int32;
 	w: int32 = 0;
@@ -145,15 +141,15 @@ class GifDecoder {
 	lineSize: int32 = 0;
 	delay: int32 = 0;
 
-	constructor(input: GifInput, maxSide: int32) {
-		this.input = input;
+	constructor(bytes: Readonly<Span<uint8>>, maxSide: int32) {
+		this.bytes = [...bytes];
 		this.maxSide = maxSide;
 	}
 }
 
 function get8(this g: GifDecoder): int32 {
-	if (g.pos < (g.input.bytes.length as int64)) {
-		const value = g.input.bytes[g.pos as int32] as int32;
+	if (g.pos < (g.bytes.length as int64)) {
+		const value = g.bytes[g.pos as int32] as int32;
 		g.pos++;
 		return value;
 	}
@@ -168,7 +164,7 @@ function get16le(this g: GifDecoder): int32 {
 function skip(this g: GifDecoder, n: int32): void {
 	if (n == 0) { return; }
 	if (n < 0) {
-		g.pos = g.input.bytes.length as int64;
+		g.pos = g.bytes.length as int64;
 		return;
 	}
 	g.pos += n as int64;
@@ -453,7 +449,7 @@ function gifLoadNext(this g: GifDecoder, hasTwoBack: boolean): Frame {
 // each frame's delay in milliseconds as the file gives it. A frame that fails to decode ends
 // the stream, as it does there, so the frame count is what decoded.
 export function decodeGif(bytes: Readonly<Span<uint8>>, maxSide: int32): Result<GifFrames, string> {
-	const g = new GifDecoder({ bytes: bytes }, maxSide);
+	const g = new GifDecoder(bytes, maxSide);
 	if (!isGifSignature(bytes)) {
 		fail("not GIF");
 		return Result.err(failureReason ?? "");

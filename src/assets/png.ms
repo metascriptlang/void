@@ -397,12 +397,8 @@ function parseZlib(this a: ZBuf, parseHeader: boolean): boolean {
 	return true;
 }
 
-struct PngInput {
-	bytes: Readonly<Span<uint8>>;
-}
-
 class PngDecoder {
-	input: PngInput;
+	bytes: uint8[];
 	pos: int64 = 0;
 	maxSide: int32;
 	imgX: int32 = 0;
@@ -428,15 +424,15 @@ class PngDecoder {
 	out: Vec<uint8> = [];
 	out16: uint16[] = [];
 
-	constructor(input: PngInput, maxSide: int32) {
-		this.input = input;
+	constructor(bytes: Readonly<Span<uint8>>, maxSide: int32) {
+		this.bytes = [...bytes];
 		this.maxSide = maxSide;
 	}
 }
 
 function get8(this d: PngDecoder): int32 {
-	if (d.pos < (d.input.bytes.length as int64)) {
-		const value = d.input.bytes[d.pos as int32] as int32;
+	if (d.pos < (d.bytes.length as int64)) {
+		const value = d.bytes[d.pos as int32] as int32;
 		d.pos++;
 		return value;
 	}
@@ -456,7 +452,7 @@ function get32be(this d: PngDecoder): uint32 {
 function skip(this d: PngDecoder, n: uint32): void {
 	if (n == 0) { return; }
 	if (n > 0x7FFFFFFF) {
-		d.pos = d.input.bytes.length as int64;
+		d.pos = d.bytes.length as int64;
 		return;
 	}
 	d.pos += n as int64;
@@ -859,8 +855,8 @@ function chunkIdat(this d: PngDecoder, length: uint32): Chunk {
 	if (length > ((1 as uint32) << 30)) { return failed("IDAT size limit"); }
 	if ((d.ioff as int64) + (length as int64) > INT_MAX) { return Chunk.Failed; }
 	const count = length as int32;
-	if (d.pos + (count as int64) > (d.input.bytes.length as int64)) { return failed("outofdata"); }
-	for (let i: int32 = 0; i < count; i++) { d.idata.push(d.input.bytes[(d.pos as int32) + i]); }
+	if (d.pos + (count as int64) > (d.bytes.length as int64)) { return failed("outofdata"); }
+	for (let i: int32 = 0; i < count; i++) { d.idata.push(d.bytes[(d.pos as int32) + i]); }
 	d.pos += count as int64;
 	d.ioff += count;
 	return Chunk.Next;
@@ -1071,7 +1067,7 @@ export function decodePng(
 	bytes: Readonly<Span<uint8>>, reqComp: int32, maxSide: int32,
 ): Result<PngImage, string> {
 	if (maxSide < 1 || maxSide > 16384) { throw new Error("png: maxSide must be 1 to 16384"); }
-	const d = new PngDecoder({ bytes: bytes }, maxSide);
+	const d = new PngDecoder(bytes, maxSide);
 	if (!d.checkPngHeader()) {
 		fail("unknown image type");
 		return Result.err(failureReason ?? "");
@@ -1111,7 +1107,7 @@ export struct PngInfo {
 // stbi_info_from_memory for a PNG: the header scan, which reads on to the first IDAT to learn
 // whether a tRNS adds an alpha channel. maxSide is STBI_MAX_DIMENSIONS.
 export function pngInfo(bytes: Readonly<Span<uint8>>, maxSide: int32): Result<PngInfo, string> {
-	const d = new PngDecoder({ bytes: bytes }, maxSide);
+	const d = new PngDecoder(bytes, maxSide);
 	d.headerOnly = true;
 	if (!d.parsePngFile(0)) { return Result.err(failureReason ?? ""); }
 	return Result.ok({ width: d.imgX, height: d.imgY, channels: d.imgN });

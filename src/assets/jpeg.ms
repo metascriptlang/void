@@ -133,12 +133,8 @@ class Resample {
 	ypos: int32 = 0;
 }
 
-struct JpegInput {
-	bytes: Readonly<Span<uint8>>;
-}
-
 class JpegDecoder {
-	input: JpegInput;
+	bytes: uint8[];
 	pos: int64 = 0;
 	maxSide: int32;
 	imgX: int32 = 0;
@@ -176,15 +172,15 @@ class JpegDecoder {
 	idctVal: uint32[] = zerosU32(64);
 	idctOut: uint32[] = zerosU32(8);
 
-	constructor(input: JpegInput, maxSide: int32) {
-		this.input = input;
+	constructor(bytes: Readonly<Span<uint8>>, maxSide: int32) {
+		this.bytes = [...bytes];
 		this.maxSide = maxSide;
 	}
 }
 
 function get8(this j: JpegDecoder): int32 {
-	if (j.pos < (j.input.bytes.length as int64)) {
-		const value = j.input.bytes[j.pos as int32] as int32;
+	if (j.pos < (j.bytes.length as int64)) {
+		const value = j.bytes[j.pos as int32] as int32;
 		j.pos++;
 		return value;
 	}
@@ -197,13 +193,13 @@ function get16be(this j: JpegDecoder): int32 {
 }
 
 function atEof(this j: JpegDecoder): boolean {
-	return j.pos >= (j.input.bytes.length as int64);
+	return j.pos >= (j.bytes.length as int64);
 }
 
 function skip(this j: JpegDecoder, n: int32): void {
 	if (n == 0) { return; }
 	if (n < 0) {
-		j.pos = j.input.bytes.length as int64;
+		j.pos = j.bytes.length as int64;
 		return;
 	}
 	j.pos += n as int64;
@@ -1344,13 +1340,13 @@ function loadJpegImage(this j: JpegDecoder, reqComp: int32): Result<JpegImage, s
 export function decodeJpeg(
 	bytes: Readonly<Span<uint8>>, reqComp: int32, maxSide: int32,
 ): Result<JpegImage, string> {
-	const j = new JpegDecoder({ bytes: bytes }, maxSide);
+	const j = new JpegDecoder(bytes, maxSide);
 	return j.loadJpegImage(reqComp);
 }
 
 // stbi_info_from_memory for a JPEG: the header up to the frame header.
 export function jpegInfo(bytes: Readonly<Span<uint8>>, maxSide: int32): Result<JpegInfo, string> {
-	const j = new JpegDecoder({ bytes: bytes }, maxSide);
+	const j = new JpegDecoder(bytes, maxSide);
 	if (!j.decodeJpegHeader(Scan.Header)) { return Result.err(failureReason ?? ""); }
 	return Result.ok({ width: j.imgX, height: j.imgY, channels: j.imgN >= 3 ? 3 : 1 });
 }
