@@ -1018,6 +1018,66 @@ export function addTorus(
 	return Result.ok(first);
 }
 
+// three.js CylinderGeometry's torso (r186 9b4a2ac), centred on the origin: rows from the top
+// (radiusTop) to the bottom (radiusBottom), normals tilted by the slope, so radiusTop 0 is a cone.
+// A ring of radius 0 draws no triangle there, as three.js skips them. Caps are addDisc.
+export function addCylinderTorso(
+	ref data: MeshData,
+	radiusTop: float32,
+	radiusBottom: float32,
+	height: float32,
+	color: Rgba,
+	radialSegments: int32,
+	heightSegments: int32,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.vertexCount() > 0 && !data.isIndexed()) {
+		return Result.err(MeshError.UnindexedAppend);
+	}
+	if (!(radiusTop >= 0.0) || radiusTop - radiusTop != 0.0 || !(radiusBottom >= 0.0)
+		|| radiusBottom - radiusBottom != 0.0 || radiusTop + radiusBottom <= 0.0
+		|| height <= 0.0 || height - height != 0.0 || radialSegments < 3 || heightSegments < 1) {
+		return Result.err(MeshError.CylinderParameters);
+	}
+	const vertices: int64 = ((radialSegments as int64) + 1) * ((heightSegments as int64) + 1);
+	if (vertices > (MAX_MESH_VERTICES as int64) || !data.hasRoomFor(vertices as int32)) {
+		return Result.err(MeshError.TooManyVertices);
+	}
+	const corners: int64 = (radialSegments as int64) * (heightSegments as int64) * 6;
+	if (corners > (0x7fffffff as int64) - (data.indexCount() as int64)) {
+		return Result.err(MeshError.DrawRange);
+	}
+	const first: int32 = data.vertexCount();
+	const turn: float32 = 6.283185307179586;
+	const slope: float32 = (radiusBottom - radiusTop) / height;
+	for (let y = 0; y <= heightSegments; y++) {
+		const v: float32 = (y as float32) / (heightSegments as float32);
+		const radius: float32 = v * (radiusBottom - radiusTop) + radiusTop;
+		for (let x = 0; x <= radialSegments; x++) {
+			const u: float32 = (x as float32) / (radialSegments as float32);
+			const theta: float32 = x == radialSegments ? 0.0 : u * turn;
+			const point: Vec3 = vec3(radius * sinf(theta), height * 0.5 - v * height, radius * cosf(theta));
+			const normal: Vec3 = vec3(sinf(theta), slope, cosf(theta)).normalized();
+			const added = data.hasUvs ? addTexturedVertex(data, point, normal, { u: u, v: 1.0 - v }, color)
+				: addVertex(data, point, normal, color);
+			if (!added.ok) { return Result.err(added.error); }
+		}
+	}
+	for (let x = 0; x < radialSegments; x++) {
+		for (let y = 0; y < heightSegments; y++) {
+			const a: int32 = first + y * (radialSegments + 1) + x;
+			const b: int32 = a + radialSegments + 1;
+			const c: int32 = b + 1;
+			const d: int32 = a + 1;
+			if (radiusTop > 0.0 || y != 0) { const _upper = try addTriangle(data, a, b, d); }
+			if (radiusBottom > 0.0 || y != heightSegments - 1) { const _lower = try addTriangle(data, b, c, d); }
+		}
+	}
+	return Result.ok(first);
+}
+
 export function addCylinderSides(
 	ref data: MeshData,
 	radius: float32,
