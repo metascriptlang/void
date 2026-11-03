@@ -51,7 +51,8 @@ build() {
 			--output="out/release/$NAME.js" >"$LOG_DIR/void_web_$target.log" 2>&1 || true
 		if grep -q "Built" "$LOG_DIR/void_web_$target.log" && [ -f "out/release/$NAME.wasm" ]; then
 			mkdir -p "$dest"
-			cp "out/release/$NAME.js" "out/release/$NAME.wasm" "out/release/$NAME.data" "$dest/"
+			cp "out/release/$NAME.js" "out/release/$NAME.wasm" "$dest/"
+			[ -z "$PRELOAD" ] || cp "out/release/$NAME.data" "$dest/"
 			echo "$target → $dest (attempt $i)"
 			return 0
 		fi
@@ -62,7 +63,7 @@ build() {
 # The JS build needs no emscripten: msc emits the bundle, scripts/jsMinify.sh ships it, and the files
 # the demo reads go beside it for the page to fetch (a browser has no files).
 JS_ENTRY="${VOID_WEB_JS_ENTRY:-src/examples/main2dWeb.jms}"
-JS_ASSETS="${VOID_WEB_JS_ASSETS:-assets/test.png assets/font.ttf}"
+JS_ASSETS="${VOID_WEB_JS_ASSETS-assets/test.png assets/font.ttf}"
 buildJs() {
 	target="$1"; api="$2"; dest="$3"
 	jsName="$(basename "$JS_ENTRY" .jms)"
@@ -76,7 +77,7 @@ buildJs() {
 	echo "$target → $dest"
 }
 
-PRELOAD="${VOID_WEB_PRELOAD:---preload-file assets/test.png --preload-file assets/font.ttf}"
+PRELOAD="${VOID_WEB_PRELOAD---preload-file assets/test.png --preload-file assets/font.ttf}"
 BACKENDS="${VOID_WEB_BACKENDS:-wgpu gl js-wgpu js-gl}"
 case " $BACKENDS " in *" wgpu "*)
 	build wgpu webgpu "$DEST/wgpu" ;;
