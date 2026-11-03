@@ -459,7 +459,7 @@ test "instances are grouped by mesh index in mesh order and keep the draw order 
 	// With no sorting the draw order is the particle order: group m holds, in order, exactly the
 	// particles whose seed draws mesh m, each at its own position.
 	let at: int32 = 0;
-	const cap: int32 = sys.capacity;
+	const cap: int32 = sys.stride;
 	for (let m = 0; m < 3; m++) {
 		for (let i = 0; i < total; i++) {
 			if (meshIndexOf(sys.asset.renderer, sys.seeds[i]) != m) { continue; }
@@ -574,7 +574,7 @@ test "a short out, short runs, another mode and a non-finite size are refused" {
 		w, sys, EYE, FORWARD, UP, unit(), MeshDrawOrder.ByMesh, out, runs);
 	assert ok.ok;
 	let bad = started(one(2));
-	bad.data[SIZE_X * bad.capacity] = Number.NaN as float32;
+	bad.data[SIZE_X * bad.stride] = Number.NaN as float32;
 	const nan = writeMeshParticles(
 		w, bad, EYE, FORWARD, UP, unit(), MeshDrawOrder.ByMesh, out, runs);
 	assert !nan.ok && nan.error == ParticleWriteError.NonFinite;

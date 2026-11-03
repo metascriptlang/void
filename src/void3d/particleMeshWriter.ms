@@ -153,7 +153,7 @@ export function writeMeshParticles(
 	const ordered = drawOrder(w, sys, eye, forward, stride, out.length as int32);
 	if (!ordered.ok) { return Result.err(ordered.error); }
 	const count: int32 = ordered.value;
-	const cap: int32 = sys.capacity;
+	const cap: int32 = sys.stride;
 	let counts: int32[4] = [0, 0, 0, 0];
 	let runCount: int32 = 0;
 	let last: int32 = -1;

@@ -123,7 +123,7 @@ function vecOf(v: JsonValue): Vec3 {
 }
 
 function at(sys: ParticleSystem, c: int32, i: int32): float32 {
-	return sys.data[c * sys.capacity + i];
+	return sys.data[c * sys.stride + i];
 }
 
 function voidVec(sys: ParticleSystem, c: int32, i: int32): Vec3 {

@@ -43,7 +43,7 @@ function advance(ref sys: ParticleSystem, frame: float64, frames: int32): void {
 }
 
 function column(sys: ParticleSystem, c: int32, i: int32): float32 {
-	return sys.data[c * sys.capacity + i];
+	return sys.data[c * sys.stride + i];
 }
 
 function slotAged(sys: ParticleSystem, age: float64): int32 {

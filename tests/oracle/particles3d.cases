@@ -108,7 +108,7 @@
 # ms-prelude: 	if (!written.ok) { unreachable; }
 # ms-prelude: 	return { count: written.value, instances: instances };
 # ms-prelude: }
-# ms-prelude: function col(sys: ParticleSystem, c: int32, i: int32): float32 { return sys.data[c * sys.capacity + i]; }
+# ms-prelude: function col(sys: ParticleSystem, c: int32, i: int32): float32 { return sys.data[c * sys.stride + i]; }
 # ms-prelude: function reach(sys: ParticleSystem, i: int32): float32 {
 # ms-prelude: 	const x = col(sys, POS_X, i); const y = col(sys, POS_Y, i); const z = col(sys, POS_Z, i);
 # ms-prelude: 	return Math.sqrt(x * x + y * y + z * z) as float32;

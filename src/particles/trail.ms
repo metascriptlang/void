@@ -44,7 +44,7 @@ export function chainEnd(this c: TrailChains, chain: int32): int32 {
 }
 
 function get(sys: ParticleSystem, column: int32, i: int32): float32 {
-	return sys.data[column * sys.capacity + i];
+	return sys.data[column * sys.stride + i];
 }
 
 function colorOf(sys: ParticleSystem, i: int32): ParticleColor {

@@ -122,7 +122,7 @@ function sortOrder(ref w: ParticleWriter3D, count: int32): void {
 }
 
 export function placed(sys: ParticleSystem, i: int32): Vec3 {
-	const cap: int32 = sys.capacity;
+	const cap: int32 = sys.stride;
 	const p: Vec3 = vec3(
 		sys.data[POS_X * cap + i], sys.data[POS_Y * cap + i], sys.data[POS_Z * cap + i],
 	);
@@ -156,7 +156,7 @@ export function drawOrder(
 		return Result.err(ParticleWriteError.ShortInstances);
 	}
 	grow(w, count);
-	const cap: int32 = sys.capacity;
+	const cap: int32 = sys.stride;
 	for (let i = 0; i < count; i++) { w.order[i] = i; }
 	// Keys sort ascending, so whatever is drawn first gets the smallest key.
 	const mode: ParticleSortMode = sys.asset.renderer.sortMode;
@@ -204,7 +204,7 @@ export function writeParticles(
 	const ordered = drawOrder(w, sys, eye, forward, stride, out.length as int32);
 	if (!ordered.ok) { return Result.err(ordered.error); }
 	const count: int32 = ordered.value;
-	const cap: int32 = sys.capacity;
+	const cap: int32 = sys.stride;
 	const flipU: float32 = sheet.enabled
 		? renderer.flip.x + sheet.flipU - renderer.flip.x * sheet.flipU
 		: renderer.flip.x;
@@ -290,7 +290,7 @@ export function writeParticlePoints(
 	const ordered = drawOrder(w, sys, eye, forward, stride, out.length as int32);
 	if (!ordered.ok) { return Result.err(ordered.error); }
 	const count: int32 = ordered.value;
-	const cap: int32 = sys.capacity;
+	const cap: int32 = sys.stride;
 	for (let k = 0; k < count; k++) {
 		const i: int32 = w.order[k];
 		const p: Vec3 = placed(sys, i);

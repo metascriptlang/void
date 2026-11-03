@@ -17,7 +17,7 @@ import { noise3 } from "./noise";
 import { Hit, MISS, sweep, overlaps, fieldPush, FieldPush } from "./collision";
 import { TrailRings } from "./trailRing";
 
-// Column c of particle i is data[c * capacity + i]; the first `count` slots are live, oldest first.
+// Column c of particle i is data[c * stride + i]; the first `count` slots are live, oldest first.
 export const POS_X: int32 = 0;
 export const POS_Y: int32 = 1;
 export const POS_Z: int32 = 2;
@@ -60,6 +60,14 @@ export const MAX_BIRTH_LINKS: int32 = 2;
 // Which Ribbon trail the particle joins: its emission number modulo the ribbon count.
 export const RIBBON: int32 = 40;
 export const PARTICLE_COLUMNS: int32 = 41;
+const COLUMN_PAD: int32 = 32;
+
+// A capacity rounded to a 64-byte line, moved off a multiple of 256 floats: 41 columns that each start
+// at one 4 KiB page offset ran the update 3x slower on Zen2 (capacity 110592, measured 2026-10-29).
+export function columnStride(capacity: int32): int32 {
+	const lined: int32 = (capacity + 15) & ~15;
+	return lined % 256 == 0 ? lined + 16 : lined;
+}
 export const MAX_TRIGGER_COLLIDERS: int32 = 32;
 
 export enum ParticleSystemError {
@@ -147,6 +155,7 @@ export struct ParticleSystem {
 	seeds: Vec<uint32>;
 	count: int32;
 	capacity: int32;
+	stride: int32;
 	systemSeed: uint32;
 	spawned: uint32;
 	playing: boolean;
@@ -297,7 +306,7 @@ function validateMeshes(renderer: Borrow<RendererModule>): Result<int32, Particl
 function validateAsset(asset: ParticleSystemAsset): Result<int32, ParticleSystemError> {
 	const m: Borrow<MainModule> = asset.main;
 	if (!(m.duration > 0.0)) { return Result.err(ParticleSystemError.NonPositiveDuration); }
-	if (m.maxParticles <= 0 || m.maxParticles > 2147483647 / PARTICLE_COLUMNS) {
+	if (m.maxParticles <= 0 || m.maxParticles > 2147483647 / PARTICLE_COLUMNS - COLUMN_PAD) {
 		return Result.err(ParticleSystemError.NoCapacity);
 	}
 	if (m.prewarm && !m.loop) { return Result.err(ParticleSystemError.PrewarmNeedsLoop); }
@@ -348,8 +357,9 @@ export function create(
 	const compiled = compileCurves(asset);
 	if (!compiled.ok) { return Result.err(ParticleSystemError.InvalidCurve); }
 	const capacity: int32 = asset.main.maxParticles;
-	let data: Vec<float32> = new Array(capacity * PARTICLE_COLUMNS);
-	for (let i = 0; i < capacity * PARTICLE_COLUMNS; i++) { data[i] = 0.0; }
+	const stride: int32 = columnStride(capacity);
+	let data: Vec<float32> = new Array(stride * PARTICLE_COLUMNS);
+	for (let i = 0; i < stride * PARTICLE_COLUMNS; i++) { data[i] = 0.0; }
 	let seeds: Vec<uint32> = new Array(capacity);
 	let inside: Vec<uint32> = new Array(capacity);
 	for (let i = 0; i < capacity; i++) {
@@ -364,6 +374,7 @@ export function create(
 		seeds: seeds,
 		count: 0,
 		capacity: capacity,
+		stride: stride,
 		systemSeed: systemSeed,
 		spawned: 0,
 		playing: false,
@@ -402,7 +413,7 @@ export function create(
 }
 
 export function column(this sys: ParticleSystem, c: int32): int32 {
-	return c * sys.capacity;
+	return c * sys.stride;
 }
 
 export function isAlive(this sys: ParticleSystem): boolean {
@@ -673,11 +684,11 @@ function emitBurst(ref sys: ParticleSystem, index: int32, a: float32, b: float32
 // ---- spawn (SIM §6.3 step 4) ----
 
 function put(ref sys: ParticleSystem, c: int32, i: int32, value: float32): void {
-	sys.data[c * sys.capacity + i] = value;
+	sys.data[c * sys.stride + i] = value;
 }
 
 function get(sys: ParticleSystem, c: int32, i: int32): float32 {
-	return sys.data[c * sys.capacity + i];
+	return sys.data[c * sys.stride + i];
 }
 
 // The slot a new particle takes: the next free one, or with a ring buffer the oldest; -1 drops it.
@@ -1250,7 +1261,7 @@ function excess(v: float32, cap: float32): float32 {
 
 function moveSlot(ref sys: ParticleSystem, from: int32, to: int32): void {
 	for (let col = 0; col < PARTICLE_COLUMNS; col++) {
-		const base: int32 = col * sys.capacity;
+		const base: int32 = col * sys.stride;
 		sys.data[base + to] = sys.data[base + from];
 	}
 	sys.seeds[to] = sys.seeds[from];

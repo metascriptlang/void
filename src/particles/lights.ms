@@ -22,7 +22,7 @@ export function particleLights(sys: ParticleSystem, ref out: Vec<ParticleLight>)
 	out.length = 0;
 	const lights: Borrow<LightsModule> = sys.asset.lights;
 	if (!lights.enabled || lights.ratio <= 0.0) { return; }
-	const cap: int32 = sys.capacity;
+	const cap: int32 = sys.stride;
 	const local: boolean = sys.asset.main.simulationSpace == SimulationSpace.Local;
 	for (let i = 0; i < sys.count && (out.length as int32) < lights.maxLights; i++) {
 		const seed: uint32 = sys.seeds[i];

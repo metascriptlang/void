@@ -195,7 +195,7 @@ function redraw(this ref e: ParticleEmitter2D, emitter: Transform2D, viewportWid
 	for (let k = 0; k < (e.effect.systems.length as int32); k++) {
 		const sys: ParticleSystem = e.effect.systems[k];
 		if (sys.asset.renderer.renderMode == RenderMode.None) { continue; }
-		const cap: int32 = sys.capacity;
+		const cap: int32 = sys.stride;
 		const frames: Vec<Tile> = e.frames[k];
 		const last: int32 = (frames.length as int32) - 1;
 		const renderer = sys.asset.renderer;

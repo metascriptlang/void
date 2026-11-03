@@ -189,7 +189,7 @@ export function triggerSubEmitter(ref effect: EffectInstance, parent: int32, ent
 			if (link.entry.subEmitterType != SubEmitterType.Manual) { return Result.err(fail(EffectErrorKind.NotASubEmitter, parent)); }
 			const sys = effect.systems[parent];
 			if (particle < 0 || particle >= sys.count) { return Result.err(fail(EffectErrorKind.NoParticle, parent)); }
-			const cap: int32 = sys.capacity;
+			const cap: int32 = sys.stride;
 			const position: Vec3 = vec3(sys.data[POS_X * cap + particle], sys.data[POS_Y * cap + particle], sys.data[POS_Z * cap + particle]);
 			const velocity: Vec3 = vec3(sys.data[VEL_X * cap + particle], sys.data[VEL_Y * cap + particle], sys.data[VEL_Z * cap + particle]);
 			const event: ParticleEvent = eventOf(sys, particle, SubEmitterType.Manual, position, velocity, 0.0, 0.0);

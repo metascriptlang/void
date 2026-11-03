@@ -124,7 +124,7 @@ test "sorting orders keys of either sign and keeps tied particles in slot order"
 	for (const mode of [ParticleSortMode.Depth, ParticleSortMode.OldestInFront]) {
 		const sys = crossing(mode);
 		assert sys.count >= 16;
-		const cap: int32 = sys.capacity;
+		const cap: int32 = sys.stride;
 		let keys: Vec<float32> = [];
 		for (let i = 0; i < sys.count; i++) {
 			keys.push(mode == ParticleSortMode.Depth ? -sys.data[POS_Z * cap + i] : sys.data[AGE * cap + i]);

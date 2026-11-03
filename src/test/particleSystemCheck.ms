@@ -8,9 +8,17 @@ import { ParticleLight, particleLights } from "../particles/lights";
 import {
 	ParticleSystem, ParticleSystemError, playSystem, stopSystem, updateSystem,
 	POS_X, POS_Y, POS_Z, VEL_X, VEL_Y, VEL_Z, MOVE_X, MOVE_Y, MOVE_Z, AGE, LIFETIME, PARTICLE_COLUMNS,
+	columnStride,
 } from "../particles/system";
 
 const TWO_PI: float32 = 6.283185307179586;
+
+test "a column stride is a whole 64-byte line and never a multiple of 256 floats" {
+	assert columnStride(1) == 16 && columnStride(16) == 16 && columnStride(17) == 32;
+	assert columnStride(256) == 272 && columnStride(1024) == 1040;
+	assert columnStride(110592) == 110608 && columnStride(129024) == 129040;
+	assert columnStride(110250) == 110256 && columnStride(110080) == 110096;
+}
 
 function near(a: float32, b: float32, tol: float32): boolean {
 	const d: float32 = a - b;
@@ -46,12 +54,12 @@ function run(ref sys: ParticleSystem, frame: float64, frames: int32): void {
 }
 
 function speedOf(sys: ParticleSystem, i: int32): float32 {
-	const cap: int32 = sys.capacity;
+	const cap: int32 = sys.stride;
 	return vec3(sys.data[MOVE_X * cap + i], sys.data[MOVE_Y * cap + i], sys.data[MOVE_Z * cap + i]).length();
 }
 
 function positionOf(sys: ParticleSystem, i: int32): Vec3 {
-	const cap: int32 = sys.capacity;
+	const cap: int32 = sys.stride;
 	return vec3(sys.data[POS_X * cap + i], sys.data[POS_Y * cap + i], sys.data[POS_Z * cap + i]);
 }
 
@@ -184,7 +192,7 @@ test "the same asset gives byte-equal columns at 32 and 128 frames a second" {
 	assert coarse.count == fine.count && coarse.count > 20;
 	for (let c = 0; c < PARTICLE_COLUMNS; c++) {
 		for (let i = 0; i < coarse.count; i++) {
-			assert coarse.data[c * coarse.capacity + i] == fine.data[c * fine.capacity + i];
+			assert coarse.data[c * coarse.stride + i] == fine.data[c * fine.stride + i];
 		}
 	}
 }
@@ -197,9 +205,9 @@ test "rate spawns inside one step get their own ages" {
 	run(sys, 0.1, 1);
 	assert sys.count == 6;
 	for (let i = 0; i < 6; i++) {
-		const age: float32 = sys.data[AGE * sys.capacity + i];
+		const age: float32 = sys.data[AGE * sys.stride + i];
 		assert age >= 0.0 && age <= 0.1 + 1e-6;
-		if (i > 0) { assert age < sys.data[AGE * sys.capacity + i - 1]; }
+		if (i > 0) { assert age < sys.data[AGE * sys.stride + i - 1]; }
 	}
 }
 
@@ -268,7 +276,7 @@ test "the cap drops extra spawns; a ring buffer keeps the cap full of frozen par
 	let ring = started(a, 1.0 / 60.0);
 	run(ring, 1.0 / 60.0, 60);
 	assert ring.count == 4;
-	for (let i = 0; i < 4; i++) { assert ring.data[AGE * ring.capacity + i] < 0.1; }
+	for (let i = 0; i < 4; i++) { assert ring.data[AGE * ring.stride + i] < 0.1; }
 }
 
 test "a one-shot system stops emitting and finishes when its last particle dies" {
@@ -290,7 +298,7 @@ test "a 2D system keeps every particle on z = 0" {
 	let sys = started(a, 1.0 / 60.0);
 	run(sys, 1.0 / 60.0, 90);
 	assert sys.count > 0;
-	for (let i = 0; i < sys.count; i++) { assert sys.data[POS_Z * sys.capacity + i] == 0.0; }
+	for (let i = 0; i < sys.count; i++) { assert sys.data[POS_Z * sys.stride + i] == 0.0; }
 }
 
 test "a world-space emitter moving across a step spreads that step's spawns along its path" {
@@ -304,7 +312,7 @@ test "a world-space emitter moving across a step spreads that step's spawns alon
 	let low: float32 = 1.0;
 	let high: float32 = 0.0;
 	for (let i = 0; i < sys.count; i++) {
-		const x: float32 = sys.data[POS_X * sys.capacity + i];
+		const x: float32 = sys.data[POS_X * sys.stride + i];
 		if (x < low) { low = x; }
 		if (x > high) { high = x; }
 	}
@@ -351,7 +359,7 @@ function runAt(ref sys: ParticleSystem, world: Mat4, frame: float64, frames: int
 }
 
 function at(sys: ParticleSystem, column: int32): float32 {
-	return sys.data[column * sys.capacity];
+	return sys.data[column * sys.stride];
 }
 
 test "a plane bounces the normal speed by bounce, damps all of it, and takes lifetime loss" {

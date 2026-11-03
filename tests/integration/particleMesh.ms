@@ -177,7 +177,7 @@ function init(): void {
 }
 
 function place(slot: int32, at: Vec3): void {
-	const cap: int32 = system.capacity;
+	const cap: int32 = system.stride;
 	system.data[POS_X * cap + slot] = at.x;
 	system.data[POS_Y * cap + slot] = at.y;
 	system.data[POS_Z * cap + slot] = at.z;

@@ -160,7 +160,7 @@ function init(): void {
 }
 
 function place(ref sys: ParticleSystem, at: Vec3): void {
-	const cap: int32 = sys.capacity;
+	const cap: int32 = sys.stride;
 	sys.data[POS_X * cap] = at.x;
 	sys.data[POS_Y * cap] = at.y;
 	sys.data[POS_Z * cap] = at.z;
@@ -201,7 +201,7 @@ function blue(rgba: int64): boolean {
 
 function check(view: CameraView): string {
 	if (!blue(probe(view, ROOT_A, 0.45, 0.6))) {
-		return actorA.data[FRAME * actorA.capacity] != 1 ? "atlas frame texels" : "clockwise rotated texel";
+		return actorA.data[FRAME * actorA.stride] != 1 ? "atlas frame texels" : "clockwise rotated texel";
 	}
 	const lower = probe(view, ROOT_A, 0.45, 0);
 	if (((lower >> 24) & 255) <= ((lower >> 8) & 255) + 10
@@ -212,7 +212,7 @@ function check(view: CameraView): string {
 	if (stage == 0) {
 		if (((second >> 24) & 255) <= ((second >> 8) & 255) + 10) { return "second initial frame"; }
 	} else if (!blue(second)) { return "second animated frame"; }
-	if (actorA.data[FRAME * actorA.capacity] != 1 || actorA.data[AGE * actorA.capacity] > 0.05) {
+	if (actorA.data[FRAME * actorA.stride] != 1 || actorA.data[AGE * actorA.stride] > 0.05) {
 		return "updating second actor mutated first";
 	}
 	return "";
@@ -223,7 +223,7 @@ function frame(): void {
 	for (let step = 0; stage == 1 && step < 30; step++) {
 		if (!updateSystem(actorB, 1.0 / 60.0, identity()).ok) { fail("animation refused"); }
 	}
-	if (control == 3) { actorA.data[FRAME * actorA.capacity] = 0.0; }
+	if (control == 3) { actorA.data[FRAME * actorA.stride] = 0.0; }
 	const view = viewOf();
 	view.writeCameraBlock(cameraValues);
 	const eye: Vec3 = vec3(0, 0, 4);

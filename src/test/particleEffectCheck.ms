@@ -65,7 +65,7 @@ function step(ref fx: EffectInstance, frames: int32): void {
 }
 
 function column(fx: EffectInstance, s: int32, c: int32, i: int32): float32 {
-	return fx.systems[s].data[c * fx.systems[s].capacity + i];
+	return fx.systems[s].data[c * fx.systems[s].stride + i];
 }
 
 function positionOf(fx: EffectInstance, s: int32, i: int32): Vec3 {

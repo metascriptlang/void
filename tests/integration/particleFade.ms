@@ -132,7 +132,7 @@ function init(): void {
 	if (!updateSystem(emitter, 1.0 / 60.0, identity()).ok || emitter.count != 2) {
 		fail("sorted emitter setup refused");
 	}
-	const cap: int32 = emitter.capacity;
+	const cap: int32 = emitter.stride;
 	for (let i = 0; i < 2; i++) {
 		emitter.data[POS_X * cap + i] = 0.0;
 		emitter.data[POS_Y * cap + i] = 1.2;
