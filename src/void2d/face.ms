@@ -264,7 +264,10 @@ struct InkSlot {
 	face: int32;
 	glyph: int32;
 	sizePx: float32;
-	box: Vec<int32>;
+	left: int32;
+	top: int32;
+	right: int32;
+	bottom: int32;
 }
 
 let inkSlots: Vec<InkSlot> = new Array(0);
@@ -272,7 +275,9 @@ let inkSlots: Vec<InkSlot> = new Array(0);
 function inkSlotOf(face: int32, glyph: int32, sizePx: float32): int32 {
 	if (inkSlots.length == 0) {
 		for (let i = 0; i < INK_SLOTS; i++) {
-			inkSlots.push({ used: false, face: 0, glyph: 0, sizePx: 0.0, box: [] });
+			inkSlots.push({
+				used: false, face: 0, glyph: 0, sizePx: 0.0, left: 0, top: 0, right: 0, bottom: 0,
+			});
 		}
 	}
 	const sizeKey: int64 = (sizePx * 64.0) as int64;
@@ -287,15 +292,20 @@ export function glyphInkBox(
 	sizePx: float32,
 ): [float32, float32, float32, float32] {
 	const i: int32 = inkSlotOf(face, glyph, sizePx);
-	const slot: InkSlot = inkSlots[i];
-	if (!slot.used || slot.face != face || slot.glyph != glyph || slot.sizePx != sizePx) {
+	if (!inkSlots[i].used || inkSlots[i].face != face || inkSlots[i].glyph != glyph ||
+		inkSlots[i].sizePx != sizePx) {
+		const box = glyphBox(face, glyph, sizePx, 0.0);
 		inkSlots[i] = {
-			used: true, face: face, glyph: glyph, sizePx: sizePx,
-			box: glyphBox(face, glyph, sizePx, 0.0),
+			used: true, face: face, glyph: glyph, sizePx: sizePx, left: box[0], top: box[1],
+			right: box[2], bottom: box[3],
 		};
 	}
-	const box: Vec<int32> = inkSlots[i].box;
-	return [box[0] as float32, box[1] as float32, box[2] as float32, box[3] as float32];
+	return [
+		inkSlots[i].left as float32,
+		inkSlots[i].top as float32,
+		inkSlots[i].right as float32,
+		inkSlots[i].bottom as float32,
+	];
 }
 
 export function faceMetrics(face: int32, sizePx: float32): FaceMetrics {
