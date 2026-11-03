@@ -1,0 +1,109 @@
+{
+	"scene": "sprites",
+	"date": "2026-11-03T13:21:33.764Z",
+	"host": "m1m",
+	"chrome": "Chrome/149.0.7827.114",
+	"runs": 3,
+	"void": "1247c2e7+bench",
+	"msc": "binary d4ff78eae73 2026-11-03T18:54:03+07:00",
+	"three": "0.187.0",
+	"pixi": "8.22.0",
+	"rows": [
+		{
+			"implementation": "void-wasm-webgpu",
+			"bytes": null,
+			"stopped": "build failed, log out/bench/logs/void_web_wgpu.log"
+		},
+		{
+			"implementation": "void-js-webgpu",
+			"bytes": {
+				"raw": 911811,
+				"gzip": 210442
+			},
+			"stopped": "TypeError: Cannot read properties of undefined (reading 'length') |     at Mb (http://127.0.0.1:53837/spritesWeb.js:2:68652) |     at Ct (http://127.0.0.1:53837/spritesWeb.js:2:68753)"
+		},
+		{
+			"implementation": "pixi-webgpu",
+			"bytes": {
+				"raw": 529656,
+				"gzip": 153686
+			},
+			"stopped": null,
+			"firstFrameMs": 55.62000000476837,
+			"cpuMedianMs": 1.1400000154972076,
+			"cpuP95Ms": 1.2449999749660492,
+			"intervalMedianMs": 1.2600000000000477,
+			"intervalP95Ms": 1.3899999999999864,
+			"jsHeapMB": 18.486464500427246,
+			"isolated": true
+		},
+		{
+			"implementation": "three-webgpu",
+			"bytes": {
+				"raw": 822933,
+				"gzip": 223864
+			},
+			"stopped": null,
+			"firstFrameMs": 90.12000000476837,
+			"cpuMedianMs": 0.2199999988079071,
+			"cpuP95Ms": 0.3649999797344208,
+			"intervalMedianMs": 0.29999999999998295,
+			"intervalP95Ms": 0.5449999999999875,
+			"jsHeapMB": 7.295853614807129,
+			"isolated": true
+		},
+		{
+			"implementation": "void-wasm-webgl",
+			"bytes": {
+				"raw": 1256828,
+				"gzip": 456001
+			},
+			"stopped": null,
+			"firstFrameMs": 142.10499998927116,
+			"cpuMedianMs": 3.25,
+			"cpuP95Ms": 3.375,
+			"intervalMedianMs": 3.330000000000041,
+			"intervalP95Ms": 3.494999999999891,
+			"jsHeapMB": 2.2524499893188477,
+			"isolated": true
+		},
+		{
+			"implementation": "void-js-webgl",
+			"bytes": {
+				"raw": 956264,
+				"gzip": 221118
+			},
+			"stopped": "TypeError: Cannot read properties of undefined (reading 'length') |     at px (http://127.0.0.1:54023/spritesWeb.js:2:76434) |     at Rt (http://127.0.0.1:54023/spritesWeb.js:2:76535)"
+		},
+		{
+			"implementation": "pixi-webgl",
+			"bytes": {
+				"raw": 529653,
+				"gzip": 153686
+			},
+			"stopped": null,
+			"firstFrameMs": 93.0300000011921,
+			"cpuMedianMs": 1.050000011920929,
+			"cpuP95Ms": 1.2300000190734863,
+			"intervalMedianMs": 1.1499999999999773,
+			"intervalP95Ms": 1.365000000000009,
+			"jsHeapMB": 19.316445350646973,
+			"isolated": true
+		},
+		{
+			"implementation": "three-webgl",
+			"bytes": {
+				"raw": 536655,
+				"gzip": 134267
+			},
+			"stopped": null,
+			"firstFrameMs": 73.85499998927116,
+			"cpuMedianMs": 1.8149999976158142,
+			"cpuP95Ms": 3.005000025033951,
+			"intervalMedianMs": 1.8949999999999818,
+			"intervalP95Ms": 3.0799999999999272,
+			"jsHeapMB": 4.6832427978515625,
+			"isolated": true
+		}
+	]
+}
