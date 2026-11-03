@@ -727,6 +727,10 @@ when (voidShaper) {
 		return (level & 1) == 1 ? ShapeDirection.Rtl : ShapeDirection.Ltr;
 	}
 
+	function segmentStarts(cps: Readonly<Span<Codepoint>>, k: int32): boolean {
+		return cps[k].run != cps[k - 1].run || cps[k].shapingBreak;
+	}
+
 	function joins(cps: Readonly<Span<Codepoint>>, from: int32, to: int32): boolean {
 		for (let k = from; k < to; k++) {
 			if (cps[k].joining) { return true; }
@@ -805,16 +809,23 @@ when (voidShaper) {
 		if (style.letterSpacing != 0.0 && !joins(cps, from, to)) {
 			for (const tag of OPTIONAL_LIGATURES) { features.push({ tag: tag, value: 0 }); }
 		}
-		let input: Vec<int32> = new Array(0);
-		let segmentOf: Vec<int32> = new Array(0);
+		let breaks: int32 = 0;
+		for (let k = from + 1; k < to; k++) {
+			if (segmentStarts(cps, k)) { breaks = breaks + 1; }
+		}
+		let input: Vec<int32> = new Array<int32>(to - from + breaks);
+		let segmentOf: Vec<int32> = new Array<int32>(to - from);
 		let segments: int32 = 1;
+		let at: int32 = 0;
 		for (let k = from; k < to; k++) {
-			if (k > from && (cps[k].run != cps[k - 1].run || cps[k].shapingBreak)) {
-				input.push(SHAPE_BREAK);
+			if (k > from && segmentStarts(cps, k)) {
+				input[at] = SHAPE_BREAK;
+				at = at + 1;
 				segments = segments + 1;
 			}
-			segmentOf.push(segments - 1);
-			input.push(cps[k].value);
+			segmentOf[k - from] = segments - 1;
+			input[at] = cps[k].value;
+			at = at + 1;
 		}
 		const key: ShapeKey = {
 			face: first.face,
@@ -837,8 +848,8 @@ when (voidShaper) {
 		for (let k = from; k < to; k++) {
 			cells[k] = { ...UNSHAPED, shaped: true, shapeStart: false };
 		}
-		let tail: Vec<int32> = new Array(0);
-		for (let j = 0; j <= total; j++) { tail.push(0x7fffffff); }
+		let tail: Vec<int32> = new Array<int32>(total + 1);
+		for (let j = 0; j <= total; j++) { tail[j] = 0x7fffffff; }
 		for (let j = total - 1; j >= 0; j--) {
 			tail[j] = Math.min(glyphs.glyphs[j].index, tail[j + 1]);
 		}
@@ -931,7 +942,8 @@ when (voidShaper) {
 	): void {
 		if (!textShaping) { return; }
 		const count: int32 = cps.length as int32;
-		for (let i = 0; i < count; i++) { cells.push(UNSHAPED); }
+		cells = new Array<Cell>(count);
+		for (let i = 0; i < count; i++) { cells[i] = UNSHAPED; }
 		let from: int32 = 0;
 		while (from < count) {
 			if (isControl(cps[from].value)) {
