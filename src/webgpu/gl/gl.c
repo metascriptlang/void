@@ -345,7 +345,15 @@ uint32_t oglCreateBuffer(void) {
 }
 
 void oglBindBuffer(int32_t target, uint32_t buffer) { glBindBuffer((GLenum)target, buffer); }
-void oglBufferData(int32_t target, int64_t bytes, int32_t usage) { glBufferData((GLenum)target, (GLsizeiptr)bytes, NULL, (GLenum)usage); }
+void oglBufferData(int32_t target, int64_t bytes, int32_t usage) {
+	void *zeros = calloc(1, (size_t)bytes);
+	if (zeros == NULL && bytes > 0) {
+		fprintf(stderr, "webgpu gl: no memory for the %lld zero bytes a new buffer starts with\n", (long long)bytes);
+		abort();
+	}
+	glBufferData((GLenum)target, (GLsizeiptr)bytes, zeros, (GLenum)usage);
+	free(zeros);
+}
 
 void oglBufferSubData(int32_t target, int64_t offset, void *data, int64_t bytes) {
 	glBufferSubData((GLenum)target, (GLintptr)offset, (GLsizeiptr)bytes, data);
