@@ -307,11 +307,8 @@ test "what MSL cannot say is refused by name" {
 		exprOf(ExprKind.Construct, VEC4, -1, [memberOf(packed, 1, 0), memberOf(packed, 1, 1)])));
 	const printed = mslOf(packed, 0, slotsOf(packed, [0]));
 	assert writeProbe("packedBlock", printed);
-	assert printed.includes("struct alignas(16) Light {
-  packed_float3 colour;
-  float power;
-};
-");
+	assert printed.includes("struct alignas(16) Light {\n" +
+		"  packed_float3 colour;\n  float power;\n};\n");
 	assert printed.includes("float4(float3(light.colour), light.power)");
 }
 
@@ -328,13 +325,9 @@ test "a storage vec3 followed by a scalar prints packed and a write targets the 
 		[exprOf(ExprKind.Convert, VEC3, -1, [ids]), literal(F32, 1.0)])));
 	const printed = mslOf(m, 0, slotsOf(m, [0]));
 	assert writeProbe("packedStorage", printed);
-	assert printed.includes("struct alignas(16) Item {
-  packed_uint3 ids;
-  uint count;
-};
-");
-	assert printed.includes("  items[0].ids = uint3(1u);
-");
+	assert printed.includes("struct alignas(16) Item {\n" +
+		"  packed_uint3 ids;\n  uint count;\n};\n");
+	assert printed.includes("  items[0].ids = uint3(1u);\n");
 	assert printed.includes("float3(uint3(items[0].ids))");
 }
 
