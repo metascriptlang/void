@@ -199,8 +199,9 @@ export struct BlitBindings {
 	@binding(0) sceneTexture: Texture2d;
 }
 
-// The toon ramp: the point light's energy stepped into `levels` bands. normalWeight 0 lights a
-// billboard by distance alone.
+// The toon ramp: the point light's energy stepped into `levels` bands; levels 0, a forward
+// material's block, leaves the energy unstepped as the forward preset lights it. normalWeight 0
+// lights a billboard by distance alone.
 export function toonPointLightAt(
 	position: Vec3f,
 	normal: Vec3f,
@@ -214,7 +215,7 @@ export function toonPointLightAt(
 	const falloff = clamp(1.0 - distance / tint.a, 0.0, 1.0);
 	const facing = mix(1.0, max(dot(normal, toLight / max(distance, 0.0001)), 0.0), normalWeight);
 	const energy = falloff * falloff * facing * at.w;
-	const level = floor(energy * levels + 0.35) / levels;
+	const level = levels > 0.0 ? floor(energy * levels + 0.35) / levels : energy;
 	return srgbToLinear(tint.rgb) * level;
 }
 
@@ -652,10 +653,11 @@ export function postFs(input: PostInput, b: PostBindings): Vec4f {
 	const size = textureDimensions(b.colorTexture, 0);
 	const p = vec2i(input.position.xy);
 	const color = textureLoad(b.colorTexture, p, 0);
+	const alpha = color.a;
 	const center = postNormalAt(b, p, size);
 	const centerDepth = postDepthAt(b, center, p, size);
 	const edge = b.postParams.edge;
-	let rgb = color.rgb;
+	let rgb = alpha > 0.0 ? color.rgb / alpha : vec3f(0.0);
 	if (b.postParams.features.x > 0.5) {
 		const n = center.xyz * 2.0 - 1.0;
 		let depthEdge: float32 = 0.0;
@@ -681,14 +683,14 @@ export function postFs(input: PostInput, b: PostBindings): Vec4f {
 	if (b.postParams.features.y > 0.5) {
 		rgb = paletteColor(b, rgb);
 	}
-	return vec4f(rgb, 1.0);
+	return vec4f(rgb * alpha, alpha);
 }
 
-// pixel = (scale, scale, offset x, offset y) in framebuffer pixels (blit.ms). Alpha is 1 so that
-// blitting the scene colour directly (no post stage) never shows through the surface.
+// pixel = (scale, scale, offset x, offset y) in framebuffer pixels (blit.ms). The texel keeps its
+// premultiplied alpha, so a blended blit leaves the layers under the scene where it drew nothing.
 export function blitFs(input: PostInput, b: BlitBindings): Vec4f {
 	const size = textureDimensions(b.sceneTexture, 0);
 	const p = vec2i(floor((input.position.xy + b.blitParams.pixel.zw) / b.blitParams.pixel.x));
 	const texel = textureLoad(b.sceneTexture, clamp(p, vec2i(0, 0), size - vec2i(1, 1)), 0);
-	return vec4f(texel.rgb, 1.0);
+	return texel;
 }

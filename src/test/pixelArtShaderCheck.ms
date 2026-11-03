@@ -110,6 +110,14 @@ test "the toon ramp steps a point light's energy into bands" {
 	assert within(unweighted.y, 0.5);
 }
 
+test "a forward material's zero ramp levels leave the point light unstepped" {
+	const at = vec4f(0, 0, 1, 1);
+	const tint = vec4f(1, 1, 1, 4);
+	const lit = toonPointLightAt(vec3f(0.0), vec3f(0, 0, 1), at, tint, 1.0, 0.0);
+	assert within(lit.x, 0.5625) && within(lit.z, 0.5625);
+	assert toonPointLightAt(vec3f(0.0), vec3f(0, 0, -1), at, tint, 1.0, 0.0).x == 0.0;
+}
+
 test "pixel-art lit stages carry the clip depth into the normal target" {
 	let bindings: VertexBindings = {
 		vertexParams: {
@@ -196,7 +204,22 @@ test "post darkens a depth edge, fogs by the unpacked depth and reads the palett
 	assert quantized.x == 0 && quantized.y == 1 && quantized.w == 1;
 }
 
-test "blit reads the scene texel under the scaled fragment, clamped, alpha 1" {
+test "post keeps the scene's premultiplied alpha and looks the palette up un-premultiplied" {
+	const centre = { position: vec4f(1.5, 1.5, 0.5, 1.0) };
+	let b = plainPost();
+	b.colorTexture = grid(3, 3, vec4f(0.25, 0.25, 0.25, 0.5));
+	const plain = postFs(centre, b);
+	assert plain.x == 0.25 && plain.w == 0.5;
+	b.postParams.features = vec4f(0, 1, 0, 2);
+	put(b.paletteTexture, 3, 1, vec4f(0, 1, 0, 1));
+	const quantized = postFs(centre, b);
+	assert quantized.x == 0 && quantized.y == 0.5 && quantized.w == 0.5;
+	b.colorTexture = grid(3, 3, none());
+	const empty = postFs(centre, b);
+	assert empty.x == 0 && empty.y == 0 && empty.w == 0;
+}
+
+test "blit reads the scene texel under the scaled fragment, clamped, with its alpha" {
 	let scene = grid(4, 4, none());
 	for (let y = 0; y < 4; y++) {
 		for (let x = 0; x < 4; x++) {
@@ -207,7 +230,7 @@ test "blit reads the scene texel under the scaled fragment, clamped, alpha 1" {
 		blitParams: { pixel: vec4f(2, 2, 0, 0) }, sceneTexture: scene,
 	};
 	const texel = blitFs({ position: vec4f(5.5, 3.5, 0.5, 1.0) }, b);
-	assert texel.x == 0.5 && texel.y == 0.25 && texel.w == 1.0;
+	assert texel.x == 0.5 && texel.y == 0.25 && texel.w == 0.5;
 	b.blitParams.pixel = vec4f(2, 2, 1, 0);
 	assert blitFs({ position: vec4f(5.5, 3.5, 0.5, 1.0) }, b).x == 0.75;
 	assert blitFs({ position: vec4f(100.5, 0.5, 0.5, 1.0) }, b).x == 0.75;
