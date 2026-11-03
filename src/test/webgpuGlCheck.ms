@@ -49,6 +49,7 @@ import { glWindowError, glWindowOpen, glWindowReadback } from "./glWindow.h";
 @passL("-luser32");
 
 const WHITE: uint32 = 0xFFFFFFFF;
+const GLES3_FRAGMENT_UNIFORM_BYTES: int64 = 896 * 4;
 
 const VERTEX_GLSL = "#version 430\nlayout(location = 0) in vec2 position;\nvoid main() { gl_Position = vec4(position, 0.0, 1.0); }\n";
 const COLOURED_VERTEX_GLSL = "#version 430\nlayout(location = 0) in vec2 position;\nlayout(location = 1) in vec4 colour;\nout vec4 tint;\nvoid main() { gl_Position = vec4(position, 0.0, 1.0); tint = colour; }\n";
@@ -1005,7 +1006,7 @@ test "the limits are the context's own and the features say what the context can
 	assert limits.maxTextureArrayLayers >= 256 && limits.maxBindGroups == 2;
 	assert limits.maxSampledTexturesPerShaderStage > 0 && limits.maxSamplersPerShaderStage > 0;
 	assert limits.maxStorageBuffersPerShaderStage > 0 && limits.maxStorageTexturesPerShaderStage > 0;
-	assert limits.maxUniformBuffersPerShaderStage > 0 && limits.maxUniformBufferBindingSize >= 16384;
+	assert limits.maxUniformBuffersPerShaderStage > 0 && limits.maxUniformBufferBindingSize >= GLES3_FRAGMENT_UNIFORM_BYTES;
 	assert limits.maxStorageBufferBindingSize > 0 && limits.maxVertexBuffers > 0 && limits.maxVertexAttributes >= 16;
 	assert limits.maxColorAttachments >= 4 && limits.maxComputeWorkgroupSizeX >= 1024 && limits.maxComputeWorkgroupSizeY >= 1024;
 	assert limits.maxComputeWorkgroupSizeZ >= 64 && limits.maxComputeInvocationsPerWorkgroup >= 1024;
