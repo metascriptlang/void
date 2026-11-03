@@ -6,9 +6,11 @@ export const STEP: float64 = 1.0 / 60.0;
 const STEPS_AT_10K: int32 = 600;
 const FEWEST_STEPS: int32 = 4;
 
+const CAPACITY_MULTIPLE_OF_1024_COUNT: int32 = 98304;
+
 export function benchCounts(): Vec<int32> {
 	const wanted: string = env.get("BENCH_PARTICLES");
-	if (wanted == "") { return [10000, 100000, 1000000]; }
+	if (wanted == "") { return [10000, CAPACITY_MULTIPLE_OF_1024_COUNT, 100000, 1000000]; }
 	const count: int32 = parseInt(wanted) as int32;
 	if (count <= 0) { console.log(`BENCH_PARTICLES must be a positive count, got ${wanted}`); unreachable; }
 	return [count];
