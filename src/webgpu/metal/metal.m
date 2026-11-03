@@ -346,9 +346,11 @@ void mtlReleaseSampler(MtlSampler sampler) { [(id<MTLSamplerState>)sampler relea
 MtlLibrary mtlNewLibrary(MtlDevice device, const char *source) {
 	@autoreleasepool {
 		NSError *error = nil;
+		MTLCompileOptions *options = [[MTLCompileOptions new] autorelease];
+		options.fastMathEnabled = NO;
 		id<MTLLibrary> library = [(id<MTLDevice>)device
 			newLibraryWithSource:[NSString stringWithUTF8String:source]
-			options:nil
+			options:options
 			error:&error];
 		if (library == nil) keepLog(error);
 		return (MtlLibrary)library;
