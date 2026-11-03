@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# No options, as src/webgpu/metal/metal.m passes newLibraryWithSource; keep them in step.
+# Fast math off, as src/webgpu/metal/metal.m passes newLibraryWithSource; keep them in step.
 set -u
 dir="${1:?usage: validateMsl.sh <directory>}"
 xcrun -sdk macosx -f metal > /dev/null 2>&1 || { echo "validateMsl: xcrun metal not found (macOS only)"; exit 2; }
@@ -10,7 +10,7 @@ for file in "$dir"/*.metal; do
 		*.metal_ios.*) sdk=iphoneos ;;
 		*) sdk=macosx ;;
 	esac
-	if ! xcrun -sdk "$sdk" metal -c "$file" -o "$file.air" > "$file.log" 2>&1; then
+	if ! xcrun -sdk "$sdk" metal -fno-fast-math -c "$file" -o "$file.air" > "$file.log" 2>&1; then
 		cat "$file.log"
 		echo "validateMsl: metal refused $file ($sdk)"
 		exit 1
