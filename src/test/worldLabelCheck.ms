@@ -176,10 +176,12 @@ test "a label's block holds the tint, the sub-rect's uv and the identity back uv
 	assert sameLanes(labelLanes(still, white), [
 		0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0,
 	]);
 	assert sameLanes(labelLanes(used, tint), [
 		0, 0, 0, 0, 0.2, 0.4, 0.6, 0.8, 0.5, 0, 0, 0.25, 0, 0.75, 0, 0, 1, 0, 0, 1,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0,
 	]);
 }
 
