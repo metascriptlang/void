@@ -1,0 +1,9 @@
+{
+	"private": true,
+	"type": "module",
+	"devDependencies": {
+		"esbuild": "0.28.2",
+		"pixi.js": "8.22.0",
+		"three": "0.187.0"
+	}
+}

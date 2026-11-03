@@ -1,0 +1,8 @@
+// The sprites scene as a --target=js build (scripts/build-web.sh).
+
+import { spritesInit, spritesFrame } from "./spritesScene";
+import "../../../../../src/host/gpuWindow";
+
+extern function voidRun(width: int32, height: int32, init: () => void, frame: () => void): void;
+
+voidRun(1280, 720, spritesInit, spritesFrame);
