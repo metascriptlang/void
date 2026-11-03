@@ -37,7 +37,7 @@ import {
 import { mkdir, readFileBytes, writeFile } from "std/fs";
 import { exec } from "std/process";
 import { getCurrentDepthTexture, getCurrentTexture, requestDevice } from "../webgpu/device.ms";
-import { bindStats, nativeQueue, nativeTexture } from "../webgpu/metal/backend.ms";
+import { bindStats, nativeQueue, nativeTexture, pendingReleases } from "../webgpu/metal/backend.ms";
 import { shaderBytecodeFromBase64 } from "../shader/dxbc.ms";
 import { glslComputeIr } from "../shader/emit";
 import { metalLabel, metalReadback, metalSystemDevice } from "./metalDevice.h";
@@ -211,6 +211,45 @@ test "a Metal triangle takes its colour from the uniform block at the dynamic of
 	assert pixel(pixels, 63, 63) == BLUE;
 	const live = device.liveCounts();
 	assert live.buffers == 2 && live.textures == 1 && live.views == 1 && live.shaderModules == 1 && live.pipelines == 1;
+	device.destroy();
+}
+
+function clearFrame(device: GPUDevice, view: GPUTextureView): void {
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(clearingPass(view, { id: 0 })).end();
+	device.queue.submit(encoder.finish());
+}
+
+test "a buffer and a texture destroyed while a frame reads them are released once that frame completes" {
+	const device = openDevice();
+	const module = flatShader(device);
+	const pipeline = flatPipeline(device, module, 1);
+	const uniforms = colourUniforms(device);
+	const group = uniformGroup(device, pipeline, uniforms);
+	const vertices = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const target = colourTarget(device, 1);
+	const scratch = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(clearingPass(scratch.createView({ label: null }), { id: 0 })).end();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	const offsets: Vec<uint32> = [0];
+	pass.setBindGroup(0, group, offsets);
+	pass.draw(3, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const before = pendingReleases();
+	vertices.destroy();
+	scratch.destroy();
+	assert pendingReleases() >= before + 2;
+	const later = colourTarget(device, 1).createView({ label: null });
+	for (let i = 0; i < 3; i++) { clearFrame(device, later); }
+	assert pendingReleases() == 0;
+	const pixels = readPixels(target);
+	assert pixel(pixels, 32, 32) == RED && pixel(pixels, 0, 0) == BLUE;
 	device.destroy();
 }
 
