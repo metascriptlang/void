@@ -48,7 +48,14 @@ import {
 
 when (voidShaper) {
 	import { glyphScale, glyphEmbolden } from "./face";
-	import { fontFeatures } from "./font";
+	import { FontFeature, fontFeatures } from "./font";
+	import {
+		SHAPE_BREAK,
+		ShapeKey,
+		shapeCacheGet,
+		shapeCachePut,
+		shapeKeyHash,
+	} from "./shapeCache";
 	import {
 		ShapeDirection,
 		ShapedGlyph,
@@ -734,33 +741,23 @@ when (voidShaper) {
 		};
 	}
 
-	function shapeGroup(
+	function shapeFresh(
 		cps: Readonly<Span<Codepoint>>,
 		from: int32,
-		to: int32,
-		style: TextStyle,
+		key: ShapeKey,
+		segmentOf: Readonly<Span<int32>>,
+		segments: int32,
 		bidi: BidiRuns,
-		ref cells: Vec<Cell>,
-		ref extras: Vec<Extra>,
-	): void {
-		const first: Codepoint = cps[from];
-		const direction: ShapeDirection = directionOf(levelAt(bidi, from));
-		if (!shaperTryBegin(first.face, direction)) { return; }
-		for (const feature of fontFeatures(first.font)) {
-			shaperFeature(feature.tag, feature.value);
-		}
-		if (style.letterSpacing != 0.0 && !joins(cps, from, to)) {
-			for (const tag of OPTIONAL_LIGATURES) { shaperFeature(tag, 0); }
-		}
-		let segmentOf: Vec<int32> = new Array(0);
-		let segments: int32 = 1;
-		for (let k = from; k < to; k++) {
-			if (k > from && (cps[k].run != cps[k - 1].run || cps[k].shapingBreak)) {
+	): Vec<ShapedGlyph> | null {
+		const direction: ShapeDirection = key.direction;
+		if (!shaperTryBegin(key.face, direction)) { return null; }
+		for (const feature of key.features) { shaperFeature(feature.tag, feature.value); }
+		for (const value of key.input) {
+			if (value == SHAPE_BREAK) {
 				shaperBreak();
-				segments = segments + 1;
+			} else {
+				shaperCodepoint(value);
 			}
-			segmentOf.push(segments - 1);
-			shaperCodepoint(cps[k].value);
 		}
 		const total: int32 = shaperEnd();
 		let order: Vec<int32> = new Array(0);
@@ -790,6 +787,52 @@ when (voidShaper) {
 			}
 			glyphs.push(g);
 		}
+		return glyphs;
+	}
+
+	function shapeGroup(
+		cps: Readonly<Span<Codepoint>>,
+		from: int32,
+		to: int32,
+		style: TextStyle,
+		bidi: BidiRuns,
+		ref cells: Vec<Cell>,
+		ref extras: Vec<Extra>,
+	): void {
+		const first: Codepoint = cps[from];
+		let features: Vec<FontFeature> = [...fontFeatures(first.font)];
+		if (style.letterSpacing != 0.0 && !joins(cps, from, to)) {
+			for (const tag of OPTIONAL_LIGATURES) { features.push({ tag: tag, value: 0 }); }
+		}
+		let input: Vec<int32> = new Array(0);
+		let segmentOf: Vec<int32> = new Array(0);
+		let segments: int32 = 1;
+		for (let k = from; k < to; k++) {
+			if (k > from && (cps[k].run != cps[k - 1].run || cps[k].shapingBreak)) {
+				input.push(SHAPE_BREAK);
+				segments = segments + 1;
+			}
+			segmentOf.push(segments - 1);
+			input.push(cps[k].value);
+		}
+		const key: ShapeKey = {
+			face: first.face,
+			direction: directionOf(levelAt(bidi, from)),
+			features: features,
+			input: input,
+		};
+		const hash: int64 = shapeKeyHash(key);
+		let glyphs: Vec<ShapedGlyph> = new Array(0);
+		const cached: Vec<ShapedGlyph> | null = shapeCacheGet(key, hash);
+		if (cached != null) {
+			glyphs = cached;
+		} else {
+			const fresh: Vec<ShapedGlyph> | null = shapeFresh(cps, from, key, segmentOf, segments, bidi);
+			if (fresh == null) { return; }
+			glyphs = fresh;
+			shapeCachePut(key, hash, fresh);
+		}
+		const total: int32 = glyphs.length as int32;
 		for (let k = from; k < to; k++) {
 			cells[k] = { ...UNSHAPED, shaped: true, shapeStart: false };
 		}
