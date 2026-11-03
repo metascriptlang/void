@@ -1193,24 +1193,27 @@ else
 	pass "allocation: the frame path ($(echo $FRAME_PATH | wc -w) functions) copies no array and builds no fresh one; the rebuild ($(echo $REBUILD_PATH | wc -w)) and measure ($(echo $MEASURE_PATH | wc -w)) paths copy none; $followed functions they call are held to the same rules"
 fi
 # Guardrail 6: a build without the modules pays none of them.
-# srcZvoid2dZcolour, srcZvoid2dZkbZ and srcZvoid2dZbidi are emitted names of src/void2d/colourEmoji/, src/void2d/kb/ and bidi*.ms; moving them turns the check into a skip.
+# srcZvoid2dZcolour, srcZvoid2dZkbZ and srcZvoid2dZbidi are emitted names of src/void2d/colourEmoji/, src/void2d/kb/ and bidi*.ms; moving them fails the check until the names here follow.
 if "$MSC" build src/examples/main2d.ms --release --output=out/tmp/main2dOff.exe > out/gate-module-off.log 2>&1 \
 		&& "$MSC" build -d:voidColourEmoji -d:voidShaper src/examples/main2d.ms --release --output=out/tmp/main2dModules.exe >> out/gate-module-off.log 2>&1; then
 	module_off_bytes=$(wc -c < out/tmp/main2dOff.exe)
 	module_on_bytes=$(wc -c < out/tmp/main2dModules.exe)
+	symbol_tool=$(command -v llvm-nm || command -v nm || true)
 	module_symbols() {
 		if [ -f "${1%.exe}.pdb" ]; then
 			llvm-pdbutil dump -publics "${1%.exe}.pdb" 2> /dev/null
 		else
-			llvm-nm "$1" 2> /dev/null
+			"$symbol_tool" "$1" 2> /dev/null
 		fi
 	}
 	named_on=$(module_symbols out/tmp/main2dModules.exe | grep -c 'srcZvoid2dZcolour' || true)
 	named_shaper=$(module_symbols out/tmp/main2dModules.exe | grep -c 'srcZvoid2dZkbZ' || true)
 	named_off=$(module_symbols out/tmp/main2dOff.exe | grep -c 'srcZvoid2dZcolour\|void2dGlyphSdf\|srcZvoid2dZkbZ\|srcZvoid2dZbidi\|srcZvoid2dZsprite\|void2dGlyphFaceSprite' || true)
 	named_batcher=$(module_symbols out/tmp/main2dOff.exe | grep -c 'srcZvoid2dZbatcher' || true)
-	if [ "$named_on" -eq 0 ] || [ "$named_shaper" -eq 0 ] || [ "$named_batcher" -eq 0 ]; then
-		skip "module off: the executables name no symbol from src/void2d/colourEmoji, src/void2d/kb or batcher.ms (colour $named_on, shaper $named_shaper, batcher $named_batcher), so they get no symbol check"
+	if [ -z "$symbol_tool" ] && [ ! -f out/tmp/main2dOff.pdb ]; then
+		fail "module off: neither llvm-nm nor nm is on PATH, so the executables' symbols cannot be read"
+	elif [ "$named_on" -eq 0 ] || [ "$named_shaper" -eq 0 ] || [ "$named_batcher" -eq 0 ]; then
+		fail "module off: ${symbol_tool:-llvm-pdbutil} reads no symbol from src/void2d/colourEmoji, src/void2d/kb or batcher.ms (colour $named_on, shaper $named_shaper, batcher $named_batcher), so the module-off check proves nothing"
 	elif [ "$named_off" -gt 0 ]; then
 		fail "module off: main2d.exe with every module flag off names $named_off colour, SDF, shaper, BiDi or sprite symbols"
 	else
