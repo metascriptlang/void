@@ -7,7 +7,7 @@ if [ "${1:-}" = --record ]; then
 	awk '
 		BEGIN {
 			split("modulesWeb main2d", entries)
-			split("shaper sdf bidi colour sprites outline", modules)
+			split("shaper sdf colour sprites outline", modules)
 			split("wgpu gl", backends)
 			for (e in entries) for (m in modules) for (b in backends)
 				expected[entries[e] "-" modules[m] " " backends[b]] = 1
@@ -78,7 +78,7 @@ check oversizedOn 1 'modulesWeb-shaper wgpu off 4 on 999999999999999999999999999
 cr=$(printf '\r')
 check crlf 0 "modulesWeb-shaper wgpu off 4 on 6$cr"
 for entry in modulesWeb main2d; do
-	for module in shaper sdf bidi colour sprites outline; do
+	for module in shaper sdf colour sprites outline; do
 		for backend in wgpu gl; do
 			printf '%s-%s %s off 4 on 6\n' "$entry" "$module" "$backend"
 		done

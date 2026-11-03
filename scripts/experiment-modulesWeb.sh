@@ -1,5 +1,5 @@
 #!/bin/sh
-#   sh scripts/experiment-modulesWeb.sh            shaper, sdf and bidi
+#   sh scripts/experiment-modulesWeb.sh            shaper and sdf
 #   sh scripts/experiment-modulesWeb.sh shaper     one module
 set -e
 cd "$(dirname "$0")/.."
@@ -9,7 +9,7 @@ OUT="out/experiments/$NAME"
 mkdir -p "$OUT"
 sh scripts/wasmBudget.test.sh
 export MSC_NO_GLOBAL_CACHE=1
-modules="${*:-shaper sdf bidi}"
+modules="${*:-shaper sdf}"
 
 build() {
 	label="$1"; flags="$2"
@@ -25,7 +25,6 @@ for module in $modules; do
 	case "$module" in
 		shaper) flag="-d:voidShaper" ;;
 		sdf) flag="-d:voidSdfText" ;;
-		bidi) flag="-d:voidBidi" ;;
 		colour) flag="-d:voidColourEmoji" ;;
 		sprites) flag="-d:voidSprites" ;;
 		outline) flag="-d:voidTextOutline" ;;

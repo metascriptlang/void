@@ -16,7 +16,7 @@ MSC="${MSC:-msc}"
 RECORD=tests/bench/jsBudget.txt
 OUT=out/jsBudget
 entries="windowJsEntry viewsJsEntry"
-modules="shaper sdf bidi colour sprites outline"
+modules="shaper sdf colour sprites outline"
 mode=check
 [ "${1:-}" = --record ] && mode=record
 
@@ -24,7 +24,6 @@ flagOf() {
 	case "$1" in
 		shaper) echo "-d:voidShaper" ;;
 		sdf) echo "-d:voidSdfText" ;;
-		bidi) echo "-d:voidBidi" ;;
 		colour) echo "-d:voidColourEmoji" ;;
 		sprites) echo "-d:voidSprites" ;;
 		outline) echo "-d:voidTextOutline" ;;

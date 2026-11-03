@@ -4,8 +4,6 @@ modulesWeb-shaper wgpu off 545726 on 1496053
 modulesWeb-shaper gl off 517939 on 1469747
 modulesWeb-sdf wgpu off 545726 on 559814
 modulesWeb-sdf gl off 517939 on 532042
-modulesWeb-bidi wgpu off 545726 on 578449
-modulesWeb-bidi gl off 517939 on 550726
 modulesWeb-colour wgpu off 545726 on 700268
 modulesWeb-colour gl off 517939 on 672735
 modulesWeb-sprites wgpu off 545726 on 594986
@@ -16,8 +14,6 @@ main2d-shaper wgpu off 1253125 on 2202853
 main2d-shaper gl off 1246440 on 2198366
 main2d-sdf wgpu off 1253125 on 1266850
 main2d-sdf gl off 1246440 on 1260234
-main2d-bidi wgpu off 1253125 on 1289486
-main2d-bidi gl off 1246440 on 1283053
 main2d-colour wgpu off 1253125 on 1346738
 main2d-colour gl off 1246440 on 1340446
 main2d-sprites wgpu off 1253125 on 1301990
