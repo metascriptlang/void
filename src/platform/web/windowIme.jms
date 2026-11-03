@@ -2,6 +2,8 @@
 // under emscripten. The browser composes only into a focused editable element, so a hidden
 // textarea beside the canvas takes the composition. Typing outside a composition still arrives as
 // Char (its input event only empties the textarea); a composition arrives once, at compositionend.
+// Text inserted with no composition and no keypress (an emoji picker, dictation) arrives as text
+// input, as xterm.js's _inputEvent sends it when no keypress handled the key.
 // The decisions (text input on, the rectangle, the keys a composition takes) are imeInput.ms.
 
 import { AppWindow } from "../../host/appWindow";
@@ -42,6 +44,7 @@ export class WindowIme {
 	window: AppWindow;
 	input: Js;
 	composing: boolean = false;
+	pressed: boolean = false;
 	on: boolean = false;
 	removers: (() => void)[] = [];
 
@@ -95,6 +98,14 @@ export class WindowIme {
 			this.composing = true;
 			return false;
 		});
+		this.add(input, "keypress", (event: Js): boolean => {
+			this.pressed = true;
+			return false;
+		});
+		this.add(input, "keyup", (event: Js): boolean => {
+			this.pressed = false;
+			return false;
+		});
 		this.add(input, "input", (event: Js): boolean => {
 			if (flag(event, "isComposing")) {
 				this.send(
@@ -102,9 +113,17 @@ export class WindowIme {
 					stringField(input, "value"),
 					intField(input, "selectionStart"),
 				);
-			} else {
-				clearValue(input);
+				return false;
 			}
+			const data = stringField(event, "data");
+			if (
+				!this.pressed &&
+				stringField(event, "inputType") == "insertText" &&
+				data != ""
+			) {
+				this.send(AppEventType.TextInput, data, 0);
+			}
+			clearValue(input);
 			return false;
 		});
 		this.add(input, "compositionend", (event: Js): boolean => {
@@ -117,11 +136,10 @@ export class WindowIme {
 			clearValue(input);
 			return false;
 		});
-		this.add(
-			input,
-			"keydown",
-			(event: Js): boolean => stringField(event, "key") == "Tab",
-		);
+		this.add(input, "keydown", (event: Js): boolean => {
+			this.pressed = false;
+			return stringField(event, "key") == "Tab";
+		});
 		this.add(this.canvas, "pointerdown", (event: Js): boolean => {
 			if (this.on) {
 				focusLater(input);

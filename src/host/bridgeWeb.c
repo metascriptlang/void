@@ -37,7 +37,9 @@ EMSCRIPTEN_KEEPALIVE void voidWebImeText(int type, const char *utf8, int cursor)
 
 // The browser composes only into a focused editable element, so a hidden textarea beside the
 // canvas takes the composition. Typing outside a composition still arrives as Char (its input
-// event only empties the textarea); a composition arrives once, at compositionend.
+// event only empties the textarea); a composition arrives once, at compositionend. Text inserted
+// with no composition and no keypress (an emoji picker, dictation) arrives as text input, as
+// xterm.js's _inputEvent sends it when no keypress handled the key.
 EM_JS(void, voidJsImeSetup, (int preedit, int textInput), {
 	const canvas = Module.voidWebTarget;
 	const input = document.createElement('textarea');
@@ -49,10 +51,17 @@ EM_JS(void, voidJsImeSetup, (int preedit, int textInput), {
 		'outline:none;resize:none;overflow:hidden;opacity:0;pointer-events:none;';
 	canvas.insertAdjacentElement('afterend', input);
 	const send = (type, text, cursor) => withStackSave(() => _voidWebImeText(type, stringToUTF8OnStack(text), cursor));
+	let pressed = false;
 	input.addEventListener('compositionstart', () => { Module.voidComposing = true; });
+	input.addEventListener('keypress', () => { pressed = true; });
+	input.addEventListener('keyup', () => { pressed = false; });
 	input.addEventListener('input', (e) => {
-		if (e.isComposing) send(preedit, input.value, input.selectionStart);
-		else input.value = '';
+		if (e.isComposing) {
+			send(preedit, input.value, input.selectionStart);
+			return;
+		}
+		if (!pressed && e.inputType === 'insertText' && e.data) send(textInput, e.data, 0);
+		input.value = '';
 	});
 	input.addEventListener('compositionend', (e) => {
 		Module.voidComposing = false;
@@ -60,7 +69,10 @@ EM_JS(void, voidJsImeSetup, (int preedit, int textInput), {
 		if (e.data) send(textInput, e.data, 0);
 		input.value = '';
 	});
-	input.addEventListener('keydown', (e) => { if (e.key === 'Tab') e.preventDefault(); });
+	input.addEventListener('keydown', (e) => {
+		pressed = false;
+		if (e.key === 'Tab') e.preventDefault();
+	});
 	canvas.addEventListener('pointerdown', () => {
 		if (Module.voidImeOn) setTimeout(() => input.focus({ preventScroll: true }), 0);
 	});
