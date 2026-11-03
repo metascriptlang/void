@@ -1,5 +1,5 @@
 profile scripts/jsBudget.sh --target=js entries windowJsEntry viewsJsEntry; rows are <entry>-<module> raw|gzip|shipRaw|shipGzip off <bytes> on <bytes>, gzip -9
-measured BUILD a0f6f1be1e3 2026-11-03 tree f301bd1f3a5f320b76282b5497eed03d2839b4ec
+measured BUILD a0f6f1be1e3 2026-11-03 tree 0185981fc0ff5ecafec2ed5edc9e28c779492fe1
 windowJsEntry-shaper raw off 1328473 on 1328473
 windowJsEntry-shaper gzip off 154032 on 154032
 windowJsEntry-shaper shipRaw off 131112 on 131112
@@ -8,10 +8,6 @@ windowJsEntry-sdf raw off 1328473 on 1328473
 windowJsEntry-sdf gzip off 154032 on 154032
 windowJsEntry-sdf shipRaw off 131112 on 131112
 windowJsEntry-sdf shipGzip off 32005 on 32005
-windowJsEntry-bidi raw off 1328473 on 1328473
-windowJsEntry-bidi gzip off 154032 on 154032
-windowJsEntry-bidi shipRaw off 131112 on 131112
-windowJsEntry-bidi shipGzip off 32005 on 32005
 windowJsEntry-colour raw off 1328473 on 1328473
 windowJsEntry-colour gzip off 154032 on 154032
 windowJsEntry-colour shipRaw off 131112 on 131112
@@ -32,10 +28,6 @@ viewsJsEntry-sdf raw off 1268576 on 1268576
 viewsJsEntry-sdf gzip off 144275 on 144275
 viewsJsEntry-sdf shipRaw off 111684 on 111684
 viewsJsEntry-sdf shipGzip off 27288 on 27288
-viewsJsEntry-bidi raw off 1268576 on 1268576
-viewsJsEntry-bidi gzip off 144275 on 144275
-viewsJsEntry-bidi shipRaw off 111684 on 111684
-viewsJsEntry-bidi shipGzip off 27288 on 27288
 viewsJsEntry-colour raw off 1268576 on 1268576
 viewsJsEntry-colour gzip off 144275 on 144275
 viewsJsEntry-colour shipRaw off 111684 on 111684
