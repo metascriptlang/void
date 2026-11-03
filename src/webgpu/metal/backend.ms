@@ -164,6 +164,10 @@ import {
 	mtlWaitCommitted,
 	mtlBeginPass,
 	mtlCommit,
+	mtlCommitFrame,
+	mtlKeepUntilFrameDone,
+	mtlPendingReleases,
+	mtlReleaseAllPending,
 	mtlDeviceFrom,
 	mtlDraw,
 	mtlDrawIndexed,
@@ -752,6 +756,8 @@ function checkMirroredConstants(): void {
 
 export function bindStats(): BindStats { return stats; }
 
+export function pendingReleases(): int64 { return mtlPendingReleases(); }
+
 export function setup(environment: NativeEnvironment): GPUDevice {
 	if (environment.device === null) { stop("requestDevice needs the native MTLDevice"); }
 	checkMirroredConstants();
@@ -795,6 +801,7 @@ export function shutdown(): void {
 	commitFrame();
 	mtlFrameSemaphoreWaitAll();
 	mtlForgetCommitted();
+	mtlReleaseAllPending();
 	mtlReleaseQueue(queue);
 	mtlReleaseDevice(device);
 }
@@ -1133,11 +1140,14 @@ export function acquireSwapchain(swapchain: NativeSwapchain): void {
 	const v = viewRecords.slotIndex(textureRecords.slots[textureRecords.slotIndex(swapchainColor)].swapchainView);
 	views[v].swapchainTexture = mtlTextureFrom(swapchain.renderView);
 	views[v].swapchainResolve = swapchain.resolveView === null ? NO_TEXTURE : mtlTextureFrom(swapchain.resolveView);
+	mtlKeepUntilFrameDone(views[v].swapchainTexture);
+	mtlKeepUntilFrameDone(views[v].swapchainResolve);
 	textures[textureRecords.slotIndex(swapchainColor)].natives[0] = swapchain.sampleCount > 1 ? views[v].swapchainResolve : views[v].swapchainTexture;
 	if (swapchainDepth != 0) {
 		if (swapchain.depthStencilView === null) { stop("the canvas has a depth format and the native swapchain no depth view"); }
 		const d = viewRecords.slotIndex(textureRecords.slots[textureRecords.slotIndex(swapchainDepth)].swapchainView);
 		views[d].swapchainTexture = mtlTextureFrom(swapchain.depthStencilView);
+		mtlKeepUntilFrameDone(views[d].swapchainTexture);
 	}
 }
 
@@ -1483,7 +1493,7 @@ function commitFrame(): void {
 		uploads = NO_COMMAND_BUFFER;
 	}
 	if (commandBuffer != null) {
-		mtlCommit(commandBuffer);
+		mtlCommitFrame(commandBuffer);
 		commandBuffer = NO_COMMAND_BUFFER;
 	}
 }

@@ -1,6 +1,7 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "metal.h"
@@ -16,6 +17,60 @@ static MTLRenderPipelineDescriptor *s_pipeline;
 static MTLRenderPassDescriptor *s_pass;
 static id<CAMetalDrawable> s_drawable;
 static id<MTLCommandBuffer> s_committed;
+static NSMutableArray *s_keepAlive;
+
+// A command buffer made with unretained references does not keep what it reads alive, so a released
+// object waits here with the serial of the last frame begun until that frame is known complete
+// (sokol _sg_mtl_release_resource, _sg_mtl_garbage_collect).
+typedef struct { int64_t serial; id object; } Garbage;
+static Garbage *s_garbage;
+static int64_t s_garbageHead;
+static int64_t s_garbageTail;
+static int64_t s_garbageCapacity;
+static int64_t s_frameSerial;
+
+static void deferRelease(id object) {
+	if (object == nil) return;
+	if (s_garbageTail == s_garbageCapacity) {
+		int64_t live = s_garbageTail - s_garbageHead;
+		if (s_garbageHead > 0 && live < s_garbageCapacity / 2) {
+			memmove(s_garbage, s_garbage + s_garbageHead, (size_t)live * sizeof(Garbage));
+		} else {
+			int64_t capacity = s_garbageCapacity == 0 ? 256 : s_garbageCapacity * 2;
+			Garbage *grown = (Garbage *)realloc(s_garbage, (size_t)capacity * sizeof(Garbage));
+			if (grown == NULL) {
+				fprintf(stderr, "webgpu metal: no memory to queue %lld released objects\n", (long long)(live + 1));
+				abort();
+			}
+			if (s_garbageHead > 0) memmove(grown, grown + s_garbageHead, (size_t)live * sizeof(Garbage));
+			s_garbage = grown;
+			s_garbageCapacity = capacity;
+		}
+		s_garbageHead = 0;
+		s_garbageTail = live;
+	}
+	s_garbage[s_garbageTail].serial = s_frameSerial;
+	s_garbage[s_garbageTail].object = object;
+	s_garbageTail++;
+}
+
+static void collectGarbage(int64_t completedSerial) {
+	while (s_garbageHead < s_garbageTail && s_garbage[s_garbageHead].serial <= completedSerial) {
+		[s_garbage[s_garbageHead].object release];
+		s_garbage[s_garbageHead].object = nil;
+		s_garbageHead++;
+	}
+}
+
+int64_t mtlPendingReleases(void) { return s_garbageTail - s_garbageHead; }
+
+void mtlReleaseAllPending(void) { collectGarbage(INT64_MAX); }
+
+void mtlKeepUntilFrameDone(MtlTexture texture) {
+	if (texture == nil) return;
+	if (s_keepAlive == nil) s_keepAlive = [[NSMutableArray alloc] init];
+	[s_keepAlive addObject:(id<MTLTexture>)texture];
+}
 
 static void keepLog(NSError *error) {
 	const char *text = error ? [[error localizedDescription] UTF8String] : "no error description";
@@ -65,6 +120,8 @@ MtlCommandBuffer mtlBeginCommandBuffer(MtlQueue queue) {
 			(void)done;
 			dispatch_semaphore_signal(frames);
 		}];
+		s_frameSerial++;
+		collectGarbage(s_frameSerial - s_framesInFlight);
 		return (MtlCommandBuffer)commandBuffer;
 	}
 }
@@ -73,6 +130,18 @@ MtlCommandBuffer mtlBeginUploadCommandBuffer(MtlQueue queue) {
 	@autoreleasepool {
 		return (MtlCommandBuffer)[[(id<MTLCommandQueue>)queue commandBuffer] retain];
 	}
+}
+
+void mtlCommitFrame(MtlCommandBuffer commandBuffer) {
+	if (s_keepAlive != nil) {
+		NSMutableArray *kept = s_keepAlive;
+		s_keepAlive = nil;
+		[(id<MTLCommandBuffer>)commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
+			(void)done;
+			[kept release];
+		}];
+	}
+	mtlCommit(commandBuffer);
 }
 
 void mtlCommit(MtlCommandBuffer commandBuffer) {
@@ -126,7 +195,7 @@ void mtlCopyIn(MtlBuffer buffer, int64_t offset, const void *bytes, int64_t leng
 	memcpy((uint8_t *)[(id<MTLBuffer>)buffer contents] + offset, bytes, (size_t)length);
 }
 
-void mtlReleaseBuffer(MtlBuffer buffer) { [(id<MTLBuffer>)buffer release]; }
+void mtlReleaseBuffer(MtlBuffer buffer) { deferRelease((id<MTLBuffer>)buffer); }
 
 void mtlWriteBuffer(MtlBuffer buffer, int64_t offset, void *data, int64_t bytes, int32_t managed) {
 	id<MTLBuffer> b = (id<MTLBuffer>)buffer;
@@ -182,7 +251,7 @@ MtlTexture mtlNewTextureView(
 		slices:NSMakeRange((NSUInteger)baseLayer, (NSUInteger)layerCount)];
 }
 
-void mtlReleaseTexture(MtlTexture texture) { [(id<MTLTexture>)texture release]; }
+void mtlReleaseTexture(MtlTexture texture) { deferRelease((id<MTLTexture>)texture); }
 
 void mtlBlitBufferToBuffer(MtlCommandBuffer commandBuffer, MtlBuffer source, int64_t sourceOffset, MtlBuffer destination, int64_t destinationOffset, int64_t size) {
 	@autoreleasepool {
@@ -341,7 +410,7 @@ MtlSampler mtlNewSampler(
 	return (MtlSampler)sampler;
 }
 
-void mtlReleaseSampler(MtlSampler sampler) { [(id<MTLSamplerState>)sampler release]; }
+void mtlReleaseSampler(MtlSampler sampler) { deferRelease((id<MTLSamplerState>)sampler); }
 
 MtlLibrary mtlNewLibrary(MtlDevice device, const char *source) {
 	@autoreleasepool {
@@ -385,8 +454,8 @@ MtlFunction mtlNewFunction(MtlLibrary library, const char *entryPoint) {
 }
 
 const char *mtlErrorLog(void) { return s_log; }
-void mtlReleaseLibrary(MtlLibrary library) { [(id<MTLLibrary>)library release]; }
-void mtlReleaseFunction(MtlFunction shaderFunction) { [(id<MTLFunction>)shaderFunction release]; }
+void mtlReleaseLibrary(MtlLibrary library) { deferRelease((id<MTLLibrary>)library); }
+void mtlReleaseFunction(MtlFunction shaderFunction) { deferRelease((id<MTLFunction>)shaderFunction); }
 
 void mtlPipelineReset(void) {
 	[s_pipeline release];
@@ -454,7 +523,7 @@ MtlPipeline mtlNewPipeline(
 	return (MtlPipeline)state;
 }
 
-void mtlReleasePipeline(MtlPipeline pipeline) { [(id<MTLRenderPipelineState>)pipeline release]; }
+void mtlReleasePipeline(MtlPipeline pipeline) { deferRelease((id<MTLRenderPipelineState>)pipeline); }
 
 static MTLStencilDescriptor *stencilFace(int32_t fail, int32_t depthFail, int32_t pass, int32_t compare, uint32_t readMask, uint32_t writeMask) {
 	MTLStencilDescriptor *face = [[MTLStencilDescriptor alloc] init];
@@ -498,7 +567,7 @@ MtlDepthState mtlNewDepthState(
 	return (MtlDepthState)state;
 }
 
-void mtlReleaseDepthState(MtlDepthState state) { [(id<MTLDepthStencilState>)state release]; }
+void mtlReleaseDepthState(MtlDepthState state) { deferRelease((id<MTLDepthStencilState>)state); }
 
 void mtlPassReset(void) {
 	[s_pass release];
@@ -782,7 +851,7 @@ int32_t mtlComputeMaxThreads(MtlComputePipeline pipeline) {
 	return (int32_t)[(id<MTLComputePipelineState>)pipeline maxTotalThreadsPerThreadgroup];
 }
 
-void mtlReleaseComputePipeline(MtlComputePipeline pipeline) { [(id<MTLComputePipelineState>)pipeline release]; }
+void mtlReleaseComputePipeline(MtlComputePipeline pipeline) { deferRelease((id<MTLComputePipelineState>)pipeline); }
 
 MtlEncoder mtlBeginComputePass(MtlCommandBuffer commandBuffer, const char *label) {
 	@autoreleasepool {
@@ -854,7 +923,7 @@ MtlSampleBuffer mtlNewSampleBuffer(MtlDevice device, int32_t count, const char *
 	}
 }
 
-void mtlReleaseSampleBuffer(MtlSampleBuffer samples) { [(id<MTLCounterSampleBuffer>)samples release]; }
+void mtlReleaseSampleBuffer(MtlSampleBuffer samples) { deferRelease((id<MTLCounterSampleBuffer>)samples); }
 
 // Apple8+ GPUs resolve counters before an earlier pass's end sample lands (crbug.com/372698905,
 // 7 of 12 gpuTimer runs on an M3 Max); a shared event signalled and awaited serializes them.
