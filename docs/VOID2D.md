@@ -2764,7 +2764,10 @@ shaped in its direction by `kb_text_shape`, reordered per line for drawing, and 
 selection over visual order.
 
 **Built 2026-10-08, behind `-d:voidBidi`** (void-manager decisions of the same day; worktree
-landed on main, the web runs still owed, see "Owed" below).
+landed on main, the web runs still owed, see "Owed" below). **Linked with no flag since 2026-11-03**
+(the person, 2026-10-15): whether a string needs BiDi is a property of its characters, so every build
+that lays out text carries it; `possiblyRtl` still skips the resolver per string. Measured before the
+change on Windows, neon `examples/voidWindow.ms`: release 2 215 936 -> 2 246 656 B (+30 720, +1.4 %).
 
 - **The resolver.** `src/void2d/bidi.ms` over the generated `bidiTable.ms` (class ranges, paired
   brackets with their canonical openers, exact mirror pairs; `python tests/oracle/ucd.py regen`):
@@ -2868,7 +2871,7 @@ held by the two style-run rows of `bidiShapedCheck.ms`).
   `NodeRef.splitText`; a label (`Scene2D.label`, `setText`) keeps its chainable signature, draws
   nothing for refused text, logs it once ("void2d: label text is not drawn: ...") and answers
   `NodeRef.textStatus()`, which shapes the label first, so the answer holds straight after `setText`.
-  With `-d:voidBidi` and no shaper, text that joins is a result of the same type ("joining
+  With no shaper, text that joins is a result of the same type ("joining
   right-to-left text ... needs -d:voidShaper"), not an abort: Bidi_Class AL, and the scripts of
   another class that join (`joinsRightToLeft`: N'Ko, Mandaic, Manichaean, Psalter Pahlavi, Hanifi
   Rohingya, Old Uyghur, Chorasmian, Adlam; letters only, listed from ArabicShaping.txt).
@@ -2902,9 +2905,8 @@ native gate ran green with the BiDi oracle in the all-modules T0 stage.
 1 605 B and 1 339 B to `shaper.c`; the conformance oracle runs both files in about 5.5 s.
 
 **Tests.** T3: `bidiOracleCheck.ms` (BidiTest, BidiCharacterTest, sha256 pins), `shapeOracleCheck.ms`
-(forced against auto). T1: `bidiTableCheck.ms`, `bidiOffCheck.ms` (the refusals, with the
-module off), `bidiLayoutCheck.ms`, `bidiCaretCheck.ms`, `bidiSelectionCheck.ms`,
-`bidiShapedCheck.ms`; abort case `shaperRtl` in `tests/aborts/cases/shaperCases.ms`. T2: seven `text/bidi*` scenes at 320 units wide and DPI 1.25,
+(forced against auto). T1: `bidiTableCheck.ms`, `bidiLayoutCheck.ms`, `bidiCaretCheck.ms`, `bidiSelectionCheck.ms`,
+`bidiShapedCheck.ms`. T2: seven `text/bidi*` scenes at 320 units wide and DPI 1.25,
 captured on D3D11 2026-10-08 and read against the visual order UAX #9 gives each line.
 
 **Closes** (`tests/PENDING.md`, checked by the gate): nothing left open. The three rows that were not a difference of engines are deleted: the cluster row of the explicit left-to-right Arabic text agrees once the shaper bridge forces the direction, and the mixed-direction row is replaced by three explicit-direction rows that agree. The glyph row of the explicit left-to-right Arabic text is re-owned as declared with its measured reason.
