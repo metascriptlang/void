@@ -41,7 +41,7 @@ when (voidShaper) {
 	import { KB_LANGUAGE_DONT_KNOW } from "./kb/languages";
 	import { KB_BREAK_FLAG_SCRIPT } from "./kb/shapeTables";
 
-	when (macos || ios) {
+	when (c && (macos || ios)) {
 		import { void2dPlatformShape } from "./platformFace.h";
 		import { platformInfo, platformOpen, postScriptName } from "./glyph/platform";
 		import { getFontOffsetForIndex } from "./trueType";
@@ -111,7 +111,7 @@ when (voidShaper) {
 	}
 
 	function morxPlatform(bytes: FaceBytes): Ptr<void> | null {
-		when (macos || ios) {
+		when (c && (macos || ios)) {
 			const data = bytes.data;
 			const start: int32 = getFontOffsetForIndex(data, 0);
 			if (start < 0 || findTable(data, start, "morx") == 0 || findTable(data, start, "GSUB") != 0) {
@@ -295,7 +295,7 @@ when (voidShaper) {
 	}
 
 	function endCoreText(platform: Ptr<void>): int32 {
-		when (macos || ios) {
+		when (c && (macos || ios)) {
 			const count = input.length as int32;
 			const direction: ShapeDirection =
 				forcedDirection == 2 ? ShapeDirection.Rtl : ShapeDirection.Ltr;
