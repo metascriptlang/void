@@ -26,7 +26,7 @@ const CLEAR: Color = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
 
 function runOf(len: int32, font: FontId): TextRun {
 	return {
-		len: len, font: font, color: CLEAR, background: CLEAR, underline: CLEAR, wavy: false,
+		len: len, font: font, color: CLEAR, background: CLEAR, underline: CLEAR,
 		underlineStyle: UnderlineStyle.Solid, strikethrough: CLEAR, overline: CLEAR,
 	};
 }
