@@ -114,7 +114,7 @@ void mtlFrameSemaphoreWaitAll(void) {
 MtlCommandBuffer mtlBeginCommandBuffer(MtlQueue queue) {
 	dispatch_semaphore_wait(s_frames, DISPATCH_TIME_FOREVER);
 	@autoreleasepool {
-		id<MTLCommandBuffer> commandBuffer = [[(id<MTLCommandQueue>)queue commandBuffer] retain];
+		id<MTLCommandBuffer> commandBuffer = [[(id<MTLCommandQueue>)queue commandBufferWithUnretainedReferences] retain];
 		dispatch_semaphore_t frames = s_frames;
 		[commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
 			(void)done;
