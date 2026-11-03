@@ -310,7 +310,7 @@ export function allocateLabelText(): int32 {
 		reshape: true,
 		direction: TextDirection.Auto,
 		textRefused: false,
-		textRefusal: { kind: TextErrorKind.RightToLeftNeedsBidi, index: 0 },
+		textRefusal: { kind: TextErrorKind.ArabicNeedsShaper, index: 0 },
 		options: PLAIN_LINES,
 		shapingBreaks: new Array(0),
 		cellWidths: new Array(0),

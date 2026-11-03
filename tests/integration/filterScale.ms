@@ -1,7 +1,7 @@
 // A filter at resolutionScale 0.5 against the same filter at 1: the scene is drawn twice and the
 // two captures are compared pixel by pixel. Run by hand on the Mac (Metal):
 //   msc build -d:voidSdfText -d:voidShaper -d:voidSvg -d:voidProfiler -d:voidColourEmoji \
-//     -d:voidSprites -d:voidBidi -d:voidTextOutline tests/integration/filterScale.ms --release \
+//     -d:voidSprites -d:voidTextOutline tests/integration/filterScale.ms --release \
 //     --output=out/filterScale.exe && out/filterScale.exe
 // Each case states its tolerance as (mean per-channel difference, largest per-channel difference),
 // both in 0..255. Measured on the Mac Metal window: blur 0.44 and 45, glow 1.04 and 115 (the

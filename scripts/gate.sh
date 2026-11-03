@@ -85,7 +85,7 @@ else
 	fail "module stage all-off: msc test src/test/index.ms — see out/gate-t0.log"
 fi
 
-moduleFlags="voidProfiler voidShaper voidSdfText voidColourEmoji voidSvg voidSprites voidBidi voidTextOutline voidCff"
+moduleFlags="voidProfiler voidShaper voidSdfText voidColourEmoji voidSvg voidSprites voidTextOutline voidCff"
 moduleDefines=""
 for flag in $moduleFlags; do moduleDefines="$moduleDefines -d:$flag"; done
 echo "      module stage all-off: the T0 run above, no -d: flag"
@@ -1008,8 +1008,8 @@ for oracle in GraphemeBreakTest LineBreakTest; do
 		fail "UCD oracle $oracle: '${ucd}' — see out/gate-t0.log"
 	fi
 done
-# The BiDi conformance rows are fetched by setup.sh, not vendored, and they run in the all-modules
-# stage (they need -d:voidBidi). A missing file or a sha256 that differs from the pin prints a line
+# The BiDi conformance rows are fetched by setup.sh, not vendored, and are read from the all-modules
+# stage's log. A missing file or a sha256 that differs from the pin prints a line
 # naming it and fails the oracle: it is never a skip.
 for oracle in BidiTest BidiCharacterTest; do
 	line=$(sed 's/\x1b\[[0-9;]*m//g' out/gate-t0-modules.log | grep -E "^bidi oracle: $oracle [0-9]+/[0-9]+ (cases|rows) agree" | tail -1)
@@ -1163,7 +1163,7 @@ unreachable=""
 # call no function named in $4 (textLayout returns the whole layout by value: REVIEWS.md P3 F2).
 read_emitted_c() {
 	rm -f "out/debug/$(basename "$1" .ms).exe" out/debug/*srcZvoid2dZ*Oms.c
-	if ! "$MSC" build "$1" --emit=c -d:voidBidi >> out/gate-allocation.log 2>&1; then
+	if ! "$MSC" build "$1" --emit=c >> out/gate-allocation.log 2>&1; then
 		unreachable="$unreachable (emitting C for $1 failed)"
 		return 0
 	fi
@@ -1193,7 +1193,7 @@ else
 	pass "allocation: the frame path ($(echo $FRAME_PATH | wc -w) functions) copies no array and builds no fresh one; the rebuild ($(echo $REBUILD_PATH | wc -w)) and measure ($(echo $MEASURE_PATH | wc -w)) paths copy none; $followed functions they call are held to the same rules"
 fi
 # Guardrail 6: a build without the modules pays none of them.
-# srcZvoid2dZcolour, srcZvoid2dZkbZ and srcZvoid2dZbidi are emitted names of src/void2d/colourEmoji/, src/void2d/kb/ and bidi*.ms; moving them fails the check until the names here follow.
+# srcZvoid2dZcolour and srcZvoid2dZkbZ are emitted names of src/void2d/colourEmoji/ and src/void2d/kb/; moving them fails the check until the names here follow.
 if "$MSC" build src/examples/main2d.ms --release --output=out/tmp/main2dOff.exe > out/gate-module-off.log 2>&1 \
 		&& "$MSC" build -d:voidColourEmoji -d:voidShaper src/examples/main2d.ms --release --output=out/tmp/main2dModules.exe >> out/gate-module-off.log 2>&1; then
 	module_off_bytes=$(wc -c < out/tmp/main2dOff.exe)
@@ -1208,16 +1208,16 @@ if "$MSC" build src/examples/main2d.ms --release --output=out/tmp/main2dOff.exe 
 	}
 	named_on=$(module_symbols out/tmp/main2dModules.exe | grep -c 'srcZvoid2dZcolour' || true)
 	named_shaper=$(module_symbols out/tmp/main2dModules.exe | grep -c 'srcZvoid2dZkbZ' || true)
-	named_off=$(module_symbols out/tmp/main2dOff.exe | grep -c 'srcZvoid2dZcolour\|void2dGlyphSdf\|srcZvoid2dZkbZ\|srcZvoid2dZbidi\|srcZvoid2dZsprite\|void2dGlyphFaceSprite' || true)
+	named_off=$(module_symbols out/tmp/main2dOff.exe | grep -c 'srcZvoid2dZcolour\|void2dGlyphSdf\|srcZvoid2dZkbZ\|srcZvoid2dZsprite\|void2dGlyphFaceSprite' || true)
 	named_batcher=$(module_symbols out/tmp/main2dOff.exe | grep -c 'srcZvoid2dZbatcher' || true)
 	if [ -z "$symbol_tool" ] && [ ! -f out/tmp/main2dOff.pdb ]; then
 		fail "module off: neither llvm-nm nor nm is on PATH, so the executables' symbols cannot be read"
 	elif [ "$named_on" -eq 0 ] || [ "$named_shaper" -eq 0 ] || [ "$named_batcher" -eq 0 ]; then
 		fail "module off: ${symbol_tool:-llvm-pdbutil} reads no symbol from src/void2d/colourEmoji, src/void2d/kb or batcher.ms (colour $named_on, shaper $named_shaper, batcher $named_batcher), so the module-off check proves nothing"
 	elif [ "$named_off" -gt 0 ]; then
-		fail "module off: main2d.exe with every module flag off names $named_off colour, SDF, shaper, BiDi or sprite symbols"
+		fail "module off: main2d.exe with every module flag off names $named_off colour, SDF, shaper or sprite symbols"
 	else
-		pass "module off: main2d.exe names no colour, SDF, shaper, BiDi or sprite symbol, the module build names $named_on symbols from src/void2d/colourEmoji and $named_shaper from src/void2d/kb"
+		pass "module off: main2d.exe names no colour, SDF, shaper or sprite symbol, the module build names $named_on symbols from src/void2d/colourEmoji and $named_shaper from src/void2d/kb"
 	fi
 	if [ "$module_on_bytes" -gt "$module_off_bytes" ]; then
 		pass "module off: main2d.exe is $module_off_bytes B, with the colour and shaper modules $module_on_bytes B (+$((module_on_bytes - module_off_bytes)) B)"
@@ -1228,7 +1228,7 @@ else
 	fail "module off: main2d.exe did not build both ways — see out/gate-module-off.log"
 fi
 if sh scripts/wasmBudget.test.sh --record > out/gate-wasm-budget-record.log 2>&1; then
-	pass "linked wasm budgets: 24 measured declarations valid; remeasure with scripts/experiment-modulesWeb.sh (not linked again by this native stage)"
+	pass "linked wasm budgets: 20 measured declarations valid; remeasure with scripts/experiment-modulesWeb.sh (not linked again by this native stage)"
 else
 	fail "linked wasm budget declarations — see out/gate-wasm-budget-record.log"
 fi

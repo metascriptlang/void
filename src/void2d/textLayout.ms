@@ -36,72 +36,15 @@ import {
 	possiblyRtl,
 } from "./textDirection";
 
-when (voidBidi) {
-	import { BidiClass, bidiClassOf } from "./bidi";
-	import {
-		clusterEdges,
-		joiningLetter,
-		mirroredValue,
-		resolveText,
-		selectedSpans,
-		visualPositions,
-	} from "./bidiLayout";
-} else {
-	function bidiOff(call: string): void {
-		console.log(`void2d: ${call} needs the BiDi module; build with -d:voidBidi`);
-		unreachable;
-	}
-
-	function mirroredValue(codepoint: int32): int32 { return codepoint; }
-
-	function joiningLetter(codepoint: int32): boolean { return false; }
-
-	function resolveText(
-		values: Readonly<Span<int32>>,
-		direction: TextDirection,
-		ref levels: Vec<int32>,
-		ref resets: Vec<int32>,
-		ref paragraphs: Vec<int32>,
-	): void {
-		bidiOff("resolveText");
-	}
-
-	function visualPositions(
-		levels: Readonly<Span<int32>>,
-		xs: Readonly<Span<float32>>,
-		advances: Readonly<Span<float32>>,
-		inkRight: float32,
-		ref out: Vec<float32>,
-	): void {
-		bidiOff("visualPositions");
-	}
-
-	function clusterEdges(
-		levels: Readonly<Span<int32>>,
-		starts: Readonly<Span<boolean>>,
-		xs: Readonly<Span<float32>>,
-		advances: Readonly<Span<float32>>,
-		paragraph: int32,
-		ref edges: Vec<float32>,
-	): void {
-		bidiOff("clusterEdges");
-	}
-
-	function selectedSpans(
-		starts: Readonly<Span<boolean>>,
-		indices: Readonly<Span<int32>>,
-		xs: Readonly<Span<float32>>,
-		advances: Readonly<Span<float32>>,
-		from: int32,
-		to: int32,
-		gap: float32,
-		extraLow: float32,
-		extraHigh: float32,
-		ref out: Vec<float32>,
-	): void {
-		bidiOff("selectedSpans");
-	}
-}
+import { BidiClass, bidiClassOf } from "./bidi";
+import {
+	clusterEdges,
+	joiningLetter,
+	mirroredValue,
+	resolveText,
+	selectedSpans,
+	visualPositions,
+} from "./bidiLayout";
 
 when (voidShaper) {
 	import { glyphScale, glyphEmbolden } from "./face";
@@ -140,7 +83,6 @@ export enum Truncate {
 }
 
 export enum TextErrorKind {
-	RightToLeftNeedsBidi,
 	ArabicNeedsShaper,
 }
 
@@ -151,8 +93,6 @@ export struct TextError {
 
 export function describe(this e: TextError): string {
 	return match (e.kind) {
-		TextErrorKind.RightToLeftNeedsBidi =>
-			`right-to-left text at UTF-16 index ${e.index} needs -d:voidBidi`,
 		TextErrorKind.ArabicNeedsShaper =>
 			`joining right-to-left text at UTF-16 index ${e.index} needs -d:voidShaper`,
 	};
@@ -687,26 +627,14 @@ function hasTab(cps: Readonly<Span<Codepoint>>): boolean {
 function refusedText(
 	cps: Readonly<Span<Codepoint>>, direction: TextDirection,
 ): Result<void, TextError> {
-	when (voidBidi) {
-		if (textShapingOn()) { return Result.ok(null); }
-		for (const cp of cps) {
-			if (joinsRightToLeft(cp.value) ||
-				(possiblyRtl(cp.value) && bidiClassOf(cp.value) == BidiClass.AL)) {
-				return Result.err({ kind: TextErrorKind.ArabicNeedsShaper, index: cp.index });
-			}
+	if (textShapingOn()) { return Result.ok(null); }
+	for (const cp of cps) {
+		if (joinsRightToLeft(cp.value) ||
+			(possiblyRtl(cp.value) && bidiClassOf(cp.value) == BidiClass.AL)) {
+			return Result.err({ kind: TextErrorKind.ArabicNeedsShaper, index: cp.index });
 		}
-		return Result.ok(null);
-	} else {
-		if (direction == TextDirection.Rtl) {
-			return Result.err({ kind: TextErrorKind.RightToLeftNeedsBidi, index: 0 });
-		}
-		for (const cp of cps) {
-			if (possiblyRtl(cp.value)) {
-				return Result.err({ kind: TextErrorKind.RightToLeftNeedsBidi, index: cp.index });
-			}
-		}
-		return Result.ok(null);
 	}
+	return Result.ok(null);
 }
 
 function mayBeRightToLeft(cps: Readonly<Span<Codepoint>>, direction: TextDirection): boolean {

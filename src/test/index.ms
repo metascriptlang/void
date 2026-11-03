@@ -284,17 +284,13 @@ when (voidShaper) {
 	import "./shapedLayoutCheck";
 	import "./morxShapeCheck";
 }
-when (voidBidi) {
-	import "./bidiTableCheck";
-	import "./bidiOracleCheck";
-	import "./bidiLayoutCheck";
-	import "./bidiCaretCheck";
-	import "./bidiSelectionCheck";
-	when (voidShaper) {
-		import "./bidiShapedCheck";
-	}
-} else {
-	import "./bidiOffCheck";
+import "./bidiTableCheck";
+import "./bidiOracleCheck";
+import "./bidiLayoutCheck";
+import "./bidiCaretCheck";
+import "./bidiSelectionCheck";
+when (voidShaper) {
+	import "./bidiShapedCheck";
 }
 when (voidSvg) {
 	import "./svgMaskCheck";
