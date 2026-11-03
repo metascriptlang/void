@@ -1684,6 +1684,7 @@ test "a draw with a nonzero firstInstance stops by name when the vertex stage re
 	}
 }
 
+const NAN_GUARD_MSL = "#include <metal_stdlib>\nusing namespace metal;\nkernel void _main(device uint* data [[buffer(0)]], uint id [[thread_position_in_grid]]) { float x = as_type<float>(data[id]); data[id] = uint(x == x ? clamp(x, 0.0, 9.0) : 7.0); }\n";
 const DOUBLE_MSL = "#include <metal_stdlib>\nusing namespace metal;\nkernel void _main(device uint* data [[buffer(0)]], uint id [[thread_position_in_grid]]) { data[id] = data[id] * 2; }\n";
 const HALVE_MSL = "#include <metal_stdlib>\nusing namespace metal;\nkernel void halve(const device float* source [[buffer(0)]], device float* result [[buffer(1)]], uint id [[thread_position_in_grid]]) { result[id] = source[id] * 0.5; }\n";
 const FILL_MSL = "#include <metal_stdlib>\nusing namespace metal;\nkernel void _main(texture2d<uint, access::write> image [[texture(0)]], uint2 id [[thread_position_in_grid]]) { image.write(uint4(id.x + id.y * 10), id); }\n";
@@ -1729,6 +1730,23 @@ function dispatchGroups(device: GPUDevice, encoder: GPUCommandEncoder, pipeline:
 	pass.setBindGroup(1, group, noOffsets);
 	pass.dispatchWorkgroups(x, 1, 1);
 	pass.end();
+}
+
+test "a shader compiled at load keeps the x == x guard of a NaN: fast math is off" {
+	const device = openDevice();
+	const module = storageBufferModule(device, NAN_GUARD_MSL, "", 4);
+	const storage = device.createBuffer({ label: "storage", size: 16, usage: STORAGE_BUFFER_USAGE });
+	device.queue.writeBuffer(storage, 0, [0x7fc00000, 0x40400000, 0x41a00000, 0xffc00001] as Vec<uint32>);
+	const pipeline = device.createComputePipeline({ label: "guard", compute: { module: module, entryPoint: "" } });
+	const group = computeGroup(device, pipeline, { binding: 0, buffer: storage }, noEntry());
+	const read = device.createBuffer({ label: "read", size: 16, usage: MAP_READ_USAGE });
+	const encoder = device.createCommandEncoder();
+	dispatchGroups(device, encoder, pipeline, group, 1);
+	encoder.copyBufferToBuffer(storage, 0, read, 0, 16);
+	device.queue.submit(encoder.finish());
+	const bytes = mappedRead(read, 0, 16);
+	assert bytes[0] == 7 && bytes[4] == 3 && bytes[8] == 9 && bytes[12] == 7;
+	device.destroy();
 }
 
 test "a compute pass doubles a storage buffer, then again through an indirect dispatch read at an offset" {
