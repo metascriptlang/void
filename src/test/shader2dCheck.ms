@@ -110,6 +110,7 @@ function uiAt(mode: float32): Vec4f {
 		iColorFill: vec4f(1.0),
 		iColorBorder: vec4f(1.0),
 		iColorExtra: vec4f(0.0),
+		iClipRect: vec4f(8.0, 0.0, 100.0, 100.0),
 	}, {
 		ui_params: {
 			viewport: vec4f(100.0, 100.0, 0.0, 1.0),
@@ -125,7 +126,7 @@ function uiAt(mode: float32): Vec4f {
 }
 
 test "a glyph keeps no radii and no antialiasing inflation; a box gets one device pixel" {
-	assert uiAt(2.0) == vec4f(0.0, 0.0, -4.0, 1.0);
+	assert uiAt(2.0) == vec4f(0.0, 0.0, -4.0, 2.0);
 	assert uiAt(0.0) == vec4f(1.0, 0.5, -4.5, 1.0);
 }
 
