@@ -7,7 +7,6 @@ icon/tintedDpi150
 prim/cardWithLabel
 text/bidiArabic
 text/bidiArabicMixed
-text/bidiDecorations
 text/bidiHebrew
 text/bidiHebrewWrap
 text/bidiMixedLatinHebrew
