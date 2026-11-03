@@ -193,8 +193,7 @@ later replaces the hand-written GLSL source of each base.
   specializes it per program (the rows of `src/void3d/programKeys.txt`, its `VOID2D_PROGRAMS` and
   `GPU_COPY_PROGRAMS`) and prints each target; `scripts/regen-shaders.sh` writes the results to
   `src/void3d/programModules.ms`, `src/void2d/shader2dModules.ms` and
-  `tests/integration/gpuCopyModules.ms`, and `src/void2d/shader2dSlots.h` from the void2d stages'
-  GLSL 450, with each HLSL stage's DXBC from `src/shader/dxbc/` (docs/SHADER-IR.md "The DXBC
+  `tests/integration/gpuCopyModules.ms`, with each HLSL stage's DXBC from `src/shader/dxbc/` (docs/SHADER-IR.md "The DXBC
   cache"); `--check` reports a stale file. The tool refuses a row whose stages never read one of
   its features, rows of one layout that read different attribute slots, a block shared by name
   with two sizes or slots, and an emissive dissolve block that is not the caster's block and then

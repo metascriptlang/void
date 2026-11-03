@@ -134,9 +134,7 @@ sokol's WebGPU backend does for it:
   handed over at commit, sokol's `prev_frame` (`_sg_update_stats`); `src/void2d/frameClock.ms`
   reads them through `doorFrameStat`.
 
-C reaches the door through `@exportName` functions, whose prototypes are `door.h`. A C unit that
-writes a uniform block takes its struct and slot numbers from a header generated from the same
-GLSL the shader is built from (`tools/shaderSlots.ms`, `src/void2d/shader2dSlots.h`), so no C
+C reaches the door through `@exportName` functions, whose prototypes are `door.h`, so no C
 includes `sokol_gfx.h`. Programs register with a function from index to
 `GPUShaderModuleDescriptor` (`doorRegisterPrograms`), which void3d's generated
 `gpu3dShaderModule` is.

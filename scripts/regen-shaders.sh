@@ -140,13 +140,6 @@ blobCache() {
 	done
 }
 
-slots() {
-	out="$SCRATCH/$(basename "$2")"
-	"${MSC:-msc}" run tools/shaderSlots.ms -- "$1" > "$out" 2> "$SCRATCH/slots.log" ||
-		{ cat "$SCRATCH/slots.log"; echo "shaderSlots $1 failed"; exit 1; }
-	settle "$out" "$2"
-}
-
 [ "$CHECK" = 1 ] || echo "Regenerating shader modules..."
 irModules
 programTable
@@ -158,7 +151,6 @@ settle "$SCRATCH/shader2dModules.ms" src/void2d/shader2dModules.ms
 settle "$SCRATCH/gpuCopyModules.ms" tests/integration/gpuCopyModules.ms
 blobCache "$DXBC" dxbc
 blobCache "$METALLIB" metallib
-slots "$IR/shader2d.glsl" src/void2d/shader2dSlots.ms
 
 [ "$CHECK" = 1 ] && exit "$STALE"
 echo "OK: shader modules regenerated"
