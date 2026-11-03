@@ -21,7 +21,7 @@ when (voidSprites) {
 	import { SPRITE_FIRST_CODEPOINT, spriteIndex } from "./spriteGlyph";
 }
 
-when (emcc) {
+when (emcc || js) {
 	import { browserFace } from "./face";
 }
 
@@ -155,7 +155,7 @@ when (voidSprites) {
 }
 let fonts: Vec<FontEntry> = [];
 let fallbacks: Vec<Fallback> = [];
-when (emcc) {
+when (emcc || js) {
 	const BROWSER_SLOT: int32 = -2;
 	const BROWSER_FAMILY: string = "sans-serif";
 
@@ -741,7 +741,7 @@ function fallbackUsable(index: int32): boolean {
 	return false;
 }
 
-when (emcc) {
+when (emcc || js) {
 	function browserFallback(font: FontId): int32 {
 		for (let i: int32 = 0; i < (browserFallbacks.length as int32); i++) {
 			if (browserFallbacks[i].font == font) { return i; }
@@ -811,7 +811,7 @@ export function faceSlotFor(font: FontId, codepoint: int32, mode: Presentation):
 			slot = discoveredSlot(font, codepoint, want);
 			found = slot != PRIMARY_SLOT;
 		}
-		when (emcc) {
+		when (emcc || js) {
 			if (!found && want == Presentation.Text && browserAnswers(font, codepoint)) {
 				slot = BROWSER_SLOT;
 				found = true;
@@ -825,7 +825,7 @@ export function faceSlotFor(font: FontId, codepoint: int32, mode: Presentation):
 			found = true;
 		}
 	}
-	when (emcc) {
+	when (emcc || js) {
 		if (!found && browserAnswers(font, codepoint)) {
 			slot = BROWSER_SLOT;
 			found = true;
@@ -855,7 +855,7 @@ export function codepointFaceFor(
 	while (true) {
 		const slot: int32 = faceSlotFor(font, codepoint, mode);
 		if (slot == PRIMARY_SLOT) { return { face: fontFace(font), scale: 1.0 }; }
-		when (emcc) {
+		when (emcc || js) {
 			if (slot == BROWSER_SLOT) {
 				const browser: BrowserFallback = browserFallbacks[browserFallback(font)];
 				return { face: browser.face, scale: browser.scale };

@@ -16,6 +16,7 @@ import {
 	u32At,
 	u8At,
 } from "../trueType/fontInfo";
+import { PlatformHandle } from "./platformHandle";
 
 when (macos || ios) {
 	@compile("../platformFaceApple.m", "-fobjc-arc");
@@ -146,7 +147,7 @@ export function platformOpen(
 	name: string,
 	glyphCount: int32,
 	unitsPerEm: int32,
-): Ptr<void> | null {
+): PlatformHandle | null {
 	const facePath = path ?? "";
 	return void2dPlatformFaceOpen(
 		facePath,
@@ -158,7 +159,7 @@ export function platformOpen(
 	);
 }
 
-export function platformUnitsBox(platform: Ptr<void>, glyph: int32): float32[] {
+export function platformUnitsBox(platform: PlatformHandle, glyph: int32): float32[] {
 	let box: float32[] = [0.0, 0.0, 0.0, 0.0];
 	void2dPlatformFaceUnitsBox(
 		platform,
@@ -169,7 +170,7 @@ export function platformUnitsBox(platform: Ptr<void>, glyph: int32): float32[] {
 }
 
 export function platformBox(
-	platform: Ptr<void>,
+	platform: PlatformHandle,
 	glyph: int32,
 	sizePx: float32,
 	shiftX: float32,
@@ -190,7 +191,7 @@ export function platformBox(
 }
 
 export function platformFill(
-	platform: Ptr<void>,
+	platform: PlatformHandle,
 	glyph: int32,
 	sizePx: float32,
 	shiftX: float32,
@@ -226,15 +227,15 @@ when (emcc) {
 		lineGap: int32;
 	}
 
-	export function browserOpen(style: string, family: string): Ptr<void> | null {
+	export function browserOpen(style: string, family: string): PlatformHandle | null {
 		return void2dPlatformFaceOpenBrowser(style, family);
 	}
 
-	export function browserGlyph(platform: Ptr<void>, codepoint: int32): int32 {
+	export function browserGlyph(platform: PlatformHandle, codepoint: int32): int32 {
 		return void2dPlatformFaceGlyph(platform, codepoint);
 	}
 
-	export function browserVMetrics(platform: Ptr<void>): BrowserVMetrics {
+	export function browserVMetrics(platform: PlatformHandle): BrowserVMetrics {
 		let ascent: int32[] = [0];
 		let descent: int32[] = [0];
 		let lineGap: int32[] = [0];
@@ -247,7 +248,7 @@ when (emcc) {
 		return { ascent: ascent[0], descent: descent[0], lineGap: lineGap[0] };
 	}
 
-	export function browserAdvance(platform: Ptr<void>, glyph: int32): int32 {
+	export function browserAdvance(platform: PlatformHandle, glyph: int32): int32 {
 		return void2dPlatformFaceAdvance(platform, glyph);
 	}
 }

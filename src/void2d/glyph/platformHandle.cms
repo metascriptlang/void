@@ -1,0 +1,2 @@
+// A platform face handle: the OS or browser face platform.cms opens, through its C, on every C target.
+export type PlatformHandle = Ptr<void>;

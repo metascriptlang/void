@@ -1,0 +1,2 @@
+// A platform face handle on the JS target: the browser face platform.jms opens (its 2D canvas and glyph cache).
+export extern class PlatformHandle {}

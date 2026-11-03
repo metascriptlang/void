@@ -1,5 +1,6 @@
 import { FontInfo, newBuf } from "../trueType";
 import { FontLayout, fontOver, layoutOf } from "../trueType/fontInfo";
+import { PlatformHandle } from "./platformHandle";
 
 export const FACE_UNREADABLE: int32 = -1;
 export const FACE_NOT_A_FONT: int32 = -2;
@@ -68,7 +69,7 @@ export class GlyphFace {
 	colourHandle: int32 = -1;
 	colourOnly: boolean = false;
 	sprite: boolean = false;
-	platform: Ptr<void> | null = null;
+	platform: PlatformHandle | null = null;
 	browser: boolean = false;
 	asciiUnits: float32 = 0.0;
 	glyphCount: int32 = 0;

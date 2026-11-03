@@ -37,11 +37,11 @@ when (voidSprites) {
 	} from "./glyph";
 }
 
-when (macos || ios) {
+when (c && (macos || ios)) {
 	import { void2dGlyphFacePlatform, void2dGlyphFaceIsPlatform } from "./glyph";
 }
 
-when (emcc) {
+when (emcc || js) {
 	import { void2dGlyphFaceBrowser, void2dGlyphFaceIsPlatform } from "./glyph";
 }
 
@@ -175,7 +175,7 @@ export function syntheticFace(
 }
 
 export function platformFacesBuilt(): boolean {
-	when (macos || ios) {
+	when (c && (macos || ios)) {
 		return true;
 	} else {
 		return false;
@@ -221,13 +221,13 @@ when (voidSprites) {
 	}
 }
 
-when (macos || ios) {
+when (c && (macos || ios)) {
 	export function platformFace(base: int32): Result<int32, FaceError> {
 		return faceResult(void2dGlyphFacePlatform(base));
 	}
 }
 
-when (emcc) {
+when (emcc || js) {
 	export function browserFace(style: string, family: string): Result<int32, FaceError> {
 		return faceResult(void2dGlyphFaceBrowser(style, family));
 	}

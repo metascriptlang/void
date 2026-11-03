@@ -1,0 +1,150 @@
+// The browser's own faces on the JS target, as src/void2d/platformFaceWeb.c draws them under emcc: one
+// 2D canvas per face, the glyph id is the code point (0 when the browser draws it in colour or not at
+// all), and measures and coverage come from measureText and fillText. The canvas calls are the C file's
+// EM_JS bodies; the box and rounding arithmetic is its C, so a face measures alike on wasm and JS.
+
+import { GlyphBox } from "../trueType/fontInfo";
+import { PlatformHandle } from "./platformHandle";
+
+export const BROWSER_UNITS_PER_EM: float32 = 2048.0;
+const BROWSER_PROBE_PX: int32 = 32;
+
+export struct BrowserVMetrics {
+	ascent: int32;
+	descent: int32;
+	lineGap: int32;
+}
+
+struct BrowserMeasure {
+	left: float32;
+	right: float32;
+	ascent: float32;
+	descent: float32;
+	advance: float32;
+	lineAscent: float32;
+	lineDescent: float32;
+}
+
+extern function openFace(style: string, family: string): PlatformHandle | null from "((style,family)=>{const canvas=typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(1,1):document.createElement('canvas');const context=canvas.getContext('2d',{willReadFrequently:true});return context?{style,family,canvas,context,glyphs:new Map()}:null;})(#,#)";
+
+extern function probeGlyph(face: PlatformHandle, codepoint: int32, probePx: int32): int32 from "((face,codepoint,probePx)=>{const known=face.glyphs.get(codepoint);if(known!==undefined)return known;const noCharacter=codepoint<=0||codepoint>0x10FFFF||(codepoint>=0xD800&&codepoint<=0xDFFF);let glyph=0;if(!noCharacter){const side=2*probePx;face.canvas.width=side;face.canvas.height=side;const c=face.context;c.font=face.style+' '+probePx+'px '+face.family;c.fillStyle='black';c.fillText(String.fromCodePoint(codepoint),probePx/2,probePx*1.5);const data=c.getImageData(0,0,side,side).data;let drawsInColour=false;for(let i=0;i<data.length&&!drawsInColour;i+=4){drawsInColour=(data[i]|data[i+1]|data[i+2])!==0;}glyph=drawsInColour?0:codepoint;}face.glyphs.set(codepoint,glyph);return glyph;})(#,#,#)";
+
+extern function measureFace(face: PlatformHandle, glyph: int32, px: float64): float32[] from "((face,glyph,px)=>{const c=face.context;c.font=face.style+' '+px+'px '+face.family;const m=c.measureText(glyph>0?String.fromCodePoint(glyph):'Mgjy|');let left=m.actualBoundingBoxLeft,right=m.actualBoundingBoxRight;let ascent=m.actualBoundingBoxAscent,descent=m.actualBoundingBoxDescent;const lineAscent=m.fontBoundingBoxAscent>0?m.fontBoundingBoxAscent:ascent;const lineDescent=m.fontBoundingBoxDescent>0?m.fontBoundingBoxDescent:descent;if(glyph>0&&ascent+descent<0.001&&m.width>0){left=0;right=m.width;ascent=lineAscent;descent=lineDescent;}return [left,right,ascent,descent,m.width,lineAscent,lineDescent].map(Math.fround);})(#,#,#)";
+
+extern function fillCoverage(
+	face: PlatformHandle,
+	glyph: int32,
+	px: float64,
+	penX: float64,
+	penY: float64,
+	skew: float64,
+	emboldenPx: float64,
+	w: int32,
+	h: int32,
+): uint8[] from "((face,glyph,px,penX,penY,skew,emboldenPx,w,h)=>{face.canvas.width=w;face.canvas.height=h;const c=face.context;c.font=face.style+' '+px+'px '+face.family;c.fillStyle='white';c.strokeStyle='white';c.setTransform(1,0,-skew,1,penX,penY);const text=String.fromCodePoint(glyph);c.fillText(text,0,0);if(emboldenPx>0){c.lineWidth=emboldenPx;c.strokeText(text,0,0);}const data=c.getImageData(0,0,w,h).data;const alpha=new Array(w*h);for(let i=0;i<w*h;i++)alpha[i]=data[i*4+3];return alpha;})(#,#,#,#,#,#,#,#,#)";
+
+function measure(face: PlatformHandle, glyph: int32, px: float32): BrowserMeasure {
+	const out = measureFace(face, glyph, px as float64);
+	return {
+		left: out[0],
+		right: out[1],
+		ascent: out[2],
+		descent: out[3],
+		advance: out[4],
+		lineAscent: out[5],
+		lineDescent: out[6],
+	};
+}
+
+// C's lroundf: halves round away from zero.
+function roundAway(value: float32): int32 {
+	const v = value as float64;
+	return (v >= 0.0 ? Math.floor(v + 0.5) : -Math.floor(-v + 0.5)) as int32;
+}
+
+export function browserOpen(style: string, family: string): PlatformHandle | null {
+	return openFace(style, family);
+}
+
+export function browserGlyph(platform: PlatformHandle, codepoint: int32): int32 {
+	return probeGlyph(platform, codepoint, BROWSER_PROBE_PX);
+}
+
+export function browserVMetrics(platform: PlatformHandle): BrowserVMetrics {
+	const m = measure(platform, 0, BROWSER_UNITS_PER_EM);
+	return { ascent: roundAway(m.lineAscent), descent: -roundAway(m.lineDescent), lineGap: 0 };
+}
+
+export function browserAdvance(platform: PlatformHandle, glyph: int32): int32 {
+	return roundAway(measure(platform, glyph, BROWSER_UNITS_PER_EM).advance);
+}
+
+export function platformUnitsBox(platform: PlatformHandle, glyph: int32): float32[] {
+	const m = measure(platform, glyph, BROWSER_UNITS_PER_EM);
+	return [-m.left, -m.descent, m.right, m.ascent];
+}
+
+export function platformBox(
+	platform: PlatformHandle,
+	glyph: int32,
+	sizePx: float32,
+	shiftX: float32,
+	skew: float32,
+	emboldenPx: float32,
+): GlyphBox {
+	const m = measure(platform, glyph, sizePx);
+	if (!(m.right + m.left > 0.0) || !(m.ascent + m.descent > 0.0)) {
+		return { x0: 0, y0: 0, x1: 0, y1: 0 };
+	}
+	const half = (emboldenPx as float64) * 0.5;
+	const x0 = -(m.left as float64) - half;
+	const x1 = (m.right as float64) + half;
+	const y0 = -(m.descent as float64) - half;
+	const y1 = (m.ascent as float64) + half;
+	const slope = skew as float64;
+	const slant0 = slope * (skew > 0.0 ? y0 : y1);
+	const slant1 = slope * (skew > 0.0 ? y1 : y0);
+	const shift = shiftX as float64;
+	return {
+		x0: Math.floor(x0 + slant0 + shift) as int32,
+		y0: Math.floor(-y1) as int32,
+		x1: Math.ceil(x1 + slant1 + shift) as int32,
+		y1: Math.ceil(-y0) as int32,
+	};
+}
+
+export function platformFill(
+	platform: PlatformHandle,
+	glyph: int32,
+	sizePx: float32,
+	shiftX: float32,
+	skew: float32,
+	emboldenPx: float32,
+	at: Span<uint8>,
+	w: int32,
+	h: int32,
+	stride: int32,
+): boolean {
+	const box = platformBox(platform, glyph, sizePx, shiftX, skew, emboldenPx);
+	if (box.x1 - box.x0 != w || box.y1 - box.y0 != h || w <= 0 || h <= 0) {
+		return false;
+	}
+	const penX = (shiftX - (box.x0 as float32)) as float64;
+	const alpha = fillCoverage(
+		platform,
+		glyph,
+		sizePx as float64,
+		penX,
+		-(box.y0 as float64),
+		skew as float64,
+		emboldenPx as float64,
+		w,
+		h,
+	);
+	for (let y: int32 = 0; y < h; y++) {
+		for (let x: int32 = 0; x < w; x++) {
+			at[y * stride + x] = alpha[y * w + x];
+		}
+	}
+	return true;
+}

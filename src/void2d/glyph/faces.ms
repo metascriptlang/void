@@ -35,6 +35,7 @@ import {
 import { findKernLookups, gposKern } from "./gpos";
 import { applySynthetic, shapeBox } from "./outline";
 import { asInt32, truncInt } from "../trueType/fontInfo";
+import { PlatformHandle } from "./platformHandle";
 
 when (voidColourEmoji) {
 	import {
@@ -56,17 +57,15 @@ when (voidSprites) {
 	import { spriteCanvasInk, spriteIndex } from "../spriteGlyph";
 }
 
-when (macos || ios || emcc) {
-	import {
-		platformBox,
-		platformInfo,
-		platformOpen,
-		platformUnitsBox,
-		postScriptName,
-	} from "./platform";
+when (c && (macos || ios || emcc)) {
+	import { platformInfo, platformOpen, postScriptName } from "./platform";
 }
 
-when (emcc) {
+when (js || (c && (macos || ios || emcc))) {
+	import { platformBox, platformUnitsBox } from "./platform";
+}
+
+when (emcc || js) {
 	import {
 		BROWSER_UNITS_PER_EM,
 		browserAdvance,
@@ -111,7 +110,7 @@ struct TableSlice {
 }
 
 function findTableSlice(face: GlyphFace, tag: string): TableSlice {
-	when (emcc) {
+	when (emcc || js) {
 		if (face.browser) {
 			return { offset: -1, length: 0 };
 		}
@@ -143,7 +142,7 @@ function findGlyph(face: GlyphFace, codepoint: int32): int32 {
 			);
 		}
 	}
-	when (emcc) {
+	when (emcc || js) {
 		const platform = face.platform;
 		if (face.browser && platform != null) {
 			return browserGlyph(platform, codepoint);
@@ -163,7 +162,7 @@ function lineUnits(this vertical: VMetrics): int32 {
 }
 
 function faceVMetrics(face: GlyphFace): VMetrics {
-	when (emcc) {
+	when (emcc || js) {
 		const platform = face.platform;
 		if (face.browser && platform != null) {
 			const browser = browserVMetrics(platform);
@@ -183,7 +182,7 @@ function faceVMetrics(face: GlyphFace): VMetrics {
 }
 
 function advanceUnits(face: GlyphFace, glyph: int32): int32 {
-	when (emcc) {
+	when (emcc || js) {
 		const platform = face.platform;
 		if (face.browser && platform != null) {
 			return browserAdvance(platform, glyph);
@@ -205,7 +204,7 @@ struct Ink {
 }
 
 function glyphInk(face: GlyphFace, glyph: int32): Ink {
-	when (macos || ios || emcc) {
+	when (js || (c && (macos || ios || emcc))) {
 		const platform = face.platform;
 		if (platform != null) {
 			const box = platformUnitsBox(platform, glyph);
@@ -351,7 +350,7 @@ export function void2dGlyphScale(face: int32, sizePx: float32): float32 {
 	if (!validFace(face)) {
 		return 0.0;
 	}
-	when (emcc) {
+	when (emcc || js) {
 		if (state.faces[face].browser) {
 			return sizePx / BROWSER_UNITS_PER_EM;
 		}
@@ -458,8 +457,8 @@ export function void2dGlyphFaceLoad(path: string, index: int32): int32 {
 			}
 		}
 	}
-	let platform: Ptr<void> | null = null;
-	when (macos || ios || emcc) {
+	let platform: PlatformHandle | null = null;
+	when (c && (macos || ios || emcc)) {
 		if (!outlines && offset >= 0) {
 			const table = platformInfo(holder.data, offset);
 			if (table != null) {
@@ -561,7 +560,7 @@ export function void2dGlyphColourOnly(face: int32): int32 {
 	return validFace(face) && state.faces[face].colourOnly ? 1 : 0;
 }
 
-when (macos || ios || emcc) {
+when (c && (macos || ios || emcc)) {
 	export function void2dGlyphFacePlatform(base: int32): int32 {
 		if (!validFace(base)) {
 			return FACE_NO_BASE;
@@ -598,7 +597,7 @@ when (macos || ios || emcc) {
 	}
 }
 
-when (emcc) {
+when (emcc || js) {
 	export function void2dGlyphFaceBrowser(style: string, family: string): int32 {
 		const platform = browserOpen(style, family);
 		if (platform == null) {
@@ -913,7 +912,7 @@ export function void2dGlyphBox(
 			return;
 		}
 	}
-	when (macos || ios || emcc) {
+	when (js || (c && (macos || ios || emcc))) {
 		const platform = f.platform;
 		if (platform != null) {
 			putBox(
