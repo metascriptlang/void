@@ -14,12 +14,13 @@ import {
 	SHAPE_CACHE_BUCKETS,
 	SHAPE_CACHE_BUCKET_SIZE,
 	ShapeKey,
+	ShapedRun,
 	shapeCacheGet,
 	shapeCacheHits,
 	shapeCachePut,
 	shapeKeyHash,
 } from "../void2d/shapeCache";
-import { ShapeDirection, ShapedGlyph } from "../void2d/shaper";
+import { ShapeDirection } from "../void2d/shaper";
 import { Align, TextLayout, TextStyle } from "../void2d/textLayout";
 import { holdFontFile } from "./fontFile";
 import { laid } from "./layoutHelpers";
@@ -71,13 +72,13 @@ function keyOf(face: int32, values: int32[]): ShapeKey {
 	return { face: face, direction: ShapeDirection.Ltr, features: new Array(0), input: input };
 }
 
-function glyphsOf(glyph: int32): Vec<ShapedGlyph> {
-	let glyphs: Vec<ShapedGlyph> = new Array(0);
-	glyphs.push({
+function glyphsOf(glyph: int32): ShapedRun {
+	const run: ShapedRun = new ShapedRun();
+	run.glyphs.push({
 		glyph: glyph, advanceX: 1, advanceY: 0, offsetX: 0, offsetY: 0, index: 0, codepoint: 0,
 		direction: ShapeDirection.Ltr, run: 0,
 	});
-	return glyphs;
+	return run;
 }
 
 function bucket(key: ShapeKey): int64 {
@@ -118,7 +119,7 @@ test "an entry with the same hash and another key is not returned" {
 	assert shapeCacheGet(keyOf(-7, [1, 2, 4]), hash) == null;
 	assert shapeCacheGet(keyOf(-8, [1, 2, 3]), hash) == null;
 	const found = shapeCacheGet(key, hash);
-	assert found != null && found[0].glyph == 5;
+	assert found != null && found.glyphs[0].glyph == 5;
 }
 
 test "a full bucket drops its least recently used run" {

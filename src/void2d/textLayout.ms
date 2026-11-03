@@ -52,6 +52,7 @@ when (voidShaper) {
 	import {
 		SHAPE_BREAK,
 		ShapeKey,
+		ShapedRun,
 		shapeCacheGet,
 		shapeCachePut,
 		shapeKeyHash,
@@ -822,24 +823,24 @@ when (voidShaper) {
 			input: input,
 		};
 		const hash: int64 = shapeKeyHash(key);
-		let glyphs: Vec<ShapedGlyph> = new Array(0);
-		const cached: Vec<ShapedGlyph> | null = shapeCacheGet(key, hash);
-		if (cached != null) {
-			glyphs = cached;
-		} else {
+		let run: ShapedRun | null = shapeCacheGet(key, hash);
+		if (run == null) {
 			const fresh: Vec<ShapedGlyph> | null = shapeFresh(cps, from, key, segmentOf, segments, bidi);
 			if (fresh == null) { return; }
-			glyphs = fresh;
-			shapeCachePut(key, hash, fresh);
+			const made: ShapedRun = new ShapedRun();
+			made.glyphs = fresh;
+			shapeCachePut(key, hash, made);
+			run = made;
 		}
-		const total: int32 = glyphs.length as int32;
+		const glyphs: ShapedRun = run;
+		const total: int32 = glyphs.glyphs.length as int32;
 		for (let k = from; k < to; k++) {
 			cells[k] = { ...UNSHAPED, shaped: true, shapeStart: false };
 		}
 		let tail: Vec<int32> = new Array(0);
 		for (let j = 0; j <= total; j++) { tail.push(0x7fffffff); }
 		for (let j = total - 1; j >= 0; j--) {
-			tail[j] = Math.min(glyphs[j].index, tail[j + 1]);
+			tail[j] = Math.min(glyphs.glyphs[j].index, tail[j + 1]);
 		}
 		const size: float32 = style.size * first.scale;
 		const perUnit: float32 = glyphScale(first.face, size);
@@ -847,12 +848,12 @@ when (voidShaper) {
 		let clusterFirst: int32 = 0;
 		let highest: int32 = -1;
 		for (let j = 0; j < total; j++) {
-			highest = Math.max(highest, glyphs[j].index);
+			highest = Math.max(highest, glyphs.glyphs[j].index);
 			if (j + 1 < total && highest >= tail[j + 1]) { continue; }
 			const lo: int32 = clusterFirst == 0 ? 0 : tail[clusterFirst];
 			const hi: int32 = j + 1 == total ? to - from : tail[j + 1];
 			fillCluster(
-				cps, from, from + lo, from + hi, glyphs[clusterFirst..(j + 1)], perUnit, bold,
+				cps, from, from + lo, from + hi, glyphs.glyphs[clusterFirst..(j + 1)], perUnit, bold,
 				cells, extras,
 			);
 			clusterFirst = j + 1;

@@ -12,13 +12,19 @@ export struct ShapeKey {
 	input: Vec<int32>;
 }
 
+export class ShapedRun {
+	glyphs: Vec<ShapedGlyph> = new Array(0);
+}
+
 struct ShapeEntry {
 	hash: int64;
+	used: int64;
 	key: ShapeKey;
-	glyphs: Vec<ShapedGlyph>;
+	run: ShapedRun;
 }
 
 let buckets: Vec<Vec<ShapeEntry>> = new Array(0);
+let clock: int64 = 0;
 let hits: int32 = 0;
 
 function mix(hash: int64, value: int64): int64 {
@@ -62,24 +68,31 @@ function bucketOf(hash: int64): int32 {
 	return (hash % (SHAPE_CACHE_BUCKETS as int64)) as int32;
 }
 
-export function shapeCacheGet(key: ShapeKey, hash: int64): Vec<ShapedGlyph> | null {
+export function shapeCacheGet(key: ShapeKey, hash: int64): ShapedRun | null {
 	const b: int32 = bucketOf(hash);
-	const count: int32 = buckets[b].length as int32;
-	for (let i = count - 1; i >= 0; i--) {
+	for (let i = (buckets[b].length as int32) - 1; i >= 0; i--) {
 		if (buckets[b][i].hash != hash || !sameKey(buckets[b][i].key, key)) { continue; }
-		const found: ShapeEntry = buckets[b][i];
-		buckets[b].splice(i, 1);
-		buckets[b].push(found);
+		clock = clock + 1;
+		buckets[b][i].used = clock;
 		hits = hits + 1;
-		return found.glyphs;
+		return buckets[b][i].run;
 	}
 	return null;
 }
 
-export function shapeCachePut(key: ShapeKey, hash: int64, glyphs: Vec<ShapedGlyph>): void {
+export function shapeCachePut(key: ShapeKey, hash: int64, run: ShapedRun): void {
 	const b: int32 = bucketOf(hash);
-	if ((buckets[b].length as int32) == SHAPE_CACHE_BUCKET_SIZE) { buckets[b].splice(0, 1); }
-	buckets[b].push({ hash: hash, key: key, glyphs: glyphs });
+	clock = clock + 1;
+	const entry: ShapeEntry = { hash: hash, used: clock, key: key, run: run };
+	if ((buckets[b].length as int32) < SHAPE_CACHE_BUCKET_SIZE) {
+		buckets[b].push(entry);
+		return;
+	}
+	let oldest: int32 = 0;
+	for (let i = 1; i < SHAPE_CACHE_BUCKET_SIZE; i++) {
+		if (buckets[b][i].used < buckets[b][oldest].used) { oldest = i; }
+	}
+	buckets[b][oldest] = entry;
 }
 
 export function shapeCacheHits(): int32 {
