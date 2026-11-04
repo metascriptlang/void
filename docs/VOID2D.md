@@ -3825,6 +3825,36 @@ A second compiler card came out of E: `.inbox/compiler/2026-10-01-index-on-a-str
 checker.md`, a struct indexed like an array passes `msc check` and reads garbage; it surfaced when
 `m[0]` survived the move to `Mat4` in `effectCheck.ms`.
 
+## Moving sprites: patch or repaint (2026-11-04)
+
+bench/web `sprites` moves all 10 000 sprites every frame; void-wasm-webgl spent 3.41 ms CPU per
+frame there against Pixi 1.1 ms (`bench/web/baseline/sprites-m1m-2026-11-03.json`). The frame splits
+into the app's `setPosition` loop 0.4 ms, `Scene2D.paint` 2.8 ms, and prepare, replay and commit
+under 0.1 ms together, so `paint` is the cost.
+
+A patch costs about 0.28 us per dirty row (it saves, rewrites and notes each row's range); a full
+repaint costs about 0.2 us per row of the scene, whatever is dirty. Median of 600 frames, m1m,
+Chrome 149, wasm `--release`, k dirty rows of 10 000:
+
+| k | 500 | 1000 | 2000 | 3000 | 5000 | 7000 | 10000 |
+|---|---|---|---|---|---|---|---|
+| patch ms | 0.15 | 0.29 | 0.57 | 0.84 | 1.40 | 1.95 | 2.78 |
+| full ms | 1.95-2.06 flat | | | | | | |
+
+The break-even sits near 70 % dirty, so `paint` repaints in full once a scene of at least 1024 rows
+(`DENSE_SCENE_ROWS`, where a full repaint is at most 0.2 ms) has 70 % of its rows dirty
+(`DENSE_DIRTY_PERCENT`); a smaller scene always patches, which keeps `retain.ms` on the patch path.
+`drawOwn` reuses the four corners of the node's bounds for its cull reach when `boxRenderBounds`
+returns those bounds unchanged (every kind but a Rect and a fringed Graphics), instead of
+transforming them twice.
+
+Measured back to back in one call on m1m (load 12-19), bench CPU/frame median (p95):
+
+| | before | dense cutover | + corner reuse |
+|---|---|---|---|
+| void-wasm-webgl | 3.41 (3.56) | 2.53 (2.62) | 2.38 (2.45) |
+| probe `paint`, 10 000 dirty | 2.81 | 2.08 | 1.93 |
+
 ## Open
 
 - **Public reference-owner fields remain writable**: both a pipeline cache and a RenderTarget
