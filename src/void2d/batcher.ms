@@ -957,7 +957,9 @@ export function void2dReplayList(
 	if (uiRangeCount != 0 && uiCount > 0) {
 		const before: uint32 = l.buf[LIST_UI];
 		const fits: boolean = ensureListBuffer(l, LIST_UI, uiCount * UI_STRIDE);
-		const whole: boolean = uiRangeCount < 0 || l.buf[LIST_UI] != before;
+		let rangeWritesPinned: boolean = true;
+		when (voidVulkan) { rangeWritesPinned = false; }
+		const whole: boolean = uiRangeCount < 0 || l.buf[LIST_UI] != before || !rangeWritesPinned;
 		if (!fits || !(whole
 			? writeListBuffer(l, LIST_UI, uiInstances[0..uiCount * UI_WORDS])
 			: writeUiRanges(l, uiInstances, uiRanges, uiRangeCount, uiCount))) {
