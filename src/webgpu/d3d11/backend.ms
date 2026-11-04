@@ -509,6 +509,8 @@ struct NativeBinds {
 	indexOffset: int32;
 	shaderResource: Ptr<D3dSrvImpl>[256];
 	sampler: Ptr<D3dSamplerImpl>[32];
+	shaderResourceTop: int32;
+	samplerTop: int32;
 }
 
 let device: Ptr<D3dDeviceImpl> = null as unknown as Ptr<D3dDeviceImpl>;
@@ -1893,7 +1895,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		const flags = (clearDepth ? CLEAR_DEPTH : 0) | (clearStencil ? CLEAR_STENCIL : 0);
 		if (flags != 0) { d3dClearDsv(context, depth, flags, attachment.depthClearValue, (attachment.stencilClearValue & 0xFF) as int32); }
 	}
-	nativeBinds = { indexFormat: 0 };
+	forgetNativeBinds();
 	bound.appliedPipeline = 0;
 	bound.blendConstant = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
 	bound.stencilReference = 0;
@@ -1902,6 +1904,23 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 	bound.resourcesDirty = true;
 	bound.uniformsDirty = true;
 	return { id: 1 };
+}
+
+// Clears only the cache slots written since the last pass, because a whole NativeBinds is
+// 2.4 KB and the screen pass pays for copying it every frame.
+function forgetNativeBinds(): void {
+	for (let i = 0; i < nativeBinds.shaderResourceTop; i++) { nativeBinds.shaderResource[i] = NO_SRV; }
+	for (let i = 0; i < nativeBinds.samplerTop; i++) { nativeBinds.sampler[i] = NO_SAMPLER; }
+	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
+		nativeBinds.vertexBuffer[slot] = NO_BUFFER;
+		nativeBinds.vertexStride[slot] = 0;
+		nativeBinds.vertexOffset[slot] = 0;
+	}
+	nativeBinds.indexBuffer = NO_BUFFER;
+	nativeBinds.indexFormat = 0;
+	nativeBinds.indexOffset = 0;
+	nativeBinds.shaderResourceTop = 0;
+	nativeBinds.samplerTop = 0;
 }
 
 function attachmentMember(index: int32, field: string): string {
@@ -2204,6 +2223,7 @@ function applyResources(s: int32): void {
 				if (nativeBinds.shaderResource[cached] == view) { continue; }
 				d3dSetShaderResource(context, vertex, binding.nativeSlot, view);
 				nativeBinds.shaderResource[cached] = view;
+				nativeBinds.shaderResourceTop = Math.max(nativeBinds.shaderResourceTop, cached + 1);
 				stats.shaderResources += 1;
 			}
 		} else {
@@ -2214,6 +2234,7 @@ function applyResources(s: int32): void {
 				if (nativeBinds.sampler[cached] == sampler) { continue; }
 				d3dSetSampler(context, vertex, binding.nativeSlot, sampler);
 				nativeBinds.sampler[cached] = sampler;
+				nativeBinds.samplerTop = Math.max(nativeBinds.samplerTop, cached + 1);
 				stats.samplers += 1;
 			}
 		}
