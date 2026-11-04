@@ -515,7 +515,7 @@ export struct DoorAttribute {
 
 function formatBytes(format: GPUVertexFormat): int32 {
 	return match (format) {
-		"float32" | "unorm8x4" => 4,
+		"float32" | "unorm8x4" | "uint32" => 4,
 		"float32x2" => 8,
 		"float32x3" => 12,
 		"float32x4" => 16,
