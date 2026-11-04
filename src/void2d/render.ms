@@ -1456,10 +1456,11 @@ function drawOwn(s: Scene2D, i: int32, na: float32, vw: float32, vh: float32): v
 	const br = vec2(lb.xMax, lb.yMax) * world;
 	const bl = vec2(lb.xMin, lb.yMax) * world;
 	const vb = boxRenderBounds(s, i, world, lb);
-	const vtl = vec2(vb.xMin, vb.yMin) * world;
-	const vtr = vec2(vb.xMax, vb.yMin) * world;
-	const vbr = vec2(vb.xMax, vb.yMax) * world;
-	const vbl = vec2(vb.xMin, vb.yMax) * world;
+	const reshaped: boolean = vb != lb;
+	const vtl = reshaped ? vec2(vb.xMin, vb.yMin) * world : tl;
+	const vtr = reshaped ? vec2(vb.xMax, vb.yMin) * world : tr;
+	const vbr = reshaped ? vec2(vb.xMax, vb.yMax) * world : br;
+	const vbl = reshaped ? vec2(vb.xMin, vb.yMax) * world : bl;
 	const reach: Bounds2D = {
 		xMin: fmin4(vtl.x, vtr.x, vbr.x, vbl.x), yMin: fmin4(vtl.y, vtr.y, vbr.y, vbl.y),
 		xMax: fmax4(vtl.x, vtr.x, vbr.x, vbl.x), yMax: fmax4(vtl.y, vtr.y, vbr.y, vbl.y),
