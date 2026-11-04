@@ -135,15 +135,23 @@ No metadata-stripping workaround or nonshipping removal control was used. The pr
 
 ## Remaining proof
 
+Compiler fixes for the three reproduced issues below are delivered in installed BUILD
+`56ad1fdf80f`. The new GL consumer check did **not** run: its provenance wrapper returned
+`REFUSED expected binary/support 56ad1fdf80f, got binary= support=` (rc 86) before build,
+despite printing the matching BUILD lines. No consumer success on the new compiler is
+claimed; the earlier measurements retain their named `f357ebc1c7a` scope.
+
 - **JS initialization:** on `f357ebc1c7a`, the exported-global/ref three-module repro and the real
   WebGL2 frame stub still fail with unboxed `Pool.slots` reads. The stub reports the error in
   `Pool_alive → Pool_slotIndex → Pool_record → adoptSwapchainTexture`; no draw submits.
-  The existing exported-let/ref compiler card is active, owned by `wt/cw-lane-box`.
+  Compiler-worker delivered the corresponding fix `9f367ef718f` in `56ad1fdf80f`; the real
+  Void consumer still needs its new-toolchain rerun.
 - **3D/golden compilation:** the small macro `readFileBytes` repro now builds on JS and prints
   `yes`. Campfire instead stops with `MacroInvocation` unsupported at comptime. A scalar-Node
   macro calling `execFileResult("git", ["--version"])` checks on C and fails identically on JS;
-  this follows the existing macro-on-JS / execFileResult cards (`wt/cw-lane-mx`), not the old
-  two-Error-class diagnosis. No Void workaround was applied.
+  this followed the macro-on-JS / execFileResult issue, not the old two-Error-class diagnosis.
+  Its fix `dfc68046ca3` is delivered in `56ad1fdf80f`; macros reading platform/exec/env/cwd remain
+  a separate open issue, not yet observed in a new Campfire run. No workaround was applied.
 - **Browser pixels and CPU per flow** (walk, layout, shaping, upload) against wasm on the editor
   scene remain unmeasured. The current actual-browser smoke attempt did not start: Aside was
   not running and this session had no linked Rexa terminal. No screenshot/render result is
