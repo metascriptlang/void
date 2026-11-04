@@ -15,7 +15,7 @@ import {
 	premultipliedBlend,
 } from "../void2d/draw";
 import {
-	drawCommandCount, commandField, vertexCount,
+	drawCommandCount, commandField, commandView, vertexCount,
 	CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT, CMD_VERTEX_COUNT, CMD_BREAK,
 	Pipeline, breakReasonName,
 } from "../void2d/displayList";
@@ -41,12 +41,16 @@ function card(mode: InstanceMode, x: float32, size: float32, radius: float32): v
 	});
 }
 
-function sprite(x: float32): void {
+function sprite(
+	x: float32,
+	view: uint32 = 0,
+	color: Color = WHITE,
+): void {
 	drawSpriteAffine(
-		0 as uint32, false, BlendMode.Alpha, identity2d(),
+		view, false, BlendMode.Alpha, identity2d(),
 		x, 0.0, 8.0, 8.0,
 		0.0, 0.0, 1.0, 1.0,
-		WHITE,
+		color,
 	);
 }
 
@@ -135,6 +139,67 @@ test "a sprite-only frame opens no UI run" {
 	assert recordedUiInstanceCount() == 0;
 	assert drawCommandCount() == 1;
 	assert pipelineOf(0) == (Pipeline.Sprite as int32);
+}
+
+test "immediate single-view A/B/A sprites record in submission order" {
+	const viewsA: Vec<uint32> = [7, 0x00010007];
+	const viewsB: Vec<uint32> = [8, 0x80020007];
+	const translucent: Color = { r: 1.0, g: 0.5, b: 0.25, a: 0.5 };
+	for (let variant: int32 = 0; variant < viewsA.length; variant++) {
+		const viewA = viewsA[variant];
+		const viewB = viewsB[variant];
+		frame();
+		sprite(0.0, viewA, translucent);
+		sprite(2.0, viewB, translucent);
+		sprite(4.0, viewA, translucent);
+		finishRecording();
+		assert drawCommandCount() == 3;
+		assert recordedSpriteInstanceCount() == 3;
+		assert recordedUiInstanceCount() == 0;
+		assert vertexCount() == 0;
+		assert commandView(0) == viewA;
+		assert commandView(1) == viewB;
+		assert commandView(2) == viewA;
+		for (let command: int32 = 0; command < 3; command++) {
+			assert pipelineOf(command) == (Pipeline.Sprite as int32);
+			assert (commandField(command, CMD_INSTANCE_OFFSET) as int32) == command;
+			assert (commandField(command, CMD_INSTANCE_COUNT) as int32) == 1;
+			assert (commandField(command, CMD_VERTEX_COUNT) as int32) == 0;
+		}
+		assert breakReasonName(commandField(1, CMD_BREAK) as int32).equals("view");
+		assert breakReasonName(commandField(2, CMD_BREAK) as int32).equals("view");
+	}
+}
+
+test "immediate single-view A/A/B/A sprites merge only adjacent A" {
+	const viewA: uint32 = 17;
+	const viewB: uint32 = 23;
+	const translucent: Color = { r: 1.0, g: 0.5, b: 0.25, a: 0.5 };
+	frame();
+	sprite(0.0, viewA, translucent);
+	sprite(2.0, viewA, translucent);
+	sprite(4.0, viewB, translucent);
+	sprite(6.0, viewA, translucent);
+	finishRecording();
+	assert drawCommandCount() == 3;
+	assert recordedSpriteInstanceCount() == 4;
+	assert recordedUiInstanceCount() == 0;
+	assert vertexCount() == 0;
+	assert commandView(0) == viewA;
+	assert commandView(1) == viewB;
+	assert commandView(2) == viewA;
+	assert (commandField(0, CMD_INSTANCE_OFFSET) as int32) == 0;
+	assert (commandField(1, CMD_INSTANCE_OFFSET) as int32) == 2;
+	assert (commandField(2, CMD_INSTANCE_OFFSET) as int32) == 3;
+	assert (commandField(0, CMD_INSTANCE_COUNT) as int32) == 2;
+	assert (commandField(1, CMD_INSTANCE_COUNT) as int32) == 1;
+	assert (commandField(2, CMD_INSTANCE_COUNT) as int32) == 1;
+	for (let command: int32 = 0; command < 3; command++) {
+		assert pipelineOf(command) == (Pipeline.Sprite as int32);
+		assert (commandField(command, CMD_VERTEX_COUNT) as int32) == 0;
+	}
+	assert breakReasonName(commandField(1, CMD_BREAK) as int32).equals("view");
+	assert breakReasonName(commandField(2, CMD_BREAK) as int32).equals("view");
 }
 
 test "a colour pipeline is what disqualifies the instanced path, and it says so" {
