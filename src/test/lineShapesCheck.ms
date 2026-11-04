@@ -1,4 +1,7 @@
-import { DEFAULT_FONT, FontId, addFont } from "../void2d/font";
+import {
+	DEFAULT_FONT, FontId, addFallbackFont, addFont,
+} from "../void2d/font";
+import { holdFontFile } from "./fontFile";
 import {
 	Align,
 	LineOptions,
@@ -18,8 +21,19 @@ import {
 import { TextDirection } from "../void2d/textDirection";
 import { Color } from "../void2d/types";
 
+const PRIMARY_FACE = "assets/font.ttf";
+const SUPPLEMENTARY_FACE = "tests/fonts/lineShapesFallback.ttf";
+holdFontFile(PRIMARY_FACE);
+holdFontFile(SUPPLEMENTARY_FACE);
+const fixture = addFont(PRIMARY_FACE);
+if (!fixture.ok) {
+	console.error("lineShapesCheck: cannot load " + PRIMARY_FACE);
+	unreachable;
+}
+addFallbackFont(fixture.value, SUPPLEMENTARY_FACE);
+
 const STYLE: TextStyle = {
-	font: DEFAULT_FONT, size: 18.0, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0,
+	font: fixture.value, size: 18.0, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0,
 	align: Align.Left,
 };
 const CLEAR: Color = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
@@ -402,6 +416,7 @@ when (voidBidi) {
 	const MIXED: string = "plain line\n\u{5E9}\u{5DC}\u{5D5}\u{5DD} (12) end\n\n34 digits\n";
 
 	test "BiDi rows per line equal the rows of the whole text" {
+		holdFontFile(HEBREW_FACE);
 		const added = addFont(HEBREW_FACE);
 		assert added.ok;
 		const style: TextStyle = { ...STYLE, font: added.value };

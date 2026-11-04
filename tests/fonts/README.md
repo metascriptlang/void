@@ -99,6 +99,33 @@ deterministically: `liga` `f i` to one glyph (many to one), `calt` `a b` to `b.a
 attaching U+0301 to `e` with a non-zero y offset. `python tests/fonts/shapeFixture.py` rebuilds it
 byte for byte (the generator pins `head.created` and `head.modified`).
 
+`lineShapesFallback.ttf` is a boxes-only supplementary-plane face, our own art and no
+third-party licence. It keeps `src/test/lineShapesCheck.ms`'s Unicode inputs on real file
+fallbacks in Node, where browser font discovery is unavailable. Its generator reuses
+`colourEmoji.py`'s font builder without changing the shared symbol or colour fixtures:
+
+```sh
+python -B tests/fonts/lineShapesFallback.py
+```
+
+Verified on rtx with `msc` `56ad1fdf80f`, from base tree
+`afad70d9e15f81cb289bfa94c78be2c4dd84760a`: the entry SHA256 was
+`e5095c90e4294e3e22f894db090f3b1510a2b6c55416d4a27a42cb2853b120e5`,
+and the fixture SHA256 was
+`e2eac318ed9675b27314fe6f62adff0e2c0ebee8c2162997d68b77e4ba365afd`.
+The unchanged entry reproduced the missing-DOM/font failure; the updated entry gave
+`Tests 120 passed (120)` on Node and `Tests 449 passed (449)` / `Tests 450 passed (450)`
+on native without / with shaping and BiDi. Commands:
+
+```sh
+msc test --target=js -d:webgpu -d:voidShaper -d:voidBidi src/test/lineShapesCheck.ms
+msc test -d:voidDummy src/test/lineShapesCheck.ms
+msc test -d:voidDummy -d:voidShaper -d:voidBidi src/test/lineShapesCheck.ms
+```
+
+These check file-backed geometry in Node and native, not browser font discovery,
+GPU rendering or performance. Regenerating the 736-byte fixture was byte-identical.
+
 `ligatureFeatures.ttf` (1,176 B) is a second boxes-only face, our own art and no third-party licence, for
 the optional ligatures letter spacing turns off: `liga` `f i` and `clig` `a b`, each to its own glyph,
 and a `kern` single adjustment of (300, 400) on `f_i` for the many-to-one offset. `dlig` and `hlig`
