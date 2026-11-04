@@ -14,6 +14,8 @@
 	#define VOID_CAPTURE_GL 1
 #elif defined(VOID_VULKAN)
 	#define VOID_CAPTURE_VULKAN 1
+#elif defined(VOID_D3D12)
+	#define VOID_CAPTURE_D3D12 1
 #elif defined(_WIN32)
 	#define VOID_CAPTURE_D3D11 1
 #elif defined(__APPLE__)
@@ -87,6 +89,8 @@ int voidCaptureBackend(void) {
 	return 5;
 #elif defined(VOID_CAPTURE_VULKAN)
 	return 6;
+#elif defined(VOID_CAPTURE_D3D12)
+	return 7;
 #elif defined(VOID_CAPTURE_GL)
 	return 2;
 #else
@@ -94,7 +98,7 @@ int voidCaptureBackend(void) {
 #endif
 }
 
-#if defined(VOID_CAPTURE_D3D11) || defined(VOID_CAPTURE_GL) || defined(VOID_CAPTURE_METAL) || defined(VOID_CAPTURE_VULKAN)
+#if defined(VOID_CAPTURE_D3D11) || defined(VOID_CAPTURE_GL) || defined(VOID_CAPTURE_METAL) || defined(VOID_CAPTURE_VULKAN) || defined(VOID_CAPTURE_D3D12)
 int32_t doorReadScreen(uint8_t *out, int64_t outLength);
 int32_t voidSwapchainWidth(void);
 int32_t voidSwapchainHeight(void);
@@ -178,7 +182,7 @@ int voidCaptureGrab(int slot) {
 		exit(1);
 	}
 	stopOnClampedWindow();
-#if defined(VOID_CAPTURE_D3D11) || defined(VOID_CAPTURE_GL) || defined(VOID_CAPTURE_METAL) || defined(VOID_CAPTURE_VULKAN)
+#if defined(VOID_CAPTURE_D3D11) || defined(VOID_CAPTURE_GL) || defined(VOID_CAPTURE_METAL) || defined(VOID_CAPTURE_VULKAN) || defined(VOID_CAPTURE_D3D12)
 	int width = voidSwapchainWidth();
 	int height = voidSwapchainHeight();
 	if (width <= 0 || height <= 0) return 0;

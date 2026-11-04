@@ -601,5 +601,6 @@ export function backendDirectory(backend: int32): string {
 	if (backend == 4) { return "gl430"; }
 	if (backend == 5) { return "metal"; }
 	if (backend == 6) { return "vulkan"; }
+	if (backend == 7) { return "d3d12"; }
 	return "none";
 }

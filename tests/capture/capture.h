@@ -15,7 +15,8 @@
 
 #define VOID_CAPTURE_SLOTS 3
 
-// 0 = none (stub), 1 = D3D11, 2 = GLES3, 3 = WebGL2, 4 = GL core 4.3 desktop, 5 = Metal. Names the path
+// 0 = none (stub), 1 = D3D11, 2 = GLES3, 3 = WebGL2, 4 = GL core 4.3 desktop, 5 = Metal, 6 = Vulkan,
+// 7 = D3D12. Names the path
 // that voidCaptureGrab would take.
 int voidCaptureBackend(void);
 
