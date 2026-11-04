@@ -3855,6 +3855,14 @@ Measured back to back in one call on m1m (load 12-19), bench CPU/frame median (p
 | void-wasm-webgl | 3.41 (3.56) | 2.53 (2.62) | 2.38 (2.45) |
 | probe `paint`, 10 000 dirty | 2.81 | 2.08 | 1.93 |
 
+A plain instanced sprite (no image style, a texture whose view is current) then paints through
+`emitPlainImage`, which reads `TextureSource.currentView()`. `asView` can run the texture's
+`realloc` closure, and a call that can reach a closure makes the compiler copy each borrowed
+argument it passes, so the old path copied the `Tile` and its `TextureSource` (two refcount pairs)
+per sprite; `currentView` reaches no closure, and a stale view falls back to `emitImage`. Measured
+before, after, before in one call on the person's Mac (no remote Mac was free, load 9-10):
+bench CPU/frame 2.21 / 1.93 / 2.23 ms, probe `paint` at 10 000 dirty 1.77 / 1.48 / 1.76 ms.
+
 ## Open
 
 - **Public reference-owner fields remain writable**: both a pipeline cache and a RenderTarget
