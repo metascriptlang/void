@@ -734,9 +734,9 @@ cross-backend bound, 4 of them pending at delta 1.
 
 ## Known follow-ups (solidify, not blocking G6)
 
-- D3D11 binds each uniform block at its offset in the door's ring (`*SetConstantBuffers1`, no copy
-  per draw) when the device has D3D11.1 constant-buffer offsetting, else uploads only blocks whose
-  bytes changed; sokol uploads every applied block. Unmeasured until a GO.
+- D3D11 uploads each uniform block into its shader's own constant buffer when its bytes changed,
+  as sokol's `_sg_d3d11_apply_uniforms` does but skipping unchanged blocks. The D3D11.1 offset ring
+  (`*SetConstantBuffers1`) was measured slower and removed (2026-11-04 entry below).
 - `writeTexture` takes WebGPU's `origin` + `size` (control sokol's whole-image `sg_update_image`
   lacks) on D3D11 (a `COPY_DST` texture is DEFAULT, written by `UpdateSubresource` with a box), GL
   (`glTexSubImage2D` in place; a whole write still rotates the copy), wgpu and Metal (a blit, or
@@ -1322,3 +1322,12 @@ The gl and d3d11 edits are only type-checked on the Mac. Please run them on Wind
   write moved to a fresh copy.
 - Also on Windows: the d3d11 and gl goldens, and the 2D bench frame time, to judge
   `UpdateSubresource` against the old map-discard on a vertex buffer void2d rewrites.
+
+### 2026-11-04, Windows: D3D11 uniforms per shader constant buffer, the offset ring removed
+
+Quiet d87 (AMD Vega, msc 10a28a971, 9 rounds, pacing 16.688 ms on both sides), present ms median,
+A sokol 0cc6351b / main 658ad56a / `wt/d3d11-uniforms`: Ui 0.036 / 0.045 / 0.041, Text 0.057 / 0.062
+/ 0.061, Editor 0.049 / 0.066 / 0.055. firstPaint: Text 6.6 / 7.2 / 6.0, Editor 15.5 / 17.1 / 15.9,
+Ui 59.6 / 76.3 / 75.0. drawScreen now matches sokol; the gap left is `beginPass` (+3 to +7 us per
+frame) and Ui's firstPaint (+26%). Rig: `~/metascript/.scratch/voidab-win` 9c3b318, `w3-run.log`.
+
