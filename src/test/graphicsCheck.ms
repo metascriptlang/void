@@ -19,7 +19,9 @@ import {
 	cubicBezier,
 	setAntialias,
 } from "../void2d/graphics";
-import { Vec2, vec2, rgba, tile, sub } from "../void2d/types";
+import {
+	Vec2, Transform2D, vec2, rgba, tile, sub, trs2d,
+} from "../void2d/types";
 import { FillRule, FillTessellation, tessellateFill } from "../void2d/fillTessellator";
 import { EDGE_FLOATS, EDGE_LIMIT_BEFORE, EDGE_LIMIT_AFTER } from "../void2d/draw";
 import { approx, approxRel, meshTriArea, meshHasVert, meshHasVertUV, fakeTexture } from "./helpers";
@@ -233,6 +235,80 @@ test "fillCircle area approximates pi r squared" {
 	assert approxRel(meshTriArea(geometry(g).mesh), PI_AREA_R10, 5.0);
 }
 
+function chordDistance(this p: Vec2, a: Vec2, b: Vec2): float64 {
+	const dx: float64 = (b.x as float64) - a.x;
+	const dy: float64 = (b.y as float64) - a.y;
+	const px: float64 = (p.x as float64) - a.x;
+	const py: float64 = (p.y as float64) - a.y;
+	const lengthSquared = dx * dx + dy * dy;
+	const t = lengthSquared > 0.0
+		? Math.max(0.0, Math.min(1.0, (px * dx + py * dy) / lengthSquared))
+		: 0.0;
+	return Math.hypot(px - t * dx, py - t * dy);
+}
+
+test "fillCircle r128 current emitted 64-chord baseline under CPU device maps" {
+	const g = body().fillCircle(0.0, 0.0, 128.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const mesh = geometry(g).mesh;
+	assert (mesh.length as int32) === 62 * 24;
+	assert !geometry(g).fringed;
+	const boundary: Vec2[] = [vec2(mesh[0], mesh[1]), vec2(mesh[8], mesh[9])];
+	for (let at: int32 = 0; at < (mesh.length as int32); at += 24) {
+		assert mesh[at] === boundary[0].x;
+		assert mesh[at + 1] === boundary[0].y;
+		assert mesh[at + 8] === boundary[(boundary.length as int32) - 1].x;
+		assert mesh[at + 9] === boundary[(boundary.length as int32) - 1].y;
+		boundary.push(vec2(mesh[at + 16], mesh[at + 17]));
+	}
+	assert (boundary.length as int32) === 64;
+	const localSagitta = 128.0 * (1.0 - Math.cos(Math.PI / 64.0));
+	const rotation: float32 = (Math.PI / 9.0) as float32;
+	const maps: Transform2D[] = [
+		trs2d(0.0, 0.0, 0.0, 1.0, 1.0),
+		trs2d(0.0, 0.0, rotation, 1.0, 1.0),
+		trs2d(0.0, 0.0, 0.0, 2.0, 2.0),
+		trs2d(0.0, 0.0, rotation, 2.0, 2.0),
+		trs2d(0.0, 0.0, 0.0, 8.0, 8.0),
+		trs2d(0.0, 0.0, rotation, 8.0, 8.0),
+		{ a: 4.0, b: 0.0, c: 0.0, d: 1.0, tx: 0.0, ty: 0.0 },
+		{ a: 1.0, b: 0.0, c: 1.0, d: 1.0, tx: 0.0, ty: 0.0 },
+	];
+	const sigmaMax: float64[] = [
+		1.0, 1.0, 2.0, 2.0, 8.0, 8.0, 4.0, (1.0 + Math.sqrt(5.0)) / 2.0,
+	];
+	const dpis: float32[] = [1.0, 1.25, 1.5];
+	for (const dpi of dpis) {
+		let unrotated: float64 = 0.0;
+		for (let m: int32 = 0; m < (maps.length as int32); m++) {
+			const deviceMap = trs2d(0.0, 0.0, 0.0, dpi, dpi) * maps[m];
+			let maximum: float64 = 0.0;
+			for (let i: int32 = 0; i < (boundary.length as int32); i++) {
+				const a = boundary[i];
+				const b = boundary[(i + 1) % (boundary.length as int32)];
+				const start = Math.atan2(a.y, a.x);
+				let sweep = Math.atan2(b.y, b.x) - start;
+				if (sweep <= 0.0) { sweep += 2.0 * Math.PI; }
+				const angle = start + sweep * 0.5;
+				const midpoint = vec2(
+					(128.0 * Math.cos(angle)) as float32,
+					(128.0 * Math.sin(angle)) as float32,
+				) * deviceMap;
+				maximum = Math.max(maximum,
+					midpoint.chordDistance(a * deviceMap, b * deviceMap));
+			}
+			const bound = dpi * sigmaMax[m] * localSagitta;
+			console.log(`circle baseline dpi=${dpi} map=${m} max=${maximum}` +
+				` bound=${bound}`);
+			assert maximum > 0.0 && maximum <= bound + 0.001;
+			if (m < 6) {
+				assert Math.abs(maximum - bound) < 0.001;
+				if (m % 2 == 0) { unrotated = maximum; }
+				else { assert Math.abs(maximum - unrotated) < 0.001; }
+			}
+		}
+	}
+}
+
 test "fillEllipse area approximates pi rx ry" {
 	const g = s.graphics().fillEllipse(0.0, 0.0, 10.0, 5.0, rgba(1.0, 1.0, 1.0, 1.0));
 	assert (geometry(g).mesh.length as int32) > 0;
@@ -397,6 +473,32 @@ test "quadBezier hits endpoints and midpoint" {
 	assert approx(pts[1].y, 5.0);
 	assert approx(pts[2].x, 10.0);
 	assert approx(pts[2].y, 0.0);
+}
+
+test "quadBezier current emitted finite-chord midpoint distance baseline" {
+	const counts: int32[] = [2, 3, 4, 8];
+	for (const segments of counts) {
+		const pts = quadBezier(
+			vec2(0.0, 0.0), vec2(5.0, 10.0), vec2(10.0, 0.0), segments,
+		);
+		assert (pts.length as int32) === segments + 1;
+		let maximum: float64 = 0.0;
+		for (let i: int32 = 0; i < segments; i++) {
+			const t = ((i as float64) + 0.5) / (segments as float64);
+			const midpoint = vec2(
+				(10.0 * t) as float32, (20.0 * t * (1.0 - t)) as float32,
+			);
+			maximum = Math.max(maximum, midpoint.chordDistance(pts[i], pts[i + 1]));
+		}
+		const n = segments as float64;
+		const verticalDistance = 5.0 / (n * n);
+		const expected = segments % 2 == 0
+			? verticalDistance / Math.sqrt(1.0 + (2.0 / n) * (2.0 / n))
+			: verticalDistance;
+		console.log(`quadratic baseline N=${segments} max=${maximum}` +
+			` expected=${expected}`);
+		assert maximum > 0.0 && Math.abs(maximum - expected) < 0.00001;
+	}
 }
 
 test "quadBezier clamps zero segments" {
