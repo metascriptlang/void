@@ -263,7 +263,7 @@ export function finishRecording(): void {
 
 export function paintIndex(): PaintIndex {
 	const ctx: DrawContext2D = currentContext();
-	const l: DrawContext2D = currentContext();
+	const l: DrawContext2D = ctx;
 	return {
 		commands: l.commandTotal,
 		effects: l.effectTotal,
@@ -1482,9 +1482,10 @@ export function appendSprite(
 	u0: float32, v0: float32, u1: float32, v1: float32,
 	color: Color,
 ): void {
+	const ctx: DrawContext2D = currentContext();
 	pushSpriteInstance(
 		world.a, world.b, world.c, world.d,
-		originX - originXOffset(), originY - originYOffset(), sizeX, sizeY,
+		originX - ctx.originX, originY - ctx.originY, sizeX, sizeY,
 		u0, v0, u1, v1,
 		color,
 	);
