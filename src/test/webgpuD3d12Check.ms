@@ -50,6 +50,7 @@ import {
 	doorShutdown,
 } from "../gpu/doorGpu.ms";
 import { splitTextureCopy } from "../webgpu/d3d12/resources.ms";
+import { FRAMES_IN_FLIGHT } from "../webgpu/d3d12/frame.ms";
 import { PRESENT_MODE_IMMEDIATE, PRESENT_MODE_VSYNC, flipFormat, planPresent, presentCall } from "../webgpu/d3d12/surface.ms";
 import { newCursor, nextPair, serializeRootSignature, shaderLayout, tableEntries } from "../webgpu/d3d12/descriptor.ms";
 import { dx12ObjectName, dx12Release } from "../webgpu/d3d12/d3d12.h";
@@ -126,13 +127,12 @@ test "a D3D12 device on WARP says d3d12 with a top-left origin and depth in zero
 	device.destroy();
 }
 
-test "three empty submits complete serial 3, the third on allocator 0, with no debug-layer message" {
+test "one empty submit more than the frame slots completes its serial on allocator 0, with no debug-layer message" {
 	const device = openDevice();
-	submitEmpty(device);
-	submitEmpty(device);
-	submitEmpty(device);
-	assert executedAllocator() == frameAllocator(0) && frameAllocator(0) != frameAllocator(1);
-	assert idleSerial() == 3;
+	for (let i: int32 = 0; i <= FRAMES_IN_FLIGHT; i++) { submitEmpty(device); }
+	assert executedAllocator() == frameAllocator(0);
+	for (let s: int32 = 1; s < FRAMES_IN_FLIGHT; s++) { assert frameAllocator(s) != frameAllocator(s - 1); }
+	assert idleSerial() == (FRAMES_IN_FLIGHT + 1) as uint64;
 	assert debugLayerMessages() == 0;
 	device.destroy();
 }
