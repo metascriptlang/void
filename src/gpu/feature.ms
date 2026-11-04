@@ -3,7 +3,9 @@ import { GPUDevice, GPUSupportedFeatures, GPUSupportedLimits } from "../webgpu/t
 import "../webgpu/device.ms";
 
 // h3d.impl.Driver.Feature, with the members a reader here asks about. Heaps compiles compute out
-// of its GL driver, so the device's own limits answer Compute and StorageBuffers.
+// of its GL driver, so the device's own limits answer Compute and StorageBuffers. StorageBuffers
+// means some stage reads one (GL counts the compute stage); a vertex stage reading one also needs
+// VertexStorage, which GLES 3.1 may lack while it has StorageBuffers.
 export enum Feature {
 	Compute,
 	StorageBuffers,
