@@ -139,7 +139,7 @@ import {
 	mtlEncoderInsertSignpost,
 	mtlEncoderPopDebugGroup,
 	mtlEncoderPushDebugGroup,
-	mtlForgetCommitted,
+	mtlForgetSubmitted,
 	mtlBeginComputePass,
 	mtlMaxBufferLength,
 	mtlMaxThreadsPerThreadgroup,
@@ -161,7 +161,8 @@ import {
 	mtlSupportsRg11b10Render,
 	mtlSupportsTimestamps,
 	mtlNewStagingBuffer,
-	mtlWaitCommitted,
+	mtlWaitFrame,
+	mtlWaitedFrame,
 	mtlBeginPass,
 	mtlCommit,
 	mtlCommitFrame,
@@ -758,6 +759,8 @@ export function bindStats(): BindStats { return stats; }
 
 export function pendingReleases(): int64 { return mtlPendingReleases(); }
 
+export function mapWaitedFrame(): int64 { return mtlWaitedFrame(); }
+
 export function setup(environment: NativeEnvironment): GPUDevice {
 	if (environment.device === null) { stop("requestDevice needs the native MTLDevice"); }
 	checkMirroredConstants();
@@ -800,7 +803,7 @@ export function formatRenderable(format: GPUTextureFormat): boolean {
 export function shutdown(): void {
 	commitFrame();
 	mtlFrameSemaphoreWaitAll();
-	mtlForgetCommitted();
+	mtlForgetSubmitted();
 	mtlReleaseAllPending();
 	mtlReleaseQueue(queue);
 	mtlReleaseDevice(device);
@@ -1493,7 +1496,7 @@ function commitFrame(): void {
 		uploads = NO_COMMAND_BUFFER;
 	}
 	if (commandBuffer != null) {
-		mtlCommitFrame(commandBuffer);
+		mtlCommitFrame(commandBuffer, currentFrame());
 		commandBuffer = NO_COMMAND_BUFFER;
 	}
 }
@@ -1919,16 +1922,15 @@ export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destinatio
 }
 
 // A mappable buffer is shared storage, so a mapped range is the buffer's own bytes once the GPU
-// work that wrote them is done. The wait is on the last committed command buffer, never on the
-// frame's open one: Metal runs a queue's buffers in order and the open one commits only after
-// this call returns.
+// work that wrote them is done. The wait is on the frame that last used the buffer, never on a
+// later one, so a read a frame or more behind does not wait for the frames since.
 export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, length: int64): void {
 	const index = bufferRecords.slotIndex(buffer.id);
 	if (buffers[index].gpuUseFrame >= 0) {
 		if (commandBuffer != null && buffers[index].gpuUseFrame == currentFrame()) {
 			stop(`mapAsync on GPUBuffer ${buffer.id} would wait for the frame's command buffer, which is not committed: submit the copy first`);
 		}
-		if (mtlWaitCommitted() == 0) { stop(`mapAsync on GPUBuffer ${buffer.id}: the command buffer that wrote it failed`); }
+		if (mtlWaitFrame(buffers[index].gpuUseFrame) == 0) { stop(`mapAsync on GPUBuffer ${buffer.id}: the command buffer that wrote it failed`); }
 	}
 }
 

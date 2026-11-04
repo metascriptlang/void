@@ -30,12 +30,13 @@ void mtlFrameSemaphoreWaitAll(void);
 MtlCommandBuffer mtlBeginCommandBuffer(MtlQueue queue);
 MtlCommandBuffer mtlBeginUploadCommandBuffer(MtlQueue queue);
 void mtlCommit(MtlCommandBuffer commandBuffer);
-void mtlCommitFrame(MtlCommandBuffer commandBuffer);
+void mtlCommitFrame(MtlCommandBuffer commandBuffer, int64_t frame);
 int64_t mtlPendingReleases(void);
 void mtlReleaseAllPending(void);
 void mtlKeepUntilFrameDone(MtlTexture texture);
-int32_t mtlWaitCommitted(void);
-void mtlForgetCommitted(void);
+int32_t mtlWaitFrame(int64_t frame);
+int64_t mtlWaitedFrame(void);
+void mtlForgetSubmitted(void);
 
 MtlBuffer mtlNewBuffer(MtlDevice device, int64_t bytes, int32_t shared);
 MtlBuffer mtlNewMappableBuffer(MtlDevice device, int64_t bytes, int32_t writable);

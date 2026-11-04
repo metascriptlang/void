@@ -16,8 +16,12 @@ static char s_log[4096];
 static MTLRenderPipelineDescriptor *s_pipeline;
 static MTLRenderPassDescriptor *s_pass;
 static id<CAMetalDrawable> s_drawable;
-static id<MTLCommandBuffer> s_committed;
 static NSMutableArray *s_keepAlive;
+
+#define SUBMITTED_RING 8
+static id<MTLCommandBuffer> s_submitted[SUBMITTED_RING];
+static int64_t s_submittedFrame[SUBMITTED_RING] = { -1, -1, -1, -1, -1, -1, -1, -1 };
+static int64_t s_waitedFrame = -1;
 
 // A command buffer made with unretained references does not keep what it reads alive, so a released
 // object waits here with the serial of the last frame begun until that frame is known complete
@@ -101,6 +105,10 @@ void *mtlTextureNative(MtlTexture texture) { return texture; }
 void *mtlQueueNative(MtlQueue queue) { return queue; }
 
 void mtlFrameSemaphoreCreate(int32_t framesInFlight) {
+	if (framesInFlight >= SUBMITTED_RING) {
+		fprintf(stderr, "metal: %d frames in flight needs a submitted ring longer than %d\n", framesInFlight, SUBMITTED_RING);
+		abort();
+	}
 	if (s_frames) dispatch_release(s_frames);
 	s_frames = dispatch_semaphore_create(framesInFlight);
 	s_framesInFlight = framesInFlight;
@@ -132,7 +140,11 @@ MtlCommandBuffer mtlBeginUploadCommandBuffer(MtlQueue queue) {
 	}
 }
 
-void mtlCommitFrame(MtlCommandBuffer commandBuffer) {
+void mtlCommitFrame(MtlCommandBuffer commandBuffer, int64_t frame) {
+	int64_t slot = frame % SUBMITTED_RING;
+	[s_submitted[slot] release];
+	s_submitted[slot] = [(id<MTLCommandBuffer>)commandBuffer retain];
+	s_submittedFrame[slot] = frame;
 	if (s_keepAlive != nil) {
 		NSMutableArray *kept = s_keepAlive;
 		s_keepAlive = nil;
@@ -145,21 +157,28 @@ void mtlCommitFrame(MtlCommandBuffer commandBuffer) {
 }
 
 void mtlCommit(MtlCommandBuffer commandBuffer) {
-	id<MTLCommandBuffer> cb = (id<MTLCommandBuffer>)commandBuffer;
-	[cb commit];
-	[s_committed release];
-	s_committed = cb;
+	[(id<MTLCommandBuffer>)commandBuffer commit];
 }
 
-int32_t mtlWaitCommitted(void) {
-	if (s_committed == nil) return 1;
-	[s_committed waitUntilCompleted];
-	return s_committed.status == MTLCommandBufferStatusCompleted ? 1 : 0;
+// Waits for the frame command buffer that ran `frame`'s work, as wgpu maps a buffer once the
+// fence passes the buffer's last submission (wgpu-hal metal/device.rs `wait`). Frames older than
+// the ring are complete, because a frame begins only after the one framesInFlight before it ended.
+int32_t mtlWaitFrame(int64_t frame) {
+	int64_t slot = frame % SUBMITTED_RING;
+	if (s_submittedFrame[slot] != frame || s_submitted[slot] == nil) return 1;
+	s_waitedFrame = frame;
+	[s_submitted[slot] waitUntilCompleted];
+	return s_submitted[slot].status == MTLCommandBufferStatusCompleted ? 1 : 0;
 }
 
-void mtlForgetCommitted(void) {
-	[s_committed release];
-	s_committed = nil;
+int64_t mtlWaitedFrame(void) { return s_waitedFrame; }
+
+void mtlForgetSubmitted(void) {
+	for (int32_t i = 0; i < SUBMITTED_RING; i++) {
+		[s_submitted[i] release];
+		s_submitted[i] = nil;
+		s_submittedFrame[i] = -1;
+	}
 }
 
 static MTLResourceOptions storageOptions(int32_t shared) {
