@@ -1,7 +1,7 @@
 // A vertex stage that reads a row of a storage buffer at a slot index carried by an instance-rate
 // uint32 attribute: the resident-row path of void3d. Instance 0 names row 3 and instance 1 row 1,
 // so a row picked by instance_index or firstInstance instead of the slot draws the wrong colours.
-// Read back on d3d11 (WARP) and Metal.
+// Read back on d3d11 and d3d12 (WARP) and Metal.
 
 import { shaderModule, shaderProgram, shaderProgramRegister } from "../shader/program";
 import { programModule, stageSource, stageWords } from "../shader/descriptor";
@@ -134,7 +134,10 @@ when (voidDummy || (windows && !voidVulkan) || macos) {
 	import { PipelineCache, closePipelines, pipelineFor } from "../gpu/pipeline";
 	import { hasFeature } from "../gpu/feature.ms";
 }
-when (windows && !voidDummy && !voidVulkan) {
+when (voidD3d12) {
+	import { doorSetupWith } from "../gpu/doorGpu.ms";
+	import { D3D12_DEBUG_LAYER, debugLayerMessages } from "./d3d12DebugLayer";
+} else when (windows && !voidDummy && !voidVulkan) {
 	import { warpDevice, warpContext } from "./d3d11Warp.h";
 	@passL("-ld3d11");
 }
@@ -153,6 +156,8 @@ when (voidDummy || (windows && !voidVulkan) || macos) {
 	function openDoor(): void {
 		when (voidDummy) {
 			doorSetup(null, null, RGBA8, NO_DEPTH_FORMAT, 1);
+		} else when (voidD3d12) {
+			doorSetupWith({ device: null, context: null, colorFormat: "rgba8unorm", sampleCount: 1, warp: true, debug: D3D12_DEBUG_LAYER });
 		} else when (windows) {
 			doorSetup(warpDevice(), warpContext(), RGBA8, NO_DEPTH_FORMAT, 1);
 		} else {
@@ -218,6 +223,7 @@ when (voidDummy || (windows && !voidVulkan) || macos) {
 		}
 		closePipelines(cache);
 		color.close();
+		when (voidD3d12) { assert debugLayerMessages() == 0; }
 		doorShutdown();
 	}
 }
