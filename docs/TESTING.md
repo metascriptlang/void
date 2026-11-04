@@ -371,7 +371,7 @@ Flags:
   in the quiet window.
 - `--d3d12` runs `webgpuD3d12Check` and the four door checks on WARP. Every pin ends by asserting that the D3D12 debug
   layer recorded no message, so it needs the Graphics Tools optional feature
-  (`d3d12SDKLayers.dll`); without it `requestDevice` stops and names it. Without the flag it is
+  (`d3d12SDKLayers.dll`); without it `requestDevice` stops and names it. `-d:voidD3d12NoDebugLayer` runs the same pins on a host without it, with the layer off and its message checks skipped; it proves behaviour, not validation. Without the flag it is
   one SKIP line on Windows.
 - `--ios` runs the Metal goldens and view samples on an attached iPhone or iPad
   (`scripts/iosDevice.sh`); without it they are one SKIP line. The device must be paired and

@@ -1,3 +1,4 @@
+import { D3D12_DEBUG_LAYER, debugLayerMessages } from "./d3d12DebugLayer";
 import {
 	GPUBindGroup,
 	GPUBindGroupDescriptor,
@@ -30,7 +31,6 @@ import {
 	adapterDescription,
 	closeSurface,
 	descriptorStats,
-	drainDebugMessages,
 	executedAllocator,
 	frameAllocator,
 	idleSerial,
@@ -87,7 +87,7 @@ function openDevice(): GPUDevice {
 		depthFormat: "depth32float",
 		sampleCount: 1,
 		warp: true,
-		debug: true,
+		debug: D3D12_DEBUG_LAYER,
 	});
 }
 
@@ -122,7 +122,7 @@ test "a D3D12 device on WARP says d3d12 with a top-left origin and depth in zero
 	const backend: string = info.backend;
 	assert backend == "d3d12" && info.originTopLeft && info.depthZeroToOne;
 	assert adapterDescription() == "Microsoft Basic Render Driver";
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -133,7 +133,7 @@ test "three empty submits complete serial 3, the third on allocator 0, with no d
 	submitEmpty(device);
 	assert executedAllocator() == frameAllocator(0) && frameAllocator(0) != frameAllocator(1);
 	assert idleSerial() == 3;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -147,7 +147,7 @@ test "writeBuffer copied into a MAP_READ buffer maps back the same bytes" {
 	const read = readBack(destination);
 	assert read.length == 16;
 	for (let i = 0; i < 16; i++) { assert read[i] == (i + 1) as uint8; }
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -167,7 +167,7 @@ test "a transient vertex buffer written each frame copies out that frame's bytes
 		const read = readBack(destination);
 		for (let i = 0; i < 16; i++) { assert read[i] == bytes[i]; }
 	}
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -182,7 +182,7 @@ test "a later frame's first writeBuffer of a range keeps the bytes around it" {
 	copyAndSubmit(device, source, 0, destination, 0, 16);
 	const read = readBack(destination);
 	for (let i = 0; i < 16; i++) { assert read[i] == (i >= 4 && i < 8 ? 200 : i + 1) as uint8; }
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -197,7 +197,7 @@ test "one buffer written, copied and read back over two submits leaves the debug
 		const read = readBack(destination);
 		for (let i = 0; i < 16; i++) { assert read[i] == bytes[i]; }
 	}
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -211,7 +211,7 @@ test "a buffer destroyed mid-frame is released only once its frame's serial comp
 	assert retiredCount() == 1;
 	submitEmpty(device);
 	assert idleSerial() == 1 && retiredCount() == 0;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -231,7 +231,7 @@ test "a MAP_WRITE buffer filled through writeMappedRange copies to a MAP_READ bu
 	const read = readBack(destination);
 	for (let i = 0; i < 8; i++) { assert read[4 + i] == (9 - i) as uint8; }
 	assert read[3] == 0 && read[12] == 0;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -248,7 +248,7 @@ test "two writes of 300 and 40 bytes at offsets 20 and 400 copy back through one
 	for (let i = 0; i < 300; i++) { assert read[20 + i] == first[i]; }
 	for (let i = 0; i < 40; i++) { assert read[400 + i] == second[i]; }
 	assert read[19] == 0 && read[320] == 0 && read[440] == 0;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -315,7 +315,7 @@ test "rgba8unorm texels written to mip 1 and to array layer 1 copy back at 256 b
 	);
 	assert rowsMatch(readTexture(device, texture, 1, 0, 4, 4), mipTexels, 0, 16, 16, 4);
 	assert rowsMatch(readTexture(device, texture, 0, 1, 8, 8), layerTexels, 0, 32, 32, 8);
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -336,7 +336,7 @@ test "a 3x2 writeTexture at 2,1 from a data offset fills that rectangle and leav
 			assert read[y * 256 + x] == (inside ? data[8 + (y - 1) * 12 + x - 8] : 0);
 		}
 	}
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -366,7 +366,7 @@ test "copyBufferToTexture from offsets 4 and 504 lands both regions, the second 
 			assert read[y * 256 + 16 + x] == 0 && read[(y + 2) * 256 + x] == 0;
 		}
 	}
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -397,7 +397,7 @@ test "copyTextureToTexture copies mip 1 of one texture into array layer 1 of ano
 	assert texelAt(read, 256, 1, 1) == RED && texelAt(read, 256, 6, 6) == RED;
 	assert texelAt(read, 256, 2, 2) == GREEN && texelAt(read, 256, 5, 5) == GREEN;
 	assert texelAt(readTexture(device, layers, 0, 0, 8, 8), 256, 3, 3) == 0;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -419,7 +419,7 @@ test "rgba16float texels of 8 bytes round-trip through writeTexture and copyText
 			assert read[y * 256 + i * 2] == (half & 0xff) as uint8 && read[y * 256 + i * 2 + 1] == (half >> 8) as uint8;
 		}
 	}
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -440,7 +440,7 @@ test "one texture read, written and read again over three submits leaves the deb
 		);
 		assert rowsMatch(readTexture(device, texture, 0, 0, 4, 4), bytes, 0, 16, 16, 4);
 	}
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -478,7 +478,7 @@ test "copyTextureToTexture copies mip 1 into a region of mip 0" {
 	assert texelAt(read, 256, 5, 5) == GREEN;
 	assert texelAt(read, 256, 6, 6) == RED;
 	assert texelAt(read, 256, 2, 6) == RED;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -511,7 +511,7 @@ test "copyTextureToTexture copies array layer 0 into a region of array layer 1 o
 	assert texelAt(read, 256, 6, 6) == RED;
 	assert texelAt(read, 256, 2, 6) == RED;
 	assert texelAt(readTexture(device, texture, 0, 0, 8, 8), 256, 6, 6) == GREEN;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -530,7 +530,7 @@ test "a second sampler with the same descriptor reuses the first one's CPU descr
 	const linear = device.createSampler({ label: "linear", magFilter: "linear", minFilter: "linear" });
 	assert viewDescriptor(view) != 0 && samplerDescriptor(nearest) != 0;
 	assert samplerDescriptor(again) == samplerDescriptor(nearest) && samplerDescriptor(linear) != samplerDescriptor(nearest);
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -653,7 +653,7 @@ test "a pass that clears an rgba8 target reads back the clear colour" {
 	device.queue.submit(encoder.finish());
 	const read = readTarget(device, target);
 	assert texelAt(read, 256, 0, 0) == BLUE && texelAt(read, 256, 10, 10) == BLUE && texelAt(read, 256, SIZE - 1, SIZE - 1) == BLUE;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -676,7 +676,7 @@ test "a depth32float clear to 0.5 reads back as 0.5 in every texel" {
 	const bits = readBack(floats);
 	assert bits[0] == 0 && bits[1] == 0 && bits[2] == 0 && bits[3] == 0x3F;
 	assert bits[3 * 256 + 12] == 0 && bits[3 * 256 + 15] == 0x3F;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -700,7 +700,7 @@ test "a triangle from DXBC with an empty layout draws its colour at the centre" 
 	const device = openDevice();
 	const read = greenTriangle(device, blobModule("green", VERTEX_HLSL, GREEN_HLSL));
 	assert texelAt(read, 256, 0, 0) == BLUE && texelAt(read, 256, 32, 32) == GREEN;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -726,7 +726,7 @@ test "a module from HLSL text draws, and a stage without DXBC beside one with it
 	};
 	mixed.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
 	assert texelAt(greenTriangle(device, mixed), 256, 32, 32) == GREEN;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -737,7 +737,7 @@ test "a compute module from HLSL text compiles its cs_5_0 stage" {
 	let descriptor: GPUShaderModuleDescriptor = { label: "compute", computeCode: DOUBLE_HLSL, computeEntryPoint: "" };
 	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "storage", nativeSlot: 0 };
 	device.createShaderModule(descriptor);
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -763,7 +763,7 @@ test "two draws with group 0 at dynamic offsets 0 and 256 take two colours" {
 	device.queue.submit(encoder.finish());
 	const read = readTarget(device, target);
 	assert texelAt(read, 256, 16, 36) == RED && texelAt(read, 256, 48, 36) == GREEN && texelAt(read, 256, 2, 2) == BLUE;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -802,7 +802,7 @@ test "a full-target quad samples a 2x2 texture through group 1 with a nearest sa
 	const read = readTarget(device, target);
 	assert texelAt(read, 256, 16, 16) == RED && texelAt(read, 256, 48, 16) == GREEN;
 	assert texelAt(read, 256, 16, 48) == BLUE && texelAt(read, 256, 48, 48) == RED;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -836,7 +836,7 @@ test "an indexed uint16 quad draws from a vertex buffer at offset 64" {
 	const read = readTarget(device, target);
 	assert texelAt(read, 256, 4, 4) == BLUE && texelAt(read, 256, 20, 20) == RED;
 	assert texelAt(read, 256, 44, 44) == RED && texelAt(read, 256, 60, 32) == BLUE;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -878,7 +878,7 @@ test "an indexed draw of two instances leaves the colour of the second instance 
 	device.queue.submit(encoder.finish());
 	const read = readTarget(device, target);
 	assert texelAt(read, 256, 32, 32) == GREEN && texelAt(read, 256, 2, 2) == BLUE;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -888,7 +888,7 @@ test "two indexed indirect records in one call honour firstIndex, baseVertex and
 	drawIndirectRows(device, colouredShader(device), target);
 	const read = readTarget(device, target);
 	assert texelAt(read, 256, 2, 32) == GREEN && texelAt(read, 256, 61, 32) == RED && texelAt(read, 256, 32, 32) == BLUE;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -913,7 +913,7 @@ test "a 4x multisampled triangle resolves into its single-sample resolve target"
 	device.queue.submit(encoder.finish());
 	const read = readTarget(device, resolved);
 	assert texelAt(read, 256, 0, 0) == BLUE && texelAt(read, 256, 32, 32) == RED;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1021,7 +1021,7 @@ test "a compute pass doubles a storage buffer, directly and through an indirect 
 	device.queue.submit(encoder.finish());
 	read = readStorage(device, storage);
 	assert read[0] == 4 && read[4] == 8 && read[8] == 12;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1032,7 +1032,7 @@ test "three dispatches in one pass on one storage buffer each see the last one's
 	dispatchTimes(device, computeModule(device, DOUBLE_HLSL, "storage-buffer"), { binding: 0, buffer: storage }, 3);
 	const read = readStorage(device, storage);
 	assert read[0] == 8 && read[4] == 16 && read[8] == 24 && read[12] == 32;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1051,7 +1051,7 @@ test "a compute pass writes a storage texture that copies back" {
 	const read = readTexture(device, texture, 0, 0, 4, 4);
 	assert read[0] == 0 && read[4] == 1 && read[12] == 3;
 	assert read[256] == 10 && read[3 * 256 + 3 * 4] == 33;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1106,7 +1106,7 @@ test "an rgba32uint texture written by writeTexture loads exactly through a uint
 	values[31] = 2147483648;
 	const read = loadTexels(device, "rgba32uint", LOAD_UINT_HLSL, "uint", values);
 	for (let i = 0; i < 32; i++) { assert u32At(read, i) == values[i]; }
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1118,7 +1118,7 @@ test "an rgba32float texture loads bit-exact through an unfilterable-float bindi
 	for (let i = 0; i < 32; i++) { values[i] = floats[i % 4]; }
 	const read = loadTexels(device, "rgba32float", LOAD_FLOAT_HLSL, "unfilterable-float", values);
 	for (let i = 0; i < 32; i++) { assert u32At(read, i) == patterns[i % 4]; }
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1152,7 +1152,7 @@ test "two timestamps around a render pass and around a compute pass resolve to n
 	assert times[0] > 0;
 	assert times[1] >= times[0];
 	assert times[2] >= times[1];
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1178,7 +1178,7 @@ test "an occlusion query counts samples over a drawn triangle and none over an e
 	const counts = readCounters(device, resolved, 34);
 	assert counts[0] > 0 && counts[32] == counts[0];
 	assert counts[33] == 0;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1209,7 +1209,7 @@ test "a draw and its readback advance the frame index once per submit and leave 
 	assert texelAt(read, 256, 0, 0) == BLUE && texelAt(read, 256, 32, 32) == GREEN && texelAt(read, 256, 63, 63) == BLUE;
 	const live = device.liveCounts();
 	assert live.buffers == 3 && live.textures == 1 && live.views == 1 && live.shaderModules == 1 && live.pipelines == 1;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1217,7 +1217,7 @@ test "a bind group entry offset selects the second uniform block" {
 	const device = openDevice();
 	const read = drawTriangleAt(device, 0, 256);
 	assert texelAt(read, 256, 32, 32) == GREEN && texelAt(read, 256, 0, 0) == BLUE;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1258,7 +1258,7 @@ test "setViewport confines a full-target triangle strip to the left half" {
 	assert texelAt(left, 256, 16, 32) == GREEN && texelAt(left, 256, 2, 2) == GREEN;
 	assert texelAt(left, 256, 48, 32) == BLUE && texelAt(left, 256, 62, 62) == BLUE;
 	assert texelAt(drawStrip(device, "triangle-strip", full, 4, 256, 0.0), 256, 48, 32) == GREEN;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1270,7 +1270,7 @@ test "a line-list draws a horizontal line and a triangle-strip fills a quad" {
 	const strip: Vec<float32> = [-0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0.5];
 	const quad = drawStrip(device, "triangle-strip", strip, 4, 0, 0.0);
 	assert texelAt(quad, 256, 32, 32) == RED && texelAt(quad, 256, 20, 44) == RED && texelAt(quad, 256, 4, 4) == BLUE;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1303,7 +1303,7 @@ test "a unorm8x4 vertex colour from a second vertex buffer reaches the fragment 
 	device.queue.submit(encoder.finish());
 	const read = readTarget(device, target);
 	assert texelAt(read, 256, 32, 32) == GREEN && texelAt(read, 256, 2, 2) == BLUE;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1368,7 +1368,7 @@ test "a stencil write at reference 1 masks a later equal-test draw to the left h
 	device.queue.submit(encoder.finish());
 	const read = readTarget(device, target);
 	assert texelAt(read, 256, 16, 32) == GREEN && texelAt(read, 256, 48, 32) == BLUE;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1378,7 +1378,7 @@ test "a stencil cleared to 1 and stored is loaded by the next pass while that pa
 	drawOverLoadedStencil(device, stencilPipeline(device, flatShader(device), "equal", "keep"), target);
 	const read = readTarget(device, target);
 	assert texelAt(read, 256, 0, 0) == GREEN && texelAt(read, 256, 63, 63) == GREEN;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1389,7 +1389,7 @@ test "a colour target with writeMask 0 keeps its clear colour where an omitted m
 	assert texelAt(readTarget(device, target), 256, 32, 32) == BLUE;
 	drawMaskedTriangle(device, flatShader(device), null, target);
 	assert texelAt(readTarget(device, target), 256, 32, 32) == RED;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1410,7 +1410,7 @@ test "a pipeline with depth bias, slope scale and clamp creates" {
 	descriptor.depthStencil.depthBiasClamp = 0.1;
 	const pipeline = device.createRenderPipeline(descriptor);
 	assert pipeline.id != 0 && device.liveCounts().pipelines == 1;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1451,7 +1451,7 @@ test "a blend constant of 0.5 weights a red source over black to half red" {
 	assert read[at] >= 126 && read[at] <= 129;
 	assert read[at + 1] == 0 && read[at + 2] == 0 && read[at + 3] == 255;
 	assert texelAt(read, 256, 0, 0) == 0x000000FF;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1491,7 +1491,7 @@ test "a fragment shader reads a read-only storage buffer" {
 	device.queue.submit(encoder.finish());
 	const read = readTarget(device, target);
 	assert texelAt(read, 256, 0, 0) == BLUE && texelAt(read, 256, 32, 32) == RED;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1615,7 +1615,7 @@ test "a resource group bound again in one frame copies no descriptors, another g
 	pass.end();
 	device.queue.submit(encoder.finish());
 	assert descriptorStats().tableCopies - start == 6;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1629,7 +1629,7 @@ test "a texture and sampler visible to vertex and fragment are read in both stag
 	const both = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
 	const module = sampledModule(device, "half texel", HALF_TEXEL_VERTEX_HLSL, HALF_TEXEL_FRAGMENT_HLSL, both);
 	assert sampleCentreWith(device, module, texture.createView({ label: null })) == RED;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1652,7 +1652,7 @@ test "comparison, anisotropic and mip-filtered samplers with W addressing and LO
 	comparison.destroy();
 	anisotropic.destroy();
 	assert device.liveCounts().samplers == 0;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1677,7 +1677,7 @@ test "an sRGB render target stores a linear clear as its encoded bytes" {
 	device.queue.submit(encoder.finish());
 	const red = readTexel(device, target, 0, 0, 10, 10) >> 24;
 	assert red >= 186 && red <= 190;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1705,7 +1705,7 @@ test "every pixel format of the descriptor creates a texture and a view" {
 	];
 	for (const format of formats) { assert formatRoundTrip(device, format); }
 	assert device.liveCounts().textures == 0;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1725,7 +1725,7 @@ test "a view of mip 1 alone samples mip 1 of a three-mip texture" {
 	assert sampleCentre(device, texture.createView({ label: null, baseMipLevel: 1, mipLevelCount: 1 })) == GREEN;
 	assert sampleCentre(device, texture.createView({ label: null, baseMipLevel: 0, mipLevelCount: 1 })) == RED;
 	assert sampleCentre(device, texture.createView({ label: null, baseMipLevel: 2, mipLevelCount: 1 })) == BLUE;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1756,7 +1756,7 @@ test "a single-mip attachment view renders into mip 1 and leaves mip 0 alone" {
 	const half = readTexture(device, target, 1, 0, 32, 32);
 	assert texelAt(half, 256, 0, 0) == BLUE && texelAt(half, 256, 16, 16) == RED;
 	assert readTexel(device, target, 0, 0, 32, 32) == 0;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1778,7 +1778,7 @@ test "a two-dimensional array writes per layer and a 2d view at baseArrayLayer s
 	assert sampleCentre(device, texture.createView({ label: null, dimension: "2d", baseArrayLayer: 2 })) == BLUE;
 	assert sampleCentre(device, texture.createView({ label: null, dimension: "2d", baseArrayLayer: 1 })) == GREEN;
 	assert sampleCentre(device, texture.createView({ label: null, dimension: "2d", baseArrayLayer: 0 })) == RED;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1796,7 +1796,7 @@ test "a six-layer texture creates a cube view and a cube-array view" {
 	const cubes = texture.createView({ label: null, dimension: "cube-array", arrayLayerCount: 6 });
 	const faces = texture.createView({ label: null, dimension: "2d-array", baseArrayLayer: 3, arrayLayerCount: 3 });
 	assert cube.isAlive() && cubes.isAlive() && faces.isAlive();
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1816,7 +1816,7 @@ test "a cube view at baseArrayLayer 6 samples the second cube of a twelve-layer 
 	const module = sampledModule(device, "cube", VERTEX_HLSL, CUBE_FRAGMENT_HLSL, GPUShaderStage.FRAGMENT as int32);
 	assert sampleCentreWith(device, module, texture.createView({ label: null, dimension: "cube", baseArrayLayer: 6 })) == BLUE;
 	assert sampleCentreWith(device, module, texture.createView({ label: null, dimension: "cube", baseArrayLayer: 0 })) == RED;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1837,7 +1837,7 @@ test "a 4x4x4 three-dimensional texture takes a write with rowsPerImage and a 3d
 	const volume = texture.createView({ label: null, dimension: "3d" });
 	const volumeMip = texture.createView({ label: null, dimension: "3d", baseMipLevel: 1, mipLevelCount: 1 });
 	assert volume.isAlive() && volumeMip.isAlive();
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1869,7 +1869,7 @@ test "a resolve target at baseMipLevel 1 and at baseArrayLayer 1 receives the re
 	resolveInto(device, layered.createView({ label: null, dimension: "2d", baseArrayLayer: 1 }));
 	assert readTexel(device, layered, 0, 1, SIZE / 2, SIZE / 2) == BLUE;
 	assert readTexel(device, layered, 0, 0, SIZE / 2, SIZE / 2) == RED;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1891,7 +1891,7 @@ test "a colour attachment with depthSlice 2 clears that slice of a 3d texture al
 	assert readTexel(device, volume, 0, 2, 2, 2) == BLUE;
 	assert readTexel(device, volume, 0, 1, 2, 2) == 0;
 	assert readTexel(device, volume, 0, 3, 2, 2) == 0;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1922,7 +1922,7 @@ test "a writeTexture sub-rect reads back through copyTextureToBuffer from origin
 			assert texelAt(read, 256, x, y) == want;
 		}
 	}
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1950,7 +1950,7 @@ test "a depth16unorm texture round-trips a buffer copy" {
 	assert (read[0] as uint32) + ((read[1] as uint32) << 8) == 1000;
 	assert (read[256 + 6] as uint32) + ((read[256 + 7] as uint32) << 8) == 8000;
 	assert (read[3 * 256 + 6] as uint32) + ((read[3 * 256 + 7] as uint32) << 8) == 16000;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1966,7 +1966,7 @@ test "a MAP_READ buffer mapped over its first 8 bytes returns exactly those byte
 	destination.unmap();
 	assert read.length == 8;
 	for (let i = 0; i < 8; i++) { assert read[i] == (9 - i) as uint8; }
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -1979,7 +1979,7 @@ test "a compute module built from precompiled DXBC with empty text doubles a sto
 	dispatchTimes(device, device.createShaderModule(descriptor), { binding: 0, buffer: storage }, 1);
 	const read = readStorage(device, storage);
 	assert read[0] == 2 && read[4] == 4 && read[8] == 6 && read[12] == 8;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -2006,7 +2006,7 @@ test "the limits are the constants the backend enforces, and the features say wh
 	const features = device.features();
 	assert features.has("timestamp-query") && features.has("float32-filterable") && features.has("rg11b10ufloat-renderable");
 	assert !features.has("texture-compression-bc") && !features.has("depth32float-stencil8") && !features.has("shader-f16");
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -2027,7 +2027,7 @@ test "debug groups and markers in the encoder, a labelled render pass and a labe
 	compute.end();
 	encoder.popDebugGroup();
 	device.queue.submit(encoder.finish());
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -2043,7 +2043,7 @@ test "a label reaches the native object as its D3D12 name" {
 	const length = dx12ObjectName(nativeTexture(texture), name[0], 64);
 	assert length == 16;
 	assert name[0] == 108 && name[9] == 116 && name[15] == 101;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	device.destroy();
 }
 
@@ -2065,7 +2065,7 @@ test "the swapchain texture copies out of a composition back buffer, resolved wh
 	frame.copyTextureToBuffer({ texture: multi }, { buffer: copied, offset: 0, bytesPerRow: 256, rowsPerImage: 8 }, { width: 8, height: 8, depthOrArrayLayers: 1 });
 	device.queue.submit(frame.finish());
 	assert texelAt(readBack(copied), 256, 7, 7) == BLUE;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	closeSurface(surface);
 	device.destroy();
 }
@@ -2077,7 +2077,7 @@ test "the door reads a cleared bgra8 target back as RGBA and refuses a buffer of
 		colorFormat: "rgba8unorm",
 		sampleCount: 1,
 		warp: true,
-		debug: true,
+		debug: D3D12_DEBUG_LAYER,
 	});
 	const image = doorMakeTargetImage(8, 8, 4);
 	const view = doorMakeTextureView(image);
@@ -2089,6 +2089,6 @@ test "the door reads a cleared bgra8 target back as RGBA and refuses a buffer of
 	assert out[8 * 8 * 4 - 4] == 0 && out[8 * 8 * 4 - 2] == 255;
 	let wrong: Vec<uint8> = new Array(8 * 8 * 4 - 1);
 	assert doorReadTexture(image, 0, 0, 8, 8, wrong) == 0;
-	assert drainDebugMessages() == 0;
+	assert debugLayerMessages() == 0;
 	doorShutdown();
 }

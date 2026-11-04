@@ -1,3 +1,4 @@
+import { D3D12_DEBUG_LAYER } from "./d3d12DebugLayer";
 // Prewarm: the keys a run built are read back (keysOf), kept as text, and built again before the
 // first draw that needs them (prewarm), through the path a cache miss takes.
 
@@ -31,7 +32,7 @@ when (windows && !voidDummy && !voidVulkan && !voidD3d12) {
 }
 when (voidD3d12) {
 	import { doorSetupWith, doorValid } from "../gpu/doorGpu.ms";
-	import { drainDebugMessages } from "../webgpu/d3d12/backend.ms";
+	import { debugLayerMessages } from "./d3d12DebugLayer";
 }
 
 const RGBA8 = 2;
@@ -209,7 +210,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 				depthFormat: "depth24plus-stencil8",
 				sampleCount: 1,
 				warp: true,
-				debug: true,
+				debug: D3D12_DEBUG_LAYER,
 			});
 		} else {
 			doorSetup(warpDevice(), warpContext(), RGBA8, DEPTH_STENCIL, 1);
@@ -218,7 +219,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 
 	function closeDoor(): uint64 {
 		let messages: uint64 = 0;
-		when (voidD3d12) { messages = drainDebugMessages(); }
+		when (voidD3d12) { messages = debugLayerMessages(); }
 		doorShutdown();
 		return messages;
 	}

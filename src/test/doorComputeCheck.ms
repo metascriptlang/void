@@ -1,3 +1,4 @@
+import { D3D12_DEBUG_LAYER } from "./d3d12DebugLayer";
 // Compute through the door: a registered compute program runs on storage buffers the way a render
 // program draws, and the pass state refuses a draw call inside a compute pass and a compute call
 // outside one. The dispatch result is read back on d3d11 and d3d12, which execute it.
@@ -45,7 +46,7 @@ when (windows && !voidDummy && !voidVulkan && !voidD3d12) {
 }
 when (voidD3d12) {
 	import { doorSetupWith } from "../gpu/doorGpu.ms";
-	import { drainDebugMessages } from "../webgpu/d3d12/backend.ms";
+	import { debugLayerMessages } from "./d3d12DebugLayer";
 }
 
 const WORKGROUP = 8;
@@ -149,7 +150,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 		when (voidDummy) {
 			doorSetup(null, null, RGBA8, NO_DEPTH, 1);
 		} else when (voidD3d12) {
-			doorSetupWith({ device: null, context: null, colorFormat: "rgba8unorm", sampleCount: 1, warp: true, debug: true });
+			doorSetupWith({ device: null, context: null, colorFormat: "rgba8unorm", sampleCount: 1, warp: true, debug: D3D12_DEBUG_LAYER });
 		} else {
 			doorSetup(warpDevice(), warpContext(), RGBA8, NO_DEPTH, 1);
 		}
@@ -157,7 +158,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 
 	function closeDoor(): uint64 {
 		let messages: uint64 = 0;
-		when (voidD3d12) { messages = drainDebugMessages(); }
+		when (voidD3d12) { messages = debugLayerMessages(); }
 		doorShutdown();
 		return messages;
 	}

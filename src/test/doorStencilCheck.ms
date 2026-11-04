@@ -1,3 +1,4 @@
+import { D3D12_DEBUG_LAYER } from "./d3d12DebugLayer";
 // Stencil through the door: a pipeline's stencil state reaches the device, the reference is set per
 // draw without making a pipeline, the pass clears the stencil to a value or loads it, and a stencil
 // on a target with no stencil bits is refused naming the pipeline.
@@ -146,7 +147,7 @@ when (windows && !voidDummy && !voidVulkan && !voidD3d12) {
 }
 when (voidD3d12) {
 	import { doorSetupWith } from "../gpu/doorGpu.ms";
-	import { drainDebugMessages } from "../webgpu/d3d12/backend.ms";
+	import { debugLayerMessages } from "./d3d12DebugLayer";
 }
 
 const RGBA8 = 2;
@@ -177,7 +178,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 		when (voidDummy) {
 			doorSetup(null, null, RGBA8, NO_DEPTH, 1);
 		} else when (voidD3d12) {
-			doorSetupWith({ device: null, context: null, colorFormat: "rgba8unorm", sampleCount: 1, warp: true, debug: true });
+			doorSetupWith({ device: null, context: null, colorFormat: "rgba8unorm", sampleCount: 1, warp: true, debug: D3D12_DEBUG_LAYER });
 		} else {
 			doorSetup(warpDevice(), warpContext(), RGBA8, NO_DEPTH, 1);
 		}
@@ -201,7 +202,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 		scene.color.close();
 		scene.depth.close();
 		let messages: uint64 = 0;
-		when (voidD3d12) { messages = drainDebugMessages(); }
+		when (voidD3d12) { messages = debugLayerMessages(); }
 		doorShutdown();
 		return messages;
 	}
