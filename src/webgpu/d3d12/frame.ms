@@ -19,7 +19,10 @@ import { StateTracker, decay, flushTransitions } from "./tracker.ms";
 @passL("-ldxgi");
 @passL("-ldxguid");
 
-export const FRAMES_IN_FLIGHT: int32 = 2;
+export const FRAME_LATENCY: uint32 = 2;
+// One slot more than the swapchain lets the CPU run ahead, so reopening a slot after a submit finds its frame
+// finished; with FRAME_LATENCY slots every submit waited on the previous frame's GPU work (~0.3 ms a 2D frame on d87).
+export const FRAMES_IN_FLIGHT: int32 = (FRAME_LATENCY as int32) + 1;
 export const DX12_OK: int32 = 0;
 const DX12_OUT_OF_MEMORY: int32 = -4;
 const DX12_DEVICE_REMOVED: int32 = -5;

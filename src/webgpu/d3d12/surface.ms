@@ -6,7 +6,7 @@ import {
 	dx12SwapchainRelease,
 	dx12SwapchainResize,
 } from "./d3d12.h";
-import { DX12_OK, NativeError, checked, stop, stopOnNative } from "./frame.ms";
+import { DX12_OK, FRAME_LATENCY, NativeError, checked, stop, stopOnNative } from "./frame.ms";
 import { StateTracker, trackTexture, untrack } from "./tracker.ms";
 
 export const PRESENT_MODE_VSYNC: int32 = 0;
@@ -16,7 +16,6 @@ const SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE: uint32 = 0x40;
 const SWAP_CHAIN_FLAG_ALLOW_TEARING: uint32 = 0x800;
 const PRESENT_ALLOW_TEARING: uint32 = 0x200;
 const PRESENT_DO_NOT_WAIT: uint32 = 0x8;
-const FRAME_LATENCY: uint32 = 2;
 const DXGI_R16G16B16A16_FLOAT: int32 = 10;
 const DXGI_R10G10B10A2_UNORM: int32 = 24;
 const DXGI_R8G8B8A8_UNORM: int32 = 28;
