@@ -1,7 +1,8 @@
 // Run in a process of its own (tests/isolated): it sets the door's device up.
 //
 // A retained scene that edits some UI instances uploads those instances' bytes and no others, in
-// ascending order with touching ranges merged, and a grown buffer is written whole.
+// ascending order with touching ranges merged, and a grown buffer is written whole. On Vulkan, whose
+// range writes are not pinned yet, every edit writes the whole stream and draws the same pixels.
 
 import { doorSetup, doorSubmitFrame, doorReadTexture } from "../../src/gpu/doorGpu";
 import { RenderTarget } from "../../src/gpu/target";
@@ -13,6 +14,14 @@ import { rgba, Color } from "../../src/void2d/types";
 import { UI_STRIDE } from "../../src/void2d/instanceLayout";
 
 when (voidDummy) {
+} else when (voidVulkan) {
+	import {
+		vulkanAdapterSelect,
+		vulkanDeviceCreate,
+		vulkanError,
+		vulkanInstanceCreate,
+		vulkanLoaderOpen,
+	} from "../../src/webgpu/vulkan/vulkan.h";
 } else when (windows) {
 	import { warpDevice, warpContext } from "../../src/test/d3d11Warp.h";
 	@passL("-ld3d11");
@@ -33,6 +42,12 @@ const NEW: Color = rgba(1.0, 0.0, 0.0, 1.0);
 function setupDevice(): void {
 	when (voidDummy) {
 		doorSetup(null, null, 2, PixelFormat.Depth as int32, 1);
+	} else when (voidVulkan) {
+		if (vulkanLoaderOpen() != 0 || vulkanInstanceCreate() != 0 || vulkanAdapterSelect(2, 0) != 0 || vulkanDeviceCreate() != 0) {
+			console.log(`dirtyUiUpload: ${(vulkanError() as string)}`);
+			unreachable;
+		}
+		doorSetup(null, null, 2, 0, 1);
 	} else when (windows) {
 		doorSetup(warpDevice(), warpContext(), 2, 0, 1);
 	} else when (macos) {
@@ -83,12 +98,21 @@ test "an edited UI instance uploads its own bytes, and touching edits merge into
 	let untouched: uint32 = 0;
 	when (!voidDummy) { untouched = pixelOf(target, 6); }
 
+	let oneBytes: int32 = UI_STRIDE;
+	let threeBytes: int32 = 3 * UI_STRIDE;
+	let threeWrites: int32 = 2;
+	when (voidVulkan) {
+		oneBytes = COUNT * UI_STRIDE;
+		threeBytes = COUNT * UI_STRIDE;
+		threeWrites = 1;
+	}
+
 	nodes[7].setColor(NEW);
 	frame(s, target);
 	const one: int32 = uploadBytes();
 	const oneWrites: int32 = uploadCount();
 	frameEnd();
-	assert one == UI_STRIDE && oneWrites == 1;
+	assert one == oneBytes && oneWrites == 1;
 	when (!voidDummy) {
 		assert pixelOf(target, 7) == 0xFF0000FF;
 		assert pixelOf(target, 6) == untouched;
@@ -102,7 +126,7 @@ test "an edited UI instance uploads its own bytes, and touching edits merge into
 	const merged: int32 = uploadBytes();
 	const mergedWrites: int32 = uploadCount();
 	frameEnd();
-	assert merged == 3 * UI_STRIDE && mergedWrites == 2;
+	assert merged == threeBytes && mergedWrites == threeWrites;
 	when (!voidDummy) {
 		assert pixelOf(target, 3) == 0xFF0000FF && pixelOf(target, 4) == 0xFF0000FF && pixelOf(target, 20) == 0xFF0000FF;
 		assert pixelOf(target, 7) == 0xFF0000FF && pixelOf(target, 5) == untouched;
