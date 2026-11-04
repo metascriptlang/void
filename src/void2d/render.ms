@@ -159,6 +159,7 @@ import {
 	trs2d,
 	inverse2d,
 	emptyBounds,
+	STALE_VIEW,
 } from "./types";
 import { BlendMode } from "../gpu/state";
 import { FilterPlan, planFilter, resolutionScale, targetRect } from "./filterPlan";
@@ -1022,6 +1023,19 @@ function quadTile(t: Tile, m: Transform2D, tint: Color, blend: BlendMode): void 
 	);
 }
 
+function emitPlainImage(
+	s: Scene2D, i: int32, t: Tile, world: Transform2D, col: Color, blend: BlendMode,
+	instanced: boolean, tl: Vec2, sizeX: float32, sizeY: float32,
+): boolean {
+	if (!instanced || s.imageStyleOf(i) != NO_IMAGE_STYLE) { return false; }
+	const view: uint32 = t.source.currentView();
+	if (view == STALE_VIEW) { return false; }
+	drawSpriteAffine(
+		view, t.alphaPremultiplied, blend, world, tl.x, tl.y, sizeX, sizeY,
+		t.u0, t.v0, t.u1, t.v1, col);
+	return true;
+}
+
 function emitImage(
 	s: Scene2D, i: int32, t: Tile, world: Transform2D, col: Color, blend: BlendMode,
 	instanced: boolean, tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2,
@@ -1237,12 +1251,16 @@ function emitNode(
 			}
 		},
 		DrawKind.Sprite => {
-			emitImage(s, i, s.contents[i].tile, world, col, blend, instanced,
-				tl, tr, br, bl, sizeX, sizeY, lbMin);
+			if (!emitPlainImage(s, i, s.contents[i].tile, world, col, blend, instanced,
+				tl, sizeX, sizeY)) {
+				emitImage(s, i, s.contents[i].tile, world, col, blend, instanced,
+					tl, tr, br, bl, sizeX, sizeY, lbMin);
+			}
 		},
 		DrawKind.Anim => {
 			const frame: int32 = animFrame(s, i);
-			if (frame != NO_FRAME) {
+			if (frame != NO_FRAME && !emitPlainImage(s, i, s.anims[payload].frames[frame], world,
+				col, blend, instanced, tl, sizeX, sizeY)) {
 				emitImage(s, i, s.anims[payload].frames[frame], world, col, blend, instanced,
 					tl, tr, br, bl, sizeX, sizeY, lbMin);
 			}
