@@ -8,6 +8,7 @@ export enum Feature {
 	Compute,
 	StorageBuffers,
 	TimestampQuery,
+	VertexStorage,
 }
 
 let current: GPUDevice = { id: 0, queue: { id: 0 } };
@@ -23,6 +24,7 @@ export function featureName(feature: Feature): string {
 		Feature.Compute => "Compute",
 		Feature.StorageBuffers => "StorageBuffers",
 		Feature.TimestampQuery => "TimestampQuery",
+		Feature.VertexStorage => "VertexStorage",
 	};
 }
 
@@ -33,6 +35,7 @@ export function featureOn(
 		Feature.Compute => limits.maxComputeInvocationsPerWorkgroup > 0,
 		Feature.StorageBuffers => limits.maxStorageBuffersPerShaderStage > 0,
 		Feature.TimestampQuery => features.has("timestamp-query"),
+		Feature.VertexStorage => limits.maxStorageBuffersInVertexStage > 0,
 	};
 }
 
