@@ -2,7 +2,7 @@
 
 Void's 2D layer: draw the **same pixels on every platform** (Metal / D3D11 / GL / WebGPU / WebGL2) through one MetaScript codebase. This is the layer that makes Neon's UI rendering "special" — instead of binding to per-OS native widgets, an opted-in app can render its UI through Void and get identical output everywhere.
 
-**This doc is the entry point.** It holds the conclusions. The evidence lives in four reference docs, each read from source with `file:line` citations:
+**This doc is the entry point.** It holds the conclusions. The initial reference evidence lives in four docs, each read from source with `file:line` citations; the general-2D extension is under "General-2D end-game" and "Other references" below:
 
 | Doc | Role |
 |---|---|
@@ -31,9 +31,10 @@ Neon (parent)            component model: View, Text, Flexbox, events, state, di
  void2d (this layer)                        void3d (camera/mesh/material)   ← opt-in
    node tables + quad batcher                       │
          │                                          │
-         └──────────── Void GPU bridge ─────────────┘   = oryol "Gfx" tier  ✅ DONE
-                              │   src/host/{bridge,gpu}
-                       sokol_gfx (floooh)  ← the load-bearing cross-platform dependency
+         └──────────── Void GPU door ───────────────┘   src/gpu/
+                              │
+                       Void's own device               src/webgpu/
+                       sokol remains its mechanism reference, not a build dependency
 ```
 
 > **Full 3-layer model** (A reconcile / B paint / C GPU) and who owns B+C per platform — native = OS, Void = owned: see [`~/metascript/neon/docs/RENDER-LAYERS.md`](../../neon/docs/RENDER-LAYERS.md). Void = Layers B+C; Neon = Layer A; they meet only at the Host interface.
@@ -49,6 +50,8 @@ Both required from day one: face 1 ships HUD/game now; face 2 is what the reconc
 
 Heaps is a game engine. Void is a rendering engine, and void2d must carry **application-UI rendering** when Void is a Neon backend — concretely, render a code editor like Zed: fine font control, high-quality antialiasing, fast and smooth. Decisions are judged against "a 13 px code font at 1× and 1.5× DPI looks and scrolls like Zed", not against HUD needs.
 
+**General 2D, not an editor-only certificate (the person, 2026-11-04).** "mình còn đang nói về 2d rendering nói chung". Editor/terminal parity is one workload contract. The end-game also needs sprites/HUD, vector geometry, clipping/compositing, cold work and bounded resource use. The "General-2D end-game" section separates measured coverage from candidates; adding reference sources does not authorize replacing the renderer or importing their frameworks.
+
 **The spirit (the human, 2026-09-29).** Void is a pure rendering engine and was never Heaps: WebGPU and sokol are first-class, and P5 step 5 already replaced h2d's objects with void3d's data model. Rendering power and performance come first. void2d exposes raw capability and leaves the app as much control as it can; convenience (policies, defaults, widgets, layout) is Neon's layer. Its syntax is the one that fits MetaScript's power and idiom best, not the one a Heaps user expects.
 
 **The rule.** For every surface and every mechanism:
@@ -59,7 +62,7 @@ Heaps is a game engine. Void is a rendering engine, and void2d must carry **appl
 - **The mechanism comes from the references**: GPUI first, then Makepad and Ghostty where GPUI is weak, Bevy and void3d for data. void2d takes **everything in their rendering layer**, except where one of three reasons applies:
   - **N** — Neon or its Void host already covers it (component model, layout, events, focus, lists, a11y). Void renders; Neon + Void is the combination.
   - **W** — the reference's mechanism is worse than one Void has or plans, or repairs a problem Void does not have.
-  - **P** — not portable to sokol_gfx / GLES3 / WebGL2, or against "same pixels on every platform".
+  - **P** — not portable to the GLES3 / WebGL2 floor, or against "same pixels on every platform". Sokol's former API ceilings are not platform ceilings; evaluate them against the owned device (`docs/GPU.md` "Control sokol refuses").
 
   Every item of each reference carries one of these in its doc's disposition table.
 
@@ -75,7 +78,7 @@ Each line names who supports it: **G** GPUI, **M** Makepad, **Gh** Ghostty, **H*
 - **Persistent instance ranges with dirty upload.** A node that did not change has byte-identical instance data. Makepad is the running proof: retained draw lists, and an **in-place paint-only patch** — hover, focus and caret blink write instance floats and never walk the tree (M). Skip an upload when the bytes are identical (M).
 - **Dirty → draw + present; else present the retained list or do nothing** (G, M, Gh). `Scene` reports whether it changed; scheduling belongs to the host.
 - **Append N instances with the command resolved once** — the inner loop of a glyph run and of `TileGroup` (M `begin_many_instances`).
-- One GLSL source through sokol-shdc. All three references maintain ports or a generator by hand, and all three have drifted (G gradients and dither, Gh cursor colour, M `modf`).
+- One shader source through Void's shader IR and printers (`src/void2d/shader2d.ms`, `src/shader/`; `docs/SHADER-IR.md`). The earlier phase records below measured GLSL through sokol-shdc; that is historical, not the current build path.
 
 ### Order and batching
 
@@ -313,7 +316,53 @@ cross-backend golden readback and conformance, starting with the existing GL/GLE
 WebGPU still needs an adapter plus asynchronous readback; the compiler reachability card
 remains open without a workaround in void.
 
-## Roadmap
+## General-2D end-game (2026-11-04)
+
+The goal is a measured renderer, not a collection of foreign architectures. Keep both the immediate and retained faces, painter's order, modular text and the WebGL2 floor. A native fast path must keep the portable path's result; a lower call count is not itself a performance win.
+
+### What owning the backend already bought
+
+The live consumers are `batcher.ms` `uploadGlyphPages` (dirty texture sub-rects) and `void2dReplayList` (persistent dirty UI ranges), plus the door's content-keyed bind cache. These are real uses of control sokol refused, not future proposals. Vulkan's UI-range guard remains until its range-write pin lands; a backend capability without that pin is not consumer acceptance.
+
+Static retained filter results are also reused: `draw.ms` `flushTargets` supplies target commands only while `DrawContext2D.targetsPending` is set. `displayList.ms` `resetContext` re-arms them. Do not add a second cache on the claim that every retained frame rerenders filters. Unrelated edits, target ownership, size/DPI and device-generation changes still need a focused pass-count/readback check.
+
+### Reference trace and rejected shortcuts
+
+- **Sprites and texture changes:** PixiJS `4fabfa6409c35cc114cb4fbfbb812c9cd8abdced`, `src/rendering/batcher/shared/Batcher.ts` `break` (:485–655), walks elements in order, assigns texture slots and breaks at the texture limit, blend or topology change. Its `src/scene/container/RenderGroup.ts` separates structural instruction rebuilds from renderable updates and explicit texture-cache invalidation. Bevy `2bddbdfd7c920d1ea61245dcdb7ff1c155e6b03b`, `crates/bevy_sprite/src/render/mod.rs` `prepare_sprite_image_bind_groups` (:630–842), batches consecutive compatible sprites, breaking on a foreign item or image change. Void already has retained commands and separate sprite/UI streams; measure alternating textures before porting bounded multi-texture batches. This batching opportunity is not unique to replacing sokol.
+- **Vector approximation, not a fictional baked-AA bug:** Flutter/Impeller `f101991378559ed38c9887e382066bb7ee3a17f0`, `engine/src/flutter/impeller/entity/geometry/stroke_path_geometry.cc` `RecordCurve` (:223–235) and `StrokeSegmentsGeometry::GetPositionBuffer` (:753–777), selects curve subdivision from transform scale and stroke width; `fill_path_geometry.cc` `GetPositionBuffer` (:43–50) also passes transform scale to tessellation. Void's `draw.ms` `edgeMove`/`normalScale` already adjusts fringe extrusion in device pixels at draw time. Moving that arithmetic to a vertex shader is a performance candidate, not a correctness fix. Separately, `graphics.ms` `arcSegs`/`circleSegs` has a 64-segment local-space cap, and Bézier helpers take explicit segment counts: measure curve error under scale/DPI before changing retained-mesh authoring or adding retained path commands.
+- **Affine analytic coverage:** Skia `13a4613f6824edf734f4fc57d16dbc7d2d575a6e` (the Flutter pin), `src/gpu/graphite/render/AnalyticRRectRenderStep.cpp` `fragmentCoverageSkSL` (:485–495), passes a Jacobian into coverage. `src/sksl/sksl_graphite_frag.sksl` `$inverse_grad_len` (:1607–1617) transforms the local gradient to device space. This is source evidence for studying Void's existing anisotropic SDF bound, not a measured replacement or permission to reopen paused outline zoom.
+- **Broader vector prior art:** Vello `b638fff975968bc3b2741a628be2c49146db6eca` is not all compute-only. `vello_common/src/strip_generator.rs` `generate_filled_path`/`generate_stroked_path` (:120–188) flattens transformed paths and builds analytic-AA tiles/strips on CPU; `vello_gpu/src/render/webgl/mod.rs` `render` (:163–231) has a native WebGL2 consumer. The compute renderer is separate under `research/`. Sparse strips are relevant evidence for arbitrary paths and compositing, but adopting that architecture wholesale is not this optimization plan. No Vello/Impeller/Skia performance comparison was run here.
+
+### Acceptance matrix and order
+
+Each row needs a reproducible scene, correctness evidence and phase-specific measurements. The existing harness is the starting point, not a reason to create another runner.
+
+| Contract | Existing evidence/check to extend | Missing distinction before claiming end-game |
+|---|---|---|
+| UI/text, sparse edits and scroll | `tests/bench/gpuiParity/`, `lineShapesCheck`, `frameMarksCheck` | heavy edits are parity, not a lead; keep caret/selection/RTL and retained-line reuse |
+| Sprites/HUD, sparse and dense motion | `bench/web/cases/sprites/`, sprite-paint checks, `benchHierarchy` | existing web comparison uses one texture; add alternating textures and structural churn separately |
+| Paths/strokes and transforms | Graphics/fill tests and independent coverage oracles | vary zoom, shear/non-uniform scale, DPI and thin strokes; separate tessellation error from AA width |
+| Clips, filters and compositing | retained target/filter checks and goldens | unchanged frame, unrelated sibling edit, then content/mask/size/DPI/context invalidation; count executed passes and compare pixels |
+| Cold work and memory | `tests/bench/firstPaint.ms`, lifetime/atlas checks, JS/wasm size budgets | distinguish scene construction, cold paint/prepare and first submit/present; report their total only when all are actually timed |
+| Backend efficiency | door/backend checks and gpu-ms's same-toolchain sokol A/B | Metal/D3D11 plus WebGL2/WebGPU real consumers; generic/mixed uniform bits, mutation-after-apply and compute consumers |
+
+Execution order: (1) restore cheap checks and remove measured CPU duplication without changing public geometry; (2) measure uniform coalescing and native instance addressing at their consumers; (3) address measured texture/batching or vector/compositing gaps; (4) rerun the reached workload/backend cells and resource budgets. A DrawContext2D split, another filter cache or a compute renderer is not an automatic step. Full SVG/Canvas feature parity is not inferred from "general 2D"; existing named refusals remain explicit scope limits.
+
+### First-paint evidence and rejected experiment
+
+The previous session recorded the Ui headless paint regression on rtx (`-d:voidDummy --release`): `c99fa0f0` 17.2 ms versus later main 24.5 ms, 539→746 Mcyc. Its attribution was +106 Mcyc assembling per-line wraps into `TextLayout`, +52 in per-line shape objects and +71 in record/placement; one-line-label allocations rose 3→8. A three-allocation trim changed no timing and was reverted. This is the prior session's record, not a fresh attribution from the audit.
+
+`tests/bench/firstPaint.ms` now reproduces the scene with each scene closed after its first paint. On base tree `add17c34570d468d8abcb8caf4317f5a44998375`, rtx, msc `f357ebc1c7a`, `msc build tests/bench/firstPaint.ms -d:voidDummy --release` then the executable: the smoke's six paints took 23.0–28.3 ms; construction 4.5–5.5 ms. These are elapsed CPU-phase spans (`performance.now`), not process-CPU time, present latency or a quiet performance result. The first process-local scene rasterized 40 glyph tiles; later scenes reused those tiles.
+
+A candidate replaced per-glyph reconstruction with an owned Vec copy only for a single hard line without runs, preserving the public flat layout. Native `lineShapesCheck` plus imported checks passed 429/429 on control and candidate. Both Node-JS arms (`-d:voidDummy -d:webgl2 --target=js`) had the same 93 pass / 12 fail set: native path-font inputs reach browser Canvas2D, where Node has no `document`. This does not certify browser-JS; no DOM/font stub was added.
+
+Three non-quiet pairs had paint medians control/candidate 44.67/47.67, 47.19/43.70 and 60.13/74.99 ms. A five-pair retry reserved `--quiet 1`, but the job lasted 100 s, exceeded that reservation's cap, and contained paint samples up to 8.9 s. Reject the whole retry as performance evidence rather than selecting its later rounds. The candidate was reverted: no reliable net benefit was established, and it did not remove the duplicated layout model. The alignment/cache-isolation and empty-run-map tests remain to guard the eventual root change. Logs: `/tmp/void2d-layout-copy3.log`, `/tmp/void2d-layout-copy-quiet.log`; control/candidate executable SHA-256 `3956be8c77ecd1c3f8ca201be289f5d898c00befa6fb570766f9be15593ade73` / `5ff220d28cc5e16dc82ab1d4fc7fd986821e2da20b58bc1c3fa37b0d4113c9b1`.
+
+For uniforms, current D3D11 already uploads per shader cbuffer and skips unchanged bytes (`2b5f5aa2`). Coalescing two 16-byte blocks at 256-aligned offsets trades 32 payload bytes for at least 272 contiguous bytes plus an additional snapshot copy. Preserve `doorApplyUniformsOf<T>`, copy during apply (the source can change immediately), and flush before every render/compute consumer. Measure one-block and multi-block cases on current D3D11 and Metal before restoring the old float-only staging implementation. `firstInstance` must not promise a base-instance builtin on WebGL2: its pointer-offset fallback does not change `gl_InstanceID`, and `drawOffsetRefusal` protects that case.
+
+Measurements use matched inputs/toolchains and quiet, interleaved rounds (3+ for heavy phases). Report CPU, GPU/present waits, draws/binds, uploaded payload versus padding and resident resources separately. Compile-only, dummy counters and historical results do not certify a real backend or an unmeasured workload. The new headless first-paint benchmark closes each scene and times elapsed construction/paint spans only; do not splice its absolute numbers into the older probe that kept scenes alive.
+
+## Historical implementation roadmap
 
 Nine phases. Each ends with something demonstrable; none leaves `src/examples/renderer2d.ms` — the demo the golden suite captures — broken; each names the "Known defects" entries it closes. How a phase is proved is [TESTING.md](TESTING.md), and the tier names below (T0–T5) come from there.
 
@@ -3873,7 +3922,7 @@ bench CPU/frame 2.21 / 1.93 / 2.23 ms, probe `paint` at 10 000 dirty 1.77 / 1.48
   this is not an opaque or unforgeable owner boundary.
 - **WebGPU uniform budget**: two uniform blocks per draw cost 512 B of the per-frame uniform buffer on WebGPU and Metal. Measure at P1 and fold what does not change per draw into fewer blocks if it bites.
 - Reference facts were read from source, not benchmarked. Instance sizes and the one-draw-call claim are from planned layouts, not measured — P2's exit is where they become numbers.
-- Non-uniform scale on SDF boxes and `erf` shadows is approximated by one antialiasing width, `1 / sqrt(sx * sy)` in local units (`aaWidthForAffine`, the vertex shader's `uiVs`). For a box edge the true device ramp has slope `sx` or `sy`, so the worst coverage error along an edge is `0.5 * (1 - sqrt(min(sx, sy) / max(sx, sy)))`: 0.146 at 2:1, 0.211 at 3:1, 0.25 at 4:1, always under 0.5, zero when uniform. Corners exceed that prediction by up to about 0.03 (below). Measured in T0 on the pixels of `prim/aaNonUniformBox` against the supersampled oracle (`devicePixelCoverage`, independent of `sdf.ms`): edges 0.1405 / 0.1950 / 0.1950 / 0.2271 for 2:1, 3:1, 1:3 and 4:1 rotated 20 degrees against predicted 0.1464 / 0.2113 / 0.2113 / 0.25, corners 0.148 / 0.207 / 0.207 / 0.277; the exact per-axis slope reads at most 0.027 on a dense sweep of the same geometry, so the oracle is not the cause. The blurred `erf` shadow is evaluated entirely in local space and is exact under any scale; only the hard-edge fill, the border and a hard shadow use the width. Scene2D's `trs2d` cannot shear and Neon never sets `scaleX`, so no consumer sees the larger errors. Makepad's `antialias(p)` (`draw/src/shader/sdf.rs:166-168`, read) is one isotropic width too, so bounding it is on-reference; the exact per-edge slope (`1 / |A^-T n|`, or `fwidth`) is NEW MECHANISM relative to both references and is not built. The T3 capture `prim/aaNonUniformBox` judges each box inside [predicted - 0.05, predicted + 0.02] on its edges; only the 4:1 box lies outside the error of an arithmetic-mean width, so it is the one that convicts the shader, and the 2:1 and 3:1 boxes confirm the bound without separating the two formulas. The capture exists (`tests/golden/d3d11/prim/aaNonUniformBox.png`, `78795b3`) and `runAffineFill` in `tests/oracle/captureCheck.ms` judges it.
+- Non-uniform scale on SDF boxes and `erf` shadows is approximated by one antialiasing width, `1 / sqrt(sx * sy)` in local units (`aaWidthForAffine`, the vertex shader's `uiVs`). For a box edge the true device ramp has slope `sx` or `sy`, so the worst coverage error along an edge is `0.5 * (1 - sqrt(min(sx, sy) / max(sx, sy)))`: 0.146 at 2:1, 0.211 at 3:1, 0.25 at 4:1, always under 0.5, zero when uniform. Corners exceed that prediction by up to about 0.03 (below). Measured in T0 on the pixels of `prim/aaNonUniformBox` against the supersampled oracle (`devicePixelCoverage`, independent of `sdf.ms`): edges 0.1405 / 0.1950 / 0.1950 / 0.2271 for 2:1, 3:1, 1:3 and 4:1 rotated 20 degrees against predicted 0.1464 / 0.2113 / 0.2113 / 0.25, corners 0.148 / 0.207 / 0.207 / 0.277; the exact per-axis slope reads at most 0.027 on a dense sweep of the same geometry, so the oracle is not the cause. The blurred `erf` shadow is evaluated entirely in local space and is exact under any scale; only the hard-edge fill, the border and a hard shadow use the width. Scene2D's `trs2d` cannot shear and Neon never sets `scaleX`, so no consumer sees the larger errors. Makepad's `antialias(p)` (`draw/src/shader/sdf.rs:166-168`, read) is one isotropic width too, so bounding it is on-reference; per-edge device-gradient normalization was not covered by that GPUI/Makepad read. The later Skia trace under "General-2D end-game" supplies a reference mechanism, but it is not implemented or performance-verified here. Its L2 gradient norm is not numerically identical to `fwidth`'s L1 norm. The T3 capture `prim/aaNonUniformBox` judges each box inside [predicted - 0.05, predicted + 0.02] on its edges; only the 4:1 box lies outside the error of an arithmetic-mean width, so it is the one that convicts the shader, and the 2:1 and 3:1 boxes confirm the bound without separating the two formulas. The capture exists (`tests/golden/d3d11/prim/aaNonUniformBox.png`, `78795b3`) and `runAffineFill` in `tests/oracle/captureCheck.ms` judges it.
 - The command carries one rotated clip basis. Nested rotated Masks with the same world edge axes intersect exactly; different axes are rejected loudly rather than leaking. Whether Neon needs arbitrary rotated-mask intersections is unknown.
 - System font discovery is host work; whether Ion or the Neon host owns it is undecided. Ghostty's Windows scanner is a stopgap, not a model.
 - The Zed editor element (`crates/editor`) is outside the sparse clone: how it uses `paint_layer`, `split_at` and tab expansion was not read.
@@ -3902,7 +3951,7 @@ void2d's render base is a **hand-rolled quad batcher on Void's own GPU bridge** 
 | **sokol_gp** (edubart) | not vendored — [github](https://github.com/edubart/sokol_gp) | Read its quad-batching + transform-stack approach as a model. | **Do not compile** (version mismatch, see decision above). |
 | **fontstash** | removed at P3 step 3 | The text path before P3; stb_truetype 1.26 replaced it. | Its integer layout, its single fixed atlas. |
 
-Local clones of the four main references: `~/projects/heaps` @ `b9aa6dcb`, `~/projects/gpui` (sparse `crates/gpui*`) @ `b961b49`, `~/projects/makepad` @ `5e9a697`, `~/projects/ghostty` @ `a301054`. No further rendering references are planned: models that differ too much do not combine.
+The initial four reference docs name their pinned sources: Heaps, GPUI, Makepad and Ghostty. The 2026-11-04 general-2D audit also reads PixiJS and Bevy for sprites/batches, Impeller and Skia for vector geometry/coverage, and Vello GPU for broad-platform path rasterization. Exact pins and source anchors are under "General-2D end-game". A reference is selected per concern; its presence is not a plan to combine whole renderer models. Sparse checkouts may keep the source only in Git objects; absence of a materialized directory is not absence of the implementation.
 
 ## Text design (2026-06-21): one shared glyph layer, two consumers
 
