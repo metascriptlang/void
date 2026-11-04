@@ -171,6 +171,9 @@ export type GPUVertexFormat =
 	| "sint32x3"
 	| "sint32x4";
 export type GPUVertexStepMode = "vertex" | "instance";
+// What a vertex format hands the shader once fetched (WebGPU "vertex formats" table): unorm,
+// snorm and float formats arrive as float, uintN as u32, sintN as i32.
+export type GPUVertexBaseType = "float" | "uint" | "sint";
 export type GPUFilterMode = "nearest" | "linear";
 export type GPUAddressMode = "clamp-to-edge" | "repeat" | "mirror-repeat";
 export type GPUQueryType = "occlusion" | "timestamp";
@@ -200,6 +203,15 @@ export function vertexFormatSize(format: GPUVertexFormat): int32 {
 		"float32x2" | "uint32x2" | "sint32x2" => 8,
 		"float32x3" | "uint32x3" | "sint32x3" => 12,
 		"float32x4" | "uint32x4" | "sint32x4" => 16,
+	};
+}
+
+export function vertexFormatBaseType(format: GPUVertexFormat): GPUVertexBaseType {
+	return match (format) {
+		"uint8x2" | "uint8x4" | "uint16x2" | "uint16x4" | "uint32" | "uint32x2" | "uint32x3" | "uint32x4" => "uint" as GPUVertexBaseType,
+		"sint8x2" | "sint8x4" | "sint16x2" | "sint16x4" | "sint32" | "sint32x2" | "sint32x3" | "sint32x4" => "sint" as GPUVertexBaseType,
+		"unorm8x2" | "unorm8x4" | "snorm8x2" | "snorm8x4" | "unorm16x2" | "unorm16x4" | "snorm16x2" | "snorm16x4" |
+			"float16x2" | "float16x4" | "float32" | "float32x2" | "float32x3" | "float32x4" => "float" as GPUVertexBaseType,
 	};
 }
 
@@ -277,6 +289,9 @@ export struct GPUShaderAttribute {
 	location: int32;
 	nativeName: string | null;
 	semanticIndex: int32;
+	// The scalar the vertex stage reads at this location; null leaves the format unchecked, for a
+	// descriptor written by hand around shader text that Void does not parse.
+	baseType: GPUVertexBaseType | null;
 }
 
 export struct GPUShaderModuleDescriptor {

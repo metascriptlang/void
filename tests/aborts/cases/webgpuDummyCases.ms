@@ -15,6 +15,7 @@
 // expect vertexBufferDestroyed: GPUBuffer
 // expect writeAfterRead: after a command this frame read it: write it before its first use in the frame, or create it transient
 // expect transientUnwritten: is read in a frame that has not written it
+// expect uintIntoFloatInput: vertex.buffers[0].attributes[0] feeds uint32 (uint) to shader location 0, which the vertex stage reads as float
 import { argv } from "std/process";
 import {
 	GPUBindGroupDescriptor,
@@ -55,7 +56,7 @@ function run(name: string): void {
 		console.log("an indirect dispatch from a buffer without INDIRECT returned");
 		return;
 	}
-	const draws = ["stripIndexMismatch", "shaderDestroyed", "uniformOverrun", "groupFromOtherPipeline", "indexRangeOverrun", "vertexRangeOverrun", "afterGroupSwap", "afterPipelineSwap", "afterVertexSlotAdded", "afterIndexFormat", "nextPassVertexReset", "vertexOffsetShrinks", "vertexBufferDestroyed", "writeAfterRead", "transientUnwritten"];
+	const draws = ["uintIntoFloatInput", "stripIndexMismatch", "shaderDestroyed", "uniformOverrun", "groupFromOtherPipeline", "indexRangeOverrun", "vertexRangeOverrun", "afterGroupSwap", "afterPipelineSwap", "afterVertexSlotAdded", "afterIndexFormat", "nextPassVertexReset", "vertexOffsetShrinks", "vertexBufferDestroyed", "writeAfterRead", "transientUnwritten"];
 	if (!draws.includes(name)) {
 		console.log(`no case named '${name}'`);
 		process.exit(2);
@@ -75,12 +76,12 @@ function run(name: string): void {
 		size: 16,
 		nativeSlot: 0,
 	};
-	sd.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	sd.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0, baseType: "float" };
 	const module = device.createShaderModule(sd);
 	let pd: GPURenderPipelineDescriptor = { label: "strip" };
 	pd.vertex.module = module;
 	pd.vertex.buffers[0].arrayStride = 8;
-	pd.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	pd.vertex.buffers[0].attributes[0] = { format: name == "uintIntoFloatInput" ? "uint32" : "float32x2", offset: 0, shaderLocation: 0 };
 	pd.fragment.module = module;
 	pd.fragment.targets[0].format = "rgba8unorm";
 	pd.primitive.topology = "triangle-strip";

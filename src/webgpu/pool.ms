@@ -1,4 +1,4 @@
-import { BindingKind, GPUIndexFormat, GPUTextureFormat, GPU_MAX_BIND_GROUP_ENTRIES, GPU_MAX_SHADER_BINDINGS, GPU_MAX_VERTEX_BUFFERS } from "./types.ms";
+import { BindingKind, GPUIndexFormat, GPUShaderAttribute, GPUTextureFormat, GPU_MAX_BIND_GROUP_ENTRIES, GPU_MAX_SHADER_BINDINGS, GPU_MAX_VERTEX_ATTRIBUTES, GPU_MAX_VERTEX_BUFFERS } from "./types.ms";
 
 export const SLOT_SHIFT = 16;
 export const SLOT_MASK = 0xFFFF;
@@ -188,6 +188,7 @@ export struct ShaderRecord {
 	groups: int32;
 	readsInstanceIndex: boolean;
 	readsVertexIndex: boolean;
+	attributes: GPUShaderAttribute[GPU_MAX_VERTEX_ATTRIBUTES];
 }
 
 export struct LayoutRecord {

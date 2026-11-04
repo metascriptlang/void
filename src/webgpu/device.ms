@@ -266,6 +266,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 		compute: descriptor.computeCode != "" || descriptor.computeBytecode.length > 0,
 		readsInstanceIndex: descriptor.readsInstanceIndex,
 		readsVertexIndex: descriptor.readsVertexIndex,
+		attributes: descriptor.attributes,
 	};
 	for (let i = 0; i < descriptor.bindings.length; i++) {
 		const kind = descriptor.bindings[i].kind;

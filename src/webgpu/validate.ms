@@ -49,6 +49,7 @@ import {
 	samplerMaxLod,
 	shaderBindingsRefusal,
 	stop,
+	vertexFormatBaseType,
 	vertexFormatSize,
 	vertexOffsetRefusal,
 	view3dRefusal,
@@ -922,7 +923,31 @@ export function dispatchRefusal(x: int32, y: int32, z: int32, limit: int32): str
 }
 
 export function checkedShaderModule(descriptor: GPUShaderModuleDescriptor, limits: GPUSupportedLimits): void { refuse(shaderModuleRefusal(descriptor, limits)); }
-export function checkedRenderPipeline(descriptor: GPURenderPipelineDescriptor): void { refuse(renderPipelineRefusal(descriptor)); }
+export function checkedRenderPipeline(descriptor: GPURenderPipelineDescriptor): void {
+	refuse(renderPipelineRefusal(descriptor));
+	refuse(vertexInputRefusal(descriptor, shaderRecords.record(descriptor.vertex.module.id)));
+}
+
+// WebGPU createRenderPipeline: an attribute's format feeds the vertex input at its shaderLocation only
+// when the format's base type is the input's scalar type, so a float input never reads uint bits.
+export function vertexInputRefusal(descriptor: GPURenderPipelineDescriptor, shader: ShaderRecord): string {
+	for (let b = 0; b < GPU_MAX_VERTEX_BUFFERS; b++) {
+		for (let a = 0; a < GPU_MAX_VERTEX_ATTRIBUTES; a++) {
+			const format = descriptor.vertex.buffers[b].attributes[a].format;
+			if (format == null) { continue; }
+			const location = descriptor.vertex.buffers[b].attributes[a].shaderLocation;
+			for (let i = 0; i < GPU_MAX_VERTEX_ATTRIBUTES; i++) {
+				const input = shader.attributes[i].baseType;
+				if (input == null || shader.attributes[i].location != location) { continue; }
+				const fed = vertexFormatBaseType(format);
+				if (fed != input) {
+					return `vertex.buffers[${b}].attributes[${a}] feeds ${format} (${fed}) to shader location ${location}, which the vertex stage reads as ${input}`;
+				}
+			}
+		}
+	}
+	return "";
+}
 export function checkedRenderModule(moduleIsCompute: boolean): void { refuse(renderModuleRefusal(moduleIsCompute)); }
 export function checkedComputeModule(moduleIsCompute: boolean, entry: string, moduleEntry: string): void { refuse(computeModuleRefusal(moduleIsCompute, entry, moduleEntry)); }
 export function checkedComputePipeline(pipeline: uint32, isCompute: boolean): void { refuse(computePipelineRefusal(pipeline, isCompute)); }

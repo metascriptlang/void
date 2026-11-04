@@ -103,6 +103,7 @@ import {
 	renderPassRefusal,
 	renderPassPipelineRefusal,
 	renderPipelineRefusal,
+	vertexInputRefusal,
 	scissorRefusal,
 	samplerRefusal,
 	shaderModuleRefusal,
@@ -771,6 +772,27 @@ test "a render pipeline takes its vertex and fragment stages from one module" {
 	pipeline.fragment.module = { id: 3 };
 	pipeline.primitive = { topology: "triangle-list", stripIndexFormat: "uint16" };
 	assert renderPipelineRefusal(pipeline) == "primitive.stripIndexFormat 'uint16' needs a strip topology";
+}
+
+test "a vertex attribute feeds a shader input of its own base type, as WebGPU's createRenderPipeline asks" {
+	let pipeline: GPURenderPipelineDescriptor = { vertex: { module: { id: 3 } }, fragment: { module: { id: 3 } } };
+	pipeline.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	pipeline.vertex.buffers[1].attributes[0] = { format: "uint32", offset: 0, shaderLocation: 1 };
+	let shader: ShaderRecord = { id: 3 };
+	shader.attributes[0] = { location: 0, semanticIndex: 0, baseType: "float" };
+	shader.attributes[1] = { location: 1, semanticIndex: 0, baseType: "uint" };
+	assert vertexInputRefusal(pipeline, shader) == "";
+	pipeline.vertex.buffers[1].attributes[0].format = "float32";
+	assert vertexInputRefusal(pipeline, shader) == "vertex.buffers[1].attributes[0] feeds float32 (float) to shader location 1, which the vertex stage reads as uint";
+	pipeline.vertex.buffers[1].attributes[0].format = "sint32";
+	assert vertexInputRefusal(pipeline, shader) == "vertex.buffers[1].attributes[0] feeds sint32 (sint) to shader location 1, which the vertex stage reads as uint";
+	pipeline.vertex.buffers[1].attributes[0].format = "uint32";
+	pipeline.vertex.buffers[0].attributes[0].format = "unorm8x4";
+	assert vertexInputRefusal(pipeline, shader) == "";
+	pipeline.vertex.buffers[0].attributes[0].format = "uint8x4";
+	assert vertexInputRefusal(pipeline, shader) == "vertex.buffers[0].attributes[0] feeds uint8x4 (uint) to shader location 0, which the vertex stage reads as float";
+	shader.attributes[0].baseType = null;
+	assert vertexInputRefusal(pipeline, shader) == "";
 }
 
 test "a render pipeline blends only a target whose format is not an integer one" {
