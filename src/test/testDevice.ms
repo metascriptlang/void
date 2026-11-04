@@ -33,7 +33,7 @@ export function openTestDevice(): GPUDevice {
 		});
 	} else when (voidVulkan) {
 		if (vulkanLoaderOpen() != 0 || vulkanInstanceCreate() != 0 || vulkanAdapterSelect(VULKAN_POWER_HIGH, 0) != 0 || vulkanDeviceCreate() != 0) {
-			console.log(`openTestDevice: ${vulkanError()}`);
+			console.log(`openTestDevice: ${vulkanError() as string}`);
 			unreachable;
 		}
 		return requestDevice({
