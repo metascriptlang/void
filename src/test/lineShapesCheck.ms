@@ -356,6 +356,47 @@ test "a grid of cells per byte lays out per line as the whole grid" {
 	assert laysOutWhole(text, wrapping, grid, cells, noRuns, noBreaks, TextDirection.Auto, cache);
 }
 
+test "a plain single hard line keeps cached glyphs unaligned while its result owns the alignment" {
+	const text = "one plain hard line with several wrapped rows";
+	const noRuns: Vec<TextRun> = [];
+	const noBreaks: Vec<int32> = [];
+	const noCells: Vec<uint8> = [];
+	const base: TextStyle = { ...STYLE, maxWidth: 120.0 };
+	let cache = emptyLineShapes(base);
+	for (const align of [Align.Right, Align.Center, Align.MultilineRight, Align.Left]) {
+		const style: TextStyle = { ...base, align };
+		for (const truncate of [Truncate.None, Truncate.End, Truncate.Middle]) {
+			const options: LineOptions = { ...PLAIN_LINES, truncate };
+			assert laysOutWhole(
+				text, style, options, noCells, noRuns, noBreaks,
+				TextDirection.Auto, cache,
+			);
+			assert cache.lines.length == 1;
+			assert cache.lines[0].wrap.glyphs[0].x == 0.0;
+			assert cache.lines[0].wrap.rows[0].x == 0.0;
+		}
+	}
+}
+
+test "a single hard line with empty style runs remaps the run indices" {
+	const text = "one hard line";
+	const noBreaks: Vec<int32> = [];
+	const noCells: Vec<uint8> = [];
+	const runs: Vec<TextRun> = [
+		runOf(0, DEFAULT_FONT),
+		runOf(4, DEFAULT_FONT),
+		runOf(0, DEFAULT_FONT),
+		runOf(9, DEFAULT_FONT),
+	];
+	let cache = emptyLineShapes(STYLE);
+	assert laysOutWhole(
+		text, STYLE, PLAIN_LINES, noCells, runs, noBreaks,
+		TextDirection.Auto, cache,
+	);
+	assert reused.glyphs[0].run == 1;
+	assert reused.glyphs[4].run == 3;
+}
+
 when (voidBidi) {
 	const HEBREW_FACE: string = "tests/fonts/notoSansHebrewSubset.ttf";
 	const MIXED: string = "plain line\n\u{5E9}\u{5DC}\u{5D5}\u{5DD} (12) end\n\n34 digits\n";
