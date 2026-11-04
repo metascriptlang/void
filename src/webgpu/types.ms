@@ -505,6 +505,7 @@ export struct GPUSupportedLimits {
 	maxSampledTexturesPerShaderStage: int32;
 	maxSamplersPerShaderStage: int32;
 	maxStorageBuffersPerShaderStage: int32;
+	maxStorageBuffersInVertexStage: int32;
 	maxStorageTexturesPerShaderStage: int32;
 	maxUniformBuffersPerShaderStage: int32;
 	maxUniformBufferBindingSize: int64;

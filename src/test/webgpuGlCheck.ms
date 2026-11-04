@@ -1006,6 +1006,7 @@ test "the limits are the context's own and the features say what the context can
 	assert limits.maxTextureArrayLayers >= 256 && limits.maxBindGroups == 2;
 	assert limits.maxSampledTexturesPerShaderStage > 0 && limits.maxSamplersPerShaderStage > 0;
 	assert limits.maxStorageBuffersPerShaderStage > 0 && limits.maxStorageTexturesPerShaderStage > 0;
+	assert limits.maxStorageBuffersInVertexStage > 0 && limits.maxStorageBuffersInVertexStage <= limits.maxStorageBuffersPerShaderStage;
 	assert limits.maxUniformBuffersPerShaderStage > 0 && limits.maxUniformBufferBindingSize >= GLES3_FRAGMENT_UNIFORM_BYTES;
 	assert limits.maxStorageBufferBindingSize > 0 && limits.maxVertexBuffers > 0 && limits.maxVertexAttributes >= 16;
 	assert limits.maxColorAttachments >= 4 && limits.maxComputeWorkgroupSizeX >= 1024 && limits.maxComputeWorkgroupSizeY >= 1024;

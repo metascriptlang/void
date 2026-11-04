@@ -2051,6 +2051,7 @@ export function limits(): GPUSupportedLimits {
 		maxSampledTexturesPerShaderStage: Math.min(MAX_STAGE_TEXTURES, GPU_MAX_BIND_GROUP_ENTRIES),
 		maxSamplersPerShaderStage: Math.min(MAX_STAGE_SAMPLERS, GPU_MAX_BIND_GROUP_ENTRIES),
 		maxStorageBuffersPerShaderStage: GPU_MAX_BIND_GROUP_ENTRIES,
+		maxStorageBuffersInVertexStage: GPU_MAX_BIND_GROUP_ENTRIES,
 		maxStorageTexturesPerShaderStage: GPU_MAX_BIND_GROUP_ENTRIES,
 		maxUniformBuffersPerShaderStage: Math.min(MAX_STAGE_UNIFORM_BUFFERS, GPU_MAX_UNIFORM_BLOCKS),
 		maxUniformBufferBindingSize: maxBuffer,

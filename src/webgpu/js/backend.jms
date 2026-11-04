@@ -2346,6 +2346,10 @@ export function limits(): GPUSupportedLimits {
 			limitInt(native, "maxStorageBuffersPerShaderStage"),
 			GPU_MAX_BIND_GROUP_ENTRIES,
 		),
+		maxStorageBuffersInVertexStage: Math.min(
+			limitInt(native, "maxStorageBuffersPerShaderStage"),
+			GPU_MAX_BIND_GROUP_ENTRIES,
+		),
 		maxStorageTexturesPerShaderStage: Math.min(
 			limitInt(native, "maxStorageTexturesPerShaderStage"),
 			GPU_MAX_BIND_GROUP_ENTRIES,

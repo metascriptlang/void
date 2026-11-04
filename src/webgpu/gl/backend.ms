@@ -3077,6 +3077,7 @@ export function limits(): GPUSupportedLimits {
 		maxSampledTexturesPerShaderStage: units,
 		maxSamplersPerShaderStage: units,
 		maxStorageBuffersPerShaderStage: 0,
+		maxStorageBuffersInVertexStage: 0,
 		maxStorageTexturesPerShaderStage: 0,
 		maxUniformBuffersPerShaderStage: GPU_MAX_UNIFORM_BLOCKS,
 		maxUniformBufferBindingSize: (uniformComponents as int64) * 4,
@@ -3095,6 +3096,7 @@ export function limits(): GPUSupportedLimits {
 	if (!computeSupported) { return value; }
 	value.maxStorageBuffersPerShaderStage = smaller(smaller(oglGetInteger(GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS), maxStorageBindings), GPU_MAX_BIND_GROUP_ENTRIES);
 	value.maxStorageTexturesPerShaderStage = smaller(smaller(oglGetInteger(GL_MAX_COMPUTE_IMAGE_UNIFORMS), maxImageUnits), GPU_MAX_BIND_GROUP_ENTRIES);
+	value.maxStorageBuffersInVertexStage = smaller(vertexStorageBlocks, value.maxStorageBuffersPerShaderStage);
 	value.maxStorageBufferBindingSize = oglGetInteger64(GL_MAX_SHADER_STORAGE_BLOCK_SIZE);
 	value.maxComputeWorkgroupSizeX = oglGetIntegeri(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 0);
 	value.maxComputeWorkgroupSizeY = oglGetIntegeri(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 1);

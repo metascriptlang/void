@@ -689,6 +689,7 @@ test "the limits are the adapter's within Void's ceilings and the features say w
 	assert limits.maxTextureDimension2D >= 4096 && limits.maxTextureDimension3D >= 256 && limits.maxTextureArrayLayers >= 256;
 	assert limits.maxBindGroups == 2 && limits.maxColorAttachments >= 4 && limits.maxVertexAttributes >= 16;
 	assert limits.maxUniformBufferBindingSize >= 16384 && limits.maxStorageBufferBindingSize >= 134217728;
+	assert limits.maxStorageBuffersInVertexStage > 0 && limits.maxStorageBuffersInVertexStage <= limits.maxStorageBuffersPerShaderStage;
 	assert limits.maxComputeWorkgroupSizeX >= 256 && limits.maxComputeInvocationsPerWorkgroup >= 256;
 	assert limits.maxComputeWorkgroupsPerDimension >= 65535;
 	assert limits.minUniformBufferOffsetAlignment <= 256 && limits.minStorageBufferOffsetAlignment <= 256;

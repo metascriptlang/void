@@ -2000,6 +2000,7 @@ test "the limits are the constants the backend enforces, and the features say wh
 	assert limits.maxTextureArrayLayers == 2048 && limits.maxBindGroups == 2;
 	assert limits.maxSampledTexturesPerShaderStage > 0 && limits.maxSamplersPerShaderStage > 0;
 	assert limits.maxStorageBuffersPerShaderStage > 0 && limits.maxStorageTexturesPerShaderStage > 0;
+	assert limits.maxStorageBuffersInVertexStage > 0 && limits.maxStorageBuffersInVertexStage <= limits.maxStorageBuffersPerShaderStage;
 	assert limits.maxUniformBuffersPerShaderStage > 0 && limits.maxUniformBufferBindingSize >= 65536;
 	assert limits.maxStorageBufferBindingSize >= 65536 && limits.maxVertexBuffers == 2 && limits.maxVertexAttributes == 16;
 	assert limits.maxColorAttachments == 4 && limits.maxComputeWorkgroupSizeX >= 256 && limits.maxComputeWorkgroupSizeY >= 256;

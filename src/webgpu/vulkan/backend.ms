@@ -408,6 +408,7 @@ export function limits(): GPUSupportedLimits {
 		maxSampledTexturesPerShaderStage: capped(LIMIT_SAMPLED_TEXTURES_PER_STAGE, GPU_MAX_BIND_GROUP_ENTRIES as int64),
 		maxSamplersPerShaderStage: capped(LIMIT_SAMPLERS_PER_STAGE, GPU_MAX_BIND_GROUP_ENTRIES as int64),
 		maxStorageBuffersPerShaderStage: capped(LIMIT_STORAGE_BUFFERS_PER_STAGE, GPU_MAX_BIND_GROUP_ENTRIES as int64),
+		maxStorageBuffersInVertexStage: capped(LIMIT_STORAGE_BUFFERS_PER_STAGE, GPU_MAX_BIND_GROUP_ENTRIES as int64),
 		maxStorageTexturesPerShaderStage: capped(LIMIT_STORAGE_TEXTURES_PER_STAGE, GPU_MAX_BIND_GROUP_ENTRIES as int64),
 		maxUniformBuffersPerShaderStage: capped(LIMIT_UNIFORM_BUFFERS_PER_STAGE, GPU_MAX_UNIFORM_BLOCKS as int64),
 		maxUniformBufferBindingSize: vulkanAdapterLimit(LIMIT_UNIFORM_BUFFER_BINDING_SIZE),
