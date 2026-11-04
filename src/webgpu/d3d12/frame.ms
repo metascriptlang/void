@@ -55,7 +55,7 @@ export struct FrameRing {
 }
 
 @noinline export function stopOnNative(): never {
-	stop(dx12Error());
+	stop(dx12Error() as string);
 }
 
 export function failure(code: int32): NativeError {

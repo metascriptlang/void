@@ -595,7 +595,7 @@ const COLOURED_FRAGMENT_HLSL = "float4 main(float4 p : SV_Position, float4 color
 
 function dxbc(code: string, target: string): Vec<uint8> {
 	const blob = d3dCompile(code, "main", target);
-	if (blob == null) { stopOnCompile(`D3DCompile ${target} failed: ${d3dCompileLog()}`); }
+	if (blob == null) { stopOnCompile(`D3DCompile ${target} failed: ${(d3dCompileLog() as string)}`); }
 	let bytes: Vec<uint8> = new Array(65536);
 	const size = d3dBlobRead(blob, bytes[0], 65536);
 	d3dBlobFree(blob);

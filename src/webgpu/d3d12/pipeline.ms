@@ -155,7 +155,7 @@ function compileStage(code: string, entryPoint: string, target: string, label: s
 	let pointer: uint64 = 0;
 	let size: uint64 = 0;
 	if (dx12ShaderCompile(code, entryPoint, target, blob, pointer, size) != DX12_OK) {
-		const log: string = dx12CompileLog();
+		const log: string = dx12CompileLog() as string;
 		stop(`D3DCompile ${target} failed for ${labelOf(label)}:\n${log}`);
 	}
 	let bytes: Vec<uint8> = new Array(size as number);

@@ -481,7 +481,7 @@ export function adapterDescription(): string {
 	let vendorId: uint32 = 0;
 	let deviceId: uint32 = 0;
 	commanded(dx12AdapterDescribe(adapter, vendorId, deviceId));
-	return dx12AdapterDescription();
+	return dx12AdapterDescription() as string;
 }
 
 export function idleSerial(): uint64 {
