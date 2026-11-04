@@ -37,7 +37,7 @@ import {
 import { mkdir, readFileBytes, writeFile } from "std/fs";
 import { exec } from "std/process";
 import { getCurrentDepthTexture, getCurrentTexture, requestDevice } from "../webgpu/device.ms";
-import { bindStats, nativeQueue, nativeTexture, pendingReleases } from "../webgpu/metal/backend.ms";
+import { bindStats, mapWaitedFrame, nativeQueue, nativeTexture, pendingReleases } from "../webgpu/metal/backend.ms";
 import { shaderBytecodeFromBase64 } from "../shader/dxbc.ms";
 import { glslComputeIr } from "../shader/emit";
 import { metalLabel, metalReadback, metalSystemDevice } from "./metalDevice.h";
@@ -1709,6 +1709,26 @@ test "a mapAsync that would wait behind the frame's open command buffer stops by
 		assert run.error.output.includes("which is not committed");
 		assert !run.error.output.includes("probe: mapAsync returned");
 	}
+}
+
+test "a mapAsync waits for the frame that last used the buffer, not for the frames submitted after it" {
+	const device = openDevice();
+	const source = device.createBuffer({ label: "source", size: 64, usage: COPY_BUFFER_USAGE });
+	device.queue.writeBuffer(source, 0, ramp(64, 7));
+	const early = device.createBuffer({ label: "early", size: 64, usage: MAP_READ_USAGE });
+	const late = device.createBuffer({ label: "late", size: 64, usage: MAP_READ_USAGE });
+	let frames: int64[] = [];
+	for (let i = 0; i < 3; i++) {
+		frames.push((device.frameIndex() as int64) - 1);
+		const encoder = device.createCommandEncoder();
+		encoder.copyBufferToBuffer(source, 0, i == 0 ? early : late, 0, 64);
+		device.queue.submit(encoder.finish());
+	}
+	assert same(mappedRead(early, 0, 64), ramp(64, 7));
+	assert mapWaitedFrame() == frames[0];
+	assert same(mappedRead(late, 0, 64), ramp(64, 7));
+	assert mapWaitedFrame() == frames[2];
+	device.destroy();
 }
 
 test "a draw with a nonzero firstInstance stops by name when the vertex stage reads instance_index, through draw and drawIndexed" {
