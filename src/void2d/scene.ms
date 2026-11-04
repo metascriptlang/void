@@ -236,6 +236,14 @@ function shiftOf(m: Transform2D, dpi: float32): Vec2 {
 	return vec2(snappedShift(m.tx, dpi), snappedShift(m.ty, dpi));
 }
 
+const DENSE_SCENE_ROWS: int32 = 1024;
+const DENSE_DIRTY_PERCENT: int32 = 70;
+
+function mostlyDirty(s: Scene2D): boolean {
+	const rows: int32 = s.order.length as int32;
+	return rows >= DENSE_SCENE_ROWS && (s.dirty.length as int32) * 100 >= rows * DENSE_DIRTY_PERCENT;
+}
+
 export function paint(this s: Scene2D, wf: float32, hf: float32, dpi: float32): void {
 	s.requireOpen("paint");
 	s.retiled = 0;
@@ -254,7 +262,7 @@ export function paint(this s: Scene2D, wf: float32, hf: float32, dpi: float32): 
 	s.viewFold = designFold(s, wf, hf);
 	s.refreshOrder();
 	const l: DrawContext2D = s.context;
-	const kept: boolean = l.painted && !viewChanged &&
+	const kept: boolean = l.painted && !viewChanged && !mostlyDirty(s) &&
 		l.paintedW == wf && l.paintedH == hf && l.paintedDpi == dpi &&
 		l.paintedSmooth == s.defaultSmooth && l.paintedGeneration == contextGeneration();
 	if (kept && s.patchOrder(wf, hf)) {

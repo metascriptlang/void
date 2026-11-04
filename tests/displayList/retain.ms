@@ -1340,3 +1340,41 @@ test "a subtree added back under another parent records its rows again" {
 	d.holder.addChild(d.sub);
 	assert check(d.s, "a subtree added back under another parent", "splice");
 }
+
+function spriteField(s: Scene2D, count: int32): Vec<NodeRef> {
+	let out: Vec<NodeRef> = [];
+	for (let k: int32 = 0; k < count; k++) {
+		const r = s.rect(2.0, 2.0, rgba(1.0, 0.5, 0.25, 1.0))
+			.at(((k % 100) * 2) as float32, ((k / 100) * 2) as float32);
+		s.add(r);
+		out.push(r);
+	}
+	frame(s);
+	return out;
+}
+
+function moveFirst(field: Vec<NodeRef>, count: int32, dx: float32): void {
+	for (let k: int32 = 0; k < count; k++) {
+		field[k].setPosition((((k % 100) * 2) as float32) + dx, ((k / 100) * 2) as float32);
+	}
+}
+
+test "a large scene with most rows dirty repaints in full, a few dirty rows still patch" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const field: Vec<NodeRef> = spriteField(s, 1100);
+	moveFirst(field, 1100, 1.0);
+	assert check(s, "every sprite of 1100 moved", "full");
+	moveFirst(field, 800, 0.5);
+	assert check(s, "800 sprites of 1100 moved", "full");
+	moveFirst(field, 700, 0.25);
+	assert check(s, "700 sprites of 1100 moved", "patch");
+	moveFirst(field, 10, 0.0);
+	assert check(s, "10 sprites of 1100 moved", "patch");
+}
+
+test "a small scene with every row dirty still patches" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const field: Vec<NodeRef> = spriteField(s, 50);
+	moveFirst(field, 50, 1.0);
+	assert check(s, "every sprite of 50 moved", "patch");
+}
