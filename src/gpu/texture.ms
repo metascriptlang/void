@@ -192,14 +192,18 @@ function stopOnLost(texture: Texture): never {
 		`is now ${contextGeneration()} and ${remedy} (isLost tells when)`);
 }
 
-export function asView(this texture: Texture): uint32 {
+export function currentView(this texture: Texture): uint32 {
 	if (texture.closed) { stopOnClosed("asView"); }
-	if (texture.holdsCurrent()) {
-		if (texture.owned && (!imageAlive(texture.image) || !viewAlive(texture.view))) {
-			stop("asView on a texture whose image or view was destroyed");
-		}
-		return texture.view;
+	if (!texture.holdsCurrent()) { return 0; }
+	if (texture.owned && (!imageAlive(texture.image) || !viewAlive(texture.view))) {
+		stop("asView on a texture whose image or view was destroyed");
 	}
+	return texture.view;
+}
+
+export function asView(this texture: Texture): uint32 {
+	const current: uint32 = texture.currentView();
+	if (current != 0) { return current; }
 	const realloc = texture.realloc;
 	if (realloc === null) {
 		if (texture.view == 0) {

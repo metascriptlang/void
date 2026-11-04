@@ -122,6 +122,17 @@ export function view(this source: TextureSource): uint32 {
 	return 0;
 }
 
+export const STALE_VIEW: uint32 = 0xFFFFFFFF;
+
+export function currentView(this source: TextureSource): uint32 {
+	const target: RenderTarget | null = source.target;
+	if (target !== null) { return target.asTexture(); }
+	const texture: Texture | null = source.texture;
+	if (texture === null) { return 0; }
+	const view: uint32 = texture.currentView();
+	return view != 0 ? view : STALE_VIEW;
+}
+
 export function sameAs(this source: TextureSource, other: TextureSource): boolean {
 	return source.texture === other.texture && source.target === other.target &&
 		source.madeView == other.madeView;
