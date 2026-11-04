@@ -420,6 +420,11 @@ export macro shaderBuild(
 		}
 		keys.push("semanticIndex");
 		values.push(integer(a.semanticIndex));
+		const baseType = a.baseType;
+		if (baseType !== null) {
+			keys.push("baseType");
+			values.push(text(baseType));
+		}
 		attributes.push(object(keys, values));
 	}
 	const stageKeys = compute ?

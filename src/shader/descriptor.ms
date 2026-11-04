@@ -467,9 +467,10 @@ function bindingSource(r: Reflection): string[] {
 function attributeSource(r: Reflection): string[] {
 	return r.attributes.map((a) => {
 		const name = a.nativeName;
+		const baseType = a.baseType;
 		return "{ location: " + String(a.location) +
 			(name !== null ? ", nativeName: " + quotedSource(name) : "") + ", semanticIndex: " +
-			String(a.semanticIndex) + " }";
+			String(a.semanticIndex) + (baseType !== null ? ", baseType: " + quotedSource(baseType) : "") + " }";
 	});
 }
 

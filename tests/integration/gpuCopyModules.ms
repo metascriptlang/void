@@ -20,7 +20,7 @@ when (voidVulkan) {
 				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -41,7 +41,7 @@ when (voidVulkan) {
 				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -63,7 +63,7 @@ when (voidVulkan) {
 				{ group: 1, binding: -1, kind: "sampler", visibility: 2, size: 0, samplerType: "non-filtering", nativeSlot: -1, nativeName: "sourceTexture_SPIRV_Cross_DummySampler", textureBinding: 0 },
 			],
 			attributes: [
-				{ location: 0, nativeName: "position", semanticIndex: 0 },
+				{ location: 0, nativeName: "position", semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -86,7 +86,7 @@ when (voidVulkan) {
 				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -107,7 +107,7 @@ when (voidVulkan) {
 				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -129,7 +129,7 @@ when (voidVulkan) {
 				{ group: 1, binding: -1, kind: "sampler", visibility: 2, size: 0, samplerType: "non-filtering", nativeSlot: -1, nativeName: "sourceTexture_SPIRV_Cross_DummySampler", textureBinding: 0 },
 			],
 			attributes: [
-				{ location: 0, nativeName: "position", semanticIndex: 0 },
+				{ location: 0, nativeName: "position", semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -150,7 +150,7 @@ when (voidVulkan) {
 				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}

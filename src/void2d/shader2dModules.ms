@@ -101,8 +101,8 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -122,11 +122,11 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
-				{ location: 2, semanticIndex: 0 },
-				{ location: 3, semanticIndex: 0 },
-				{ location: 4, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
+				{ location: 2, semanticIndex: 0, baseType: "float" },
+				{ location: 3, semanticIndex: 0, baseType: "float" },
+				{ location: 4, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -147,17 +147,17 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
-				{ location: 2, semanticIndex: 0 },
-				{ location: 3, semanticIndex: 0 },
-				{ location: 4, semanticIndex: 0 },
-				{ location: 5, semanticIndex: 0 },
-				{ location: 6, semanticIndex: 0 },
-				{ location: 7, semanticIndex: 0 },
-				{ location: 8, semanticIndex: 0 },
-				{ location: 9, semanticIndex: 0 },
-				{ location: 10, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
+				{ location: 2, semanticIndex: 0, baseType: "float" },
+				{ location: 3, semanticIndex: 0, baseType: "float" },
+				{ location: 4, semanticIndex: 0, baseType: "float" },
+				{ location: 5, semanticIndex: 0, baseType: "float" },
+				{ location: 6, semanticIndex: 0, baseType: "float" },
+				{ location: 7, semanticIndex: 0, baseType: "float" },
+				{ location: 8, semanticIndex: 0, baseType: "float" },
+				{ location: 9, semanticIndex: 0, baseType: "float" },
+				{ location: 10, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -178,9 +178,9 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
-				{ location: 2, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
+				{ location: 2, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -209,8 +209,8 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -230,11 +230,11 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
-				{ location: 2, semanticIndex: 0 },
-				{ location: 3, semanticIndex: 0 },
-				{ location: 4, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
+				{ location: 2, semanticIndex: 0, baseType: "float" },
+				{ location: 3, semanticIndex: 0, baseType: "float" },
+				{ location: 4, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -255,17 +255,17 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
-				{ location: 2, semanticIndex: 0 },
-				{ location: 3, semanticIndex: 0 },
-				{ location: 4, semanticIndex: 0 },
-				{ location: 5, semanticIndex: 0 },
-				{ location: 6, semanticIndex: 0 },
-				{ location: 7, semanticIndex: 0 },
-				{ location: 8, semanticIndex: 0 },
-				{ location: 9, semanticIndex: 0 },
-				{ location: 10, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
+				{ location: 2, semanticIndex: 0, baseType: "float" },
+				{ location: 3, semanticIndex: 0, baseType: "float" },
+				{ location: 4, semanticIndex: 0, baseType: "float" },
+				{ location: 5, semanticIndex: 0, baseType: "float" },
+				{ location: 6, semanticIndex: 0, baseType: "float" },
+				{ location: 7, semanticIndex: 0, baseType: "float" },
+				{ location: 8, semanticIndex: 0, baseType: "float" },
+				{ location: 9, semanticIndex: 0, baseType: "float" },
+				{ location: 10, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -286,9 +286,9 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
-				{ location: 2, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
+				{ location: 2, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -317,8 +317,8 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "srcTex_srcSmp", textureBinding: 0 },
 			],
 			attributes: [
-				{ location: 0, nativeName: "pos", semanticIndex: 0 },
-				{ location: 1, nativeName: "uv0", semanticIndex: 0 },
+				{ location: 0, nativeName: "pos", semanticIndex: 0, baseType: "float" },
+				{ location: 1, nativeName: "uv0", semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -338,11 +338,11 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "spriteTex_spriteSmp", textureBinding: 0 },
 			],
 			attributes: [
-				{ location: 0, nativeName: "corner", semanticIndex: 0 },
-				{ location: 1, nativeName: "iAffine", semanticIndex: 0 },
-				{ location: 2, nativeName: "iOriginSize", semanticIndex: 0 },
-				{ location: 3, nativeName: "iUv", semanticIndex: 0 },
-				{ location: 4, nativeName: "iColor", semanticIndex: 0 },
+				{ location: 0, nativeName: "corner", semanticIndex: 0, baseType: "float" },
+				{ location: 1, nativeName: "iAffine", semanticIndex: 0, baseType: "float" },
+				{ location: 2, nativeName: "iOriginSize", semanticIndex: 0, baseType: "float" },
+				{ location: 3, nativeName: "iUv", semanticIndex: 0, baseType: "float" },
+				{ location: 4, nativeName: "iColor", semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -363,17 +363,17 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "uiTex_uiSmp", textureBinding: 0 },
 			],
 			attributes: [
-				{ location: 0, nativeName: "corner", semanticIndex: 0 },
-				{ location: 1, nativeName: "iAffine", semanticIndex: 0 },
-				{ location: 2, nativeName: "iOriginSize", semanticIndex: 0 },
-				{ location: 3, nativeName: "iUvRadii", semanticIndex: 0 },
-				{ location: 4, nativeName: "iBorders", semanticIndex: 0 },
-				{ location: 5, nativeName: "iParams0", semanticIndex: 0 },
-				{ location: 6, nativeName: "iParams1", semanticIndex: 0 },
-				{ location: 7, nativeName: "iClipRect", semanticIndex: 0 },
-				{ location: 8, nativeName: "iColorFill", semanticIndex: 0 },
-				{ location: 9, nativeName: "iColorBorder", semanticIndex: 0 },
-				{ location: 10, nativeName: "iColorExtra", semanticIndex: 0 },
+				{ location: 0, nativeName: "corner", semanticIndex: 0, baseType: "float" },
+				{ location: 1, nativeName: "iAffine", semanticIndex: 0, baseType: "float" },
+				{ location: 2, nativeName: "iOriginSize", semanticIndex: 0, baseType: "float" },
+				{ location: 3, nativeName: "iUvRadii", semanticIndex: 0, baseType: "float" },
+				{ location: 4, nativeName: "iBorders", semanticIndex: 0, baseType: "float" },
+				{ location: 5, nativeName: "iParams0", semanticIndex: 0, baseType: "float" },
+				{ location: 6, nativeName: "iParams1", semanticIndex: 0, baseType: "float" },
+				{ location: 7, nativeName: "iClipRect", semanticIndex: 0, baseType: "float" },
+				{ location: 8, nativeName: "iColorFill", semanticIndex: 0, baseType: "float" },
+				{ location: 9, nativeName: "iColorBorder", semanticIndex: 0, baseType: "float" },
+				{ location: 10, nativeName: "iColorExtra", semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -394,9 +394,9 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "tex_smp", textureBinding: 0 },
 			],
 			attributes: [
-				{ location: 0, nativeName: "pos", semanticIndex: 0 },
-				{ location: 1, nativeName: "uv0", semanticIndex: 0 },
-				{ location: 2, nativeName: "color0", semanticIndex: 0 },
+				{ location: 0, nativeName: "pos", semanticIndex: 0, baseType: "float" },
+				{ location: 1, nativeName: "uv0", semanticIndex: 0, baseType: "float" },
+				{ location: 2, nativeName: "color0", semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -433,8 +433,8 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -454,11 +454,11 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
-				{ location: 2, semanticIndex: 0 },
-				{ location: 3, semanticIndex: 0 },
-				{ location: 4, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
+				{ location: 2, semanticIndex: 0, baseType: "float" },
+				{ location: 3, semanticIndex: 0, baseType: "float" },
+				{ location: 4, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -479,17 +479,17 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
-				{ location: 2, semanticIndex: 0 },
-				{ location: 3, semanticIndex: 0 },
-				{ location: 4, semanticIndex: 0 },
-				{ location: 5, semanticIndex: 0 },
-				{ location: 6, semanticIndex: 0 },
-				{ location: 7, semanticIndex: 0 },
-				{ location: 8, semanticIndex: 0 },
-				{ location: 9, semanticIndex: 0 },
-				{ location: 10, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
+				{ location: 2, semanticIndex: 0, baseType: "float" },
+				{ location: 3, semanticIndex: 0, baseType: "float" },
+				{ location: 4, semanticIndex: 0, baseType: "float" },
+				{ location: 5, semanticIndex: 0, baseType: "float" },
+				{ location: 6, semanticIndex: 0, baseType: "float" },
+				{ location: 7, semanticIndex: 0, baseType: "float" },
+				{ location: 8, semanticIndex: 0, baseType: "float" },
+				{ location: 9, semanticIndex: 0, baseType: "float" },
+				{ location: 10, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -510,9 +510,9 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
-				{ location: 2, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
+				{ location: 2, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -541,8 +541,8 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -562,11 +562,11 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
-				{ location: 2, semanticIndex: 0 },
-				{ location: 3, semanticIndex: 0 },
-				{ location: 4, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
+				{ location: 2, semanticIndex: 0, baseType: "float" },
+				{ location: 3, semanticIndex: 0, baseType: "float" },
+				{ location: 4, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -587,17 +587,17 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
-				{ location: 2, semanticIndex: 0 },
-				{ location: 3, semanticIndex: 0 },
-				{ location: 4, semanticIndex: 0 },
-				{ location: 5, semanticIndex: 0 },
-				{ location: 6, semanticIndex: 0 },
-				{ location: 7, semanticIndex: 0 },
-				{ location: 8, semanticIndex: 0 },
-				{ location: 9, semanticIndex: 0 },
-				{ location: 10, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
+				{ location: 2, semanticIndex: 0, baseType: "float" },
+				{ location: 3, semanticIndex: 0, baseType: "float" },
+				{ location: 4, semanticIndex: 0, baseType: "float" },
+				{ location: 5, semanticIndex: 0, baseType: "float" },
+				{ location: 6, semanticIndex: 0, baseType: "float" },
+				{ location: 7, semanticIndex: 0, baseType: "float" },
+				{ location: 8, semanticIndex: 0, baseType: "float" },
+				{ location: 9, semanticIndex: 0, baseType: "float" },
+				{ location: 10, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -618,9 +618,9 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 0 },
-				{ location: 2, semanticIndex: 0 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 0, baseType: "float" },
+				{ location: 2, semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -649,8 +649,8 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "srcTex_srcSmp", textureBinding: 0 },
 			],
 			attributes: [
-				{ location: 0, nativeName: "pos", semanticIndex: 0 },
-				{ location: 1, nativeName: "uv0", semanticIndex: 0 },
+				{ location: 0, nativeName: "pos", semanticIndex: 0, baseType: "float" },
+				{ location: 1, nativeName: "uv0", semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -670,11 +670,11 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "spriteTex_spriteSmp", textureBinding: 0 },
 			],
 			attributes: [
-				{ location: 0, nativeName: "corner", semanticIndex: 0 },
-				{ location: 1, nativeName: "iAffine", semanticIndex: 0 },
-				{ location: 2, nativeName: "iOriginSize", semanticIndex: 0 },
-				{ location: 3, nativeName: "iUv", semanticIndex: 0 },
-				{ location: 4, nativeName: "iColor", semanticIndex: 0 },
+				{ location: 0, nativeName: "corner", semanticIndex: 0, baseType: "float" },
+				{ location: 1, nativeName: "iAffine", semanticIndex: 0, baseType: "float" },
+				{ location: 2, nativeName: "iOriginSize", semanticIndex: 0, baseType: "float" },
+				{ location: 3, nativeName: "iUv", semanticIndex: 0, baseType: "float" },
+				{ location: 4, nativeName: "iColor", semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -695,17 +695,17 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "uiTex_uiSmp", textureBinding: 0 },
 			],
 			attributes: [
-				{ location: 0, nativeName: "corner", semanticIndex: 0 },
-				{ location: 1, nativeName: "iAffine", semanticIndex: 0 },
-				{ location: 2, nativeName: "iOriginSize", semanticIndex: 0 },
-				{ location: 3, nativeName: "iUvRadii", semanticIndex: 0 },
-				{ location: 4, nativeName: "iBorders", semanticIndex: 0 },
-				{ location: 5, nativeName: "iParams0", semanticIndex: 0 },
-				{ location: 6, nativeName: "iParams1", semanticIndex: 0 },
-				{ location: 7, nativeName: "iClipRect", semanticIndex: 0 },
-				{ location: 8, nativeName: "iColorFill", semanticIndex: 0 },
-				{ location: 9, nativeName: "iColorBorder", semanticIndex: 0 },
-				{ location: 10, nativeName: "iColorExtra", semanticIndex: 0 },
+				{ location: 0, nativeName: "corner", semanticIndex: 0, baseType: "float" },
+				{ location: 1, nativeName: "iAffine", semanticIndex: 0, baseType: "float" },
+				{ location: 2, nativeName: "iOriginSize", semanticIndex: 0, baseType: "float" },
+				{ location: 3, nativeName: "iUvRadii", semanticIndex: 0, baseType: "float" },
+				{ location: 4, nativeName: "iBorders", semanticIndex: 0, baseType: "float" },
+				{ location: 5, nativeName: "iParams0", semanticIndex: 0, baseType: "float" },
+				{ location: 6, nativeName: "iParams1", semanticIndex: 0, baseType: "float" },
+				{ location: 7, nativeName: "iClipRect", semanticIndex: 0, baseType: "float" },
+				{ location: 8, nativeName: "iColorFill", semanticIndex: 0, baseType: "float" },
+				{ location: 9, nativeName: "iColorBorder", semanticIndex: 0, baseType: "float" },
+				{ location: 10, nativeName: "iColorExtra", semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -726,9 +726,9 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "tex_smp", textureBinding: 0 },
 			],
 			attributes: [
-				{ location: 0, nativeName: "pos", semanticIndex: 0 },
-				{ location: 1, nativeName: "uv0", semanticIndex: 0 },
-				{ location: 2, nativeName: "color0", semanticIndex: 0 },
+				{ location: 0, nativeName: "pos", semanticIndex: 0, baseType: "float" },
+				{ location: 1, nativeName: "uv0", semanticIndex: 0, baseType: "float" },
+				{ location: 2, nativeName: "color0", semanticIndex: 0, baseType: "float" },
 			],
 		};
 	}
@@ -757,8 +757,8 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 1 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 1, baseType: "float" },
 			],
 		};
 	}
@@ -778,11 +778,11 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 1 },
-				{ location: 2, semanticIndex: 2 },
-				{ location: 3, semanticIndex: 3 },
-				{ location: 4, semanticIndex: 4 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 1, baseType: "float" },
+				{ location: 2, semanticIndex: 2, baseType: "float" },
+				{ location: 3, semanticIndex: 3, baseType: "float" },
+				{ location: 4, semanticIndex: 4, baseType: "float" },
 			],
 		};
 	}
@@ -803,17 +803,17 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 1 },
-				{ location: 2, semanticIndex: 2 },
-				{ location: 3, semanticIndex: 3 },
-				{ location: 4, semanticIndex: 4 },
-				{ location: 5, semanticIndex: 5 },
-				{ location: 6, semanticIndex: 6 },
-				{ location: 7, semanticIndex: 7 },
-				{ location: 8, semanticIndex: 8 },
-				{ location: 9, semanticIndex: 9 },
-				{ location: 10, semanticIndex: 10 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 1, baseType: "float" },
+				{ location: 2, semanticIndex: 2, baseType: "float" },
+				{ location: 3, semanticIndex: 3, baseType: "float" },
+				{ location: 4, semanticIndex: 4, baseType: "float" },
+				{ location: 5, semanticIndex: 5, baseType: "float" },
+				{ location: 6, semanticIndex: 6, baseType: "float" },
+				{ location: 7, semanticIndex: 7, baseType: "float" },
+				{ location: 8, semanticIndex: 8, baseType: "float" },
+				{ location: 9, semanticIndex: 9, baseType: "float" },
+				{ location: 10, semanticIndex: 10, baseType: "float" },
 			],
 		};
 	}
@@ -834,9 +834,9 @@ when (voidVulkan) {
 				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
-				{ location: 0, semanticIndex: 0 },
-				{ location: 1, semanticIndex: 1 },
-				{ location: 2, semanticIndex: 2 },
+				{ location: 0, semanticIndex: 0, baseType: "float" },
+				{ location: 1, semanticIndex: 1, baseType: "float" },
+				{ location: 2, semanticIndex: 2, baseType: "float" },
 			],
 		};
 	}

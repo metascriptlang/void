@@ -5,6 +5,8 @@ import {
 	ResourceKind,
 	SampleType,
 	SamplerType,
+	ScalarKind,
+	ShaderIo,
 	ShaderModule,
 	ShaderStage,
 	TexelFormat,
@@ -28,6 +30,7 @@ import {
 	GPUStorageTextureAccess,
 	GPUTextureFormat,
 	GPUTextureSampleType,
+	GPUVertexBaseType,
 	GPUTextureViewDimension,
 } from "../webgpu/types.ms";
 import {
@@ -225,6 +228,15 @@ function bindingsOf(m: ShaderModule, entries: int32[], target: ShaderTarget):
 	return Result.ok(bindings);
 }
 
+function attributeBaseType(io: ShaderIo): Result<GPUVertexBaseType, string> {
+	return match (io.type.scalar) {
+		ScalarKind.F32 => Result.ok("float" as GPUVertexBaseType),
+		ScalarKind.U32 => Result.ok("uint" as GPUVertexBaseType),
+		ScalarKind.I32 => Result.ok("sint" as GPUVertexBaseType),
+		ScalarKind.Bool => Result.err("vertex input '" + io.name + "' is bool, which no vertex format feeds"),
+	};
+}
+
 // HLSL reads attribute n at TEXCOORD<n>.
 export function reflectProgram(m: ShaderModule, vertex: int32, fragment: int32,
 	target: ShaderTarget): Result<Reflection, string> {
@@ -241,9 +253,11 @@ export function reflectProgram(m: ShaderModule, vertex: int32, fragment: int32,
 		}
 		const location = ioLocation(io, ordinal);
 		ordinal++;
+		const baseType = try attributeBaseType(io);
 		let a: GPUShaderAttribute = {
 			location: location,
 			semanticIndex: target == ShaderTarget.Hlsl5 ? location : 0,
+			baseType: baseType,
 		};
 		if (gl) { a.nativeName = io.name; } else { a.nativeName = null; }
 		attributes.push(a);

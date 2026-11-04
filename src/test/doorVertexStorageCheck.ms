@@ -7,6 +7,7 @@ import { shaderModule, shaderProgram, shaderProgramRegister } from "../shader/pr
 import { programModule, stageSource, stageWords } from "../shader/descriptor";
 import { glslIr, glslLinkedIr } from "../shader/emit";
 import { ShaderTarget } from "../shader/layout";
+import { reflectProgram } from "../shader/reflect";
 import { Vec2f, Vec4f, access, binding, builtin, vec4f } from "../shader/std";
 import { Compare, Face, RenderState } from "../gpu/state";
 import { DoorLayout, doorLayout } from "../gpu/doorGpu.ms";
@@ -98,6 +99,14 @@ test "every printer takes a uint32 vertex input, and GLSL ES 3.00 refuses the st
 	assert vertexText(ShaderTarget.Glsl300es).endsWith("GLSL ES 3.0 has no storage resources");
 	const m = programModule(glslIr(rowVs), glslLinkedIr(rowFs, rowVs), []);
 	assert m.ok && stageWords(m.value, 0).ok;
+}
+
+test "reflection names the scalar each vertex input reads, so a mismatched format is refused" {
+	const m = programModule(glslIr(rowVs), glslLinkedIr(rowFs, rowVs), []);
+	assert m.ok;
+	const r = reflectProgram(m.value, 0, 1, ShaderTarget.Msl);
+	assert r.ok && r.value.attributes.length == 2;
+	assert r.value.attributes[0].baseType == "float" && r.value.attributes[1].baseType == "uint";
 }
 
 test "a vertex stage reading rows at binding 14 declares that storage slot, in a shaderProgram too" {
