@@ -52,10 +52,99 @@ What the split says:
 - **`src/examples` is 82 KB in wasm** because `init2d` and `frame2d` inline most of the demo; in JS
   the same code stays in its own modules.
 
-## Not measured yet
+## JS-only build and bytes (2026-11-04)
 
-- **CPU per frame per flow** (walk, layout, shaping, upload) against wasm on the editor scene: the JS
-  page stops at init on compiler card
-  `2026-10-27-js-exported-let-struct-boxed-for-ref-read-unboxed-by-importer`, so no frame runs.
-- **Re-measure the bytes** after compiler-batch-1028 syncs (the card above, a class display name a
-  bundler can drop, operator mangling) and the const-array fix: each moves the JS bundle.
+Production source at `79c78587`, tree `e2d2d8074a1c03752dd9566c53275c09347077fd`,
+msc v0.4.0 BUILD `f357ebc1c7a`, m1m, esbuild 0.28.2, gzip level 9. The real bundles were built
+before the last test-only edit; the production script's SHA256 matched the committed script.
+No wasm bundle was rebuilt, so the older table above is not a current paired comparison.
+
+One remote call ran the setup contract, then:
+
+```sh
+EMSDK_DIR=/void-js-sdk-must-not-be-needed VOID_WEB_BACKENDS='js-wgpu js-gl' \
+VOID_WEB_JS_ASSETS='' VOID_WEB_DEST=out/js-endgame-ship \
+VOID_WEB_LOGDIR=out/js-endgame-logs sh scripts/build-web.sh
+node scripts/jsBudgetMeasure.mjs size out/js-endgame-ship/js-wgpu/main2dWeb.js
+node scripts/jsBudgetMeasure.mjs size out/js-endgame-ship/js-gl/main2dWeb.js
+```
+
+Both real builds and `node --check` of both shipped scripts passed without an SDK. The final
+`sh scripts/buildWeb.test.sh` returned `PASS build-web setup: 4 cases (JS-only without SDK,
+GL-only, mixed backends, wrong wasm pin); stub builds, Unix setup branch`. The Windows setup
+branch was preserved, not executed by that check. SDK independence is a build result, not a
+render or speed result.
+
+| backend | shipped raw | shipped gzip |
+|---|---:|---:|
+| JS-WebGPU | 1 035 168 | 241 883 |
+| JS-WebGL2 | 1 079 819 | 252 234 |
+
+Attribution from `node scripts/jsBudgetMeasure.mjs split out/release/main2dWeb-js-<backend>.js`,
+before minification; these gzip-prefix deltas sum to the raw compiler bundle's gzip, **not** the
+shipped gzip above. They do not establish which bytes survive minification.
+
+| share | WebGPU gzip | WebGL2 gzip |
+|---|---:|---:|
+| text/2D (`src/void2d`) | 287 265 | 286 219 |
+| GPU/host (`src/webgpu`, `src/gpu`, `src/host`, `src/platform`) | 129 716 | 157 571 |
+| std | 45 886 | 45 920 |
+| assets | 31 905 | 31 914 |
+| rest | 101 675 | 101 686 |
+
+Of “rest”, shader helpers account for 87 051 / 87 055 B before minification. That is an
+attribution lead, not proof that all those bytes reach the shipped page. The compiler's
+std/DCE and class-display-name inbox cards track the existing size questions; design cards
+are not permission to invent a new representation or strip runtime behavior.
+
+### Current byte-cause probe
+
+On the same host/compiler, this small input at `out/tmp/js-dce-reprobe/main.ms` separates
+compiler output from the artifact the browser receives:
+
+```ms
+class Unused {
+	value: int32 = 0;
+}
+class Used {
+	value: int32 = 1;
+}
+const u = new Used();
+console.log(u.value);
+```
+
+Build with `msc build --target=js out/tmp/js-dce-reprobe/main.ms --output=default.js`, then
+repeat with `--release` and `--danger` into separate files; measure through
+`node scripts/jsBudgetMeasure.mjs size <file>`.
+
+| compiler profile | raw bytes | gzip bytes |
+|---|---:|---:|
+| default | 269 738 | 37 987 |
+| release | 269 738 | 37 987 |
+| danger | 259 642 | 37 668 |
+
+Default and release are byte-identical; danger is not. The old report that all three profiles
+emit the same checks/bytes is no longer true on this probe. No shipping profile was changed.
+
+`sh scripts/jsMinify.sh default.js default.min.js` reduces the default to **5 052 B raw /
+1 519 B gzip**; Node prints `1`. Yet the minified script still contains the literal `Unused`,
+and the raw class has `static [globalThis.Symbol.for("metascript.typeDisplayName")] = "Unused"`.
+This reproduces the existing class-display-name DCE issue, not a measured saving for main2d.
+No metadata-stripping workaround or nonshipping removal control was used. The pre-bundle
+44-module size does not mean all those bytes reach the browser.
+
+## Remaining proof
+
+- **JS initialization:** on `f357ebc1c7a`, the exported-global/ref three-module repro and the real
+  WebGL2 frame stub still fail with unboxed `Pool.slots` reads. The stub reports the error in
+  `Pool_alive → Pool_slotIndex → Pool_record → adoptSwapchainTexture`; no draw submits.
+  The existing exported-let/ref compiler card is active, owned by `wt/cw-lane-box`.
+- **3D/golden compilation:** the small macro `readFileBytes` repro now builds on JS and prints
+  `yes`. Campfire instead stops with `MacroInvocation` unsupported at comptime. A scalar-Node
+  macro calling `execFileResult("git", ["--version"])` checks on C and fails identically on JS;
+  this follows the existing macro-on-JS / execFileResult cards (`wt/cw-lane-mx`), not the old
+  two-Error-class diagnosis. No Void workaround was applied.
+- **Browser pixels and CPU per flow** (walk, layout, shaping, upload) against wasm on the editor
+  scene remain unmeasured. The current actual-browser smoke attempt did not start: Aside was
+  not running and this session had no linked Rexa terminal. No screenshot/render result is
+  claimed. The landed sprite timings in VOID2D.md are wasm-WebGL2, not pure-JS measurements.
