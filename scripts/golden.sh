@@ -10,6 +10,7 @@
 #                                        the D3D11 goldens under the cross-backend bound
 #   sh scripts/golden.sh --backend metal the macOS Metal window, judged the same way
 #   sh scripts/golden.sh --backend vulkan the Windows Vulkan window, judged the same way
+#   sh scripts/golden.sh --backend d3d12 the Windows D3D12 window, judged the same way
 #   sh scripts/golden.sh prim/ snap/x    only the rows whose name starts with one of these
 #
 # --update is never automatic. A golden changes only inside a commit that says why, and the
@@ -63,7 +64,12 @@ case "$backend" in
 		RUNNER=out/goldenRunnerVulkan.exe
 		BACKEND_FLAGS="-d:voidVulkan --passC=-DVOID_VULKAN"
 		;;
-	*) echo "golden.sh: --backend is d3d11, gl, metal or vulkan, not '$backend'" >&2; exit 2 ;;
+	d3d12)
+		BACKEND_DIR=d3d12
+		RUNNER=out/goldenRunnerD3d12.exe
+		BACKEND_FLAGS="-d:voidD3d12 --passC=-DVOID_D3D12"
+		;;
+	*) echo "golden.sh: --backend is d3d11, d3d12, gl, metal or vulkan, not '$backend'" >&2; exit 2 ;;
 esac
 # The D3D11 set is the one authored golden set; another backend is only judged against it.
 if [ "$mode" = update ] && [ "$backend" != d3d11 ]; then
