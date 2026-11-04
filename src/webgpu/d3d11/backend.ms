@@ -76,7 +76,6 @@ import {
 import {
 	cachedCanvas,
 	currentFrame,
-	replacesWrittenBytes,
 	entryOf,
 	clampedAnisotropy,
 	addressesBinding,
@@ -112,7 +111,6 @@ import {
 	D3dBlendStateImpl,
 	D3dBufferImpl,
 	D3dComputeShaderImpl,
-	D3dContext1Impl,
 	D3dContextImpl,
 	D3dDepthStencilStateImpl,
 	D3dDeviceImpl,
@@ -150,7 +148,6 @@ import {
 	d3dCreateTextureUav,
 	d3dCsClearViews,
 	d3dCsSetConstantBuffer,
-	d3dCsSetConstantBufferRange,
 	d3dCsSetSampler,
 	d3dCsSetShader,
 	d3dCsSetShaderResource,
@@ -209,9 +206,7 @@ import {
 	d3dUpdateBuffer,
 	d3dUpdateIfChanged,
 	d3dUpdateTexture,
-	d3dUniformOffsetting,
 	d3dSetConstantBuffer,
-	d3dSetConstantBufferRange,
 	d3dSetShaderResource,
 	d3dSetSampler,
 	d3dVsSetShader,
@@ -234,7 +229,6 @@ export struct NativeSwapchain {
 }
 
 const UNIFORM_OFFSET_ALIGNMENT = 256;
-const MAX_BLOCK_CONSTANTS = 4096;
 const MAX_STAGE_CONSTANT_BUFFERS = 14;
 const MAX_STAGE_SHADER_RESOURCES = 128;
 const MAX_STAGE_SAMPLERS = 16;
@@ -495,8 +489,6 @@ struct BoundState {
 	indexDirty: boolean;
 	resourcesDirty: boolean;
 	uniformsDirty: boolean;
-	uniformBuffer: uint32[GPU_MAX_UNIFORM_BLOCKS];
-	uniformFirst: int64[GPU_MAX_UNIFORM_BLOCKS];
 	blendConstant: GPUColor;
 	stencilReference: uint32;
 }
@@ -521,8 +513,6 @@ struct NativeBinds {
 
 let device: Ptr<D3dDeviceImpl> = null as unknown as Ptr<D3dDeviceImpl>;
 let context: Ptr<D3dContextImpl> = null as unknown as Ptr<D3dContextImpl>;
-let context1: Ptr<D3dContext1Impl> = null as unknown as Ptr<D3dContext1Impl>;
-let offsetUniforms = false;
 let pass: PassState = { width: 0 };
 let bound: BoundState = { appliedPipeline: 0 };
 let computeBound: ComputeState = { dirty: false };
@@ -556,13 +546,7 @@ let bindGroups: Vec<BindGroupSlot> = [{}];
 
 @inline function roundUp16(bytes: int64): int64 { return (bytes + 15) & ~(15 as int64); }
 
-@inline function roundUp256(bytes: int64): int64 { return (bytes + 255) & ~(255 as int64); }
-
 export function bindStats(): BindStats { return stats; }
-
-function forgetAppliedUniforms(): void {
-	for (let u = 0; u < GPU_MAX_UNIFORM_BLOCKS; u++) { bound.uniformBuffer[u] = 0; }
-}
 
 struct DxgiFormats {
 	texture: int32;
@@ -701,7 +685,6 @@ function readsStage(binding: NativeBinding, vertex: int32): boolean {
 
 function checkDriverConstants(): void {
 	const values: int32[] = [
-		MAX_BLOCK_CONSTANTS,
 		MAX_STAGE_CONSTANT_BUFFERS,
 		MAX_STAGE_SHADER_RESOURCES,
 		MAX_STAGE_SAMPLERS,
@@ -866,8 +849,6 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	pass = { width: 0 };
 	bound = { appliedPipeline: 0 };
 	computeBound = { dirty: false };
-	context1 = d3dUniformOffsetting(device, context);
-	offsetUniforms = context1 != null;
 	return { id: 1, queue: { id: 1 } };
 }
 
@@ -890,8 +871,6 @@ export function formatRenderable(format: GPUTextureFormat): boolean {
 
 export function shutdown(): void {
 	d3dClearState(context);
-	d3dRelease(context1 as Ptr<void>);
-	context1 = null as unknown as Ptr<D3dContext1Impl>;
 	d3dReleaseAnnotation();
 }
 
@@ -929,9 +908,6 @@ export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void 
 	};
 	if (slot.staging) {
 		slot.native = d3dCreateBuffer(device, descriptor.size, USAGE_STAGING, 0, CPU_ACCESS_READ | CPU_ACCESS_WRITE, 0);
-		if (slot.native == null) { stop(`CreateBuffer failed for ${labelOf(descriptor.label)}`); }
-	} else if (uniform && offsetUniforms) {
-		slot.native = d3dCreateBuffer(device, roundUp256(descriptor.size), USAGE_DYNAMIC, BIND_CONSTANT_BUFFER, CPU_ACCESS_WRITE, 0);
 		if (slot.native == null) { stop(`CreateBuffer failed for ${labelOf(descriptor.label)}`); }
 	} else if (uniform) {
 		slot.shadow = new Array(roundUp16(descriptor.size));
@@ -1125,15 +1101,12 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 		d3dUpdateBuffer(context, buffers[index].native, offset, data[0], bytes);
 		return;
 	}
-	const discard = bufferRecords.slots[index].writtenFrame != currentFrame();
-	if (buffers[index].uniform && !offsetUniforms) {
+	if (buffers[index].uniform) {
 		d3dCopyBytes(buffers[index].shadow[0], offset, data[0], bytes);
 		bound.uniformsDirty = true;
 		return;
 	}
-	if (discard && !bufferRecords.slots[index].transient && !replacesWrittenBytes(index, offset, bytes)) {
-		stop(`writeBuffer of ${bytes} bytes at ${offset} on uniform GPUBuffer ${buffer.id} keeps older bytes, which a D3D11 constant buffer cannot: write it whole or create it transient`);
-	}
+	const discard = bufferRecords.slots[index].writtenFrame != currentFrame();
 	const mapType = discard ? MAP_WRITE_DISCARD : MAP_WRITE_NO_OVERWRITE;
 	if (d3dMapWrite(context, buffers[index].native, mapType, offset, data[0], bytes) == 0) {
 		stop(`Map for writeBuffer failed on GPUBuffer ${buffer.id}`);
@@ -1628,7 +1601,7 @@ export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescri
 		setLabel(slot.fragment, descriptor.label);
 	}
 	let cacheBytes: int64 = 0;
-	for (let u = 0; u < slot.uniformCount && !offsetUniforms; u++) {
+	for (let u = 0; u < slot.uniformCount; u++) {
 		const bytes = roundUp16(slot.uniforms[u].size as int64);
 		slot.cacheOffset[u] = cacheBytes as int32;
 		cacheBytes += bytes;
@@ -2011,21 +1984,13 @@ function applyComputeUniforms(s: int32): void {
 		const offset = (boundFacts.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
 		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
 		const block = shaders[s].uniforms[u];
-		if (offsetUniforms) {
-			const constants = roundUp256(block.size as int64) / 16;
-			if (constants > MAX_BLOCK_CONSTANTS || offset + constants * 16 > roundUp256(bufferRecords.slots[b].size)) {
-				stop(`uniform binding ${block.binding} of ${block.size} bytes at ${offset} does not fit one constant buffer view`);
-			}
-			d3dCsSetConstantBufferRange(context1, block.nativeSlot, buffers[b].native, offset / 16, constants);
-		} else {
-			const bytes = roundUp16(block.size as int64);
-			if (offset + bytes > (buffers[b].shadow.length as int64)) {
-				stop(`uniform binding ${block.binding} of ${bytes} bytes at ${offset} overruns the shadow copy of its buffer`);
-			}
-			d3dUpdateIfChanged(context, shaders[s].constantBuffers[u], shaders[s].blockCache[0], shaders[s].cacheOffset[u] as int64, buffers[b].shadow[0], offset, bytes, shaders[s].cacheFresh[u]);
-			shaders[s].cacheFresh[u] = 0;
-			d3dCsSetConstantBuffer(context, block.nativeSlot, shaders[s].constantBuffers[u]);
+		const bytes = roundUp16(block.size as int64);
+		if (offset + bytes > (buffers[b].shadow.length as int64)) {
+			stop(`uniform binding ${block.binding} of ${bytes} bytes at ${offset} overruns the shadow copy of its buffer`);
 		}
+		d3dUpdateIfChanged(context, shaders[s].constantBuffers[u], shaders[s].blockCache[0], shaders[s].cacheOffset[u] as int64, buffers[b].shadow[0], offset, bytes, shaders[s].cacheFresh[u]);
+		shaders[s].cacheFresh[u] = 0;
+		d3dCsSetConstantBuffer(context, block.nativeSlot, shaders[s].constantBuffers[u]);
 	}
 }
 
@@ -2180,13 +2145,12 @@ function applyPipeline(p: int32, s: int32): void {
 	d3dIaSetInputLayout(context, pipelines[p].inputLayout);
 	d3dVsSetShader(context, shaders[s].vertex);
 	d3dPsSetShader(context, shaders[s].fragment);
-	for (let u = 0; u < shaders[s].uniformCount && !offsetUniforms; u++) {
+	for (let u = 0; u < shaders[s].uniformCount; u++) {
 		for (let vertex = 0; vertex < 2; vertex++) {
 			if (!readsStage(shaders[s].uniforms[u], vertex)) { continue; }
 			d3dSetConstantBuffer(context, vertex, shaders[s].uniforms[u].nativeSlot, shaders[s].constantBuffers[u]);
 		}
 	}
-	forgetAppliedUniforms();
 	bound.vertexDirty = true;
 	bound.resourcesDirty = true;
 	bound.uniformsDirty = true;
@@ -2265,25 +2229,11 @@ function applyUniforms(s: int32): void {
 		const offset = (boundFacts.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
 		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
 		const block = shaders[s].uniforms[u];
-		if (offsetUniforms) {
-			if (bound.uniformBuffer[u] == bufferRecords.slots[b].id && bound.uniformFirst[u] == offset) { continue; }
-			const constants = roundUp256(block.size as int64) / 16;
-			if (constants > MAX_BLOCK_CONSTANTS || offset + constants * 16 > roundUp256(bufferRecords.slots[b].size)) {
-				stop(`uniform binding ${block.binding} of ${block.size} bytes at ${offset} does not fit one constant buffer view`);
-			}
-			for (let vertex = 0; vertex < 2; vertex++) {
-				if (!readsStage(block, vertex)) { continue; }
-				d3dSetConstantBufferRange(context1, vertex, block.nativeSlot, buffers[b].native, offset / 16, constants);
-			}
-			bound.uniformBuffer[u] = bufferRecords.slots[b].id;
-			bound.uniformFirst[u] = offset;
-		} else {
-			const bytes = roundUp16(block.size as int64);
-			if (offset + bytes > (buffers[b].shadow.length as int64)) {
-				stop(`uniform binding ${block.binding} of ${bytes} bytes at ${offset} overruns the shadow copy of its buffer`);
-			}
-			d3dUpdateIfChanged(context, shaders[s].constantBuffers[u], shaders[s].blockCache[0], shaders[s].cacheOffset[u] as int64, buffers[b].shadow[0], offset, bytes, shaders[s].cacheFresh[u]);
-			shaders[s].cacheFresh[u] = 0;
+		const bytes = roundUp16(block.size as int64);
+		if (offset + bytes > (buffers[b].shadow.length as int64)) {
+			stop(`uniform binding ${block.binding} of ${bytes} bytes at ${offset} overruns the shadow copy of its buffer`);
 		}
+		d3dUpdateIfChanged(context, shaders[s].constantBuffers[u], shaders[s].blockCache[0], shaders[s].cacheOffset[u] as int64, buffers[b].shadow[0], offset, bytes, shaders[s].cacheFresh[u]);
+		shaders[s].cacheFresh[u] = 0;
 	}
 }

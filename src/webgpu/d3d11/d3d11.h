@@ -3,7 +3,6 @@
 
 typedef struct D3dDeviceImpl *D3dDevice;
 typedef struct D3dContextImpl *D3dContext;
-typedef struct D3dContext1Impl *D3dContext1;
 typedef struct D3dBufferImpl *D3dBuffer;
 typedef struct D3dTextureImpl *D3dTexture;
 typedef struct D3dSrvImpl *D3dSrv;
@@ -35,8 +34,6 @@ D3dUav d3dCreateBufferUav(D3dDevice device, D3dBuffer buffer, int64_t offset, in
 D3dUav d3dCreateTextureUav(D3dDevice device, D3dTexture texture, int32_t format, int32_t dimension, int32_t mip, int32_t layer, int32_t layerCount);
 int32_t d3dMapWrite(D3dContext context, D3dBuffer buffer, int32_t mapType, int64_t offset, void *data, int64_t bytes);
 int32_t d3dUpdateIfChanged(D3dContext context, D3dBuffer buffer, uint8_t *cache, int64_t cacheOffset, uint8_t *data, int64_t dataOffset, int64_t bytes, int32_t force);
-D3dContext1 d3dUniformOffsetting(D3dDevice device, D3dContext context);
-void d3dSetConstantBufferRange(D3dContext1 context1, int32_t vertexStage, int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants);
 void d3dCopyBytes(void *destination, int64_t destinationOffset, void *source, int64_t bytes);
 void d3dUpdateBuffer(D3dContext context, D3dBuffer buffer, int64_t offset, void *data, int64_t bytes);
 void d3dCopyBuffer(D3dContext context, D3dBuffer destination, int64_t destinationOffset, D3dBuffer source, int64_t sourceOffset, int64_t bytes);
@@ -211,7 +208,6 @@ void d3dDrawIndexedInstanced(
 
 void d3dCsSetShader(D3dContext context, D3dComputeShader shader);
 void d3dCsSetConstantBuffer(D3dContext context, int32_t slot, D3dBuffer buffer);
-void d3dCsSetConstantBufferRange(D3dContext1 context1, int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants);
 void d3dCsSetShaderResource(D3dContext context, int32_t slot, D3dSrv view);
 void d3dCsSetUnorderedAccessView(D3dContext context, int32_t slot, D3dUav view);
 void d3dCsSetSampler(D3dContext context, int32_t slot, D3dSampler sampler);

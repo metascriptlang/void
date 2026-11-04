@@ -123,27 +123,6 @@ int32_t d3dUpdateIfChanged(D3dContext context, D3dBuffer buffer, uint8_t *cache,
 	return 1;
 }
 
-D3dContext1 d3dUniformOffsetting(D3dDevice device, D3dContext context) {
-	D3D11_FEATURE_DATA_D3D11_OPTIONS options = {0};
-	ID3D11DeviceContext1 *context1 = NULL;
-	if (FAILED(ID3D11DeviceContext_QueryInterface(CONTEXT(context), &IID_ID3D11DeviceContext1, (void **)&context1))) return NULL;
-	if (FAILED(ID3D11Device_CheckFeatureSupport(DEVICE(device), D3D11_FEATURE_D3D11_OPTIONS, &options, sizeof options)) ||
-		!options.ConstantBufferOffsetting || !options.ConstantBufferPartialUpdate ||
-		!options.MapNoOverwriteOnDynamicConstantBuffer) {
-		ID3D11DeviceContext1_Release(context1);
-		return NULL;
-	}
-	return (D3dContext1)context1;
-}
-
-void d3dSetConstantBufferRange(D3dContext1 context1, int32_t vertexStage, int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants) {
-	ID3D11Buffer *buffers[1] = { (ID3D11Buffer *)buffer };
-	UINT first = (UINT)firstConstant, count = (UINT)numConstants;
-	ID3D11DeviceContext1 *native = (ID3D11DeviceContext1 *)context1;
-	if (vertexStage) ID3D11DeviceContext1_VSSetConstantBuffers1(native, (UINT)slot, 1, buffers, &first, &count);
-	else ID3D11DeviceContext1_PSSetConstantBuffers1(native, (UINT)slot, 1, buffers, &first, &count);
-}
-
 void d3dCopyBytes(void *destination, int64_t destinationOffset, void *source, int64_t bytes) {
 	memcpy((uint8_t *)destination + destinationOffset, source, (size_t)bytes);
 }
@@ -771,12 +750,6 @@ void d3dCsSetConstantBuffer(D3dContext context, int32_t slot, D3dBuffer buffer) 
 	ID3D11DeviceContext_CSSetConstantBuffers(CONTEXT(context), (UINT)slot, 1, buffers);
 }
 
-void d3dCsSetConstantBufferRange(D3dContext1 context1, int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants) {
-	ID3D11Buffer *buffers[1] = { (ID3D11Buffer *)buffer };
-	UINT first = (UINT)firstConstant, count = (UINT)numConstants;
-	ID3D11DeviceContext1_CSSetConstantBuffers1((ID3D11DeviceContext1 *)context1, (UINT)slot, 1, buffers, &first, &count);
-}
-
 void d3dCsSetShaderResource(D3dContext context, int32_t slot, D3dSrv view) {
 	ID3D11ShaderResourceView *views[1] = { (ID3D11ShaderResourceView *)view };
 	ID3D11DeviceContext_CSSetShaderResources(CONTEXT(context), (UINT)slot, 1, views);
@@ -915,7 +888,6 @@ typedef struct { const char *name; int32_t value; } DriverConstant;
 #define DRIVER_IN(prefix, name) { #prefix #name, (int32_t)prefix##name }
 
 static const DriverConstant driverConstants[] = {
-	DRIVER(D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT),
 	DRIVER(D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT),
 	DRIVER(D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT),
 	DRIVER(D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT),
