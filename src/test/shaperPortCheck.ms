@@ -1,4 +1,5 @@
 import { readDir } from "std/fs";
+import { holdFontFile } from "./fontFile";
 import { colourBuilt, holdFaceBytes, loadFace, syntheticFace } from "../void2d/face";
 import { KB_CONFIG_FIXTURE_HEX } from "./kbConfigFixtures";
 import { KB_LOOKUP_FIXTURE_HEX } from "./kbLookupFixtures";
@@ -65,6 +66,7 @@ test "shaper.ms reproduces the digests recorded from shaper.c over every face th
 	for (const path of fontFiles("tests/fonts/")) { files.push(path); }
 	for (const path of fontFiles("tests/fonts/cmap/")) { files.push(path); }
 	for (const path of files) {
+		holdFontFile(path);
 		for (let index: int32 = 0; index < (path.endsWith(".ttc") ? 3 : 1); index++) {
 			const face: int32 = try loadFace(path, index) catch -1;
 			if (face >= 0) { check(count, `${path}#${index}`, face); }
