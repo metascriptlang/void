@@ -106,6 +106,31 @@ Weak spots in GPUI's text path: 112-byte glyph instances carrying HSLA and a `Tr
 
 Defects found in void2d while tracing are listed in [VOID2D.md](VOID2D.md) "Known defects".
 
+### Measured timing, editor and terminal (macOS, 2026-11-04)
+
+Harness `tests/bench/gpuiParity/` (`pairs.sh 3 <dir>`, then `compare.py`): the same editor (5 phases) and terminal (7 phases) scenes in Void and in GPUI at `b961b49`, 1280x720 at scale 1, 3 rounds x 120 samples per phase, Void then GPUI back to back each round. Host m1m (8 cores, Retina 3024x1964, load 4-5 during the run), msc `f357ebc1c7a`, void at `a6d00945`.
+
+The claim is CPU per frame (`CLOCK_PROCESS_CPUTIME_ID`, all threads of the process), median ms, Void / GPUI:
+
+| case | phase | Void | GPUI |
+|---|---|---|---|
+| editor | still | 1.03 | 2.03 |
+| editor | caret | 1.30 | 2.80 |
+| editor | selection | 1.79 | 2.62 |
+| editor | editSame | 2.89 | 3.00 |
+| editor | splice | 3.43 | 3.10 |
+| terminal | still | 1.02 | 2.51 |
+| terminal | oneRow | 1.85 | 3.38 |
+| terminal | spliceRow | 2.04 | 3.52 |
+| terminal | scroll | 0.94 | 3.44 |
+| terminal | recycle | 3.54 | 3.63 |
+| terminal | rewrite | 3.43 | 3.67 |
+| terminal | perCellRuns | 3.83 | 3.91 |
+
+Void spends 1.5-3.7x less CPU on the light phases. The heavy phases (editor editSame and splice, terminal recycle, rewrite, perCellRuns) are parity: Void's per-round medians on editor splice range 2.4-3.6 ms, wider than the difference. Frame time is not the claim: Void's `totalMs` ends before the host present while GPUI's `callback_to_present_ns` includes the Metal present wait (bimodal 0.38 / 1.2 ms on still), which inflates GPUI by 1.1-17x.
+
+The GPUI window is placed at an integral origin: `Bounds::centered` gave a 1280x721 viewport on this display, which the harness refuses.
+
 ## Disposition of GPUI's rendering layer
 
 How the taken items are adapted — the display list, the unified UI pipeline, SDF under an affine, the text regimes, clip and scroll — is in [VOID2D.md](VOID2D.md) "Conclusions".
