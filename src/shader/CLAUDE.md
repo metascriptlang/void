@@ -227,9 +227,9 @@ later replaces the hand-written GLSL source of each base.
   printer module is emitted (2026-10-24, BUILD `4b5816aea`). Its
   limits, each refused or stated: one program, so no `@feature` field in either entry
   (`tests/refusals/programFeature.ms`); one per-vertex buffer, attributes packed in declaration
-  order with no padding, `@builtin` inputs skipped; `float32` and its `./std` vectors only, since
-  `GPUVertexFormat` has no integer format (an `int32` or `uint32` field is refused at the statement,
-  `tests/refusals/programIntAttribute.ms`). A
+  order with no padding, `@builtin` inputs skipped; `float32`, its `./std` vectors and `uint32`,
+  the formats the door sizes (`formatBytes`; an `int32` or integer vector field is refused at the
+  statement, `tests/refusals/programIntAttribute.ms`). A
   fragment without an input links to a vertex entry that writes no varyings. A program the IR
   refuses stops the compile at the program's name, never skips it: the reason follows
   "shaderProgram '<name>': " (`tests/refusals/programBindingRange.ms`, a block at `@binding(9)`).

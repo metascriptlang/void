@@ -1,9 +1,9 @@
-// expect: 13:23 shaderProgram: an int32 or uint32 vertex attribute has no GPUVertexFormat
+// expect: 13:23 shaderProgram: an int32 or integer vector vertex attribute has no door vertex format
 import { shaderProgram } from "../../src/shader/program";
 import { Vec4f, builtin, vec4f } from "../../src/shader/std";
 struct In {
 	position: Vec4f;
-	tag: uint32;
+	tag: int32;
 }
 struct Out {
 	@builtin(position) position: Vec4f;

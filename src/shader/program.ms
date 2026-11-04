@@ -128,15 +128,16 @@ export macro vertexFormats(vertex: Node, fragment: Node): Node {
 		if (sameType(impl, getTypeImpl(Vec2f))) { return "float32x2 8"; }
 		if (sameType(impl, getTypeImpl(Vec3f))) { return "float32x3 12"; }
 		if (sameType(impl, getTypeImpl(Vec4f))) { return "float32x4 16"; }
-		const integer = kind == TypeKind.Int32 || kind == TypeKind.Uint32 ||
+		if (kind == TypeKind.Uint32) { return "uint32 4"; }
+		const integer = kind == TypeKind.Int32 ||
 			sameType(impl, getTypeImpl(Vec2i)) || sameType(impl, getTypeImpl(Vec3i)) ||
 			sameType(impl, getTypeImpl(Vec4i)) || sameType(impl, getTypeImpl(Vec2u)) ||
 			sameType(impl, getTypeImpl(Vec3u)) || sameType(impl, getTypeImpl(Vec4u));
 		if (integer) {
-			error("shaderProgram: an int32 or uint32 vertex attribute has no GPUVertexFormat " +
-				"(src/webgpu/types.ms); take float32 or a ./std float vector", at);
+			error("shaderProgram: an int32 or integer vector vertex attribute has no door vertex " +
+				"format (src/gpu/doorGpu.ms formatBytes); take uint32, float32 or a ./std float vector", at);
 		}
-		error("shaderProgram: a vertex attribute is float32 or a ./std float vector of it", at);
+		error("shaderProgram: a vertex attribute is uint32, float32 or a ./std float vector of it", at);
 	}
 
 	const signature = getType(vertex);
