@@ -1,0 +1,23 @@
+[package]
+name = "current_gpui_bench"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+# zed checkout at b961b4950febbc050081554bafe976b5d1b93f39 (m1m: ~/work/zed-b961)
+gpui = { path = "../../../../../zed-b961/crates/gpui", features = ["profiler"] }
+gpui_platform = { path = "../../../../../zed-b961/crates/gpui_platform", features = ["font-kit"] }
+ttf-parser = "=0.25.1"
+
+[patch.crates-io]
+# the entries of zed b961's root [patch.crates-io] that a gpui-only build can resolve (windows/livekit/notify ones dropped)
+async-task = { git = "https://github.com/smol-rs/async-task.git", rev = "b4486cd71e4e94fbda54ce6302444de14f4d190e" }
+calloop = { git = "https://github.com/zed-industries/calloop" }
+
+[profile.release]
+debug = "limited"
+lto = "thin"
+codegen-units = 1
