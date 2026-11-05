@@ -4,7 +4,9 @@ import {
 	dx12DescriptorHeapCreate,
 	dx12DescriptorsCopy,
 	dx12DescriptorsGather,
+	dx12DepthStencilView,
 	dx12Release,
+	dx12RenderTargetView,
 	dx12RootSignatureCreate,
 	dx12RootSignatureSerialize,
 	dx12SamplerCreate,
@@ -15,8 +17,8 @@ import {
 	dx12TextureSrv,
 	dx12TextureUav,
 } from "./d3d12.h";
-import { FrameRing, NativeError, checked, retire, stop } from "./frame.ms";
-import { Resources, useBuffer } from "./resources.ms";
+import { FrameRing, NativeError, checked, closedFrames, retire, stop } from "./frame.ms";
+import { Resources, TextureNative, useBuffer } from "./resources.ms";
 import { STATE_UNORDERED_ACCESS, SubresourceRange, transitionRange } from "./tracker.ms";
 import {
 	BindingKind,
@@ -37,7 +39,7 @@ import {
 	samplerMaxLod,
 } from "../types.ms";
 import { addressesBinding, clampedAnisotropy, entryBytes } from "../validate.ms";
-import { ViewRecord, bindGroupRecords, bufferRecords, put, slotOf, textureRecords, vacate, viewRecords } from "../pool.ms";
+import { TextureRecord, ViewRecord, bindGroupRecords, bufferRecords, put, slotOf, textureRecords, vacate, viewRecords } from "../pool.ms";
 
 const HEAP_VIEWS: int32 = 0;
 const HEAP_SAMPLERS: int32 = 1;
@@ -109,6 +111,7 @@ struct DescriptorHeap {
 }
 
 struct RetiredDescriptor {
+	kind: int32;
 	serial: uint64;
 	index: int32;
 }
@@ -141,7 +144,15 @@ export struct VisibleCursor {
 	samplers: int32;
 }
 
+struct AttachmentDescriptor {
+	resource: uint64;
+	layer: int32;
+	depth: boolean;
+	index: int32;
+}
+
 export struct ViewNative {
+	attachments: Vec<AttachmentDescriptor>;
 	shaderResource: int32;
 	unordered: int32;
 	texture: uint32;
@@ -222,19 +233,23 @@ export struct DescriptorStats {
 	heapSwitches: int32;
 	tableCopies: int32;
 	descriptorCopies: int32;
+	renderTargetCreates: int32;
+	depthStencilCreates: int32;
 }
 
 export struct Descriptors {
 	device: uint64;
 	views: DescriptorHeap;
 	freeViews: Vec<int32>;
-	retiredViews: Vec<RetiredDescriptor>;
+	retiredDescriptors: Vec<RetiredDescriptor>;
 	samplers: DescriptorHeap;
 	samplerKeys: Vec<SamplerKey>;
 	targets: DescriptorHeap;
 	targetCursor: int32;
+	freeTargets: Vec<int32>;
 	depths: DescriptorHeap;
 	depthCursor: int32;
+	freeDepths: Vec<int32>;
 	visible: Vec<VisibleSlot>;
 	cursor: VisibleCursor;
 	generation: uint64;
@@ -247,7 +262,7 @@ export struct Descriptors {
 
 const NO_HEAP: DescriptorHeap = { kind: 0, native: 0, start: 0, gpu: 0, increment: 0, capacity: 0 };
 const NO_RANGE: SubresourceRange = { baseMip: 0, mips: 0, baseLayer: 0, layers: 0 };
-const NO_VIEW: ViewNative = { shaderResource: NO_DESCRIPTOR, unordered: NO_DESCRIPTOR, texture: 0, range: NO_RANGE };
+const NO_VIEW: ViewNative = { attachments: [], shaderResource: NO_DESCRIPTOR, unordered: NO_DESCRIPTOR, texture: 0, range: NO_RANGE };
 const NO_GROUP: GroupNative = { uniforms: [], tables: [], owned: [], uses: [] };
 export const NO_LAYOUT: PipelineLayout = { shader: { compute: false, uniforms: [], tables: [] }, signature: 0 };
 
@@ -258,13 +273,15 @@ export function closedDescriptors(): Descriptors {
 		device: 0,
 		views: NO_HEAP,
 		freeViews: [],
-		retiredViews: [],
+		retiredDescriptors: [],
 		samplers: NO_HEAP,
 		samplerKeys: [],
 		targets: NO_HEAP,
 		targetCursor: 0,
+		freeTargets: [],
 		depths: NO_HEAP,
 		depthCursor: 0,
+		freeDepths: [],
 		visible: [],
 		cursor: newCursor(VISIBLE_VIEW_COUNT, VISIBLE_SAMPLER_COUNT),
 		generation: 1,
@@ -272,7 +289,7 @@ export function closedDescriptors(): Descriptors {
 		samplerNatives: [NO_DESCRIPTOR],
 		groups: [NO_GROUP],
 		bound: { signature: 0 },
-		stats: { heapSwitches: 0, tableCopies: 0, descriptorCopies: 0 },
+		stats: { heapSwitches: 0, tableCopies: 0, descriptorCopies: 0, renderTargetCreates: 0, depthStencilCreates: 0 },
 	};
 }
 
@@ -343,51 +360,164 @@ function allocateView(ref d: Descriptors): Result<int32, NativeError> {
 }
 
 function retireView(ref d: Descriptors, ref ring: FrameRing, index: int32): void {
-	if (index != NO_DESCRIPTOR) { d.retiredViews.push({ serial: ring.recording(), index: index }); }
+	if (index != NO_DESCRIPTOR) { d.retiredDescriptors.push({ kind: HEAP_VIEWS, serial: ring.recording(), index: index }); }
 }
 
-function scratchTarget(ref d: Descriptors, ref ring: FrameRing, depth: boolean): Result<uint64, NativeError> {
+function allocateAttachment(
+	ref d: Descriptors,
+	ref ring: FrameRing,
+	depth: boolean,
+): Result<int32, NativeError> {
+	if (depth && d.freeDepths.length > 0) {
+		const index = d.freeDepths[d.freeDepths.length - 1];
+		d.freeDepths.pop();
+		return Result.ok(index);
+	}
+	if (!depth && d.freeTargets.length > 0) {
+		const index = d.freeTargets[d.freeTargets.length - 1];
+		d.freeTargets.pop();
+		return Result.ok(index);
+	}
+	const index = depth ? d.depthCursor : d.targetCursor;
 	const heap = depth ? d.depths : d.targets;
-	let cursor = depth ? d.depthCursor : d.targetCursor;
-	let current = heap;
-	if (cursor == heap.capacity) {
+	if (index == heap.capacity) {
+		const grown = try descriptorHeap(
+			d.device, heap.kind, (heap.capacity * 3) >> 1, false,
+		);
+		const copied = checked(dx12DescriptorsCopy(
+			d.device, heap.capacity as uint32, grown.start, heap.start, heap.kind,
+		));
+		if (!copied.ok) {
+			dx12Release(grown.native);
+			return Result.err(copied.error);
+		}
 		retire(ring, heap.native);
-		current = try descriptorHeap(d.device, heap.kind, (heap.capacity * 3) >> 1, false);
-		cursor = 0;
+		if (depth) { d.depths = grown; } else { d.targets = grown; }
 	}
+	if (depth) { d.depthCursor += 1; } else { d.targetCursor += 1; }
+	return Result.ok(index);
+}
+
+function retireAttachment(
+	ref d: Descriptors,
+	ref ring: FrameRing,
+	attachment: AttachmentDescriptor,
+): void {
+	d.retiredDescriptors.push({
+		kind: attachment.depth ? HEAP_DEPTHS : HEAP_TARGETS,
+		serial: ring.recording(),
+		index: attachment.index,
+	});
+}
+
+export function attachmentHandle(
+	ref d: Descriptors,
+	ref ring: FrameRing,
+	view: ViewRecord,
+	texture: TextureRecord,
+	native: TextureNative,
+	depthSlice: int32,
+	depth: boolean,
+): Result<uint64, NativeError> {
+	const v = slotOf(view.id);
+	const layer = texture.volume ? depthSlice : view.baseLayer;
+	for (let i: int32 = 0; i < d.viewNatives[v].attachments.length; i++) {
+		const attachment = d.viewNatives[v].attachments[i];
+		if (attachment.resource == native.native &&
+			attachment.layer == layer && attachment.depth == depth) {
+			return Result.ok(handleAt(depth ? d.depths : d.targets, attachment.index));
+		}
+	}
+	const index = try allocateAttachment(d, ring, depth);
+	const handle = handleAt(depth ? d.depths : d.targets, index);
+	const dimension = texture.volume ? VIEW_3D :
+		(texture.layers > 1 ? VIEW_2D_ARRAY : VIEW_2D);
+	const multisampled = texture.sampleCount > 1 ? 1 : 0;
+	const created = checked(depth
+		? dx12DepthStencilView(
+			d.device, native.native, native.info.depthStencil, dimension,
+			multisampled, view.baseMip as uint32, layer as uint32, handle,
+		)
+		: dx12RenderTargetView(
+			d.device, native.native, native.info.renderTarget, dimension,
+			multisampled, view.baseMip as uint32, layer as uint32, handle,
+		));
+	if (!created.ok) {
+		if (depth) { d.freeDepths.push(index); } else { d.freeTargets.push(index); }
+		return Result.err(created.error);
+	}
+	d.viewNatives[v].attachments.push({
+		resource: native.native, layer: layer, depth: depth, index: index,
+	});
 	if (depth) {
-		d.depths = current;
-		d.depthCursor = cursor + 1;
+		d.stats.depthStencilCreates += 1;
 	} else {
-		d.targets = current;
-		d.targetCursor = cursor + 1;
+		d.stats.renderTargetCreates += 1;
 	}
-	return Result.ok(handleAt(current, cursor));
+	return Result.ok(handle);
 }
 
-export function renderTargetHandle(ref d: Descriptors, ref ring: FrameRing): Result<uint64, NativeError> {
-	return scratchTarget(d, ring, false);
-}
-
-export function depthStencilHandle(ref d: Descriptors, ref ring: FrameRing): Result<uint64, NativeError> {
-	return scratchTarget(d, ring, true);
+export function releaseAttachmentResource(
+	ref d: Descriptors,
+	ref ring: FrameRing,
+	resource: uint64,
+): void {
+	if (resource == 0) { return; }
+	for (let v: int32 = 1; v < d.viewNatives.length; v++) {
+		for (let i = d.viewNatives[v].attachments.length as int32 - 1; i >= 0; i--) {
+			const attachment = d.viewNatives[v].attachments[i];
+			if (attachment.resource != resource) { continue; }
+			retireAttachment(d, ring, attachment);
+			d.viewNatives[v].attachments.splice(i, 1);
+		}
+	}
 }
 
 export function beginFrame(ref d: Descriptors, ref ring: FrameRing): void {
-	d.targetCursor = 0;
-	d.depthCursor = 0;
 	d.cursor = newCursor(d.cursor.viewCapacity, d.cursor.samplerCapacity);
 	d.generation += 1;
 	d.bound = { signature: 0 };
 	let kept: Vec<RetiredDescriptor> = [];
-	for (const retired of d.retiredViews) {
+	for (const retired of d.retiredDescriptors) {
 		if (retired.serial > ring.completed) {
 			kept.push(retired);
 		} else {
-			d.freeViews.push(retired.index);
+			match (retired.kind) {
+				HEAP_TARGETS => d.freeTargets.push(retired.index),
+				HEAP_DEPTHS => d.freeDepths.push(retired.index),
+				_ => d.freeViews.push(retired.index),
+			};
 		}
 	}
-	d.retiredViews = kept;
+	d.retiredDescriptors = kept;
+}
+
+test "D3D12 attachment descriptors recycle once at their completed serial" {
+	let d = closedDescriptors();
+	let ring = closedFrames();
+	ring.submitted = 8;
+	ring.completed = 8;
+	retireAttachment(d, ring, {
+		resource: 1, layer: 0, depth: false, index: 7,
+	});
+	retireAttachment(d, ring, {
+		resource: 2, layer: 0, depth: true, index: 11,
+	});
+	assert d.retiredDescriptors.length == 2;
+	assert d.retiredDescriptors[0].serial == 9;
+	assert d.retiredDescriptors[1].serial == 9;
+	beginFrame(d, ring);
+	assert d.freeTargets.length == 0 && d.freeDepths.length == 0;
+	assert d.retiredDescriptors.length == 2;
+	ring.completed = 9;
+	beginFrame(d, ring);
+	assert d.freeTargets.length == 1 && d.freeTargets[0] == 7;
+	assert d.freeDepths.length == 1 && d.freeDepths[0] == 11;
+	assert d.freeViews.length == 0 && d.retiredDescriptors.length == 0;
+	beginFrame(d, ring);
+	assert d.freeTargets.length == 1 && d.freeTargets[0] == 7;
+	assert d.freeDepths.length == 1 && d.freeDepths[0] == 11;
+	assert d.freeViews.length == 0 && d.retiredDescriptors.length == 0;
 }
 
 function viewDimensionOf(name: string): int32 {
@@ -412,6 +542,7 @@ export function createView(ref d: Descriptors, ref r: Resources, view: ViewRecor
 	let dimension = viewDimensionOf(view.dimension);
 	if (dimension == VIEW_CUBE && view.baseLayer != 0) { dimension = VIEW_CUBE_ARRAY; }
 	let native: ViewNative = {
+		attachments: [],
 		shaderResource: NO_DESCRIPTOR,
 		unordered: NO_DESCRIPTOR,
 		texture: view.texture,
@@ -457,6 +588,7 @@ export function destroyView(ref d: Descriptors, ref ring: FrameRing, id: uint32)
 	const native = d.viewNatives[slotOf(id)];
 	retireView(d, ring, native.shaderResource);
 	retireView(d, ring, native.unordered);
+	for (const attachment of native.attachments) { retireAttachment(d, ring, attachment); }
 	vacate(d.viewNatives, id);
 }
 

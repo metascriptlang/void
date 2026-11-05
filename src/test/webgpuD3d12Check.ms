@@ -26,16 +26,18 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 } from "../webgpu/types.ms";
-import { getCurrentTexture, requestDevice } from "../webgpu/device.ms";
+import { getCurrentDepthTexture, getCurrentTexture, requestDevice } from "../webgpu/device.ms";
 import {
 	adapterDescription,
 	closeSurface,
 	descriptorStats,
 	executedAllocator,
 	frameAllocator,
+	fitSurface,
 	idleSerial,
 	nativeTexture,
 	openSurface,
+	presentSurface,
 	retiredCount,
 	samplerDescriptor,
 	viewDescriptor,
@@ -50,6 +52,7 @@ import {
 	doorShutdown,
 } from "../gpu/doorGpu.ms";
 import { splitTextureCopy } from "../webgpu/d3d12/resources.ms";
+import { slotOf } from "../webgpu/pool.ms";
 import { FRAMES_IN_FLIGHT } from "../webgpu/d3d12/frame.ms";
 import { PRESENT_MODE_IMMEDIATE, PRESENT_MODE_VSYNC, flipFormat, planPresent, presentCall } from "../webgpu/d3d12/surface.ms";
 import { newCursor, nextPair, serializeRootSignature, shaderLayout, tableEntries } from "../webgpu/d3d12/descriptor.ms";
@@ -115,6 +118,126 @@ function counting(count: int32, step: int32): Vec<uint8> {
 function submitEmpty(device: GPUDevice): void {
 	const encoder = device.createCommandEncoder();
 	device.queue.submit(encoder.finish());
+}
+
+function clearAttachments(device: GPUDevice, descriptor: GPURenderPassDescriptor): void {
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(descriptor).end();
+	device.queue.submit(encoder.finish());
+}
+
+function withDepth(view: GPUTextureView, depth: GPUTextureView): GPURenderPassDescriptor {
+	let descriptor = clearingPass(view, { id: 0 });
+	descriptor.depthStencilAttachment = {
+		view: depth,
+		depthClearValue: 1.0,
+		depthLoadOp: "clear",
+		depthStoreOp: "store",
+	};
+	return descriptor;
+}
+
+test "repeated D3D12 attachment passes and frames create each CPU RTV and DSV only once" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	const depth = device.createTexture({
+		label: "cached depth",
+		size: { width: SIZE, height: SIZE, depthOrArrayLayers: 1 },
+		format: "depth32float",
+		usage: GPUTextureUsage.RENDER_ATTACHMENT as int32,
+	});
+	const descriptor = withDepth(target.createView({ label: null }), depth.createView({ label: null }));
+	for (let frame: int32 = 0; frame < FRAMES_IN_FLIGHT + 2; frame++) {
+		const encoder = device.createCommandEncoder();
+		for (let pass: int32 = 0; pass < 3; pass++) { encoder.beginRenderPass(descriptor).end(); }
+		device.queue.submit(encoder.finish());
+	}
+	assert descriptorStats().renderTargetCreates == 1;
+	assert descriptorStats().depthStencilCreates == 1;
+	assert readTexel(device, target, 0, 0, 3, 3) == BLUE;
+	assert debugLayerMessages() == 0;
+	device.destroy();
+}
+
+test "D3D12 CPU attachment descriptors belong to full view and texture generations" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	const first = target.createView({ label: null });
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(clearingPass(first, { id: 0 })).end();
+	first.destroy();
+	const second = target.createView({ label: null });
+	assert slotOf(first.id) == slotOf(second.id) && first.id != second.id;
+	encoder.beginRenderPass(clearingPass(second, { id: 0 })).end();
+	target.destroy();
+	const replacement = colourTarget(device, 1);
+	assert slotOf(target.id) == slotOf(replacement.id) && target.id != replacement.id;
+	second.destroy();
+	const third = replacement.createView({ label: null });
+	encoder.beginRenderPass(clearingPass(third, { id: 0 })).end();
+	device.queue.submit(encoder.finish());
+	clearAttachments(device, clearingPass(third, { id: 0 }));
+	assert descriptorStats().renderTargetCreates == 3;
+	assert readTexel(device, replacement, 0, 0, 3, 3) == BLUE;
+	assert debugLayerMessages() == 0;
+	device.destroy();
+}
+
+test "D3D12 cached attachment views distinguish mip and array layer" {
+	const device = openDevice();
+	const target = device.createTexture({
+		label: "cached layered mips",
+		size: { width: 8, height: 8, depthOrArrayLayers: 2 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		mipLevelCount: 2,
+	});
+	const first = target.createView({ label: null, baseMipLevel: 0, mipLevelCount: 1, baseArrayLayer: 0, arrayLayerCount: 1 });
+	const second = target.createView({ label: null, baseMipLevel: 1, mipLevelCount: 1, baseArrayLayer: 1, arrayLayerCount: 1 });
+	for (let frame: int32 = 0; frame < 3; frame++) {
+		clearRed(device, first);
+		clearAttachments(device, clearingPass(second, { id: 0 }));
+	}
+	assert descriptorStats().renderTargetCreates == 2;
+	assert readTexel(device, target, 0, 0, 3, 3) == RED;
+	assert readTexel(device, target, 1, 1, 3, 3) == BLUE;
+	assert readTexel(device, target, 0, 1, 3, 3) == 0;
+	assert readTexel(device, target, 1, 0, 3, 3) == 0;
+	assert debugLayerMessages() == 0;
+	device.destroy();
+}
+
+test "D3D12 CPU RTV heap growth keeps earlier MRT handles and cached indices valid" {
+	const device = openDevice();
+	const first = colourTarget(device, 1);
+	const second = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	let views: Vec<GPUTextureView> = [];
+	for (let i: int32 = 0; i < 1023; i++) {
+		const view = first.createView({ label: null });
+		views.push(view);
+		encoder.beginRenderPass(clearingPass(view, { id: 0 })).end();
+	}
+	let descriptor = clearingPass(first.createView({ label: null }), { id: 0 });
+	descriptor.colorAttachments[1] = {
+		view: second.createView({ label: null }),
+		clearValue: { r: 1.0, g: 0.0, b: 0.0, a: 1.0 },
+		loadOp: "clear",
+		storeOp: "store",
+	};
+	encoder.beginRenderPass(descriptor).end();
+	device.queue.submit(encoder.finish());
+	assert readTexel(device, first, 0, 0, 3, 3) == BLUE;
+	assert readTexel(device, second, 0, 0, 3, 3) == RED;
+	clearRed(device, views[0]);
+	assert descriptorStats().renderTargetCreates == 1025;
+	assert readTexel(device, first, 0, 0, 3, 3) == RED;
+	for (const view of views) { view.destroy(); }
+	for (let frame: int32 = 0; frame <= FRAMES_IN_FLIGHT; frame++) { submitEmpty(device); }
+	clearAttachments(device, descriptor);
+	assert descriptorStats().renderTargetCreates == 1025;
+	assert debugLayerMessages() == 0;
+	device.destroy();
 }
 
 test "a D3D12 device on WARP says d3d12 with a top-left origin and depth in zero to one" {
@@ -1376,6 +1499,8 @@ test "a stencil cleared to 1 and stored is loaded by the next pass while that pa
 	const device = openDevice();
 	const target = colourTarget(device, 1);
 	drawOverLoadedStencil(device, stencilPipeline(device, flatShader(device), "equal", "keep"), target);
+	assert descriptorStats().renderTargetCreates == 1;
+	assert descriptorStats().depthStencilCreates == 1;
 	const read = readTarget(device, target);
 	assert texelAt(read, 256, 0, 0) == GREEN && texelAt(read, 256, 63, 63) == GREEN;
 	assert debugLayerMessages() == 0;
@@ -1885,9 +2010,12 @@ test "a colour attachment with depthSlice 2 clears that slice of a 3d texture al
 	});
 	let descriptor = clearingPass(volume.createView({ label: null, dimension: "3d" }), { id: 0 });
 	descriptor.colorAttachments[0].depthSlice = 2;
-	const encoder = device.createCommandEncoder();
-	encoder.beginRenderPass(descriptor).end();
-	device.queue.submit(encoder.finish());
+	for (let frame: int32 = 0; frame < 3; frame++) { clearAttachments(device, descriptor); }
+	descriptor.colorAttachments[0].depthSlice = 0;
+	descriptor.colorAttachments[0].clearValue = { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };
+	for (let frame: int32 = 0; frame < 3; frame++) { clearAttachments(device, descriptor); }
+	assert descriptorStats().renderTargetCreates == 2;
+	assert readTexel(device, volume, 0, 0, 2, 2) == RED;
 	assert readTexel(device, volume, 0, 2, 2, 2) == BLUE;
 	assert readTexel(device, volume, 0, 1, 2, 2) == 0;
 	assert readTexel(device, volume, 0, 3, 2, 2) == 0;
@@ -2068,6 +2196,96 @@ test "the swapchain texture copies out of a composition back buffer, resolved wh
 	assert texelAt(readBack(copied), 256, 7, 7) == BLUE;
 	assert debugLayerMessages() == 0;
 	closeSurface(surface);
+	device.destroy();
+}
+
+test "D3D12 presents rotate native backbuffers with one cached RTV each" {
+	const device = openDevice();
+	const surface = openSurface(0, true, 8, 8, PRESENT_MODE_VSYNC);
+	const renderView = (surface as uint64) as Ptr<void>;
+	const bufferCount = planPresent(PRESENT_MODE_VSYNC, false).bufferCount as int32;
+	assert bufferCount == 2;
+	let natives: Vec<uint64> = [];
+	const colours: Vec<uint32> = [RED, GREEN, BLUE];
+	for (let frame: int32 = 0; frame < bufferCount * 3; frame++) {
+		const screen = getCurrentTexture({
+			width: 8,
+			height: 8,
+			sampleCount: 1,
+			renderView,
+			resolveView: null,
+			depthStencilView: null,
+		});
+		const native = nativeTexture(screen);
+		assert native != 0;
+		if (frame < bufferCount) {
+			for (const previous of natives) { assert native != previous; }
+			natives.push(native);
+		} else {
+			assert native == natives[frame % bufferCount];
+		}
+		let descriptor = clearingPass(screen.createView({ label: null }), { id: 0 });
+		descriptor.colorAttachments[0].clearValue = {
+			r: frame % 3 == 0 ? 1.0 : 0.0,
+			g: frame % 3 == 1 ? 1.0 : 0.0,
+			b: frame % 3 == 2 ? 1.0 : 0.0,
+			a: 1.0,
+		};
+		clearAttachments(device, descriptor);
+		const expectedCreates = frame < bufferCount
+			? frame + 1 : bufferCount;
+		assert descriptorStats().renderTargetCreates == expectedCreates;
+		const pixels = readTexture(device, screen, 0, 0, 8, 8);
+		assert texelAt(pixels, 256, 0, 0) == colours[frame % 3];
+		assert texelAt(pixels, 256, 7, 7) == colours[frame % 3];
+		assert presentSurface(surface, false) == 0;
+	}
+	assert natives.length == bufferCount;
+	assert descriptorStats().renderTargetCreates == bufferCount;
+	fitSurface(surface, 16, 16);
+	const resized = getCurrentTexture({
+		width: 16, height: 16, sampleCount: 1, renderView,
+		resolveView: null, depthStencilView: null,
+	});
+	clearAttachments(device, clearingPass(resized.createView({ label: null }), { id: 0 }));
+	assert readTexel(device, resized, 0, 0, 15, 15) == BLUE;
+	assert presentSurface(surface, false) == 0;
+	assert debugLayerMessages() == 0;
+	closeSurface(surface);
+	device.destroy();
+}
+
+test "D3D12 canvas attachments cache across acquire and rebuild on resize, MSAA and surface replacement" {
+	const device = openDevice();
+	const surface = openSurface(0, true, 8, 8, PRESENT_MODE_VSYNC);
+	const renderView = (surface as uint64) as Ptr<void>;
+	for (let frame: int32 = 0; frame < 3; frame++) {
+		const screen = getCurrentTexture({ width: 8, height: 8, sampleCount: 1, renderView, resolveView: null, depthStencilView: null });
+		clearAttachments(device, withDepth(screen.createView({ label: null }), getCurrentDepthTexture().createView({ label: null })));
+	}
+	assert descriptorStats().renderTargetCreates == 1 && descriptorStats().depthStencilCreates == 1;
+	fitSurface(surface, 16, 16);
+	const resized = getCurrentTexture({ width: 16, height: 16, sampleCount: 1, renderView, resolveView: null, depthStencilView: null });
+	clearAttachments(device, withDepth(resized.createView({ label: null }), getCurrentDepthTexture().createView({ label: null })));
+	assert descriptorStats().renderTargetCreates == 2 && descriptorStats().depthStencilCreates == 2;
+	for (let frame: int32 = 0; frame < 3; frame++) {
+		const multi = getCurrentTexture({ width: 16, height: 16, sampleCount: 4, renderView, resolveView: null, depthStencilView: null });
+		clearAttachments(device, withDepth(multi.createView({ label: null }), getCurrentDepthTexture().createView({ label: null })));
+	}
+	assert descriptorStats().renderTargetCreates == 3 && descriptorStats().depthStencilCreates == 3;
+	assert readTexel(device, resized, 0, 0, 15, 15) == BLUE;
+	const single = getCurrentTexture({ width: 16, height: 16, sampleCount: 1, renderView, resolveView: null, depthStencilView: null });
+	clearAttachments(device, withDepth(single.createView({ label: null }), getCurrentDepthTexture().createView({ label: null })));
+	assert descriptorStats().renderTargetCreates == 3 && descriptorStats().depthStencilCreates == 4;
+	closeSurface(surface);
+	const reopened = openSurface(0, true, 16, 16, PRESENT_MODE_VSYNC);
+	const nextView = (reopened as uint64) as Ptr<void>;
+	const next = getCurrentTexture({ width: 16, height: 16, sampleCount: 1, renderView: nextView, resolveView: null, depthStencilView: null });
+	clearAttachments(device, withDepth(next.createView({ label: null }), getCurrentDepthTexture().createView({ label: null })));
+	assert descriptorStats().renderTargetCreates == 4 && descriptorStats().depthStencilCreates == 4;
+	assert readTexel(device, next, 0, 0, 15, 15) == BLUE;
+	assert debugLayerMessages() == 0;
+	closeSurface(reopened);
 	device.destroy();
 }
 

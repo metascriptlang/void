@@ -5,7 +5,6 @@ import {
 	dx12ClearDepthStencil,
 	dx12ClearRenderTarget,
 	dx12CommandSignatureCreate,
-	dx12DepthStencilView,
 	dx12DeviceCreate,
 	dx12Dispatch,
 	dx12Draw,
@@ -23,7 +22,6 @@ import {
 	dx12QueueCreate,
 	dx12Release,
 	dx12RemovedReason,
-	dx12RenderTargetView,
 	dx12ResolveSubresource,
 	dx12ResourceMap,
 	dx12ResourceUnmap,
@@ -176,9 +174,6 @@ const STATE_RESOLVE_SOURCE: uint32 = 0x2000;
 const DXGI_ERROR_DEVICE_REMOVED: int32 = 0x887A0005 as int32;
 const DXGI_R16_UINT: int32 = 57;
 const DXGI_R32_UINT: int32 = 42;
-const VIEW_2D: int32 = 0;
-const VIEW_2D_ARRAY: int32 = 1;
-const VIEW_3D: int32 = 4;
 const CLEAR_DEPTH: int32 = 1;
 const CLEAR_STENCIL: int32 = 2;
 const EVENT_BEGIN: int32 = 0;
@@ -297,6 +292,10 @@ export function adoptSwapchain(color: uint32, depth: uint32): void {
 	const info = formatInfo(textureRecords.record(color).format, "NativeEnvironment.colorFormat");
 	put(r.textures, color, { native: 0, info: info, tracked: resources.NO_TRACKING });
 	if (depth != 0) { put(r.textures, depth, resources.NO_TEXTURE); }
+	ran("adoptSwapchain", descriptor.createView(d, r, viewRecords.record(textureRecords.record(color).swapchainView)));
+	if (depth != 0) {
+		ran("adoptSwapchain", descriptor.createView(d, r, viewRecords.record(textureRecords.record(depth).swapchainView)));
+	}
 }
 
 export function removedReason(): int32 {
@@ -359,6 +358,10 @@ function checkSubmitted(chain: surface.Swapchain, call: string): void {
 	}
 }
 
+function releaseSurfaceAttachments(chain: surface.Swapchain): void {
+	for (const buffer of chain.buffers) { descriptor.releaseAttachmentResource(d, ring, buffer); }
+}
+
 export function fitSurface(id: uint32, width: int32, height: int32): void {
 	const at = surfaceAt(id, "fitSurface");
 	if (surface.fits(surfaces[at], width, height)) { return; }
@@ -366,6 +369,7 @@ export function fitSurface(id: uint32, width: int32, height: int32): void {
 	checkSubmitted(surfaces[at], "fitSurface");
 	unbindBackBuffer();
 	idleSerial();
+	releaseSurfaceAttachments(surfaces[at]);
 	ran("fitSurface", surface.resizeSwapchain(r.tracker, surfaces[at], width, height));
 }
 
@@ -390,6 +394,7 @@ export function closeSurface(id: uint32): void {
 		idleSerial();
 	}
 	unbindBackBuffer();
+	releaseSurfaceAttachments(surfaces[at]);
 	surface.closeSwapchain(r.tracker, surfaces[at]);
 	surfaces.splice(at, 1);
 }
@@ -398,12 +403,14 @@ function releaseCanvas(): void {
 	if (swapchainDepth != 0) {
 		const depth = r.textures[slotOf(swapchainDepth)];
 		if (depth.native != 0) {
+			descriptor.releaseAttachmentResource(d, ring, depth.native);
 			retire(ring, depth.native);
 			untrack(r.tracker, depth.tracked);
 		}
 		put(r.textures, swapchainDepth, resources.NO_TEXTURE);
 	}
 	if (canvasMsaa.native != 0) {
+		descriptor.releaseAttachmentResource(d, ring, canvasMsaa.native);
 		retire(ring, canvasMsaa.native);
 		untrack(r.tracker, canvasMsaa.tracked);
 	}
@@ -548,6 +555,7 @@ export function createTexture(texture: TextureRecord, descriptor: GPUTextureDesc
 export function nativeTexture(texture: GPUTexture): uint64 { return r.textures[slotOf(texture.id)].native; }
 
 export function destroyTexture(texture: GPUTexture): void {
+	descriptor.releaseAttachmentResource(d, ring, r.textures[textureRecords.slotIndex(texture.id)].native);
 	resources.destroyTexture(r, ring, texture.id);
 }
 
@@ -741,21 +749,10 @@ function attachmentTarget(view: uint32, depthSlice: int32, depthStencil: boolean
 	const t = textureRecords.slotIndex(record.texture);
 	const texture = textureRecords.slots[t];
 	const native = attachedNative(record.texture, t);
-	const dimension = texture.volume ? VIEW_3D : (texture.layers > 1 ? VIEW_2D_ARRAY : VIEW_2D);
-	const layer = texture.volume ? depthSlice : record.baseLayer;
-	const multisampled = texture.sampleCount > 1 ? 1 : 0;
-	const range: SubresourceRange = { baseMip: record.baseMip, mips: 1, baseLayer: texture.volume ? 0 : record.baseLayer, layers: 1 };
-	if (depthStencil) {
-		const handle = descriptor.depthStencilHandle(d, ring);
-		if (!handle.ok) { stopOnFrame("beginRenderPass", handle.error); }
-		commanded(dx12DepthStencilView(device, native.native, native.info.depthStencil, dimension, multisampled, record.baseMip as uint32, layer as uint32, handle.value));
-		transitionRange(r.tracker, native.tracked, STATE_DEPTH_WRITE, range);
-		return handle.value;
-	}
-	const handle = descriptor.renderTargetHandle(d, ring);
+	const handle = descriptor.attachmentHandle(d, ring, record, texture, native, depthSlice, depthStencil);
 	if (!handle.ok) { stopOnFrame("beginRenderPass", handle.error); }
-	commanded(dx12RenderTargetView(device, native.native, native.info.renderTarget, dimension, multisampled, record.baseMip as uint32, layer as uint32, handle.value));
-	transitionRange(r.tracker, native.tracked, STATE_RENDER_TARGET, range);
+	const range: SubresourceRange = { baseMip: record.baseMip, mips: 1, baseLayer: texture.volume ? 0 : record.baseLayer, layers: 1 };
+	transitionRange(r.tracker, native.tracked, depthStencil ? STATE_DEPTH_WRITE : STATE_RENDER_TARGET, range);
 	return handle.value;
 }
 
