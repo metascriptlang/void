@@ -92,6 +92,7 @@ when (linux && !voidDummy) {
 	@compile("./bridgeLinux.c");
 	@compile("./appWindowPlatform.c");
 	import "./appWindowExports";
+	import "./viewsExports";
 	@compile("./bridge.c");
 	@passL("-lX11");
 	@passL("-ldl");
@@ -117,7 +118,7 @@ when (voidDummy) {
 	@compile("./bridge.c", "-DVOID_DUMMY");
 }
 
-when ((macos || (windows && !voidGlCore) || ios || android) && !voidDummy) {
+when ((macos || (windows && !voidGlCore) || linux || ios || android) && !voidDummy) {
 	import {
 		exportCurrentView,
 		exportRegister,

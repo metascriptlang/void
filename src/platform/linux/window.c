@@ -33,6 +33,9 @@
 #define GLX_VENDOR 1
 #define GLX_RGBA_BIT 0x00000001
 #define GLX_WINDOW_BIT 0x00000001
+#define GLX_PBUFFER_BIT 0x00000004
+#define GLX_PBUFFER_HEIGHT 0x8040
+#define GLX_PBUFFER_WIDTH 0x8041
 #define GLX_DRAWABLE_TYPE 0x8010
 #define GLX_RENDER_TYPE 0x8011
 #define GLX_DOUBLEBUFFER 5
@@ -73,6 +76,8 @@ typedef int (*GlxSwapIntervalMesaFn)(int);
 typedef XVisualInfo *(*GlxGetVisualFromFBConfigFn)(Display *, GLXFBConfig);
 typedef GLXWindow (*GlxCreateWindowFn)(Display *, GLXFBConfig, Window, const int *);
 typedef void (*GlxDestroyWindowFn)(Display *, GLXWindow);
+typedef GLXDrawable (*GlxCreatePbufferFn)(Display *, GLXFBConfig, const int *);
+typedef void (*GlxDestroyPbufferFn)(Display *, GLXDrawable);
 typedef GLXContext (*GlxCreateContextAttribsFn)(Display *, GLXFBConfig, GLXContext, Bool, const int *);
 #endif
 
@@ -929,6 +934,7 @@ typedef struct {
 
 static struct {
 	VoidLinuxDesc desc;
+	bool views;
 	int16_t keycodes[X11_KEYCODES];
 	struct {
 		uint8_t mouseButtons;
@@ -972,6 +978,7 @@ static struct {
 		EGLDisplay display;
 		EGLContext context;
 		EGLSurface surface;
+		EGLConfig config;
 	} egl;
 #else
 	struct {
@@ -991,6 +998,9 @@ static struct {
 		GlxGetVisualFromFBConfigFn GetVisualFromFBConfig;
 		GlxCreateWindowFn CreateWindow;
 		GlxDestroyWindowFn DestroyWindow;
+		GlxCreatePbufferFn CreatePbuffer;
+		GlxDestroyPbufferFn DestroyPbuffer;
+		GLXFBConfig viewConfig;
 		GlxGetProcAddressFn GetProcAddress;
 		GlxGetProcAddressFn GetProcAddressARB;
 		GlxSwapIntervalExtFn SwapIntervalEXT;
@@ -1353,12 +1363,15 @@ static void initGlx(void) {
 	s.glx.QueryExtensionsString = (GlxQueryExtensionsStringFn)dlsym(s.glx.libgl, "glXQueryExtensionsString");
 	s.glx.CreateWindow = (GlxCreateWindowFn)dlsym(s.glx.libgl, "glXCreateWindow");
 	s.glx.DestroyWindow = (GlxDestroyWindowFn)dlsym(s.glx.libgl, "glXDestroyWindow");
+	s.glx.CreatePbuffer = (GlxCreatePbufferFn)dlsym(s.glx.libgl, "glXCreatePbuffer");
+	s.glx.DestroyPbuffer = (GlxDestroyPbufferFn)dlsym(s.glx.libgl, "glXDestroyPbuffer");
 	s.glx.GetProcAddress = (GlxGetProcAddressFn)dlsym(s.glx.libgl, "glXGetProcAddress");
 	s.glx.GetProcAddressARB = (GlxGetProcAddressFn)dlsym(s.glx.libgl, "glXGetProcAddressARB");
 	s.glx.GetVisualFromFBConfig = (GlxGetVisualFromFBConfigFn)dlsym(s.glx.libgl, "glXGetVisualFromFBConfig");
 	if (!s.glx.GetFBConfigs || !s.glx.GetFBConfigAttrib || !s.glx.GetClientString || !s.glx.QueryExtension
 		|| !s.glx.QueryVersion || !s.glx.DestroyContext || !s.glx.MakeCurrent || !s.glx.SwapBuffers
 		|| !s.glx.QueryExtensionsString || !s.glx.CreateWindow || !s.glx.DestroyWindow
+		|| !s.glx.CreatePbuffer || !s.glx.DestroyPbuffer
 		|| !s.glx.GetProcAddress || !s.glx.GetProcAddressARB || !s.glx.GetVisualFromFBConfig) {
 		fail("failed to load GLX entry points");
 	}
@@ -1442,6 +1455,7 @@ static GLXFBConfig chooseFbConfig(void) {
 		const GLXFBConfig n = native[i];
 		if ((glxAttrib(n, GLX_RENDER_TYPE) & GLX_RGBA_BIT) == 0) continue;
 		if ((glxAttrib(n, GLX_DRAWABLE_TYPE) & GLX_WINDOW_BIT) == 0 && trustWindowBit) continue;
+		if (s.views && (glxAttrib(n, GLX_DRAWABLE_TYPE) & GLX_PBUFFER_BIT) == 0) continue;
 		FbConfig *u = &usable[usableCount++];
 		u->redBits = glxAttrib(n, GLX_RED_SIZE);
 		u->greenBits = glxAttrib(n, GLX_GREEN_SIZE);
@@ -1482,8 +1496,7 @@ static void chooseVisual(Visual **visual, int *depth) {
 	XFree(info);
 }
 
-static void createContext(void) {
-	GLXFBConfig native = chooseFbConfig();
+static GLXContext makeContext(GLXFBConfig native) {
 	if (!(s.glx.ARB_create_context && s.glx.ARB_create_context_profile)) {
 		fail("GLX extensions ARB_create_context and ARB_create_context_profile missing");
 	}
@@ -1496,9 +1509,15 @@ static void createContext(void) {
 		GLX_CONTEXT_FLAGS_ARB, GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB | GLX_CONTEXT_ROBUST_ACCESS_BIT_ARB,
 		0, 0,
 	};
-	s.glx.ctx = s.glx.CreateContextAttribsARB(s.x11.display, native, NULL, True, attribs);
-	if (s.glx.ctx == NULL) fail("failed to create GL context via glXCreateContextAttribsARB");
+	GLXContext ctx = s.glx.CreateContextAttribsARB(s.x11.display, native, NULL, True, attribs);
+	if (ctx == NULL) fail("failed to create GL context via glXCreateContextAttribsARB");
 	releaseErrorHandler();
+	return ctx;
+}
+
+static void createContext(void) {
+	GLXFBConfig native = chooseFbConfig();
+	s.glx.ctx = makeContext(native);
 	s.glx.window = s.glx.CreateWindow(s.x11.display, native, s.x11.window, NULL);
 	if (!s.glx.window) fail("glXCreateWindow() failed");
 	s.glx.MakeCurrent(s.x11.display, s.glx.window, s.glx.ctx);
@@ -2399,3 +2418,207 @@ void voidWindowToggleFullscreen(void) {
 	updateDimensionsFromWindowSize();
 }
 
+
+#if defined(VOID_LINUX_EGL)
+void voidLinuxViewsStart(int sampleCount) {
+	memset(&s, 0, sizeof s);
+	s.views = true;
+	XInitThreads();
+	s.x11.display = XOpenDisplay(NULL);
+	if (s.x11.display == NULL) fail("XOpenDisplay() failed for the host views");
+	s.x11.screen = DefaultScreen(s.x11.display);
+	s.x11.root = DefaultRootWindow(s.x11.display);
+#if defined(VOID_GLES3)
+	if (!eglBindAPI(EGL_OPENGL_ES_API)) fail("eglBindAPI(EGL_OPENGL_ES_API) failed");
+#else
+	if (!eglBindAPI(EGL_OPENGL_API)) fail("eglBindAPI(EGL_OPENGL_API) failed");
+#endif
+	s.egl.display = eglGetDisplay((EGLNativeDisplayType)s.x11.display);
+	if (s.egl.display == EGL_NO_DISPLAY) fail("eglGetDisplay() failed");
+	EGLint major, minor;
+	if (!eglInitialize(s.egl.display, &major, &minor)) fail("eglInitialize() failed");
+	const EGLint samples = sampleCount > 1 ? sampleCount : 0;
+	const EGLint configAttribs[] = {
+		EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
+#if defined(VOID_GLES3)
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+#else
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+#endif
+		EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
+		EGL_SAMPLE_BUFFERS, samples > 0 ? 1 : 0,
+		EGL_SAMPLES, samples,
+		EGL_NONE,
+	};
+	EGLint count = 0;
+	if (!eglChooseConfig(s.egl.display, configAttribs, &s.egl.config, 1, &count) || count == 0) {
+		fprintf(stderr, "void: no RGBA8 window and pbuffer EGLConfig with %d samples\n", sampleCount);
+		abort();
+	}
+	EGLint got = 0;
+	eglGetConfigAttrib(s.egl.display, s.egl.config, EGL_SAMPLES, &got);
+	if (got != samples) {
+		fprintf(stderr, "void: no EGLConfig with %d samples for the host views (the closest has %d)\n", sampleCount, got);
+		abort();
+	}
+	const EGLint contextAttribs[] = {
+#if defined(VOID_GLES3)
+		EGL_CONTEXT_MAJOR_VERSION, 3,
+		EGL_CONTEXT_MINOR_VERSION, 1,
+#else
+		EGL_CONTEXT_MAJOR_VERSION, 4,
+		EGL_CONTEXT_MINOR_VERSION, 3,
+		EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+#endif
+		eglRobustAccessAttrib(s.egl.display, major, minor), EGL_TRUE,
+		EGL_NONE,
+	};
+	s.egl.context = eglCreateContext(s.egl.display, s.egl.config, EGL_NO_CONTEXT, contextAttribs);
+	if (s.egl.context == EGL_NO_CONTEXT) fail("eglCreateContext() failed for the host views");
+}
+
+static Visual *viewVisual(int *depth) {
+	EGLint visualId;
+	if (!eglGetConfigAttrib(s.egl.display, s.egl.config, EGL_NATIVE_VISUAL_ID, &visualId)) {
+		fail("eglGetConfigAttrib() for EGL_NATIVE_VISUAL_ID failed");
+	}
+	XVisualInfo tmpl;
+	memset(&tmpl, 0, sizeof tmpl);
+	tmpl.visualid = (VisualID)visualId;
+	int n = 0;
+	XVisualInfo *info = XGetVisualInfo(s.x11.display, VisualIDMask, &tmpl, &n);
+	if (info == NULL) fail("XGetVisualInfo() failed for a host view");
+	Visual *visual = info->visual;
+	*depth = info->depth;
+	XFree(info);
+	return visual;
+}
+
+static void makePbuffer(VoidLinuxView *v) {
+	const EGLint attribs[] = { EGL_WIDTH, v->w, EGL_HEIGHT, v->h, EGL_NONE };
+	EGLSurface surface = eglCreatePbufferSurface(s.egl.display, s.egl.config, attribs);
+	if (surface == EGL_NO_SURFACE) fail("eglCreatePbufferSurface() failed for a host view");
+	v->drawable = (unsigned long)(uintptr_t)surface;
+}
+
+static void makeDrawable(VoidLinuxView *v) {
+	EGLSurface surface = eglCreateWindowSurface(s.egl.display, s.egl.config, (EGLNativeWindowType)v->child, NULL);
+	if (surface == EGL_NO_SURFACE) fail("eglCreateWindowSurface() failed for a host view");
+	v->drawable = (unsigned long)(uintptr_t)surface;
+}
+
+static void unbind(void) { eglMakeCurrent(s.egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, s.egl.context); }
+
+static void dropDrawable(VoidLinuxView *v) { eglDestroySurface(s.egl.display, (EGLSurface)(uintptr_t)v->drawable); }
+
+void voidLinuxViewMakeCurrent(const VoidLinuxView *v) {
+	EGLSurface surface = (EGLSurface)(uintptr_t)v->drawable;
+	if (!eglMakeCurrent(s.egl.display, surface, surface, s.egl.context)) fail("eglMakeCurrent() failed for a host view");
+}
+
+void voidLinuxViewSwap(const VoidLinuxView *v) {
+	if (v->child) eglSwapBuffers(s.egl.display, (EGLSurface)(uintptr_t)v->drawable);
+}
+#else
+void voidLinuxViewsStart(int sampleCount) {
+	memset(&s, 0, sizeof s);
+	s.views = true;
+	s.desc.sampleCount = sampleCount;
+	XInitThreads();
+	s.x11.display = XOpenDisplay(NULL);
+	if (s.x11.display == NULL) fail("XOpenDisplay() failed for the host views");
+	s.x11.screen = DefaultScreen(s.x11.display);
+	s.x11.root = DefaultRootWindow(s.x11.display);
+	initGlx();
+	s.glx.viewConfig = chooseFbConfig();
+	s.glx.ctx = makeContext(s.glx.viewConfig);
+}
+
+static Visual *viewVisual(int *depth) {
+	XVisualInfo *info = s.glx.GetVisualFromFBConfig(s.x11.display, s.glx.viewConfig);
+	if (info == NULL) fail("glXGetVisualFromFBConfig failed for a host view");
+	Visual *visual = info->visual;
+	*depth = info->depth;
+	XFree(info);
+	return visual;
+}
+
+static void makePbuffer(VoidLinuxView *v) {
+	const int attribs[] = { GLX_PBUFFER_WIDTH, v->w, GLX_PBUFFER_HEIGHT, v->h, 0 };
+	v->drawable = s.glx.CreatePbuffer(s.x11.display, s.glx.viewConfig, attribs);
+	if (!v->drawable) fail("glXCreatePbuffer() failed for a host view");
+}
+
+static void makeDrawable(VoidLinuxView *v) {
+	v->drawable = s.glx.CreateWindow(s.x11.display, s.glx.viewConfig, v->child, NULL);
+	if (!v->drawable) fail("glXCreateWindow() failed for a host view");
+}
+
+static void unbind(void) { s.glx.MakeCurrent(s.x11.display, 0, NULL); }
+
+static void dropDrawable(VoidLinuxView *v) {
+	if (v->child) s.glx.DestroyWindow(s.x11.display, v->drawable);
+	else s.glx.DestroyPbuffer(s.x11.display, v->drawable);
+}
+
+void voidLinuxViewMakeCurrent(const VoidLinuxView *v) {
+	if (!s.glx.MakeCurrent(s.x11.display, v->drawable, s.glx.ctx)) fail("glXMakeCurrent() failed for a host view");
+}
+
+// A pbuffer is single-buffered: what was drawn stays readable after the frame.
+void voidLinuxViewSwap(const VoidLinuxView *v) {
+	if (v->child) s.glx.SwapBuffers(s.x11.display, v->drawable);
+}
+#endif
+
+// With a host window, Void draws into a child of it in the GL config's visual. The child selects
+// no events, so X delivers the pointer and keys to the host's window as before.
+void voidLinuxViewInit(VoidLinuxView *v, unsigned long parent, int w, int h) {
+	memset(v, 0, sizeof *v);
+	v->w = w;
+	v->h = h;
+	if (parent == 0) {
+		makePbuffer(v);
+		return;
+	}
+	int depth = 0;
+	Visual *visual = viewVisual(&depth);
+	v->colormap = XCreateColormap(s.x11.display, s.x11.root, visual, AllocNone);
+	XSetWindowAttributes wa;
+	memset(&wa, 0, sizeof wa);
+	wa.colormap = v->colormap;
+	wa.border_pixel = 0;
+	wa.event_mask = 0;
+	grabErrorHandler();
+	v->child = XCreateWindow(s.x11.display, (Window)parent, 0, 0, (unsigned)w, (unsigned)h, 0, depth, InputOutput,
+		visual, CWBorderPixel | CWColormap | CWEventMask, &wa);
+	releaseErrorHandler();
+	if (!v->child || s.x11.errorCode != Success) fail("XCreateWindow() failed inside the host's X11 window");
+	XMapWindow(s.x11.display, v->child);
+	makeDrawable(v);
+	XFlush(s.x11.display);
+}
+
+void voidLinuxViewResize(VoidLinuxView *v, int w, int h) {
+	v->w = w;
+	v->h = h;
+	if (v->child) {
+		XResizeWindow(s.x11.display, v->child, (unsigned)w, (unsigned)h);
+		XFlush(s.x11.display);
+		return;
+	}
+	unbind();
+	dropDrawable(v);
+	makePbuffer(v);
+}
+
+void voidLinuxViewRelease(VoidLinuxView *v) {
+	unbind();
+	dropDrawable(v);
+	if (v->child) {
+		XDestroyWindow(s.x11.display, v->child);
+		XFreeColormap(s.x11.display, v->colormap);
+		XFlush(s.x11.display);
+	}
+	memset(v, 0, sizeof *v);
+}

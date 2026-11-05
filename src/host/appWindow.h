@@ -9,7 +9,7 @@
 #elif !defined(VOID_DUMMY) && defined(__APPLE__) && !TARGET_OS_OSX
 #define VOID_IOS_APP 1
 #endif
-#if !defined(VOID_DUMMY) && !(defined(__linux__) && !defined(__ANDROID__))
+#if !defined(VOID_DUMMY)
 #define VOID_HOST_VIEWS 1
 #endif
 
