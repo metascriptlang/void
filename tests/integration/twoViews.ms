@@ -1,5 +1,5 @@
-// Two host views in one process, on the D3D11 view driver with no window: each swapchain is
-// read back after its own frame and judged by pixels whose place follows from its own size
+// Two host views in one process with no window (D3D11 swapchains on Windows, Metal on macOS, GLX
+// pbuffers on Linux): each view is read back after its own frame and judged by pixels whose place follows from its own size
 // and DPI scale. VOID_VIEWS_OUTSIDE=1 instead asks for fbWidth() with no view frame open,
 // which must abort (scripts/gate.sh checks the exit status).
 
@@ -116,7 +116,7 @@ function drawAndGrab(
 	check(currentView() === ViewInvalid,
 		`${what}: view ${currentView()} is still current after the frame`);
 	let grabbed: int32 = 0;
-	when (macos) {
+	when (macos || linux) {
 		grabbed = voidCaptureGrab(slot);
 	} else {
 		grabbed = voidCaptureGrabSwapChain(slot, viewSwapChain(view), PRESENTED_BUFFER);
