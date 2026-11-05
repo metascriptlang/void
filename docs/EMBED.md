@@ -1,12 +1,12 @@
 # Embedding Void in a host
 
-A host that owns the window and the frame clock (Ion on Windows and macOS, a React-Native
+A host that owns the window and the frame clock (Ion on Windows, macOS and Linux, a React-Native
 `VoidView` on iOS, a `SurfaceView` on Android) drives Void through **views**. The entry points are in
 `src/host/bridge.h` (`voidEmbedRegister`, `voidViewCreate`, `voidViewResize`,
 `voidViewFrame`, `voidViewDestroy`, `voidViewSwapChain`, `voidCurrentView`), and MetaScript
 reaches them through `src/host/gpu.ms` (`embedRegister`, `viewCreate`, …). The shared part is
 `src/host/views.ms`, its C names in `viewsExports.cms`; each platform's half is the `voidPlatform*` set in `bridgeWin.c`,
-`bridgeIos.m`, `bridgeEmbed.m` (macOS), `bridgeAndroid.c` and `bridgeWeb.c` (browser). macOS and iOS share
+`bridgeIos.m`, `bridgeEmbed.m` (macOS), `bridgeLinux.c`, `bridgeAndroid.c` and `bridgeWeb.c` (browser). macOS and iOS share
 one Metal surface (`metalSurface.m`), and the iOS and Android app shells share their events, typed
 text and framebuffer getters in the mobile section of `src/host/appWindowPlatform.c`.
 
@@ -114,6 +114,35 @@ makes the layer and attaches it nowhere: `viewSwapChain` returns the `CAMetalLay
 the `IDXGISwapChain1*` on Windows, and the host adds it to its own layer tree. `w` and `h` are
 pixels. `tests/integration/macViews.ms` creates both and checks sizes, resize and destroy, with no
 pixel readback, because the Metal readback reads only the window driver's drawable.
+
+## Linux: two drivers in one binary
+
+`bridgeLinux.c` follows `bridgeEmbed.m`: `voidRun` (an X11 window) and the host views share one
+process, and the first to start chooses. The views draw through the door's GL backend on one
+context that Void makes on its own X11 connection: GL 4.3 core over GLX by default, over EGL with
+`-d:voidEgl`, GLES 3.1 over EGL with `-d:voidGles3` (`voidLinuxView*` in
+`src/platform/linux/window.c`). The config is RGBA8 with no depth; the screen pipelines are made
+without depth, as for the D3D11 and Android views.
+
+`native` in `viewCreate` is an X11 `Window` of the host, or 0. With a window, Void creates a child
+of it at (0, 0) in the GL config's visual, sized to the view and resized at every `viewResize`; the
+child selects no events, so pointer and keys still reach the host's window. The host places and
+sizes its own window. With 0, the view is a pbuffer. `viewSwapChain` returns the child's XID, or
+the pbuffer's. Alpha does not reach the screen: X11 has no compositing between a child and its
+parent, so a view over another view covers it.
+
+`tests/integration/linuxViews.ms` stands in for Ion (`x11Host.c`): one top-level window with two
+child areas, a view in each (480×300 at 1.0, 360×240 at 1.25), then the left area resized to
+400×260 at 1.25. It reads pixels from the X server, so they are what the window shows. It needs
+`DISPLAY`; on Xvfb build it with `-d:voidEgl` or `-d:voidGles3`, because Xvfb's GLX server lacks
+`GLX_ARB_create_context_robustness`, which Void requires. Measured on rtx's Xvfb (Mesa 26.0.8,
+llvmpipe) on 2026-11-05: PASS with EGL and with GLES3; red when the child skips its resize
+(bottom edge) and when it sits 40 px into the area (right edges). Not run on GLX or on a GPU.
+
+`twoViews.ms` runs on Linux with `-d:voidGles3` (PASS on that Xvfb). With `-d:voidEgl` its
+pbuffer clear is lost: on Mesa llvmpipe, `glClearBufferfv(GL_COLOR, 0)` into an EGL pbuffer of a
+desktop-GL context writes nothing while `glClear` and draws do, so the board's clear colour reads
+0. A window surface clears normally on the same server.
 
 ## iOS: an app driver on the host views
 
