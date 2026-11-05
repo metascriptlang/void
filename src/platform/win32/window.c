@@ -144,6 +144,7 @@ static struct {
 	HWND hwnd;
 	Dpi dpi;
 	bool inCreateWindow;
+	POINT requestedWindowSize;
 	bool iconified;
 	WCHAR surrogate;
 	struct {
@@ -468,7 +469,15 @@ static void frame(bool fromWndProc) {
 }
 
 static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	if (s.inCreateWindow) return DefWindowProcW(hwnd, msg, wParam, lParam);
+	if (s.inCreateWindow) {
+		const LRESULT result = DefWindowProcW(hwnd, msg, wParam, lParam);
+		if (msg == WM_GETMINMAXINFO) {
+			MINMAXINFO *limits = (MINMAXINFO *)lParam;
+			if (limits->ptMaxTrackSize.x < s.requestedWindowSize.x) limits->ptMaxTrackSize.x = s.requestedWindowSize.x;
+			if (limits->ptMaxTrackSize.y < s.requestedWindowSize.y) limits->ptMaxTrackSize.y = s.requestedWindowSize.y;
+		}
+		return result;
+	}
 	switch (msg) {
 		case WM_CLOSE:
 			voidWindowAskQuit();
@@ -621,6 +630,8 @@ static void createWindow(void) {
 	const DWORD style = WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SIZEBOX;
 	RECT rect = { 0, 0, (LONG)((float)voidWindow.windowWidth * s.dpi.windowScale), (LONG)((float)voidWindow.windowHeight * s.dpi.windowScale) };
 	AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+	s.requestedWindowSize.x = voidWindow.windowWidth == 0 ? 0 : rect.right - rect.left;
+	s.requestedWindowSize.y = voidWindow.windowHeight == 0 ? 0 : rect.bottom - rect.top;
 	WCHAR title[TITLE_UNITS];
 	toWide(s.desc.title, title);
 	s.inCreateWindow = true;
