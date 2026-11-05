@@ -449,7 +449,7 @@ export function shutdown(): void {
 	if (swapchainColor != 0) { releaseCanvas(); }
 	swapchainColor = 0;
 	swapchainDepth = 0;
-	const closed = closeFrames(ring);
+	const closed = closeFrames(ring, device);
 	ring = closedFrames();
 	if (!closed.ok && !(removed && closed.error == NativeError.DeviceRemoved)) { stopOnFrame("destroy", closed.error); }
 	resources.closeResources(r);
@@ -485,7 +485,7 @@ export function adapterDescription(): string {
 }
 
 export function idleSerial(): uint64 {
-	const idle = waitIdle(ring);
+	const idle = waitIdle(ring, device);
 	if (!idle.ok) { stopOnFrame("idleSerial", idle.error); }
 	return idle.value;
 }

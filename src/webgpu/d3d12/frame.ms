@@ -168,13 +168,22 @@ export function waitSerial(ref ring: FrameRing, serial: uint64): Result<uint64, 
 	return collect(ring);
 }
 
-export function waitIdle(ref ring: FrameRing): Result<uint64, NativeError> {
-	return waitSerial(ring, ring.submitted);
+export function waitIdle(ref ring: FrameRing, device: uint64): Result<uint64, NativeError> {
+	let fence: uint64 = 0;
+	let event: uint64 = 0;
+	try checked(dx12FenceCreate(device, fence, event));
+	let waited = checked(dx12QueueSignal(ring.queue, fence, 1));
+	if (waited.ok) { waited = checked(dx12FenceWait(fence, event, 1)); }
+	const closed = checked(dx12EventClose(event));
+	dx12Release(fence);
+	if (!waited.ok) { return Result.err(waited.error); }
+	if (!closed.ok) { return Result.err(closed.error); }
+	return collect(ring);
 }
 
-export function closeFrames(ref ring: FrameRing): Result<void, NativeError> {
+export function closeFrames(ref ring: FrameRing, device: uint64): Result<void, NativeError> {
 	if (ring.fence == 0) { return Result.ok(null); }
-	const idle = waitIdle(ring);
+	const idle = waitIdle(ring, device);
 	releaseFrames(ring);
 	if (!idle.ok) { return Result.err(idle.error); }
 	return Result.ok(null);
