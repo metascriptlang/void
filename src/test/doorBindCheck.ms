@@ -51,7 +51,10 @@ when (voidDummy || (windows && !voidVulkan)) {
 	import { NO_DEPTH as NO_DEPTH_ATTACHMENT, RenderTarget, beginPass, layoutOf } from "../gpu/target";
 	import { PipelineCache, closePipelines, pipelineFor } from "../gpu/pipeline";
 }
-when (windows && !voidDummy && !voidVulkan) {
+when (voidD3d12) {
+	import { doorSetupWith } from "../gpu/doorGpu.ms";
+	import { D3D12_DEBUG_LAYER, debugLayerMessages } from "./d3d12DebugLayer";
+} else when (windows && !voidDummy && !voidVulkan) {
 	import { warpDevice, warpContext } from "./d3d11Warp.h";
 	@passL("-ld3d11");
 }
@@ -74,6 +77,8 @@ when (voidDummy || (windows && !voidVulkan)) {
 	function openScene(): Scene {
 		when (voidDummy) {
 			doorSetup(null, null, RGBA8, NO_DEPTH, 1);
+		} else when (voidD3d12) {
+			doorSetupWith({ device: null, context: null, colorFormat: "rgba8unorm", sampleCount: 1, warp: true, debug: D3D12_DEBUG_LAYER });
 		} else {
 			doorSetup(warpDevice(), warpContext(), RGBA8, NO_DEPTH, 1);
 		}
@@ -98,10 +103,13 @@ when (voidDummy || (windows && !voidVulkan)) {
 		};
 	}
 
-	function closeScene(scene: Scene): void {
+	function closeScene(scene: Scene): uint64 {
 		closePipelines(scene.cache);
 		scene.color.close();
+		let messages: uint64 = 0;
+		when (voidD3d12) { messages = debugLayerMessages(); }
 		doorShutdown();
+		return messages;
 	}
 
 	function beginScene(scene: Scene): void {
@@ -132,7 +140,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 		drawWith(scene, 0);
 		endPass();
 		assert doorBindStats().groupsMade == 1;
-		closeScene(scene);
+		assert closeScene(scene) == 0;
 	}
 
 	test "a draw that changes only slots its program does not read issues no binding call, and a new pass binds again" {
@@ -149,6 +157,6 @@ when (voidDummy || (windows && !voidVulkan)) {
 		drawWith(scene, 0);
 		assert doorBindStats().bindCalls == vertexAndGroup * 2;
 		endPass();
-		closeScene(scene);
+		assert closeScene(scene) == 0;
 	}
 }
