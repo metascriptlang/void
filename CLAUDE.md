@@ -34,7 +34,7 @@ Backend per build, chosen at compile time in `src/webgpu/device.ms`:
 | Target | Backend (`src/webgpu/…`) | Flag |
 |---|---|---|
 | macOS, iOS | `metal/` | default |
-| Windows | `d3d11/` | default; `-d:voidGlCore` → `gl/`, `-d:voidVulkan` → `vulkan/` |
+| Windows | `d3d12/` | default; `-d:voidGlCore` → `gl/`, `-d:voidVulkan` → `vulkan/` |
 | Linux, Android | `gl/` | default; `-d:voidVulkan` → `vulkan/` |
 | Browser, new | `wgpu/` (WebGPU) | `--os=emcc -d:webgpu` |
 | Browser, old | `gl/` (WebGL2, ~97-98% coverage) | `--os=emcc -d:webgl2` |
@@ -98,7 +98,7 @@ A land follows the workspace rule (`~/metascript/CLAUDE.md` §Worktrees and land
 
 - **Backend chosen at compile time** → two web builds (WebGPU + WebGL2) + a JS feature-detect loader to cover old+new browsers from one source.
 - **No WebGL1** — the floor is GLES3/WebGL2 (~97-98% coverage).
-- **WebGL2 has no compute**; compute runs on Metal, D3D11, GL 4.3, Vulkan and WebGPU.
+- **WebGL2 has no compute**; compute runs on Metal, D3D12, GL 4.3, Vulkan and WebGPU.
 - **Vulkan's ceilings** (queries, lost-device recovery, MSAA canvas, ...) are listed in `docs/GPU-MS.md` under the Vulkan entries.
 
 ## Key References
