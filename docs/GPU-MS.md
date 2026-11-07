@@ -1349,3 +1349,33 @@ A sokol 0cc6351b / main 658ad56a / `wt/d3d11-uniforms`: Ui 0.036 / 0.045 / 0.041
 Ui 59.6 / 76.3 / 75.0. drawScreen now matches sokol; the gap left is `beginPass` (+3 to +7 us per
 frame) and Ui's firstPaint (+26%). Rig: `~/metascript/.scratch/voidab-win` 9c3b318, `w3-run.log`.
 
+
+### 2026-11-08, Windows: D3D12 is the default backend, D3D11 is deleted
+
+The person's order (2026-11-06): switch once D3D12 is correct and the consumers build and run,
+then optimize. Beating sokol is milestone 2, not a condition of the switch. Measured on d87 (AMD
+Vega), msc 10a28a971:
+- Logic, `-d:voidD3d12` on 884d5907, WARP with the debug layer: index 3577/3581. The four reds
+  (sfntPort, trueTypePort, kbFontPort digests; motionConformance, inbox
+  `void/2026-11-06-pulse-on-interrupt`) fail the same way on D3D11. webgpuD3d12Check 493/493,
+  doorZeroHandle 417, pipelinePrewarm 429.
+- Pixels: D3D12 against D3D11 captured in the same run, 120 identical, 3 at max delta 1
+  (filter/dropShadow, prim/effectOnUi, prim/shadowStack), 0 fail. The committed D3D11 goldens had
+  been recorded on another GPU: D3D11 itself passed only 16/123 against them (max delta 1 in 73
+  scenes, 2 in 34, no structural change), so the goldens are re-recorded on D3D12.
+- Consumers: main2d, mainCampfire, mainCardTable and Neon voidWindow, voidDraw, voidInputs open,
+  resize three times, close and exit 0. Neon voidCanvas exits 1 on a double door destroy on D3D11
+  as well (inbox `neon/2026-11-07-voidcanvas-close-door-destroy-and-windowsnative-link`).
+- Default path, no flag, after the switch and deletion: index 3577/3581 with the same four reds,
+  doorZeroHandle 417, pipelinePrewarm 429, isolated 434/433, twoViews and viewSamples 1/2/4 pass.
+
+GL core and Vulkan on Windows keep their flags (`-d:voidGlCore`, `-d:voidVulkan`) and refuse a
+host view surface with an error. Speed, the baseline milestone 2 starts from (2026-11-04, quiet
+d87, before the switch; present us median, sokol 0cc6351b / main D3D11 / D3D12 with three frames
+in flight): Ui 24 / 52 / 104, Text 48 / 54 / 196, Editor 49 / 56 / 186, Sprites 31 / 41 / 143,
+Scroll 79 / 99 / 176. firstPaint D3D12 against D3D11 (before the frame-count fix): Ui +1%,
+Text +55%, Sprites +79%, Editor +27%, Scroll +23%. Where the time goes per frame on D3D12 (us):
+commit 77-89 (ExecuteCommandLists 30-54, allocator and list reset 10-19, close 5-8); beginPass
+OMSetRenderTargets and clears 24-25, barrier flush 8-10, RTV create 7-8, DSV create 3.5. That is
+where the cost sits, not yet why D3D12 is slower; the cause is unproved. Rig
+`~/metascript/.scratch/voidab-win`, logs `d7c-run*.log`.
