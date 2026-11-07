@@ -11,22 +11,19 @@ import {
 	doorTextureHeight,
 	doorTextureWidth,
 } from "../gpu/doorGpu.ms";
-when (voidD3d12) {
+when (windows && !voidDummy && !voidVulkan && !voidGlCore) {
 	import { doorSetupWith } from "../gpu/doorGpu.ms";
 	import { debugLayerMessages } from "./d3d12DebugLayer";
-} else {
-	import { warpDevice, warpContext } from "./d3d11Warp.h";
-	@passL("-ld3d11");
 }
 
 const RGBA8 = 2;
 const NO_DEPTH = 0;
 
 test "destroying or querying handle 0, which an exhausted make returns, does nothing" {
-	when (voidD3d12) {
+	when (windows && !voidDummy && !voidVulkan && !voidGlCore) {
 		doorSetupWith({ device: null, context: null, colorFormat: "rgba8unorm", sampleCount: 1, warp: true, debug: D3D12_DEBUG_LAYER });
 	} else {
-		doorSetup(warpDevice(), warpContext(), RGBA8, NO_DEPTH, 1);
+		doorSetup(null, null, RGBA8, NO_DEPTH, 1);
 	}
 	doorDestroyImage(0);
 	doorDestroyView(0);
@@ -34,6 +31,6 @@ test "destroying or querying handle 0, which an exhausted make returns, does not
 	doorDestroyBuffer(0);
 	doorDestroyPipeline(0);
 	assert doorBufferSize(0) == 0 && doorTextureWidth(0) == 0 && doorTextureHeight(0) == 0;
-	when (voidD3d12) { assert debugLayerMessages() == 0; }
+	when (windows && !voidDummy && !voidVulkan && !voidGlCore) { assert debugLayerMessages() == 0; }
 	doorShutdown();
 }

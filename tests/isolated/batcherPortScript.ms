@@ -16,8 +16,8 @@ import { BlendMode } from "../../src/gpu/state";
 
 when (voidDummy) {
 } else when (windows) {
-	import { warpDevice, warpContext } from "../../src/test/d3d11Warp.h";
-	@passL("-ld3d11");
+	import { doorSetupWith } from "../../src/gpu/doorGpu.ms";
+	import { D3D12_DEBUG_LAYER } from "../../src/test/d3d12DebugLayer";
 } else when (macos) {
 	import { metalSystemDevice } from "../../src/test/metalDevice.h";
 	@compile("../../src/test/metalDevice.m");
@@ -79,7 +79,7 @@ function setupDevice(): void {
 	when (voidDummy) {
 		doorSetup(null, null, RGBA8, PixelFormat.Depth as int32, 1);
 	} else when (windows) {
-		doorSetup(warpDevice(), warpContext(), RGBA8, NO_DEPTH, 1);
+		doorSetupWith({ device: null, context: null, colorFormat: "rgba8unorm", sampleCount: 1, warp: true, debug: D3D12_DEBUG_LAYER });
 	} else when (macos) {
 		doorSetup(metalSystemDevice(), null, RGBA8, NO_DEPTH, 1);
 	}

@@ -26,11 +26,11 @@ when (windows && voidVulkan && !voidDummy) {
 	@compile("./bridgeWin.c", "-DVOID_VULKAN");
 	@compile("./windowVulkan.c", "-DVOID_VULKAN");
 	import "../webgpu/vulkan/window";
-} else when (windows && voidD3d12 && !voidDummy) {
+} else when (windows && voidGlCore && !voidDummy) {
+	@compile("./bridgeWin.c", "-DVOID_GLCORE");
+} else when (windows && !voidDummy) {
 	@compile("./bridgeWin.c", "-DVOID_D3D12");
 	import "../webgpu/d3d12/window";
-} else when (windows && !voidDummy) {
-	@compile("./bridgeWin.c");
 }
 
 when (windows && !voidDummy) {
@@ -39,7 +39,6 @@ when (windows && !voidDummy) {
 	import "./appWindowExports";
 	import "./viewsExports";
 	@compile("./bridge.c");
-	@passL("-ld3d11");
 	@passL("-ldxgi");
 	@passL("-ldxguid");
 	@passL("-ldwmapi");

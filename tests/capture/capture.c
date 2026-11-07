@@ -14,10 +14,8 @@
 	#define VOID_CAPTURE_GL 1
 #elif defined(VOID_VULKAN)
 	#define VOID_CAPTURE_VULKAN 1
-#elif defined(VOID_D3D12)
+#elif defined(VOID_D3D12) || defined(_WIN32)
 	#define VOID_CAPTURE_D3D12 1
-#elif defined(_WIN32)
-	#define VOID_CAPTURE_D3D11 1
 #elif defined(__APPLE__)
 	#include <TargetConditionals.h>
 	#define VOID_CAPTURE_METAL 1
@@ -25,16 +23,6 @@
 		#include <errno.h>
 		#include <sys/stat.h>
 	#endif
-#endif
-
-#if defined(VOID_CAPTURE_D3D11)
-	#define COBJMACROS
-	#include <d3d11.h>
-	#include <dxgi.h>
-	void *voidD3d11Device(void);
-	void *voidD3d11Context(void);
-	static const GUID VOID_TEXTURE2D_IID =
-		{0x6f15aaf2, 0xd208, 0x4e89, {0x9a, 0xb4, 0x48, 0x95, 0x35, 0xd3, 0x4f, 0x9c}};
 #endif
 
 #if defined(VOID_CAPTURE_GL)
@@ -79,9 +67,7 @@ static uint8_t *slotResize(int slot, int width, int height) {
 }
 
 int voidCaptureBackend(void) {
-#if defined(VOID_CAPTURE_D3D11)
-	return 1;
-#elif defined(VOID_CAPTURE_GL) && defined(__EMSCRIPTEN__)
+#if defined(VOID_CAPTURE_GL) && defined(__EMSCRIPTEN__)
 	return 3;
 #elif defined(VOID_GLCORE)
 	return 4;
@@ -98,59 +84,10 @@ int voidCaptureBackend(void) {
 #endif
 }
 
-#if defined(VOID_CAPTURE_D3D11) || defined(VOID_CAPTURE_GL) || defined(VOID_CAPTURE_METAL) || defined(VOID_CAPTURE_VULKAN) || defined(VOID_CAPTURE_D3D12)
+#if defined(VOID_CAPTURE_GL) || defined(VOID_CAPTURE_METAL) || defined(VOID_CAPTURE_VULKAN) || defined(VOID_CAPTURE_D3D12)
 int32_t doorReadScreen(uint8_t *out, int64_t outLength);
 int32_t voidSwapchainWidth(void);
 int32_t voidSwapchainHeight(void);
-#endif
-
-#if defined(VOID_CAPTURE_D3D11)
-static int grabD3D11(int slot, IDXGISwapChain *swapChain, int buffer) {
-	ID3D11Device *device = (ID3D11Device *)voidD3d11Device();
-	ID3D11DeviceContext *context = (ID3D11DeviceContext *)voidD3d11Context();
-	if (!swapChain || !device || !context) return 0;
-	ID3D11Texture2D *back = NULL;
-	if (FAILED(IDXGISwapChain_GetBuffer(swapChain, (UINT)buffer, &VOID_TEXTURE2D_IID, (void **)&back))) return 0;
-	D3D11_TEXTURE2D_DESC desc;
-	ID3D11Texture2D_GetDesc(back, &desc);
-	desc.Usage = D3D11_USAGE_STAGING;
-	desc.BindFlags = 0;
-	desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-	desc.MiscFlags = 0;
-	ID3D11Texture2D *staging = NULL;
-	if (FAILED(ID3D11Device_CreateTexture2D(device, &desc, NULL, &staging))) {
-		ID3D11Texture2D_Release(back);
-		return 0;
-	}
-	ID3D11DeviceContext_CopyResource(context, (ID3D11Resource *)staging, (ID3D11Resource *)back);
-	D3D11_MAPPED_SUBRESOURCE mapped;
-	if (FAILED(ID3D11DeviceContext_Map(context, (ID3D11Resource *)staging, 0, D3D11_MAP_READ, 0, &mapped))) {
-		ID3D11Texture2D_Release(staging);
-		ID3D11Texture2D_Release(back);
-		return 0;
-	}
-	uint8_t *out = slotResize(slot, (int)desc.Width, (int)desc.Height);
-	if (out == NULL) {
-		ID3D11DeviceContext_Unmap(context, (ID3D11Resource *)staging, 0);
-		ID3D11Texture2D_Release(staging);
-		ID3D11Texture2D_Release(back);
-		return 0;
-	}
-	for (UINT y = 0; y < desc.Height; y++) {
-		const uint8_t *row = (const uint8_t *)mapped.pData + (size_t)y * mapped.RowPitch;
-		uint8_t *dst = out + (size_t)y * (size_t)desc.Width * 4u;
-		for (UINT x = 0; x < desc.Width; x++) {
-			dst[x * 4 + 0] = row[x * 4 + 2];
-			dst[x * 4 + 1] = row[x * 4 + 1];
-			dst[x * 4 + 2] = row[x * 4 + 0];
-			dst[x * 4 + 3] = row[x * 4 + 3];
-		}
-	}
-	ID3D11DeviceContext_Unmap(context, (ID3D11Resource *)staging, 0);
-	ID3D11Texture2D_Release(staging);
-	ID3D11Texture2D_Release(back);
-	return 1;
-}
 #endif
 
 extern void voidRequestedSize(int *w, int *h);
@@ -182,7 +119,7 @@ int voidCaptureGrab(int slot) {
 		exit(1);
 	}
 	stopOnClampedWindow();
-#if defined(VOID_CAPTURE_D3D11) || defined(VOID_CAPTURE_GL) || defined(VOID_CAPTURE_METAL) || defined(VOID_CAPTURE_VULKAN) || defined(VOID_CAPTURE_D3D12)
+#if defined(VOID_CAPTURE_GL) || defined(VOID_CAPTURE_METAL) || defined(VOID_CAPTURE_VULKAN) || defined(VOID_CAPTURE_D3D12)
 	int width = voidSwapchainWidth();
 	int height = voidSwapchainHeight();
 	if (width <= 0 || height <= 0) return 0;
@@ -197,13 +134,9 @@ int voidCaptureGrab(int slot) {
 
 int voidCaptureGrabSwapChain(int slot, long long swapChain, int buffer) {
 	if (slot < 0 || slot >= VOID_CAPTURE_SLOTS) return 0;
-#if defined(VOID_CAPTURE_D3D11)
-	return grabD3D11(slot, (IDXGISwapChain *)(intptr_t)swapChain, buffer);
-#else
 	(void)swapChain;
 	(void)buffer;
 	return 0;
-#endif
 }
 
 long long voidCapturePixel(int slot, int x, int y) {

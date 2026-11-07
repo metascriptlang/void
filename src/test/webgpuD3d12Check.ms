@@ -55,8 +55,8 @@ import { splitTextureCopy } from "../webgpu/d3d12/resources.ms";
 import { FRAMES_IN_FLIGHT } from "../webgpu/d3d12/frame.ms";
 import { PRESENT_MODE_IMMEDIATE, PRESENT_MODE_VSYNC, flipFormat, planPresent, presentCall } from "../webgpu/d3d12/surface.ms";
 import { newCursor, nextPair, serializeRootSignature, shaderLayout, tableEntries } from "../webgpu/d3d12/descriptor.ms";
-import { dx12ObjectName, dx12Release } from "../webgpu/d3d12/d3d12.h";
-import { d3dBlobFree, d3dBlobRead, d3dCompile, d3dCompileLog } from "../webgpu/d3d11/d3d11.h";
+import { dx12CompileLog, dx12MemoryRead, dx12ObjectName, dx12Release, dx12ShaderCompile } from "../webgpu/d3d12/d3d12.h";
+import { DX12_OK } from "../webgpu/d3d12/frame.ms";
 import {
 	BLUE,
 	GREEN,
@@ -79,8 +79,6 @@ import {
 	uniformGroupAt,
 	vertexBuffer,
 } from "./webgpuFixtures.ms";
-
-@passL("-ld3d11");
 
 function openDevice(): GPUDevice {
 	return requestDevice({
@@ -596,13 +594,15 @@ const COLOURED_FRAGMENT_HLSL = "float4 main(float4 p : SV_Position, float4 color
 }
 
 function dxbc(code: string, target: string): Vec<uint8> {
-	const blob = d3dCompile(code, "main", target);
-	if (blob == null) { stopOnCompile(`D3DCompile ${target} failed: ${(d3dCompileLog() as string)}`); }
-	let bytes: Vec<uint8> = new Array(65536);
-	const size = d3dBlobRead(blob, bytes[0], 65536);
-	d3dBlobFree(blob);
-	if (size <= 0) { stopOnCompile("the compiled blob did not fit 64 KiB"); }
-	bytes.setLength(size as number);
+	let blob: uint64 = 0;
+	let pointer: uint64 = 0;
+	let size: uint64 = 0;
+	if (dx12ShaderCompile(code, "main", target, blob, pointer, size) != DX12_OK) {
+		stopOnCompile(`D3DCompile ${target} failed: ${(dx12CompileLog() as string)}`);
+	}
+	let bytes: Vec<uint8> = new Array(size as number);
+	dx12MemoryRead(pointer, bytes[0], size);
+	dx12Release(blob);
 	return bytes;
 }
 

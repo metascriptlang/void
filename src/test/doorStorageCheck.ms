@@ -79,12 +79,9 @@ when (voidDummy || (windows && !voidVulkan)) {
 	import { ColorAttachment, NO_DEPTH, RenderTarget, beginPass, layoutOf } from "../gpu/target";
 	import { PipelineCache, closePipelines, pipelineFor } from "../gpu/pipeline";
 }
-when (voidD3d12) {
+when (windows && !voidDummy && !voidVulkan && !voidGlCore) {
 	import { doorSetupWith } from "../gpu/doorGpu.ms";
 	import { D3D12_DEBUG_LAYER, debugLayerMessages } from "./d3d12DebugLayer";
-} else when (windows && !voidDummy && !voidVulkan) {
-	import { warpDevice, warpContext } from "./d3d11Warp.h";
-	@passL("-ld3d11");
 }
 
 const RGBA8 = 2;
@@ -119,10 +116,8 @@ when (voidDummy || (windows && !voidVulkan)) {
 	function openScene(): Scene {
 		when (voidDummy) {
 			doorSetup(null, null, RGBA8, NO_DEPTH_FORMAT, 1);
-		} else when (voidD3d12) {
+		} else when (windows && !voidDummy && !voidVulkan && !voidGlCore) {
 			doorSetupWith({ device: null, context: null, colorFormat: "rgba8unorm", sampleCount: 1, warp: true, debug: D3D12_DEBUG_LAYER });
-		} else {
-			doorSetup(warpDevice(), warpContext(), RGBA8, NO_DEPTH_FORMAT, 1);
 		}
 		const color: RenderTarget = RenderTarget.allocate(SIZE, SIZE, PixelFormat.Rgba8, false);
 		const black: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
@@ -139,7 +134,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 		closePipelines(scene.cache);
 		scene.color.close();
 		let messages: uint64 = 0;
-		when (voidD3d12) { messages = debugLayerMessages(); }
+		when (windows && !voidDummy && !voidVulkan && !voidGlCore) { messages = debugLayerMessages(); }
 		doorShutdown();
 		return messages;
 	}

@@ -13,10 +13,6 @@ when (voidVulkan && !voidDummy) {
 
 const VULKAN_POWER_HIGH: int32 = 2;
 
-when (windows && !voidDummy && !voidVulkan && !voidD3d12) {
-	import { warpDevice, warpContext } from "./d3d11Warp.h";
-	@passL("-ld3d11");
-}
 when (macos && !voidDummy) {
 	import { metalSystemDevice } from "./metalDevice.h";
 	@compile("./metalDevice.m");
@@ -43,7 +39,7 @@ export function openTestDevice(): GPUDevice {
 			depthFormat: "depth32float",
 			sampleCount: 1,
 		});
-	} else when (voidD3d12) {
+	} else when (windows && !voidDummy && !voidVulkan && !voidGlCore) {
 		return requestDevice({
 			device: null,
 			context: null,
@@ -51,14 +47,6 @@ export function openTestDevice(): GPUDevice {
 			depthFormat: "depth32float",
 			sampleCount: 1,
 			warp: true,
-		});
-	} else when (windows) {
-		return requestDevice({
-			device: warpDevice(),
-			context: warpContext(),
-			colorFormat: "rgba8unorm",
-			depthFormat: "depth32float",
-			sampleCount: 1,
 		});
 	} else {
 		when (macos) {

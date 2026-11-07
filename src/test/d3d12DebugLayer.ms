@@ -4,7 +4,7 @@ when (voidD3d12NoDebugLayer) {
 	export const D3D12_DEBUG_LAYER: boolean = true;
 }
 
-when (voidD3d12) {
+when (windows && !voidDummy && !voidVulkan && !voidGlCore) {
 	import { drainDebugMessages } from "../webgpu/d3d12/backend.ms";
 
 	export function debugLayerMessages(): uint64 {

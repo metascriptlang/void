@@ -134,12 +134,9 @@ when (voidDummy || (windows && !voidVulkan) || macos) {
 	import { PipelineCache, closePipelines, pipelineFor } from "../gpu/pipeline";
 	import { hasFeature } from "../gpu/feature.ms";
 }
-when (voidD3d12) {
+when (windows && !voidDummy && !voidVulkan && !voidGlCore) {
 	import { doorSetupWith } from "../gpu/doorGpu.ms";
 	import { D3D12_DEBUG_LAYER, debugLayerMessages } from "./d3d12DebugLayer";
-} else when (windows && !voidDummy && !voidVulkan) {
-	import { warpDevice, warpContext } from "./d3d11Warp.h";
-	@passL("-ld3d11");
 }
 when (macos && !voidDummy) {
 	import { metalSystemDevice } from "./metalDevice.h";
@@ -156,10 +153,8 @@ when (voidDummy || (windows && !voidVulkan) || macos) {
 	function openDoor(): void {
 		when (voidDummy) {
 			doorSetup(null, null, RGBA8, NO_DEPTH_FORMAT, 1);
-		} else when (voidD3d12) {
+		} else when (windows && !voidDummy && !voidVulkan && !voidGlCore) {
 			doorSetupWith({ device: null, context: null, colorFormat: "rgba8unorm", sampleCount: 1, warp: true, debug: D3D12_DEBUG_LAYER });
-		} else when (windows) {
-			doorSetup(warpDevice(), warpContext(), RGBA8, NO_DEPTH_FORMAT, 1);
 		} else {
 			doorSetup(metalSystemDevice(), null, RGBA8, NO_DEPTH_FORMAT, 1);
 		}
@@ -223,7 +218,7 @@ when (voidDummy || (windows && !voidVulkan) || macos) {
 		}
 		closePipelines(cache);
 		color.close();
-		when (voidD3d12) { assert debugLayerMessages() == 0; }
+		when (windows && !voidDummy && !voidVulkan && !voidGlCore) { assert debugLayerMessages() == 0; }
 		doorShutdown();
 	}
 }

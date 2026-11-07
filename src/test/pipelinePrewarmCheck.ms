@@ -26,11 +26,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 	import { livePipelines } from "../gpu/door";
 	import { pipelineFor, prewarm, closePipelines } from "../gpu/pipeline";
 }
-when (windows && !voidDummy && !voidVulkan && !voidD3d12) {
-	import { warpDevice, warpContext } from "./d3d11Warp.h";
-	@passL("-ld3d11");
-}
-when (voidD3d12) {
+when (windows && !voidDummy && !voidVulkan && !voidGlCore) {
 	import { doorSetupWith, doorValid } from "../gpu/doorGpu.ms";
 	import { debugLayerMessages } from "./d3d12DebugLayer";
 }
@@ -201,7 +197,7 @@ when (voidDummy || (windows && !voidVulkan)) {
 	function openDoor(): void {
 		when (voidDummy) {
 			doorSetup(null, null, RGBA8, DEPTH_STENCIL, 1);
-		} else when (voidD3d12) {
+		} else when (windows && !voidDummy && !voidVulkan && !voidGlCore) {
 			if (doorValid() == 1) { doorShutdown(); }
 			doorSetupWith({
 				device: null,
@@ -212,14 +208,12 @@ when (voidDummy || (windows && !voidVulkan)) {
 				warp: true,
 				debug: D3D12_DEBUG_LAYER,
 			});
-		} else {
-			doorSetup(warpDevice(), warpContext(), RGBA8, DEPTH_STENCIL, 1);
 		}
 	}
 
 	function closeDoor(): uint64 {
 		let messages: uint64 = 0;
-		when (voidD3d12) { messages = debugLayerMessages(); }
+		when (windows && !voidDummy && !voidVulkan && !voidGlCore) { messages = debugLayerMessages(); }
 		doorShutdown();
 		return messages;
 	}

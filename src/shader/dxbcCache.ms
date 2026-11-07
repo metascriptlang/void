@@ -9,7 +9,7 @@ class DxbcStage {
 	error: string = "";
 }
 
-// The flags src/webgpu/d3d11/d3d11.c passes D3DCompile, in fxc's spelling; keep them in step.
+// The flags dx12ShaderCompile in src/webgpu/d3d12/d3d12.c passes D3DCompile, in fxc's spelling; keep them in step.
 function fxcFlags(): string[] { return ["-Zpc", "-O3"]; }
 
 export function dxbcKey(profile: string, entry: string, code: string): string {

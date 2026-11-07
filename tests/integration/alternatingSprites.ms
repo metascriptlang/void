@@ -25,10 +25,8 @@ when (!voidDummy && !voidVulkan && !voidGlCore && (macos || windows)) {
 		import { metalSystemDevice } from "../../src/test/metalDevice.h";
 		@compile("../../src/test/metalDevice.m");
 	} else {
-		import {
-			warpDevice, warpContext, warpRelease,
-		} from "../../src/test/d3d11Warp.h";
-		@passL("-ld3d11");
+		import { doorSetupWith } from "../../src/gpu/doorGpu.ms";
+		import { D3D12_DEBUG_LAYER } from "../../src/test/d3d12DebugLayer";
 	}
 
 	const WIDTH: int32 = 16;
@@ -83,18 +81,12 @@ when (!voidDummy && !voidVulkan && !voidGlCore && (macos || windows)) {
 	}
 
 	function run(): void {
-		defer { when (windows) { warpRelease(); } }
 		when (macos) {
 			const device = metalSystemDevice();
 			if (device == null) { throw new Error("Metal device unavailable"); }
 			doorSetup(device, null, 2, 0, 1);
 		} else {
-			const device = warpDevice();
-			const context = warpContext();
-			if (device == null || context == null) {
-				throw new Error("D3D11 WARP device unavailable");
-			}
-			doorSetup(device, context, 2, 0, 1);
+			doorSetupWith({ device: null, context: null, colorFormat: "rgba8unorm", sampleCount: 1, warp: true, debug: D3D12_DEBUG_LAYER });
 		}
 		defer doorShutdown();
 		setup2d();

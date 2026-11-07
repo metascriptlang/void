@@ -15,7 +15,7 @@ test "the GL core 4.3 backend includes both scenes that draw with void3d" {
 }
 
 test "no other backend leaves a scene out" {
-	assert excludedCount("d3d11") == 0;
+	assert excludedCount("d3d12") == 0;
 	assert excludedCount("gles3") == 0;
 	assert excludedCount("webgl2") == 0;
 }
