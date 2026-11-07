@@ -24,7 +24,7 @@ cd "$(dirname "$0")/.."
 export VOID_QUIET_WINDOW=1
 
 MSC="${MSC:-msc}"
-BACKEND_DIR=d3d11
+BACKEND_DIR=d3d12
 RUNNER=out/goldenRunner.exe
 COMPARE=out/goldenCompare.exe
 . scripts/goldenDefines.sh
@@ -32,7 +32,7 @@ BACKEND_FLAGS=""
 
 mode=all
 filters=""
-backend=d3d11
+backend=d3d12
 while [ $# -gt 0 ]; do
 	arg="$1"
 	shift
@@ -49,7 +49,7 @@ while [ $# -gt 0 ]; do
 done
 
 case "$backend" in
-	d3d11) ;;
+	d3d12) ;;
 	gl)
 		BACKEND_DIR=gl430
 		RUNNER=out/goldenRunnerGl.exe
@@ -64,16 +64,12 @@ case "$backend" in
 		RUNNER=out/goldenRunnerVulkan.exe
 		BACKEND_FLAGS="-d:voidVulkan --passC=-DVOID_VULKAN"
 		;;
-	d3d12)
-		BACKEND_DIR=d3d12
-		RUNNER=out/goldenRunnerD3d12.exe
-		BACKEND_FLAGS="-d:voidD3d12 --passC=-DVOID_D3D12"
-		;;
-	*) echo "golden.sh: --backend is d3d11, d3d12, gl, metal or vulkan, not '$backend'" >&2; exit 2 ;;
+	*) echo "golden.sh: --backend is d3d12, gl, metal or vulkan, not '$backend'" >&2; exit 2 ;;
 esac
-# The D3D11 set is the one authored golden set; another backend is only judged against it.
-if [ "$mode" = update ] && [ "$backend" != d3d11 ]; then
-	echo "golden.sh: --update writes the D3D11 goldens only; --backend $backend is judged against them" >&2
+# tests/golden/d3d11 holds the last D3D11 captures, the one authored set until it is re-authored on
+# D3D12; every backend is judged against it under the cross-backend bound, and none rewrites it.
+if [ "$mode" = update ]; then
+	echo "golden.sh: --update is refused while tests/golden/d3d11 holds the retired D3D11 captures" >&2
 	exit 2
 fi
 

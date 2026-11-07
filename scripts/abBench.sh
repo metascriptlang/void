@@ -9,7 +9,7 @@
 #   sh scripts/abBench.sh clean              delete the exes and the main worktree
 #
 # Environment: AB_MAIN_SHA (default: the merge base of HEAD and main, so a delta is the GPU layer
-# and not newer void2d on main; main's tip is `AB_MAIN_SHA=main`), AB_BACKENDS (default "d3d11 gl"; add vulkan,
+# and not newer void2d on main; main's tip is `AB_MAIN_SHA=main`), AB_BACKENDS (default "d3d gl"; d3d is sokol's D3D11 on A against Void's D3D12 on B; add vulkan,
 # which main lacks and so runs on B alone, linux, web-wgpu, web-gl; `build web` alone defaults it to
 # "web-wgpu web-gl"), AB_LINUX_DRIVER (d3d12 default, or llvmpipe),
 # AB_SCENES (default "Ui Sprites Text Editor Scroll Campfire"), AB_TOL percent of slack on a .ms row
@@ -20,7 +20,7 @@ cd "$(dirname "$0")/.."
 B="$(pwd)"
 MSC="${MSC:-msc}"
 SCENES="${AB_SCENES:-Ui Sprites Text Editor Scroll Campfire}"
-BACKENDS="${AB_BACKENDS:-d3d11 gl}"
+BACKENDS="${AB_BACKENDS:-d3d gl}"
 TOL="${AB_TOL:-3}"
 LIMIT="${AB_LOAD_LIMIT:-25}"
 OUT="${AB_OUT:-${TEMP:-/tmp}/voidAB}"
@@ -31,10 +31,10 @@ export MSC_NO_GLOBAL_CACHE=1
 # $2 is the side: main's golden runner defines SOKOL_GLCORE, this branch's defines VOID_GLCORE.
 backendFlags() {
 	case "$1" in
-		d3d11) echo "" ;;
+		d3d) echo "" ;;
 		gl) if [ "$2" = A ]; then echo "-d:voidGlCore --passC=-DSOKOL_GLCORE"; else echo "-d:voidGlCore --passC=-DVOID_GLCORE"; fi ;;
 		vulkan) echo "-d:voidVulkan" ;;
-		*) echo "abBench.sh: backend '$1' is not built on this machine (d3d11, gl, vulkan)" >&2; exit 2 ;;
+		*) echo "abBench.sh: backend '$1' is not built on this machine (d3d, gl, vulkan)" >&2; exit 2 ;;
 	esac
 }
 

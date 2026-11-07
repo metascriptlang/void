@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# -Zpc -O3 are the flags src/webgpu/d3d11/d3d11.c passes D3DCompile; keep them in step.
+# -Zpc -O3 are the flags dx12ShaderCompile in src/webgpu/d3d12/d3d12.c passes D3DCompile; keep them in step.
 set -u
 dir="${1:?usage: validateHlsl.sh <directory>}"
 FXC="${FXC:-/c/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/fxc.exe}"
