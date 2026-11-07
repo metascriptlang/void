@@ -27,7 +27,8 @@ const char *voidCaptureRenderer(void);
 // Returns 1 on success, 0 when this build has no readback path or the read failed.
 int voidCaptureGrab(int slot);
 
-// D3D11 only: read buffer `buffer` of an IDXGISwapChain1 the caller owns (a host view's).
+// D3D12 only: read the buffer `buffer` presents back (1 = the last presented) of a host view's
+// flip-sequential IDXGISwapChain3.
 int voidCaptureGrabSwapChain(int slot, long long swapChain, int buffer);
 
 // 0xRRGGBBAA of one pixel of `slot`, or -1 outside the capture.

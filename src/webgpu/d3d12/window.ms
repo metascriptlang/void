@@ -1,6 +1,7 @@
 import {
 	closeSurface,
 	fitSurface,
+	idleSerial,
 	openSurface,
 	presentSurface,
 	removedReason,
@@ -39,3 +40,7 @@ export function exportSurfaceClose(surface: uint32): void { closeSurface(surface
 
 @exportName("voidD3d12RemovedReason")
 export function exportRemovedReason(): int32 { return removedReason(); }
+
+// Test capture reads a host view's presented buffer on its own queue; this queue's work must be done first.
+@exportName("voidD3d12WaitIdle")
+export function exportWaitIdle(): void { idleSerial(); }
