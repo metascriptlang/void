@@ -1,4 +1,4 @@
-import { doorSetup, doorSubmitFrame, doorFrameStat, doorReadTexture, DOOR_STAT_COUNT } from "../../src/gpu/doorGpu";
+import { doorSetup, doorShutdown, doorSubmitFrame, doorFrameStat, doorReadTexture, DOOR_STAT_COUNT } from "../../src/gpu/doorGpu";
 import { RenderTarget } from "../../src/gpu/target";
 import { PixelFormat } from "../../src/gpu/door";
 import { Scene2D, NodeRef } from "../../src/void2d/node";
@@ -79,6 +79,7 @@ function setupDevice(): void {
 	when (voidDummy) {
 		doorSetup(null, null, RGBA8, PixelFormat.Depth as int32, 1);
 	} else when (windows) {
+		doorShutdown();
 		doorSetupWith({ device: null, context: null, colorFormat: "rgba8unorm", sampleCount: 1, warp: true, debug: D3D12_DEBUG_LAYER });
 	} else when (macos) {
 		doorSetup(metalSystemDevice(), null, RGBA8, NO_DEPTH, 1);
