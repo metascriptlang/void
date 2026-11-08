@@ -1,5 +1,5 @@
-// gate3d's judge for a frame another backend than D3D11 captured: the frame against the
-// committed D3D11 image of its baseline, under golden 2D's policy (tests/golden/judge.ms), with
+// gate3d's judge for a frame another backend than D3D12 captured: the frame against the
+// committed D3D12 image of its baseline, under golden 2D's policy (tests/golden/judge.ms), with
 // `golden3d:<baseline>_<frame>@<backend>` budget rows in tests/PENDING.md.
 
 import { readLines } from "std/fs";
@@ -38,7 +38,7 @@ function run(): int32 {
 			continue;
 		}
 		if (voidPngLoad(0, fields[2]) == 0) {
-			console.log(`FAIL ${key} has no D3D11 image (${fields[2]})`);
+			console.log(`FAIL ${key} has no D3D12 image (${fields[2]})`);
 			failed = failed + 1;
 			continue;
 		}

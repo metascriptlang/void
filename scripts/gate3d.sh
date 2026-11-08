@@ -16,7 +16,7 @@
 # checkout needs nothing the gate does not generate: the readback harness is
 # tests/capture3d/, and the test and Android entries are written by `prepare`. A frame with no
 # hash fails. GATE_ADOPT=1 records the hashes the manifest lacks, from this run: deliberate
-# re-baselining only, in its own commit, with the reason written down. A hash is a D3D11 claim
+# re-baselining only, in its own commit, with the reason written down. A hash is a D3D12 claim
 # about this machine's driver; another GPU may render other bytes.
 #
 # Environment:
@@ -845,7 +845,7 @@ run_churn() {
 # skips do. GATE_DEVICE=1 builds, installs and runs it against whatever adb can see.
 run_device() {
 	if [ "${GATE_DEVICE:-0}" != "1" ]; then
-		skip "device: GATE_DEVICE=1 not set — no GLES3 run this gate; every pixel claim here is D3D11 only"
+		skip "device: GATE_DEVICE=1 not set — no GLES3 run this gate; every pixel claim here is D3D12 only"
 		return
 	fi
 	adb=${ADB:-$HOME/AppData/Local/Android/Sdk/platform-tools/adb.exe}
@@ -1439,7 +1439,7 @@ run_graphics_line() {
 
 # ---- gl core -------------------------------------------------------------------------------
 
-# The readback checks, each judged by its own thresholds rather than D3D11's bytes, built for
+# The readback checks, each judged by its own thresholds rather than D3D12's bytes, built for
 # VOID_GLCORE (glsl430) as void2d's golden.sh --backend gl builds: name, then the env that
 # selects the pixel-art preset, or - when the check has only the core run.
 GL_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_BLEND_PIXEL_ART=1
@@ -1653,13 +1653,13 @@ build_and_capture() {
 	return 0
 }
 
-# A backend other than D3D11 renders other bytes, so its frames are judged against the committed
-# D3D11 images by tests/capture3d/compare3d.ms, golden 2D's policy with `golden3d:` budget rows.
+# A backend other than D3D12 renders other bytes, so its frames are judged against the committed
+# D3D12 images by tests/capture3d/compare3d.ms, golden 2D's policy with `golden3d:` budget rows.
 case "$(uname -s)" in
 	Darwin) CROSS3D=metal ;;
 	*) CROSS3D="" ;;
 esac
-GOLDEN3D=tests/golden3d/d3d11
+GOLDEN3D=tests/golden3d/d3d12
 COMPARE3D=out/compare3d.exe
 
 run_capture_cross() {
@@ -2140,7 +2140,7 @@ run_unlit_textured() {
 		CAPTURE_PREFIX="$CAPTURE/gate/$entry" "$WORK/$entry.exe" \
 			> "$WORK/$entry.run.log" 2>&1 || status=$?
 		if [ "$status" -eq 3 ]; then
-			skip "unlit-textured: $entry requires the unrun D3D11 readback backend"
+			skip "unlit-textured: $entry requires the unrun D3D12 readback backend"
 			continue
 		fi
 		if [ "$status" -ne 0 ] ||
@@ -2802,7 +2802,7 @@ run_camera_rig() {
 		CAPTURE_PREFIX="$CAPTURE/gate/$entry" "$WORK/$entry.exe" \
 			> "$WORK/$entry.run.log" 2>&1 || status=$?
 		if [ "$status" -eq 3 ]; then
-			skip "camera-rig: $entry requires the unrun D3D11 readback backend"
+			skip "camera-rig: $entry requires the unrun D3D12 readback backend"
 			continue
 		fi
 		if [ "$status" -ne 0 ] ||
