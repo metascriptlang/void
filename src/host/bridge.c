@@ -2,10 +2,14 @@
 // driver shares, over the GPU door (src/gpu/door.h). The driver (bridgeWin.c, bridgeIos.m,
 // bridgeAndroid.c) owns the device and the swapchain.
 
+#include "backend.h"
 #include "bridge.h"
 #include "viewsExports.h"
 #include "appWindow.h"
 #include "../gpu/door.h"
+#if defined(VOID_D3D12)
+#include "windowSurface.h"
+#endif
 #if !defined(VOID_ANDROID_APP) && !defined(VOID_IOS_APP)
 #include "../platform/windowCore.h"
 #endif
@@ -78,6 +82,9 @@ void voidLoseContext(void) { s_contextLost = true; }
 
 void voidRestoreContextIfLost(void (*setup)(void)) {
 	if (!s_contextLost) return;
+#if defined(VOID_D3D12)
+	if (voidDriver == VOID_DRIVER_WINDOW) voidWindowSurfaceDestroy();
+#endif
 	doorShutdown();
 	setup();
 	s_contextLost = false;
