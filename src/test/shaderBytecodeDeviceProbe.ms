@@ -27,5 +27,11 @@ console.log("probe: the control module loaded");
 let garbage = constantModule;
 garbage.label = "garbage";
 for (let i = 0; i < garbage.vertexBytecode.length; i++) { garbage.vertexBytecode[i] = (garbage.vertexBytecode[i] ^ 0xFF) as uint8; }
-device.createShaderModule(garbage);
+const corrupted = device.createShaderModule(garbage);
 console.log("probe: the corrupted module loaded");
+device.createRenderPipeline({
+	label: "garbage",
+	vertex: { module: corrupted, buffers: [{ arrayStride: 8, attributes: [{ format: "float32x2", offset: 0, shaderLocation: 0 }] }] },
+	fragment: { module: corrupted, targets: [{ format: "rgba8unorm" }] },
+});
+console.log("probe: the corrupted pipeline was created");

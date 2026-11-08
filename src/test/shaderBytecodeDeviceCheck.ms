@@ -1,4 +1,4 @@
-// The D3D11 backend takes the DXBC that shaderModule and shaderBuild embed at msc compile time:
+// The D3D12 backend takes the DXBC that shaderModule and shaderBuild embed at msc compile time:
 // the descriptor holds no HLSL text, yet the module, its pipeline and the draw or dispatch work.
 
 import { GPUBufferUsage, GPUShaderModuleDescriptor } from "../webgpu/types.ms";
