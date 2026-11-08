@@ -1379,3 +1379,24 @@ commit 77-89 (ExecuteCommandLists 30-54, allocator and list reset 10-19, close 5
 OMSetRenderTargets and clears 24-25, barrier flush 8-10, RTV create 7-8, DSV create 3.5. That is
 where the cost sits, not yet why D3D12 is slower; the cause is unproved. Rig
 `~/metascript/.scratch/voidab-win`, logs `d7c-run*.log`.
+
+Then, same day, on the default path with no flag (msc 10a28a971 on d87):
+- Goldens re-authored on D3D12 (`96989a6e`): against the D3D11 set 16 scenes identical, 73 at max
+  delta 1, 33 at 2, `prim/shadowStack` at 3, no shape moved. Metal on a Mac against the D3D12 set:
+  17 identical, 106 within the bound or their budgets, 0 fail of 123.
+- gate3d (`8013406f`): main's D3D11 on the same d87 and msc is the control. All 108 frames of the
+  27 captures are byte-identical between D3D11 and D3D12, both fail the same stages, and both
+  differ from the manifest recorded on the old box, so the 16 baselines are re-adopted on D3D12. `m14forward` and
+  `m16anchor` stay on their held 0.3.0 rows (compiler card `2026-10-03`).
+- The gate on Windows found four D3D12-only reds, fixed and rerun: a forced context loss destroyed
+  the device with the window's swapchain open (`d7379419`, device loss 2D, colour and 3D pass);
+  the batcher pin set the device up twice without shutting it down (`6f8db24a`, 435/435);
+  corrupted DXBC is refused only at `CreateGraphicsPipelineState`, which now names the pipeline
+  and module (`b6e95a6d`, `2a53673e`); `gate.sh` and 13 readback tests still named D3D11
+  (`dd8d75e4`). webgpuD3d12Check 493, door checks 417/429/433/429, shaderBytecodeDeviceCheck 424.
+- Consumers: main2d, mainCampfire, mainCardTable and Neon voidWindow, voidDraw, voidInputs load
+  `d3d12.dll`, resize three times and exit 0; voidCanvas exits 1 as before.
+- Not D3D12: the four index reds (the same on D3D11), JS budgets (main is over them too: windowJsEntry
+  1377873 B on main, 1377993 B here, recorded 1353519 B), the gl430 runs (d87's AMD driver lacks `WGL_ARB_create_context_robustness`), and the
+  `text/filteredDpi125` invariant (the AMD GPU draws the filtered copy one level off; D3D11 on d87
+  captured the same bytes).
