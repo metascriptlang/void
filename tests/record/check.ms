@@ -79,10 +79,10 @@ function checkOwners(rows: PendingRow[], roadmap: string): int32 {
 function checkGoldenCount(table: string, testing: string): int32 {
 	const rows: int32 = goldenRowCount(table);
 	for (const line of testing.split("\n")) {
-		if (line.startsWith("| D3D11 | **") && line.indexOf(` / ${rows} scenes`) >= 0) { return 0; }
+		if (line.startsWith("| D3D12 | **") && line.indexOf(` / ${rows} scenes`) >= 0) { return 0; }
 	}
 	console.log(
-		`FAIL docs/TESTING.md's D3D11 row does not count ${rows} scenes, ` +
+		`FAIL docs/TESTING.md's D3D12 row does not count ${rows} scenes, ` +
 		"as tests/golden/table.ms does",
 	);
 	return 1;

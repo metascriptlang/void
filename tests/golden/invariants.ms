@@ -73,7 +73,7 @@ const SLOT: int32 = 0;
 function filteredTextMatchesPlain(): int32 {
 	const override: string = env.get("VOID_FILTERED_TEXT_CAPTURE");
 	const path: string = override.equals("")
-		? `tests/golden/d3d11/${FILTERED_TEXT_SCENE}.png`
+		? `tests/golden/d3d12/${FILTERED_TEXT_SCENE}.png`
 		: override;
 	if (voidPngLoad(SLOT, path) == 0) {
 		console.log(`FAIL ${FILTERED_TEXT_SCENE}: cannot read ${path}`);
@@ -172,7 +172,7 @@ function joinHoldsOnce(
 function raggedSelectionJoins(): int32 {
 	const override: string = env.get("VOID_CARET_CAPTURE");
 	const path: string = override.equals("")
-		? `tests/golden/d3d11/${CARET_SCENE}.png`
+		? `tests/golden/d3d12/${CARET_SCENE}.png`
 		: override;
 	if (voidPngLoad(SLOT, path) == 0) {
 		console.log(`FAIL ${CARET_SCENE}: cannot read ${path}`);
@@ -204,7 +204,7 @@ function raggedSelectionJoins(): int32 {
 
 function lanesMatchPainter(): int32 {
 	const override: string = env.get("VOID_LANES_CAPTURE");
-	const path: string = override.equals("") ? `tests/golden/d3d11/${LANES_SCENE}.png` : override;
+	const path: string = override.equals("") ? `tests/golden/d3d12/${LANES_SCENE}.png` : override;
 	if (voidPngLoad(SLOT, path) == 0) {
 		console.log(`FAIL ${LANES_SCENE}: cannot read ${path}`);
 		return 1;
@@ -247,7 +247,7 @@ const PREMULTIPLIED_TOLERANCE: int32 = 1;
 
 function premultipliedMatchesStraight(scene: string, captureVariable: string, rows: int32): int32 {
 	const override: string = env.get(captureVariable);
-	const path: string = override.equals("") ? `tests/golden/d3d11/${scene}.png` : override;
+	const path: string = override.equals("") ? `tests/golden/d3d12/${scene}.png` : override;
 	if (voidPngLoad(SLOT, path) == 0) {
 		console.log(`FAIL ${scene}: cannot read ${path}`);
 		return 1;
@@ -295,7 +295,7 @@ function premultipliedMatchesStraight(scene: string, captureVariable: string, ro
 function everyTargetFiltered(): int32 {
 	const override: string = env.get("VOID_MANY_TARGETS_CAPTURE");
 	const path: string = override.equals("")
-		? `tests/golden/d3d11/${MANY_TARGETS_SCENE}.png`
+		? `tests/golden/d3d12/${MANY_TARGETS_SCENE}.png`
 		: override;
 	if (voidPngLoad(SLOT, path) == 0) {
 		console.log(`FAIL ${MANY_TARGETS_SCENE}: cannot read ${path}`);
@@ -357,7 +357,7 @@ const LUMA_TOLERANCE: float32 = 2.0;
 function uiEffectIsLuma(): int32 {
 	const override: string = env.get("VOID_EFFECT_UI_CAPTURE");
 	const path: string = override.equals("")
-		? `tests/golden/d3d11/${EFFECT_UI_SCENE}.png`
+		? `tests/golden/d3d12/${EFFECT_UI_SCENE}.png`
 		: override;
 	if (voidPngLoad(SLOT, path) == 0) {
 		console.log(`FAIL ${EFFECT_UI_SCENE}: cannot read ${path}`);
@@ -404,7 +404,7 @@ const SDF_EFFECT_BAND_H: int32 = 90;
 function outlineEffectMatchesPlain(): int32 {
 	const override: string = env.get("VOID_OUTLINE_EFFECT_CAPTURE");
 	const path: string = override.equals("")
-		? `tests/golden/d3d11/${OUTLINE_EFFECT_SCENE}.png`
+		? `tests/golden/d3d12/${OUTLINE_EFFECT_SCENE}.png`
 		: override;
 	if (voidPngLoad(SLOT, path) == 0) {
 		console.log(`FAIL ${OUTLINE_EFFECT_SCENE}: cannot read ${path}`);
@@ -445,7 +445,7 @@ function outlineEffectMatchesPlain(): int32 {
 function sdfEffectMatchesPlain(): int32 {
 	const override: string = env.get("VOID_SDF_EFFECT_CAPTURE");
 	const path: string = override.equals("")
-		? `tests/golden/d3d11/${SDF_EFFECT_SCENE}.png`
+		? `tests/golden/d3d12/${SDF_EFFECT_SCENE}.png`
 		: override;
 	if (voidPngLoad(SLOT, path) == 0) {
 		console.log(`FAIL ${SDF_EFFECT_SCENE}: cannot read ${path}`);
@@ -552,7 +552,7 @@ function inkDiffers(first: int32, second: int32): int32 {
 function ligatureLinesAgree(): int32 {
 	const override: string = env.get("VOID_LIGATURE_CAPTURE");
 	const path: string = override.equals("")
-		? `tests/golden/d3d11/${LIGATURE_SCENE}.png`
+		? `tests/golden/d3d12/${LIGATURE_SCENE}.png`
 		: override;
 	if (voidPngLoad(SLOT, path) == 0) {
 		console.log(`FAIL ${LIGATURE_SCENE}: cannot read ${path}`);
@@ -580,8 +580,8 @@ function ligatureLinesAgree(): int32 {
 }
 
 function designFoldMatchesDpi(): int32 {
-	const fold: string = `tests/golden/d3d11/${DESIGN_FOLD_SCENE}.png`;
-	const dpi: string = `tests/golden/d3d11/${DESIGN_FOLD_DPI_SCENE}.png`;
+	const fold: string = `tests/golden/d3d12/${DESIGN_FOLD_SCENE}.png`;
+	const dpi: string = `tests/golden/d3d12/${DESIGN_FOLD_DPI_SCENE}.png`;
 	if (voidPngLoad(0, fold) == 0 || voidPngLoad(1, dpi) == 0) {
 		console.log(`FAIL ${DESIGN_FOLD_SCENE}: cannot read ${fold} and ${dpi}`);
 		return 1;

@@ -85,10 +85,10 @@ function pixel(x: int32, y: int32, channel: int32): int32 {
 // points it at a fresh capture instead, which is the order a golden is allowed to move in:
 // capture, let the oracle say the antialiasing is true area, and only then promote. Judging
 // a golden that was promoted first would be judging a decision already taken.
-const GOLDEN_PATH: string = "tests/golden/d3d11/prim/aaRotatedBox.png";
-const GRAPHICS_GOLDEN_PATH: string = "tests/golden/d3d11/prim/aaGraphics.png";
-const NON_UNIFORM_GOLDEN_PATH: string = "tests/golden/d3d11/prim/aaNonUniformBox.png";
-const SUBPIXEL_GOLDEN_PATH: string = "tests/golden/d3d11/prim/subpixelFill.png";
+const GOLDEN_PATH: string = "tests/golden/d3d12/prim/aaRotatedBox.png";
+const GRAPHICS_GOLDEN_PATH: string = "tests/golden/d3d12/prim/aaGraphics.png";
+const NON_UNIFORM_GOLDEN_PATH: string = "tests/golden/d3d12/prim/aaNonUniformBox.png";
+const SUBPIXEL_GOLDEN_PATH: string = "tests/golden/d3d12/prim/subpixelFill.png";
 
 // ===== the shadow half: the erf integral's GLSL copy, judged against the definition =====
 //
@@ -126,7 +126,7 @@ const SHADOW_BOUND: float32 = 0.035;
 const SHADOW_EPSILON: float32 = 0.005;
 function runShadow(): int32 {
 	const override: string = env.get("VOID_SHADOW_CAPTURE");
-	const path: string = override.equals("") ? "tests/golden/d3d11/prim/aaShadow.png" : override;
+	const path: string = override.equals("") ? "tests/golden/d3d12/prim/aaShadow.png" : override;
 	if (voidPngLoad(1, path) == 0) {
 		console.log(`FAIL shadow oracle: cannot read ${path}`);
 		return 1;

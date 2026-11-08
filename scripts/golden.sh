@@ -7,10 +7,9 @@
 #   sh scripts/golden.sh --self-check    prove the verdict decision against known inputs
 #   sh scripts/golden.sh --update        capture, then copy out/golden -> tests/golden
 #   sh scripts/golden.sh --backend gl    the GL core 4.3 desktop build (glsl430), judged against
-#                                        the D3D11 goldens under the cross-backend bound
+#                                        the D3D12 goldens under the cross-backend bound
 #   sh scripts/golden.sh --backend metal the macOS Metal window, judged the same way
 #   sh scripts/golden.sh --backend vulkan the Windows Vulkan window, judged the same way
-#   sh scripts/golden.sh --backend d3d12 the Windows D3D12 window, judged the same way
 #   sh scripts/golden.sh prim/ snap/x    only the rows whose name starts with one of these
 #
 # --update is never automatic. A golden changes only inside a commit that says why, and the
@@ -66,10 +65,9 @@ case "$backend" in
 		;;
 	*) echo "golden.sh: --backend is d3d12, gl, metal or vulkan, not '$backend'" >&2; exit 2 ;;
 esac
-# tests/golden/d3d11 holds the last D3D11 captures, the one authored set until it is re-authored on
-# D3D12; every backend is judged against it under the cross-backend bound, and none rewrites it.
-if [ "$mode" = update ]; then
-	echo "golden.sh: --update is refused while tests/golden/d3d11 holds the retired D3D11 captures" >&2
+# The D3D12 set is the one authored golden set; another backend is only judged against it.
+if [ "$mode" = update ] && [ "$backend" != d3d12 ]; then
+	echo "golden.sh: --update writes the D3D12 goldens only; --backend $backend is judged against them" >&2
 	exit 2
 fi
 
@@ -241,9 +239,9 @@ capture() {
 	[ "$failures" -eq 0 ]
 }
 
-# D3D11 is judged for byte identity; any other backend's captures under the cross-backend bound.
+# D3D12 is judged for byte identity; any other backend's captures under the cross-backend bound.
 compare() {
-	if [ "$BACKEND_DIR" = d3d11 ]; then
+	if [ "$BACKEND_DIR" = d3d12 ]; then
 		"$COMPARE"
 	else
 		VOID_CONFORM="$BACKEND_DIR" "$COMPARE"

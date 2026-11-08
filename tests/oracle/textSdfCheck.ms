@@ -57,7 +57,7 @@ function isTransformed(c: SdfLabelCase): boolean {
 
 function capturePath(scene: string): string {
 	const dir: string = env.get("VOID_TEXT_SDF_CAPTURE_DIR");
-	return dir.equals("") ? `tests/golden/d3d11/${scene}.png` : `${dir}/${scene}.png`;
+	return dir.equals("") ? `tests/golden/d3d12/${scene}.png` : `${dir}/${scene}.png`;
 }
 
 function shaped(c: SdfLabelCase): int32 {

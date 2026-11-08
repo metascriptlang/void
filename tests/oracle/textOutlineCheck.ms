@@ -462,7 +462,7 @@ function accepted(m: Measure): boolean {
 
 function observed(scene: string): Canvas {
 	const directory: string = env.get("VOID_OUTLINE_CAPTURE_DIR");
-	const path: string = directory == "" ? `tests/golden/d3d11/${scene}.png`
+	const path: string = directory == "" ? `tests/golden/d3d12/${scene}.png`
 		: `${directory}/${scene}.png`;
 	const target = canvasFor(scene);
 	require(voidPngLoad(0, path) != 0, `cannot read capture ${path}`);

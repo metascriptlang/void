@@ -70,7 +70,7 @@ tests/capture/capture.{c,h}       one readback signature, a backend behind it
 tests/golden/scenes.ms            the scene table: name, builder, size, dpi, frames
 tests/golden/runner.ms            entry: build, render, capture, write
 tests/golden/compare.ms           diff, tolerance policy, report
-tests/golden/d3d11/<scene>.png    the goldens
+tests/golden/d3d12/<scene>.png    the goldens
 ```
 
 `out/tmp/capture/capture.c` moves in unchanged: it reads the resolved D3D11 swapchain through sokol's native-handle getters (`sg_d3d11_device()`, and `voidWindowSwapChain()` from `bridgeWin.c` since the window owns its swapchain, docs/SOKOL.md), clones the backbuffer desc as `D3D11_USAGE_STAGING | D3D11_CPU_ACCESS_READ`, `CopyResource`, `Map`. sokol has no readback API and async `read-buffer`/`read-image` is only announced (docs/SOKOL.md:34), so this stays hand-written per backend for now.
@@ -284,7 +284,7 @@ Both of P3's send-backs were the written record drifting from the code: counts l
 
 - every line of a PENDING table, one whose header starts `| id | tier |`, is a row with a one-word id, a tier from T0 to T5, an owner and a date, or the stage fails naming the line and the cell it could not read. Until P4 such a line was skipped in silence (REVIEWS.md "P3.5 re-review" #3);
 - every PENDING row's owner is a roadmap phase (read from VOID2D.md's headings) or `compiler`, `human` or `declared`, the last for an oracle divergence the module refuses or accepts by design and so never closes (an SVG feature outside nanosvg's allowlist, nanosvg's tessellation); a `declared` row names the upstream limit it records and is never a parking place for something we intend to fix; every row a phase owns is on that phase's **Closes** line, and every id on a **Closes** line is a row that phase owns. A **Closes** line lists ids, not work: an id with no Lands bullet behind it still passes, so a reviewer reads the bullets;
-- the D3D11 row of "Guardrail 9" below equals the scene count of `tests/golden/table.ms` and the run's `golden d3d11` line, and the WebGL2 row equals the `golden webgl2` line of a `--web` run;
+- the D3D12 row of "Guardrail 9" below equals the scene count of `tests/golden/table.ms` and the run's `golden d3d12` line, and the WebGL2 row equals the `golden webgl2` line of a `--web` run;
 - a `conformance:webgl2-pixel-centre` row, while one exists, fails the run when one of its scenes starts passing, or when a run has no failure and the row is still there (REVIEWS.md P3 F13). How far a listed scene is off is not bounded; its failures are structural, not budgeted.
 
 Each was proven to fail on a planted drift. Test counts are not pinned: they change every commit, and the gate prints them.
@@ -329,20 +329,22 @@ read from the log.
    tests/js/targetCheck.ms` with every module flag off and on: Void compiles on JS, and what needs
    C (decoding images, loading fonts) answers with a named error there, because JS has no C to call.
    `-d:voidCff` is one of the flags: off, `tests/fonts/cffSynthetic.otf` is refused by name; on, the CFF tests run.
-   Then `msc check src/examples/main2d.ms` for every backend the host does not run (D3D11, D3D12,
+   Then `msc check src/examples/main2d.ms` for every backend the host does not run (D3D12,
    GL on Windows, Linux and Android, Metal on iOS, both web builds, the dummy), about 15 s in all, so
    a function one backend lacks is red on any host rather than on the first machine that builds it.
 2. The demo entry builds and runs, then the integration programs, each with its named misuse
    runs; `mixedFrame` with its controls and both registration orders. Then the backend checks of
-   the host: `webgpuD3d11Check` and `doorZeroHandleCheck` on WARP and `webgpuGlCheck`
-   (`-d:voidGlCore`) on the system device on Windows, `webgpuMetalCheck` on a Mac. With `--d3d12`,
-   also `webgpuD3d12Check` and the door checks (`doorZeroHandleCheck`, `doorComputeCheck`,
-   `doorStencilCheck`, `pipelinePrewarmCheck`), each `-d:voidD3d12` on WARP.
+   the host: `webgpuD3d12Check` and the door checks (`doorZeroHandleCheck`, `doorComputeCheck`,
+   `doorStencilCheck`, `pipelinePrewarmCheck`) on WARP with the D3D12 debug layer, which needs the
+   Graphics Tools optional feature (`d3d12SDKLayers.dll`; without it `requestDevice` stops and
+   names it, and `-d:voidD3d12NoDebugLayer` runs the same pins with the layer and its message
+   checks off, proving behaviour, not validation), and `webgpuGlCheck` (`-d:voidGlCore`) on the
+   system device on Windows; `webgpuMetalCheck` on a Mac.
 3. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
    twice, compare the two, gate per-scene counters, write the PNG, then
-   `tests/golden/compare.ms` judges every scene against `tests/golden/d3d11/` and prints
+   `tests/golden/compare.ms` judges every scene against `tests/golden/d3d12/` and prints
    `N px differ, max delta M, bbox` and a pass rate. Then the bare build, every module flag off,
-   on D3D11 on Windows and on Metal on a Mac. A Mac has no D3D11, so there the D3D11 suite is
+   on D3D12 on Windows and on Metal on a Mac. A Mac has no D3D12, so there the D3D12 suite is
    a SKIP that names the host.
 4. The three coverage oracles and the two font oracles, plus two named SKIPs for oracles not wired yet;
    then the shader modules' freshness (`regen-shaders.sh --check`) and every printed stage through
@@ -352,11 +354,11 @@ read from the log.
    reported with a warn threshold; a bench program that does not build fails by name. Object-growth
    checks and linked wasm budget declarations also gate; declaration validation does not re-link
    the measured entries.
-6. Guardrail 9: the D3D11 and GL core conformance lines on Windows, the Metal line on a Mac, each
+6. Guardrail 9: the D3D12 and GL core conformance lines on Windows, the Metal line on a Mac, each
    absent backend a SKIP that names the host, then one named SKIP per backend that has no readback.
    With `--web`, also `scripts/build-web.sh` and `scripts/web-liveness.sh`.
 7. The record against the code: `tests/record/check.ms`, the style checks, and the conformance
-   rows of this file against this run's logs (the D3D11 row is a SKIP on a Mac).
+   rows of this file against this run's logs (the D3D12 row is a SKIP on a Mac).
 8. The tier table, the PENDING count, and the SKIP and FAIL totals.
 
 Flags:
@@ -369,10 +371,6 @@ Flags:
   are one SKIP line. Pass it when a change touches `src/platform/macos/*`,
   `src/host/bridgeEmbed.m` or `tests/capture/capture.c`. `gpuTimer` runs on every Mac gate,
   in the quiet window.
-- `--d3d12` runs `webgpuD3d12Check` and the four door checks on WARP. Every pin ends by asserting that the D3D12 debug
-  layer recorded no message, so it needs the Graphics Tools optional feature
-  (`d3d12SDKLayers.dll`); without it `requestDevice` stops and names it. `-d:voidD3d12NoDebugLayer` runs the same pins on a host without it, with the layer off and its message checks skipped; it proves behaviour, not validation. Without the flag it is
-  one SKIP line on Windows.
 - `--ios` runs the Metal goldens and view samples on an attached iPhone or iPad
   (`scripts/iosDevice.sh`); without it they are one SKIP line. The device must be paired and
   unlocked, or every iOS line fails by name.
@@ -416,9 +414,9 @@ in the same change as the fix.
 
 | Backend | Conformance | Runs |
 |---|---|---|
-| D3D11 | **123 / 123 scenes byte-identical** | every full gate, this box |
-| GL core 4.3 desktop (glsl430) | **123 / 123**: 96 byte-identical, 27 within the cross-backend bound, 0 structural failures, 0 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
-| Metal macOS | **120 / 120** on an Apple GPU, 2026-10-23: 15 byte-identical, 87 within the cross-backend bound, 18 within their measured `@metal` budgets (`tests/PENDING.md`, delta 2 to 4 spread over many pixels with no shape moved). The readback is `doorReadScreen`, the door's swapchain copy, as on D3D11 and GL; it stops by name rather than wait behind a command buffer that is not committed | `sh scripts/golden.sh --backend metal`, and every full gate on a Mac |
+| D3D12 | **123 / 123 scenes byte-identical** | every full gate on Windows. Authored 2026-11-08 on d87 (AMD Vega, msc 10a28a971), replacing the D3D11 set: against it 16 scenes identical, 73 at max delta 1, 33 at 2, `prim/shadowStack` at 3, no shape moved |
+| GL core 4.3 desktop (glsl430) | Not re-judged against the D3D12 set: d87's AMD driver lacks `WGL_ARB_create_context_robustness`, so every scene stops before a verdict (2026-11-08). Against the D3D11 set on the RTX 5090 box, **123 / 123**: 96 byte-identical, 27 within the cross-backend bound, 0 structural failures, 0 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
+| Metal macOS | **123 / 123** against the D3D12 set, 2026-11-08 (msc 02029f04dc4): 17 byte-identical, 106 within the bound or their `@metal` budgets, 0 fail. Before, **120 / 120** against the D3D11 set on an Apple GPU, 2026-10-23: 15 byte-identical, 87 within the cross-backend bound, 18 within their measured `@metal` budgets (`tests/PENDING.md`, delta 2 to 4 spread over many pixels with no shape moved). The readback is `doorReadScreen`, the door's swapchain copy, as on D3D11 and GL; it stops by name rather than wait behind a command buffer that is not committed | `sh scripts/golden.sh --backend metal`, and every full gate on a Mac |
 | Metal iOS | **120 / 120** on an iPhone 13 Pro (iOS 27.0.1) and an iPad Pro 12.9-inch 5th generation (iPadOS 26.6.1), 2026-10-24, BUILD `6b8655024`: the same verdict as Metal macOS (15 byte-identical, 87 within the bound, 18 within their `@metal` budgets). The two device sets are byte-identical to each other, and 116 of 120 to the Mac's (`prim/boxFills`, `dashedBorder`, `gradientOklab`, `textModes` differ, inside their bounds). Same `doorReadScreen` readback; on iOS the PNGs land in the app's Documents and are copied off with `devicectl` | `bash scripts/iosDevice.sh golden auto`, and the gate on a Mac with `--ios`: it picks the first paired, reachable device (`VOID_IOS_DEVICE` names one, `VOID_IOS_PROFILE` a profile) and fails by name when there is none, the device is locked, or the install is refused |
 | GLES3 Android | shares the `glReadPixels` path; needs the human's device | SKIP |
 | WebGPU | no readback in the wasm build. P6. Headless Chrome does hand it the real adapter here (2026-10-20); liveness only, below | SKIP |
@@ -634,7 +632,7 @@ No browser/GPU was run and no renderer policy changed.
 |---|---|
 | T0 | `msc test src/test/index.ms`, the harness parsers included; the gate prints the count |
 | T1 | the snapshots in `tests/displayList/` plus no-GPU reachability and invariant assertions |
-| T2 | the scenes of `tests/golden/table.ms`, D3D11, byte-identical, zero budgets; the per-backend numbers are in "Guardrail 9" |
+| T2 | the scenes of `tests/golden/table.ms`, D3D12, byte-identical, zero budgets; the per-backend numbers are in "Guardrail 9" |
 | T3 | three coverage oracles and two font oracles green; two current-roadmap SKIPs, plus full HarfBuzz at P6 |
 | T4 | the counters `tests/bench/check.ms` lists, gated per bench scene (ui, sprites, text, editor, scroll, editorTyping, editorBlink, editorChrome; editorChrome is built with `-d:voidSvg`), plus one measure call's glyph lookups on the text scene, plus `textEmoji`'s colour pages, bytes and rasterizations held to the bounds in `baseline.json` `colourBounds` (native measurements above), plus `textSdf`'s SDF pages, bytes, generations and coverage rasterizations held to `sdfBounds` (native measurements above); the `allocation` stage over the emitted C (`scripts/allocation.awk`), reading the functions it names and every void2d function they call, each held to its caller's rule unless a list names it, and naming the call chain of a failure; it does not see stream growth, allocation inside C, or a function no bench reaches; `present` and `firstPaint` milliseconds reported; wasm object growth and linked-budget declarations checked, not fresh links (measured conditions above) |
 | T5 | human only |

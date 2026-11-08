@@ -3,7 +3,7 @@
 #
 #   bash scripts/iosDevice.sh golden <device> [name]
 #     every golden scene on <device>, copied to out/golden/metal-<name>/ and judged against
-#     tests/golden/d3d11 with the @metal budgets; <name> is ios-<model> when left out
+#     tests/golden/d3d12 with the @metal budgets; <name> is ios-<model> when left out
 #   bash scripts/iosDevice.sh samples <device>
 #     tests/integration/viewSamples.ms at 1, 2, 4 and 8 samples
 #

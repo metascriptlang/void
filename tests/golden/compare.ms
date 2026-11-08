@@ -123,9 +123,9 @@ function judge(
 }
 
 function runComparison(): int32 {
-	// The comparator never runs a backend, so it is told which golden set to read. 1 = D3D11.
-	const backend: string = backendDirectory(1);
-	// VOID_CONFORM names another backend's captures to judge against the same D3D11 goldens,
+	// The comparator never runs a backend, so it is told which golden set to read. 7 = D3D12.
+	const backend: string = backendDirectory(7);
+	// VOID_CONFORM names another backend's captures to judge against the same D3D12 goldens,
 	// under the cross-backend bound instead of byte identity.
 	const conform: string = env.get("VOID_CONFORM");
 	const captured: string = conform.length > 0 ? conform : backend;
