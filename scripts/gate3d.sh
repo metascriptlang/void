@@ -1805,6 +1805,12 @@ run_look_restored() {
 	pass "capture look: frames 1 and 16 byte-identical to m3palette_*.ppm around the swap"
 }
 
+need_magick() {
+	command -v magick > /dev/null 2>&1 && return 0
+	skip "$1: ImageMagick is not on PATH — $2 not checked"
+	return 1
+}
+
 # M26: lighting is linear, so the greyed ground is the plain ground's linear light scaled by
 # the saturation ratios and encoded back; a bare per-channel ratio held while the frame was
 # gamma end to end.
@@ -1836,6 +1842,7 @@ count_off_ratio() {
 }
 
 run_light_multiplies() {
+	need_magick multiply "the greyed ground's linear light was" || return
 	ground=$(sed -n 's/^const GROUND: Rgba = { red: \([0-9.]*\), green: \([0-9.]*\), blue: \([0-9.]*\),.*/\1 \2 \3/p' \
 		src/examples/campfireScene.ms)
 	luma=$(sed -n 's/^const LUMA_[A-Z]*: float32 = \([0-9.]*\);/\1/p' src/math/math3d.ms | tr '\n' ' ')
@@ -1879,6 +1886,7 @@ run_light_multiplies() {
 # unchanged: each of its three colours must be there. None of them is in the forward frame
 # without billboards (measured on the pre-M15 m14forward frames: 0 pixels of each).
 run_unlit_billboard() {
+	need_magick billboard "the flame's atlas colours were" || return
 	colours=$(sed -n 's/.*setTexturePixel(width, cellLeft + x, y, \([0-9]*\), \([0-9]*\), \([0-9]*\));/\1,\2,\3/p' \
 		src/examples/campfireScene.ms)
 	if [ "$(echo $colours | wc -w)" -ne 3 ]; then
@@ -1923,6 +1931,7 @@ flame_box() {
 }
 
 run_anchor_moves_flame() {
+	need_magick anchor "the anchored flame's shift was" || return
 	colours=$(sed -n 's/.*setTexturePixel(width, cellLeft + x, y, \([0-9]*\), \([0-9]*\), \([0-9]*\));/\1,\2,\3/p' \
 		src/examples/campfireScene.ms)
 	shifts=""
