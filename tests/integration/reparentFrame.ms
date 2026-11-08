@@ -158,8 +158,8 @@ export function configureReparent(throughPixelArt: boolean): void { pixelArt = t
 
 export function initReparent(): void {
 	gfxSetup();
-	if (voidCaptureBackend() != 1 && voidCaptureBackend() != 5) {
-		console.log("SKIP reparent frame: this consumer requires D3D11 or Metal readback");
+	if (voidCaptureBackend() != 7 && voidCaptureBackend() != 5) {
+		console.log("SKIP reparent frame: this consumer requires D3D12 or Metal readback");
 		voidCaptureExit(3);
 	}
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("unexpected framebuffer size"); }

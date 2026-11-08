@@ -208,8 +208,8 @@ function loadModel(data: GltfData): void {
 }
 
 export function initGltf(): void {
-	if (voidCaptureBackend() != 1 && voidCaptureBackend() != 5) {
-		console.log("SKIP gltf frame: this consumer requires D3D11 or Metal readback");
+	if (voidCaptureBackend() != 7 && voidCaptureBackend() != 5) {
+		console.log("SKIP gltf frame: this consumer requires D3D12 or Metal readback");
 		voidCaptureExit(3);
 	}
 	gfxSetup();
@@ -471,7 +471,7 @@ export function frameGltf(frameIndex: int32): void {
 	if (drawn(view) != expected) { fail(`the frame did not draw ${expected} meshes`); }
 	if (frameIndex == rebuildAt) { checkRemade(); }
 	if (frameIndex == 1 || frameIndex == 6 || frameIndex == 11 || frameIndex == 16) {
-		if (voidCaptureGrab(0) == 0 || voidCaptureGrab(1) == 0) { fail("D3D11 readback failed"); }
+		if (voidCaptureGrab(0) == 0 || voidCaptureGrab(1) == 0) { fail("D3D12 readback failed"); }
 		if (voidCaptureSlotsDiffer() != 0) { fail("two readbacks of the same frame differ"); }
 		if (stage(frameIndex) == 0 || (stage(frameIndex) == 1 && !pixelArt)) { checkFaceOn(view); }
 		if (stage(frameIndex) == 1 && pixelArt) {

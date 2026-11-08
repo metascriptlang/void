@@ -310,10 +310,10 @@ function widthProfile(view: CameraView, width: int32, height: int32, variant: in
 	if (renderer.outline === null) { unreachable; }
 	const pass = renderer.outline;
 	copyCapture(pass.mask.asTexture());
-	if (stage == 56 && voidCaptureBackend() == 1) {
+	if (stage == 56 && voidCaptureBackend() == 7) {
 		const directory = prepareOutlineOutput();
 		if (!directory.ok) { fail(directory.error); unreachable; }
-		console.log(`outline sampler diagnostic: stage${stage} backend1 dims${WIDTH}x${HEIGHT} ` +
+		console.log(`outline sampler diagnostic: stage${stage} backend7 dims${WIDTH}x${HEIGHT} ` +
 			`originTopLeft lineAlpha${LINE.w} width${requested} radius7 circles48 linearClamp mip0`);
 		if (voidCaptureWritePng(1,`out/tmp/forwardOutline/referenceSampler/seedCurrentFactor${FACTOR}.png`) == 0) {
 			fail("seed diagnostic PNG write refused");
@@ -331,7 +331,7 @@ function widthProfile(view: CameraView, width: int32, height: int32, variant: in
 		}
 	}
 	copyCapture(requested == 2.0 ? pass.mask.asTexture() : pass.width.asTexture());
-	if (stage == 56 && voidCaptureBackend() == 1 &&
+	if (stage == 56 && voidCaptureBackend() == 7 &&
 		voidCaptureWritePng(1,`out/tmp/forwardOutline/referenceSampler/widthCurrentFactor${FACTOR}.png`) == 0) {
 		fail("width diagnostic PNG write refused");
 	}

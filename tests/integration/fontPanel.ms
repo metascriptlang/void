@@ -170,13 +170,13 @@ function same(a: Readonly<Span<LabelSnapshot>>, b: Readonly<Span<LabelSnapshot>>
 }
 
 function matchesBackend(expected: int32, actual: int32): boolean {
-	return (expected == 1 || expected == 4) && expected == actual;
+	return (expected == 7 || expected == 4) && expected == actual;
 }
 
 test "font panel refuses missing, generic GL and mismatched native backends" {
-	assert matchesBackend(1, 1) && matchesBackend(4, 4);
+	assert matchesBackend(7, 7) && matchesBackend(4, 4);
 	assert !matchesBackend(0, 0) && !matchesBackend(2, 2) && !matchesBackend(3, 3);
-	assert !matchesBackend(1, 4) && !matchesBackend(4, 1);
+	assert !matchesBackend(7, 4) && !matchesBackend(4, 7) && !matchesBackend(1, 1);
 }
 
 function cpuFrame(panel: Panel): void {

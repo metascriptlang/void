@@ -272,7 +272,7 @@ function drawB(slot: int32): void {
 	drawToScreen(forward);
 	endPass();
 	commit();
-	if (voidCaptureGrab(slot) == 0) { stop("D3D11 readback failed"); }
+	if (voidCaptureGrab(slot) == 0) { stop("D3D12 readback failed"); }
 }
 
 function checkFirstPicture(): void {

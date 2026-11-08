@@ -174,5 +174,5 @@ when (!voidDummy && !voidVulkan && !voidGlCore && (macos || windows)) {
 
 	run();
 } else {
-	throw new Error("alternatingSprites requires native Metal or D3D11 WARP");
+	throw new Error("alternatingSprites requires native Metal or D3D12");
 }

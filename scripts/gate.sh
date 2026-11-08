@@ -5,12 +5,11 @@
 # nothing may report PASS for a backend it did not run — the whole point of this file is
 # that the claims in docs/VOID2D.md can be re-run by someone who did not write them.
 #
-#   sh scripts/gate.sh            T0, the golden suite on D3D11, the bench, the tier report
+#   sh scripts/gate.sh            T0, the golden suite on D3D12, the bench, the tier report
 #   sh scripts/gate.sh --web      also build both web backends (slow; needs emsdk)
 #   sh scripts/gate.sh --quick    skip the golden suite (T0 and bench only)
 #   sh scripts/gate.sh --window   also the macOS window behaviour tests, in a visible focused window
 #   sh scripts/gate.sh --ios      also the Metal goldens and view samples on an attached iOS device
-#   sh scripts/gate.sh --d3d12    also webgpuD3d12Check and the door checks on d3d12 WARP; needs the D3D12 debug layer (Graphics Tools)
 set -e
 cd "$(dirname "$0")/.."
 export VOID_QUIET_WINDOW=1
@@ -20,14 +19,12 @@ WEB=0
 QUICK=0
 WINDOW=0
 IOS=0
-D3D12=0
 for arg in "$@"; do
 	case "$arg" in
 		--web) WEB=1 ;;
 		--quick) QUICK=1 ;;
 		--window) WINDOW=1 ;;
 		--ios) IOS=1 ;;
-		--d3d12) D3D12=1 ;;
 		*) echo "gate.sh: unknown flag $arg" >&2; exit 2 ;;
 	esac
 done
@@ -35,9 +32,9 @@ done
 fails=0
 skips=0
 passes=0
-d3d11_conformance="not run"
-# D3D11 and GL core run on the Windows box; a Mac has neither, and runs Metal instead.
-golden_host=d3d11
+d3d12_conformance="not run"
+# D3D12 and GL core run on the Windows box; a Mac has neither, and runs Metal instead.
+golden_host=d3d12
 [ "$(uname -s)" != Darwin ] || golden_host=metal
 
 # out/ is gitignored, so on a clean clone the first redirect into it would abort under set -e
@@ -157,7 +154,7 @@ for jsBackend in gl gpu; do
 	fi
 done
 for target in "--os=windows" "--os=windows -d:voidGlCore" "--os=linux" "--os=android" "--os=ios" \
-		"--os=windows -d:voidD3d12" "--os=windows -d:voidVulkan" "--os=linux -d:voidVulkan" "--os=android -d:voidVulkan" \
+		"--os=windows -d:voidVulkan" "--os=linux -d:voidVulkan" "--os=android -d:voidVulkan" \
 		"--os=emcc -d:webgpu" "--os=emcc -d:webgl2" "-d:voidDummy"; do
 	log="out/gate-backend-check$(echo "$target" | tr -c 'a-zA-Z0-9\n' '-').log"
 	if "$MSC" check $target src/examples/main2d.ms > "$log" 2>&1; then
@@ -460,7 +457,7 @@ for glyph_backend in $glyph_backends; do
 	colour_backend=0
 	case "$(uname -s):$glyph_backend" in
 		*:gl) colour_backend=4 ;;
-		MINGW*:native|MSYS*:native|CYGWIN*:native) colour_backend=1 ;;
+		MINGW*:native|MSYS*:native|CYGWIN*:native) colour_backend=7 ;;
 		Darwin:native) colour_backend=5 ;;
 	esac
 	if "$MSC" build -d:voidColourEmoji $glyph_flags tests/integration/colourSampler.ms \
@@ -569,7 +566,7 @@ if "$MSC" build tests/integration/targetOwner.ms --release --output=out/tmp/targ
 			refused-zero) expected='gpu door: resize refused a 0x8 Rgba8 target image' ;;
 			refused-pool) case "$(uname -s)" in
 				Darwin) expected='webgpu metal: view pool exhausted' ;;
-				*) expected='webgpu d3d11: view pool exhausted' ;;
+				*) expected='webgpu d3d12: view pool exhausted' ;;
 			esac ;;
 		esac
 		target_status=0
@@ -741,18 +738,11 @@ backend_check() {
 }
 case "$(uname -s)" in
 	MINGW*|MSYS*|CYGWIN*)
-		backend_check "d3d11 backend on WARP" webgpu-d3d11 src/test/webgpuD3d11Check.ms
-		if [ "$D3D12" -eq 1 ]; then
-			backend_check "d3d12 backend on WARP with the debug layer" webgpu-d3d12 -d:voidD3d12 src/test/webgpuD3d12Check.ms
-			backend_check "door handle 0 on d3d12 WARP" door-zero-handle-d3d12 -d:voidD3d12 src/test/doorZeroHandleCheck.ms
-			backend_check "door compute on d3d12 WARP" door-compute-d3d12 -d:voidD3d12 src/test/doorComputeCheck.ms
-			backend_check "door stencil on d3d12 WARP" door-stencil-d3d12 -d:voidD3d12 src/test/doorStencilCheck.ms
-			backend_check "pipeline prewarm on d3d12 WARP" pipeline-prewarm-d3d12 -d:voidD3d12 src/test/pipelinePrewarmCheck.ms
-		else
-			skip "d3d12 backend and door checks on WARP: pass --d3d12; every pin reads the D3D12 debug layer, which needs Graphics Tools installed"
-		fi
+		backend_check "d3d12 backend on WARP with the debug layer" webgpu-d3d12 src/test/webgpuD3d12Check.ms
 		backend_check "door handle 0 on WARP" door-zero-handle src/test/doorZeroHandleCheck.ms
 		backend_check "door compute on WARP" door-compute src/test/doorComputeCheck.ms
+		backend_check "door stencil on WARP" door-stencil src/test/doorStencilCheck.ms
+		backend_check "pipeline prewarm on WARP" pipeline-prewarm src/test/pipelinePrewarmCheck.ms
 		backend_check "corrupted embedded DXBC on WARP" dxbc-refusal src/test/shaderBytecodeRefusalCheck.ms
 		backend_check "gl core backend on the system device" webgpu-gl -d:voidGlCore src/test/webgpuGlCheck.ms
 		backend_check "vulkan backend on the system device" webgpu-vulkan -d:voidVulkan src/test/webgpuVulkanCheck.ms
@@ -896,16 +886,16 @@ if [ "$QUICK" -eq 1 ]; then
 	skip "golden suite: --quick"
 else
 	if [ "$golden_host" = metal ]; then
-		d3d11_conformance="not run: this host is $(uname -s), which has no D3D11"
-		skip "golden suite on D3D11: this host is $(uname -s), which has no D3D11; Metal is judged in section 6"
+		d3d12_conformance="not run: this host is $(uname -s), which has no D3D12"
+		skip "golden suite on D3D12: this host is $(uname -s), which has no D3D12; Metal is judged in section 6"
 	elif sh scripts/golden.sh > out/gate-golden.log 2>&1; then
 		# `|| echo` matters under set -e: a bare assignment whose command substitution fails
 		# takes grep's status and kills the gate mid-run, with no summary and no message.
-		d3d11_conformance="$(grep -E '^golden ' out/gate-golden.log || echo 'no conformance line in the log')"
-		pass "$d3d11_conformance"
+		d3d12_conformance="$(grep -E '^golden ' out/gate-golden.log || echo 'no conformance line in the log')"
+		pass "$d3d12_conformance"
 		grep -E '^(PENDING|  harness/mustFail)' out/gate-golden.log | sed 's/^/      /' || true
 	else
-		d3d11_conformance="FAILED — see out/gate-golden.log"
+		d3d12_conformance="FAILED — see out/gate-golden.log"
 		fail "golden suite — see out/gate-golden.log"
 		grep -E '^FAIL' out/gate-golden.log | sed 's/^/      /' || true
 	fi
@@ -1282,10 +1272,10 @@ conformance_rule() {
 
 echo
 section "6. guardrail 9 — same pixels on every platform"
-echo "      One golden set, authored on D3D11, every backend compared against it."
+echo "      One golden set, authored on D3D12, every backend compared against it."
 echo "      Conformance, per backend:"
 # Never a fixed number here: the gate may not report a result it did not produce.
-echo "      d3d11    $d3d11_conformance      (this box, every gate)"
+echo "      d3d12    $d3d12_conformance      (this box, every gate)"
 gl_conformance="not run"
 gl_ran=0
 if [ "$QUICK" -eq 1 ]; then
@@ -1433,14 +1423,14 @@ fi
 # The conformance rows of docs/TESTING.md against the logs this run wrote; a skipped suite has
 # no log from this run, so its row is not judged.
 if [ "$QUICK" -eq 0 ] && [ "$golden_host" = metal ]; then
-	skip "docs/TESTING.md's D3D11 row: this host is $(uname -s), which ran no D3D11 golden to judge it by"
+	skip "docs/TESTING.md's D3D12 row: this host is $(uname -s), which ran no D3D12 golden to judge it by"
 elif [ "$QUICK" -eq 0 ]; then
-	d3d11=$(tr -d '\r' < out/gate-golden.log | sed -nE 's/^golden d3d11: ([0-9]+) pass, [0-9]+ pending, [0-9]+ fail of ([0-9]+)$/\1 \2/p')
-	claim="| D3D11 | **${d3d11% *} / ${d3d11#* } scenes byte-identical**"
-	if [ -n "$d3d11" ] && grep -qF "$claim" docs/TESTING.md; then
-		pass "docs/TESTING.md's D3D11 row matches this run: ${d3d11% *} / ${d3d11#* }"
+	d3d12=$(tr -d '\r' < out/gate-golden.log | sed -nE 's/^golden d3d12: ([0-9]+) pass, [0-9]+ pending, [0-9]+ fail of ([0-9]+)$/\1 \2/p')
+	claim="| D3D12 | **${d3d12% *} / ${d3d12#* } scenes byte-identical**"
+	if [ -n "$d3d12" ] && grep -qF "$claim" docs/TESTING.md; then
+		pass "docs/TESTING.md's D3D12 row matches this run: ${d3d12% *} / ${d3d12#* }"
 	else
-		fail "docs/TESTING.md's D3D11 row does not match this run's '$(grep -E '^golden d3d11' out/gate-golden.log)'"
+		fail "docs/TESTING.md's D3D12 row does not match this run's '$(grep -E '^golden d3d12' out/gate-golden.log)'"
 	fi
 fi
 if [ "$gl_ran" -eq 1 ] && grep -q '^golden gl430' out/gate-golden-gl.log; then
@@ -1480,7 +1470,7 @@ pending=$(grep -cE '^\| [A-Za-z][A-Za-z0-9:/._-]* \| T[0-5] \|' tests/PENDING.md
 echo "      tier   what ran"
 echo "      T0     msc test src/test/index.ms, stages all-off and all-on ($moduleFlags)"
 echo "      T1     display-list snapshots + growth policy, no GPU"
-echo "      T2     $d3d11_conformance"
+echo "      T2     $d3d12_conformance"
 echo "      T3     oracles: $t3_report"
 echo "      T4     bench counters gated, milliseconds reported, frame path copies and builds no array"
 echo "      T5     human only (docs/TESTING.md 'T5')"

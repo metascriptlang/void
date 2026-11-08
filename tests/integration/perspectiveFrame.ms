@@ -111,8 +111,8 @@ function litMaterial(): MaterialId {
 }
 
 export function initPerspective(): void {
-	if (voidCaptureBackend() != 1 && voidCaptureBackend() != 5) {
-		console.log("SKIP perspective frame: this consumer requires D3D11 or Metal readback");
+	if (voidCaptureBackend() != 7 && voidCaptureBackend() != 5) {
+		console.log("SKIP perspective frame: this consumer requires D3D12 or Metal readback");
 		voidCaptureExit(3);
 	}
 	gfxSetup();
@@ -278,7 +278,7 @@ export function framePerspective(frameIndex: int32): void {
 	commit();
 	if (frameIndex == 1 || frameIndex == 6 || frameIndex == 11 || frameIndex == 16) {
 		if (voidCaptureGrab(0) == 0 || voidCaptureGrab(1) == 0) {
-			fail("D3D11 readback failed");
+			fail("D3D12 readback failed");
 		}
 		if (voidCaptureSlotsDiffer() != 0) { fail("two readbacks of the same frame differ"); }
 		checkBackground();
