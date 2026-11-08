@@ -72,6 +72,12 @@ export function checked(code: int32): Result<void, NativeError> {
 	return Result.ok(null);
 }
 
+export function checkedFor(code: int32, what: string): Result<void, NativeError> {
+	if (code == DX12_OK) { return Result.ok(null); }
+	if (code == DX12_OUT_OF_MEMORY || code == DX12_DEVICE_REMOVED) { return Result.err(failure(code)); }
+	stop(`${dx12Error() as string} for ${what}`);
+}
+
 export function closedFrames(): FrameRing {
 	return { queue: 0, fence: 0, event: 0, list: 0, allocators: [], serials: [], next: 0, submitted: 0, executed: 0, completed: 0, retired: [], frames: 0 };
 }

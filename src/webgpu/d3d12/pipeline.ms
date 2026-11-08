@@ -1,6 +1,6 @@
 import { dx12CompileLog, dx12ComputePipelineCreate, dx12MemoryRead, dx12Release, dx12RenderPipelineCreate, dx12ShaderCompile } from "./d3d12.h";
 import { formatInfo } from "./conv.ms";
-import { DX12_OK, NativeError, checked, stop } from "./frame.ms";
+import { DX12_OK, NativeError, checked, checkedFor, stop } from "./frame.ms";
 import {
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_SHADER_BINDINGS,
@@ -118,6 +118,7 @@ const PIPELINE_WORDS: int32 = 21;
 const COMPARE_ALWAYS = 8;
 
 export struct ShaderNative {
+	label: string | null;
 	compute: boolean;
 	vertex: Vec<uint8>;
 	pixel: Vec<uint8>;
@@ -133,7 +134,7 @@ export struct PipelineNative {
 	strides: int32[GPU_MAX_VERTEX_BUFFERS];
 }
 
-export const NO_SHADER: ShaderNative = { compute: false, vertex: [], pixel: [], computeBytes: [], computeEntry: "" };
+export const NO_SHADER: ShaderNative = { label: null, compute: false, vertex: [], pixel: [], computeBytes: [], computeEntry: "" };
 export const NO_PIPELINE: PipelineNative = { state: 0, topology: 0 };
 
 @noinline function stopOnMember(member: string, value: string): never {
@@ -169,6 +170,7 @@ export function createShaderModule(ref shaders: Vec<ShaderNative>, id: uint32, d
 	const compute = descriptor.computeCode != "" || descriptor.computeBytecode.length > 0;
 	const label = descriptor.label;
 	put(shaders, id, {
+		label: label,
 		compute: compute,
 		vertex: compute ? [] : stageBytes(descriptor.vertexCode, descriptor.vertexBytecode, descriptor.vertexEntryPoint, "vs_5_0", label),
 		pixel: compute ? [] : stageBytes(descriptor.fragmentCode, descriptor.fragmentBytecode, descriptor.fragmentEntryPoint, "ps_5_0", label),
@@ -311,7 +313,7 @@ export function createRenderPipeline(
 	}
 	const words = pipelineWords(descriptor, topology);
 	let state: uint64 = 0;
-	try checked(dx12RenderPipelineCreate(
+	try checkedFor(dx12RenderPipelineCreate(
 		device,
 		signature,
 		shader.vertex[0],
@@ -327,7 +329,7 @@ export function createRenderPipeline(
 		descriptor.depthStencil.depthBiasSlopeScale as float64,
 		descriptor.depthStencil.depthBiasClamp as float64,
 		state,
-	));
+	), `pipeline ${labelOf(descriptor.label)} built from module ${labelOf(shader.label)}`);
 	native.state = state;
 	put(pipelines, id, native);
 	return Result.ok(null);
@@ -343,7 +345,10 @@ export function createComputePipeline(
 ): Result<void, NativeError> {
 	checkedComputeModule(shader.compute, entryName(descriptor.compute.entryPoint), shader.computeEntry);
 	let state: uint64 = 0;
-	try checked(dx12ComputePipelineCreate(device, signature, shader.computeBytes[0], shader.computeBytes.length as uint64, state));
+	try checkedFor(
+		dx12ComputePipelineCreate(device, signature, shader.computeBytes[0], shader.computeBytes.length as uint64, state),
+		`pipeline ${labelOf(descriptor.label)} built from module ${labelOf(shader.label)}`,
+	);
 	put(pipelines, id, { state: state, topology: 0 });
 	return Result.ok(null);
 }
