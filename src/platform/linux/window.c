@@ -34,6 +34,8 @@
 #define GLX_RGBA_BIT 0x00000001
 #define GLX_WINDOW_BIT 0x00000001
 #define GLX_PBUFFER_BIT 0x00000004
+#define GLXBadDrawable 2
+#define GLXBadWindow 12
 #define GLX_PBUFFER_HEIGHT 0x8040
 #define GLX_PBUFFER_WIDTH 0x8041
 #define GLX_DRAWABLE_TYPE 0x8010
@@ -2513,6 +2515,8 @@ static void unbind(void) { eglMakeCurrent(s.egl.display, EGL_NO_SURFACE, EGL_NO_
 
 static void dropDrawable(VoidLinuxView *v) { eglDestroySurface(s.egl.display, (EGLSurface)(uintptr_t)v->drawable); }
 
+static bool diedWithHostWindow(unsigned char code) { return code == BadWindow || code == BadDrawable; }
+
 void voidLinuxViewMakeCurrent(const VoidLinuxView *v) {
 	EGLSurface surface = (EGLSurface)(uintptr_t)v->drawable;
 	if (!eglMakeCurrent(s.egl.display, surface, surface, s.egl.context)) fail("eglMakeCurrent() failed for a host view");
@@ -2557,6 +2561,11 @@ static void makeDrawable(VoidLinuxView *v) {
 }
 
 static void unbind(void) { s.glx.MakeCurrent(s.x11.display, 0, NULL); }
+
+static bool diedWithHostWindow(unsigned char code) {
+	return code == BadWindow || code == BadDrawable || code == s.glx.errorBase + GLXBadDrawable
+		|| code == s.glx.errorBase + GLXBadWindow;
+}
 
 static void dropDrawable(VoidLinuxView *v) {
 	if (v->child) s.glx.DestroyWindow(s.x11.display, v->drawable);
@@ -2616,9 +2625,15 @@ void voidLinuxViewResize(VoidLinuxView *v, int w, int h) {
 
 void voidLinuxViewRelease(VoidLinuxView *v) {
 	unbind();
+	grabErrorHandler();
 	dropDrawable(v);
+	if (v->child) XDestroyWindow(s.x11.display, v->child);
+	releaseErrorHandler();
+	if (s.x11.errorCode != Success && !diedWithHostWindow(s.x11.errorCode)) {
+		fprintf(stderr, "void: releasing a host view failed with X error %d\n", s.x11.errorCode);
+		abort();
+	}
 	if (v->child) {
-		XDestroyWindow(s.x11.display, v->child);
 		XFreeColormap(s.x11.display, v->colormap);
 		XFlush(s.x11.display);
 	}
