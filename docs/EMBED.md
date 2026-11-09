@@ -144,6 +144,15 @@ pbuffer clear is lost: on Mesa llvmpipe, `glClearBufferfv(GL_COLOR, 0)` into an 
 desktop-GL context writes nothing while `glClear` and draws do, so the board's clear colour reads
 0. A window surface clears normally on the same server.
 
+The host may destroy its window before it calls `viewDestroy` (Ion's `closeWindow` does): X
+destroys Void's child with it, and the release absorbs the BadWindow that follows instead of
+leaving it for the next request on Void's connection. Void's X error trap restores the handler it
+found, as GLFW 3.4 does, so a host's own handler (GTK installs one) stays in place.
+`tests/integration/linuxViewsParentGone.ms` destroys the area first, then makes a second view and
+reads its pixels. Measured on rtx's Xvfb on 2026-11-10 (msc `ca0999a4aae`): red on main (the
+handler was replaced at the first `viewCreate`, and the second aborted in `XCreateWindow`), PASS
+with EGL and with GLES3; the GLX build compiles but was not run.
+
 ## iOS: an app driver on the host views
 
 `bridgeIosApp.m` gives iOS a `voidRun`, so an entry written for `voidRun` (Neon's `runCanvas`)
