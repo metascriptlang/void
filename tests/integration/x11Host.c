@@ -42,6 +42,27 @@ void x11HostResizeArea(int64_t area, int32_t width, int32_t height) {
 	XSync(s_display, False);
 }
 
+void x11HostDestroyArea(int64_t area) {
+	XDestroyWindow(s_display, (Window)area);
+	XSync(s_display, False);
+}
+
+static int s_foreignErrors;
+
+static int hostErrorHandler(Display *display, XErrorEvent *event) {
+	if (display != s_display) {
+		fprintf(stderr, "x11Host: X error %d (request %d) from another connection\n", event->error_code, event->request_code);
+		s_foreignErrors++;
+	}
+	return 0;
+}
+
+void x11HostWatchErrors(void) { XSetErrorHandler(hostErrorHandler); }
+
+int32_t x11HostHandlerKept(void) { return XSetErrorHandler(hostErrorHandler) == hostErrorHandler; }
+
+int32_t x11HostForeignErrors(void) { return s_foreignErrors; }
+
 static int shiftOf(unsigned long mask) {
 	int shift = 0;
 	while (mask && !(mask & 1)) {
