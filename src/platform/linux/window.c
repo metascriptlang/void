@@ -946,6 +946,7 @@ static struct {
 		int windowState;
 		float dpi;
 		unsigned char errorCode;
+		XErrorHandler hostErrorHandler;
 		Atom UTF8_STRING;
 		Atom WM_PROTOCOLS;
 		Atom WM_DELETE_WINDOW;
@@ -1029,19 +1030,20 @@ static int roundAtLeastOne(float f) {
 }
 
 static int errorHandler(Display *display, XErrorEvent *event) {
-	(void)display;
+	if (display != s.x11.display) return 0;
 	s.x11.errorCode = event->error_code;
 	return 0;
 }
 
 static void grabErrorHandler(void) {
 	s.x11.errorCode = Success;
-	XSetErrorHandler(errorHandler);
+	s.x11.hostErrorHandler = XSetErrorHandler(errorHandler);
 }
 
 static void releaseErrorHandler(void) {
 	XSync(s.x11.display, False);
-	XSetErrorHandler(NULL);
+	XSetErrorHandler(s.x11.hostErrorHandler);
+	s.x11.hostErrorHandler = NULL;
 }
 
 static void initAtoms(void) {
