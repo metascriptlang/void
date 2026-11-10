@@ -30,14 +30,14 @@ export interface Texture {
 	generation: int32;
 	owned: boolean;
 	closed: boolean;
-	realloc: ((texture: Texture) => void) | null;
+	realloc: Owned<(texture: Texture) => void> | null;
 }
 
 export function create(
 	this typeof Texture,
 	width: int32,
 	height: int32,
-	realloc: ((texture: Texture) => void) | null,
+	realloc: Owned<(texture: Texture) => void> | null,
 ): Texture {
 	return {
 		width: width,
@@ -67,7 +67,7 @@ export function mipChainWords(width: int32, height: int32, levels: int32): int64
 	return words;
 }
 
-function reuploadKept(pixels: Vec<uint32>): (texture: Texture) => void {
+function reuploadKept(pixels: Vec<uint32>): Owned<(texture: Texture) => void> {
 	return (texture: Texture): void => {
 		const uploaded: Result<int32, TextureError> = texture.upload(pixels);
 		if (!uploaded.ok) { stopOnRefusedRealloc(texture, uploaded.error); }
