@@ -80,7 +80,7 @@ function init(): void {
 	setup2d();
 	const kept: Texture =
 		made(Texture.fromPixels(checker(RED, YELLOW), CHECKER, CHECKER, true), "kept");
-	const hooked: Texture = Texture.create(CHECKER, CHECKER, decodeAgain);
+	const hooked: Texture = Texture.create(CHECKER, CHECKER, (texture: Texture): void => { decodeAgain(texture); });
 	const first: Result<int32, TextureError> = hooked.upload(checker(YELLOW, RED));
 	if (!first.ok) { fail(`the hooked texture was refused, ${first.error.toString()}`); }
 	s.add(s.rect(24.0, 24.0, rgba(0.9, 0.1, 0.1, 1.0)).at(8.0, 8.0));
